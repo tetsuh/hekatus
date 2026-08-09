@@ -28,6 +28,15 @@ is the complete authority.
 - Problems discovered during work get a **new Issue**. Drive-by fixes are
   prohibited (typo-level corrections at reviewer discretion).
 
+**One pull request may close several issues** when they came out of one
+review pass or otherwise form a single small change, and only then. The
+requirement is that traceability survives: **one commit per issue**, each
+naming its issue, and every issue listed with `Closes #NN` in the PR body.
+Bundling is for keeping review and merge overhead proportionate to a small
+diff — never for grouping unrelated work, and never for a decision that
+establishes or alters a contract, which is reviewed on its own. Recording
+an already-settled rule in a contract document is not such a decision.
+
 ### Planning model
 
 - **Milestones hold the coarse plan.** Issues are added to milestones
