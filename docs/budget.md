@@ -104,11 +104,22 @@ DAS is ~0% to begin with, so the total barely moves.
 | Scan conversion + display | 5–16 ms |
 | **Total target** | **≤ 30 ms** |
 
-**The stages are pipelined, not sequential — do not add the column.** Each
-stage runs concurrently on a different frame; the column gives each stage's
-own budget, and the ≤ 30 ms target is the end-to-end latency of one frame
-travelling through the pipeline, which overlaps stages wherever a stage does
-not depend on the previous one completing.
+**Throughput and latency follow different rules here.** Pipelining runs the
+stages concurrently on different frames, which is what sustains the frame
+rate; it does not shorten the journey of any single frame. The ≤ 30 ms
+target is per-frame latency, and along a frame's critical dependency path
+the stage times **do** add:
+
+```text
+acquisition 4.3 → transfer 1–2 → compounding dependency 0.35
+            → compute (≤ 16.7) → scan conversion + display 5–16
+```
+
+At the optimistic end that path sums to about 27 ms and the target holds;
+at the pessimistic end it reaches about 39 ms and the target does not.
+**The budget therefore does not yet close across the full range of its own
+stage estimates** — which stages must land at their optimistic values, or
+which estimate is wrong, is an open item (docs/open-issues.md).
 
 Two rates appear and mean different things: **30 fps is the processing-rate
 assumption** behind the compute tables above, while **60 Hz is the display

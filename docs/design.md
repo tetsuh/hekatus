@@ -831,9 +831,11 @@ assumption** — measure it early on Track B. The 4096-channel row follows
 the N⁴ law from the 256-channel volume row; an earlier revision carried
 1.85e8 there, which did not reconcile.
 
-The latency table of §12 is likewise **pipelined, not additive**: stages
-run concurrently on different frames, and 30 fps is the processing-rate
-assumption while 60 Hz is the display deadline.
+On the §12 latency table, **throughput and latency obey different rules**:
+pipelining lets stages run concurrently on different frames, which raises
+sustained throughput, but a single frame still traverses its critical
+dependency path, and along that path the stage times add. 30 fps is the
+processing-rate assumption; 60 Hz is the display deadline.
 
 ---
 
