@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Test
+        run: uv run pytest -q
+
+      # The demo is the acceptance surface of an MVP, so a broken demo is a
+      # broken build even when the tests behind it still pass.
+      - name: Run the demo
+        run: uv run enodia-demo --out out/bmode.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bmode
+          path: out/bmode.png
