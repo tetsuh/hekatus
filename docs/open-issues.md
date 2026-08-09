@@ -1,7 +1,13 @@
 # open-issues.md
 
-Extract of design.md §17 plus a working tracker. When an item settles, fold
-the outcome into design.md and delete it here.
+Extract of design.md §17 plus a working tracker.
+
+**Lifecycle**: when an item settles, its outcome is recorded in
+`design.md` — that document is the authority — and the item moves to the
+`Settled` section here, where it stays only as a short-term reminder of
+what recently changed. Entries leave that section once the decision is old
+enough that nobody is still working from the previous assumption; the
+record in `design.md` is what persists.
 
 ---
 
