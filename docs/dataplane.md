@@ -36,8 +36,12 @@ wrong image, which is worse than a dropped frame (design.md §19).
 
 - Discarding is counted and reported, distinguishably from an overwrite
   violation — the two have different causes
-- Processing resumes on the first record whose generation matches a ready
-  table set. No catch-up of the discarded interval is attempted
+- A record is processable only when **both** identity fields match a ready
+  table set — config ID *and* parameter-generation counter. The generation
+  counter is not assumed unique across config IDs, so matching it alone
+  could select the wrong tables
+- Processing resumes on the first record whose full identity matches. No
+  catch-up of the discarded interval is attempted
 - Losing a few frames while tables are rebuilt (a depth or focus change) is
   expected behaviour, not a fault
 
@@ -101,15 +105,19 @@ Use: lampas observation; diaplous-internal result buffers → display system.
 ### Data volumes
 
 Assumptions: 13 MHz linear, 4 MLA (109 transmit events → 434 scanlines),
-256 channels, 1536 depth points after decimation, 60 fps. T1 is sized per
-transmit event and T2 per formed scanline — the axes differ, which is why
-their volumes are not related by a simple factor. Complex samples are
-4 B (int16 I + int16 Q); T5 is 4 B real (FP32). MB = 10⁶ B.
+256 channels, 60 fps. MB = 10⁶ B.
+
+Two different depth counts appear, and mixing them is the easiest way to
+get these figures wrong. **T1 is channel data**, so its depth axis is the
+per-channel IQ sample count after decimation — 780 samples at 13 MHz with
+D = 2 (design.md §4). **T2 and T5 are formed lines**, so their depth axis
+is the image grid, 1536 points. Sample sizes also differ: T1 is int16
+complex (4 B), T2 is FP32 complex (8 B), T5 is FP32 real (4 B).
 
 | tap | axes | per frame | at 60 fps | note |
 |---|---|---|---|---|
-| T1 | 109 events × 256 ch × 1536 × 4 B | 87 MB | 5.2 GB/s | ROI / decimation mandatory |
-| T2 | 434 lines × 256 ch × 1536 × 4 B | 1.4 GB | — | continuous full-frame observation impossible; ROI mandatory |
+| T1 | 109 events × 256 ch × 780 IQ × 4 B | 87 MB | 5.2 GB/s | ROI / decimation mandatory |
+| T2 | 434 lines × 256 ch × 1536 × 8 B | 1.4 GB | 82 GB/s if unrestricted | continuous full-frame observation impossible; ROI mandatory |
 | T5 | 434 lines × 1536 × 4 B | 2.7 MB | 160 MB/s | continuous observation fine |
 
 T1–T3 get an ROI interface ("one full-channel frame per second", etc.) for
@@ -132,5 +140,18 @@ other parameter change, and it becomes effective through the same
 generation mechanism.
 
 It works with one frame of allowed lag, but **must never break the
-determinism of the processing path**: if an update misses its window,
-enodia keeps processing with the last committed generation. Never wait.
+determinism of the processing path**. Determinism here means output must
+not depend on when an update happened to arrive, which fixes the
+disposition of a late update:
+
+- An update names the frame from which it applies. The activation boundary
+  is the start of that frame's processing — the same point at which any
+  other parameter generation becomes effective
+- An update that arrives after its own activation boundary is **discarded
+  and counted**, not applied late. Applying it at an arbitrary later frame
+  would make the image depend on arrival timing
+- Every frame is processed with the last generation committed before its
+  boundary; a discarded update leaves that generation in force until a
+  subsequent update lands in time
+- lampas may re-issue a discarded update naming a later frame. enodia never
+  waits for one
