@@ -125,7 +125,7 @@ with the reference implementation.
 
 ## Repository layout
 
-```
+```text
 CLAUDE.md              this file
 AGENTS.md              process entry point for coding agents
 docs/

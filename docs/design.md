@@ -49,7 +49,7 @@ viable, which maps directly onto the price tiers of the machine.
 
 ### Internal structure of diaplous (two systems)
 
-```
+```text
 enodia ──(stream)──→ [B-mode preprocessing] ──→ result buffer ─┐
        ──(stream)──→ [color flow]           ──→ result buffer ─┼─(latest read)→ [display]
        ──(stream)──→ [PW/CW Doppler]        ──→ result buffer ─┤   60/120 fps
@@ -348,7 +348,7 @@ through DRAM means reading all channels per pixel: 33 GB per 512×512 frame,
 
 ### Processing
 
-```
+```text
 s(t) → [complex band-pass FIR] → [decimation ↓D] → IQ (int16 complex)
 ```
 
@@ -373,14 +373,14 @@ beamforming needs from channel i is the complex envelope of the signal
 delayed by τ. With the demodulation convention fixed above
 (`z(t) = s(t)·e^(-j2πf0·t)`), the analytic signal gives
 
-```
+```text
 env{s(t − τ)}(t) = z(t − τ) · e^(−j2πf0·τ)
 ```
 
 and in decimated, sampled form, writing `d = τ·fs'` for the delay in
 samples at the decimated rate `fs'`:
 
-```
+```text
 x_i[n] ≈ interp4(z_dec, n − d) · e^(−j2πf0·τ)
 ```
 
@@ -431,7 +431,7 @@ under operator control; on the card it would multiply reconfigurations.
 
 ### Data model
 
-```
+```text
 input:  [channel (≤256) × depth × transmit event × slow time]
 output: [depth × scanline]
 bridge: the contribution map (transmit event → scanline, weighted, sparse)
@@ -708,7 +708,7 @@ the old term, add the new) cuts R-formation cost to 1/5.
 
 **No Cholesky.** Its sequential dependencies idle the Tensix matrix engine.
 
-```
+```text
 X_{k+1} = X_k (2I − R X_k)
 ```
 
@@ -981,7 +981,7 @@ property natively — one of its virtues.
 
 ### Pipeline structure
 
-```
+```text
 [Ethernet receive] → [ring buffer]
                         ↓
 [front end: BPF + demod + decimation]   ← a few dedicated cores, per transmit
@@ -1024,7 +1024,7 @@ painful.**
 
 Physically partition the 120-core grid, statically:
 
-```
+```text
 cores 0–14    : front end (BPF/demod)
 cores 15–89   : beamforming
 cores 90–119  : inference
@@ -1120,7 +1120,7 @@ via-host transports are interchangeable.
 
 ### Dataflow and required bits
 
-```
+```text
 input           int16 (12 significant bits, TGC applied)
   ↓ front-end BPF (64 taps)     int32 accumulate → int16
 IQ              int16 complex   ← L1-resident
@@ -1460,7 +1460,7 @@ The machine holds a **finite set of transmit configurations**; control
 software announces a selected ID. **Depth and focus are in-config
 parameters** (continuously variable — knobs are turned continuously).
 
-```
+```text
 setup:            description of the config set (physical-quantity schema)
 runtime (heavy):  config selection ID    → switch to precomputed derivatives
 runtime (light):  in-config parameter change → fast re-derivation, applied within N frames
