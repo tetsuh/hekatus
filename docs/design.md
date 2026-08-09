@@ -49,7 +49,7 @@ viable, which maps directly onto the price tiers of the machine.
 
 ### Internal structure of diaplous (two systems)
 
-```
+```text
 enodia ──(stream)──→ [B-mode preprocessing] ──→ result buffer ─┐
        ──(stream)──→ [color flow]           ──→ result buffer ─┼─(latest read)→ [display]
        ──(stream)──→ [PW/CW Doppler]        ──→ result buffer ─┤   60/120 fps
@@ -348,7 +348,7 @@ through DRAM means reading all channels per pixel: 33 GB per 512×512 frame,
 
 ### Processing
 
-```
+```text
 s(t) → [complex band-pass FIR] → [decimation ↓D] → IQ (int16 complex)
 ```
 
@@ -373,14 +373,14 @@ beamforming needs from channel i is the complex envelope of the signal
 delayed by τ. With the demodulation convention fixed above
 (`z(t) = s(t)·e^(-j2πf0·t)`), the analytic signal gives
 
-```
+```text
 env{s(t − τ)}(t) = z(t − τ) · e^(−j2πf0·τ)
 ```
 
 and in decimated, sampled form, writing `d = τ·fs'` for the delay in
 samples at the decimated rate `fs'`:
 
-```
+```text
 x_i[n] ≈ interp4(z_dec, n − d) · e^(−j2πf0·τ)
 ```
 
@@ -431,7 +431,7 @@ under operator control; on the card it would multiply reconfigurations.
 
 ### Data model
 
-```
+```text
 input:  [channel (≤256) × depth × transmit event × slow time]
 output: [depth × scanline]
 bridge: the contribution map (transmit event → scanline, weighted, sparse)
@@ -708,7 +708,7 @@ the old term, add the new) cuts R-formation cost to 1/5.
 
 **No Cholesky.** Its sequential dependencies idle the Tensix matrix engine.
 
-```
+```text
 X_{k+1} = X_k (2I − R X_k)
 ```
 
@@ -781,7 +781,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (ample) |
 | post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 8–9 |
 | post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1** |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | 185,000,000 | ~140k (impossible) |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~72,000,000 | ~540k (impossible) |
 
 ### By method (64 recv ch, 30 fps)
 
@@ -804,7 +804,9 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~30 | 9% |
 | 2D volume | beamspace MV | ~37 | 11% |
 
-**Everything for 1D at once is ~30% of one card. 70% remains.**
+**Everything for 1D at once is ~100 TFLOPS: ~30% of theoretical peak, or
+~75% of one card's usable capacity at the 40% assumption. Quote the claim
+with its basis attached.**
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -820,10 +822,20 @@ half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
 Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 
-**Table assumptions**: unless stated, 30 fps, 2048 depth points; "of one
-card" is against the 332 TFLOPS theoretical peak; "cards" assumes 40%
-effective efficiency. **The 40% is an unverified assumption** — measure it
-early on Track B.
+**Table assumptions**: unless stated, 30 fps, 2048 depth points.
+**Two capacity bases appear**: "of one card" percentages are against the
+332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
+efficiency (133 TFLOPS usable per card). Never combine a percentage from
+one basis with a count from the other. **The 40% is an unverified
+assumption** — measure it early on Track B. The 4096-channel row follows
+the N⁴ law from the 256-channel volume row; an earlier revision carried
+1.85e8 there, which did not reconcile.
+
+On the §12 latency table, **throughput and latency obey different rules**:
+pipelining lets stages run concurrently on different frames, which raises
+sustained throughput, but a single frame still traverses its critical
+dependency path, and along that path the stage times add. 30 fps is the
+processing-rate assumption; 60 Hz is the display deadline.
 
 ---
 
@@ -971,7 +983,7 @@ property natively — one of its virtues.
 
 ### Pipeline structure
 
-```
+```text
 [Ethernet receive] → [ring buffer]
                         ↓
 [front end: BPF + demod + decimation]   ← a few dedicated cores, per transmit
@@ -1014,7 +1026,7 @@ painful.**
 
 Physically partition the 120-core grid, statically:
 
-```
+```text
 cores 0–14    : front end (BPF/demod)
 cores 15–89   : beamforming
 cores 90–119  : inference
@@ -1110,7 +1122,7 @@ via-host transports are interchangeable.
 
 ### Dataflow and required bits
 
-```
+```text
 input           int16 (12 significant bits, TGC applied)
   ↓ front-end BPF (64 taps)     int32 accumulate → int16
 IQ              int16 complex   ← L1-resident
@@ -1450,7 +1462,7 @@ The machine holds a **finite set of transmit configurations**; control
 software announces a selected ID. **Depth and focus are in-config
 parameters** (continuously variable — knobs are turned continuously).
 
-```
+```text
 setup:            description of the config set (physical-quantity schema)
 runtime (heavy):  config selection ID    → switch to precomputed derivatives
 runtime (light):  in-config parameter change → fast re-derivation, applied within N frames

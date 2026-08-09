@@ -1,7 +1,13 @@
 # open-issues.md
 
-Extract of design.md §17 plus a working tracker. When an item settles, fold
-the outcome into design.md and delete it here.
+Extract of design.md §17 plus a working tracker.
+
+**Lifecycle**: when an item settles, its outcome is recorded in
+`design.md` — that document is the authority — and the item moves to the
+`Settled` section here, where it stays only as a short-term reminder of
+what recently changed. **Entries are cleared from that section when the
+milestone during which they settled closes**, by the owner, as part of
+closing it; the record in `design.md` is what persists.
 
 ---
 
@@ -44,6 +50,11 @@ the outcome into design.md and delete it here.
 - Actual TGC behavior of the target front end (discontinuities, gain-step
   granularity). **With MLA, the depth-to-TGC correspondence shifts per
   scanline, which can create inconsistencies under transmit compounding**
+- **The latency budget does not close across the full range of its own
+  stage estimates** (docs/budget.md): the critical path sums to ~27 ms at
+  the optimistic end and ~39 ms at the pessimistic end, against a ≤ 30 ms
+  target. Decide which stages must hit their optimistic values, or correct
+  the estimate that is wrong, once the TT spike gives real numbers
 
 ---
 
