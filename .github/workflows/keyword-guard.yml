@@ -55,11 +55,21 @@ jobs:
 
           # Replace every prohibited word in a path with *** so that a
           # violating path can be located without republishing the word.
+          # The replacement is literal and case-insensitive, matching the
+          # semantics of `grep -F`: a regular-expression engine would leave
+          # a term containing metacharacters unmasked, disclosing it.
           mask_path() {
-            local p="$1" w esc
+            local p="$1" w lw out rest lrest idx
             for w in "${words[@]}"; do
-              esc=$(printf '%s' "$w" | sed 's/[][\.*^$\/&]/\\&/g')
-              p=$(printf '%s' "$p" | sed -E "s/$esc/***/Ig")
+              lw=${w,,}; out=""; rest="$p"
+              while :; do
+                lrest=${rest,,}
+                idx=${lrest%%"$lw"*}
+                [ "${#idx}" -eq "${#rest}" ] && break
+                out+="${rest:0:${#idx}}***"
+                rest="${rest:$(( ${#idx} + ${#w} ))}"
+              done
+              p="$out$rest"
             done
             printf '%s' "$p"
           }
