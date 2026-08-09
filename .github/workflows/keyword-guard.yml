@@ -1,0 +1,47 @@
+name: keyword-guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  keyword-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scans all tracked files (contents and paths) for prohibited words.
+      # The word list comes from the KEYWORD_GUARD_WORDS secret
+      # (comma-separated, matched case-insensitively on word boundaries)
+      # and is never stored in this repository. On a hit, only the file name
+      # and occurrence count are reported — never the matched text.
+      - name: Scan tracked files for prohibited words
+        env:
+          WORDS: ${{ secrets.KEYWORD_GUARD_WORDS }}
+        run: |
+          if [ -z "$WORDS" ]; then
+            echo "::warning::KEYWORD_GUARD_WORDS secret is not set; guard skipped."
+            exit 0
+          fi
+          fail=0
+          IFS=',' read -ra LIST <<< "$WORDS"
+          while IFS= read -r f; do
+            for w in "${LIST[@]}"; do
+              w="$(echo "$w" | tr -d '[:space:]')"
+              [ -z "$w" ] && continue
+              hits=$(grep -oiwIF -- "$w" "$f" 2>/dev/null | wc -l)
+              if [ "$hits" -gt 0 ]; then
+                echo "::error file=$f::prohibited word ($hits occurrence(s))"
+                fail=1
+              fi
+              if printf '%s\n' "$f" | grep -qiwF -- "$w"; then
+                echo "::error::prohibited word in a file path"
+                fail=1
+              fi
+            done
+          done < <(git ls-files)
+          if [ "$fail" -eq 0 ]; then
+            echo "keyword guard: clean"
+          fi
+          exit $fail
