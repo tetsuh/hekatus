@@ -781,7 +781,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (ample) |
 | post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 8–9 |
 | post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1** |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | 185,000,000 | ~140k (impossible) |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~72,000,000 | ~540k (impossible) |
 
 ### By method (64 recv ch, 30 fps)
 
@@ -804,7 +804,9 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~30 | 9% |
 | 2D volume | beamspace MV | ~37 | 11% |
 
-**Everything for 1D at once is ~30% of one card. 70% remains.**
+**Everything for 1D at once is ~100 TFLOPS: ~30% of theoretical peak, or
+~75% of one card's usable capacity at the 40% assumption. Quote the claim
+with its basis attached.**
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -820,10 +822,18 @@ half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
 Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 
-**Table assumptions**: unless stated, 30 fps, 2048 depth points; "of one
-card" is against the 332 TFLOPS theoretical peak; "cards" assumes 40%
-effective efficiency. **The 40% is an unverified assumption** — measure it
-early on Track B.
+**Table assumptions**: unless stated, 30 fps, 2048 depth points.
+**Two capacity bases appear**: "of one card" percentages are against the
+332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
+efficiency (133 TFLOPS usable per card). Never combine a percentage from
+one basis with a count from the other. **The 40% is an unverified
+assumption** — measure it early on Track B. The 4096-channel row follows
+the N⁴ law from the 256-channel volume row; an earlier revision carried
+1.85e8 there, which did not reconcile.
+
+The latency table of §12 is likewise **pipelined, not additive**: stages
+run concurrently on different frames, and 30 fps is the processing-rate
+assumption while 60 Hz is the display deadline.
 
 ---
 
