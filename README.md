@@ -30,12 +30,16 @@ against it, not by code reuse.
 
 ## Status
 
-Bootstrapping. The design documents are being prepared for publication
-(translation and review) — see the open issues and milestones.
+Bootstrapping — the design documents are in place; implementation is
+starting. See the issues and milestones for what is moving.
 
+- **Design decisions and rationale: [docs/design.md](docs/design.md)** —
+  read this first
 - Development process: [docs/development_workflow.md](docs/development_workflow.md)
   (entry point for coding agents: [AGENTS.md](AGENTS.md))
 - Decisions and their evolution: [docs/adr/](docs/adr/)
+- Data-plane contract: [docs/dataplane.md](docs/dataplane.md), naming:
+  [docs/naming.md](docs/naming.md)
 
 ## License
 

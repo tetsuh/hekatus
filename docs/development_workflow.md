@@ -79,7 +79,7 @@ same PR. Contracts are:
 - the external API contract (transmit-description schema).
 
 Learnings from measurement or implementation (parameter decisions, overturned
-estimates) are reflected into `DESIGN.md` / `docs/open-issues.md` as part of
+estimates) are reflected into `design.md` / `docs/open-issues.md` as part of
 the PR that produced them.
 
 ## 6. ADR: recording decisions and their evolution
@@ -93,7 +93,7 @@ the PR that produced them.
 - **Write an ADR for**: architecture, contract, or process decisions, and any
   reversal of a past decision.
 - **Do not write an ADR for**: numeric parameters determined by sweeps or
-  measurement (update `DESIGN.md` / `docs/open-issues.md` instead).
+  measurement (update `design.md` / `docs/open-issues.md` instead).
 - A small decision may be bundled with its implementation PR; include `[ADR]`
   in the PR title.
 
