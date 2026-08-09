@@ -368,15 +368,33 @@ to matmul — the shape Tensix likes.
 
 ### What it does to beamforming
 
-The real value of IQ is that delay application changes form:
+The real value of IQ is that delay application changes form. What
+beamforming needs from channel i is the complex envelope of the signal
+delayed by τ. With the demodulation convention fixed above
+(`z(t) = s(t)·e^(-j2πf0·t)`), the analytic signal gives
 
 ```
-z(t − τ) ≈ z_dec[n − round(τ·fs')] · e^(j2πf0·τ)
+env{s(t − τ)}(t) = z(t − τ) · e^(−j2πf0·τ)
 ```
 
-It decomposes into an **integer shift (a read-address offset) + a phase
-rotation (one complex multiply)**, making random access small and local.
-With fixed geometry, the phase term is precomputable.
+and in decimated, sampled form, writing `d = τ·fs'` for the delay in
+samples at the decimated rate `fs'`:
+
+```
+x_i[n] ≈ interp4(z_dec, n − d) · e^(−j2πf0·τ)
+```
+
+**The sign convention is normative**: the phase factor is `e^(−j2πf0·τ)`
+for the demodulation convention above. Flipping either convention without
+flipping the other rotates every channel the wrong way and destroys
+coherent summation — a failure that still produces a plausible-looking
+image, so implementations state which convention they follow and the L0
+checkpoints compare phase, not just magnitude (§15).
+
+The expression decomposes into an **integer shift (a read-address offset)
++ a fractional part (the 4-tap interpolation of the next subsection) + a
+phase rotation (one complex multiply)**, making random access small and
+local. With fixed geometry, the phase term is precomputable.
 
 ### Fractional-delay accuracy (important)
 
