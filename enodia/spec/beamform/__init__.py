@@ -87,6 +87,13 @@ def das_rf_golden(
     leg |r_p - r_j| / c. The contribution map is the identity (event k forms
     line k); MLA and transmit compounding generalize it in #7.
     """
+    if not np.issubdtype(np.dtype(dtype), np.floating):
+        # The dtype parameter exists to sweep precision (float64 / float32 /
+        # bfloat16). An integer one truncates every fractional delay to zero
+        # and every normalized apodization weight with it, which is a
+        # silently wrong image rather than a lower-precision one.
+        raise ValueError(f"dtype must be floating-point for beamforming, got {np.dtype(dtype)}")
+
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     c = profile.c_m_s

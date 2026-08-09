@@ -5,9 +5,12 @@ arrays across stage boundaries will have to reinvent those boundaries when
 the stages become processes. So even in-process, data crosses a stage
 boundary carrying the metadata the contract requires.
 
-This is the minimal form: the shared-memory ring buffer, the stream and tap
-policies, and generation matching arrive when processes actually split (#15).
-What is fixed here is that every record names its generation.
+This is the minimal form. Records name their generation, and a consumer
+checks that a batch it is given is internally consistent. What is *not* here,
+and arrives with #15 when processes actually split: the shared-memory ring
+buffer, the stream and tap policies, and matching a record's generation
+against the table set a consumer holds — including the rule that
+new-generation data is discarded until those tables are ready.
 """
 
 from __future__ import annotations
@@ -60,4 +63,8 @@ class RFEventRecord:
             raise ValueError(f"RF payload must be int16, got {self.data.dtype}")
         if self.data.ndim != 2:
             raise ValueError(f"RF payload must be (channel, sample), got shape {self.data.shape}")
+        if self.data.shape[1] < 2:
+            # Fractional delays interpolate between neighbouring samples, so a
+            # record carrying fewer than two is not delayable by any consumer.
+            raise ValueError(f"RF payload needs at least 2 samples, got {self.data.shape[1]}")
         self.data.flags.writeable = False

@@ -86,3 +86,22 @@ def test_log_compression_of_a_silent_frame_is_the_floor_not_nan():
 
     assert np.all(np.isfinite(db))
     assert np.allclose(db, -50.0)
+
+
+def test_record_rejects_a_payload_too_short_to_interpolate():
+    """Fractional delays need two neighbouring samples; one cannot be interpolated."""
+    with pytest.raises(ValueError):
+        RFEventRecord(header=_header(), data=np.zeros((4, 1), dtype=np.int16))
+    with pytest.raises(ValueError):
+        RFEventRecord(header=_header(), data=np.zeros((4, 0), dtype=np.int16))
+
+
+def test_beamform_rejects_an_integer_dtype():
+    """The dtype parameter sweeps precision; an integer one silently destroys
+    the fractional delays and the apodization weights alike."""
+    profile = linear_5mhz()
+    events = make_bmode_sequence(profile)[:2]
+    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+
+    with pytest.raises(ValueError):
+        das_rf_golden(profile, events, records, dtype=np.int16)
