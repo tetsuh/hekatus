@@ -118,8 +118,10 @@ when a need appears — no staged plan):
 
 - lint (`ruff check`) and tests (`pytest`) on Linux;
 - **keyword guard**: scans the tree for prohibited internal keywords. The word
-  list is supplied via CI repository variables and is never committed to this
-  repository.
+  list is supplied via a CI repository secret and is never committed to this
+  repository. Reporting never discloses the prohibited text: contents hits
+  report the file and an occurrence count, and a violating path is printed
+  with the word masked.
 
 ## 9. Deliberately not adopted (reserved for the productization gate)
 

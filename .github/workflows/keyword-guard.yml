@@ -14,8 +14,11 @@ jobs:
       # Scans all tracked files (contents and paths) for prohibited words.
       # The word list comes from the KEYWORD_GUARD_WORDS secret
       # (comma-separated, matched case-insensitively on word boundaries)
-      # and is never stored in this repository. On a hit, only the file name
-      # and occurrence count are reported — never the matched text.
+      # and is never stored in this repository.
+      #
+      # Reporting never discloses the prohibited text itself: contents hits
+      # report the file and an occurrence count, and paths that contain a
+      # prohibited word are printed with the word masked.
       - name: Scan tracked files for prohibited words
         env:
           WORDS: ${{ secrets.KEYWORD_GUARD_WORDS }}
@@ -24,23 +27,52 @@ jobs:
             echo "::warning::KEYWORD_GUARD_WORDS secret is not set; guard skipped."
             exit 0
           fi
+
+          words=()
+          IFS=',' read -ra raw <<< "$WORDS"
+          for w in "${raw[@]}"; do
+            w="$(printf '%s' "$w" | tr -d '[:space:]')"
+            [ -n "$w" ] && words+=("$w")
+          done
+          if [ "${#words[@]}" -eq 0 ]; then
+            echo "::warning::KEYWORD_GUARD_WORDS is empty; guard skipped."
+            exit 0
+          fi
+
+          # Replace every prohibited word in a path with *** so that a
+          # violating path can be located without republishing the word.
+          mask_path() {
+            local p="$1" w esc
+            for w in "${words[@]}"; do
+              esc=$(printf '%s' "$w" | sed 's/[][\.*^$\/&]/\\&/g')
+              p=$(printf '%s' "$p" | sed -E "s/$esc/***/Ig")
+            done
+            printf '%s' "$p"
+          }
+
           fail=0
-          IFS=',' read -ra LIST <<< "$WORDS"
-          while IFS= read -r f; do
-            for w in "${LIST[@]}"; do
-              w="$(echo "$w" | tr -d '[:space:]')"
-              [ -z "$w" ] && continue
-              hits=$(grep -oiwIF -- "$w" "$f" 2>/dev/null | wc -l)
+          while IFS= read -r -d '' f; do
+            safe=$(mask_path "$f")
+            for w in "${words[@]}"; do
+              # -a: scan binary contents as text; -w: word boundaries;
+              # -F: literal; -i: case-insensitive.
+              hits=$(grep -oaiwF -- "$w" "$f" 2>/dev/null | wc -l)
               if [ "$hits" -gt 0 ]; then
-                echo "::error file=$f::prohibited word ($hits occurrence(s))"
+                if [ "$safe" = "$f" ]; then
+                  echo "::error file=$f::prohibited word in contents ($hits occurrence(s))"
+                else
+                  echo "::error::prohibited word in contents of $safe ($hits occurrence(s))"
+                fi
                 fail=1
               fi
-              if printf '%s\n' "$f" | grep -qiwF -- "$w"; then
-                echo "::error::prohibited word in a file path"
+              phits=$(printf '%s' "$f" | grep -oiwF -- "$w" | wc -l)
+              if [ "$phits" -gt 0 ]; then
+                echo "::error::prohibited word in path $safe ($phits occurrence(s))"
                 fail=1
               fi
             done
-          done < <(git ls-files)
+          done < <(git ls-files -z)
+
           if [ "$fail" -eq 0 ]; then
             echo "keyword guard: clean"
           fi
