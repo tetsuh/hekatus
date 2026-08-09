@@ -3,7 +3,7 @@
 This file is the mandatory entry point for AI coding agents (any model) working on
 this repository. The complete authority is
 [docs/development_workflow.md](docs/development_workflow.md) — read it before
-changing anything. **Read `DESIGN.md` before writing code**; design decisions and
+changing anything. **Read `docs/design.md` before writing code**; design decisions and
 their rationale live there.
 
 ## Non-negotiable rules (summary)
@@ -23,10 +23,10 @@ their rationale live there.
    (`docs/dataplane.md`, the absolute rules, the external API contract).
 7. **Architecture, contract, or process decisions — and reversals of past
    decisions — require an ADR** under `docs/adr/`. Sweep-determined numeric
-   parameters do not (update `DESIGN.md` / `docs/open-issues.md` instead).
+   parameters do not (update `docs/design.md` / `docs/open-issues.md` instead).
 8. **English only** in code, comments, commits, issues, PRs, and docs.
-9. **Never commit internal keywords.** The guard list is injected via CI
-   a repository secret and is not stored in this repository. When unsure
+9. **Never commit internal keywords.** The guard list is injected via a CI
+   repository secret and is not stored in this repository. When unsure
    whether knowledge is public-textbook or internal, ask the owner before
    writing it down.
 10. **Merge authority is owner-only.** Agents stop at merge-ready and report
@@ -40,12 +40,12 @@ their rationale live there.
   incrementally as work proceeds. Do not pre-file large issue batches.
 - The working unit is an **MVP**: a small increment that runs end-to-end with a
   one-command demo and an acceptance test. Labels: `mvp-candidate`, `icebox`.
-- Retrospective learning goes back into `DESIGN.md` / `docs/open-issues.md`
+- Retrospective learning goes back into `docs/design.md` / `docs/open-issues.md`
   as part of the PR that produced it.
 
 ## Starting a task
 
 1. Read the full target Issue, its Milestone, referenced ADRs, and the relevant
-   `DESIGN.md` sections.
+   `docs/design.md` sections.
 2. Confirm the acceptance criteria are verifiable; ask the owner if not.
 3. Follow [docs/development_workflow.md](docs/development_workflow.md).
