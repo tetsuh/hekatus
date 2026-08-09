@@ -26,7 +26,7 @@ their rationale live there.
    parameters do not (update `DESIGN.md` / `docs/open-issues.md` instead).
 8. **English only** in code, comments, commits, issues, PRs, and docs.
 9. **Never commit internal keywords.** The guard list is injected via CI
-   repository variables and is not stored in this repository. When unsure
+   a repository secret and is not stored in this repository. When unsure
    whether knowledge is public-textbook or internal, ask the owner before
    writing it down.
 10. **Merge authority is owner-only.** Agents stop at merge-ready and report
