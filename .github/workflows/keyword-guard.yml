@@ -9,6 +9,20 @@ jobs:
   keyword-guard:
     runs-on: ubuntu-latest
     steps:
+      # A fork pull request receives no repository secret, so the guard
+      # cannot scan it. Fail loudly instead of passing unscanned. Reading a
+      # contributor-controlled tree with `pull_request_target` — the usual
+      # way to obtain the secret here — would expose a write-scoped token to
+      # that tree, which is not a trade this repository accepts.
+      - name: Reject unscannable fork pull requests
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "::error::Fork pull requests cannot be scanned by the keyword guard."
+          echo "Re-run the branch from a branch in this repository before merging."
+          exit 1
+
       - uses: actions/checkout@v4
 
       # Scans all tracked files (contents and paths) for prohibited words.
