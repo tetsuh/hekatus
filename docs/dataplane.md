@@ -26,6 +26,21 @@ processes split.
 - The TT cycle counter is calibrated against host CLOCK_MONOTONIC at startup
   and periodically, and the mapping travels in metadata (open-issues B6)
 
+### Generation mismatch: discard, never substitute
+
+The config ID and parameter-generation counter on a record name the table
+set that record must be processed with. **A consumer whose matching tables
+are not ready discards the record.** It never falls back to the previous
+generation's tables: processing with wrong tables produces a plausible but
+wrong image, which is worse than a dropped frame (design.md §19).
+
+- Discarding is counted and reported, distinguishably from an overwrite
+  violation — the two have different causes
+- Processing resumes on the first record whose generation matches a ready
+  table set. No catch-up of the discarded interval is attempted
+- Losing a few frames while tables are rebuilt (a depth or focus change) is
+  expected behaviour, not a fault
+
 ## Policy 1: stream (processing path, lossless)
 
 Use: enodia → each diaplous data-driven processing system
@@ -83,13 +98,19 @@ Use: lampas observation; diaplous-internal result buffers → display system.
   is a different artifact from the display one (different objective:
   matching the model's input distribution vs looking right)
 
-### Data volumes (13 MHz, 434 scanlines, 1536 depth points, 60 fps)
+### Data volumes
 
-| tap | per frame | at 60 fps | note |
-|---|---|---|---|
-| T1 | 87 MB | 5.2 GB/s | ROI / decimation mandatory |
-| T2 | 1.4 GB | — | continuous full-frame observation impossible; ROI mandatory |
-| T5 | 2.7 MB | 160 MB/s | continuous observation fine |
+Assumptions: 13 MHz linear, 4 MLA (109 transmit events → 434 scanlines),
+256 channels, 1536 depth points after decimation, 60 fps. T1 is sized per
+transmit event and T2 per formed scanline — the axes differ, which is why
+their volumes are not related by a simple factor. Complex samples are
+4 B (int16 I + int16 Q); T5 is 4 B real (FP32). MB = 10⁶ B.
+
+| tap | axes | per frame | at 60 fps | note |
+|---|---|---|---|---|
+| T1 | 109 events × 256 ch × 1536 × 4 B | 87 MB | 5.2 GB/s | ROI / decimation mandatory |
+| T2 | 434 lines × 256 ch × 1536 × 4 B | 1.4 GB | — | continuous full-frame observation impossible; ROI mandatory |
+| T5 | 434 lines × 1536 × 4 B | 2.7 MB | 160 MB/s | continuous observation fine |
 
 T1–T3 get an ROI interface ("one full-channel frame per second", etc.) for
 training-data generation and debugging.
@@ -99,7 +120,17 @@ training-data generation and debugging.
 ## Future: feedback (lampas → enodia)
 
 In the configuration where inference results switch beamformers per region
-(design.md §13 (c)), the tap becomes bidirectional. It works with one frame
-of allowed lag, but **must never break the determinism of the processing
-path**: if feedback misses its window, the previous frame's settings are
-used. Never wait.
+(design.md §13 (c)), inference influences how enodia computes.
+
+**This is a parameter-plane update, not a reverse tap.** Taps stay
+one-way and observation-only. What feedback changes — which beamformer
+applies where — is generation-switchable state, and putting it on the data
+plane would mix the two planes, which the absolute rules forbid. So
+feedback is expressed as a parameter update carrying a config ID, a
+generation counter, and the frame from which it applies, exactly like any
+other parameter change, and it becomes effective through the same
+generation mechanism.
+
+It works with one frame of allowed lag, but **must never break the
+determinism of the processing path**: if an update misses its window,
+enodia keeps processing with the last committed generation. Never wait.
