@@ -34,6 +34,43 @@ def depth_grid(profile: ProbeProfile, *, z_min_m: float = 2e-3) -> np.ndarray:
     return z_min_m + np.arange(n, dtype=np.float64) * dz
 
 
+def _records_by_event(
+    events: list[TxEvent], records: list[RFEventRecord]
+) -> dict[int, RFEventRecord]:
+    """Index records by the event they name, rejecting anything inconsistent.
+
+    Records are matched through `tx_event_index` rather than by position:
+    the header is what names the data, so arrival order carries no meaning
+    (docs/dataplane.md). Positional pairing would silently place RF data on
+    the wrong scanline when a record is missing, extra, or reordered.
+
+    Generations must also agree across the frame. Compounding several
+    transmits acquired under different tables is the accident that
+    snapshot-based switching exists to prevent (design.md §4, §19), and a
+    frame assembled from mixed generations is exactly that accident.
+    """
+    by_event: dict[int, RFEventRecord] = {}
+    for rec in records:
+        idx = rec.header.tx_event_index
+        if idx in by_event:
+            raise ValueError(f"duplicate record for transmit event {idx}")
+        by_event[idx] = rec
+
+    wanted = {ev.event_index for ev in events}
+    missing = sorted(wanted - by_event.keys())
+    extra = sorted(by_event.keys() - wanted)
+    if missing or extra:
+        raise ValueError(
+            f"record set does not match the events: missing {missing}, unexpected {extra}"
+        )
+
+    generations = {(r.header.config_id, r.header.param_generation) for r in records}
+    if len(generations) > 1:
+        raise ValueError(f"records span several parameter generations: {sorted(generations)}")
+
+    return by_event
+
+
 def das_rf_golden(
     profile: ProbeProfile,
     events: list[TxEvent],
@@ -55,10 +92,11 @@ def das_rf_golden(
     c = profile.c_m_s
     line_x = np.array([ev.line_x_m for ev in events], dtype=np.float64)
 
+    by_event = _records_by_event(events, records)
     image = np.zeros((z.size, len(events)), dtype=dtype)
     rows = np.arange(profile.n_elements)[:, None]
-    for ev, rec in zip(events, records):
-        data = rec.data.astype(dtype)
+    for ev in events:
+        data = by_event[ev.event_index].data.astype(dtype)
         n_t = data.shape[1]
         dx = el_x[:, None] - ev.line_x_m  # (n_ch, 1)
         tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
@@ -85,6 +123,15 @@ def envelope(rf_image: np.ndarray) -> np.ndarray:
 
 
 def log_compress(env: np.ndarray, *, dynamic_range_db: float = 50.0) -> np.ndarray:
-    """Log compression [dB], relative to the frame maximum, floored at the range."""
-    db = 20.0 * np.log10(np.maximum(env, 1e-30) / env.max())
+    """Log compression [dB], relative to the frame maximum, floored at the range.
+
+    A silent frame — no scatterers, or an all-zero acquisition — has no
+    maximum to normalize against; it compresses to the floor rather than to
+    NaN, so a diagnostic image stays displayable instead of turning into
+    something no downstream stage can interpret.
+    """
+    peak = float(env.max())
+    if peak <= 0.0:
+        return np.full(env.shape, -dynamic_range_db, dtype=env.dtype)
+    db = 20.0 * np.log10(np.maximum(env, 1e-30) / peak)
     return np.clip(db, -dynamic_range_db, 0.0)

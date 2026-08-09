@@ -40,7 +40,24 @@ class RFEventRecord:
     """Raw RF for one transmit event.
 
     data: int16, shape (n_channels, n_samples), sampled at the profile rate.
+
+    Handing an array to a record transfers ownership of it: the array is
+    marked read-only, because `frozen=True` stops the field being rebound
+    but does nothing about the buffer behind it, and a consumer that mutates
+    what it was given corrupts every other reader of the same frame.
+
+    The array is **not** copied. Copying every record would double the peak
+    memory of a frame, and the design has buffers handed in as partitions
+    from outside rather than duplicated at each boundary (design.md §20).
+    Read-only views are the contract; copies are not.
     """
 
     header: EventHeader
     data: np.ndarray
+
+    def __post_init__(self) -> None:
+        if self.data.dtype != np.int16:
+            raise ValueError(f"RF payload must be int16, got {self.data.dtype}")
+        if self.data.ndim != 2:
+            raise ValueError(f"RF payload must be (channel, sample), got shape {self.data.shape}")
+        self.data.flags.writeable = False
