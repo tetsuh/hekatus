@@ -105,3 +105,22 @@ def test_beamform_rejects_an_integer_dtype():
 
     with pytest.raises(ValueError):
         das_rf_golden(profile, events, records, dtype=np.int16)
+
+
+def test_beamform_rejects_a_payload_whose_channel_count_is_not_the_aperture():
+    """A record must carry exactly the profile's channels: too few fails on an
+    incidental index, too many are summed as if the aperture were smaller."""
+    profile = linear_5mhz()
+    events = make_bmode_sequence(profile)[:2]
+    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+
+    for n_ch in (profile.n_elements - 1, profile.n_elements + 1):
+        resized = [
+            RFEventRecord(
+                header=r.header,
+                data=np.zeros((n_ch, r.data.shape[1]), dtype=np.int16),
+            )
+            for r in records
+        ]
+        with pytest.raises(ValueError):
+            das_rf_golden(profile, events, resized)

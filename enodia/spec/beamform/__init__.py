@@ -71,6 +71,23 @@ def _records_by_event(
     return by_event
 
 
+def _check_channel_count(profile: ProbeProfile, rec: RFEventRecord) -> None:
+    """A payload must carry exactly the aperture's channels.
+
+    Too few and the delay indexing fails on an incidental IndexError; too
+    many and the extra channels are silently dropped, beamforming a smaller
+    aperture than the profile describes while reporting nothing. Channel
+    dropout is expressed as an apodization mask (design.md §6), never by
+    handing over a shorter array.
+    """
+    n_ch = rec.data.shape[0]
+    if n_ch != profile.n_elements:
+        raise ValueError(
+            f"transmit event {rec.header.tx_event_index}: payload has {n_ch} channels, "
+            f"profile {profile.name} has {profile.n_elements}"
+        )
+
+
 def das_rf_golden(
     profile: ProbeProfile,
     events: list[TxEvent],
@@ -103,7 +120,9 @@ def das_rf_golden(
     image = np.zeros((z.size, len(events)), dtype=dtype)
     rows = np.arange(profile.n_elements)[:, None]
     for ev in events:
-        data = by_event[ev.event_index].data.astype(dtype)
+        rec = by_event[ev.event_index]
+        _check_channel_count(profile, rec)
+        data = rec.data.astype(dtype)
         n_t = data.shape[1]
         dx = el_x[:, None] - ev.line_x_m  # (n_ch, 1)
         tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
