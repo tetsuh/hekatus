@@ -74,6 +74,12 @@ Conventional Commits with an Issue reference:
 - **Commit granularity matters.** Normal merge is the default (§7), so
   feature-branch commits are part of `main` history and should be meaningful,
   self-contained steps.
+- **Platform-generated integration commits are exempt.** The merge commit
+  GitHub writes (`Merge pull request #NN from …`) is not an authored change;
+  it is the record of an integration, and its subject already names the pull
+  request that carries the traceability. The owner may replace it with a
+  Conventional subject when the default is unhelpful, but is never required
+  to. See ADR-0003.
 
 ## 4. Testing (TDD-lite)
 
