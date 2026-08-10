@@ -1,31 +1,37 @@
 """Run the shape catalogue on the accelerator and record what it achieved.
 
 Runs inside the toolchain container, so it imports nothing from the
-reference implementation — only the standard library and the shape
-catalogue beside it, which is standard-library-only by design.
+reference implementation — only the standard library and the modules beside
+it, which are standard-library-only by design.
+
+**Accounting matches execution.** A complex operation costs four real
+matmuls, and this runs four. Counting four and timing one would report four
+times the achieved throughput, silently, in the direction that flatters.
 
 **What it measures.** A block of iterations is timed with a single
-synchronization at the end, so the per-iteration cost is not swamped by
-synchronization overhead on the small shapes; the block is repeated and the
-best block is reported, which is the usual way to keep scheduler noise out
-of a throughput figure. Achieved FLOPS come from the catalogue's accounting,
-never from a vendor counter.
+synchronization at the end, so per-iteration cost is not swamped by
+synchronization on the small shapes; the block is repeated and the best
+block is reported, which keeps scheduler noise out of a throughput figure.
+Each result is released as it is produced, both to keep the larger shapes
+inside memory and because reusing buffers is what a real implementation
+does.
 
 **Failures are results.** A shape that will not fit in L1 fails here, and
 that failure is recorded rather than aborting the run. Where the boundary
 falls is the answer to the question design.md §2 calls paramount — whether
 the data fits on-chip — so it is data, not an error.
 
-**Efficiency is optional.** Without an explicit peak on the command line,
-only achieved FLOPS are reported. An efficiency figure quoted against the
-wrong peak is worse than no efficiency figure, so the peak and the note
-describing it are recorded next to every number derived from them.
+**Efficiency is optional.** Without an explicit peak, only achieved FLOPS
+are reported. An efficiency quoted against the wrong peak is worse than no
+efficiency, so the peak and the note describing it are recorded next to
+anything derived from them.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import platform
 import sys
 import time
@@ -43,7 +49,7 @@ def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_con
 
     Values do not affect matmul timing on this architecture — there is no
     sparsity shortcut to hit — so any of these is acceptable, and the one
-    that works is recorded with the result.
+    that worked is recorded with the result.
     """
     attempts = []
     for name in ("rand", "ones", "zeros"):
@@ -59,6 +65,20 @@ def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_con
             continue
         return tensor, name
     raise RuntimeError("no usable tensor factory; tried " + " | ".join(attempts))
+
+
+def _execute_once(ttnn, a, b, real_matmuls: int) -> None:
+    """One logical operation: every real matmul the accounting charges for."""
+    for _ in range(real_matmuls):
+        out = ttnn.matmul(a, b)
+        ttnn.deallocate(out)
+
+
+def with_efficiency(record: dict, peak_tflops: float | None) -> dict:
+    """Add an efficiency only when there is a stated peak to divide by."""
+    if peak_tflops and record.get("achieved_tflops"):
+        record["efficiency"] = record["achieved_tflops"] / peak_tflops
+    return record
 
 
 def run_shape(
@@ -85,18 +105,16 @@ def run_shape(
 
         # Warm up: the first execution pays for program compilation and cache
         # population, which is real but is not what a steady-state frame costs.
-        out = ttnn.matmul(a, b)
+        _execute_once(ttnn, a, b, shape.real_matmuls)
         ttnn.synchronize_device(device)
-        ttnn.deallocate(out)
 
         best = None
         for _ in range(repeats):
             start = time.perf_counter()
             for _ in range(iters):
-                out = ttnn.matmul(a, b)
+                _execute_once(ttnn, a, b, shape.real_matmuls)
             ttnn.synchronize_device(device)
             elapsed = (time.perf_counter() - start) / iters
-            ttnn.deallocate(out)
             best = elapsed if best is None else min(best, elapsed)
 
         flops = total_flops(shape)
@@ -105,19 +123,20 @@ def run_shape(
             "seconds_per_iteration": best,
             "achieved_tflops": flops / best / 1e12,
             "flops_per_iteration": flops,
+            "real_matmuls_per_iteration": shape.real_matmuls,
             "tensor_factory": factory,
         }
     except Exception as exc:  # noqa: BLE001 - a shape that cannot run is a result
         return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
     finally:
-        for t in tensors:
+        for tensor in tensors:
             try:
-                ttnn.deallocate(t)
+                ttnn.deallocate(tensor)
             except Exception:  # noqa: BLE001, S110 - cleanup must not mask the result
                 pass
 
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dtype", action="append", default=None, help="repeatable")
     parser.add_argument("--memory", action="append", default=None, choices=["dram", "l1"])
@@ -129,9 +148,37 @@ def main() -> int:
     parser.add_argument("--peak-tflops", type=float, default=None)
     parser.add_argument("--peak-note", default=None, help="what that peak refers to")
     parser.add_argument("--env-json", type=Path, default=None, help="environment to embed")
-    args = parser.parse_args()
+    return parser
 
-    import ttnn  # imported here so --help works without an accelerator present
+
+def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Reject controls that would produce nonsense, before any device is opened."""
+    if args.iters < 1:
+        parser.error(f"--iters must be at least 1, got {args.iters}")
+    if args.repeats < 1:
+        parser.error(f"--repeats must be at least 1, got {args.repeats}")
+    if args.peak_tflops is not None and not (
+        math.isfinite(args.peak_tflops) and args.peak_tflops > 0
+    ):
+        parser.error(f"--peak-tflops must be positive and finite, got {args.peak_tflops}")
+
+
+def _format_line(shape: MatmulShape, dtype_name: str, memory_name: str, record: dict) -> str:
+    line = f"{shape.name:38s} {dtype_name:9s} {memory_name:4s} "
+    if record["status"] != "ok":
+        return line + f"failed: {record['error'][:60]}"
+    line += f"{record['achieved_tflops']:8.2f} TFLOPS"
+    if "efficiency" in record:
+        line += f"  {record['efficiency'] * 100:5.1f}%"
+    return line
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+    _validate(parser, args)
+
+    import ttnn  # imported after validation, so bad arguments need no accelerator
 
     dtypes = args.dtype or ["bfloat16", "float32"]
     memories = args.memory or ["dram", "l1"]
@@ -176,16 +223,8 @@ def main() -> int:
                             repeats=args.repeats,
                         )
                     )
-                    if args.peak_tflops and record.get("achieved_tflops"):
-                        record["efficiency"] = record["achieved_tflops"] / args.peak_tflops
-                    line = f"{shape.name:38s} {dtype_name:9s} {memory_name:4s} "
-                    if record["status"] == "ok":
-                        line += f"{record['achieved_tflops']:8.2f} TFLOPS"
-                        if "efficiency" in record:
-                            line += f"  {record['efficiency'] * 100:5.1f}%"
-                    else:
-                        line += f"failed: {record['error'][:60]}"
-                    print(line, flush=True)
+                    with_efficiency(record, args.peak_tflops)
+                    print(_format_line(shape, dtype_name, memory_name, record), flush=True)
                     results.append(record)
     finally:
         ttnn.close_device(device)
