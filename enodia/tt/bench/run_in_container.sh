@@ -5,82 +5,66 @@
 # The image is pinned by digest rather than by tag. design.md §2 warns that a
 # firmware or version change has already moved the core count once, so a
 # measurement whose toolchain cannot be named again later is not evidence.
+# An override is resolved to its digest where possible, and when it cannot
+# be, the results record that they came from an unpinned image.
 #
-# Usage: run_in_container.sh [output-directory] [-- extra runner arguments]
+# Usage:
+#   run_in_container.sh                          # default output directory
+#   run_in_container.sh OUT_DIR                  # choose where results land
+#   run_in_container.sh -- --iters 5             # arguments for the runner
+#   run_in_container.sh OUT_DIR -- --iters 5
 set -euo pipefail
 
 IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-OUT_DIR="${1:-${REPO_ROOT}/out/bench}"
-[ $# -gt 0 ] && shift
+
+# Arguments: an optional output directory, then "--", then runner arguments.
+OUT_DIR="${REPO_ROOT}/out/bench"
+if [ $# -gt 0 ] && [ "$1" != "--" ]; then
+  OUT_DIR="$1"
+  shift
+fi
 [ "${1:-}" = "--" ] && shift
+
 mkdir -p "${OUT_DIR}"
+
+# Resolve a tag to the digest it currently points at, so the recorded
+# environment names one immutable toolchain rather than a moving one.
+IMAGE_PINNED=0
+case "${IMAGE}" in
+  *@sha256:*) IMAGE_PINNED=1 ;;
+  *)
+    if RESOLVED="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE}" 2>/dev/null)" \
+       && [ -n "${RESOLVED}" ]; then
+      echo "resolved ${IMAGE} to ${RESOLVED}"
+      IMAGE="${RESOLVED}"
+      IMAGE_PINNED=1
+    else
+      echo "WARNING: ${IMAGE} is not digest-pinned and could not be resolved;" >&2
+      echo "         results will be recorded as coming from an unpinned image." >&2
+    fi
+    ;;
+esac
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
 POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
 RESULTS="${OUT_DIR}/results-${STAMP}.json"
 
-# --- environment, captured from the host where the board is visible ---------
-python3 - "$ENV_JSON" "$IMAGE" <<'PY'
-import json, subprocess, sys, datetime
+TELEMETRY="${REPO_ROOT}/enodia/tt/bench/telemetry.py"
+PINNED_FLAG=()
+[ "${IMAGE_PINNED}" = "1" ] && PINNED_FLAG=(--image-pinned)
 
-out_path, image = sys.argv[1], sys.argv[2]
+python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
-
-def run(cmd):
-    try:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120).stdout
-    except Exception as exc:
-        return f"<unavailable: {exc}>"
-
-
-env = {
-    "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    "image": image,
-    "kernel": run("uname -sr").strip(),
-    "kmd_version": run("modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'").strip(),
-    "tt_env_active_release": run(
-        "tt-env status 2>/dev/null | awk '/Active release:/{print $3}'"
-    ).strip(),
-}
-
-snapshot = run("tt-smi -s --snapshot_no_tty 2>/dev/null")
-try:
-    device = json.loads(snapshot)["device_info"][0]
-    env["board"] = device["board_info"]
-    env["firmware"] = device["firmwares"]
-    env["limits"] = device["limits"]
-except Exception as exc:
-    env["board_snapshot_error"] = str(exc)
-
-with open(out_path, "w") as fh:
-    json.dump(env, fh, indent=2)
-print(f"environment -> {out_path}")
-PY
-
-# --- board power and clock, sampled while the run proceeds ------------------
-# This is also what settles the open power-limit question: whichever limit the
-# board really enforces shows up here under sustained load.
-(
-  echo "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
-  while true; do
-    tt-smi -s --snapshot_no_tty 2>/dev/null | python3 -c '
-import json, sys, datetime
-try:
-    t = json.load(sys.stdin)["device_info"][0]["telemetry"]
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    print(f"{now},{t[\"power\"].strip()},{t[\"aiclk\"].strip()},{t[\"asic_temperature\"].strip()}")
-except Exception:
-    pass
-' || true
-    sleep 2
-  done
-) > "${POWER_CSV}" &
+# Board power and clock while the run proceeds. This is what settles which
+# power limit the board actually enforces under sustained load.
+python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval 2 &
 SAMPLER_PID=$!
 trap 'kill "${SAMPLER_PID}" 2>/dev/null || true' EXIT
 
-# --- the run itself ---------------------------------------------------------
+# Runner arguments are passed as separate arguments, never interpolated into
+# a shell string: the wrapper must not turn a benchmark option into a command.
 docker run --rm \
   --device /dev/tenstorrent \
   -v /dev/hugepages-1G:/dev/hugepages-1G \
@@ -89,7 +73,11 @@ docker run --rm \
   -w /work \
   -e PYTHONPATH=/work \
   --entrypoint /bin/bash \
-  "${IMAGE}" -lc "python3 enodia/tt/bench/run_matmul.py --out /out/$(basename "${RESULTS}") --env-json /out/$(basename "${ENV_JSON}") $*"
+  "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
+  enodia/tt/bench/run_matmul.py \
+  "/out/$(basename "${RESULTS}")" \
+  "/out/$(basename "${ENV_JSON}")" \
+  "$@"
 
 kill "${SAMPLER_PID}" 2>/dev/null || true
 echo
