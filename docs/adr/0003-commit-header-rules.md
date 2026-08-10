@@ -78,10 +78,18 @@ On merge commits:
   with the full text an expander away. This is accepted; the body carries
   the detail in any case.
 - `git log --first-parent main` remains the pull-request-level view of
-  history, and it is composed of the exempt commits — so the convention
-  governs the commits inside a pull request, while the PR number governs the
-  integration record above them.
-- Nothing on `main` is grandfathered: no existing subject exceeds 100.
+  history. Apart from the bootstrap root, it is composed of the exempt
+  integration commits — so the convention governs the commits inside a pull
+  request, while the PR number governs the integration record above them.
+- **One authored commit predates this rule and cannot be brought into
+  compliance**: the bootstrap root,
+  `chore: bootstrap repository with process documents (#1)`, carries no
+  scope. It is grandfathered, since the only way to correct it is to rewrite
+  `main` — a worse outcome than one historical exception, and one the branch
+  protection exists to prevent. It is also the sole direct push to `main`
+  the workflow permits, so its singularity is already recorded.
+- The width rule needs no exception: no subject anywhere on `main` exceeds
+  100 characters.
 - This ADR amends ADR-0001 rather than superseding it; the rest of that
   decision stands unchanged.
 
