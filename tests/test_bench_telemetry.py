@@ -7,6 +7,9 @@ quoting was wrong. The parsing lives here instead, where it is exercised.
 
 import json
 
+import pytest
+
+from enodia.tt.bench import telemetry
 from enodia.tt.bench.telemetry import parse_environment, parse_telemetry, telemetry_csv_row
 
 SNAPSHOT = json.dumps(
@@ -58,3 +61,32 @@ def test_environment_survives_a_snapshot_it_cannot_read():
 
     assert "board_snapshot_error" in env
     assert "board" not in env
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        json.dumps({"device_info": {}}),
+        json.dumps({"device_info": {"board_info": {}}}),
+        json.dumps({"device_info": 5}),
+        json.dumps({"device_info": [5]}),
+        json.dumps({"device_info": ["not a device"]}),
+        json.dumps([]),
+    ],
+)
+def test_a_malformed_snapshot_yields_nothing_rather_than_escaping(snapshot):
+    """An exception here would kill the sampler, and a dead sampler is silent
+    — which is exactly how the first run produced a trace with only a header."""
+    assert parse_telemetry(snapshot) is None
+    assert telemetry_csv_row(snapshot, timestamp="t") is None
+    assert "board_snapshot_error" in parse_environment(snapshot)
+
+
+@pytest.mark.parametrize("interval", ["0", "-1", "nan", "inf"])
+def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
+    """Zero hammers the tool; negative and non-finite values reach sleep and
+    end the sampler. Every one of them yields a trace nobody can use."""
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(["sample", "--out", str(tmp_path / "p.csv"), "--interval", interval])
+
+    assert excinfo.value.code == 2

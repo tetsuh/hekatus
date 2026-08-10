@@ -16,7 +16,9 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import math
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -25,11 +27,20 @@ CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
 
 
 def _device_info(snapshot: str) -> dict | None:
+    """The first device, or None for anything this cannot read.
+
+    Every shape the snapshot might arrive in is checked rather than assumed.
+    An exception raised here would propagate out of the sampling loop and end
+    it, and a dead sampler says nothing at all — which is how the first run
+    produced a trace containing only its header.
+    """
     try:
         devices = json.loads(snapshot)["device_info"]
     except (ValueError, KeyError, TypeError):
         return None
-    return devices[0] if devices else None
+    if not isinstance(devices, list) or not devices:
+        return None
+    return devices[0] if isinstance(devices[0], dict) else None
 
 
 def parse_telemetry(snapshot: str) -> dict[str, str] | None:
@@ -106,12 +117,21 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
 
 
 def _sample_forever(out_path: Path, interval: float) -> None:
+    """Sample until terminated, surviving anything one sample can throw.
+
+    The sampler is a passive observer of a run it must not disturb, and its
+    death is silent: whoever reads the trace afterwards sees a short file,
+    not an error. So a failed sample costs one row, never the trace.
+    """
     with out_path.open("w", buffering=1) as handle:
         handle.write(CSV_HEADER + "\n")
         while True:
-            row = telemetry_csv_row(_run(SNAPSHOT_COMMAND), timestamp=_now())
-            if row is not None:
-                handle.write(row + "\n")
+            try:
+                row = telemetry_csv_row(_run(SNAPSHOT_COMMAND), timestamp=_now())
+                if row is not None:
+                    handle.write(row + "\n")
+            except Exception as exc:  # noqa: BLE001 - one lost row beats a lost trace
+                print(f"telemetry sample failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             time.sleep(interval)
 
 
@@ -129,6 +149,10 @@ def main(argv: list[str] | None = None) -> int:
     sample.add_argument("--interval", type=float, default=2.0)
 
     args = parser.parse_args(argv)
+    if args.mode == "sample" and not (math.isfinite(args.interval) and args.interval > 0):
+        # Zero turns the loop into a busy wait on the snapshot tool; negative
+        # and non-finite values reach sleep and end the sampler outright.
+        parser.error(f"--interval must be positive and finite, got {args.interval}")
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "capture-env":
