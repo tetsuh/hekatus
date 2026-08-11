@@ -86,8 +86,10 @@ def test_a_malformed_snapshot_yields_nothing_rather_than_escaping(snapshot):
 def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
     """Zero hammers the tool; negative and non-finite values reach sleep and
     end the sampler. Every one of them yields a trace nobody can use."""
+    argv = ["sample", "--out", str(tmp_path / "p.csv"), "--interval", interval]
+
     with pytest.raises(SystemExit) as excinfo:
-        telemetry.main(["sample", "--out", str(tmp_path / "p.csv"), "--interval", interval])
+        telemetry.main(argv)
 
     assert excinfo.value.code == 2
 
@@ -112,5 +114,7 @@ def test_a_failing_writer_ends_the_sampler_rather_than_retrying(monkeypatch):
     anything is not — that turns a broken run into a quietly short trace."""
     monkeypatch.setattr(telemetry, "_run", lambda command: SNAPSHOT)
 
+    writer = _WriterThatFillsUp()
+
     with pytest.raises(OSError, match="No space left"):
-        telemetry._sample_loop(_WriterThatFillsUp(), interval=0.0)
+        telemetry._sample_loop(writer, interval=0.0)

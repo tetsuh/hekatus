@@ -29,10 +29,14 @@ def _header(**kw):
 
 
 def test_record_rejects_wrong_dtype_and_shape():
+    header = _header()
+    wrong_dtype = np.zeros((4, 8), dtype=np.float32)
+    wrong_rank = np.zeros(8, dtype=np.int16)
+
     with pytest.raises(ValueError):
-        RFEventRecord(header=_header(), data=np.zeros((4, 8), dtype=np.float32))
+        RFEventRecord(header=header, data=wrong_dtype)
     with pytest.raises(ValueError):
-        RFEventRecord(header=_header(), data=np.zeros(8, dtype=np.int16))
+        RFEventRecord(header=header, data=wrong_rank)
 
 
 def test_record_payload_is_read_only():
@@ -46,8 +50,10 @@ def test_beamform_rejects_a_record_set_that_does_not_match_the_events():
     events = make_bmode_sequence(profile)[:4]
     records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
 
+    short = records[:-1]
+
     with pytest.raises(ValueError):
-        das_rf_golden(profile, events, records[:-1])
+        das_rf_golden(profile, events, short)
 
 
 def test_beamform_rejects_records_from_mixed_generations():
@@ -64,8 +70,10 @@ def test_beamform_rejects_records_from_mixed_generations():
         data=np.array(records[-1].data),
     )
 
+    mixed = [*records[:-1], stale]
+
     with pytest.raises(ValueError):
-        das_rf_golden(profile, events, [*records[:-1], stale])
+        das_rf_golden(profile, events, mixed)
 
 
 def test_beamform_matches_records_by_event_index_not_by_position():
@@ -90,10 +98,14 @@ def test_log_compression_of_a_silent_frame_is_the_floor_not_nan():
 
 def test_record_rejects_a_payload_too_short_to_interpolate():
     """Fractional delays need two neighbouring samples; one cannot be interpolated."""
+    header = _header()
+    one_sample = np.zeros((4, 1), dtype=np.int16)
+    no_samples = np.zeros((4, 0), dtype=np.int16)
+
     with pytest.raises(ValueError):
-        RFEventRecord(header=_header(), data=np.zeros((4, 1), dtype=np.int16))
+        RFEventRecord(header=header, data=one_sample)
     with pytest.raises(ValueError):
-        RFEventRecord(header=_header(), data=np.zeros((4, 0), dtype=np.int16))
+        RFEventRecord(header=header, data=no_samples)
 
 
 def test_beamform_rejects_an_integer_dtype():
