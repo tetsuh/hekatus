@@ -109,12 +109,41 @@ the PR that produced them.
 
 ## 6. ADR: recording decisions and their evolution
 
-- Location: `docs/adr/NNNN-<slug>.md`, numbered sequentially.
+- Location: `docs/adr/NNNN-<slug>.md`, numbered sequentially. Numbers may have
+  gaps: a record that was written and declined still consumed one.
 - Format, five sections: **Context / Options considered / Decision /
   Consequences / Status**.
-- Status: `Proposed` → `Accepted`. A reversal creates a **new** ADR with
-  `Supersedes: NNNN`; the old one gains `Superseded-by: NNNN`. The decision
-  history lives in this chain — do not rewrite old ADRs.
+
+### Status
+
+```text
+Proposed ──► Accepted ──► Deprecated
+                 │             ▲
+                 └── Superseded by ADR-NNNN
+Proposed ──► Rejected
+```
+
+- **Accepted** — on `main`, therefore in force. The status line carries the
+  date the decision took effect: `Accepted — 2026-08-11`.
+- **Proposed** — a record deliberately opened for discussion ahead of the
+  decision. An ADR in this state on `main` says which issue is deciding it.
+- **Rejected** — considered and declined. Kept, so the same option is not
+  proposed again with the same reasoning.
+- **Superseded by ADR-NNNN** — replaced. Only the old record's status line
+  changes; the new ADR carries `Supersedes: NNNN`.
+- **Deprecated** — what the decision governed no longer exists.
+
+**Advancing a status is never a separate task.** An ADR that reaches `main`
+through a merged pull request is an effective decision by that fact, so it is
+written `Accepted` in the pull request that carries it — not flipped
+afterwards by an action nobody owns. This rule exists because three ADRs once
+promised, each in its own words, to become accepted when their pull request
+merged; all three merged, and all three still read `Proposed`.
+
+**Invariant**: after acceptance, the Context, Decision, and Consequences of a
+record are not rewritten. To change a decision, write a new ADR. Corrections
+of spelling, formatting, and broken links are permitted; anything that alters
+what the record says is not.
 - **Write an ADR for**: architecture, contract, or process decisions, and any
   reversal of a past decision.
 - **Do not write an ADR for**: numeric parameters determined by sweeps or

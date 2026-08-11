@@ -1,6 +1,6 @@
 # ADR-0002: Repository structure — one monorepo
 
-- Status: **Proposed** (accepted when the bootstrap PR merges)
+- Status: **Accepted** — 2026-08-09
 - Date: 2026-08-09
 - Owner decision: yes
 
@@ -43,3 +43,7 @@ Adopt **(a)**: a single repository `hekatus` with role directories
      is worth publishing on its own.
 - A split extracts the component with history via `git filter-repo`; the
   monorepo phase does not need to anticipate it structurally.
+
+## Status history
+
+- 2026-08-09: Accepted on merge of the repository bootstrap (`4ebbf2f`).
