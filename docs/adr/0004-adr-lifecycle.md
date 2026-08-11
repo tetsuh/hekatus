@@ -13,14 +13,21 @@ three still said `Proposed`. The cause was not carelessness but design:
 advancing the status was an action separable from the landing, and nobody
 owned it.
 
-Repairing that (#33) required deciding how the lifecycle works, and review
-found the first attempt incoherent in three ways. It said an ADR reaching
-`main` is accepted **by that fact**, and in the next paragraph allowed a
-`Proposed` record to sit on `main` — a rule contradicting itself within a
-section. It named `Rejected`, `Superseded`, and `Deprecated` without saying
-when any of them is written, leaving three states as decoration. And it
-declared a five-section format while every existing record carried a sixth
-section the format did not mention.
+Repairing that (#33) required deciding how the lifecycle works, and
+successive reviews found the first attempt incoherent in several ways. It
+said an ADR reaching `main` is accepted **by that fact**, and in the next
+paragraph allowed a `Proposed` record to sit on `main` — a rule contradicting
+itself within a section. It named `Rejected`, `Superseded`, and `Deprecated`
+without saying when any of them is written, leaving three states as
+decoration; `Rejected` had no way to land at all, since a declined pull
+request merges nothing. It declared a section count that matched no record in
+the repository, including its own. And it repeated as fact several claims git
+disproves — that all three stale records had been accepted by a merge, and
+that every one of them already carried a `Status history` section.
+
+That a document written to stop records from drifting had itself to be
+corrected this many times is the argument for the rule it settles: a record
+is only as good as the review that lands it.
 
 Changing how decisions are recorded is itself a process decision, so it needs
 a record. That this is an ADR about ADRs is recursive but not circular: the
