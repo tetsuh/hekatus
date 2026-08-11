@@ -116,23 +116,33 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
     return environment
 
 
-def _sample_forever(out_path: Path, interval: float) -> None:
-    """Sample until terminated, surviving anything one sample can throw.
+def _sample_loop(handle, interval: float) -> None:
+    """Sample until terminated, surviving a bad reading but not a bad writer.
 
-    The sampler is a passive observer of a run it must not disturb, and its
-    death is silent: whoever reads the trace afterwards sees a short file,
-    not an error. So a failed sample costs one row, never the trace.
+    The sampler observes a run it must not disturb, so a reading that fails —
+    an unresponsive tool, a snapshot that will not parse — costs one row and
+    the loop continues.
+
+    Failing to *record* is a different thing and is not survived. Retrying a
+    write that cannot succeed would turn a broken run into a quietly short
+    trace, which is precisely the failure this module was extracted to stop
+    happening silently.
     """
+    handle.write(CSV_HEADER + "\n")
+    while True:
+        try:
+            row = telemetry_csv_row(_run(SNAPSHOT_COMMAND), timestamp=_now())
+        except Exception as exc:  # noqa: BLE001 - one lost row beats a lost trace
+            print(f"telemetry sample failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            row = None
+        if row is not None:
+            handle.write(row + "\n")
+        time.sleep(interval)
+
+
+def _sample_forever(out_path: Path, interval: float) -> None:
     with out_path.open("w", buffering=1) as handle:
-        handle.write(CSV_HEADER + "\n")
-        while True:
-            try:
-                row = telemetry_csv_row(_run(SNAPSHOT_COMMAND), timestamp=_now())
-                if row is not None:
-                    handle.write(row + "\n")
-            except Exception as exc:  # noqa: BLE001 - one lost row beats a lost trace
-                print(f"telemetry sample failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-            time.sleep(interval)
+        _sample_loop(handle, interval)
 
 
 def main(argv: list[str] | None = None) -> None:

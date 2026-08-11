@@ -90,3 +90,27 @@ def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
         telemetry.main(["sample", "--out", str(tmp_path / "p.csv"), "--interval", interval])
 
     assert excinfo.value.code == 2
+
+
+class _WriterThatFillsUp:
+    """Accepts the header, then fails the way a full disk does."""
+
+    def __init__(self) -> None:
+        self.writes = 0
+
+    def write(self, text: str) -> int:
+        self.writes += 1
+        if self.writes == 1:
+            return len(text)
+        if self.writes > 20:
+            raise AssertionError("the sampler kept retrying after a write failure")
+        raise OSError("No space left on device")
+
+
+def test_a_failing_writer_ends_the_sampler_rather_than_retrying(monkeypatch):
+    """Surviving a bad sample is the point; surviving the inability to record
+    anything is not — that turns a broken run into a quietly short trace."""
+    monkeypatch.setattr(telemetry, "_run", lambda command: SNAPSHOT)
+
+    with pytest.raises(OSError, match="No space left"):
+        telemetry._sample_loop(_WriterThatFillsUp(), interval=0.0)
