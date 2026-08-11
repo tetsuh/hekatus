@@ -59,12 +59,28 @@ Conventional Commits with an Issue reference:
 ```
 
 - type: `feat` / `fix` / `docs` / `test` / `refactor` / `build` / `ci` / `chore`.
-- Header: English, lowercase imperative, no trailing period, ≤ 72 characters.
+- **Scope is required** on authored commits made after ADR-0003 is accepted,
+  naming the component the change belongs to (`spec`, `bench`, `workflows`,
+  `readme`, …). It makes history scannable by area, and the header is wide
+  enough to afford it.
+- Header: English, lowercase imperative, no trailing period, **≤ 100
+  characters** — the same width this repository sets for code
+  (`[tool.ruff] line-length`), so there is one number rather than two.
+  Aim shorter regardless: a header that will not fit in a line is usually a
+  commit that holds more than one idea. Note that a subject beyond roughly
+  72 characters is shown truncated in some web views, with the full text an
+  expander away.
 - Body: `- ` bullet items only; may be omitted for trivial commits.
 - `BREAKING CHANGE: <description>` footer when applicable.
 - **Commit granularity matters.** Normal merge is the default (§7), so
   feature-branch commits are part of `main` history and should be meaningful,
   self-contained steps.
+- **Platform-generated integration commits are exempt.** The merge commit
+  GitHub writes (`Merge pull request #NN from …`) is not an authored change;
+  it is the record of an integration, and its subject already names the pull
+  request that carries the traceability. The owner may replace it with a
+  Conventional subject when the default is unhelpful, but is never required
+  to. See ADR-0003.
 
 ## 4. Testing (TDD-lite)
 
