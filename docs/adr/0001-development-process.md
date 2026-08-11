@@ -1,6 +1,6 @@
 # ADR-0001: Development process — ticket-driven MVPs with lightweight governance
 
-- Status: **Proposed** (accepted when the bootstrap PR merges)
+- Status: **Accepted** — 2026-08-09
 - Date: 2026-08-09
 - Owner decision: yes
 
@@ -81,6 +81,8 @@ Full rules: `docs/development_workflow.md`.
 ## Status history
 
 - 2026-08-09: Proposed (process already agreed with the owner in session).
-- 2026-08-10: Amended by ADR-0003, which sets the commit header width, makes
-  the scope requirement explicit, and exempts platform-generated integration
-  commits. The rest of this decision stands.
+- 2026-08-09: Accepted in the repository bootstrap commit (`4ebbf2f`),
+  which the workflow authorizes as the sole direct push to `main`.
+- 2026-08-11: Amended by ADR-0003 — commit header width, the explicit scope
+  requirement, and the exemption of platform-generated integration commits —
+  effective on that record's acceptance. The rest of this decision stands.

@@ -1,6 +1,6 @@
 # ADR-0003: Commit header rules — width, scope, and merge commits
 
-- Status: **Proposed** (accepted when this PR merges)
+- Status: **Accepted** — 2026-08-11
 - Amends: ADR-0001 (development process)
 - Date: 2026-08-10
 - Owner decision: yes
@@ -94,3 +94,4 @@ On merge commits:
   unaddressed merge-commit case.
 - 2026-08-11: Clarified that the scope rule is prospective after review found
   multiple unscoped authored commits in the pre-adoption history.
+- 2026-08-11: Accepted on merge of pull request #32 (`9a021fb`).

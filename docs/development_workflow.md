@@ -109,12 +109,58 @@ the PR that produced them.
 
 ## 6. ADR: recording decisions and their evolution
 
-- Location: `docs/adr/NNNN-<slug>.md`, numbered sequentially.
-- Format, five sections: **Context / Options considered / Decision /
-  Consequences / Status**.
-- Status: `Proposed` → `Accepted`. A reversal creates a **new** ADR with
-  `Supersedes: NNNN`; the old one gains `Superseded-by: NNNN`. The decision
-  history lives in this chain — do not rewrite old ADRs.
+- Location: `docs/adr/NNNN-<slug>.md`, numbered sequentially, **without
+  gaps**. A number is spent by landing on `main`: a declined record lands as
+  `Rejected` and keeps its number, while a draft abandoned before it is worth
+  keeping is closed unmerged and never consumed one.
+- Format: a header status line (`- Status: **Accepted** — 2026-08-12`)
+  followed by five sections — **Context / Options considered / Decision /
+  Consequences / Status history**. The last is where a record says how it
+  came to say what it says.
+
+### Status
+
+```text
+Proposed ──► Accepted ──► Superseded by ADR-NNNN
+    │            └──────► Deprecated
+    └──────► Rejected
+```
+
+**`Proposed` never reaches `main`.** It is the state of a record under review
+in an open pull request. A decision that needs wider discussion first is held
+in an issue. Everything on `main` is settled, so nothing there can go stale.
+
+**Every transition is written in the pull request that carries the decision**,
+never afterwards. The status line names the state and its effective date, and
+`Status history` gains one line saying what caused it:
+
+```text
+- Status: **Accepted** — 2026-08-12
+...
+## Status history
+
+- 2026-08-12: Accepted in pull request #34.
+```
+
+This is the rule because three ADRs once promised, each in its own words, to
+become accepted when the change carrying them landed; all three landed, and
+all three still read `Proposed`. A status advanced by an action separable
+from the landing is a status that drifts. See ADR-0004.
+
+| State | Written when |
+|---|---|
+| **Accepted** | the pull request carrying the decision merges — in force from its effective date |
+| **Rejected** | the decision goes against the record: the status is flipped **in the record's own pull request, which then merges** — declining the decision, never discarding the record. The reasoning lands with it, so the same option is not proposed again with that reasoning unrecorded |
+| **Superseded by ADR-NNNN** | the replacing ADR merges; the same pull request updates the old record's status line and history, and the new record carries `Supersedes: NNNN` |
+| **Deprecated** | the pull request that removes what the decision governed updates the record alongside the removal |
+
+**Invariant**: once a record has landed on `main`, in any state, its Context,
+Options considered, Decision, and Consequences are not rewritten. To change a
+decision, write a new ADR. Corrections of spelling, formatting, and broken
+links are permitted; anything that alters what the record says is not.
+
+### When to write one
+
 - **Write an ADR for**: architecture, contract, or process decisions, and any
   reversal of a past decision.
 - **Do not write an ADR for**: numeric parameters determined by sweeps or
