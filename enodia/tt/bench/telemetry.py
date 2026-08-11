@@ -135,7 +135,7 @@ def _sample_forever(out_path: Path, interval: float) -> None:
             time.sleep(interval)
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Capture board environment or sample telemetry")
     sub = parser.add_subparsers(dest="mode", required=True)
 
@@ -160,14 +160,15 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(capture_environment(args.image, args.image_pinned), indent=2) + "\n"
         )
         print(f"environment -> {args.out}")
-        return 0
+        return
 
     try:
         _sample_forever(args.out, args.interval)
     except KeyboardInterrupt:
+        # The wrapper terminates the sampler when the run finishes; that is
+        # the normal way this ends, not a failure.
         pass
-    return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

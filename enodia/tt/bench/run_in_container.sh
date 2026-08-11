@@ -20,11 +20,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 # Arguments: an optional output directory, then "--", then runner arguments.
 OUT_DIR="${REPO_ROOT}/out/bench"
-if [ $# -gt 0 ] && [ "$1" != "--" ]; then
+if [[ $# -gt 0 && "$1" != "--" ]]; then
   OUT_DIR="$1"
   shift
 fi
-[ "${1:-}" = "--" ] && shift
+[[ "${1:-}" == "--" ]] && shift
 
 mkdir -p "${OUT_DIR}"
 
@@ -35,7 +35,7 @@ case "${IMAGE}" in
   *@sha256:*) IMAGE_PINNED=1 ;;
   *)
     if RESOLVED="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE}" 2>/dev/null)" \
-       && [ -n "${RESOLVED}" ]; then
+       && [[ -n "${RESOLVED}" ]]; then
       echo "resolved ${IMAGE} to ${RESOLVED}"
       IMAGE="${RESOLVED}"
       IMAGE_PINNED=1
@@ -53,7 +53,7 @@ RESULTS="${OUT_DIR}/results-${STAMP}.json"
 
 TELEMETRY="${REPO_ROOT}/enodia/tt/bench/telemetry.py"
 PINNED_FLAG=()
-[ "${IMAGE_PINNED}" = "1" ] && PINNED_FLAG=(--image-pinned)
+[[ "${IMAGE_PINNED}" == "1" ]] && PINNED_FLAG=(--image-pinned)
 
 python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
