@@ -59,9 +59,10 @@ Conventional Commits with an Issue reference:
 ```
 
 - type: `feat` / `fix` / `docs` / `test` / `refactor` / `build` / `ci` / `chore`.
-- **Scope is required**, naming the component the change belongs to (`spec`,
-  `bench`, `workflows`, `readme`, …). It is what makes a history scannable
-  by area, and the header is wide enough to afford it.
+- **Scope is required** on authored commits made after ADR-0003 is accepted,
+  naming the component the change belongs to (`spec`, `bench`, `workflows`,
+  `readme`, …). It makes history scannable by area, and the header is wide
+  enough to afford it.
 - Header: English, lowercase imperative, no trailing period, **≤ 100
   characters** — the same width this repository sets for code
   (`[tool.ruff] line-length`), so there is one number rather than two.

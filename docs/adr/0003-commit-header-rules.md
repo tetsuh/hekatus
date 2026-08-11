@@ -61,9 +61,9 @@ On merge commits:
 
 1. The header limit is **100 characters**, the same width this repository
    sets for code. Shorter is still better and the workflow says so.
-2. **Scope is required** on authored commits, resolving the ambiguity. At
-   100 characters there is no pressure to drop it, and it is what makes a
-   history scannable by area.
+2. **Scope is required** on authored commits made after this ADR is accepted,
+   resolving the ambiguity. At 100 characters there is no pressure to drop it,
+   and it is what makes a history scannable by area.
 3. **Platform-generated integration commits are exempt** from the header
    convention. They are not authored changes; they are the structural record
    of an integration, and GitHub's generated subject already names the pull
@@ -78,16 +78,11 @@ On merge commits:
   with the full text an expander away. This is accepted; the body carries
   the detail in any case.
 - `git log --first-parent main` remains the pull-request-level view of
-  history. Apart from the bootstrap root, it is composed of the exempt
-  integration commits — so the convention governs the commits inside a pull
-  request, while the PR number governs the integration record above them.
-- **One authored commit predates this rule and cannot be brought into
-  compliance**: the bootstrap root,
-  `chore: bootstrap repository with process documents (#1)`, carries no
-  scope. It is grandfathered, since the only way to correct it is to rewrite
-  `main` — a worse outcome than one historical exception, and one the branch
-  protection exists to prevent. It is also the sole direct push to `main`
-  the workflow permits, so its singularity is already recorded.
+  history. Platform-generated integration commits in that view are exempt;
+  the PR number governs each integration record.
+- The scope rule is prospective. Earlier authored commits are not judged
+  retroactively and remain unchanged; rewriting `main` solely to add scopes
+  would create more risk than it removes.
 - The width rule needs no exception: no subject anywhere on `main` exceeds
   100 characters.
 - This ADR amends ADR-0001 rather than superseding it; the rest of that
@@ -97,3 +92,5 @@ On merge commits:
 
 - 2026-08-10: Proposed, after a review found the missing ADR and the
   unaddressed merge-commit case.
+- 2026-08-11: Clarified that the scope rule is prospective after review found
+  multiple unscoped authored commits in the pre-adoption history.
