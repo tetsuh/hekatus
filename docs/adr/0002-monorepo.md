@@ -46,4 +46,5 @@ Adopt **(a)**: a single repository `hekatus` with role directories
 
 ## Status history
 
-- 2026-08-09: Accepted on merge of the repository bootstrap (`4ebbf2f`).
+- 2026-08-09: Accepted in the repository bootstrap commit (`4ebbf2f`),
+  which the workflow authorizes as the sole direct push to `main`.

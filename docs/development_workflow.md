@@ -111,8 +111,9 @@ the PR that produced them.
 
 - Location: `docs/adr/NNNN-<slug>.md`, numbered sequentially. Numbers may have
   gaps: a record that was written and declined still consumed one.
-- Format, five sections: **Context / Options considered / Decision /
-  Consequences / Status**.
+- Format, six sections: **Context / Options considered / Decision /
+  Consequences / Status / Status history**. The last is where a record says
+  how it came to say what it says.
 
 ### Status
 
@@ -123,22 +124,33 @@ Proposed ──► Accepted ──► Deprecated
 Proposed ──► Rejected
 ```
 
-- **Accepted** — on `main`, therefore in force. The status line carries the
-  date the decision took effect: `Accepted — 2026-08-11`.
-- **Proposed** — a record deliberately opened for discussion ahead of the
-  decision. An ADR in this state on `main` says which issue is deciding it.
-- **Rejected** — considered and declined. Kept, so the same option is not
-  proposed again with the same reasoning.
-- **Superseded by ADR-NNNN** — replaced. Only the old record's status line
-  changes; the new ADR carries `Supersedes: NNNN`.
-- **Deprecated** — what the decision governed no longer exists.
+**`Proposed` never reaches `main`.** It is the state of a record under review
+in an open pull request. A decision that needs wider discussion first is held
+in an issue. Everything on `main` is settled, so nothing there can go stale.
 
-**Advancing a status is never a separate task.** An ADR that reaches `main`
-through a merged pull request is an effective decision by that fact, so it is
-written `Accepted` in the pull request that carries it — not flipped
-afterwards by an action nobody owns. This rule exists because three ADRs once
-promised, each in its own words, to become accepted when their pull request
-merged; all three merged, and all three still read `Proposed`.
+**Every transition is written in the pull request that carries the decision**,
+never afterwards. The status line names the state and its effective date, and
+`Status history` gains one line saying what caused it:
+
+```text
+- Status: **Accepted** — 2026-08-12
+...
+## Status history
+
+- 2026-08-12: Accepted in pull request #34.
+```
+
+This is the rule because three ADRs once promised, each in its own words, to
+become accepted when their pull request merged; all three merged, and all
+three still read `Proposed`. A status advanced by an action separable from the
+merge is a status that drifts. See ADR-0004.
+
+| State | Written when |
+|---|---|
+| **Accepted** | the pull request carrying the decision merges — in force from its effective date |
+| **Rejected** | the decision goes against the record. It still lands, so the same option is not proposed again with the same reasoning, and its number stays spent |
+| **Superseded by ADR-NNNN** | the replacing ADR merges. Only the old record's status line and history change; the new one carries `Supersedes: NNNN` |
+| **Deprecated** | what the decision governed no longer exists, recorded by the pull request that removes it |
 
 **Invariant**: after acceptance, the Context, Decision, and Consequences of a
 record are not rewritten. To change a decision, write a new ADR. Corrections
