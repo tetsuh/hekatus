@@ -6,10 +6,12 @@
 
 ## Context
 
-Three records once read `Status: Proposed`, each promising in its own words to
-become accepted when its pull request merged. All three merged; all three
-still said `Proposed`. The cause was not carelessness but design: advancing
-the status was an action separable from the pull request, and nobody owned it.
+Three records once read `Status: Proposed`, each promising in its own words
+to become accepted when the change carrying it landed. All three landed — two
+in the authorized bootstrap commit, one by a merged pull request — and all
+three still said `Proposed`. The cause was not carelessness but design:
+advancing the status was an action separable from the landing, and nobody
+owned it.
 
 Repairing that (#33) required deciding how the lifecycle works, and review
 found the first attempt incoherent in three ways. It said an ADR reaching
@@ -54,12 +56,15 @@ one exists to avoid.
    decision**, never afterwards. The status line records the state and its
    effective date (`Accepted — 2026-08-12`), and the record's
    `Status history` gains one line naming what caused it.
-3. **`Status history` is part of the format**, which is therefore six
-   sections, not five. It is where a record says how it came to say what it
-   says.
-4. A record that is written and then declined lands as `Rejected` rather than
-   disappearing, so the same option is not proposed again with the same
-   reasoning. Its number stays spent.
+3. **`Status history` is part of the format**: a record is a header status
+   line followed by five sections, of which it is the last. It is where a
+   record says how it came to say what it says.
+4. A record that is written and then declined lands as `Rejected` rather
+   than disappearing: the status is flipped in the record's own pull
+   request, which then merges — declining the decision, never discarding
+   the record. Numbering therefore stays gapless, since a number is spent
+   only by landing; a draft abandoned before it is worth keeping is closed
+   unmerged and never consumed one.
 
 ## Consequences
 
@@ -68,14 +73,16 @@ one exists to avoid.
 - A proposal that genuinely needs discussion before a decision is held in an
   issue or in an open pull request, not on `main`. If that proves too
   restrictive, a later ADR adopts option B above.
-- The format is six sections. Existing records already comply; the workflow
-  did not describe them accurately, and now does.
+- The declared format now matches the records as they are — a header status
+  line and five sections ending in `Status history` — instead of describing
+  a shape none of them had.
 - `Rejected` and `Deprecated` become reachable states rather than names, so
   the record of a declined option has somewhere to live.
 - **The three records repaired alongside this one are a one-time exception**:
-  their acceptance is written after the merges that caused it, because the
-  rule requiring it to be written at the time did not exist then. Under this
-  ADR no further backfill can arise, since a record cannot reach `main`
+  their acceptance is written after the changes that caused it — the
+  bootstrap commit for two, a merged pull request for one — because the rule
+  requiring it to be written at the time did not exist then. Under this ADR
+  no further backfill can arise, since a record cannot reach `main`
   undecided.
 
 ## Status history
