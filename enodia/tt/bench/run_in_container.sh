@@ -83,37 +83,31 @@ DOCKER_PID=$!
 # A sampler that exits before Docker finishes means the run has no complete
 # power trace. Wait for whichever process finishes first so that this failure
 # cannot be hidden by the normal shutdown signal sent after Docker completes.
+# Each status is captured on the line after its own `wait`: any command in
+# between — an assignment included — replaces $? with its own success.
 set +e
-SAMPLER_STATUS=
-DOCKER_STATUS=
-while [[ -z "${SAMPLER_STATUS}" || -z "${DOCKER_STATUS}" ]]; do
-  if [[ -z "${SAMPLER_STATUS}" && -z "${DOCKER_STATUS}" ]]; then
-    wait -n -p FINISHED "${SAMPLER_PID}" "${DOCKER_PID}"
-  elif [[ -z "${SAMPLER_STATUS}" ]]; then
-    wait "${SAMPLER_PID}"
-    FINISHED="${SAMPLER_PID}"
-  else
-    wait "${DOCKER_PID}"
-    FINISHED="${DOCKER_PID}"
-  fi
-  STATUS=$?
-  if [[ "${FINISHED}" == "${SAMPLER_PID}" ]]; then
-    SAMPLER_STATUS="${STATUS}"
-    if [[ -z "${DOCKER_STATUS}" ]]; then
-      echo "telemetry sampler exited before benchmark completion" >&2
-    fi
-  else
-    DOCKER_STATUS="${STATUS}"
-    if [[ -z "${SAMPLER_STATUS}" ]]; then
-      # This is the intentional shutdown path: Docker completed while the
-      # sampler was still active, so ask it to stop and reap its status.
-      kill "${SAMPLER_PID}" 2>/dev/null || true
-      wait "${SAMPLER_PID}"
-      SAMPLER_STATUS=intentional
-    fi
-  fi
-done
+wait -n -p FINISHED "${SAMPLER_PID}" "${DOCKER_PID}"
+FIRST_STATUS=$?
+
+if [[ "${FINISHED}" == "${SAMPLER_PID}" ]]; then
+  # The sampler stopped while the benchmark was still running, so the trace is
+  # incomplete however the benchmark itself ends.
+  SAMPLER_STATUS="${FIRST_STATUS}"
+  echo "telemetry sampler exited before benchmark completion" >&2
+  wait "${DOCKER_PID}"
+  DOCKER_STATUS=$?
+else
+  DOCKER_STATUS="${FIRST_STATUS}"
+  # The intentional shutdown: the benchmark finished, so the sampler has done
+  # its job and is asked to stop.
+  SAMPLER_STATUS=intentional
+  kill "${SAMPLER_PID}" 2>/dev/null || true
+  wait "${SAMPLER_PID}"
+fi
 set -e
+
+# A failed benchmark is reported before a failed observer: a caller has to be
+# able to tell a broken run from a broken measurement of a working one.
 
 if [[ "${DOCKER_STATUS}" -ne 0 ]]; then
   exit "${DOCKER_STATUS}"

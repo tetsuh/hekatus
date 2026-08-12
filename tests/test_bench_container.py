@@ -43,6 +43,7 @@ esac
 set -eu
 printf '%s\\n' "$@" > "$DOCKER_ARGS"
 sleep "${DOCKER_DELAY:-0}"
+exit "${DOCKER_EXIT:-0}"
 """
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
@@ -116,3 +117,34 @@ def test_wrapper_fails_when_sampler_exits_before_docker(tmp_path):
 
     assert completed.returncode != 0
     assert "sampler" in completed.stderr
+
+
+def test_a_failed_benchmark_reports_its_own_status_even_if_the_sampler_died(tmp_path):
+    """When both fail, the benchmark's status is the one worth surfacing:
+    a caller has to be able to tell a broken run from a broken observer."""
+    bindir = _fake_tools(tmp_path, sampler_exit=23)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_root,
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "DOCKER_DELAY": "1",
+            "DOCKER_EXIT": "17",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+
+    assert completed.returncode == 17, completed.stderr
+    assert "sampler exited before benchmark completion" in completed.stderr
