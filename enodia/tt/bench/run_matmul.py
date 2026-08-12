@@ -108,20 +108,20 @@ def run_shape(
         _execute_once(ttnn, a, b, shape.real_matmuls)
         ttnn.synchronize_device(device)
 
-        best = None
+        samples = []
         for _ in range(repeats):
             start = time.perf_counter()
             for _ in range(iters):
                 _execute_once(ttnn, a, b, shape.real_matmuls)
             ttnn.synchronize_device(device)
-            elapsed = (time.perf_counter() - start) / iters
-            best = elapsed if best is None else min(best, elapsed)
+            samples.append((time.perf_counter() - start) / iters)
 
         flops = total_flops(shape)
         return {
             "status": "ok",
-            "seconds_per_iteration": best,
-            "achieved_tflops": flops / best / 1e12,
+            "seconds_per_iteration": min(samples),
+            "seconds_per_iteration_samples": samples,
+            "achieved_tflops": flops / min(samples) / 1e12,
             "flops_per_iteration": flops,
             "real_matmuls_per_iteration": shape.real_matmuls,
             "tensor_factory": factory,

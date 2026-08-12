@@ -7,6 +7,7 @@ toolchain so they run anywhere.
 """
 
 import json
+import sys
 
 import pytest
 
@@ -92,6 +93,8 @@ def test_execution_count_matches_the_declared_real_matmuls(real_matmuls):
     assert record["status"] == "ok"
     expected = real_matmuls * (1 + iters * repeats)  # one warm-up round, then the blocks
     assert ttnn.matmul_calls == expected
+    assert len(record["seconds_per_iteration_samples"]) == repeats
+    assert record["seconds_per_iteration"] == min(record["seconds_per_iteration_samples"])
 
 
 def test_a_shape_that_cannot_be_allocated_is_recorded_not_raised():
@@ -145,6 +148,28 @@ def test_invalid_controls_are_rejected_before_the_device_is_opened(argv):
         run_matmul.main(argv)
 
     assert excinfo.value.code == 2
+
+
+def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
+    """The host-only runner seam produces the same JSON shape as a device run."""
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+
+    output = tmp_path / "results.json"
+    assert run_matmul.main(
+        ["--only", "frontend_fir_taps64_w2", "--dtype", "bfloat16", "--memory", "dram",
+         "--iters", "1", "--repeats", "2", "--out", str(output)]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert len(payload["results"]) == 1
+    result = payload["results"][0]
+    assert result["status"] == "ok"
+    assert len(result["seconds_per_iteration_samples"]) == 2
+    assert result["seconds_per_iteration"] == min(result["seconds_per_iteration_samples"])
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):
