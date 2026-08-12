@@ -10,8 +10,10 @@ times the achieved throughput, silently, in the direction that flatters.
 
 **What it measures.** A block of iterations is timed with a single
 synchronization at the end, so per-iteration cost is not swamped by
-synchronization on the small shapes; the block is repeated and the best
-block is reported, which keeps scheduler noise out of a throughput figure.
+synchronization on the small shapes. The block is repeated, the best is
+reported, and every repeat is kept beside it: the best keeps scheduler noise
+out of the throughput figure, and the spread of the rest is what says whether
+that figure is stable enough to quote.
 Each result is released as it is produced, both to keep the larger shapes
 inside memory and because reusing buffers is what a real implementation
 does.
