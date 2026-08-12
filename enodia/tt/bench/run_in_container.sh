@@ -77,9 +77,52 @@ docker run --rm \
   enodia/tt/bench/run_matmul.py \
   "/out/$(basename "${RESULTS}")" \
   "/out/$(basename "${ENV_JSON}")" \
-  "$@"
+  "$@" &
+DOCKER_PID=$!
 
-kill "${SAMPLER_PID}" 2>/dev/null || true
+# A sampler that exits before Docker finishes means the run has no complete
+# power trace. Wait for whichever process finishes first so that this failure
+# cannot be hidden by the normal shutdown signal sent after Docker completes.
+set +e
+SAMPLER_STATUS=
+DOCKER_STATUS=
+while [[ -z "${SAMPLER_STATUS}" || -z "${DOCKER_STATUS}" ]]; do
+  if [[ -z "${SAMPLER_STATUS}" && -z "${DOCKER_STATUS}" ]]; then
+    wait -n -p FINISHED "${SAMPLER_PID}" "${DOCKER_PID}"
+  elif [[ -z "${SAMPLER_STATUS}" ]]; then
+    wait "${SAMPLER_PID}"
+    FINISHED="${SAMPLER_PID}"
+  else
+    wait "${DOCKER_PID}"
+    FINISHED="${DOCKER_PID}"
+  fi
+  STATUS=$?
+  if [[ "${FINISHED}" == "${SAMPLER_PID}" ]]; then
+    SAMPLER_STATUS="${STATUS}"
+    if [[ -z "${DOCKER_STATUS}" ]]; then
+      echo "telemetry sampler exited before benchmark completion" >&2
+    fi
+  else
+    DOCKER_STATUS="${STATUS}"
+    if [[ -z "${SAMPLER_STATUS}" ]]; then
+      # This is the intentional shutdown path: Docker completed while the
+      # sampler was still active, so ask it to stop and reap its status.
+      kill "${SAMPLER_PID}" 2>/dev/null || true
+      wait "${SAMPLER_PID}"
+      SAMPLER_STATUS=intentional
+    fi
+  fi
+done
+set -e
+
+if [[ "${DOCKER_STATUS}" -ne 0 ]]; then
+  exit "${DOCKER_STATUS}"
+fi
+if [[ "${SAMPLER_STATUS}" != intentional ]]; then
+  echo "telemetry sampler failed (status ${SAMPLER_STATUS})" >&2
+  exit 1
+fi
+
 echo
 echo "results     -> ${RESULTS}"
 echo "power trace -> ${POWER_CSV}"

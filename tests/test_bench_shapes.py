@@ -31,6 +31,42 @@ def test_catalogue_names_are_unique_and_dimensions_are_positive():
         assert min(s.batch, s.m, s.k, s.n, s.real_matmuls) >= 1, s.name
 
 
+def test_catalogue_pins_the_exact_workload_inventory():
+    catalogue = default_catalogue()
+
+    actual = {
+        (s.name, s.batch, s.m, s.k, s.n, s.real_matmuls, s.family) for s in catalogue
+    }
+    expected = {
+        *{
+            (f"newton_schulz_L{size}_b{batch}", batch, size, size, size, 4, "newton_schulz")
+            for size in (16, 32, 64)
+            for batch in (1024, 8192, 65536)
+        },
+        *{
+            (f"beamspace_B16_ch{channels}_p{pixels}", 1, 16, channels, pixels, 4, "beamspace")
+            for channels in (128, 256)
+            for pixels in (4096, 65536)
+        },
+        *{
+            (f"frontend_fir_taps64_w{width}", 1, 262144, 64, width, 2, "frontend_fir")
+            for width in (2, 8, 32)
+        },
+        ("reference_square_4096", 1, 4096, 4096, 4096, 1, "reference"),
+    }
+
+    assert actual == expected
+
+
+def test_catalogue_pins_representative_flop_accounting():
+    by_name = {s.name: s for s in default_catalogue()}
+
+    assert total_flops(by_name["newton_schulz_L16_b1024"]) == 1024 * 4 * 2 * 16**3
+    assert total_flops(by_name["beamspace_B16_ch256_p4096"]) == 4 * 2 * 16 * 256 * 4096
+    assert total_flops(by_name["frontend_fir_taps64_w2"]) == 2 * 2 * 262144 * 64 * 2
+    assert total_flops(by_name["reference_square_4096"]) == 2 * 4096**3
+
+
 def test_catalogue_covers_every_representative_family():
     families = {s.family for s in default_catalogue()}
 
