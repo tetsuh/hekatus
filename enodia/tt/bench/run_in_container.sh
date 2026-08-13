@@ -57,21 +57,22 @@ PINNED_FLAG=()
 
 python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
-# Board power and clock while the run proceeds. This is what settles which
-# power limit the board actually enforces under sustained load.
-python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval 2 &
-SAMPLER_PID=$!
-
-# Own both children if the wrapper is interrupted. The EXIT trap is disarmed
-# after normal reaping, so it cannot act on a stale PID later.
+# Own the children from before either is launched. Installing the traps after
+# a launch leaves a window in which a signal kills the wrapper and orphans the
+# child it had just started; the same window exists between a launch and the
+# assignment that records its PID. `${!:-}` closes the second one: it names the
+# most recently started background job, which is exactly the child whose
+# variable has not been assigned yet, and it is empty before any launch.
+# The EXIT trap is disarmed after normal reaping, so it cannot act on a stale
+# PID later.
 cleanup_children() {
   local pid
-  for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}"; do
+  for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       kill "${pid}" 2>/dev/null || true
     fi
   done
-  for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}"; do
+  for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
     if [[ -n "${pid}" ]]; then
       wait "${pid}" 2>/dev/null || true
     fi
@@ -87,6 +88,11 @@ trap cleanup_on_exit EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
 trap 'exit 129' HUP
+
+# Board power and clock while the run proceeds. This is what settles which
+# power limit the board actually enforces under sustained load.
+python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval 2 &
+SAMPLER_PID=$!
 
 # Runner arguments are passed as separate arguments, never interpolated into
 # a shell string: the wrapper must not turn a benchmark option into a command.

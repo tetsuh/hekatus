@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,7 @@ def test_wrapper_reaps_docker_when_interrupted(tmp_path):
 import os
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
 Path(os.environ["DOCKER_ARGS"]).write_text("\\n".join(sys.argv[1:]) + "\\n")
@@ -218,3 +220,89 @@ def test_a_failed_benchmark_reports_its_own_status_even_if_the_sampler_died(tmp_
 
     assert completed.returncode == 17, completed.stderr
     assert "sampler exited before benchmark completion" in completed.stderr
+
+
+def test_the_sampler_is_reaped_when_the_wrapper_is_signalled_before_docker_reports(tmp_path):
+    """The traps must own the sampler from before it is launched.
+
+    The existing interruption test waits for the fake Docker to record its PID
+    first, so it only exercises the phase where both children are known. This
+    one signals while Docker has produced nothing, which is the phase the
+    ordering fix is about.
+    """
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    sampler_pid_file = tmp_path / "sampler.pid"
+    (bindir / "python3").write_text(
+        f"""#!{sys.executable}
+import os
+import sys
+import time
+from contextlib import suppress
+from pathlib import Path
+
+if sys.argv[2] == "capture-env":
+    out = sys.argv[sys.argv.index("--out") + 1]
+    Path(out).write_text('{{"fake": true}}')
+    raise SystemExit(0)
+Path({str(sampler_pid_file)!r}).write_text(str(os.getpid()))
+while True:
+    time.sleep(0.05)
+"""
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    # Docker blocks without announcing anything, so the wrapper is signalled
+    # while the sampler is the only child that has made itself known.
+    (bindir / "docker").write_text(
+        f"""#!{sys.executable}
+import time
+
+while True:
+    time.sleep(0.05)
+"""
+    )
+    (bindir / "docker").chmod(stat.S_IRWXU)
+
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+
+    process = subprocess.Popen(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_root,
+        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    sampler_pid = None
+    try:
+        deadline = time.monotonic() + 5
+        while not sampler_pid_file.exists() and time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError("wrapper exited before starting the sampler")
+            time.sleep(0.01)
+        assert sampler_pid_file.exists()
+        sampler_pid = int(sampler_pid_file.read_text())
+
+        process.terminate()
+        process.communicate(timeout=10)
+
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(sampler_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.01)
+        with pytest.raises(ProcessLookupError):
+            os.kill(sampler_pid, 0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        if sampler_pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(sampler_pid, 9)
