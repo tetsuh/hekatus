@@ -19,6 +19,8 @@ trace beside it under the same stem.
 | `2026-08-11-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
 | `2026-08-11-p150a-effective-efficiency-power.csv` | Board power, clock, and temperature sampled through that run |
 
-Results are not rewritten. A measurement that turns out to be wrong is
-superseded by a later file that says so, in the same way a decision is
-superseded by a later ADR.
+Results are not rewritten. A measurement that turns out to be wrong, or is
+retaken on a corrected harness, is superseded by a later record that says
+so — the same invariant ADR-0004 sets for decisions. The reasoning is in
+ADR-0005, which also fixes what a result must carry and how a figure quoted
+elsewhere refers back to it.

@@ -855,8 +855,9 @@ Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
 efficiency (133 TFLOPS usable per card). Never combine a percentage from
 one basis with a count from the other. **The 40% is a target for
-hand-written kernels, not a measured figure**: measured on the target board
-the stock toolchain delivers 3.2% on this workload's shapes, against 58.5%
+hand-written kernels, not a measured figure**: measured on one p150a
+development board, the stock toolchain delivers 3.2% on this workload's
+shapes, against 58.5%
 on a large square matmul in the same run (docs/budget.md). The card counts
 here therefore state what the design aims at, with a factor of twelve still
 to close. The 4096-channel row follows
@@ -1348,7 +1349,10 @@ A record, so the same debates are not repeated.
 
 ### Parameters decided by measurement
 
-- **effective efficiency (estimates assume 40%; measure first on Track B)**
+- **how much of the measured gap a hand-written kernel recovers.** The
+  efficiency itself is measured: 3.2% from the stock toolchain against
+  58.5% on a large square matmul, on one p150a (§10, docs/budget.md). The
+  40% the card counts assume is the target that gap has to reach
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count

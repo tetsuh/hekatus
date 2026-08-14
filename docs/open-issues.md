@@ -15,12 +15,18 @@ closing it; the record in `design.md` is what persists.
 
 | # | Item | Who | State |
 |---|---|---|---|
-| B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | open |
+| B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
 | B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.5% on a large square matmul, both on one p150a development board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
-| B3 | `run_routing()` firing conditions and their jitter impact | Track B | open |
-| B4 | Card-to-card latency/jitter measurement | Track B | open |
+| B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
+| B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
+
+The Ethernet items above were blocked on a board without ports; that is no
+longer the constraint. Two target boards are cabled together, but no link
+has trained, and this generation trains from the runtime rather than from a
+flashing step (design.md §2) — so each of them now waits on the same thing:
+a transfer that actually crosses the wire.
 
 **B2 still matters most**, but the question has changed shape. It was "is
 40% real?"; the board answers 58.5% on a shape it likes, so the hardware is
@@ -35,8 +41,10 @@ writing one, not by measuring again.
 - Newton-Schulz: precision split (BF16/TF32/FP32), iteration count, choice of
   the initial value X0
 - Beamspace: basis design and dimension. **The dimension is no longer a free
-  choice on compute grounds alone**: measured on the target board, one
-  Newton-Schulz step at B=32 costs 247 µs against 624 µs at B=16, so B=32 is
+  choice on compute grounds alone**: measured on one p150a development
+  board,
+  one complex matmul of the Newton-Schulz step — the iteration issues two —
+  costs 247 µs at B=32 against 624 µs at B=16, so B=32 is
   2.5x faster in wall-clock while paying eight times the arithmetic — B=16
   fills half of a 32x32 tile and pays for the empty half. That reverses under
   a kernel that packs several small matrices into one tile, so the choice is

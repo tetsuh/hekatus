@@ -17,11 +17,15 @@ A percentage from one table cannot be combined with a card count from
 another without converting: 1-card % × 2.5 gives the share of usable
 capacity.
 
-> **The 40% is a target for hand-written kernels, not a measured figure.**
-> Effective efficiency has now been measured on a p150a, and what the stock
-> toolchain delivers on this workload's shapes is **3.2%** — see below. Every card
-> count in this document therefore describes what the design is aiming at,
-> and the distance still to be closed is a factor of twelve.
+> **The 40% is now read as a target for hand-written kernels rather than an
+> expectation of the toolchain.** This document previously called it an
+> unverified assumption and said the "fits on one card" claim would collapse
+> if it halved. Effective efficiency has since been measured on a p150a: the
+> stock toolchain delivers **3.2%** on this workload's shapes — see below.
+> Reading the 40% as a target is therefore a change of claim, not a
+> restatement of what was meant before, and it is justified only because
+> design.md assumes hand-written kernels throughout. Every card count here
+> describes what the design aims at, with a factor of twelve still to close.
 
 ---
 
@@ -45,8 +49,8 @@ Three things follow, and the third is the one that matters.
 never unreasonable *for the hardware*; a large square matmul beats it. So
 the deficit is not silicon, and not the measurement.
 
-**On-chip residency is worth 35x.** The same Newton-Schulz shape moves from
-0.31 to 10.72 TFLOPS between DRAM and L1, which is design.md §2's "fitting
+**On-chip residency is worth 34x.** The same Newton-Schulz shape moves from
+0.31 to 10.72 TFLOPS between DRAM and L1 — a factor of 34.0 — which is design.md §2's "fitting
 on-chip is the paramount design concern" as a number. The L1 configurations
 that fail — batch 65536 at every L, and L=64/float32 at batch 8192 — map the
 on-chip budget by where they stop.
