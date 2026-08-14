@@ -100,6 +100,20 @@ def _now() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
+def harness_identity() -> dict:
+    """Which revision of this tree computed the result.
+
+    The FLOP accounting behind every efficiency figure lives here, so a
+    measurement that cannot name the harness that produced it cannot be
+    reproduced or compared against a later one. A modified tree is recorded
+    as modified rather than silently attributed to its last commit.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    commit = _run(("git", "-C", str(repo), "rev-parse", "HEAD")).strip()
+    status = _run(("git", "-C", str(repo), "status", "--porcelain")).strip()
+    return {"harness_commit": commit, "harness_dirty": bool(status)}
+
+
 def capture_environment(image: str, image_pinned: bool) -> dict:
     """Everything needed to name the environment a measurement came from."""
     environment = {
@@ -112,6 +126,7 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
             "tt-env status 2>/dev/null | awk '/Active release:/{print $3}'"
         ).strip(),
     }
+    environment.update(harness_identity())
     environment.update(parse_environment(_run(SNAPSHOT_COMMAND)))
     return environment
 

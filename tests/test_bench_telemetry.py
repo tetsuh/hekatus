@@ -118,3 +118,29 @@ def test_a_failing_writer_ends_the_sampler_rather_than_retrying(monkeypatch):
 
     with pytest.raises(OSError, match="No space left"):
         telemetry._sample_loop(writer, interval=0.0)
+
+
+def test_the_environment_names_the_harness_that_produced_it(monkeypatch):
+    """A result is only reproducible if the code that computed it can be named:
+    the FLOP accounting behind every efficiency figure lives in this tree."""
+    monkeypatch.setattr(
+        telemetry,
+        "_run",
+        lambda command: "abc1234def\n" if "rev-parse" in str(command) else "",
+    )
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_commit"] == "abc1234def"
+    assert identity["harness_dirty"] is False
+
+
+def test_a_modified_tree_is_recorded_as_such(monkeypatch):
+    def fake_run(command):
+        if "rev-parse" in str(command):
+            return "abc1234def\n"
+        return " M enodia/tt/bench/run_matmul.py\n"
+
+    monkeypatch.setattr(telemetry, "_run", fake_run)
+
+    assert telemetry.harness_identity()["harness_dirty"] is True
