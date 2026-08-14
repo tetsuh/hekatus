@@ -144,3 +144,22 @@ def test_a_modified_tree_is_recorded_as_such(monkeypatch):
     monkeypatch.setattr(telemetry, "_run", fake_run)
 
     assert telemetry.harness_identity()["harness_dirty"] is True
+
+
+def test_untracked_files_do_not_mark_the_harness_modified(monkeypatch):
+    """The toolchain writes build output into the tree on every run, so a flag
+    that counts untracked files is true always and says nothing about the code
+    that computed the result."""
+    seen = []
+
+    def fake_run(command):
+        seen.append(str(command))
+        return "abc1234def\n" if "rev-parse" in str(command) else ""
+
+    monkeypatch.setattr(telemetry, "_run", fake_run)
+
+    identity = telemetry.harness_identity()
+
+    status = next(c for c in seen if "status" in c)
+    assert "--untracked-files=no" in status
+    assert identity["harness_dirty"] is False

@@ -110,7 +110,12 @@ def harness_identity() -> dict:
     """
     repo = Path(__file__).resolve().parents[3]
     commit = _run(("git", "-C", str(repo), "rev-parse", "HEAD")).strip()
-    status = _run(("git", "-C", str(repo), "status", "--porcelain")).strip()
+    # Tracked changes only. The toolchain writes its build output into the
+    # tree on every run, so counting untracked files would make the flag true
+    # always, which says nothing about the code that computed the result.
+    status = _run(
+        ("git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no")
+    ).strip()
     return {"harness_commit": commit, "harness_dirty": bool(status)}
 
 
