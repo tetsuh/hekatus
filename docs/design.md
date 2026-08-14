@@ -826,8 +826,12 @@ Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 **Two capacity bases appear**: "of one card" percentages are against the
 332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
 efficiency (133 TFLOPS usable per card). Never combine a percentage from
-one basis with a count from the other. **The 40% is an unverified
-assumption** — measure it early on Track B. The 4096-channel row follows
+one basis with a count from the other. **The 40% is a target for
+hand-written kernels, not a measured figure**: measured on the target board
+the stock toolchain delivers 3.2% on this workload's shapes, against 58.5%
+on a large square matmul in the same run (docs/budget.md). The card counts
+here therefore state what the design aims at, with a factor of twelve still
+to close. The 4096-channel row follows
 the N⁴ law from the 256-channel volume row; an earlier revision carried
 1.85e8 there, which did not reconcile.
 

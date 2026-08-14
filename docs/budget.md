@@ -17,9 +17,53 @@ A percentage from one table cannot be combined with a card count from
 another without converting: 1-card % × 2.5 gives the share of usable
 capacity.
 
-> **The 40% effective efficiency is an unverified assumption.** Measure it
-> first on Track B (docs/open-issues.md B2). If it halves, the "fits on one
-> card" claim collapses.
+> **The 40% is a target for hand-written kernels, not a measured figure.**
+> It has now been measured on the target board, and what the stock toolchain
+> delivers on this workload's shapes is **3.2%** — see below. Every card
+> count in this document therefore describes what the design is aiming at,
+> and the distance still to be closed is a factor of twelve.
+
+---
+
+## Measured efficiency (p150a, 2026-08-11)
+
+Measured with `enodia/tt/bench`, one board, bfloat16, against the 332 TFLOPS
+peak above. Raw results and the environment that produced them:
+`docs/measurements/2026-08-11-p150a-effective-efficiency.json`.
+
+| Shape | DRAM | L1 | best, as % of peak |
+|---|---|---|---|
+| Newton-Schulz L=64, batch 8192 | 0.31 | **10.72** | **3.2%** |
+| Newton-Schulz L=32, batch 8192 | 0.07 | 8.71 | 2.6% |
+| Beamspace B=16, 256 ch, 65536 px | 4.96 | 4.38 | 1.5% |
+| Front-end FIR, output width 32 | 7.09 | 4.34 | 2.1% |
+| *Reference: 4096³ square matmul* | *194.18* | *10.95* | *58.5%* |
+
+Three things follow, and the third is the one that matters.
+
+**The silicon reaches 58.5% on a shape it likes.** The 40% assumption was
+never unreasonable *for the hardware*; a large square matmul beats it. So
+the deficit is not silicon, and not the measurement.
+
+**On-chip residency is worth 35x.** The same Newton-Schulz shape moves from
+0.31 to 10.72 TFLOPS between DRAM and L1, which is design.md §2's "fitting
+on-chip is the paramount design concern" as a number. The L1 configurations
+that fail — batch 65536 at every L, and L=64/float32 at batch 8192 — map the
+on-chip budget by where they stop.
+
+**What the stock toolchain gives for free is 3.2%, and the gap to 40% is the
+work.** The representative shapes reach one eighteenth of what the flattering
+one does, because they are small, thin, or both (design.md §10). Closing that
+is what a hand-written kernel is for: packing small matrices into full tiles,
+fusing the four real matmuls of a complex one, keeping R resident across the
+iteration, and a resident kernel that pays no per-operation dispatch. How
+much of the twelvefold is recoverable is now the central open question of
+Track B, and it is a question about kernels rather than about the board.
+
+**Power and clock did not bind.** Across the run the board peaked at 93 W at
+its full 1350 MHz and 73 °C, so neither the 150 W nor the 300 W reading of
+the firmware limit constrains this workload — a figure that itself says the
+engines are idle much of the time.
 
 ---
 

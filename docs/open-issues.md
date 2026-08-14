@@ -16,13 +16,17 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | open |
-| B2 | Effective-efficiency measurement (estimates assume 40%; the foundation of every card-count estimate) | Track B | open |
+| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.5% on a large square matmul, both on the target board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | open |
 | B4 | Card-to-card latency/jitter measurement | Track B | open |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
 
-**B2 matters most.** The entire "fits on one card" claim rests on it.
+**B2 still matters most**, but the question has changed shape. It was "is
+40% real?"; the board answers 58.5% on a shape it likes, so the hardware is
+not the doubt. It is now "how much of the eighteenfold penalty this
+workload's shapes carry can a kernel take back?" — and that is answered by
+writing one, not by measuring again.
 
 ---
 
@@ -30,7 +34,14 @@ closing it; the record in `design.md` is what persists.
 
 - Newton-Schulz: precision split (BF16/TF32/FP32), iteration count, choice of
   the initial value X0
-- Beamspace: basis design and dimension
+- Beamspace: basis design and dimension. **The dimension is no longer a free
+  choice on compute grounds alone**: measured on the target board, one
+  Newton-Schulz step at B=32 costs 247 µs against 624 µs at B=16, so B=32 is
+  2.5x faster in wall-clock while paying eight times the arithmetic — B=16
+  fills half of a 32x32 tile and pays for the empty half. That reverses under
+  a kernel that packs several small matrices into one tile, so the choice is
+  now coupled to how far Track B goes into hand-written kernels, and to the
+  sample-support limit that made 16 attractive in the first place (§9, §11)
 - Transmit compounding: window width, apodization, contributing-transmit
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?)
@@ -50,6 +61,10 @@ closing it; the record in `design.md` is what persists.
 - Actual TGC behavior of the target front end (discontinuities, gain-step
   granularity). **With MLA, the depth-to-TGC correspondence shifts per
   scanline, which can create inconsistencies under transmit compounding**
+- Which power limit the board enforces — the firmware reports 150 W as
+  `tdp_limit` and 300 W as the board limit. The compute measurement did not
+  approach either (93 W peak at full clock), so the question waits for a
+  workload that does
 - **The latency budget does not close across the full range of its own
   stage estimates** (docs/budget.md): the critical path sums to ~27 ms at
   the optimistic end and ~39 ms at the pessimistic end, against a ≤ 30 ms
@@ -75,5 +90,7 @@ closing it; the record in `design.md` is what persists.
 - Elastography: strain first; transmit-type tags form an open set
 - The enodia API is a physical-quantity schema + config IDs; interpreting
   FPGA-facing data was rejected (the round-trip converter is test-only)
+- Effective efficiency is measured, and the measurement environment is
+  recorded with it (design.md §2, docs/measurements/)
 - License: Apache-2.0
 - An IP-landscape review is a productization-gate item
