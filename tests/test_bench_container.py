@@ -306,3 +306,107 @@ while True:
         if sampler_pid is not None:
             with suppress(ProcessLookupError):
                 os.kill(sampler_pid, 9)
+
+
+@pytest.mark.parametrize("assignment", ["sampler", "docker"])
+def test_cleanup_owns_the_child_before_its_pid_is_published(tmp_path, assignment):
+    """Exercise each `${!:-}` fallback before its PID assignment executes."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    sampler_pid_file = tmp_path / "sampler.pid"
+    docker_pid_file = tmp_path / "docker.pid"
+    ready = tmp_path / "ready"
+    release = tmp_path / "release"
+    (bindir / "python3").write_text(
+        f"""#!{sys.executable}
+import os
+import sys
+import time
+from pathlib import Path
+
+if sys.argv[2] == "capture-env":
+    Path(sys.argv[sys.argv.index("--out") + 1]).write_text('{{"fake": true}}')
+    raise SystemExit(0)
+Path({str(sampler_pid_file)!r}).write_text(str(os.getpid()))
+while True:
+    time.sleep(0.05)
+"""
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    (bindir / "docker").write_text(
+        f"""#!{sys.executable}
+import os
+import time
+from pathlib import Path
+
+Path({str(docker_pid_file)!r}).write_text(str(os.getpid()))
+while True:
+    time.sleep(0.05)
+"""
+    )
+    (bindir / "docker").chmod(stat.S_IRWXU)
+
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    assignment_line = "SAMPLER_PID=$!" if assignment == "sampler" else "DOCKER_PID=$!"
+    barrier = (
+        ': > "${PID_ASSIGNMENT_READY:?}"\n'
+        'while [[ ! -e "${PID_ASSIGNMENT_RELEASE:?}" ]]; do :; done\n'
+        f"{assignment_line}"
+    )
+    wrapper_text = copied_wrapper.read_text()
+    assert wrapper_text.count(assignment_line) == 1
+    copied_wrapper.write_text(wrapper_text.replace(assignment_line, barrier))
+    copied_wrapper.chmod(stat.S_IRWXU)
+    copied_root = copied_wrapper.parents[3]
+
+    process = subprocess.Popen(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_root,
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "PID_ASSIGNMENT_READY": str(ready),
+            "PID_ASSIGNMENT_RELEASE": str(release),
+        },
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    pids = []
+    try:
+        deadline = time.monotonic() + 5
+        while not ready.exists() and time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError("wrapper exited before the PID-assignment barrier")
+            time.sleep(0.01)
+        assert ready.exists()
+
+        deadline = time.monotonic() + 5
+        required = [sampler_pid_file]
+        if assignment == "docker":
+            required.append(docker_pid_file)
+        while not all(path.exists() for path in required) and time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError("wrapper exited before starting required child")
+            time.sleep(0.01)
+        assert all(path.exists() for path in required)
+        pids = [int(path.read_text()) for path in required]
+        if assignment == "sampler":
+            assert not docker_pid_file.exists()
+
+        process.terminate()
+        process.communicate(timeout=10)
+        assert process.returncode != 0
+        for pid in pids:
+            with pytest.raises(ProcessLookupError):
+                os.kill(pid, 0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        for pid in pids:
+            with suppress(ProcessLookupError):
+                os.kill(pid, 9)
