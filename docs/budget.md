@@ -18,8 +18,8 @@ another without converting: 1-card % × 2.5 gives the share of usable
 capacity.
 
 > **The 40% is a target for hand-written kernels, not a measured figure.**
-> It has now been measured on the target board, and what the stock toolchain
-> delivers on this workload's shapes is **3.2%** — see below. Every card
+> Effective efficiency has now been measured on a p150a, and what the stock
+> toolchain delivers on this workload's shapes is **3.2%** — see below. Every card
 > count in this document therefore describes what the design is aiming at,
 > and the distance still to be closed is a factor of twelve.
 

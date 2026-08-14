@@ -804,11 +804,11 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 | Configuration | Recv ch | L | TFLOPS | Cards @40% |
 |---|---|---|---|---|
-| 128 elem / 64 ch recv | 64 | 32 | 35 | ~1 (headroom) |
-| 256 elem / 128 ch recv | 128 | 64 | 560 | ~4 (tight) |
-| 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (ample) |
-| post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 8–9 |
-| post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1** |
+| 128 elem / 64 ch recv | 64 | 32 | 35 | 1 (26% used) |
+| 256 elem / 128 ch recv | 128 | 64 | 560 | 5 (4.2 rounded up) |
+| 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (14% used) |
+| post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 9 |
+| post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1 (28% used)** |
 | 2D fully digital 4096 ch full MV | 4096 | 2048 | ~72,000,000 | ~540k (impossible) |
 
 ### By method (64 recv ch, 30 fps)

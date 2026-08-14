@@ -5,9 +5,11 @@ Raw results kept as data, each with the environment that produced it.
 A throughput figure is only evidence if the machine behind it can be named
 again later. design.md §2 records that a firmware update once changed the
 core count, and the first measurements on this project ran on a different
-board from the target — so every file here carries, in its own `environment`
-block, the board type and serial, firmware bundle, kernel driver version, and
-the toolchain image by digest.
+board from the target — so every result file here carries, in its own
+`environment` block, the board type and serial, firmware bundle, kernel
+driver version, and the toolchain image by digest. A companion trace is
+plain data with no such block: it inherits its provenance from the result
+file sharing its filename stem, and is meaningless apart from it.
 
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.

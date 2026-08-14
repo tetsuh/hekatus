@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | open |
-| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.5% on a large square matmul, both on the target board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
+| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.5% on a large square matmul, both on one p150a development board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | open |
 | B4 | Card-to-card latency/jitter measurement | Track B | open |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
