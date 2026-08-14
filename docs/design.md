@@ -189,6 +189,34 @@ spare capacity can be decided once real data arrives.
 (140 → 120).** Code that depends on the grid layout must pin the firmware
 version and keep a regression test.
 
+### The machine measurements are taken on
+
+The table above is the target specification. It is not automatically the
+machine a given number came from, and the two have already differed: the
+first measurements on this project ran on a p100a, which has no Ethernet at
+all and one fewer memory channel. Every measured figure therefore carries
+the board, firmware, driver, and toolchain image that produced it
+(`docs/measurements/`), and a figure without that provenance is not evidence.
+
+The development machine now carries **two p150a boards**, matching the
+target: 120 Tensix and 32 GB each, Ethernet present, firmware 19.6.0.0 and
+driver 2.8.0 pinned by the environment manifest. Two differences from the
+table are worth recording:
+
+- **PCIe negotiates at gen4**, not 5.0. The ingest path is Ethernet, so this
+  does not touch the 20 GB/s of §3, but enodia → diaplous is a DMA push
+  across this link, and gen4 x16 is roughly 32 GB/s.
+- **The firmware reports two different power limits** — 150 W as `tdp_limit`
+  and 300 W as the board limit. Under the compute measurement neither bound:
+  the board peaked at 93 W at full clock. Which one is enforced remains
+  unresolved, and will stay so until a workload approaches it.
+
+Ethernet is present but no link was up as delivered, and the topology tool
+does not support this generation — Blackhole trains its links from the
+runtime rather than from a flashing step. Establishing an actual chip-to-chip
+transfer is the first step of the receive-path work, not an assumption it can
+start from.
+
 ### What limits this workload
 
 Arithmetic is a few percent of theoretical peak. **The limits are GDDR6
