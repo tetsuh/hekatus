@@ -1,0 +1,1970 @@
+{
+  "environment": {
+    "python": "3.12.12",
+    "host": "e91642b532b2",
+    "captured_at": "2026-08-14T15:31:18.742242+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-124-generic",
+    "kmd_version": "2.8.0",
+    "tt_env_active_release": "2026.05.16",
+    "harness_commit": "112ff585f4b52f90525d23650a90b14ec6d7a55d",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "peak_tflops": 332.0,
+  "peak_note": "design.md section 2 theoretical BF16 peak for p150a; float32 rows use the same denominator, matching docs/budget.md",
+  "results": [
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b1024",
+        "batch": 1024,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.007583343799979048,
+      "seconds_per_iteration_samples": [
+        0.007583396100017126,
+        0.007583343799979048,
+        0.007583502350007621
+      ],
+      "achieved_tflops": 0.004424754156615279,
+      "flops_per_iteration": 33554432,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.3327572760889396e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b1024",
+        "batch": 1024,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 9.061395003300277e-05,
+      "seconds_per_iteration_samples": [
+        9.068150002349285e-05,
+        9.064055002454552e-05,
+        9.061395003300277e-05
+      ],
+      "achieved_tflops": 0.3703009524226572,
+      "flops_per_iteration": 33554432,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.001115364314526076
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b1024",
+        "batch": 1024,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.007681268850046763,
+      "seconds_per_iteration_samples": [
+        0.007681268850046763,
+        0.007682032499997149,
+        0.00768282580002051
+      ],
+      "achieved_tflops": 0.004368344951211508,
+      "flops_per_iteration": 33554432,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.3157665515697313e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b1024",
+        "batch": 1024,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 9.742110005390714e-05,
+      "seconds_per_iteration_samples": [
+        0.00011416014995120349,
+        9.747829999469104e-05,
+        9.742110005390714e-05
+      ],
+      "achieved_tflops": 0.34442674103898374,
+      "flops_per_iteration": 33554432,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0010374299428885052
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b8192",
+        "batch": 8192,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.06063188765001541,
+      "seconds_per_iteration_samples": [
+        0.06063190514996677,
+        0.06063188765001541,
+        0.06063444974997765
+      ],
+      "achieved_tflops": 0.00442729834752113,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.3335235986509426e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b8192",
+        "batch": 8192,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0006272583499594475,
+      "seconds_per_iteration_samples": [
+        0.0006272583499594475,
+        0.0006291810499533312,
+        0.0006281633000071452
+      ],
+      "achieved_tflops": 0.4279503908036528,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0012890072012158218
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b8192",
+        "batch": 8192,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0613919091999378,
+      "seconds_per_iteration_samples": [
+        0.061392149449966384,
+        0.061394187699988834,
+        0.0613919091999378
+      ],
+      "achieved_tflops": 0.004372489135755236,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.317014799926276e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b8192",
+        "batch": 8192,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0006630953499552561,
+      "seconds_per_iteration_samples": [
+        0.0006651446499745361,
+        0.0006630953499552561,
+        0.000663520700072695
+      ],
+      "achieved_tflops": 0.404821804312326,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0012193427840732711
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b65536",
+        "batch": 65536,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.48498597009993316,
+      "seconds_per_iteration_samples": [
+        0.48498597009993316,
+        0.4849888845500573,
+        0.4849882320500001
+      ],
+      "achieved_tflops": 0.004427929425582153,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.3337136824042628e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b65536",
+        "batch": 65536,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b65536",
+        "batch": 65536,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.4910726070500459,
+      "seconds_per_iteration_samples": [
+        0.49107487080000284,
+        0.4910726070500459,
+        0.49107325570003013
+      ],
+      "achieved_tflops": 0.004373047115986143,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 1.3171828662608865e-05
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L16_b65536",
+        "batch": 65536,
+        "m": 16,
+        "k": 16,
+        "n": 16,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=16"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b1024",
+        "batch": 1024,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.003793024799961131,
+      "seconds_per_iteration_samples": [
+        0.003793024799961131,
+        0.0037953623999783304,
+        0.003795159150013205
+      ],
+      "achieved_tflops": 0.07077081489231253,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0002131651050973269
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b1024",
+        "batch": 1024,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 4.945864993715077e-05,
+      "seconds_per_iteration_samples": [
+        4.945864993715077e-05,
+        5.075794997537742e-05,
+        5.0135299989051416e-05
+      ],
+      "achieved_tflops": 5.427472370174124,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.016347808343897964
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b1024",
+        "batch": 1024,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.004268251200028317,
+      "seconds_per_iteration_samples": [
+        0.004268251200028317,
+        0.004270253899994714,
+        0.004269338800077094
+      ],
+      "achieved_tflops": 0.06289120377877927,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0001894313366830701
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b1024",
+        "batch": 1024,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0001308856500145339,
+      "seconds_per_iteration_samples": [
+        0.0001308856500145339,
+        0.00013189985002100003,
+        0.00013201239999034443
+      ],
+      "achieved_tflops": 2.0509158641164422,
+      "flops_per_iteration": 268435456,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.006177457422037477
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.030316761149970263,
+      "seconds_per_iteration_samples": [
+        0.030316761149970263,
+        0.030319491049976933,
+        0.03032004799997594
+      ],
+      "achieved_tflops": 0.07083486383577971,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0002133580236017461
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.00024974319994726103,
+      "seconds_per_iteration_samples": [
+        0.00025224914998034365,
+        0.00024974319994726103,
+        0.0002531633499529562
+      ],
+      "achieved_tflops": 8.598767247530624,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.025899901347983808
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0341080892500031,
+      "seconds_per_iteration_samples": [
+        0.0341080892500031,
+        0.03411115984999924,
+        0.03411016894997374
+      ],
+      "achieved_tflops": 0.0629611243321056,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.00018964194075935423
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0005534650000299735,
+      "seconds_per_iteration_samples": [
+        0.0005534650000299735,
+        0.0005541063500459131,
+        0.0005542699000216089
+      ],
+      "achieved_tflops": 3.8800712743962142,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.011686961669868115
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b65536",
+        "batch": 65536,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.2424915124999643,
+      "seconds_per_iteration_samples": [
+        0.2424915124999643,
+        0.24249405934997412,
+        0.24249365144996773
+      ],
+      "achieved_tflops": 0.07084730103286617,
+      "flops_per_iteration": 17179869184,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.00021339548503875353
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b65536",
+        "batch": 65536,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b65536",
+        "batch": 65536,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.27281159779995506,
+      "seconds_per_iteration_samples": [
+        0.27281159779995506,
+        0.27281207259993606,
+        0.2728130219999912
+      ],
+      "achieved_tflops": 0.06297338281269665,
+      "flops_per_iteration": 17179869184,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.00018967886389366462
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b65536",
+        "batch": 65536,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 268435456 B L1 buffer across 110 banks, where each bank needs to store 2441216 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b1024",
+        "batch": 1024,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0068295367499558775,
+      "seconds_per_iteration_samples": [
+        0.0068295367499558775,
+        0.006832653150013357,
+        0.00683259649995307
+      ],
+      "achieved_tflops": 0.31444060214096864,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0009471102474125562
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b1024",
+        "batch": 1024,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0002140906000022369,
+      "seconds_per_iteration_samples": [
+        0.00021516619999601972,
+        0.0002148853499420511,
+        0.0002140906000022369
+      ],
+      "achieved_tflops": 10.030723665483501,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.030213023088805725
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b1024",
+        "batch": 1024,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.007666330600022775,
+      "seconds_per_iteration_samples": [
+        0.007669836300010502,
+        0.007666499049992126,
+        0.007666330600022775
+      ],
+      "achieved_tflops": 0.28011884173030843,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.000843731450994905
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b1024",
+        "batch": 1024,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0003068091500608716,
+      "seconds_per_iteration_samples": [
+        0.0003081662499425875,
+        0.0003068091500608716,
+        0.0003068869999879098
+      ],
+      "achieved_tflops": 6.999412004413606,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.021082566278354236
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b8192",
+        "batch": 8192,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.054571731699979864,
+      "seconds_per_iteration_samples": [
+        0.054571731699979864,
+        0.054575014299916805,
+        0.054575585899965515
+      ],
+      "achieved_tflops": 0.3148126080816002,
+      "flops_per_iteration": 17179869184,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0009482307472337356
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b8192",
+        "batch": 8192,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0016035605000070063,
+      "seconds_per_iteration_samples": [
+        0.0016035605000070063,
+        0.0016049134000240884,
+        0.0016058295000220824
+      ],
+      "achieved_tflops": 10.713577182728644,
+      "flops_per_iteration": 17179869184,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "ones",
+      "efficiency": 0.032269810791351335
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b8192",
+        "batch": 8192,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.061306749950017544,
+      "seconds_per_iteration_samples": [
+        0.06130800989994896,
+        0.06130874264999875,
+        0.061306749950017544
+      ],
+      "achieved_tflops": 0.28022802053618057,
+      "flops_per_iteration": 17179869184,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.000844060302819821
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b8192",
+        "batch": 8192,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 134217728 B L1 buffer across 110 banks, where each bank needs to store 1220608 B, but bank size is 1461760 B (allocated: 1220608 B, free: 241152 B, largest free block: 241152 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b65536",
+        "batch": 65536,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.4365092799000195,
+      "seconds_per_iteration_samples": [
+        0.4365098104500248,
+        0.43650971390006815,
+        0.4365092799000195
+      ],
+      "achieved_tflops": 0.314859178946848,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.000948371020924241
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b65536",
+        "batch": 65536,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 1073741824 B L1 buffer across 110 banks, where each bank needs to store 9764864 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 536870912 B L1 buffer across 110 banks, where each bank needs to store 4882432 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 536870912 B L1 buffer across 110 banks, where each bank needs to store 4882432 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<bfloat16>(tt::tt_metal::Shape const&, bfloat16, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b65536",
+        "batch": 65536,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.4905577332500798,
+      "seconds_per_iteration_samples": [
+        0.4905685914500282,
+        0.4905577332500798,
+        0.49056021260003035
+      ],
+      "achieved_tflops": 0.28016876334092045,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.000843881817291929
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L64_b65536",
+        "batch": 65536,
+        "m": 64,
+        "k": 64,
+        "n": 64,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=64"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "failed",
+      "error": "RuntimeError: no usable tensor factory; tried rand: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 1073741824 B L1 buffer across 110 banks, where each bank needs to store 9764864 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::create_device_tensor(tt::tt_metal::TensorSpec const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::TensorTopology>)\n --- ttnn::operations::rand::RandDeviceOperation::create_output_tensors(ttnn::operations::rand::RandDeviceOperation::operation_attributes_t const&, ttnn::operations::rand::RandDeviceOperation::tensor_args_t const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/_ttnncpp.so(_ZN4ttnn16device_operation6detail6launchITkNS0_22DeviceOperationConceptENS_10operations4rand19RandDeviceOperationEEENT_21tensor_return_value_tERKNS6_22operation_attributes_tERKNS6_13tensor_args_tE+0x115) [0x78d9b5809b85]\n --- ttnn::prim::uniform(tt::tt_metal::Shape const&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, tt::tt_metal::distributed::MeshDevice&, float, float, unsigned int, ttsl::SmallVector<bool, 8ul>)\n --- ttnn::rand(tt::tt_metal::Shape const&, tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::DataType, tt::tt_metal::Layout, tt::tt_metal::MemoryConfig const&, float, float, unsigned int, std::optional<tt::tt_metal::distributed::MeshMapperConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x38f55c) [0x78d9b600155c]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | ones: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 1073741824 B L1 buffer across 110 banks, where each bank needs to store 9764864 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::ones(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662300) [0x78d9b62d4300]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x662783) [0x78d9b62d4783]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n | zeros: RuntimeError: TT_FATAL @ /project/tt_metal/impl/allocator/bank_manager.cpp:462: false\ninfo:\nOut of Memory: Not enough space to allocate 1073741824 B L1 buffer across 110 banks, where each bank needs to store 9764864 B, but bank size is 1461760 B (allocated: 0 B, free: 1461760 B, largest free block: 1461760 B)\nbacktrace:\n --- /opt/venv/lib/python3.12/site-packages/ttnn/build/lib/libtt_metal.so(+0x865e17) [0x78d9b389fe17]\n --- tt::tt_metal::BankManager::allocate_buffer(unsigned long, unsigned long, bool, tt::tt_metal::CoreRangeSet const&, std::optional<unsigned int>, ttsl::StrongType<unsigned int, tt::tt_metal::AllocatorIDTag>, std::vector<std::pair<unsigned long, unsigned long>, std::allocator<std::pair<unsigned long, unsigned long> > > const&)\n --- tt::tt_metal::AllocatorImpl::allocate_buffer(tt::tt_metal::Buffer*)\n --- tt::tt_metal::Buffer::allocate_impl()\n --- tt::tt_metal::Buffer::create(tt::tt_metal::IDevice*, unsigned long, unsigned long, tt::tt_metal::BufferType, tt::tt_metal::BufferShardingArgs const&, std::optional<bool>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::SubDeviceIdTag> >)\n --- tt::tt_metal::distributed::MeshBuffer::create(std::variant<tt::tt_metal::distributed::ReplicatedBufferConfig, tt::tt_metal::distributed::ShardedBufferConfig> const&, tt::tt_metal::distributed::DeviceLocalBufferConfig const&, tt::tt_metal::distributed::MeshDevice*, std::optional<unsigned long>)\n --- tt::tt_metal::tensor_impl::allocate_device_buffer(tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::TensorSpec const&)\n --- tt::tt_metal::MeshTensor::allocate_on_device(tt::tt_metal::distributed::MeshDevice&, tt::tt_metal::TensorSpec const&, tt::tt_metal::TensorTopology const&)\n --- tt::tt_metal::enqueue_write_tensor(tt::tt_metal::distributed::MeshCommandQueue&, tt::tt_metal::HostTensor const&, tt::tt_metal::distributed::MeshDevice&, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>)\n --- tt::tt_metal::to_device(tt::tt_metal::Tensor const&, tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >)\n --- tt::tt_metal::Tensor::to_device(tt::tt_metal::distributed::MeshDevice*, ttsl::optional_reference<tt::tt_metal::MemoryConfig const>, std::optional<ttsl::StrongType<unsigned char, tt::tt_metal::QueueIdTag> >) const\n --- tt::tt_metal::Tensor ttnn::creation_detail::full_impl<float>(tt::tt_metal::Shape const&, float, tt::tt_metal::Layout, tt::tt_metal::distributed::MeshDevice*, tt::tt_metal::MemoryConfig const&, std::optional<tt::tt_metal::Tensor>)\n --- tt::tt_metal::Tensor ttnn::full_impl<float>(tt::tt_metal::Shape const&, float, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, tt::tt_metal::distributed::MeshDevice*, std::optional<tt::tt_metal::MemoryConfig> const&, std::optional<tt::tt_metal::Tensor>)\n --- ttnn::zeros(tt::tt_metal::Shape const&, std::optional<tt::tt_metal::DataType> const&, std::optional<tt::tt_metal::Layout> const&, std::optional<std::reference_wrapper<tt::tt_metal::distributed::MeshDevice> >, std::optional<tt::tt_metal::MemoryConfig> const&)\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x661cf8) [0x78d9b62d3cf8]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x6621ab) [0x78d9b62d41ab]\n --- /opt/venv/lib/python3.12/site-packages/ttnn/_ttnn.cpython-312-x86_64-linux-gnu.so(+0x28e635) [0x78d9b5f00635]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0xe920) [0x1621aa0]\n --- python3() [0x1876122]\n --- python3() [0x1686e59]\n --- python3(_PyEval_EvalFrameDefault+0x36f1) [0x1616871]\n --- python3(PyEval_EvalCode+0xe2) [0x1684e62]\n --- python3() [0x16a4982]\n --- python3() [0x17aebff]\n --- python3(_PyRun_SimpleFileObject+0x118) [0x17af3ac]\n --- python3(_PyRun_AnyFileObject+0x42) [0x17af282]\n --- python3() [0x17af1c4]\n --- python3() [0x17af0d8]\n --- python3(Py_RunMain+0x2e5) [0x171f33b]\n --- python3() [0x17406fa]\n --- python3() [0x17404ed]\n --- /lib/x86_64-linux-gnu/libc.so.6(+0x2a1ca) [0x78d9b6ebc1ca]\n --- /lib/x86_64-linux-gnu/libc.so.6(__libc_start_main+0x8b) [0x78d9b6ebc28b]\n --- python3(_start+0x29) [0x1795ced]\n"
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 4.1493200023978714e-05,
+      "seconds_per_iteration_samples": [
+        4.1493200023978714e-05,
+        4.188570001133485e-05,
+        4.2884450067504076e-05
+      ],
+      "achieved_tflops": 1.6173460702288116,
+      "flops_per_iteration": 67108864,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.004871524307918107
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 3.644215003077989e-05,
+      "seconds_per_iteration_samples": [
+        3.6928250028722684e-05,
+        3.644215003077989e-05,
+        3.6793799972656414e-05
+      ],
+      "achieved_tflops": 1.8415176915554734,
+      "flops_per_iteration": 67108864,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.005546740034805642
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 8.641030008220696e-05,
+      "seconds_per_iteration_samples": [
+        0.00013045944997429614,
+        0.00013121639995006262,
+        8.641030008220696e-05
+      ],
+      "achieved_tflops": 0.7766303778155564,
+      "flops_per_iteration": 67108864,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0023392481259504713
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 3.642194997155457e-05,
+      "seconds_per_iteration_samples": [
+        3.642194997155457e-05,
+        3.824655004791566e-05,
+        4.332175003582961e-05
+      ],
+      "achieved_tflops": 1.8425390198056892,
+      "flops_per_iteration": 67108864,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.005549816324715931
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.00023340125007962343,
+      "seconds_per_iteration_samples": [
+        0.00023340125007962343,
+        0.00023467615001209196,
+        0.00023402044998874772
+      ],
+      "achieved_tflops": 4.600411624332343,
+      "flops_per_iteration": 1073741824,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.013856661519073324
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.00029886080001233494,
+      "seconds_per_iteration_samples": [
+        0.00029886080001233494,
+        0.00029936529999758933,
+        0.0002995333499711705
+      ],
+      "achieved_tflops": 3.5927824055737094,
+      "flops_per_iteration": 1073741824,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.01082163375172804
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004687642499447975,
+      "seconds_per_iteration_samples": [
+        0.0004687642499447975,
+        0.00046921379998821067,
+        0.00047138965001067843
+      ],
+      "achieved_tflops": 2.290579591183512,
+      "flops_per_iteration": 1073741824,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.006899336118022627
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch128_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 128,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 128 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0005678673499460273,
+      "seconds_per_iteration_samples": [
+        0.0005678673499460273,
+        0.0005683310000677011,
+        0.0005681847999767342
+      ],
+      "achieved_tflops": 1.8908321179269298,
+      "flops_per_iteration": 1073741824,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.005695277463635331
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 3.5889500031771605e-05,
+      "seconds_per_iteration_samples": [
+        0.00012890445004813954,
+        5.4335949971573425e-05,
+        3.5889500031771605e-05
+      ],
+      "achieved_tflops": 3.739749171239002,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.011264304732647596
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 3.60126500709157e-05,
+      "seconds_per_iteration_samples": [
+        3.7087449982209364e-05,
+        3.7053999949421265e-05,
+        3.60126500709157e-05
+      ],
+      "achieved_tflops": 3.7269606023355677,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.011225784946793878
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 5.6866049999371174e-05,
+      "seconds_per_iteration_samples": [
+        5.6979100008902606e-05,
+        5.688960000043153e-05,
+        5.6866049999371174e-05
+      ],
+      "achieved_tflops": 2.3602435548360434,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0071091673338435045
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p4096",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 4096,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 4.4375200013746506e-05,
+      "seconds_per_iteration_samples": [
+        4.4375200013746506e-05,
+        4.5890450019214767e-05,
+        4.4551350038091185e-05
+      ],
+      "achieved_tflops": 3.0246112233504787,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.009110274769127949
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004311212999709824,
+      "seconds_per_iteration_samples": [
+        0.0004311212999709824,
+        0.000431691999983741,
+        0.0004323002499404538
+      ],
+      "achieved_tflops": 4.9811587786187825,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.015003490297044526
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004904826500023773,
+      "seconds_per_iteration_samples": [
+        0.0004907279500002915,
+        0.0004904826500023773,
+        0.0004910900000140827
+      ],
+      "achieved_tflops": 4.378307057323213,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.013187671859407269
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0008538816499822133,
+      "seconds_per_iteration_samples": [
+        0.0008538816499822133,
+        0.000854304249969573,
+        0.0008567305999349628
+      ],
+      "achieved_tflops": 2.5149663867875987,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.0075751999602036105
+    },
+    {
+      "shape": {
+        "name": "beamspace_B16_ch256_p65536",
+        "batch": 1,
+        "m": 16,
+        "k": 256,
+        "n": 65536,
+        "real_matmuls": 4,
+        "family": "beamspace",
+        "note": "channel space 256 projected onto 16 beams"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0009485898499406176,
+      "seconds_per_iteration_samples": [
+        0.0009485898499406176,
+        0.0009496577000390971,
+        0.0009550079500513676
+      ],
+      "achieved_tflops": 2.2638695197238663,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "efficiency": 0.006818884095553814
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w2",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 2,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 2-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.00030243235005400493,
+      "seconds_per_iteration_samples": [
+        0.000303041899951495,
+        0.00030243235005400493,
+        0.00030276614998001603
+      ],
+      "achieved_tflops": 0.44379421704071315,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0013367295693997383
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w2",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 2,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 2-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004916879000120388,
+      "seconds_per_iteration_samples": [
+        0.0004925250500491529,
+        0.0004940495499795361,
+        0.0004916879000120388
+      ],
+      "achieved_tflops": 0.27297342073440023,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0008222090985975911
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w2",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 2,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 2-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.000665693300015846,
+      "seconds_per_iteration_samples": [
+        0.0006673550499726843,
+        0.0006671486000414007,
+        0.000665693300015846
+      ],
+      "achieved_tflops": 0.2016209686905443,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0006072920743691093
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w2",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 2,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 2-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0009432549999473849,
+      "seconds_per_iteration_samples": [
+        0.0009436830499907955,
+        0.0009443843499866489,
+        0.0009432549999473849
+      ],
+      "achieved_tflops": 0.1422920928142302,
+      "flops_per_iteration": 134217728,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.00042859064100671745
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w8",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 8,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 8-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.00030009090005478356,
+      "seconds_per_iteration_samples": [
+        0.00030027799994059023,
+        0.000300200850051624,
+        0.00030009090005478356
+      ],
+      "achieved_tflops": 1.7890276309677857,
+      "flops_per_iteration": 536870912,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.005388637442674054
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w8",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 8,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 8-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004929572000037296,
+      "seconds_per_iteration_samples": [
+        0.00049303730002066,
+        0.0004941238499668543,
+        0.0004929572000037296
+      ],
+      "achieved_tflops": 1.0890822002314564,
+      "flops_per_iteration": 536870912,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0032803680729863146
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w8",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 8,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 8-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0006651945999692543,
+      "seconds_per_iteration_samples": [
+        0.0006651945999692543,
+        0.0006672755000181497,
+        0.0006673255999885442
+      ],
+      "achieved_tflops": 0.8070885001544127,
+      "flops_per_iteration": 536870912,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.002430989458296424
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w8",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 8,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 8-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0009433523000552668,
+      "seconds_per_iteration_samples": [
+        0.0009436475500478991,
+        0.0009433523000552668,
+        0.0009434486999452929
+      ],
+      "achieved_tflops": 0.5691096655709083,
+      "flops_per_iteration": 536870912,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0017141857396714103
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w32",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 32,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 32-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0002997799500008114,
+      "seconds_per_iteration_samples": [
+        0.0002997799500008114,
+        0.0003005103500072437,
+        0.00030004549998920995
+      ],
+      "achieved_tflops": 7.1635332783069305,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.021576907464779912
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w32",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 32,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 32-wide output"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0004895361999842862,
+      "seconds_per_iteration_samples": [
+        0.0004907639499833749,
+        0.0004895361999842862,
+        0.0004926991000502312
+      ],
+      "achieved_tflops": 4.386771903832511,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.013213168385037683
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w32",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 32,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 32-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0006660651500169478,
+      "seconds_per_iteration_samples": [
+        0.0006664589000138221,
+        0.000666621300024417,
+        0.0006660651500169478
+      ],
+      "achieved_tflops": 3.224134527899197,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.00971124857800963
+    },
+    {
+      "shape": {
+        "name": "frontend_fir_taps64_w32",
+        "batch": 1,
+        "m": 262144,
+        "k": 64,
+        "n": 32,
+        "real_matmuls": 2,
+        "family": "frontend_fir",
+        "note": "64-tap complex FIR, 32-wide output"
+      },
+      "representative": true,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0009452199000406835,
+      "seconds_per_iteration_samples": [
+        0.0009456810500523716,
+        0.0009452199000406835,
+        0.0009462145999350469
+      ],
+      "achieved_tflops": 2.2719407916692926,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 2,
+      "tensor_factory": "rand",
+      "efficiency": 0.0068431951556304
+    },
+    {
+      "shape": {
+        "name": "reference_square_4096",
+        "batch": 1,
+        "m": 4096,
+        "k": 4096,
+        "n": 4096,
+        "real_matmuls": 1,
+        "family": "reference",
+        "note": "flattering shape, for contrast only"
+      },
+      "representative": false,
+      "dtype": "bfloat16",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0007059464000121807,
+      "seconds_per_iteration_samples": [
+        0.0007076167999912286,
+        0.0007059470999593032,
+        0.0007059464000121807
+      ],
+      "achieved_tflops": 194.68751943437715,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 1,
+      "tensor_factory": "rand",
+      "efficiency": 0.586408191067401
+    },
+    {
+      "shape": {
+        "name": "reference_square_4096",
+        "batch": 1,
+        "m": 4096,
+        "k": 4096,
+        "n": 4096,
+        "real_matmuls": 1,
+        "family": "reference",
+        "note": "flattering shape, for contrast only"
+      },
+      "representative": false,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.012551228199936305,
+      "seconds_per_iteration_samples": [
+        0.012551962050019938,
+        0.012551228199936305,
+        0.012553364650011644
+      ],
+      "achieved_tflops": 10.950239393519869,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 1,
+      "tensor_factory": "rand",
+      "efficiency": 0.03298264877566225
+    },
+    {
+      "shape": {
+        "name": "reference_square_4096",
+        "batch": 1,
+        "m": 4096,
+        "k": 4096,
+        "n": 4096,
+        "real_matmuls": 1,
+        "family": "reference",
+        "note": "flattering shape, for contrast only"
+      },
+      "representative": false,
+      "dtype": "float32",
+      "memory": "dram",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.0021740357999988193,
+      "seconds_per_iteration_samples": [
+        0.0021740357999988193,
+        0.0021775729000182765,
+        0.002177413850040466
+      ],
+      "achieved_tflops": 63.21834878343523,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 1,
+      "tensor_factory": "rand",
+      "efficiency": 0.19041671320311818
+    },
+    {
+      "shape": {
+        "name": "reference_square_4096",
+        "batch": 1,
+        "m": 4096,
+        "k": 4096,
+        "n": 4096,
+        "real_matmuls": 1,
+        "family": "reference",
+        "note": "flattering shape, for contrast only"
+      },
+      "representative": false,
+      "dtype": "float32",
+      "memory": "l1",
+      "iterations": 20,
+      "repeats": 3,
+      "status": "ok",
+      "seconds_per_iteration": 0.017554560549979215,
+      "seconds_per_iteration_samples": [
+        0.017566994099979638,
+        0.017554560549979215,
+        0.017569428250044438
+      ],
+      "achieved_tflops": 7.829244889423491,
+      "flops_per_iteration": 137438953472,
+      "real_matmuls_per_iteration": 1,
+      "tensor_factory": "rand",
+      "efficiency": 0.023582062919950277
+    }
+  ]
+}

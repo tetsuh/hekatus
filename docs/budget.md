@@ -29,28 +29,33 @@ capacity.
 
 ---
 
-## Measured efficiency (p150a, 2026-08-11)
+## Measured efficiency (p150a, 2026-08-14)
 
-Measured with `enodia/tt/bench`, one board, bfloat16, against the 332 TFLOPS
-peak above. Raw results and the environment that produced them:
-`docs/measurements/2026-08-11-p150a-effective-efficiency.json`.
+Measured with `enodia/tt/bench`, one development board, bfloat16, against
+the 332 TFLOPS peak above. Raw results and the environment that produced
+them — board, firmware, driver, toolchain digest, and the harness revision:
+`docs/measurements/2026-08-14-p150a-effective-efficiency.json`.
 
 | Shape | DRAM | L1 | best, as % of peak |
 |---|---|---|---|
-| Newton-Schulz L=64, batch 8192 | 0.31 | **10.72** | **3.2%** |
-| Newton-Schulz L=32, batch 8192 | 0.07 | 8.71 | 2.6% |
-| Beamspace B=16, 256 ch, 65536 px | 4.96 | 4.38 | 1.5% |
-| Front-end FIR, output width 32 | 7.09 | 4.34 | 2.1% |
-| *Reference: 4096³ square matmul* | *194.18* | *10.95* | *58.5%* |
+| Newton-Schulz L=64, batch 8192 | 0.31 | **10.71** | **3.2%** |
+| Newton-Schulz L=32, batch 8192 | 0.07 | 8.60 | 2.6% |
+| Beamspace B=16, 256 ch, 65536 px | 4.98 | 4.38 | 1.5% |
+| Front-end FIR, output width 32 | 7.16 | 4.39 | 2.2% |
+| *Reference: 4096³ square matmul* | *194.69* | *10.95* | *58.6%* |
+
+Each figure is the best of three timed blocks, and the record keeps all
+three: they spread by 1.4% at worst and under 0.5% for most shapes, so the
+differences above are the shapes and not the noise.
 
 Three things follow, and the third is the one that matters.
 
-**The silicon reaches 58.5% on a shape it likes.** The 40% assumption was
+**The silicon reaches 58.6% on a shape it likes.** The 40% assumption was
 never unreasonable *for the hardware*; a large square matmul beats it. So
 the deficit is not silicon, and not the measurement.
 
 **On-chip residency is worth 34x.** The same Newton-Schulz shape moves from
-0.31 to 10.72 TFLOPS between DRAM and L1 — a factor of 34.0 — which is design.md §2's "fitting
+0.31 to 10.71 TFLOPS between DRAM and L1 — a factor of 34.0 — which is design.md §2's "fitting
 on-chip is the paramount design concern" as a number. The L1 configurations
 that fail — batch 65536 at every L, and L=64/float32 at batch 8192 — map the
 on-chip budget by where they stop.

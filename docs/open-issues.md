@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
-| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.5% on a large square matmul, both on one p150a development board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
+| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.6% on a large square matmul, both on one p150a development board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
@@ -29,7 +29,7 @@ flashing step (design.md §2) — so each of them now waits on the same thing:
 a transfer that actually crosses the wire.
 
 **B2 still matters most**, but the question has changed shape. It was "is
-40% real?"; the board answers 58.5% on a shape it likes, so the hardware is
+40% real?"; the board answers 58.6% on a shape it likes, so the hardware is
 not the doubt. It is now "how much of the eighteenfold penalty this
 workload's shapes carry can a kernel take back?" — and that is answered by
 writing one, not by measuring again.
@@ -44,7 +44,7 @@ writing one, not by measuring again.
   choice on compute grounds alone**: measured on one p150a development
   board,
   one complex matmul of the Newton-Schulz step — the iteration issues two —
-  costs 247 µs at B=32 against 624 µs at B=16, so B=32 is
+  costs 250 µs at B=32 against 627 µs at B=16, so B=32 is
   2.5x faster in wall-clock while paying eight times the arithmetic — B=16
   fills half of a 32x32 tile and pays for the empty half. That reverses under
   a kernel that packs several small matrices into one tile, so the choice is
