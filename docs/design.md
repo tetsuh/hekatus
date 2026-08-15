@@ -189,6 +189,34 @@ spare capacity can be decided once real data arrives.
 (140 → 120).** Code that depends on the grid layout must pin the firmware
 version and keep a regression test.
 
+### The machine measurements are taken on
+
+The table above is the target specification. It is not automatically the
+machine a given number came from, and the two have already differed: the
+first measurements on this project ran on a p100a, which has no Ethernet at
+all and one fewer memory channel. Every measured figure therefore carries
+the board, firmware, driver, and toolchain image that produced it
+(`docs/measurements/`), and a figure without that provenance is not evidence.
+
+The development machine now carries **two p150a boards**, matching the
+target: 120 Tensix and 32 GB each, Ethernet present, firmware 19.6.0.0 and
+driver 2.8.0 pinned by the environment manifest. Two differences from the
+table are worth recording:
+
+- **PCIe negotiates at gen4**, not 5.0. The ingest path is Ethernet, so this
+  does not touch the 20 GB/s of §3, but enodia → diaplous is a DMA push
+  across this link, and gen4 x16 is roughly 32 GB/s.
+- **The firmware reports two different power limits** — 150 W as `tdp_limit`
+  and 300 W as the board limit. Under the compute measurement neither bound:
+  the board peaked at 102 W at full clock. Which one is enforced remains
+  unresolved, and will stay so until a workload approaches it.
+
+Ethernet is present but no link was up as delivered, and the topology tool
+does not support this generation — Blackhole trains its links from the
+runtime rather than from a flashing step. Establishing an actual chip-to-chip
+transfer is the first step of the receive-path work, not an assumption it can
+start from.
+
 ### What limits this workload
 
 Arithmetic is a few percent of theoretical peak. **The limits are GDDR6
@@ -776,11 +804,11 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 | Configuration | Recv ch | L | TFLOPS | Cards @40% |
 |---|---|---|---|---|
-| 128 elem / 64 ch recv | 64 | 32 | 35 | ~1 (headroom) |
-| 256 elem / 128 ch recv | 128 | 64 | 560 | ~4 (tight) |
-| 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (ample) |
-| post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 8–9 |
-| post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1** |
+| 128 elem / 64 ch recv | 64 | 32 | 35 | 1 (26% used) |
+| 256 elem / 128 ch recv | 128 | 64 | 560 | 5 (4.2 rounded up) |
+| 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (14% used) |
+| post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 9 |
+| post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1 (28% used)** |
 | 2D fully digital 4096 ch full MV | 4096 | 2048 | ~72,000,000 | ~540k (impossible) |
 
 ### By method (64 recv ch, 30 fps)
@@ -826,8 +854,13 @@ Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 **Two capacity bases appear**: "of one card" percentages are against the
 332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
 efficiency (133 TFLOPS usable per card). Never combine a percentage from
-one basis with a count from the other. **The 40% is an unverified
-assumption** — measure it early on Track B. The 4096-channel row follows
+one basis with a count from the other. **The 40% is a target for
+hand-written kernels, not a measured figure**: measured on one p150a
+development board, the stock toolchain delivers 3.2% on this workload's
+shapes, against 58.6%
+on a large square matmul in the same run (docs/budget.md). The card counts
+here therefore state what the design aims at, with a factor of twelve still
+to close. The 4096-channel row follows
 the N⁴ law from the 256-channel volume row; an earlier revision carried
 1.85e8 there, which did not reconcile.
 
@@ -1316,7 +1349,10 @@ A record, so the same debates are not repeated.
 
 ### Parameters decided by measurement
 
-- **effective efficiency (estimates assume 40%; measure first on Track B)**
+- **how much of the measured gap a hand-written kernel recovers.** The
+  efficiency itself is measured: 3.2% from the stock toolchain against
+  58.6% on a large square matmul, on one p150a (§10, docs/budget.md). The
+  40% the card counts assume is the target that gap has to reach
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
