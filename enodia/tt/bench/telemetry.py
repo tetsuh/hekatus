@@ -100,22 +100,55 @@ def _now() -> str:
     return datetime.datetime.now(datetime.UTC).isoformat()
 
 
+def _git(repo: Path, *args: str) -> tuple[str, bool]:
+    """Output of one git query, and whether it answered at all.
+
+    `_run` returns whatever landed on standard output and discards the exit
+    status, which is right for the environment block: a tool that is missing
+    costs one field. It is wrong for provenance. `git rev-parse` outside a
+    repository — an ownership check refusing the bind-mounted tree is the
+    realistic case here — exits non-zero with nothing on stdout, and empty
+    stdout is exactly what a clean `git status` produces. Read through `_run`,
+    a harness nobody could identify would be recorded as an unnamed commit in
+    a clean tree, which is the one thing this must never claim.
+    """
+    try:
+        completed = subprocess.run(
+            ("git", "-C", str(repo), *args),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing git must not stop a measurement
+        return f"git {' '.join(args)} could not run: {type(exc).__name__}: {exc}", False
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or f"exit status {completed.returncode}"
+        return f"git {' '.join(args)} failed: {detail}", False
+    return completed.stdout.strip(), True
+
+
 def harness_identity() -> dict:
     """Which revision of this tree computed the result.
 
     The FLOP accounting behind every efficiency figure lives here, so a
     measurement that cannot name the harness that produced it cannot be
     reproduced or compared against a later one. A modified tree is recorded
-    as modified rather than silently attributed to its last commit.
+    as modified rather than silently attributed to its last commit, and a
+    tree git could not read at all is recorded as unknown rather than clean.
     """
     repo = Path(__file__).resolve().parents[3]
-    commit = _run(("git", "-C", str(repo), "rev-parse", "HEAD")).strip()
+    commit, commit_ok = _git(repo, "rev-parse", "HEAD")
     # Tracked changes only. The toolchain writes its build output into the
     # tree on every run, so counting untracked files would make the flag true
     # always, which says nothing about the code that computed the result.
-    status = _run(
-        ("git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no")
-    ).strip()
+    status, status_ok = _git(repo, "status", "--porcelain", "--untracked-files=no")
+    if not (commit_ok and status_ok):
+        return {
+            "harness_commit": None,
+            "harness_dirty": None,
+            "harness_identity_error": commit if not commit_ok else status,
+        }
     return {"harness_commit": commit, "harness_dirty": bool(status)}
 
 

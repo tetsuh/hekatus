@@ -6,6 +6,7 @@ quoting was wrong. The parsing lives here instead, where it is exercised.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -120,14 +121,19 @@ def test_a_failing_writer_ends_the_sampler_rather_than_retrying(monkeypatch):
         telemetry._sample_loop(writer, interval=0.0)
 
 
+def _fake_git(status_output="", *, seen=None):
+    def fake_git(repo, *args):
+        if seen is not None:
+            seen.append(args)
+        return ("abc1234def", True) if args[0] == "rev-parse" else (status_output, True)
+
+    return fake_git
+
+
 def test_the_environment_names_the_harness_that_produced_it(monkeypatch):
     """A result is only reproducible if the code that computed it can be named:
     the FLOP accounting behind every efficiency figure lives in this tree."""
-    monkeypatch.setattr(
-        telemetry,
-        "_run",
-        lambda command: "abc1234def\n" if "rev-parse" in str(command) else "",
-    )
+    monkeypatch.setattr(telemetry, "_git", _fake_git())
 
     identity = telemetry.harness_identity()
 
@@ -136,12 +142,7 @@ def test_the_environment_names_the_harness_that_produced_it(monkeypatch):
 
 
 def test_a_modified_tree_is_recorded_as_such(monkeypatch):
-    def fake_run(command):
-        if "rev-parse" in str(command):
-            return "abc1234def\n"
-        return " M enodia/tt/bench/run_matmul.py\n"
-
-    monkeypatch.setattr(telemetry, "_run", fake_run)
+    monkeypatch.setattr(telemetry, "_git", _fake_git(" M enodia/tt/bench/run_matmul.py"))
 
     assert telemetry.harness_identity()["harness_dirty"] is True
 
@@ -151,15 +152,62 @@ def test_untracked_files_do_not_mark_the_harness_modified(monkeypatch):
     that counts untracked files is true always and says nothing about the code
     that computed the result."""
     seen = []
-
-    def fake_run(command):
-        seen.append(str(command))
-        return "abc1234def\n" if "rev-parse" in str(command) else ""
-
-    monkeypatch.setattr(telemetry, "_run", fake_run)
+    monkeypatch.setattr(telemetry, "_git", _fake_git(seen=seen))
 
     identity = telemetry.harness_identity()
 
-    status = next(c for c in seen if "status" in c)
+    status = next(args for args in seen if args[0] == "status")
     assert "--untracked-files=no" in status
     assert identity["harness_dirty"] is False
+
+
+@pytest.mark.parametrize("failing", ["rev-parse", "status"])
+def test_a_git_query_that_fails_leaves_the_harness_unknown_rather_than_clean(failing, monkeypatch):
+    """A failed query and a clean tree both put nothing on standard output.
+    Told apart by the exit status only — and if they are not told apart, a
+    harness nobody can name is recorded as an identified, unmodified one."""
+
+    def fake_git(repo, *args):
+        if args[0] == failing:
+            return "git failed: fatal: detected dubious ownership", False
+        return ("abc1234def", True) if args[0] == "rev-parse" else ("", True)
+
+    monkeypatch.setattr(telemetry, "_git", fake_git)
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_commit"] is None
+    assert identity["harness_dirty"] is None
+    assert "dubious ownership" in identity["harness_identity_error"]
+
+
+def test_a_nonzero_exit_is_a_failure_even_with_empty_output(monkeypatch):
+    """The exit status is the whole signal, so it is read from the process
+    rather than inferred from what the process printed."""
+
+    class _Failed:
+        returncode = 128
+        stdout = ""
+        stderr = "fatal: not a git repository\n"
+
+    monkeypatch.setattr(telemetry.subprocess, "run", lambda *a, **k: _Failed())
+
+    output, ok = telemetry._git(Path("/nowhere"), "rev-parse", "HEAD")
+
+    assert ok is False
+    assert "not a git repository" in output
+
+
+def test_a_missing_git_is_a_failure_rather_than_an_exception(monkeypatch):
+    """The sampler and the environment capture must survive a missing tool;
+    what they must not do is report an identity they did not obtain."""
+
+    def explode(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(telemetry.subprocess, "run", explode)
+
+    output, ok = telemetry._git(Path("/nowhere"), "rev-parse", "HEAD")
+
+    assert ok is False
+    assert "FileNotFoundError" in output
