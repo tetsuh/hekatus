@@ -41,15 +41,20 @@ writing one, not by measuring again.
 - Newton-Schulz: precision split (BF16/TF32/FP32), iteration count, choice of
   the initial value X0
 - Beamspace: basis design and dimension. **The dimension is no longer a free
-  choice on compute grounds alone**: measured on one p150a development
-  board,
+  choice on compute grounds alone**: measured on one p150a development board,
   one complex matmul of the Newton-Schulz step — the iteration issues two —
-  costs 250 µs at B=32 against 627 µs at B=16, so B=32 is
-  2.5x faster in wall-clock while paying eight times the arithmetic — B=16
-  fills half of a 32x32 tile and pays for the empty half. That reverses under
-  a kernel that packs several small matrices into one tile, so the choice is
-  now coupled to how far Track B goes into hand-written kernels, and to the
-  sample-support limit that made 16 attractive in the first place (§9, §11)
+  costs 250 µs on a 32x32 matrix against 627 µs on a 16x16 one, so the larger
+  dimension is 2.5x faster in wall-clock while paying eight times the
+  arithmetic. A 16x16 matrix fills half of a 32x32 tile and pays for the empty
+  half. That reverses under a kernel that packs several small matrices into
+  one tile, so the choice is now coupled to how far Track B goes into
+  hand-written kernels, and to the sample-support limit that made 16
+  attractive in the first place (§9, §11). The two figures are records
+  `newton_schulz_L32_b8192` and `newton_schulz_L16_b8192`, bfloat16 in L1, of
+  the 2026-08-14 measurement; the catalogue names that dimension L after the
+  subaperture, because the shape is the same either way — a beamspace
+  covariance of dimension B and a subaperture covariance of dimension L give
+  the Newton-Schulz step the same matrix to invert
 - Transmit compounding: window width, apodization, contributing-transmit
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?)
@@ -71,7 +76,7 @@ writing one, not by measuring again.
   scanline, which can create inconsistencies under transmit compounding**
 - Which power limit the board enforces — the firmware reports 150 W as
   `tdp_limit` and 300 W as the board limit. The compute measurement did not
-  approach either (93 W peak at full clock), so the question waits for a
+  approach either (102 W peak at full clock), so the question waits for a
   workload that does
 - **The latency budget does not close across the full range of its own
   stage estimates** (docs/budget.md): the critical path sums to ~27 ms at

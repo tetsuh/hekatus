@@ -7,7 +7,8 @@ again later. design.md §2 records that a firmware update once changed the
 core count, and the first measurements on this project ran on a different
 board from the target — so every result file here carries, in its own
 `environment` block, the board type and serial, firmware bundle, kernel
-driver version, and the toolchain image by digest. A companion trace is
+driver version, the toolchain image by digest, and the revision of the
+harness that computed the numbers. A companion trace is
 plain data with no such block: it inherits its provenance from the result
 file sharing its filename stem, and is meaningless apart from it.
 

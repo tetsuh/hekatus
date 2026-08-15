@@ -45,8 +45,18 @@ them — board, firmware, driver, toolchain digest, and the harness revision:
 | *Reference: 4096³ square matmul* | *194.69* | *10.95* | *58.6%* |
 
 Each figure is the best of three timed blocks, and the record keeps all
-three: they spread by 1.4% at worst and under 0.5% for most shapes, so the
-differences above are the shapes and not the noise.
+three. Behind the rows above the three agree to within 1.4% — worst on the
+L=32 L1 line at 1.37%, and closest on the two figures the argument rests on,
+0.14% for Newton-Schulz L=64 and 0.24% for the reference — so the
+differences between shapes are the shapes and not the noise.
+
+Not every record is that steady: eight of the sixty-one successful ones
+spread by more than 1.4%, and all eight are the catalogue's smallest shapes
+(batch 1024, or 4096 pixels), where one block costs tens of microseconds and
+per-dispatch overhead dominates what it measures. The largest, a factor of
+3.6, falls from the first block to the last and is a warm-up cost; the rest
+scatter in both directions. No figure quoted here comes from those shapes,
+and a reported figure is the best of three rather than their mean.
 
 Three things follow, and the third is the one that matters.
 
@@ -69,8 +79,8 @@ iteration, and a resident kernel that pays no per-operation dispatch. How
 much of the twelvefold is recoverable is now the central open question of
 Track B, and it is a question about kernels rather than about the board.
 
-**Power and clock did not bind.** Across the run the board peaked at 93 W at
-its full 1350 MHz and 73 °C, so neither the 150 W nor the 300 W reading of
+**Power and clock did not bind.** Across the run the board peaked at 102 W at
+its full 1350 MHz and 77.7 °C, so neither the 150 W nor the 300 W reading of
 the firmware limit constrains this workload — a figure that itself says the
 engines are idle much of the time.
 

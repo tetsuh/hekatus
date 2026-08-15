@@ -208,7 +208,7 @@ table are worth recording:
   across this link, and gen4 x16 is roughly 32 GB/s.
 - **The firmware reports two different power limits** — 150 W as `tdp_limit`
   and 300 W as the board limit. Under the compute measurement neither bound:
-  the board peaked at 93 W at full clock. Which one is enforced remains
+  the board peaked at 102 W at full clock. Which one is enforced remains
   unresolved, and will stay so until a workload approaches it.
 
 Ethernet is present but no link was up as delivered, and the topology tool
