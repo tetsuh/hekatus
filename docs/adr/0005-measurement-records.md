@@ -1,7 +1,7 @@
 # ADR-0005: Measurements are records, kept like decisions
 
-- Status: **Accepted** — 2026-08-15
-- Date: 2026-08-15
+- Status: **Accepted** — 2026-08-16
+- Date: 2026-08-16
 - Owner decision: yes
 
 ## Context
@@ -65,5 +65,5 @@ is treated, which is a process decision, and process decisions take a record.
 
 ## Status history
 
-- 2026-08-15: Accepted in pull request #36, which landed the first
+- 2026-08-16: Accepted in pull request #36, which landed the first
   measurement and the rules it arrived with.
