@@ -87,8 +87,8 @@ def test_the_coordinate_convention_is_position_in_samples_from_the_record_start(
 
 def test_the_record_is_zero_outside_its_ends():
     """Before the first sample is pre-transmit and past the last is no data;
-    both are read as zero. Stated so a port does not clamp, mirror, or
-    extrapolate — each is defensible, and each disagrees with the others."""
+    a tap landing there contributes zero. Stated so a port does not clamp,
+    mirror, or extrapolate — each is defensible, and each disagrees."""
     z = np.ones(8)
     # Well inside: exact.
     np.testing.assert_allclose(fractional_delay(z, np.array([3.5])), [1.0])
@@ -96,8 +96,88 @@ def test_the_record_is_zero_outside_its_ends():
     # the outside tap contributes zero, so the value is the partial sum.
     taps = fractional_delay_taps(0.5)
     np.testing.assert_allclose(fractional_delay(z, np.array([6.5])), [taps[:3].sum()])
-    # Entirely outside: zero, not an index error and not an edge value.
+    # All four taps outside: zero, not an index error and not an edge value.
     np.testing.assert_allclose(fractional_delay(z, np.array([-3.0, 12.0])), [0.0, 0.0])
+
+
+def test_a_position_just_outside_reads_the_taps_that_are_still_inside():
+    """The rule is about taps, not positions. t = -0.5 has two taps inside the
+    record, so it is a partial sum and not zero; only t < -2 or t >= N+1 puts
+    all four outside. Getting this backwards would silently zero the first and
+    last samples of every channel."""
+    z = np.ones(8)
+    taps = fractional_delay_taps(0.5)
+
+    np.testing.assert_allclose(fractional_delay(z, np.array([-0.5])), [taps[2:].sum()])
+    np.testing.assert_allclose(fractional_delay(z, np.array([7.5])), [taps[:2].sum()])
+    # One step further out: a single tap remains.
+    np.testing.assert_allclose(fractional_delay(z, np.array([-1.5])), [taps[3]])
+    np.testing.assert_allclose(fractional_delay(z, np.array([8.5])), [taps[0]])
+    # The first position with nothing inside, at each end.
+    np.testing.assert_allclose(fractional_delay(z, np.array([-2.0, 9.0])), [0.0, 0.0])
+
+
+@pytest.mark.parametrize(
+    ("record_dtype", "expected"),
+    [
+        (np.int16, np.float32),
+        (np.int32, np.float64),
+        (np.float32, np.float32),
+        (np.float64, np.float64),
+        (np.complex64, np.complex64),
+        (np.complex128, np.complex128),
+    ],
+)
+def test_an_integer_record_is_promoted_the_way_the_dataflow_says(record_dtype, expected):
+    """design.md §14: the IQ record is int16 complex and interpolation runs at
+    FP32 intermediate. Interpolating in the record's own integer type
+    truncates every tap to an integer — at t = 2.5 the four Lagrange weights
+    become 0, 0, 0, 0 and the output is a black image, not a coarse one."""
+    z = np.arange(8).astype(record_dtype)
+    got = fractional_delay(z, np.array([2.5]))
+
+    assert got.dtype == expected
+    np.testing.assert_allclose(got, [2.5], rtol=1e-6)
+
+
+def test_complex_integer_style_records_keep_both_components():
+    """int16 complex is the L1-resident format; NumPy carries it as two int16
+    planes, so both must survive the promotion."""
+    z = (np.arange(8) + 1j * np.arange(8, 0, -1)).astype(np.complex64)
+
+    got = fractional_delay(z, np.array([2.5]))
+
+    assert got.dtype == np.complex64
+    np.testing.assert_allclose(got, [2.5 + 5.5j], rtol=1e-6)
+
+
+@pytest.mark.parametrize("t_shape", [(2,), (1, 2), (2, 2)])
+def test_positions_broadcast_against_the_leading_axes_of_the_record(t_shape):
+    """One set of positions applied to every channel is the ordinary call: the
+    delay is per (channel, depth), but a caller sweeping one channel's record
+    against shared positions must not have to tile them by hand."""
+    z = np.arange(16.0).reshape(2, 8)
+    t = np.broadcast_to(np.array([1.5, 2.5]), t_shape)
+
+    got = fractional_delay(z, t)
+
+    assert got.shape == (2, 2)
+    np.testing.assert_allclose(got, [[1.5, 2.5], [9.5, 10.5]])
+
+
+def test_a_single_record_broadcasts_against_many_position_rows():
+    z = np.arange(8.0)
+    t = np.array([[1.5], [2.5], [3.5]])
+
+    got = fractional_delay(z, t)
+
+    assert got.shape == (3, 1)
+    np.testing.assert_allclose(got, [[1.5], [2.5], [3.5]])
+
+
+def test_leading_axes_that_cannot_broadcast_are_an_error():
+    with pytest.raises(ValueError):
+        fractional_delay(np.zeros((3, 8)), np.zeros((2, 4)))
 
 
 def test_complex_records_are_interpolated_componentwise():
