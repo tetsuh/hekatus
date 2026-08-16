@@ -420,7 +420,7 @@ image, so implementations state which convention they follow and the L0
 checkpoints compare phase, not just magnitude (§15).
 
 The expression decomposes into an **integer shift (a read-address offset)
-+ a fractional part (the 4-tap interpolation of the next subsection) + a
++ a fractional part (the 4-tap interpolation defined below) + a
 phase rotation (one complex multiply)**, making random access small and
 local. With fixed geometry, the phase term is precomputable.
 
@@ -438,6 +438,64 @@ not enough.
 
 Keep the ability to measure how the point-scatterer axial PSF changes
 between decimation ratios 8 and 4.
+
+### The interpolation kernel (normative, L0-relevant)
+
+`interp4` is **Lagrange cubic**: the four-point Lagrange basis on the nodes
+{−1, 0, +1, +2} around the target. Writing the position in samples as
+`t = n − d`, with the record's first sample at `t = 0`, `m = ⌊t⌋` and
+`μ = t − m ∈ [0, 1)`, the taps multiply `z[m−1], z[m], z[m+1], z[m+2]` with
+
+```text
+h₋₁ = −μ(μ−1)(μ−2)/6
+h₀  = (μ+1)(μ−1)(μ−2)/2
+h₊₁ = −(μ+1)μ(μ−2)/2
+h₊₂ = (μ+1)μ(μ−1)/6
+```
+
+`μ = 0` reads `z[m]` exactly; the taps sum to one for every μ. **The record
+is zero outside `[0, N)`**: a tap that falls before the first sample or past
+the last contributes zero, so a target near an end is a partial sum and one
+wholly outside is zero — not clamped, mirrored, or extrapolated, each of
+which is defensible and each of which disagrees with the others. The same
+real taps apply to I and Q. Reference: `enodia/spec/beamform/interp.py`.
+
+**Why Lagrange.** It is the maximally-flat fractional-delay FIR — exact for
+polynomials to degree 3, so its error vanishes fastest at DC, where the IQ
+spectrum has its energy. The sweep (`enodia/spec/beamform/interp_sweep.py`,
+pinned by `tests/test_interp_kernel.py`) gives the worst-case error over the
+fraction, at the band edge, for each decimation case above:
+
+| kernel | 5 MHz D=8 (0.30 fs') | 13 MHz D=2 (0.26 fs') | 5 MHz D=4 (0.15 fs') |
+|---|---|---|---|
+| none (phase rotation only) | 54° | 47° | 27° |
+| 2-tap linear | 7.5° / 41% | 4.6° / 32% | 0.8° / 11% |
+| **Lagrange cubic (4)** | **3.9° / 22%** | **2.0° / 13%** | **0.1° / 2%** |
+| Keys a=−½, Catmull-Rom (4) | 7.5° / 22% | 4.6° / 13% | 0.8° / 2% |
+| Hann-windowed sinc (4) | 10.1° / 32% | 6.5° / 23% | 1.2° / 6% |
+| *least-squares 4-tap, bound* | *1.6° / 9%* | *0.7° / 5%* | *0.04° / 0.4%* |
+
+Phase / magnitude. Lagrange halves linear's phase error and no other
+closed-form 4-tap beats it on either axis; Keys buys the same magnitude
+flatness and none of the phase. A least-squares design over the pass-band
+does better at the edge, but it is a table per pass-band rather than a
+formula, and it pays for the edge in-band (1.9% ripple at 0.05 fs' where
+Lagrange has 0.02%) — the wrong trade for a spectrum centred on DC. It is
+recorded as the bound on what four taps can do.
+
+**What the sweep also says**: at D=8, four taps still leave 22% magnitude
+error at the band edge for the worst fraction, against 2% at D=4. Whether
+that matters is a question about the axial PSF, which is why "decimation
+ratio and interpolation tap count" stays in §17 as a parameter decided by
+measurement — the kernel is fixed; how far to decimate under it is not.
+
+**L0.** The kernel is part of the equivalence contract, beside the
+phase-sign convention above: a port runs this kernel, and L0 compares like
+with like at checkpoint 2 (§15). A difference between kernels is never
+absorbed by a wider tolerance — that would spend the threshold on the thing
+it exists to catch. The reference takes the kernel as a named argument with
+exactly this one value defined; widening that set is a change to the
+contract (ADR-0007), not a new string.
 
 ---
 
@@ -1230,7 +1288,9 @@ makes later subtle mismatches untraceable.
 
 Checkpoints:
 1. front-end output (IQ) — relative error
-2. post-delay channel vectors — relative error, phase error
+2. post-delay channel vectors — relative error, phase error. **Both
+   sides run the interpolation kernel §5 names**; a kernel difference is
+   a contract difference, not a tolerance question (ADR-0007)
 3. after transmit compounding
 4. R — relative Frobenius-norm error
 5. **MV weight vector — direction cosine, norm (mandatory)**
@@ -1329,6 +1389,8 @@ A record, so the same debates are not repeated.
 | Block FP8 L1 residency | L1 already suffices; risk buys nothing |
 | phase rotation alone for fractional delay | ~50° band-edge error |
 | 2-tap linear interpolation | insufficient at 1.92× oversampling |
+| Keys / Catmull-Rom 4-tap | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
+| least-squares 4-tap fractional delay | better at the band edge, worse in band; a table per pass-band, not a formula (§5) |
 | local sound-speed map (Layer-1 (b)) | breaks translation invariance, gather-bound. Reserved as an extension |
 | full MV on 2D probes | two orders of magnitude short |
 | synthetic transmit aperture (STA, Stage 3) | single-element transmit SNR; deep field collapses |

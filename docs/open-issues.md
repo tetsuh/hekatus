@@ -57,7 +57,11 @@ writing one, not by measuring again.
   the Newton-Schulz step the same matrix to invert
 - Transmit compounding: window width, apodization, contributing-transmit
   truncation
-- Decimation ratio and interpolation tap count (are 4 taps enough?)
+- Decimation ratio and interpolation tap count (are 4 taps enough?). The
+  kernel is now fixed — Lagrange cubic, design.md §5 — and the sweep behind
+  it puts a number on the question: 22% band-edge magnitude error at D=8
+  against 2% at D=4. What is open is the axial-PSF consequence, measured on
+  the point-scatterer phantom between D=8 and D=4
 - Diagonal loading (2D may need more than 1D because of μBF grating lobes)
 - Core allocation (front-end / beamforming / inference)
 - Group-batch size and its boundary artifacts
