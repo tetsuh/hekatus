@@ -1440,7 +1440,7 @@ A record, so the same debates are not repeated.
 | phase rotation alone for fractional delay | ~50° band-edge error |
 | 2-tap linear interpolation | insufficient at 1.92× oversampling |
 | Keys / Catmull-Rom 4-tap (a=−1/2) | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
-| Keys 4-tap with a < −1/2 | wins the band edge by pre-emphasis; not third-order accurate, so its error stalls instead of vanishing as the pulse narrows (§5) |
+| Keys 4-tap with a < −1/2 | wins the band edge by pre-emphasis; its error also tends toward zero as the pulse narrows, but more slowly than Lagrange (§5) |
 | least-squares 4-tap fractional delay | a table per pass-band, not a formula two ports can check against each other (§5) |
 | local sound-speed map (Layer-1 (b)) | breaks translation invariance, gather-bound. Reserved as an extension |
 | full MV on 2D probes | two orders of magnitude short |

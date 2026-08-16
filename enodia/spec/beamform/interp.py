@@ -13,8 +13,8 @@ tolerance (ADR-0007).
 
 **Kernel: Lagrange cubic** — the four-point Lagrange basis on the nodes
 {−1, 0, +1, +2} around the target. It is the maximally-flat fractional-delay
-FIR: exact for polynomials to degree 3, so its error vanishes as the pulse
-narrows, where kernels tuned to the band edge stall. It is not best at every
+FIR: exact for polynomials to degree 3, so its error decays faster as the
+pulse narrows than the other evaluated candidates. It is not best at every
 operating point — `interp_sweep.py` shows where Keys with a < −1/2 beats it —
 and it is chosen for being robust across the decimation ratio (§17) and the
 pulse bandwidth (#46), both of which are open. design.md §5 carries the
