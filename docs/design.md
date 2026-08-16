@@ -490,32 +490,40 @@ signal actually carries:
 
 | kernel | D=8: −6 dB / −20 / −40 | 13 MHz D=2 | D=4 |
 |---|---|---|---|
-| 2-tap linear | 17.7 / 5.8 / 3.0 % | 13.7 / 4.4 / 2.3 % | 4.9 / 1.5 / 0.8 % |
-| **Lagrange cubic** | **12.7 / 1.9 / 0.55 %** | **8.5 / 1.2 / 0.32 %** | **1.4 / 0.15 / 0.04 %** |
-| Keys a=−1/2 | 12.7 / 2.0 / 0.62 % | 8.6 / 1.3 / 0.38 % | 1.5 / 0.19 / 0.06 % |
-| Keys a=−3/4 | 11.3 / 1.9 / 1.4 % | 7.1 / 1.6 / 1.3 % | 1.7 / 1.1 / 0.77 % |
-| Keys a=−1 | 11.3 / 4.1 / 3.2 % | 7.6 / 3.7 / 2.8 % | 3.9 / 2.3 / 1.6 % |
-| *least-squares, bound* | *11.0 / 1.7 / 1.5 %* | *7.0 / 0.9 / 0.83 %* | *1.0 / 0.10 / 0.09 %* |
+| 2-tap linear | 16.6 / 5.8 / 3.0 % | 13.4 / 4.4 / 2.2 % | 4.9 / 1.5 / 0.76 % |
+| **Lagrange cubic** | **10.8 / 1.9 / 0.55 %** | **7.9 / 1.2 / 0.32 %** | **1.4 / 0.15 / 0.04 %** |
+| Keys a=−1/2 | 10.9 / 2.0 / 0.62 % | 8.0 / 1.3 / 0.38 % | 1.5 / 0.19 / 0.06 % |
+| Keys a=−3/4 | 9.0 / 1.9 / 1.4 % | 6.4 / 1.6 / 1.3 % | 1.7 / 1.1 / 0.77 % |
+| Keys a=−1 | 8.9 / 4.1 / 3.2 % | 6.9 / 3.7 / 2.8 % | 3.8 / 2.3 / 1.6 % |
+| *least-squares, bound* | *8.5 / 1.7 / 1.5 %* | *6.2 / 0.92 / 0.83 %* | *1.0 / 0.10 / 0.09 %* |
 
-**Why Lagrange, stated as what the evidence supports.** It is not best
-everywhere: for a wide pulse at heavy decimation, Keys a = −3/4 and −1 and
-the least-squares bound are all a little better. Two things decide it
-anyway.
+The integration stops at the decimated Nyquist frequency: the record cannot
+represent anything above 0.5 cycles/sample, so scoring the kernel there
+measures a signal that is not in it. Worth noting that the −6 dB assumption
+reaches past that limit at D=8 — its 3σ is 0.77 — which says the widest
+assumption and the heaviest decimation are in tension, and is one more thing
+#46 has to settle.
 
-*The ranking depends on the pulse bandwidth, and this document does not
-state one.* "Band edge 1.5 MHz" above does not say at what level, and the
-columns show the order changing between −6 dB and −40 dB. Choosing a kernel
-that wins only in one column would tie the L0 contract to a number nobody
-has written down (#46).
+**Why Lagrange, stated as what the evidence supports.** Among the six closed
+forms it is **first in six of these nine cells, second in one, and third in
+two** — the two widest-pulse assumptions, where Keys a=−1 and a=−3/4 lead by
+21% and 24%. It is not best everywhere, and the choice is a trade rather
+than a ranking.
 
-*Lagrange is the only candidate whose error vanishes as the pulse narrows.*
-Being exact for polynomials to degree 3 — maximally flat at DC — it falls to
-0.55%, 0.32%, 0.04% at −40 dB, while Keys a=−1 stalls at 3.2%, 2.8%, 1.6%
-and the least-squares design at 1.5%, 0.83%, 0.09%. The kernels that beat it
-on a wide pulse carry an irreducible near-DC penalty, because none of them
-is third-order accurate. Across the two parameters that are genuinely open —
-the decimation ratio (§17) and the pulse bandwidth (#46) — Lagrange is the
-only closed form that is never worse than second and never far from first.
+*The trade.* Those same two kernels are **2.5 to 5.7 times worse** than
+Lagrange once the pulse narrows: at −40 dB, Keys a=−1 gives 3.2% against
+0.55% and a=−3/4 gives 1.4%. So the choice buys a factor of several in the
+narrow-pulse corner at the cost of about a fifth in the wide-pulse one.
+
+*It is a trade the document cannot yet settle by measurement, and that is
+why robustness wins.* "Band edge 1.5 MHz" above does not say at what level,
+so which column applies is unknown (#46), and the decimation ratio is open
+too (§17). Lagrange is the only closed form whose error **vanishes** as the
+pulse narrows rather than stalling — being exact for polynomials to degree 3
+it is maximally flat at DC, and a factor of two separates the two
+third-order accurate kernels from every other candidate at −40 dB. The ones
+that beat it on a wide pulse carry an irreducible near-DC penalty, because
+none of them is third-order accurate.
 
 **So the choice is robustness, not dominance, and it is provisional.** What
 settles it is the axial-PSF measurement this section already asks for,

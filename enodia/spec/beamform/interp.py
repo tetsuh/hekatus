@@ -117,6 +117,10 @@ def fractional_delay(z: np.ndarray, t: np.ndarray, *, kernel: str = "lagrange4")
     z = np.broadcast_to(z, (*lead, n))
     t = np.broadcast_to(t, (*lead, t.shape[-1]))
     n_pos = t.shape[-1]
+    if n == 0:
+        # Every tap is outside a record with no samples, so the boundary rule
+        # already answers this; gathering would raise instead.
+        return np.zeros((*lead, n_pos), dtype=out_dtype)
 
     m = np.floor(t)
     idx = m.astype(np.int64)[..., None] + _TAP_OFFSETS  # (*lead, P, 4)

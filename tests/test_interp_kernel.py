@@ -116,8 +116,13 @@ def test_a_position_just_outside_reads_the_taps_that_are_still_inside():
     # One step further out: a single tap remains.
     np.testing.assert_allclose(fractional_delay(z, np.array([-1.5])), [taps[3]])
     np.testing.assert_allclose(fractional_delay(z, np.array([8.5])), [taps[0]])
-    # The first position with nothing inside, at each end.
+    # Zero at both, for different reasons. At t = 9 with N = 8 every tap is
+    # outside. At t = -2 sample 0 is still in range, but mu = 0 puts all the
+    # weight on the tap for z[m], which is outside — so the rule bites
+    # through the tap weight rather than through the index range.
     np.testing.assert_allclose(fractional_delay(z, np.array([-2.0, 9.0])), [0.0, 0.0])
+    # Just past it, the last position that still reads something.
+    assert fractional_delay(z, np.array([-1.999]))[0] != 0.0
 
 
 @pytest.mark.parametrize(
@@ -271,35 +276,60 @@ def test_the_least_squares_bound_is_pinned_too(case, expected):
 
 _WEIGHTED_TABLE = {
     "5MHz_D8": {
-        "linear2": (17.71, 5.83, 2.98),
-        "lagrange4": (12.67, 1.93, 0.55),
-        "keys4_a050": (12.68, 2.04, 0.62),
-        "keys4_a075": (11.29, 1.86, 1.40),
-        "keys4_a100": (11.33, 4.08, 3.16),
+        "linear2": (16.60, 5.83, 2.98),
+        "lagrange4": (10.82, 1.93, 0.55),
+        "keys4_a050": (10.88, 2.04, 0.62),
+        "keys4_a075": (9.03, 1.86, 1.40),
+        "keys4_a100": (8.91, 4.08, 3.16),
+        "ls4_bound": (8.50, 1.66, 1.50),
     },
     "13MHz_D2": {
-        "lagrange4": (8.51, 1.16, 0.32),
-        "keys4_a050": (8.57, 1.26, 0.38),
-        "keys4_a075": (7.13, 1.60, 1.26),
-        "keys4_a100": (7.60, 3.71, 2.77),
+        "linear2": (13.42, 4.42, 2.25),
+        "lagrange4": (7.91, 1.16, 0.32),
+        "keys4_a050": (8.00, 1.26, 0.38),
+        "keys4_a075": (6.38, 1.60, 1.26),
+        "keys4_a100": (6.87, 3.71, 2.77),
+        "ls4_bound": (6.25, 0.92, 0.83),
     },
     "5MHz_D4": {
+        "linear2": (4.89, 1.50, 0.76),
         "lagrange4": (1.40, 0.15, 0.04),
         "keys4_a050": (1.50, 0.19, 0.06),
         "keys4_a075": (1.67, 1.07, 0.77),
         "keys4_a100": (3.85, 2.26, 1.58),
+        "ls4_bound": (1.04, 0.10, 0.09),
     },
 }
 
 
+def _candidate(name, edge):
+    if name == "ls4_bound":
+        return lambda mu: least_squares4(mu, edge)
+    return CANDIDATES[name]
+
+
 @pytest.mark.parametrize("case", sorted(_WEIGHTED_TABLE))
 def test_every_pulse_weighted_figure_quoted_in_the_design_is_pinned(case):
+    edge = BAND_EDGES[case]
     for name, expected in _WEIGHTED_TABLE[case].items():
         for db, want in zip(PULSE_ROLLOFFS_DB, expected, strict=True):
-            got = 100.0 * pulse_weighted_rms_error(
-                CANDIDATES[name], BAND_EDGES[case], rolloff_db=db
-            )
+            got = 100.0 * pulse_weighted_rms_error(_candidate(name, edge), edge, rolloff_db=db)
             assert got == pytest.approx(want, abs=0.01), f"{case}/{name}/-{db:g}dB"
+
+
+def test_the_pulse_metric_stops_at_the_decimated_nyquist_frequency():
+    """The record cannot represent anything above 0.5 cycles/sample, so
+    scoring the kernel's response there measures a signal that is not in it.
+    Two of the nine cells reach past it — the widest pulse assumption puts 3σ
+    at 0.77 for 5 MHz D=8 — and integrating that far changed the figures,
+    though not the order. A wider integration cannot lower the error, so
+    clipping must not raise it."""
+    edge = BAND_EDGES["5MHz_D8"]
+    sigma = edge / np.sqrt(2.0 * np.log(10.0 ** (6.0 / 20.0)))
+    assert 3.0 * sigma > 0.5
+
+    clipped = pulse_weighted_rms_error(CANDIDATES["lagrange4"], edge, rolloff_db=6.0)
+    assert clipped == pytest.approx(0.1082, abs=0.0001)
 
 
 def test_the_spec_kernel_and_the_sweep_candidate_are_the_same_function():
@@ -338,6 +368,25 @@ def test_the_ranking_flips_with_the_assumed_pulse_bandwidth():
     )
 
 
+def test_lagrange_leads_six_of_the_nine_cells_and_never_falls_below_third():
+    """The claim §5 makes, pinned. An earlier version said "never worse than
+    second", which was false in two cells — the same overstatement, one round
+    later, as the claim it replaced. The trade is stated instead: third in the
+    two widest-pulse cells, by 21% and 24%, and first wherever the pulse is
+    narrow."""
+    ranks = []
+    for edge in BAND_EDGES.values():
+        for db in PULSE_ROLLOFFS_DB:
+            scores = {
+                name: pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=db)
+                for name in CANDIDATES
+            }
+            ranks.append(sorted(scores, key=scores.get).index("lagrange4") + 1)
+
+    assert ranks.count(1) == 6
+    assert max(ranks) == 3
+
+
 @pytest.mark.parametrize("case", sorted(BAND_EDGES))
 def test_only_the_third_order_accurate_kernels_vanish_as_the_pulse_narrows(case):
     """The property Lagrange is chosen for. Kernels that are not third-order
@@ -360,12 +409,14 @@ def test_only_the_third_order_accurate_kernels_vanish_as_the_pulse_narrows(case)
         assert narrow[name] > 2.0 * narrow["lagrange4"], name
 
 
-def test_phase_rotation_alone_is_the_error_the_design_states():
+@pytest.mark.parametrize(
+    ("case", "degrees"), [("5MHz_D8", 54.0), ("13MHz_D2", 46.8), ("5MHz_D4", 27.0)]
+)
+def test_phase_rotation_alone_is_the_error_the_design_states(case, degrees):
     """The 47° and 54° in design.md §5 are the no-interpolation case at the
     worst fraction; the sweep's metric reduces to them, which pins the metric
-    to the design's framing."""
-    assert interp_sweep_no_interp_worst(BAND_EDGES["13MHz_D2"]) == pytest.approx(46.8, abs=0.1)
-    assert interp_sweep_no_interp_worst(BAND_EDGES["5MHz_D8"]) == pytest.approx(54.0, abs=0.1)
+    to the design's framing. The 27° at D=4 is quoted in the same table."""
+    assert interp_sweep_no_interp_worst(BAND_EDGES[case]) == pytest.approx(degrees, abs=0.1)
 
 
 def interp_sweep_no_interp_worst(edge: float) -> float:

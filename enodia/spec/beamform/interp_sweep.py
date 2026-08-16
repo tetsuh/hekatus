@@ -148,12 +148,20 @@ def pulse_weighted_rms_error(
 
         sqrt( E_μ[ ∫S(f)·|H(f) − e^(−j2πfμ)|² df / ∫S(f) df ] )
 
-    which is the normalized error energy the delayed channel signal carries.
+    which is the normalized error energy the delayed channel signal carries,
+    integrated over the band the decimated record can represent.
     ``rolloff_db`` is an assumption, not a measurement — design.md gives a
     band edge without saying at what level (#46) — so a caller sweeps it.
     """
     sigma = band_edge / np.sqrt(2.0 * np.log(10.0 ** (rolloff_db / 20.0)))
-    f = np.linspace(-3.0 * sigma, 3.0 * sigma, n_freq)
+    # Stop at the decimated Nyquist frequency. The record cannot represent
+    # anything above 0.5 cycles/sample, so scoring the kernel's response
+    # there measures a signal that does not exist in it. Worth noticing that
+    # the widest assumption reaches past it — 3σ is 0.77 at the 5 MHz D=8
+    # edge — which says that assumption and that decimation ratio are in
+    # tension, and is one more thing #46 has to settle.
+    f_max = min(3.0 * sigma, 0.5)
+    f = np.linspace(-f_max, f_max, n_freq)
     spectrum = np.exp(-(f**2) / (2.0 * sigma**2)) ** 2
     w = 2.0 * np.pi * f
     mus = np.linspace(0.0, 1.0, fractions)
