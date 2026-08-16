@@ -130,17 +130,17 @@ def test_a_position_just_outside_reads_the_taps_that_are_still_inside():
     [
         (np.int16, np.float32),
         (np.int32, np.float64),
+        (np.float16, np.float32),
         (np.float32, np.float32),
         (np.float64, np.float64),
         (np.complex64, np.complex64),
         (np.complex128, np.complex128),
     ],
 )
-def test_an_integer_record_is_promoted_the_way_the_dataflow_says(record_dtype, expected):
+def test_a_record_uses_the_contract_minimum_interpolation_dtype(record_dtype, expected):
     """design.md §14: the IQ record is int16 complex and interpolation runs at
-    FP32 intermediate. Interpolating in the record's own integer type
-    truncates every tap to an integer — at t = 2.5 the four Lagrange weights
-    become 0, 0, 0, 0 and the output is a black image, not a coarse one."""
+    an FP32-or-wider intermediate. Integer arithmetic truncates every tap at
+    t = 2.5 to zero, while float16 is narrower than the contract minimum."""
     z = np.arange(8).astype(record_dtype)
     got = fractional_delay(z, np.array([2.5]))
 
@@ -388,25 +388,27 @@ def test_lagrange_leads_six_of_the_nine_cells_and_never_falls_below_third():
 
 
 @pytest.mark.parametrize("case", sorted(BAND_EDGES))
-def test_only_the_third_order_accurate_kernels_vanish_as_the_pulse_narrows(case):
-    """The property Lagrange is chosen for. Kernels that are not third-order
-    accurate carry an irreducible near-DC penalty, so their error stalls
-    while Lagrange's keeps falling — which is what makes it safe against a
-    pulse bandwidth nobody has written down."""
+def test_candidates_decay_toward_dc_and_lagrange_has_lowest_narrow_pulse_error(case):
+    """All normalized candidates improve toward DC, while Lagrange decays
+    faster and is lowest in the measured narrow-pulse cases."""
     edge = BAND_EDGES[case]
-    narrow = {
+    broad = {
         name: pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=40.0)
         for name in CANDIDATES
     }
+    narrower = {
+        name: pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=80.0)
+        for name in CANDIDATES
+    }
 
-    assert narrow["lagrange4"] == min(narrow.values())
-    # A factor of two separates the two third-order accurate kernels from
-    # everything else, at every decimation case: Catmull-Rom lands at
-    # 1.13x, 1.18x, 1.53x, and the nearest kernel that is not third-order
-    # accurate at 2.54x, 3.63x, 9.30x.
-    assert narrow["keys4_a050"] < 2.0 * narrow["lagrange4"]
+    for name in CANDIDATES:
+        assert narrower[name] < broad[name], name
+    assert narrower["lagrange4"] == min(narrower.values())
+    # At -40 dB, a factor of two separates the two third-order accurate
+    # kernels from every other candidate in each decimation case.
+    assert broad["keys4_a050"] < 2.0 * broad["lagrange4"]
     for name in ("linear2", "keys4_a075", "keys4_a100", "hann_sinc4"):
-        assert narrow[name] > 2.0 * narrow["lagrange4"], name
+        assert broad[name] > 2.0 * broad["lagrange4"], name
 
 
 @pytest.mark.parametrize(

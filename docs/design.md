@@ -518,12 +518,13 @@ narrow-pulse corner at the cost of about a fifth in the wide-pulse one.
 *It is a trade the document cannot yet settle by measurement, and that is
 why robustness wins.* "Band edge 1.5 MHz" above does not say at what level,
 so which column applies is unknown (#46), and the decimation ratio is open
-too (§17). Lagrange is the only closed form whose error **vanishes** as the
-pulse narrows rather than stalling — being exact for polynomials to degree 3
-it is maximally flat at DC, and a factor of two separates the two
-third-order accurate kernels from every other candidate at −40 dB. The ones
-that beat it on a wide pulse carry an irreducible near-DC penalty, because
-none of them is third-order accurate.
+too (§17). Lagrange's error decays faster as the pulse narrows than the other
+evaluated closed forms — being exact for polynomials to degree 3 it is
+maximally flat at DC. At −40 dB, a factor of two separates the two third-order
+accurate kernels
+from every other candidate. The kernels that beat it on a wide pulse have a
+larger measured narrow-pulse error in this sweep, so the choice remains a
+robustness trade rather than a universal ranking.
 
 **So the choice is robustness, not dominance, and it is provisional.** What
 settles it is the axial-PSF measurement this section already asks for,
@@ -532,8 +533,9 @@ Lagrange, because L0 needs one kernel rather than the best one.
 
 **What the sweep also says**: at D=8, four taps still leave 22% band-edge
 magnitude error for the worst fraction, against 2% at D=4 — and the pulse-
-weighted error falls by a factor of nine between the two. Whether that
-matters is the same PSF question, which is why "decimation ratio and
+weighted error improves by a rolloff-dependent factor: about 7.7× at −6 dB,
+13.2× at −20 dB, and 14.5× at −40 dB. Whether that matters
+is the same PSF question, which is why "decimation ratio and
 interpolation tap count" stays in §17 as a parameter decided by measurement.
 The kernel is fixed; how far to decimate under it is not.
 

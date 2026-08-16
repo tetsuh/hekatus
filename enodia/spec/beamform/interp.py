@@ -31,16 +31,19 @@ order. μ = 0 reads z[m] exactly.
 sample is pre-transmit; past the last there is no data. The rule is about
 the *taps*, not about the position: a tap landing outside contributes
 nothing, so a position within two samples of an end reads a partial sum of
-the taps that are still inside, and only a position whose four taps all fall
-outside — t < −2 or t ≥ N+1 — reads zero. Not clamped, not mirrored, not
+the taps that are still inside. A position whose four taps all fall outside —
+t < −2 or t ≥ N+1 — reads zero, but a zero result can also occur at an exact
+boundary when an in-range tap has zero weight. Not clamped, not mirrored, not
 extrapolated; each of those is defensible and each disagrees with the others.
 
 **Precision.** design.md §14 fixes the dataflow: the IQ record is int16
 complex and interpolation runs at FP32 intermediate. An integer record is
 therefore promoted rather than interpolated in its own type — integer taps
 would truncate every fractional weight to zero, which is a silently black
-image and not a lower-precision one. A floating record keeps its own
-precision, since dtype is a swept parameter. The taps themselves are formed
+image and not a lower-precision one. An FP32-or-wider floating record keeps its
+own precision; narrower floating inputs and integer inputs promote to FP32,
+since the intermediate precision is a contract minimum. The taps themselves
+are formed
 in float64 and cast down on application, for the reason §14 gives for
 geometry and delay tables: they are cheap, and computing them exactly keeps
 "the reference's own rounding" off the list of suspects when a port
@@ -89,8 +92,9 @@ def fractional_delay_taps(mu, *, kernel: str = "lagrange4") -> np.ndarray:
 def interpolation_dtype(record_dtype) -> np.dtype:
     """The dtype interpolation runs in for a record of ``record_dtype``.
 
-    design.md §14: int16 complex IQ, FP32 intermediate. An integer record is
-    promoted to floating point; a floating record keeps its own precision.
+    design.md §14: int16 complex IQ, FP32 intermediate. An integer or narrower
+    floating record is promoted to FP32; an FP32-or-wider floating record keeps
+    its own precision.
     """
     return np.result_type(record_dtype, np.float32)
 
