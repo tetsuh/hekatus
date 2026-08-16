@@ -1,8 +1,9 @@
 # ADR-0007: The interpolation kernel is part of the L0 contract
 
-- Status: **Accepted** — 2026-08-16
+- Status: **Proposed**
 - Date: 2026-08-16
-- Owner decision: yes
+- Owner decision: pending — the transition to `Accepted` is written in this
+  pull request before it merges (owner decision CLPR45-D1)
 
 ## Context
 
@@ -83,7 +84,13 @@ D is chosen.
    config ID / generation mechanism `docs/dataplane.md` already has.
 
 Which kernel is not decided here: it is a sweep-backed parameter and lives
-in design.md §5 with its sweep, per AGENTS.md rule 7.
+in design.md §5 with its sweep, per AGENTS.md rule 7. That the specified
+kernel is currently Lagrange cubic, chosen for robustness across two open
+parameters rather than for dominance, and provisional on an axial-PSF
+measurement, does not change anything decided above — which is exactly the
+point of separating the two. The contract is that *a* kernel is named and
+that L0 runs it; replacing the named kernel is a §5 change with its sweep,
+not a change to this record.
 
 ## Consequences
 
@@ -100,6 +107,9 @@ in design.md §5 with its sweep, per AGENTS.md rule 7.
 
 ## Status history
 
-- 2026-08-16: Accepted in pull request #45, which carries the kernel
+- 2026-08-16: Proposed in pull request #45, which carries the kernel
   definition in design.md §5, the reference implementation of it, and the
-  sweep behind the choice.
+  sweep behind the choice. Held at `Proposed` while that pull request is
+  open, per owner decision CLPR45-D1; the transition to `Accepted` is
+  written in the same pull request before it merges, as ADR-0004 requires
+  of every transition.
