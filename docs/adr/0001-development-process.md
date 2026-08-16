@@ -86,3 +86,7 @@ Full rules: `docs/development_workflow.md`.
 - 2026-08-11: Amended by ADR-0003 — commit header width, the explicit scope
   requirement, and the exemption of platform-generated integration commits —
   effective on that record's acceptance. The rest of this decision stands.
+- 2026-08-16: Amended by ADR-0006 — `1 issue = 1 branch = 1 PR` holds at
+  filing, and a pull request may also close issues raised while it was open
+  when the fix belongs in the same diff; no per-issue commit count —
+  effective on that record's acceptance. The rest of this decision stands.

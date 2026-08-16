@@ -28,12 +28,12 @@ is the complete authority.
 - Problems discovered during work get a **new Issue**. Drive-by fixes are
   prohibited (typo-level corrections at reviewer discretion).
 
-**A pull request is opened for exactly one issue.** It may close a second
-only when that issue was raised while the pull request was open — by its
-review, or by the work itself — and the change it calls for belongs in the
-same diff. That is the normal way a change grows under scrutiny: a problem
-found during work becomes an issue rather than a drive-by fix, and closing
-it here keeps the fix with what caused it.
+**A pull request is opened for exactly one issue.** It may also close
+issues raised while it was open — by its review, or by the work itself —
+when the change they call for belongs in the same diff. That is the normal
+way a change grows under scrutiny: a problem found during work becomes an
+issue rather than a drive-by fix, and closing it here keeps the fix with
+what caused it.
 
 Issues that already exist when a pull request is opened are **never grouped
 into it**, and a decision that establishes or alters a contract is reviewed
@@ -43,7 +43,8 @@ such a decision.
 The requirement is that **traceability survives**. It is met when all three
 hold:
 
-- every commit header names exactly one issue;
+- every authored commit header names exactly one issue (platform-generated
+  integration commits stay exempt, per §3 and ADR-0003);
 - every issue a commit names is listed with `Closes #NN` in the PR body;
 - every issue in `Closes` is named by at least one commit.
 
@@ -195,13 +196,14 @@ links are permitted; anything that alters what the record says is not.
   step-level commits. Use `git log --first-parent main` for the PR-level view.
 - **Squash merge only on explicit owner instruction** for that PR.
   Rebase merge and auto-merge are prohibited.
-- **A branch carrying a landed measurement record cannot be rebuilt.** The
-  record names the harness revision that produced it (ADR-0005), and that
-  revision is always an ancestor inside the same branch — the measurement
-  runs against a committed tree, so the commit holding a result can never be
-  the commit the result names. Rewriting such history leaves the field
-  pointing at a SHA that no longer exists. Re-running the measurement is the
-  only way to rebuild the branch.
+- **A rewrite must preserve the harness revision a measurement record
+  names.** The record names the revision that produced it (ADR-0005), and
+  that revision is an ancestor inside the same branch — the measurement runs
+  against a committed tree, so the commit holding a result can never be the
+  commit the result names. Commits after that revision may be rewritten as
+  on any branch. Rewriting or removing the named revision leaves the record
+  pointing at a SHA that no longer exists; re-running the measurement is the
+  only way to rebuild such a branch.
 - Delete the `feat/` branch after merge.
 
 ## 8. CI

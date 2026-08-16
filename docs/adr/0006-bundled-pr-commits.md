@@ -1,6 +1,7 @@
 # ADR-0006: How many commits a bundled pull request may have
 
 - Status: **Accepted** — 2026-08-16
+- Amends: ADR-0001 (development process)
 - Date: 2026-08-16
 - Owner decision: yes
 
@@ -44,9 +45,9 @@ longer exists, and editing the field to match is inventing a provenance
 rather than recording one.
 
 **The rule has never been met.** Two pull requests in this repository have
-closed more than one issue. #24 closed four with seven commits — three for
-#18, two for #19, one each for #20 and #23 — and `f9e6d70`, the commit that
-wrote the rule, is one of the three it contributed to #18. The rule was
+closed more than one issue. #24 closed four with seven commits — three
+for #18, two for #19, one each for #20 and #23 — and `f9e6d70`, the commit
+that wrote the rule, is one of the three it contributed to #18. The rule was
 broken by the pull request that introduced it, in the act of introducing it,
 and nothing flagged it. #36 is the second bundled pull request and the first
 occasion the rule was enforced.
@@ -79,7 +80,7 @@ most scrutiny — which are the changes whose history is worth keeping.
   decided — `1 Issue = 1 branch = 1 PR` carries an owner decision, while the
   count never did. Rejected on the evidence of use. Bundling has been used
   twice and both times for what it was written for: #24 gathered four small
-  findings from one documentation review, and #36 carried a measurement
+  findings from two documentation reviews, and #36 carried a measurement
   together with the record of the machine it ran on, whose acceptance
   criteria required data that same run produced. What has failed is the
   count, not the permission. Splitting a review pass into one pull request
@@ -104,17 +105,19 @@ lists no option the decision could have gone to has not shown its work.
 ## Decision
 
 1. **Traceability is the requirement.** A bundled pull request satisfies it
-   when all three hold: every commit header names exactly one issue; every
-   issue a commit names appears in `Closes #NN` in the pull-request body; and
-   every issue in `Closes` is named by at least one commit. All three are
-   mechanically checkable from the branch and the body alone.
+   when all three hold: every authored commit header names exactly one
+   issue; every issue a commit names appears in `Closes #NN` in the
+   pull-request body; and every issue in `Closes` is named by at least one
+   commit. Platform-generated integration commits stay exempt, as ADR-0003
+   made them. All three conditions are mechanically checkable from the
+   branch and the body alone.
 2. **The commit count is not constrained.** §7 governs a bundled pull
    request exactly as it governs any other: history keeps the meaningful
    steps. A bundled branch is not squashed per issue.
 3. **Bundling is narrowed to what the pull request itself produces.** A
-   pull request is opened for exactly one issue. An issue raised while it is
+   pull request is opened for exactly one issue. Issues raised while it is
    open — by its review, or by the work itself — may be closed by it as
-   well, when the change it calls for belongs in the same diff. Issues that
+   well, when the change they call for belongs in the same diff. Issues that
    already exist when a pull request is opened are never grouped into it,
    and a decision that establishes or alters a contract is still reviewed
    on its own.
@@ -135,11 +138,19 @@ lists no option the decision could have gone to has not shown its work.
    work surfaces is no more a filing-time grouping than one a reviewer
    surfaces, and pre-existing issues are barred by a separate sentence
    either way.
-4. **A branch carrying a landed measurement record cannot be rebuilt
-   without re-running the measurement.** This follows from ADR-0005 rather
-   than from anything decided here, and it is written into §7 because it is
-   a merge-policy fact: it constrains what may be done to a branch, not what
-   the record must contain.
+4. **A rewrite must preserve the harness revision a measurement record
+   names.** Commits after that revision may be rewritten as any branch may
+   — #36 itself had three rewritten under review with the record intact.
+   Rewriting or removing the named revision invalidates the record, and
+   re-running the measurement is the only way to rebuild such a branch.
+   What the rerun does with the old record is ADR-0005's rule, not a new
+   one: a record that has landed on `main` is never rewritten and the rerun
+   supersedes it with a later record; a record still on the unmerged branch
+   has not landed, and the branch replaces it — as #36 did when it retook
+   its measurement before merge. This follows from ADR-0005 rather than
+   from anything decided here, and
+   it is written into §7 because it is a merge-policy fact: it constrains
+   what may be done to a branch, not what the record must contain.
 
 ## Consequences
 
@@ -156,15 +167,17 @@ lists no option the decision could have gone to has not shown its work.
   and the second one — granted because a review round added one commit —
   would not have been requested at all.
 - Bundling becomes rarer, not more attractive. Both historical cases were
-  bundled at filing time and would be filed differently today. #24's four
-  issues were all raised in review of #16, so they would be closed by #16
-  itself rather than gathered into a follow-up; #36 would be opened for #11,
-  with #28 following it. Neither loses the work — the fixes land closer to
-  what caused them.
+  bundled at filing time and would be filed differently today. Three of
+  #24's four issues were raised in review of #16 and would be closed by #16
+  itself; the fourth, #23, was raised in review of #21 and would be closed
+  there. #36 would be opened for #11, with #28 following it. Neither loses
+  the work — the fixes land closer to what caused them.
 - A pull request that grows a second issue while open does not become
   irregular for it, which is the case that produced two exceptions on #36.
-- ADR-0001 is confirmed rather than amended: nothing in it changes, and its
-  §Decision 1 now reaches the case it always described.
+- ADR-0001 is amended. Its `1 issue = 1 branch = 1 PR` gains the one
+  exception Decision 3 states, and its status history records that. Its
+  §Decision 1 — normal merge, step-level history — is unchanged and now
+  reaches the bundled case it always described.
 
 ## Status history
 
