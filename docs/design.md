@@ -460,34 +460,74 @@ wholly outside is zero — not clamped, mirrored, or extrapolated, each of
 which is defensible and each of which disagrees with the others. The same
 real taps apply to I and Q. Reference: `enodia/spec/beamform/interp.py`.
 
-**Why Lagrange.** It is the maximally-flat fractional-delay FIR — exact for
-polynomials to degree 3, so its error vanishes fastest at DC, where the IQ
-spectrum has its energy. The sweep (`enodia/spec/beamform/interp_sweep.py`,
-pinned by `tests/test_interp_kernel.py`) gives the worst-case error over the
-fraction, at the band edge, for each decimation case above:
+**The sweep** (`enodia/spec/beamform/interp_sweep.py`, every figure below
+pinned by `tests/test_interp_kernel.py`) measures two things, because one of
+them is not enough to choose by.
+
+*Worst-case error over the fraction, at the band edge* — the metric this
+section already used for the no-interpolation case — phase / magnitude:
 
 | kernel | 5 MHz D=8 (0.30 fs') | 13 MHz D=2 (0.26 fs') | 5 MHz D=4 (0.15 fs') |
 |---|---|---|---|
 | none (phase rotation only) | 54° | 47° | 27° |
 | 2-tap linear | 7.5° / 41% | 4.6° / 32% | 0.8° / 11% |
 | **Lagrange cubic (4)** | **3.9° / 22%** | **2.0° / 13%** | **0.1° / 2%** |
-| Keys a=−½, Catmull-Rom (4) | 7.5° / 22% | 4.6° / 13% | 0.8° / 2% |
+| Keys a=−1/2, Catmull-Rom | 7.5° / 22% | 4.6° / 13% | 0.8° / 2% |
+| Keys a=−3/4 | 3.7° / 12% | 1.1° / 4% | 1.6° / 3% |
+| Keys a=−1 | 0.3° / 3% | 2.2° / 5% | 3.8° / 7% |
 | Hann-windowed sinc (4) | 10.1° / 32% | 6.5° / 23% | 1.2° / 6% |
 | *least-squares 4-tap, bound* | *1.6° / 9%* | *0.7° / 5%* | *0.04° / 0.4%* |
 
-Phase / magnitude. Lagrange halves linear's phase error and no other
-closed-form 4-tap beats it on either axis; Keys buys the same magnitude
-flatness and none of the phase. A least-squares design over the pass-band
-does better at the edge, but it is a table per pass-band rather than a
-formula, and it pays for the edge in-band (1.9% ripple at 0.05 fs' where
-Lagrange has 0.02%) — the wrong trade for a spectrum centred on DC. It is
-recorded as the bound on what four taps can do.
+**Read alone, this table does not choose Lagrange.** Keys at a = −1 beats it
+at the 5 MHz D=8 edge by an order of magnitude on both axes. It does so by
+pre-emphasizing high frequencies, which buys the edge and pays for it
+everywhere else — and a metric evaluated at one frequency cannot see the
+bill. So the second measurement is the error over the whole pulse:
 
-**What the sweep also says**: at D=8, four taps still leave 22% magnitude
-error at the band edge for the worst fraction, against 2% at D=4. Whether
-that matters is a question about the axial PSF, which is why "decimation
-ratio and interpolation tap count" stays in §17 as a parameter decided by
-measurement — the kernel is fixed; how far to decimate under it is not.
+*RMS error over a Gaussian pulse whose amplitude is N dB down at that band
+edge, averaged over the fraction* — the error energy the delayed channel
+signal actually carries:
+
+| kernel | D=8: −6 dB / −20 / −40 | 13 MHz D=2 | D=4 |
+|---|---|---|---|
+| 2-tap linear | 17.7 / 5.8 / 3.0 % | 13.7 / 4.4 / 2.3 % | 4.9 / 1.5 / 0.8 % |
+| **Lagrange cubic** | **12.7 / 1.9 / 0.55 %** | **8.5 / 1.2 / 0.32 %** | **1.4 / 0.15 / 0.04 %** |
+| Keys a=−1/2 | 12.7 / 2.0 / 0.62 % | 8.6 / 1.3 / 0.38 % | 1.5 / 0.19 / 0.06 % |
+| Keys a=−3/4 | 11.3 / 1.9 / 1.4 % | 7.1 / 1.6 / 1.3 % | 1.7 / 1.1 / 0.77 % |
+| Keys a=−1 | 11.3 / 4.1 / 3.2 % | 7.6 / 3.7 / 2.8 % | 3.9 / 2.3 / 1.6 % |
+| *least-squares, bound* | *11.0 / 1.7 / 1.5 %* | *7.0 / 0.9 / 0.83 %* | *1.0 / 0.10 / 0.09 %* |
+
+**Why Lagrange, stated as what the evidence supports.** It is not best
+everywhere: for a wide pulse at heavy decimation, Keys a = −3/4 and −1 and
+the least-squares bound are all a little better. Two things decide it
+anyway.
+
+*The ranking depends on the pulse bandwidth, and this document does not
+state one.* "Band edge 1.5 MHz" above does not say at what level, and the
+columns show the order changing between −6 dB and −40 dB. Choosing a kernel
+that wins only in one column would tie the L0 contract to a number nobody
+has written down (#46).
+
+*Lagrange is the only candidate whose error vanishes as the pulse narrows.*
+Being exact for polynomials to degree 3 — maximally flat at DC — it falls to
+0.55%, 0.32%, 0.04% at −40 dB, while Keys a=−1 stalls at 3.2%, 2.8%, 1.6%
+and the least-squares design at 1.5%, 0.83%, 0.09%. The kernels that beat it
+on a wide pulse carry an irreducible near-DC penalty, because none of them
+is third-order accurate. Across the two parameters that are genuinely open —
+the decimation ratio (§17) and the pulse bandwidth (#46) — Lagrange is the
+only closed form that is never worse than second and never far from first.
+
+**So the choice is robustness, not dominance, and it is provisional.** What
+settles it is the axial-PSF measurement this section already asks for,
+against the point-scatterer phantom, at D=8 and D=4. Until then a port runs
+Lagrange, because L0 needs one kernel rather than the best one.
+
+**What the sweep also says**: at D=8, four taps still leave 22% band-edge
+magnitude error for the worst fraction, against 2% at D=4 — and the pulse-
+weighted error falls by a factor of nine between the two. Whether that
+matters is the same PSF question, which is why "decimation ratio and
+interpolation tap count" stays in §17 as a parameter decided by measurement.
+The kernel is fixed; how far to decimate under it is not.
 
 **L0.** The kernel is part of the equivalence contract, beside the
 phase-sign convention above: a port runs this kernel, and L0 compares like
@@ -1389,8 +1429,9 @@ A record, so the same debates are not repeated.
 | Block FP8 L1 residency | L1 already suffices; risk buys nothing |
 | phase rotation alone for fractional delay | ~50° band-edge error |
 | 2-tap linear interpolation | insufficient at 1.92× oversampling |
-| Keys / Catmull-Rom 4-tap | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
-| least-squares 4-tap fractional delay | better at the band edge, worse in band; a table per pass-band, not a formula (§5) |
+| Keys / Catmull-Rom 4-tap (a=−1/2) | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
+| Keys 4-tap with a < −1/2 | wins the band edge by pre-emphasis; not third-order accurate, so its error stalls instead of vanishing as the pulse narrows (§5) |
+| least-squares 4-tap fractional delay | a table per pass-band, not a formula two ports can check against each other (§5) |
 | local sound-speed map (Layer-1 (b)) | breaks translation invariance, gather-bound. Reserved as an extension |
 | full MV on 2D probes | two orders of magnitude short |
 | synthetic transmit aperture (STA, Stage 3) | single-element transmit SNR; deep field collapses |

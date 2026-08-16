@@ -60,6 +60,12 @@ These survive any change of hardware placement. Never "optimize" them away.
   change *weights*, never *work*. Offline convergence sweeps in the
   reference implementation, used to pick the fixed values, are expected and
   encouraged.
+- **Fractional delays are 4-tap interpolation + phase rotation, and the
+  kernel is part of the L0 contract.** Phase rotation alone leaves ~50°
+  error at the band edge; the requirement is a band-edge one and holds at
+  any placement. The kernel is Lagrange cubic, defined to the coefficient
+  in design.md §5. A port runs that kernel and L0 compares like with like;
+  no tolerance absorbs a kernel difference (ADR-0007).
 - **Never evaluate with CNR; use gCNR.** CNR improves spuriously under
   nonlinear processing.
 - **lampas / taps never block the processing path.** Read-only views; late
@@ -103,11 +109,6 @@ with the reference implementation.
 - **Coordinates are polar (scanline × depth).** Scan conversion is outside
   enodia. Polar coordinates preserve delay-table translation invariance for
   convex/sector probes.
-- **Fractional delays are 4-tap interpolation + phase rotation.** Phase
-  rotation alone leaves ~50° error at the band edge. The kernel is Lagrange
-  cubic, defined to the coefficient in design.md §5, and it is part of the
-  L0 contract: a port runs that kernel, and no tolerance absorbs a kernel
-  difference (ADR-0007).
 - **Never attempt full MV on a 2D probe.** The compute is two orders of
   magnitude short; beamspace is the assumption.
 

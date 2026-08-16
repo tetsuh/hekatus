@@ -20,6 +20,9 @@ from enodia.spec.beamform.interp import (
 from enodia.spec.beamform.interp_sweep import (
     BAND_EDGES,
     CANDIDATES,
+    PULSE_ROLLOFFS_DB,
+    least_squares4,
+    pulse_weighted_rms_error,
     worst_band_edge_error,
 )
 
@@ -210,17 +213,93 @@ def test_the_sweep_covers_the_decimation_cases_the_design_names():
     assert BAND_EDGES["5MHz_D4"] == pytest.approx(0.15)
 
 
-def test_the_chosen_kernel_matches_the_figures_quoted_in_the_design():
-    """The numbers in design.md §5 are these, to the digit shown there."""
-    phase, mag = worst_band_edge_error(CANDIDATES["lagrange4"], BAND_EDGES["5MHz_D8"])
-    assert phase == pytest.approx(3.87, abs=0.01)
-    assert mag == pytest.approx(0.220, abs=0.001)
-    phase, mag = worst_band_edge_error(CANDIDATES["lagrange4"], BAND_EDGES["13MHz_D2"])
-    assert phase == pytest.approx(1.95, abs=0.01)
-    assert mag == pytest.approx(0.134, abs=0.001)
-    phase, mag = worst_band_edge_error(CANDIDATES["lagrange4"], BAND_EDGES["5MHz_D4"])
-    assert phase == pytest.approx(0.14, abs=0.01)
-    assert mag == pytest.approx(0.017, abs=0.001)
+# Every figure design.md §5 quotes, pinned so the record cannot drift from
+# what the code computes. Sol found the first table quoted values no test
+# held (#45), which is how a table stops matching its own sweep.
+_EDGE_TABLE = {
+    "5MHz_D8": {
+        "linear2": (7.54, 0.412),
+        "lagrange4": (3.87, 0.220),
+        "keys4_a050": (7.54, 0.220),
+        "keys4_a075": (3.71, 0.124),
+        "keys4_a100": (0.27, 0.028),
+        "hann_sinc4": (10.06, 0.319),
+    },
+    "13MHz_D2": {
+        "linear2": (4.64, 0.315),
+        "lagrange4": (1.95, 0.134),
+        "keys4_a050": (4.64, 0.134),
+        "keys4_a075": (1.09, 0.043),
+        "keys4_a100": (2.15, 0.048),
+        "hann_sinc4": (6.45, 0.227),
+    },
+    "5MHz_D4": {
+        "linear2": (0.81, 0.109),
+        "lagrange4": (0.14, 0.017),
+        "keys4_a050": (0.81, 0.017),
+        "keys4_a075": (1.57, 0.029),
+        "keys4_a100": (3.84, 0.075),
+        "hann_sinc4": (1.23, 0.064),
+    },
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EDGE_TABLE))
+def test_every_band_edge_figure_quoted_in_the_design_is_pinned(case):
+    for name, (phase, mag) in _EDGE_TABLE[case].items():
+        got_phase, got_mag = worst_band_edge_error(CANDIDATES[name], BAND_EDGES[case])
+        assert got_phase == pytest.approx(phase, abs=0.01), f"{case}/{name} phase"
+        assert got_mag == pytest.approx(mag, abs=0.001), f"{case}/{name} magnitude"
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("5MHz_D8", (1.63, 0.090)),
+        ("13MHz_D2", (0.73, 0.047)),
+        ("5MHz_D4", (0.04, 0.004)),
+    ],
+)
+def test_the_least_squares_bound_is_pinned_too(case, expected):
+    """Quoted in §5 as the bound on what four taps can do, so it is evidence
+    and is held to the same standard as the candidates."""
+    edge = BAND_EDGES[case]
+    phase, mag = worst_band_edge_error(lambda mu: least_squares4(mu, edge), edge)
+    assert phase == pytest.approx(expected[0], abs=0.01)
+    assert mag == pytest.approx(expected[1], abs=0.001)
+
+
+_WEIGHTED_TABLE = {
+    "5MHz_D8": {
+        "linear2": (17.71, 5.83, 2.98),
+        "lagrange4": (12.67, 1.93, 0.55),
+        "keys4_a050": (12.68, 2.04, 0.62),
+        "keys4_a075": (11.29, 1.86, 1.40),
+        "keys4_a100": (11.33, 4.08, 3.16),
+    },
+    "13MHz_D2": {
+        "lagrange4": (8.51, 1.16, 0.32),
+        "keys4_a050": (8.57, 1.26, 0.38),
+        "keys4_a075": (7.13, 1.60, 1.26),
+        "keys4_a100": (7.60, 3.71, 2.77),
+    },
+    "5MHz_D4": {
+        "lagrange4": (1.40, 0.15, 0.04),
+        "keys4_a050": (1.50, 0.19, 0.06),
+        "keys4_a075": (1.67, 1.07, 0.77),
+        "keys4_a100": (3.85, 2.26, 1.58),
+    },
+}
+
+
+@pytest.mark.parametrize("case", sorted(_WEIGHTED_TABLE))
+def test_every_pulse_weighted_figure_quoted_in_the_design_is_pinned(case):
+    for name, expected in _WEIGHTED_TABLE[case].items():
+        for db, want in zip(PULSE_ROLLOFFS_DB, expected, strict=True):
+            got = 100.0 * pulse_weighted_rms_error(
+                CANDIDATES[name], BAND_EDGES[case], rolloff_db=db
+            )
+            assert got == pytest.approx(want, abs=0.01), f"{case}/{name}/-{db:g}dB"
 
 
 def test_the_spec_kernel_and_the_sweep_candidate_are_the_same_function():
@@ -229,18 +308,56 @@ def test_the_spec_kernel_and_the_sweep_candidate_are_the_same_function():
         np.testing.assert_allclose(CANDIDATES["lagrange4"](mu), fractional_delay_taps(mu))
 
 
-def test_lagrange_is_the_best_closed_form_four_tap_on_phase_and_ties_on_magnitude():
-    """Why Lagrange: half of linear's phase error, and no other closed-form
-    4-tap in the sweep beats it on either axis. Keys (Catmull-Rom) buys the
-    same magnitude flatness but its phase error equals linear's."""
+def test_the_band_edge_metric_alone_does_not_choose_lagrange():
+    """Recorded because the first version of §5 claimed it did. Keys at
+    a = -1 beats Lagrange at the 5 MHz D=8 edge on both axes, by
+    pre-emphasizing high frequencies — which one frequency cannot see the
+    cost of. The claim was wrong; keeping the counterexample under test stops
+    it being made again."""
     edge = BAND_EDGES["5MHz_D8"]
     lag_ph, lag_mag = worst_band_edge_error(CANDIDATES["lagrange4"], edge)
-    for name in ("linear2", "keys4", "hann_sinc4"):
-        ph, mag = worst_band_edge_error(CANDIDATES[name], edge)
-        assert lag_ph <= ph + 1e-9, name
-        assert lag_mag <= mag + 1e-9, name
-    lin_ph, _ = worst_band_edge_error(CANDIDATES["linear2"], edge)
-    assert lag_ph < 0.55 * lin_ph
+    keys_ph, keys_mag = worst_band_edge_error(CANDIDATES["keys4_a100"], edge)
+
+    assert keys_ph < lag_ph
+    assert keys_mag < lag_mag
+
+
+def test_the_ranking_flips_with_the_assumed_pulse_bandwidth():
+    """The reason §5 chooses on robustness rather than on a winner, and the
+    reason #46 exists: the design states a band edge without a level, and the
+    order changes across the plausible range."""
+    edge = BAND_EDGES["5MHz_D8"]
+    lag = CANDIDATES["lagrange4"]
+    keys = CANDIDATES["keys4_a100"]
+
+    assert pulse_weighted_rms_error(keys, edge, rolloff_db=6.0) < pulse_weighted_rms_error(
+        lag, edge, rolloff_db=6.0
+    )
+    assert pulse_weighted_rms_error(lag, edge, rolloff_db=40.0) < pulse_weighted_rms_error(
+        keys, edge, rolloff_db=40.0
+    )
+
+
+@pytest.mark.parametrize("case", sorted(BAND_EDGES))
+def test_only_the_third_order_accurate_kernels_vanish_as_the_pulse_narrows(case):
+    """The property Lagrange is chosen for. Kernels that are not third-order
+    accurate carry an irreducible near-DC penalty, so their error stalls
+    while Lagrange's keeps falling — which is what makes it safe against a
+    pulse bandwidth nobody has written down."""
+    edge = BAND_EDGES[case]
+    narrow = {
+        name: pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=40.0)
+        for name in CANDIDATES
+    }
+
+    assert narrow["lagrange4"] == min(narrow.values())
+    # A factor of two separates the two third-order accurate kernels from
+    # everything else, at every decimation case: Catmull-Rom lands at
+    # 1.13x, 1.18x, 1.53x, and the nearest kernel that is not third-order
+    # accurate at 2.54x, 3.63x, 9.30x.
+    assert narrow["keys4_a050"] < 2.0 * narrow["lagrange4"]
+    for name in ("linear2", "keys4_a075", "keys4_a100", "hann_sinc4"):
+        assert narrow[name] > 2.0 * narrow["lagrange4"], name
 
 
 def test_phase_rotation_alone_is_the_error_the_design_states():
