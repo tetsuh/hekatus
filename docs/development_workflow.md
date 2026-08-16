@@ -29,13 +29,23 @@ is the complete authority.
   prohibited (typo-level corrections at reviewer discretion).
 
 **One pull request may close several issues** when they came out of one
-review pass or otherwise form a single small change, and only then. The
-requirement is that traceability survives: **one commit per issue**, each
-naming its issue, and every issue listed with `Closes #NN` in the PR body.
+review pass or otherwise form a single small change, and only then.
 Bundling is for keeping review and merge overhead proportionate to a small
 diff — never for grouping unrelated work, and never for a decision that
 establishes or alters a contract, which is reviewed on its own. Recording
 an already-settled rule in a contract document is not such a decision.
+
+The requirement is that **traceability survives**. It is met when all three
+hold:
+
+- every commit header names exactly one issue;
+- every issue a commit names is listed with `Closes #NN` in the PR body;
+- every issue in `Closes` is named by at least one commit.
+
+**The commit count is not constrained.** §7 governs a bundled pull request
+exactly as it governs any other: history keeps the meaningful steps, and a
+bundled branch is not squashed per issue to satisfy this section. ADR-0006
+records why, including what a measurement record needs from it.
 
 ### Planning model
 
@@ -180,6 +190,13 @@ links are permitted; anything that alters what the record says is not.
   step-level commits. Use `git log --first-parent main` for the PR-level view.
 - **Squash merge only on explicit owner instruction** for that PR.
   Rebase merge and auto-merge are prohibited.
+- **A branch carrying a landed measurement record cannot be rebuilt.** The
+  record names the harness revision that produced it (ADR-0005), and that
+  revision is always an ancestor inside the same branch — the measurement
+  runs against a committed tree, so the commit holding a result can never be
+  the commit the result names. Rewriting such history leaves the field
+  pointing at a SHA that no longer exists. Re-running the measurement is the
+  only way to rebuild the branch.
 - Delete the `feat/` branch after merge.
 
 ## 8. CI
