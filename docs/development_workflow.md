@@ -28,12 +28,17 @@ is the complete authority.
 - Problems discovered during work get a **new Issue**. Drive-by fixes are
   prohibited (typo-level corrections at reviewer discretion).
 
-**One pull request may close several issues** when they came out of one
-review pass or otherwise form a single small change, and only then.
-Bundling is for keeping review and merge overhead proportionate to a small
-diff — never for grouping unrelated work, and never for a decision that
-establishes or alters a contract, which is reviewed on its own. Recording
-an already-settled rule in a contract document is not such a decision.
+**A pull request is opened for exactly one issue.** It may close a second
+only when that issue was raised while the pull request was open — by its
+review, or by the work itself — and the change it calls for belongs in the
+same diff. That is the normal way a change grows under scrutiny: a problem
+found during work becomes an issue rather than a drive-by fix, and closing
+it here keeps the fix with what caused it.
+
+Issues that already exist when a pull request is opened are **never grouped
+into it**, and a decision that establishes or alters a contract is reviewed
+on its own. Recording an already-settled rule in a contract document is not
+such a decision.
 
 The requirement is that **traceability survives**. It is met when all three
 hold:

@@ -43,6 +43,14 @@ Squashing #11 into one commit leaves the field pointing at a SHA that no
 longer exists, and editing the field to match is inventing a provenance
 rather than recording one.
 
+**The rule has never been met.** Two pull requests in this repository have
+closed more than one issue. #24 closed four with seven commits — three for
+#18, two for #19, one each for #20 and #23 — and `f9e6d70`, the commit that
+wrote the rule, is one of the three it contributed to #18. The rule was
+broken by the pull request that introduced it, in the act of introducing it,
+and nothing flagged it. #36 is the second bundled pull request and the first
+occasion the rule was enforced.
+
 Underneath all three is a general property: **review makes pull requests
 grow.** A rule that can be satisfied when a branch is filed, and not after
 it has been reviewed, is broken hardest by the changes that received the
@@ -64,6 +72,19 @@ most scrutiny — which are the changes whose history is worth keeping.
   the exemption would have to be widened at each new class of change that
   meets the same wall — which is a rule that never finishes being written.
 - **C. State the invariant as traceability; leave the count unconstrained.**
+- **D. Remove the permission to bundle at all**, holding `1 Issue = 1 PR`
+  without exception. The count question then does not arise rather than
+  being answered: with nothing bundled, §7 governs every branch uniformly
+  and no exception can be needed. This is also the narrower thing the owner
+  decided — `1 Issue = 1 branch = 1 PR` carries an owner decision, while the
+  count never did. Rejected on the evidence of use. Bundling has been used
+  twice and both times for what it was written for: #24 gathered four small
+  findings from one documentation review, and #36 carried a measurement
+  together with the record of the machine it ran on, whose acceptance
+  criteria required data that same run produced. What has failed is the
+  count, not the permission. Splitting a review pass into one pull request
+  per finding also multiplies review cycles across a diff smaller than one
+  ordinary change, which is the overhead the permission exists to avoid.
 - Also weighed and not viable: **enforce the count by squashing at merge.**
   That reverses ADR-0001 §Decision 1 outright, and for a measurement branch
   it destroys the provenance in the same stroke.
@@ -71,6 +92,14 @@ most scrutiny — which are the changes whose history is worth keeping.
 C is chosen. It is what the rule's own sentence already said the
 requirement was — traceability — with the count recognized as one means of
 reaching it rather than the thing being required.
+
+D was raised by the owner while reviewing the pull request that carries this
+record, on the grounds that no owner decision on commit count had ever been
+made. That is correct, and it is why D belongs here: the first draft of this
+record weighed only how to set the count, never whether the rule it hangs
+from should exist. The owner chose C over D on the use evidence above. The
+omission is recorded rather than quietly repaired, because a record that
+lists no option the decision could have gone to has not shown its work.
 
 ## Decision
 
@@ -82,10 +111,30 @@ reaching it rather than the thing being required.
 2. **The commit count is not constrained.** §7 governs a bundled pull
    request exactly as it governs any other: history keeps the meaningful
    steps. A bundled branch is not squashed per issue.
-3. **The precondition for bundling is unchanged**: issues from one review
-   pass or one small change, and only then; never unrelated work; never a
-   decision that establishes or alters a contract, which is reviewed on its
-   own.
+3. **Bundling is narrowed to what the pull request itself produces.** A
+   pull request is opened for exactly one issue. An issue raised while it is
+   open — by its review, or by the work itself — may be closed by it as
+   well, when the change it calls for belongs in the same diff. Issues that
+   already exist when a pull request is opened are never grouped into it,
+   and a decision that establishes or alters a contract is still reviewed
+   on its own.
+
+   This is an owner amendment to option C, made while this record was under
+   review. It draws the line where the two cases actually differ. Bundling
+   decided at filing time is the grouping the rule was always meant to
+   prevent. Bundling that arrives afterwards is not a grouping at all: the
+   workflow already requires a problem found during work to become an
+   issue, and closing it where it was found keeps the fix with the change
+   that caused it.
+
+   The amendment was first worded as "raised by review", and widened to
+   "raised while open" before landing, when the first issue found under it
+   (#40) was raised by the author while writing this record rather than by
+   a reviewer. The narrower wording excluded a case its own rationale
+   covers, and excluded it for no reason the rationale gives: an issue the
+   work surfaces is no more a filing-time grouping than one a reviewer
+   surfaces, and pre-existing issues are barred by a separate sentence
+   either way.
 4. **A branch carrying a landed measurement record cannot be rebuilt
    without re-running the measurement.** This follows from ADR-0005 rather
    than from anything decided here, and it is written into §7 because it is
@@ -106,9 +155,14 @@ reaching it rather than the thing being required.
 - Neither exception granted on #36 would have been needed under this rule,
   and the second one — granted because a review round added one commit —
   would not have been requested at all.
-- Bundling is not made more attractive. The precondition is untouched, and
-  the reason to bundle is still a small diff rather than a convenient
-  history.
+- Bundling becomes rarer, not more attractive. Both historical cases were
+  bundled at filing time and would be filed differently today. #24's four
+  issues were all raised in review of #16, so they would be closed by #16
+  itself rather than gathered into a follow-up; #36 would be opened for #11,
+  with #28 following it. Neither loses the work — the fixes land closer to
+  what caused them.
+- A pull request that grows a second issue while open does not become
+  irregular for it, which is the case that produced two exceptions on #36.
 - ADR-0001 is confirmed rather than amended: nothing in it changes, and its
   §Decision 1 now reaches the case it always described.
 
