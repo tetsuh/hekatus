@@ -10,7 +10,8 @@ their rationale live there.
 
 1. **No Ticket, No Commit.** Every change starts from a GitHub Issue.
 2. **1 Issue = 1 branch = 1 PR.** Branch `feat/<issue-number>-<short-kebab-description>`,
-   PR body contains `Closes #<n>`.
+   PR body contains `Closes #<n>`. A PR may also close issues raised while it
+   was open, when the fix belongs in the same diff (workflow §2, ADR-0006).
 3. **Conventional Commits**: header `<type>(<scope>): <summary> (#<issue>)`,
    body is a `- ` bullet list only. Commit in meaningful, reviewable steps —
    normal merge is the default, so feature-branch commits become part of

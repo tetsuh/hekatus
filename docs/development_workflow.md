@@ -28,14 +28,30 @@ is the complete authority.
 - Problems discovered during work get a **new Issue**. Drive-by fixes are
   prohibited (typo-level corrections at reviewer discretion).
 
-**One pull request may close several issues** when they came out of one
-review pass or otherwise form a single small change, and only then. The
-requirement is that traceability survives: **one commit per issue**, each
-naming its issue, and every issue listed with `Closes #NN` in the PR body.
-Bundling is for keeping review and merge overhead proportionate to a small
-diff — never for grouping unrelated work, and never for a decision that
-establishes or alters a contract, which is reviewed on its own. Recording
-an already-settled rule in a contract document is not such a decision.
+**A pull request is opened for exactly one issue.** It may also close
+issues raised while it was open — by its review, or by the work itself —
+when the change they call for belongs in the same diff. That is the normal
+way a change grows under scrutiny: a problem found during work becomes an
+issue rather than a drive-by fix, and closing it here keeps the fix with
+what caused it.
+
+Issues that already exist when a pull request is opened are **never grouped
+into it**, and a decision that establishes or alters a contract is reviewed
+on its own. Recording an already-settled rule in a contract document is not
+such a decision.
+
+The requirement is that **traceability survives**. It is met when all three
+hold:
+
+- every authored commit header names exactly one issue (platform-generated
+  integration commits stay exempt, per §3 and ADR-0003);
+- every issue a commit names is listed with `Closes #NN` in the PR body;
+- every issue in `Closes` is named by at least one commit.
+
+**The commit count is not constrained.** §7 governs a bundled pull request
+exactly as it governs any other: history keeps the meaningful steps, and a
+bundled branch is not squashed per issue to satisfy this section. ADR-0006
+records why, including what a measurement record needs from it.
 
 ### Planning model
 
@@ -180,6 +196,14 @@ links are permitted; anything that alters what the record says is not.
   step-level commits. Use `git log --first-parent main` for the PR-level view.
 - **Squash merge only on explicit owner instruction** for that PR.
   Rebase merge and auto-merge are prohibited.
+- **A rewrite must preserve the harness revision a measurement record
+  names.** The record names the revision that produced it (ADR-0005), and
+  that revision is an ancestor inside the same branch — the measurement runs
+  against a committed tree, so the commit holding a result can never be the
+  commit the result names. Commits after that revision may be rewritten as
+  on any branch. Rewriting or removing the named revision leaves the record
+  pointing at a SHA that no longer exists; re-running the measurement is the
+  only way to rebuild such a branch.
 - Delete the `feat/` branch after merge.
 
 ## 8. CI
