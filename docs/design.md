@@ -420,7 +420,7 @@ image, so implementations state which convention they follow and the L0
 checkpoints compare phase, not just magnitude (§15).
 
 The expression decomposes into an **integer shift (a read-address offset)
-+ a fractional part (the 4-tap interpolation of the next subsection) + a
++ a fractional part (the 4-tap interpolation defined below) + a
 phase rotation (one complex multiply)**, making random access small and
 local. With fixed geometry, the phase term is precomputable.
 
@@ -438,6 +438,114 @@ not enough.
 
 Keep the ability to measure how the point-scatterer axial PSF changes
 between decimation ratios 8 and 4.
+
+### The interpolation kernel (normative, L0-relevant)
+
+`interp4` is **Lagrange cubic**: the four-point Lagrange basis on the nodes
+{−1, 0, +1, +2} around the target. Writing the position in samples as
+`t = n − d`, with the record's first sample at `t = 0`, `m = ⌊t⌋` and
+`μ = t − m ∈ [0, 1)`, the taps multiply `z[m−1], z[m], z[m+1], z[m+2]` with
+
+```text
+h₋₁ = −μ(μ−1)(μ−2)/6
+h₀  = (μ+1)(μ−1)(μ−2)/2
+h₊₁ = −(μ+1)μ(μ−2)/2
+h₊₂ = (μ+1)μ(μ−1)/6
+```
+
+`μ = 0` reads `z[m]` exactly; the taps sum to one for every μ. **The record
+is zero outside `[0, N)`**: a tap that falls before the first sample or past
+the last contributes zero, so a target near an end is a partial sum and one
+wholly outside is zero — not clamped, mirrored, or extrapolated, each of
+which is defensible and each of which disagrees with the others. The same
+real taps apply to I and Q. Reference: `enodia/spec/beamform/interp.py`.
+
+**The sweep** (`enodia/spec/beamform/interp_sweep.py`, every figure below
+pinned by `tests/test_interp_kernel.py`) measures two things, because one of
+them is not enough to choose by.
+
+*Worst-case error over the fraction, at the band edge* — the metric this
+section already used for the no-interpolation case — phase / magnitude:
+
+| kernel | 5 MHz D=8 (0.30 fs') | 13 MHz D=2 (0.26 fs') | 5 MHz D=4 (0.15 fs') |
+|---|---|---|---|
+| none (phase rotation only) | 54° | 47° | 27° |
+| 2-tap linear | 7.5° / 41% | 4.6° / 32% | 0.8° / 11% |
+| **Lagrange cubic (4)** | **3.9° / 22%** | **2.0° / 13%** | **0.1° / 2%** |
+| Keys a=−1/2, Catmull-Rom | 7.5° / 22% | 4.6° / 13% | 0.8° / 2% |
+| Keys a=−3/4 | 3.7° / 12% | 1.1° / 4% | 1.6° / 3% |
+| Keys a=−1 | 0.3° / 3% | 2.2° / 5% | 3.8° / 7% |
+| Hann-windowed sinc (4) | 10.1° / 32% | 6.5° / 23% | 1.2° / 6% |
+| *least-squares 4-tap, bound* | *1.6° / 9%* | *0.7° / 5%* | *0.04° / 0.4%* |
+
+**Read alone, this table does not choose Lagrange.** Keys at a = −1 beats it
+at the 5 MHz D=8 edge by an order of magnitude on both axes. It does so by
+pre-emphasizing high frequencies, which buys the edge and pays for it
+everywhere else — and a metric evaluated at one frequency cannot see the
+bill. So the second measurement is the error over the whole pulse:
+
+*RMS error over a Gaussian pulse whose amplitude is N dB down at that band
+edge, averaged over the fraction* — the error energy the delayed channel
+signal actually carries:
+
+| kernel | D=8: −6 dB / −20 / −40 | 13 MHz D=2 | D=4 |
+|---|---|---|---|
+| 2-tap linear | 16.6 / 5.8 / 3.0 % | 13.4 / 4.4 / 2.2 % | 4.9 / 1.5 / 0.76 % |
+| **Lagrange cubic** | **10.8 / 1.9 / 0.55 %** | **7.9 / 1.2 / 0.32 %** | **1.4 / 0.15 / 0.04 %** |
+| Keys a=−1/2 | 10.9 / 2.0 / 0.62 % | 8.0 / 1.3 / 0.38 % | 1.5 / 0.19 / 0.06 % |
+| Keys a=−3/4 | 9.0 / 1.9 / 1.4 % | 6.4 / 1.6 / 1.3 % | 1.7 / 1.1 / 0.77 % |
+| Keys a=−1 | 8.9 / 4.1 / 3.2 % | 6.9 / 3.7 / 2.8 % | 3.8 / 2.3 / 1.6 % |
+| *least-squares, bound* | *8.5 / 1.7 / 1.5 %* | *6.2 / 0.92 / 0.83 %* | *1.0 / 0.10 / 0.09 %* |
+
+The integration stops at the decimated Nyquist frequency: the record cannot
+represent anything above 0.5 cycles/sample, so scoring the kernel there
+measures a signal that is not in it. Worth noting that the −6 dB assumption
+reaches past that limit at D=8 — its 3σ is 0.77 — which says the widest
+assumption and the heaviest decimation are in tension, and is one more thing
+#46 has to settle.
+
+**Why Lagrange, stated as what the evidence supports.** Among the six closed
+forms it is **first in six of these nine cells, second in one, and third in
+two** — the two widest-pulse assumptions, where Keys a=−1 and a=−3/4 lead by
+21% and 24%. It is not best everywhere, and the choice is a trade rather
+than a ranking.
+
+*The trade.* Those same two kernels are **2.5 to 5.7 times worse** than
+Lagrange once the pulse narrows: at −40 dB, Keys a=−1 gives 3.2% against
+0.55% and a=−3/4 gives 1.4%. So the choice buys a factor of several in the
+narrow-pulse corner at the cost of about a fifth in the wide-pulse one.
+
+*It is a trade the document cannot yet settle by measurement, and that is
+why robustness wins.* "Band edge 1.5 MHz" above does not say at what level,
+so which column applies is unknown (#46), and the decimation ratio is open
+too (§17). Lagrange's error decays faster as the pulse narrows than the other
+evaluated closed forms — being exact for polynomials to degree 3 it is
+maximally flat at DC. At −40 dB, a factor of two separates the two third-order
+accurate kernels
+from every other candidate. The kernels that beat it on a wide pulse have a
+larger measured narrow-pulse error in this sweep, so the choice remains a
+robustness trade rather than a universal ranking.
+
+**So the choice is robustness, not dominance, and it is provisional.** What
+settles it is the axial-PSF measurement this section already asks for,
+against the point-scatterer phantom, at D=8 and D=4. Until then a port runs
+Lagrange, because L0 needs one kernel rather than the best one.
+
+**What the sweep also says**: at D=8, four taps still leave 22% band-edge
+magnitude error for the worst fraction, against 2% at D=4 — and the pulse-
+weighted error improves by a rolloff-dependent factor: about 7.7× at −6 dB,
+13.2× at −20 dB, and 14.5× at −40 dB. Whether that matters
+is the same PSF question, which is why "decimation ratio and
+interpolation tap count" stays in §17 as a parameter decided by measurement.
+The kernel is fixed; how far to decimate under it is not.
+
+**L0.** The kernel is part of the equivalence contract, beside the
+phase-sign convention above: a port runs this kernel, and L0 compares like
+with like at checkpoint 2 (§15). A difference between kernels is never
+absorbed by a wider tolerance — that would spend the threshold on the thing
+it exists to catch. The reference takes the kernel as a named argument with
+exactly this one value defined; widening that set is a change to the
+contract (ADR-0007), not a new string.
 
 ---
 
@@ -1230,7 +1338,9 @@ makes later subtle mismatches untraceable.
 
 Checkpoints:
 1. front-end output (IQ) — relative error
-2. post-delay channel vectors — relative error, phase error
+2. post-delay channel vectors — relative error, phase error. **Both
+   sides run the interpolation kernel §5 names**; a kernel difference is
+   a contract difference, not a tolerance question (ADR-0007)
 3. after transmit compounding
 4. R — relative Frobenius-norm error
 5. **MV weight vector — direction cosine, norm (mandatory)**
@@ -1329,6 +1439,9 @@ A record, so the same debates are not repeated.
 | Block FP8 L1 residency | L1 already suffices; risk buys nothing |
 | phase rotation alone for fractional delay | ~50° band-edge error |
 | 2-tap linear interpolation | insufficient at 1.92× oversampling |
+| Keys / Catmull-Rom 4-tap (a=−1/2) | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
+| Keys 4-tap with a < −1/2 | wins the band edge by pre-emphasis; its error also tends toward zero as the pulse narrows, but more slowly than Lagrange (§5) |
+| least-squares 4-tap fractional delay | a table per pass-band, not a formula two ports can check against each other (§5) |
 | local sound-speed map (Layer-1 (b)) | breaks translation invariance, gather-bound. Reserved as an extension |
 | full MV on 2D probes | two orders of magnitude short |
 | synthetic transmit aperture (STA, Stage 3) | single-element transmit SNR; deep field collapses |
