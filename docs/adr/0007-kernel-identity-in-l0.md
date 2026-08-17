@@ -1,9 +1,8 @@
 # ADR-0007: The interpolation kernel is part of the L0 contract
 
-- Status: **Proposed**
+- Status: **Accepted** — 2026-08-17
 - Date: 2026-08-16
-- Owner decision: pending — the transition to `Accepted` is written in this
-  pull request before it merges (owner decision CLPR45-D1)
+- Owner decision: yes
 
 ## Context
 
@@ -109,7 +108,9 @@ not a change to this record.
 
 - 2026-08-16: Proposed in pull request #45, which carries the kernel
   definition in design.md §5, the reference implementation of it, and the
-  sweep behind the choice. Held at `Proposed` while that pull request is
-  open, per owner decision CLPR45-D1; the transition to `Accepted` is
-  written in the same pull request before it merges, as ADR-0004 requires
-  of every transition.
+  sweep behind the choice. Held at `Proposed` while that pull request was
+  open, per owner decision CLPR45-D1.
+- 2026-08-17: Accepted at the pre-merge boundary of that pull request, on
+  owner instruction. The effective date is the merge day and the `Date`
+  line above stays the day the record was written, as ADR-0003 also
+  separates them.
