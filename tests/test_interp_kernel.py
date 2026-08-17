@@ -387,6 +387,42 @@ def test_lagrange_leads_six_of_the_nine_cells_and_never_falls_below_third():
     assert max(ranks) == 3
 
 
+@pytest.mark.parametrize(
+    ("rolloff_db", "factor"), [(6.0, 7.73), (20.0, 13.15), (40.0, 14.46)]
+)
+def test_the_decimation_gain_quoted_in_the_design_is_pinned(rolloff_db, factor):
+    """§5 quotes what D=4 buys over D=8 for the specified kernel, and says
+    every figure in the section is held by this file. These arrived with a
+    review fix and were the one set that was not — the same gap, one round
+    later, as the one that produced them."""
+    lag = CANDIDATES["lagrange4"]
+    heavy = pulse_weighted_rms_error(lag, BAND_EDGES["5MHz_D8"], rolloff_db=rolloff_db)
+    light = pulse_weighted_rms_error(lag, BAND_EDGES["5MHz_D4"], rolloff_db=rolloff_db)
+
+    assert heavy / light == pytest.approx(factor, abs=0.01)
+
+
+@pytest.mark.parametrize("case", sorted(BAND_EDGES))
+def test_lagrange_decays_faster_than_every_other_candidate(case):
+    """The claim §5 rests on, now that "stalls" has been withdrawn: every
+    normalized kernel converges — unit DC gain guarantees it — so what
+    separates them is the rate. Lagrange is exact to degree 3, so its error
+    falls with a higher power of the bandwidth than a second-order accurate
+    kernel's."""
+    edge = BAND_EDGES[case]
+    rates = {
+        name: (
+            pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=40.0)
+            / pulse_weighted_rms_error(CANDIDATES[name], edge, rolloff_db=80.0)
+        )
+        for name in CANDIDATES
+    }
+
+    assert rates["lagrange4"] == max(rates.values())
+    assert rates["lagrange4"] > 3.0
+    assert rates["keys4_a100"] < 1.5
+
+
 @pytest.mark.parametrize("case", sorted(BAND_EDGES))
 def test_candidates_decay_toward_dc_and_lagrange_has_lowest_narrow_pulse_error(case):
     """All normalized candidates improve toward DC, while Lagrange decays
