@@ -72,6 +72,8 @@ Conventional Commits with an Issue reference:
 
 - <what changed, and why when non-obvious>
 - <verification or constraint>
+
+Co-Authored-By: <name> <email>
 ```
 
 - type: `feat` / `fix` / `docs` / `test` / `refactor` / `build` / `ci` / `chore`.
@@ -87,7 +89,13 @@ Conventional Commits with an Issue reference:
   72 characters is shown truncated in some web views, with the full text an
   expander away.
 - Body: `- ` bullet items only; may be omitted for trivial commits.
-- `BREAKING CHANGE: <description>` footer when applicable.
+- **Trailers are footers, not body.** Lines of the form `Key: value` after
+  the bullets, separated from them by one blank line — `Co-Authored-By:`,
+  which is how this repository attributes agent-authored commits, and
+  `BREAKING CHANGE: <description>` when applicable — are footers in the
+  Conventional Commits sense and in git's own (`git interpret-trailers`).
+  The bullet rule does not apply to them. Stated because a reviewer reading
+  the bullet rule alone once concluded that most of `main` violated it.
 - **Commit granularity matters.** Normal merge is the default (§7), so
   feature-branch commits are part of `main` history and should be meaningful,
   self-contained steps.
