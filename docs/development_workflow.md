@@ -88,7 +88,7 @@ Co-Authored-By: <name> <email>
   commit that holds more than one idea. Note that a subject beyond roughly
   72 characters is shown truncated in some web views, with the full text an
   expander away.
-- Body: `- ` bullet items only; may be omitted for trivial commits.
+- Body: bullet items (`-`) only; may be omitted for trivial commits.
 - **Trailers are footers, not body.** Lines of the form `Key: value` after
   the bullets, separated from them by one blank line — `Co-Authored-By:`,
   which is how this repository attributes agent-authored commits, and

@@ -13,9 +13,10 @@ their rationale live there.
    PR body contains `Closes #<n>`. A PR may also close issues raised while it
    was open, when the fix belongs in the same diff (workflow §2, ADR-0006).
 3. **Conventional Commits**: header `<type>(<scope>): <summary> (#<issue>)`,
-   body is a `- ` bullet list only, followed by trailers (`Co-Authored-By:`
-   and the like) which are footers, not body. Commit in meaningful,
-   reviewable steps —
+   body is a bullet list (`-` items) only. Trailers — `Key: value` lines
+   such as `Co-Authored-By:`, after the bullets and separated from them by
+   one blank line — are footers, not body, and the bullet rule does not
+   apply to them. Commit in meaningful, reviewable steps —
    normal merge is the default, so feature-branch commits become part of
    `main` history.
 4. **main is always green.** Never push directly to `main`.
