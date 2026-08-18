@@ -32,10 +32,11 @@ Under the frozen benchmark this leaves **0.000 % at 5 MHz and 0.099 % at
 13 MHz**, both under the floor of one tenth of the IQ-side error, and it
 costs on the order of ten seconds per 128-event frame on the demo workload
 against under a second for linear — the cheapest of the candidates that
-reach the floor by an order of magnitude (`rf_delay_sweep.py`). Why the obvious alternatives fail at 13 MHz is
-recorded there: the 13 MHz record has −14 dB of energy at Nyquist, and no
-finite-support kernel is flat that close to it — the least-squares bound on
-*any* four-tap RF kernel is 16.5 %.
+reach the floor by an order of magnitude (`rf_delay_sweep.py`). Why nothing
+short does at 13 MHz is recorded there: the record has −14 dB of energy at
+Nyquist, every kernel of modest support has a transition band that energy
+occupies, and the least-squares bound on *any* four-tap RF kernel is 16.5 %.
+A 256-tap rectangular sinc does reach the floor, at thirty times the cost.
 
 **Boundary.** The record is zero outside [0, N). Because step 2 reconstructs
 band-limited, a position within a few samples of either end reads the
@@ -57,16 +58,20 @@ def upsample_rf(record: np.ndarray, *, factor: int = UPSAMPLE_FACTOR, pad: int =
     """Band-limited upsample of ``(..., n_t)`` by ``factor``; returns the fine
     grid over the padded extent, ``(..., (n_t + 2·pad)·factor)``, in float64.
 
-    Fine sample ``(pad + k)·factor`` is ``record[..., k]`` exactly.
+    Fine sample ``(pad + k)·factor`` is ``record[..., k]`` exactly, for any
+    ``factor`` ≥ 1; at 1 the record is returned padded and otherwise intact.
     """
+    if factor < 1:
+        raise ValueError(f"upsampling factor must be a positive integer, got {factor}")
     z = np.pad(np.asarray(record, dtype=np.float64), [(0, 0)] * (record.ndim - 1) + [(pad, pad)])
     m = z.shape[-1]
     spectrum = np.fft.rfft(z, axis=-1)
     stuffed = np.zeros(z.shape[:-1] + (m * factor // 2 + 1,), dtype=np.complex128)
     stuffed[..., : spectrum.shape[-1]] = spectrum
-    if m % 2 == 0:
+    if m % 2 == 0 and factor > 1:
         # The Nyquist bin of the coarse grid is shared by ±fs/2; splitting it
-        # keeps the fine-grid signal real and the original samples exact.
+        # keeps the fine-grid signal real and the original samples exact. At
+        # factor 1 there is nothing to split — the bin stays where it was.
         stuffed[..., spectrum.shape[-1] - 1] *= 0.5
     return np.fft.irfft(stuffed, n=m * factor, axis=-1) * factor
 

@@ -72,20 +72,36 @@ def test_the_frozen_preliminary_residuals_are_reproduced(name, carrier, residual
     assert got == pytest.approx(residual, abs=0.01)
 
 
-@pytest.mark.parametrize(
-    ("name", "carrier", "residual"),
-    [
-        ("lagrange16", "13MHz", 15.094),
-        ("kaiser8_sinc32", "13MHz", 7.421),
-        ("rect_sinc256", "5MHz", 0.200),
-        ("rect_sinc256", "13MHz", 0.242),
-        ("poly_up4_kaiser4_hl320_lagrange4", "5MHz", 0.004),
-        ("poly_up4_kaiser4_hl320_lagrange4", "13MHz", 0.361),
-    ],
-)
-def test_the_alternatives_quoted_in_the_design_are_pinned(name, carrier, residual):
-    got = residual_pct(CANDIDATES[name], benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-    assert got == pytest.approx(residual, abs=0.01)
+# Every row of the residual table, both carriers, so "every figure quoted is
+# pinned" is a statement about this dict and not about memory.
+_RESIDUAL_TABLE = {
+    "lagrange8": (0.047, 20.586),
+    "lagrange16": (0.000, 15.094),
+    "kaiser8_sinc16": (0.004, 11.463),
+    "kaiser8_sinc32": (0.003, 7.421),
+    "rect_sinc256": (0.200, 0.242),
+    "poly_up4_kaiser4_hl320_lagrange4": (0.004, 0.361),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_RESIDUAL_TABLE))
+def test_every_alternative_in_the_residual_table_is_pinned_at_both_carriers(name):
+    for carrier, want in zip(("5MHz", "13MHz"), _RESIDUAL_TABLE[name], strict=True):
+        got = residual_pct(CANDIDATES[name], benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
+        assert got == pytest.approx(want, abs=0.01), f"{name}/{carrier}"
+
+
+def test_a_finite_kernel_does_reach_the_13mhz_floor_and_what_it_costs_is_the_point():
+    """The rectangular 256-tap sinc is finite and lands at 0.242 %, under the
+    0.791 % floor. So the design's claim is not that finite support fails at
+    13 MHz — it is that nothing short does: the shortest finite kernel in
+    the sweep that reaches the floor is 256 taps, and it is the slowest
+    method costed. Kept as a test so the claim cannot widen again."""
+    record = benchmark_record(13e6)
+
+    assert residual_pct(CANDIDATES["rect_sinc256"], record) < RESIDUAL_LIMIT_PCT["13MHz"]
+    for short in ("lagrange8", "lagrange16", "kaiser8_sinc16", "kaiser8_sinc32"):
+        assert residual_pct(CANDIDATES[short], record) > RESIDUAL_LIMIT_PCT["13MHz"], short
 
 
 @pytest.mark.parametrize(("carrier", "bound"), [("5MHz", 0.186), ("13MHz", 16.472)])
@@ -116,7 +132,8 @@ def test_the_oracle_reproduces_the_record_at_integer_positions():
 def test_the_benchmark_grid_is_the_frozen_one():
     t = benchmark_positions()
     assert t.shape == (201, BENCHMARK_N)
-    assert t[0, 5] == 5.0 and t[-1, 5] == 4.0
+    assert t[0, 5] == 5.0
+    assert t[-1, 5] == 4.0
     assert BENCHMARK_N == 256
 
 
@@ -216,6 +233,20 @@ def test_delay_rf_returns_the_dataflows_intermediate_dtype(record_dtype, expecte
     np.testing.assert_allclose(
         got[0], oracle(record[0].astype(np.float64), positions[0]), rtol=5e-3
     )
+
+
+def test_upsampling_by_one_returns_the_record_intact():
+    """Review found the Nyquist-bin split applied at factor 1 too, where there
+    is nothing to split; that would have halved the record's Nyquist
+    component. Factor 1 is now the identity, padded."""
+    rng = np.random.default_rng(3)
+    record = rng.standard_normal((2, 30))  # even length: the Nyquist bin exists
+
+    fine = upsample_rf(record, factor=1)
+
+    np.testing.assert_allclose(fine[:, ZERO_PAD : ZERO_PAD + 30], record, atol=1e-12)
+    with pytest.raises(ValueError):
+        upsample_rf(record, factor=0)
 
 
 def test_the_upsampling_parameters_are_the_ones_the_design_names():

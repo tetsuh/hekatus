@@ -255,6 +255,10 @@ def _polyphase_channel_stack(factor: int, half_len: int, beta: float) -> Callabl
 COSTED: dict[str, Callable] = {
     "linear (MVP-1)": _linear_channel_stack,
     "lagrange4 direct": lambda record, positions: fractional_delay(record, positions),
+    "lagrange8 direct": _rowwise(CANDIDATES["lagrange8"]),
+    "lagrange16 direct": _rowwise(CANDIDATES["lagrange16"]),
+    "kaiser8_sinc16 direct": _rowwise(CANDIDATES["kaiser8_sinc16"]),
+    "kaiser8_sinc32 direct": _rowwise(CANDIDATES["kaiser8_sinc32"]),
     "rect_sinc256 direct": _rowwise(CANDIDATES["rect_sinc256"]),
     "poly_up4_kaiser4_hl320 + lagrange4": _polyphase_channel_stack(4, 320, 4.0),
     "production (fft up8 pad256 + lagrange4)": delay_rf,

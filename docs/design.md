@@ -1380,39 +1380,49 @@ consumes; it says nothing about pre-ADC fidelity or AFE aliasing (§4).
 5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted figures at D=8
 and D=2. Every figure below is pinned by `tests/test_rf_golden_interp.py`.
 
-| method | 5 MHz | 13 MHz | s / frame |
-|---|---|---|---|
-| 2-tap linear (MVP-1) | 6.216 % | 38.707 % | 0.4 |
-| Lagrange cubic, direct | 0.961 % | 28.560 % | 3.6 |
-| Lagrange 16-point | 0.000 % | 15.094 % | |
-| Kaiser (β=8) sinc, 32 taps | 0.003 % | 7.421 % | |
-| rectangular sinc, 256 taps | 0.200 % | 0.242 % | 255 |
-| polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 90 |
-| **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **7** |
-| *least-squares bound on any 4-tap kernel* | *0.186 %* | *16.472 %* | |
-| floor | 1.082 % | 0.791 % | |
+| method | 5 MHz | 13 MHz | s / frame | peak MiB / event |
+|---|---|---|---|---|
+| 2-tap linear (MVP-1) | 6.216 % | 38.707 % | 0.4 | 10 |
+| Lagrange cubic, direct | 0.961 % | 28.560 % | 3.5 | 43 |
+| Lagrange 8-point | 0.047 % | 20.586 % | 15 | 6 † |
+| Lagrange 16-point | 0.000 % | 15.094 % | 58 | 6 † |
+| Kaiser (β=8) sinc, 16 taps | 0.004 % | 11.463 % | 41 | 8 † |
+| Kaiser (β=8) sinc, 32 taps | 0.003 % | 7.421 % | 82 | 13 † |
+| rectangular sinc, 256 taps | 0.200 % | 0.242 % | 271 | 30 † |
+| polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 93 | 78 |
+| **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **8** | **86** |
+| *least-squares bound on any 4-tap kernel* | *0.186 %* | *16.472 %* | | |
+| floor | 1.082 % | 0.791 % | | |
 
-Frame times are one 128-event 5 MHz demo frame on the development host,
-reported rather than pinned.
+Frame times and peak memory are one 128-event 5 MHz demo frame on the
+development host, reported rather than pinned; the timing varies by half
+between runs. † These candidates are evaluated a channel at a time, which
+is why their peak is small — vectorized over the stack, a 256-tap gather
+would hold about 800 MiB.
 
-**What the table says.** At 5 MHz the Lagrange cubic alone would do; at
-13 MHz nothing with finite support does. The 13 MHz record has −14 dB of
-energy at Nyquist, and every windowed sinc, however long, has a transition
-band below Nyquist that the signal occupies — which is why a longer window
-makes it *worse* (Kaiser 32 taps: 7.4 %) than a rectangular one (256 taps:
-0.24 %), and why the least-squares fit of four taps to the oracle itself,
-the best any four-tap kernel could ever do on this record, misses the floor
-by a factor of twenty. The move to upsampling is forced by the family, not
-by the choice of member. Among the methods that reach the floor, FFT
+**What the table says.** At 5 MHz the Lagrange cubic alone would do. At
+13 MHz **nothing short does**: the record has −14 dB of energy at Nyquist,
+and every kernel of modest support has a transition band below Nyquist that
+the signal occupies. Lagrange to 16 points, Kaiser-windowed sinc to 32 taps
+— all miss the floor by an order of magnitude, and the least-squares fit of
+four taps to the oracle itself, the best any four-tap kernel could do on
+this record, misses it by twenty times. A finite kernel *does* reach the
+floor — the 256-tap rectangular sinc, at 0.242 % — but it is the slowest
+method costed, and 64 times the work of a cubic per sample. So the
+alternatives are a long kernel or upsampling once per record and reading
+it with a short one; among the methods that reach the floor, FFT
 upsampling is the cheapest by an order of magnitude, and its residual is
 set by the zero padding: with none, 0.97 % — over the floor.
 
-**What follows for every comparison quoted after this**: a golden
-comparison at 5 MHz sits on a floor of 0.000 %, at 13 MHz on 0.099 %, and
-no difference smaller than that is evidence of anything. Rerun the
-benchmark when #46 settles the pulse bandwidth or #10 supplies the real
-13 MHz profile; neither changes the frozen figures above, both may change
-the profile-specific residual quoted beside a comparison.
+**Floor and residual are different numbers.** The floor — 1.082 % and
+0.791 % — is what the yardstick's own error must stay under to be a
+yardstick. The **observed residual** of the production operator is
+0.0003 % at 5 MHz and 0.0992 % at 13 MHz, and *that* is the resolution of
+a comparison: a golden comparison cannot see a difference smaller than the
+yardstick's own residual, so no such difference is evidence of anything.
+Rerun the benchmark when #46 settles the pulse bandwidth or #10 supplies
+the real 13 MHz profile; neither changes the frozen figures above, both may
+change the profile-specific residual quoted beside a comparison.
 
 ### The simulator's role
 
