@@ -1353,6 +1353,67 @@ downstream. Threshold: from the BF16 theoretical floor (relative 4e-3),
 
 **L0 is automated and lives in CI.**
 
+### The yardstick's own floor
+
+The RF-domain ideal-delay DAS is not an L0 party — it is the yardstick that
+measures how much the IQ + 4-tap path costs (CLAUDE.md, absolute rules) —
+and a yardstick's own error has to sit well below what it measures. Its
+fractional delays are taken by **band-limited upsampling by 8, then the
+Lagrange cubic of §5** (`enodia/spec/beamform/rf_delay.py`): the record is
+zero-padded by 256 samples at each end, upsampled through the real FFT
+(spectrum zero-stuffed to 8×, Nyquist bin halved, inverse-transformed and
+scaled by 8), and read at 8·t by the same kernel, coordinate convention and
+zero-extension the IQ side uses. MVP-1 used 2-tap linear interpolation on
+the RF, which is what #25 replaced.
+
+**How its error is measured** — a frozen, discrete-time oracle
+(`enodia/spec/beamform/rf_delay_sweep.py`), so the figure cannot drift with
+the machine or the session: for each carrier in {5, 13} MHz, the record is
+256 samples at 40 MHz of the simulator's own pulse (0.7 fractional
+bandwidth at −6 dB), and the ideal delay of that finite sampled record is
+its zero-extended sinc reconstruction, evaluated at t = n − μ over every
+sample and 201 fractions. The residual is the RMS deviation from it,
+normalized. It measures interpolation of the same sampled record #6
+consumes; it says nothing about pre-ADC fidelity or AFE aliasing (§4).
+
+**The floor is one tenth of the IQ error being measured** — 1.082 % at
+5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted figures at D=8
+and D=2. Every figure below is pinned by `tests/test_rf_golden_interp.py`.
+
+| method | 5 MHz | 13 MHz | s / frame |
+|---|---|---|---|
+| 2-tap linear (MVP-1) | 6.216 % | 38.707 % | 0.4 |
+| Lagrange cubic, direct | 0.961 % | 28.560 % | 3.6 |
+| Lagrange 16-point | 0.000 % | 15.094 % | |
+| Kaiser (β=8) sinc, 32 taps | 0.003 % | 7.421 % | |
+| rectangular sinc, 256 taps | 0.200 % | 0.242 % | 255 |
+| polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 90 |
+| **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **7** |
+| *least-squares bound on any 4-tap kernel* | *0.186 %* | *16.472 %* | |
+| floor | 1.082 % | 0.791 % | |
+
+Frame times are one 128-event 5 MHz demo frame on the development host,
+reported rather than pinned.
+
+**What the table says.** At 5 MHz the Lagrange cubic alone would do; at
+13 MHz nothing with finite support does. The 13 MHz record has −14 dB of
+energy at Nyquist, and every windowed sinc, however long, has a transition
+band below Nyquist that the signal occupies — which is why a longer window
+makes it *worse* (Kaiser 32 taps: 7.4 %) than a rectangular one (256 taps:
+0.24 %), and why the least-squares fit of four taps to the oracle itself,
+the best any four-tap kernel could ever do on this record, misses the floor
+by a factor of twenty. The move to upsampling is forced by the family, not
+by the choice of member. Among the methods that reach the floor, FFT
+upsampling is the cheapest by an order of magnitude, and its residual is
+set by the zero padding: with none, 0.97 % — over the floor.
+
+**What follows for every comparison quoted after this**: a golden
+comparison at 5 MHz sits on a floor of 0.000 %, at 13 MHz on 0.099 %, and
+no difference smaller than that is evidence of anything. Rerun the
+benchmark when #46 settles the pulse bandwidth or #10 supplies the real
+13 MHz profile; neither changes the frozen figures above, both may change
+the profile-specific residual quoted beside a comparison.
+
 ### The simulator's role
 
 Real data comes later, so the simulator owes **formal accuracy, not
