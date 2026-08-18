@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.signal import hilbert
 
+from enodia.spec.beamform.rf_delay import delay_rf
 from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import RFEventRecord
 from enodia.spec.sequence import TxEvent
@@ -118,18 +119,14 @@ def das_rf_golden(
 
     by_event = _records_by_event(events, records)
     image = np.zeros((z.size, len(events)), dtype=dtype)
-    rows = np.arange(profile.n_elements)[:, None]
     for ev in events:
         rec = by_event[ev.event_index]
         _check_channel_count(profile, rec)
         data = rec.data.astype(dtype)
-        n_t = data.shape[1]
         dx = el_x[:, None] - ev.line_x_m  # (n_ch, 1)
         tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
         pos = tau * profile.fs_hz
-        i0 = np.clip(np.floor(pos).astype(np.int64), 0, n_t - 2)
-        frac = (pos - i0).astype(dtype)
-        sampled = (1.0 - frac) * data[rows, i0] + frac * data[rows, i0 + 1]
+        sampled = delay_rf(data, pos)
 
         # Fixed-F-number dynamic aperture with Hann apodization, normalized
         # by the weight sum at each depth so the aperture growth does not
