@@ -2,18 +2,73 @@
 
 The RF-domain ideal-delay DAS is the yardstick that quantifies the error of
 the IQ + 4-tap approximation (CLAUDE.md, absolute rules). Its own fractional
-delays therefore have to be much better than the thing being measured, or the
-yardstick contaminates the comparison it exists for (#25).
+delays therefore have to sit well below the thing being measured, or the
+yardstick contaminates the comparison it exists for (#25). MVP-1 took them by
+2-tap linear interpolation on the 40 MHz RF, which under the frozen benchmark
+of `rf_delay_sweep.py` carries 6.2 % RMS error at 5 MHz and 38.7 % at
+13 MHz — against 10.8 % and 7.9 % for the IQ path it measures.
 
-This module is that operator, lifted out of `das_rf_golden` so that it can be
-measured against a fixed oracle on its own. The method it currently uses is
-**2-tap linear interpolation on the sampled RF** — the MVP-1 approximation
-this issue exists to replace.
+**Method: band-limited upsampling by 8, then Lagrange cubic.** Stated so that
+it can be reproduced to the sample:
+
+1. The record is zero-padded by `ZERO_PAD` = 256 samples at each end, in
+   float64. Padding is what keeps the periodic images of step 2 far enough
+   from the record that they do not reach it: with none, the residual at
+   13 MHz is 0.97 %, over the floor; with 256, 0.10 %.
+2. It is upsampled by `UPSAMPLE_FACTOR` = 8 through the real FFT: the
+   spectrum of the padded record (length M) is zero-stuffed to length M·8,
+   the Nyquist bin halved when M is even, inverse-transformed, and scaled by
+   8. This is periodic-sinc (Dirichlet) interpolation of the padded record,
+   which is why the padding matters — and it interpolates: every original
+   sample is reproduced exactly on the fine grid.
+3. The delayed value is read from the fine grid at position 8·t by the
+   Lagrange cubic of `interp.py` — the same kernel design.md §5 fixes for
+   the IQ side, with the same coordinate convention and zero-extension —
+   and the padded region is discarded from the result's frame of reference.
+4. The result is cast to `interpolation_dtype(record.dtype)`: float32 for a
+   float32 or integer record, float64 for a float64 one (design.md §14).
+
+Under the frozen benchmark this leaves **0.000 % at 5 MHz and 0.099 % at
+13 MHz**, both under the floor of one tenth of the IQ-side error, and it
+costs on the order of ten seconds per 128-event frame on the demo workload
+against under a second for linear — the cheapest of the candidates that
+reach the floor by an order of magnitude (`rf_delay_sweep.py`). Why the obvious alternatives fail at 13 MHz is
+recorded there: the 13 MHz record has −14 dB of energy at Nyquist, and no
+finite-support kernel is flat that close to it — the least-squares bound on
+*any* four-tap RF kernel is 16.5 %.
+
+**Boundary.** The record is zero outside [0, N). Because step 2 reconstructs
+band-limited, a position within a few samples of either end reads the
+band-limited ringing of that zero-extended record into the padding, exactly
+as the ideal delay does; a position beyond the padding reads zero.
 """
 
 from __future__ import annotations
 
 import numpy as np
+
+from enodia.spec.beamform.interp import fractional_delay, interpolation_dtype
+
+UPSAMPLE_FACTOR = 8
+ZERO_PAD = 256
+
+
+def upsample_rf(record: np.ndarray, *, factor: int = UPSAMPLE_FACTOR, pad: int = ZERO_PAD):
+    """Band-limited upsample of ``(..., n_t)`` by ``factor``; returns the fine
+    grid over the padded extent, ``(..., (n_t + 2·pad)·factor)``, in float64.
+
+    Fine sample ``(pad + k)·factor`` is ``record[..., k]`` exactly.
+    """
+    z = np.pad(np.asarray(record, dtype=np.float64), [(0, 0)] * (record.ndim - 1) + [(pad, pad)])
+    m = z.shape[-1]
+    spectrum = np.fft.rfft(z, axis=-1)
+    stuffed = np.zeros(z.shape[:-1] + (m * factor // 2 + 1,), dtype=np.complex128)
+    stuffed[..., : spectrum.shape[-1]] = spectrum
+    if m % 2 == 0:
+        # The Nyquist bin of the coarse grid is shared by ±fs/2; splitting it
+        # keeps the fine-grid signal real and the original samples exact.
+        stuffed[..., spectrum.shape[-1] - 1] *= 0.5
+    return np.fft.irfft(stuffed, n=m * factor, axis=-1) * factor
 
 
 def delay_rf(record: np.ndarray, positions: np.ndarray) -> np.ndarray:
@@ -21,15 +76,11 @@ def delay_rf(record: np.ndarray, positions: np.ndarray) -> np.ndarray:
 
     ``record`` is ``(n_ch, n_t)`` and ``positions`` is ``(n_ch, n_pos)`` in
     samples from the record start; row ``i`` of the positions indexes row
-    ``i`` of the record. Returns ``(n_ch, n_pos)`` in the record's dtype.
-
-    Linear interpolation between the two neighbouring samples. Positions
-    past the last pair are clamped to it, so a position beyond the record
-    extrapolates from the last two samples rather than reading zero.
+    ``i`` of the record. Returns ``(n_ch, n_pos)`` in
+    ``interpolation_dtype(record.dtype)``.
     """
     record = np.asarray(record)
-    n_t = record.shape[-1]
-    rows = np.arange(record.shape[0])[:, None]
-    i0 = np.clip(np.floor(positions).astype(np.int64), 0, n_t - 2)
-    frac = (positions - i0).astype(record.dtype)
-    return (1.0 - frac) * record[rows, i0] + frac * record[rows, i0 + 1]
+    positions = np.asarray(positions, dtype=np.float64)
+    fine = upsample_rf(record)
+    fine_positions = (positions + ZERO_PAD) * UPSAMPLE_FACTOR
+    return fractional_delay(fine, fine_positions).astype(interpolation_dtype(record.dtype))

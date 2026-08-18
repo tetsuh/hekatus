@@ -10,11 +10,11 @@ that approximation. The IQ path and the comparison against this golden are
 Receive uses a fixed-F-number dynamic aperture with Hann apodization. The
 dtype is a parameter, as every design parameter is.
 
-Known approximation in this golden path: fractional delays are taken by
-linear interpolation on the 40 MHz RF. At 5 MHz that is 8x oversampled, so
-the error is small, but it is not zero, and a yardstick with its own
-interpolation error contaminates the very comparison it exists for. Raised
-as #25.
+The fractional delays are the band-limited ideal delay of `rf_delay.py` —
+upsampling by 8 through the FFT, then the Lagrange cubic — measured against
+a frozen oracle at 0.000 % residual at 5 MHz and 0.099 % at 13 MHz, both
+under a tenth of the IQ-side error this yardstick measures (#25). MVP-1's
+linear interpolation stood at 6.2 % and 38.7 %.
 """
 
 from __future__ import annotations
