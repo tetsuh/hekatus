@@ -14,7 +14,8 @@ it can be reproduced to the sample:
 1. The record is zero-padded by `ZERO_PAD` = 256 samples at each end, in
    float64. Padding is what keeps the periodic images of step 2 far enough
    from the record that they do not reach it: with none, the residual at
-   13 MHz is 0.97 %, over the acceptance limit; with 256, 0.10 %.
+   13 MHz is 0.972 %, over that carrier's 0.791 % acceptance limit; with
+   256, 0.099 %.
 2. It is upsampled by `UPSAMPLE_FACTOR` = 8 through the real FFT: the
    spectrum of the padded record (length M) is zero-stuffed to length M·8,
    the Nyquist bin halved when M is even, inverse-transformed, and scaled by

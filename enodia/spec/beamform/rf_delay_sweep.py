@@ -25,8 +25,10 @@ The acceptance limit a candidate has to stay under is one tenth of the
 IQ-side error it will be used to measure: **1.082 % at 5 MHz and 0.791 % at
 13 MHz** (design.md §5, the −6 dB pulse-weighted error at D=8 and D=2). Both
 are pinned by `tests/test_rf_golden_interp.py`. The residual a candidate
-actually reaches is the *floor* of any comparison made with it — the
-smallest difference that comparison can see.
+actually reaches is the *floor* of any comparison made with it: a limit on
+attribution, not detection. The comparison observes smaller differences
+numerically; it cannot tell them apart from the yardstick's own error, so
+they are not by themselves evidence relative to the ideal.
 
 The candidates other than the production method live here and nowhere else.
 """

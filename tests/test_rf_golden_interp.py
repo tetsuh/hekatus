@@ -8,9 +8,10 @@ operator the golden actually runs is under that limit at both carriers.
 
 Two words are kept apart throughout: the *acceptance limit* is the upper
 bound the yardstick's residual must stay under; the *floor* is the residual
-it actually reaches, which is the smallest difference a comparison made
-with it can see. The name of the first test below is the one #25 mandated
-and uses "floor" in the first sense; its docstring says which.
+it actually reaches — below which a comparison still observes differences
+but cannot attribute them, since they are indistinguishable from the
+yardstick's own error. The name of the first test below is the one #25
+mandated and uses "floor" in the first sense; its docstring says which.
 """
 
 import numpy as np
@@ -57,12 +58,17 @@ def test_the_acceptance_limit_is_one_tenth_of_the_iq_error_the_golden_measures()
     assert RESIDUAL_LIMIT_PCT == {"5MHz": pytest.approx(1.082), "13MHz": pytest.approx(0.791)}
 
 
-@pytest.mark.parametrize(("carrier", "residual"), [("5MHz", 0.000), ("13MHz", 0.099)])
-def test_the_production_residual_quoted_in_the_design_is_pinned(carrier, residual):
-    """To the digit the table shows: three decimals, so half a unit in the
-    third. This is the floor of every comparison made with the golden."""
+@pytest.mark.parametrize(
+    ("carrier", "table", "prose"),
+    [("5MHz", 0.000, 0.0003), ("13MHz", 0.099, 0.0992)],
+)
+def test_the_production_residual_quoted_in_the_design_is_pinned(carrier, table, prose):
+    """At both precisions the design uses: the table's three decimals and the
+    prose's four, each to half a unit in its last place. This is the floor of
+    every comparison made with the golden."""
     got = residual_pct(sweep.production, benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-    assert got == pytest.approx(residual, abs=0.0005)
+    assert got == pytest.approx(table, abs=0.0005)
+    assert got == pytest.approx(prose, abs=0.00005)
 
 
 # --- the frozen preliminary figures ------------------------------------------
@@ -281,5 +287,9 @@ def test_padding_is_what_holds_the_13mhz_residual_under_the_limit():
         rows = np.broadcast_to(rec, (t.shape[0], rec.size))
         return fractional_delay(upsample_rf(rows, pad=0), t * UPSAMPLE_FACTOR)
 
-    assert residual_pct(unpadded, record) == pytest.approx(0.972, abs=0.01)
-    assert residual_pct(unpadded, record) > RESIDUAL_LIMIT_PCT["13MHz"]
+    got = residual_pct(unpadded, record)
+    assert got == pytest.approx(0.972, abs=0.0005)
+    assert got > RESIDUAL_LIMIT_PCT["13MHz"]
+    # The same figure sits under the separate 5 MHz limit, which is why the
+    # design names the carrier when it quotes it.
+    assert got < RESIDUAL_LIMIT_PCT["5MHz"]

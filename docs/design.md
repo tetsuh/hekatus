@@ -1372,9 +1372,15 @@ the machine or the session: for each carrier in {5, 13} MHz, the record is
 256 samples at 40 MHz of the simulator's own pulse (0.7 fractional
 bandwidth at −6 dB), and the ideal delay of that finite sampled record is
 its zero-extended sinc reconstruction, evaluated at t = n − μ over every
-sample and 201 fractions. The residual is the RMS deviation from it,
-normalized. It measures interpolation of the same sampled record #6
-consumes; it says nothing about pre-ADC fidelity or AFE aliasing (§4).
+sample and 201 fractions. The residual is
+
+```text
+100 × sqrt( Σ (candidate − ideal)² / Σ ideal² )   [%]
+```
+
+with both sums over all 256 samples and all 201 fractions. It measures
+interpolation of the same sampled record #6 consumes; it says nothing about
+pre-ADC fidelity or AFE aliasing (§4).
 
 **The acceptance limit is one tenth of the IQ error being measured** —
 1.082 % at 5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted
@@ -1418,14 +1424,19 @@ kernel, or upsampling once per record and reading it with a short one.
 Among the costed methods that reach the limit, FFT upsampling is the
 **fastest by measured frame time**, by an order of magnitude; it is not the
 lightest — at 86 MiB per event it uses the most memory of them — and its
-residual is set by the zero padding: with none, 0.97 % — over the limit.
+residual is set by the zero padding: with none, 0.972 % at 13 MHz — over
+that carrier's 0.791 % limit (and under the separate 5 MHz one).
 
 **Limit and floor are different numbers.** The acceptance limit — 1.082 %
 and 0.791 % — is the upper bound the yardstick's own error must stay under
 to be a yardstick. The **observed residual** of the production operator,
-0.0003 % at 5 MHz and 0.0992 % at 13 MHz, is the *floor* of a comparison:
-a golden comparison cannot see a difference smaller than the yardstick's
-own residual, so no such difference is evidence of anything.
+0.0003 % at 5 MHz and 0.0992 % at 13 MHz, is the *floor* of a comparison —
+and the floor is a limit on **attribution, not on detection**. A comparison
+against the golden observes any difference numerically, however small; what
+it cannot do is tell a difference smaller than the yardstick's own residual
+apart from that residual. So such a difference is not, by itself, evidence
+of error or of improvement relative to the ideal — the golden itself sits
+that far from the ideal, in a direction the comparison does not know.
 Rerun the benchmark when #46 settles the pulse bandwidth or #10 supplies
 the real 13 MHz profile; neither changes the frozen figures above, both may
 change the profile-specific residual quoted beside a comparison.
