@@ -14,7 +14,7 @@ it can be reproduced to the sample:
 1. The record is zero-padded by `ZERO_PAD` = 256 samples at each end, in
    float64. Padding is what keeps the periodic images of step 2 far enough
    from the record that they do not reach it: with none, the residual at
-   13 MHz is 0.97 %, over the floor; with 256, 0.10 %.
+   13 MHz is 0.97 %, over the acceptance limit; with 256, 0.10 %.
 2. It is upsampled by `UPSAMPLE_FACTOR` = 8 through the real FFT: the
    spectrum of the padded record (length M) is zero-stuffed to length M·8,
    the Nyquist bin halved when M is even, inverse-transformed, and scaled by
@@ -29,14 +29,16 @@ it can be reproduced to the sample:
    float32 or integer record, float64 for a float64 one (design.md §14).
 
 Under the frozen benchmark this leaves **0.000 % at 5 MHz and 0.099 % at
-13 MHz**, both under the floor of one tenth of the IQ-side error, and it
-costs on the order of ten seconds per 128-event frame on the demo workload
-against under a second for linear — the cheapest of the candidates that
-reach the floor by an order of magnitude (`rf_delay_sweep.py`). Why nothing
-short does at 13 MHz is recorded there: the record has −14 dB of energy at
-Nyquist, every kernel of modest support has a transition band that energy
-occupies, and the least-squares bound on *any* four-tap RF kernel is 16.5 %.
-A 256-tap rectangular sinc does reach the floor, at thirty times the cost.
+13 MHz**, both under the acceptance limit of one tenth of the IQ-side
+error, and it costs on the order of ten seconds per 128-event frame on the
+demo workload against under a second for linear — the fastest by measured
+frame time of the costed candidates that reach the limit, by an order of
+magnitude, though not the lightest in memory (`rf_delay_sweep.py`). Why no
+evaluated kernel of 32 taps or fewer reaches the limit at 13 MHz is recorded
+there: the record has −14 dB of energy at Nyquist, a kernel of modest
+support has a transition band that energy occupies, and the least-squares
+bound on *any* four-tap RF kernel is 16.5 %. A 256-tap rectangular sinc does
+reach it, at 64 times the taps of a cubic per sample.
 
 **Boundary.** The record is zero outside [0, N). Because step 2 reconstructs
 band-limited, a position within a few samples of either end reads the

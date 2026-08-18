@@ -21,10 +21,12 @@ scored on the same grid with the same zero-extended boundary rule, as
 
     residual = sqrt( Σ (candidate − ideal)² / Σ ideal² ).
 
-The floor a candidate has to reach is one tenth of the IQ-side error it will
-be used to measure: **1.082 % at 5 MHz and 0.791 % at 13 MHz** (design.md §5,
-the −6 dB pulse-weighted error at D=8 and D=2). Both are pinned by
-`tests/test_rf_golden_interp.py`.
+The acceptance limit a candidate has to stay under is one tenth of the
+IQ-side error it will be used to measure: **1.082 % at 5 MHz and 0.791 % at
+13 MHz** (design.md §5, the −6 dB pulse-weighted error at D=8 and D=2). Both
+are pinned by `tests/test_rf_golden_interp.py`. The residual a candidate
+actually reaches is the *floor* of any comparison made with it — the
+smallest difference that comparison can see.
 
 The candidates other than the production method live here and nowhere else.
 """
@@ -160,7 +162,7 @@ def least_squares_4tap_bound(record: np.ndarray, t: np.ndarray) -> np.ndarray:
     For each fraction, the four taps are fitted by least squares to the
     oracle over every output position — a bound on the whole family, not a
     kernel a port could run, since it is fitted to the record it is scored
-    on. If this misses the floor, no four-tap RF kernel meets it.
+    on. If this misses the acceptance limit, no four-tap RF kernel meets it.
     """
     m = np.floor(t)
     idx = m.astype(np.int64)[..., None] + np.array([-1, 0, 1, 2])
@@ -205,7 +207,9 @@ def residual_table() -> str:
         for f0 in BENCHMARK_CARRIERS_HZ.values():
             row += f"{residual_pct(fn, benchmark_record(f0)):9.3f}%"
         lines.append(row)
-    lines.append(f"{'floor':36s}" + "".join(f"{v:9.3f}%" for v in RESIDUAL_LIMIT_PCT.values()))
+    lines.append(
+        f"{'acceptance limit':36s}" + "".join(f"{v:9.3f}%" for v in RESIDUAL_LIMIT_PCT.values())
+    )
     return "\n".join(lines)
 
 

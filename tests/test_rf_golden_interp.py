@@ -2,9 +2,15 @@
 
 The RF-domain ideal-delay DAS is the yardstick that quantifies the error of
 the IQ + 4-tap approximation, so its own interpolation error has to sit well
-below what it measures (#25). These tests pin the oracle, the floor, every
-figure quoted in design.md §15, and the fact that the operator the golden
-actually runs is under that floor at both carriers.
+below what it measures (#25). These tests pin the oracle, the acceptance
+limit, every residual quoted in design.md §15, and the fact that the
+operator the golden actually runs is under that limit at both carriers.
+
+Two words are kept apart throughout: the *acceptance limit* is the upper
+bound the yardstick's residual must stay under; the *floor* is the residual
+it actually reaches, which is the smallest difference a comparison made
+with it can see. The name of the first test below is the one #25 mandated
+and uses "floor" in the first sense; its docstring says which.
 """
 
 import numpy as np
@@ -25,24 +31,27 @@ from enodia.spec.beamform.rf_delay_sweep import (
     residual_pct,
 )
 
-# --- the floor, and the operator the golden runs ------------------------------
+# --- the acceptance limit, and the operator the golden runs ------------------
 
 
 @pytest.mark.parametrize("carrier", sorted(BENCHMARK_CARRIERS_HZ))
 def test_golden_residual_is_below_declared_floor_at_both_carriers(carrier):
     """The operator `das_rf_golden` runs, scored on the frozen benchmark, sits
-    under one tenth of the IQ-side error it is used to measure. RED against
-    the linear golden read 6.216 % and 38.707 %."""
+    under the acceptance limit — one tenth of the IQ-side error it is used to
+    measure. (#25 named this test with "floor" for that limit; the name is
+    kept as mandated.) RED against the linear golden read 6.216 % and
+    38.707 %."""
     record = benchmark_record(BENCHMARK_CARRIERS_HZ[carrier])
 
     got = residual_pct(sweep.production, record)
 
     assert got <= RESIDUAL_LIMIT_PCT[carrier], (
-        f"{carrier}: golden residual {got:.3f}% exceeds floor {RESIDUAL_LIMIT_PCT[carrier]}%"
+        f"{carrier}: golden residual {got:.3f}% exceeds the acceptance limit "
+        f"{RESIDUAL_LIMIT_PCT[carrier]}%"
     )
 
 
-def test_the_floor_is_one_tenth_of_the_iq_error_the_golden_measures():
+def test_the_acceptance_limit_is_one_tenth_of_the_iq_error_the_golden_measures():
     """design.md §5's −6 dB pulse-weighted figures: 10.82 % at 5 MHz D=8 and
     7.91 % at 13 MHz D=2. A yardstick contributes negligibly at a tenth."""
     assert RESIDUAL_LIMIT_PCT == {"5MHz": pytest.approx(1.082), "13MHz": pytest.approx(0.791)}
@@ -50,8 +59,10 @@ def test_the_floor_is_one_tenth_of_the_iq_error_the_golden_measures():
 
 @pytest.mark.parametrize(("carrier", "residual"), [("5MHz", 0.000), ("13MHz", 0.099)])
 def test_the_production_residual_quoted_in_the_design_is_pinned(carrier, residual):
+    """To the digit the table shows: three decimals, so half a unit in the
+    third. This is the floor of every comparison made with the golden."""
     got = residual_pct(sweep.production, benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-    assert got == pytest.approx(residual, abs=0.01)
+    assert got == pytest.approx(residual, abs=0.0005)
 
 
 # --- the frozen preliminary figures ------------------------------------------
@@ -67,9 +78,10 @@ def test_the_production_residual_quoted_in_the_design_is_pinned(carrier, residua
     ],
 )
 def test_the_frozen_preliminary_residuals_are_reproduced(name, carrier, residual):
-    """The four figures #25 froze before any code existed, to 0.01 point."""
+    """The four figures #25 froze before any code existed. #25 allowed 0.01
+    point; they reproduce to the third decimal, so that is what is held."""
     got = residual_pct(CANDIDATES[name], benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-    assert got == pytest.approx(residual, abs=0.01)
+    assert got == pytest.approx(residual, abs=0.0005)
 
 
 # Every row of the residual table, both carriers, so "every figure quoted is
@@ -88,15 +100,17 @@ _RESIDUAL_TABLE = {
 def test_every_alternative_in_the_residual_table_is_pinned_at_both_carriers(name):
     for carrier, want in zip(("5MHz", "13MHz"), _RESIDUAL_TABLE[name], strict=True):
         got = residual_pct(CANDIDATES[name], benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-        assert got == pytest.approx(want, abs=0.01), f"{name}/{carrier}"
+        assert got == pytest.approx(want, abs=0.0005), f"{name}/{carrier}"
 
 
-def test_a_finite_kernel_does_reach_the_13mhz_floor_and_what_it_costs_is_the_point():
-    """The rectangular 256-tap sinc is finite and lands at 0.242 %, under the
-    0.791 % floor. So the design's claim is not that finite support fails at
-    13 MHz — it is that nothing short does: the shortest finite kernel in
-    the sweep that reaches the floor is 256 taps, and it is the slowest
-    method costed. Kept as a test so the claim cannot widen again."""
+def test_a_finite_kernel_does_reach_the_13mhz_limit_and_its_length_is_the_point():
+    """The rectangular 256-tap sinc is finite and its measured residual,
+    0.242 %, is under the 0.791 % acceptance limit. So the design's claim is
+    not that finite support fails at 13 MHz — it is that no evaluated kernel
+    of 32 taps or fewer reaches the limit, and the one that does is 64 times
+    the taps of a cubic per sample. Tap count is the stable fact; runtime is
+    a measurement of one host and is not asserted. Kept as a test so the
+    claim cannot widen again."""
     record = benchmark_record(13e6)
 
     assert residual_pct(CANDIDATES["rect_sinc256"], record) < RESIDUAL_LIMIT_PCT["13MHz"]
@@ -105,14 +119,14 @@ def test_a_finite_kernel_does_reach_the_13mhz_floor_and_what_it_costs_is_the_poi
 
 
 @pytest.mark.parametrize(("carrier", "bound"), [("5MHz", 0.186), ("13MHz", 16.472)])
-def test_no_four_tap_rf_kernel_can_meet_the_13mhz_floor(carrier, bound):
+def test_no_four_tap_rf_kernel_can_meet_the_13mhz_limit(carrier, bound):
     """The least-squares fit of four taps to the oracle on the record itself
-    bounds every four-tap zero-extended kernel. At 13 MHz it misses the floor
-    by a factor of twenty, so the design's move to upsampling is forced by
-    the family, not by the choice of member."""
+    bounds every four-tap zero-extended kernel. At 13 MHz it misses the
+    acceptance limit by a factor of twenty, so the design's move away from
+    four taps is forced by the family, not by the choice of member."""
     got = residual_pct(least_squares_4tap_bound, benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
 
-    assert got == pytest.approx(bound, abs=0.01)
+    assert got == pytest.approx(bound, abs=0.0005)
     if carrier == "13MHz":
         assert got > 20 * RESIDUAL_LIMIT_PCT[carrier]
 
@@ -254,10 +268,11 @@ def test_the_upsampling_parameters_are_the_ones_the_design_names():
     assert ZERO_PAD == 256
 
 
-def test_padding_is_what_holds_the_13mhz_residual_under_the_floor():
+def test_padding_is_what_holds_the_13mhz_residual_under_the_limit():
     """Periodic-sinc interpolation has images one padded length away; with no
-    padding they reach the record and the residual is 0.97 %, over the floor.
-    Pinned so the constant is understood as load-bearing, not cosmetic."""
+    padding they reach the record and the residual is 0.97 %, over the
+    acceptance limit. Pinned so the constant is understood as load-bearing,
+    not cosmetic."""
     from enodia.spec.beamform.interp import fractional_delay
 
     record = benchmark_record(13e6)

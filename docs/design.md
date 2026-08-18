@@ -1376,9 +1376,11 @@ sample and 201 fractions. The residual is the RMS deviation from it,
 normalized. It measures interpolation of the same sampled record #6
 consumes; it says nothing about pre-ADC fidelity or AFE aliasing (§4).
 
-**The floor is one tenth of the IQ error being measured** — 1.082 % at
-5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted figures at D=8
-and D=2. Every figure below is pinned by `tests/test_rf_golden_interp.py`.
+**The acceptance limit is one tenth of the IQ error being measured** —
+1.082 % at 5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted
+figures at D=8 and D=2. Every *residual* below is pinned by
+`tests/test_rf_golden_interp.py`, to the digit shown; the runtimes and
+memory are measurements of one host and are not.
 
 | method | 5 MHz | 13 MHz | s / frame | peak MiB / event |
 |---|---|---|---|---|
@@ -1392,34 +1394,38 @@ and D=2. Every figure below is pinned by `tests/test_rf_golden_interp.py`.
 | polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 93 | 78 |
 | **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **8** | **86** |
 | *least-squares bound on any 4-tap kernel* | *0.186 %* | *16.472 %* | | |
-| floor | 1.082 % | 0.791 % | | |
+| acceptance limit | 1.082 % | 0.791 % | | |
 
-Frame times and peak memory are one 128-event 5 MHz demo frame on the
-development host, reported rather than pinned; the timing varies by half
-between runs. † These candidates are evaluated a channel at a time, which
-is why their peak is small — vectorized over the stack, a 256-tap gather
-would hold about 800 MiB.
+Both cost columns are measured on **one transmit event** of the 5 MHz demo
+(128 channels × 3373 samples in, 128 × 3012 positions out) on the
+development host: the runtime is that event's, multiplied by the frame's
+128 events; the memory is that event's peak, not normalized. Reported
+rather than pinned, and the timing varies by about half between runs.
+† These candidates are evaluated a channel at a time, which is why their
+peak is small — vectorized over the stack, a 256-tap gather would hold
+about 800 MiB.
 
 **What the table says.** At 5 MHz the Lagrange cubic alone would do. At
-13 MHz **nothing short does**: the record has −14 dB of energy at Nyquist,
-and every kernel of modest support has a transition band below Nyquist that
-the signal occupies. Lagrange to 16 points, Kaiser-windowed sinc to 32 taps
-— all miss the floor by an order of magnitude, and the least-squares fit of
-four taps to the oracle itself, the best any four-tap kernel could do on
-this record, misses it by twenty times. A finite kernel *does* reach the
-floor — the 256-tap rectangular sinc, at 0.242 % — but it is the slowest
-method costed, and 64 times the work of a cubic per sample. So the
-alternatives are a long kernel or upsampling once per record and reading
-it with a short one; among the methods that reach the floor, FFT
-upsampling is the cheapest by an order of magnitude, and its residual is
-set by the zero padding: with none, 0.97 % — over the floor.
+13 MHz **no evaluated kernel of 32 taps or fewer reaches the limit**: the
+record has −14 dB of energy at Nyquist, and a kernel of modest support has
+a transition band below Nyquist that the signal occupies. Lagrange to 16
+points and Kaiser-windowed sinc to 32 taps miss by an order of magnitude,
+and the least-squares fit of four taps to the oracle itself — the best any
+four-tap kernel could do on this record — misses by twenty times. A finite
+kernel *does* reach it — the 256-tap rectangular sinc, at 0.242 % — at 64
+times the taps of a cubic per sample. So the alternatives are a long
+kernel, or upsampling once per record and reading it with a short one.
+Among the costed methods that reach the limit, FFT upsampling is the
+**fastest by measured frame time**, by an order of magnitude; it is not the
+lightest — at 86 MiB per event it uses the most memory of them — and its
+residual is set by the zero padding: with none, 0.97 % — over the limit.
 
-**Floor and residual are different numbers.** The floor — 1.082 % and
-0.791 % — is what the yardstick's own error must stay under to be a
-yardstick. The **observed residual** of the production operator is
-0.0003 % at 5 MHz and 0.0992 % at 13 MHz, and *that* is the resolution of
-a comparison: a golden comparison cannot see a difference smaller than the
-yardstick's own residual, so no such difference is evidence of anything.
+**Limit and floor are different numbers.** The acceptance limit — 1.082 %
+and 0.791 % — is the upper bound the yardstick's own error must stay under
+to be a yardstick. The **observed residual** of the production operator,
+0.0003 % at 5 MHz and 0.0992 % at 13 MHz, is the *floor* of a comparison:
+a golden comparison cannot see a difference smaller than the yardstick's
+own residual, so no such difference is evidence of anything.
 Rerun the benchmark when #46 settles the pulse bandwidth or #10 supplies
 the real 13 MHz profile; neither changes the frozen figures above, both may
 change the profile-specific residual quoted beside a comparison.
