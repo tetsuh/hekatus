@@ -23,8 +23,11 @@ from enodia.spec.beamform.rf_delay import UPSAMPLE_FACTOR, ZERO_PAD, delay_rf, u
 from enodia.spec.beamform.rf_delay_sweep import (
     BENCHMARK_CARRIERS_HZ,
     BENCHMARK_N,
+    BEST_SEARCHED_4TAP_SUPPORT,
     CANDIDATES,
+    CONTIGUOUS_4TAP_SUPPORT,
     RESIDUAL_LIMIT_PCT,
+    SEARCHED_4TAP_OFFSETS,
     benchmark_positions,
     benchmark_record,
     least_squares_4tap_bound,
@@ -124,17 +127,40 @@ def test_a_finite_kernel_does_reach_the_13mhz_limit_and_its_length_is_the_point(
         assert residual_pct(CANDIDATES[short], record) > RESIDUAL_LIMIT_PCT["13MHz"], short
 
 
-@pytest.mark.parametrize(("carrier", "bound"), [("5MHz", 0.186), ("13MHz", 16.472)])
-def test_no_four_tap_rf_kernel_can_meet_the_13mhz_limit(carrier, bound):
-    """The least-squares fit of four taps to the oracle on the record itself
-    bounds every four-tap zero-extended kernel. At 13 MHz it misses the
-    acceptance limit by a factor of twenty, so the design's move away from
-    four taps is forced by the family, not by the choice of member."""
-    got = residual_pct(least_squares_4tap_bound, benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]))
-
+@pytest.mark.parametrize(
+    ("support", "carrier", "bound"),
+    [
+        (CONTIGUOUS_4TAP_SUPPORT, "5MHz", 0.186),
+        (CONTIGUOUS_4TAP_SUPPORT, "13MHz", 16.472),
+        (BEST_SEARCHED_4TAP_SUPPORT, "5MHz", 0.641),
+        (BEST_SEARCHED_4TAP_SUPPORT, "13MHz", 13.041),
+    ],
+)
+def test_the_four_tap_least_squares_bounds_are_pinned_per_support(support, carrier, bound):
+    """A least-squares fit of four taps to the oracle bounds every kernel on
+    *that support* — and no other. Review found {-2, 0, 1, 3} beats the
+    contiguous support at 13 MHz, and a search over all 3060 four-tap
+    supports within ±8 samples found nothing better than it. Both are
+    quoted in the design, so both are pinned."""
+    got = residual_pct(
+        lambda r, t: least_squares_4tap_bound(r, t, support=support),
+        benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]),
+    )
     assert got == pytest.approx(bound, abs=0.0005)
-    if carrier == "13MHz":
-        assert got > 20 * RESIDUAL_LIMIT_PCT[carrier]
+
+
+def test_no_searched_four_tap_support_comes_within_an_order_of_magnitude_at_13mhz():
+    """The claim the design makes, scoped to what was searched: on the
+    contiguous support and on the best of the 3060 supports within ±8
+    samples, four taps miss the 13 MHz limit by more than sixteen times.
+    Says nothing about supports outside that range."""
+    record = benchmark_record(13e6)
+    for support in (CONTIGUOUS_4TAP_SUPPORT, BEST_SEARCHED_4TAP_SUPPORT):
+        got = residual_pct(
+            lambda r, t, s=support: least_squares_4tap_bound(r, t, support=s), record
+        )
+        assert got > 16 * RESIDUAL_LIMIT_PCT["13MHz"], support
+    assert set(BEST_SEARCHED_4TAP_SUPPORT) <= set(SEARCHED_4TAP_OFFSETS)
 
 
 # --- the oracle itself --------------------------------------------------------

@@ -1399,7 +1399,8 @@ memory are measurements of one host and are not.
 | rectangular sinc, 256 taps | 0.200 % | 0.242 % | 271 | 30 † |
 | polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 93 | 78 |
 | **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **8** | **86** |
-| *least-squares bound on any 4-tap kernel* | *0.186 %* | *16.472 %* | | |
+| *least-squares bound, 4 taps on the contiguous support {−1,0,1,2}* | *0.186 %* | *16.472 %* | | |
+| *least-squares bound, 4 taps on {−2,0,1,3} — best of 3060 supports within ±8* | *0.641 %* | *13.041 %* | | |
 | acceptance limit | 1.082 % | 0.791 % | | |
 
 Both cost columns are measured on **one transmit event** of the 5 MHz demo
@@ -1415,11 +1416,16 @@ about 800 MiB.
 13 MHz **no evaluated kernel of 32 taps or fewer reaches the limit**: the
 record has −14 dB of energy at Nyquist, and a kernel of modest support has
 a transition band below Nyquist that the signal occupies. Lagrange to 16
-points and Kaiser-windowed sinc to 32 taps miss by an order of magnitude,
-and the least-squares fit of four taps to the oracle itself — the best any
-four-tap kernel could do on this record — misses by twenty times. A finite
-kernel *does* reach it — the 256-tap rectangular sinc, at 0.242 % — at 64
-times the taps of a cubic per sample. So the alternatives are a long
+points and Kaiser-windowed sinc to 32 taps miss by an order of magnitude.
+Four taps cannot be rescued by choosing them better: the least-squares fit
+of four taps to the oracle itself — the best any kernel *on that support*
+could do on this record — misses by twenty times on the contiguous support
+every four-tap interpolator here uses, and by sixteen times on the best of
+the 3060 four-tap supports drawn from the 18 samples around the target
+(reviewed and searched: {−2, 0, 1, 3}, 13.0 %). Nothing is claimed about
+supports wider than ±8 samples. A finite kernel *does* reach the limit —
+the 256-tap rectangular sinc, at 0.242 % — at 64 times the taps of a cubic
+per sample. So the alternatives are a long
 kernel, or upsampling once per record and reading it with a short one.
 Among the costed methods that reach the limit, FFT upsampling is the
 **fastest by measured frame time**, by an order of magnitude; it is not the

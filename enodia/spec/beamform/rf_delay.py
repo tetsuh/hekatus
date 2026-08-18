@@ -38,8 +38,9 @@ magnitude, though not the lightest in memory (`rf_delay_sweep.py`). Why no
 evaluated kernel of 32 taps or fewer reaches the limit at 13 MHz is recorded
 there: the record has −14 dB of energy at Nyquist, a kernel of modest
 support has a transition band that energy occupies, and the least-squares
-bound on *any* four-tap RF kernel is 16.5 %. A 256-tap rectangular sinc does
-reach it, at 64 times the taps of a cubic per sample.
+bound on four taps is 16.5 % on the contiguous support and 13.0 % on the
+best support within ±8 samples. A 256-tap rectangular sinc does reach it,
+at 64 times the taps of a cubic per sample.
 
 **Boundary.** The record is zero outside [0, N). Because step 2 reconstructs
 band-limited, a position within a few samples of either end reads the

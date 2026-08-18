@@ -158,23 +158,52 @@ def polyphase_upsample(factor: int, half_len: int, beta: float, then: Callable) 
     return f
 
 
-def least_squares_4tap_bound(record: np.ndarray, t: np.ndarray) -> np.ndarray:
-    """The best any real 4-tap zero-extended kernel can do on this record.
+CONTIGUOUS_4TAP_SUPPORT = (-1, 0, 1, 2)
+# The support review found to be the best of all 4-tap supports drawn from
+# the 18 samples m-8 .. m+9 (3060 supports; `best_4tap_support()` reruns
+# the search). It beats the contiguous one at 13 MHz and still misses the
+# limit by sixteen times.
+BEST_SEARCHED_4TAP_SUPPORT = (-2, 0, 1, 3)
+SEARCHED_4TAP_OFFSETS = range(-8, 10)
 
-    For each fraction, the four taps are fitted by least squares to the
-    oracle over every output position — a bound on the whole family, not a
-    kernel a port could run, since it is fitted to the record it is scored
-    on. If this misses the acceptance limit, no four-tap RF kernel meets it.
+
+def least_squares_4tap_bound(
+    record: np.ndarray, t: np.ndarray, *, support: tuple[int, ...] = CONTIGUOUS_4TAP_SUPPORT
+) -> np.ndarray:
+    """The best any real 4-tap zero-extended kernel *on this support* can do.
+
+    For each fraction, the four taps at ``m + support`` are fitted by least
+    squares to the oracle over every output position — a bound on every
+    kernel with that support, not a kernel a port could run, since it is
+    fitted to the record it is scored on. It is a bound for the support
+    given and no other: review found a non-contiguous support that does
+    better at 13 MHz (`BEST_SEARCHED_4TAP_SUPPORT`), which is why the
+    design quotes both and scopes the claim to the supports searched.
     """
-    m = np.floor(t)
-    idx = m.astype(np.int64)[..., None] + np.array([-1, 0, 1, 2])
-    gathered = _gather0(record, idx)  # (mu, n, 4)
+    m = np.floor(t).astype(np.int64)
+    gathered = _gather0(record, m[..., None] + np.array(support))  # (mu, n, 4)
     ideal = oracle(record, t)  # (mu, n)
-    out = np.empty_like(ideal)
-    for i in range(t.shape[0]):
-        h, *_ = np.linalg.lstsq(gathered[i], ideal[i], rcond=None)
-        out[i] = gathered[i] @ h
-    return out
+    normal = np.einsum("mnk,mnl->mkl", gathered, gathered)
+    rhs = np.einsum("mnk,mn->mk", gathered, ideal)
+    taps = np.linalg.solve(normal + 1e-12 * np.eye(len(support)), rhs[..., None])[..., 0]
+    return np.einsum("mnk,mk->mn", gathered, taps)
+
+
+def best_4tap_support(record: np.ndarray) -> tuple[float, tuple[int, ...]]:
+    """Search every 4-tap support drawn from `SEARCHED_4TAP_OFFSETS` for the
+    lowest least-squares residual on ``record``. Slow (3060 fits); run once
+    to reproduce `BEST_SEARCHED_4TAP_SUPPORT`, not in the test suite."""
+    from itertools import combinations
+
+    best: tuple[float, tuple[int, ...]] | None = None
+    for support in combinations(SEARCHED_4TAP_OFFSETS, 4):
+        got = residual_pct(
+            lambda r, tt, s=support: least_squares_4tap_bound(r, tt, support=s), record
+        )
+        if best is None or got < best[0]:
+            best = (got, support)
+    assert best is not None
+    return best
 
 
 def production(record: np.ndarray, t: np.ndarray) -> np.ndarray:
@@ -204,7 +233,13 @@ CANDIDATES: dict[str, Callable] = {
 
 def residual_table() -> str:
     lines = [f"{'method':36s}" + "".join(f"{c:>10s}" for c in BENCHMARK_CARRIERS_HZ)]
-    for name, fn in {**CANDIDATES, "ls4_bound": least_squares_4tap_bound}.items():
+    bounds = {
+        "ls4_bound_contiguous": least_squares_4tap_bound,
+        "ls4_bound_best_support": lambda r, tt: least_squares_4tap_bound(
+            r, tt, support=BEST_SEARCHED_4TAP_SUPPORT
+        ),
+    }
+    for name, fn in {**CANDIDATES, **bounds}.items():
         row = f"{name:36s}"
         for f0 in BENCHMARK_CARRIERS_HZ.values():
             row += f"{residual_pct(fn, benchmark_record(f0)):9.3f}%"
