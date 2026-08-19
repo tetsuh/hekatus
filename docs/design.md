@@ -1400,7 +1400,7 @@ memory are measurements of one host and are not.
 | polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 93 | 78 |
 | **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **8** | **86** |
 | *least-squares bound, 4 taps on the contiguous support {−1,0,1,2}* | *0.186 %* | *16.472 %* | | |
-| *least-squares bound, 4 taps on {−2,0,1,3} — best of 3060 supports within ±8* | *0.641 %* | *13.041 %* | | |
+| *least-squares bound, 4 taps on {−2,0,1,3} — best of the 3060 supports drawn from offsets −8 … +9* | *0.641 %* | *13.041 %* | | |
 | acceptance limit | 1.082 % | 0.791 % | | |
 
 Both cost columns are measured on **one transmit event** of the 5 MHz demo
@@ -1421,9 +1421,10 @@ Four taps cannot be rescued by choosing them better: the least-squares fit
 of four taps to the oracle itself — the best any kernel *on that support*
 could do on this record — misses by twenty times on the contiguous support
 every four-tap interpolator here uses, and by sixteen times on the best of
-the 3060 four-tap supports drawn from the 18 samples around the target
-(reviewed and searched: {−2, 0, 1, 3}, 13.0 %). Nothing is claimed about
-supports wider than ±8 samples. A finite kernel *does* reach the limit —
+the 3060 four-tap supports drawn from the 18 offsets −8 … +9 around the
+target — the same one-sided span the Lagrange nodes use (reviewed and
+searched: {−2, 0, 1, 3}, 13.0 %). Nothing is claimed about supports that
+reach outside −8 … +9. A finite kernel *does* reach the limit —
 the 256-tap rectangular sinc, at 0.242 % — at 64 times the taps of a cubic
 per sample. So the alternatives are a long
 kernel, or upsampling once per record and reading it with a short one.

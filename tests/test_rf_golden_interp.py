@@ -14,6 +14,8 @@ yardstick's own error. The name of the first test below is the one #25
 mandated and uses "floor" in the first sense; its docstring says which.
 """
 
+import math
+
 import numpy as np
 import pytest
 
@@ -140,8 +142,8 @@ def test_the_four_tap_least_squares_bounds_are_pinned_per_support(support, carri
     """A least-squares fit of four taps to the oracle bounds every kernel on
     *that support* — and no other. Review found {-2, 0, 1, 3} beats the
     contiguous support at 13 MHz, and a search over all 3060 four-tap
-    supports within ±8 samples found nothing better than it. Both are
-    quoted in the design, so both are pinned."""
+    supports drawn from offsets -8 .. +9 found nothing better than it. Both
+    are quoted in the design, so both are pinned."""
     got = residual_pct(
         lambda r, t: least_squares_4tap_bound(r, t, support=support),
         benchmark_record(BENCHMARK_CARRIERS_HZ[carrier]),
@@ -151,9 +153,10 @@ def test_the_four_tap_least_squares_bounds_are_pinned_per_support(support, carri
 
 def test_no_searched_four_tap_support_comes_within_an_order_of_magnitude_at_13mhz():
     """The claim the design makes, scoped to what was searched: on the
-    contiguous support and on the best of the 3060 supports within ±8
-    samples, four taps miss the 13 MHz limit by more than sixteen times.
-    Says nothing about supports outside that range."""
+    contiguous support and on the best of the 3060 supports drawn from
+    offsets -8 .. +9, four taps miss the 13 MHz limit by more than sixteen
+    times. Says nothing about supports outside that range — and the range
+    is asserted here so the prose cannot drift from the code again."""
     record = benchmark_record(13e6)
     for support in (CONTIGUOUS_4TAP_SUPPORT, BEST_SEARCHED_4TAP_SUPPORT):
         got = residual_pct(
@@ -161,6 +164,9 @@ def test_no_searched_four_tap_support_comes_within_an_order_of_magnitude_at_13mh
         )
         assert got > 16 * RESIDUAL_LIMIT_PCT["13MHz"], support
     assert set(BEST_SEARCHED_4TAP_SUPPORT) <= set(SEARCHED_4TAP_OFFSETS)
+    assert list(SEARCHED_4TAP_OFFSETS) == list(range(-8, 10))
+    assert len(SEARCHED_4TAP_OFFSETS) == 18
+    assert math.comb(len(SEARCHED_4TAP_OFFSETS), 4) == 3060
 
 
 # --- the oracle itself --------------------------------------------------------

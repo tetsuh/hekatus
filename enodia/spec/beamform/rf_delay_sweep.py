@@ -160,11 +160,12 @@ def polyphase_upsample(factor: int, half_len: int, beta: float, then: Callable) 
 
 CONTIGUOUS_4TAP_SUPPORT = (-1, 0, 1, 2)
 # The support review found to be the best of all 4-tap supports drawn from
-# the 18 samples m-8 .. m+9 (3060 supports; `best_4tap_support()` reruns
-# the search). It beats the contiguous one at 13 MHz and still misses the
-# limit by sixteen times.
+# the 18 offsets -8 .. +9 around the target — C(18, 4) = 3060 supports; the
+# span is one-sided like the Lagrange nodes' and `best_4tap_support()`
+# reruns the search. It beats the contiguous one at 13 MHz and still misses
+# the limit by sixteen times.
 BEST_SEARCHED_4TAP_SUPPORT = (-2, 0, 1, 3)
-SEARCHED_4TAP_OFFSETS = range(-8, 10)
+SEARCHED_4TAP_OFFSETS = range(-8, 10)  # -8 .. +9 inclusive: 18 offsets
 
 
 def least_squares_4tap_bound(
