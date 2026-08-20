@@ -1353,6 +1353,101 @@ downstream. Threshold: from the BF16 theoretical floor (relative 4e-3),
 
 **L0 is automated and lives in CI.**
 
+### The yardstick's own floor
+
+The RF-domain ideal-delay DAS is not an L0 party — it is the yardstick that
+measures how much the IQ + 4-tap path costs (CLAUDE.md, absolute rules) —
+and a yardstick's own error has to sit well below what it measures. Its
+fractional delays are taken by **band-limited upsampling by 8, then the
+Lagrange cubic of §5** (`enodia/spec/beamform/rf_delay.py`): the record is
+zero-padded by 256 samples at each end, upsampled through the real FFT
+(spectrum zero-stuffed to 8×, Nyquist bin halved, inverse-transformed and
+scaled by 8), and read at 8·t by the same kernel, coordinate convention and
+zero-extension the IQ side uses. MVP-1 used 2-tap linear interpolation on
+the RF, which is what #25 replaced.
+
+**How its error is measured** — a frozen, discrete-time oracle
+(`enodia/spec/beamform/rf_delay_sweep.py`), so the figure cannot drift with
+the machine or the session: for each carrier in {5, 13} MHz, the record is
+256 samples at 40 MHz of the simulator's own pulse (0.7 fractional
+bandwidth at −6 dB), and the ideal delay of that finite sampled record is
+its zero-extended sinc reconstruction, evaluated at t = n − μ over every
+sample and 201 fractions. The residual is
+
+```text
+100 × sqrt( Σ (candidate − ideal)² / Σ ideal² )   [%]
+```
+
+with both sums over all 256 samples and all 201 fractions. It measures
+interpolation of the same sampled record #6 consumes; it says nothing about
+pre-ADC fidelity or AFE aliasing (§4).
+
+**The acceptance limit is one tenth of the IQ error being measured** —
+1.082 % at 5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted
+figures at D=8 and D=2. Every *residual* below is pinned by
+`tests/test_rf_golden_interp.py`, to the digit shown; the runtimes and
+memory are measurements of one host and are not.
+
+| method | 5 MHz | 13 MHz | s / frame | peak MiB / event |
+|---|---|---|---|---|
+| 2-tap linear (MVP-1) | 6.216 % | 38.707 % | 0.4 | 10 |
+| Lagrange cubic, direct | 0.961 % | 28.560 % | 3.5 | 43 |
+| Lagrange 8-point | 0.047 % | 20.586 % | 15 | 6 † |
+| Lagrange 16-point | 0.000 % | 15.094 % | 58 | 6 † |
+| Kaiser (β=8) sinc, 16 taps | 0.004 % | 11.463 % | 41 | 8 † |
+| Kaiser (β=8) sinc, 32 taps | 0.003 % | 7.421 % | 82 | 13 † |
+| rectangular sinc, 256 taps | 0.200 % | 0.242 % | 271 | 30 † |
+| polyphase ×4 (Kaiser β=4, 640 taps/phase) + cubic | 0.004 % | 0.361 % | 93 | 78 |
+| **FFT ×8, pad 256, + cubic (production)** | **0.000 %** | **0.099 %** | **8** | **86** |
+| *least-squares bound, 4 taps on the contiguous support {−1,0,1,2}* | *0.186 %* | *16.472 %* | | |
+| *least-squares bound, 4 taps on {−2,0,1,3} — best of the 3060 supports drawn from offsets −8 … +9* | *0.641 %* | *13.041 %* | | |
+| acceptance limit | 1.082 % | 0.791 % | | |
+
+Both cost columns are measured on **one transmit event** of the 5 MHz demo
+(128 channels × 3373 samples in, 128 × 3012 positions out) on the
+development host: the runtime is that event's, multiplied by the frame's
+128 events; the memory is that event's peak, not normalized. Reported
+rather than pinned, and the timing varies by about half between runs.
+† These candidates are evaluated a channel at a time, which is why their
+peak is small — vectorized over the stack, a 256-tap gather would hold
+about 800 MiB.
+
+**What the table says.** At 5 MHz the Lagrange cubic alone would do. At
+13 MHz **no evaluated kernel of 32 taps or fewer reaches the limit**: the
+record has −14 dB of energy at Nyquist, and a kernel of modest support has
+a transition band below Nyquist that the signal occupies. Lagrange to 16
+points and Kaiser-windowed sinc to 32 taps miss by an order of magnitude.
+Four taps cannot be rescued by choosing them better: the least-squares fit
+of four taps to the oracle itself — the best any kernel *on that support*
+could do on this record — misses by twenty times on the contiguous support
+every four-tap interpolator here uses, and by sixteen times on the best of
+the 3060 four-tap supports drawn from the 18 offsets −8 … +9 around the
+target — the same one-sided span the Lagrange nodes use (reviewed and
+searched: {−2, 0, 1, 3}, 13.0 %). Nothing is claimed about supports that
+reach outside −8 … +9. A finite kernel *does* reach the limit —
+the 256-tap rectangular sinc, at 0.242 % — at 64 times the taps of a cubic
+per sample. So the alternatives are a long
+kernel, or upsampling once per record and reading it with a short one.
+Among the costed methods that reach the limit, FFT upsampling is the
+**fastest by measured frame time**, by an order of magnitude; it is not the
+lightest — at 86 MiB per event it uses the most memory of them — and its
+residual is set by the zero padding: with none, 0.972 % at 13 MHz — over
+that carrier's 0.791 % limit (and under the separate 5 MHz one).
+
+**Limit and floor are different numbers.** The acceptance limit — 1.082 %
+and 0.791 % — is the upper bound the yardstick's own error must stay under
+to be a yardstick. The **observed residual** of the production operator,
+0.0003 % at 5 MHz and 0.0992 % at 13 MHz, is the *floor* of a comparison —
+and the floor is a limit on **attribution, not on detection**. A comparison
+against the golden observes any difference numerically, however small; what
+it cannot do is tell a difference smaller than the yardstick's own residual
+apart from that residual. So such a difference is not, by itself, evidence
+of error or of improvement relative to the ideal — the golden itself sits
+that far from the ideal, in a direction the comparison does not know.
+Rerun the benchmark when #46 settles the pulse bandwidth or #10 supplies
+the real 13 MHz profile; neither changes the frozen figures above, both may
+change the profile-specific residual quoted beside a comparison.
+
 ### The simulator's role
 
 Real data comes later, so the simulator owes **formal accuracy, not

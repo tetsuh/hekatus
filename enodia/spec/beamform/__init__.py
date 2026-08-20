@@ -10,11 +10,11 @@ that approximation. The IQ path and the comparison against this golden are
 Receive uses a fixed-F-number dynamic aperture with Hann apodization. The
 dtype is a parameter, as every design parameter is.
 
-Known approximation in this golden path: fractional delays are taken by
-linear interpolation on the 40 MHz RF. At 5 MHz that is 8x oversampled, so
-the error is small, but it is not zero, and a yardstick with its own
-interpolation error contaminates the very comparison it exists for. Raised
-as #25.
+The fractional delays are the band-limited ideal delay of `rf_delay.py` —
+upsampling by 8 through the FFT, then the Lagrange cubic — measured against
+a frozen oracle at 0.000 % residual at 5 MHz and 0.099 % at 13 MHz, both
+under a tenth of the IQ-side error this yardstick measures (#25). MVP-1's
+linear interpolation stood at 6.2 % and 38.7 %.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.signal import hilbert
 
+from enodia.spec.beamform.rf_delay import delay_rf
 from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import RFEventRecord
 from enodia.spec.sequence import TxEvent
@@ -118,18 +119,14 @@ def das_rf_golden(
 
     by_event = _records_by_event(events, records)
     image = np.zeros((z.size, len(events)), dtype=dtype)
-    rows = np.arange(profile.n_elements)[:, None]
     for ev in events:
         rec = by_event[ev.event_index]
         _check_channel_count(profile, rec)
         data = rec.data.astype(dtype)
-        n_t = data.shape[1]
         dx = el_x[:, None] - ev.line_x_m  # (n_ch, 1)
         tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
         pos = tau * profile.fs_hz
-        i0 = np.clip(np.floor(pos).astype(np.int64), 0, n_t - 2)
-        frac = (pos - i0).astype(dtype)
-        sampled = (1.0 - frac) * data[rows, i0] + frac * data[rows, i0 + 1]
+        sampled = delay_rf(data, pos)
 
         # Fixed-F-number dynamic aperture with Hann apodization, normalized
         # by the weight sum at each depth so the aperture growth does not
