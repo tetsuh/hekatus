@@ -58,9 +58,15 @@ def test_golden_residual_is_below_declared_floor_at_both_carriers(carrier):
 
 
 def test_the_acceptance_limit_is_one_tenth_of_the_iq_error_the_golden_measures():
-    """design.md §5's −6 dB pulse-weighted figures: 10.82 % at 5 MHz D=8 and
-    7.91 % at 13 MHz D=2. A yardstick contributes negligibly at a tenth."""
+    """One tenth of §5's pulse-weighted figures as they stood when #25 froze
+    the benchmark: 10.82 % at 5 MHz D=8 and 7.91 % at 13 MHz D=2. Frozen with
+    the record, and not re-derived when #46 moved §5's figures to 14.00 % and
+    7.88 %: the 5 MHz limit is now stricter than a tenth of what is measured
+    and the 13 MHz one 0.003 points looser, both far above the production
+    residuals. A yardstick contributes negligibly at a tenth."""
     assert RESIDUAL_LIMIT_PCT == {"5MHz": pytest.approx(1.082), "13MHz": pytest.approx(0.791)}
+    assert RESIDUAL_LIMIT_PCT["5MHz"] < 14.00 / 10
+    assert RESIDUAL_LIMIT_PCT["13MHz"] - 7.88 / 10 == pytest.approx(0.003, abs=0.0005)
 
 
 @pytest.mark.parametrize(
@@ -190,9 +196,14 @@ def test_the_benchmark_grid_is_the_frozen_one():
 
 
 def test_the_benchmark_record_is_the_simulators_pulse():
-    """Same function, same bandwidth the profile carries: what #6 consumes."""
+    """Same function as the simulator's, at 0.7 — which is the number the
+    5 MHz profile happens to carry, but the record is frozen at 0.7 by name
+    (`rf-oracle-frozen-0p7`), not derived from any profile (#46). A profile's
+    own result is a separate reconciliation output."""
     from enodia.spec.sim import gaussian_pulse
 
+    assert sweep.BENCHMARK_NAME == "rf-oracle-frozen-0p7"
+    assert sweep.BENCHMARK_BANDWIDTH_FRAC == 0.7
     record = benchmark_record(13e6)
     n = np.arange(256)
     np.testing.assert_array_equal(record, gaussian_pulse((n - 128) / 40e6, 13e6, 0.7))

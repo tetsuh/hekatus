@@ -34,6 +34,14 @@ are not ready discards the record.** It never falls back to the previous
 generation's tables: processing with wrong tables produces a plausible but
 wrong image, which is worse than a dropped frame (design.md §19).
 
+The table set a `(config ID, parameter-generation counter)` names **includes
+the probe profile** the configuration references at setup (design.md §19,
+`probe_profile_id`): the profile's bandwidth, and every derivative that
+depends on it, is selected by that identity like any other table. No field
+is added to the record for it — the identity above is sufficient, and
+duplicating the profile or its bandwidth into the header would give the
+data plane a second source of truth (design.md §4, ADR-0008).
+
 - Discarding is counted and reported, distinguishably from an overwrite
   violation — the two have different causes
 - A record is processable only when **both** identity fields match a ready

@@ -10,6 +10,13 @@ an enum, because shear-wave push and tracking transmits join it later
 
 This module covers the conventional case: one transmit event forms one
 scanline, so the contribution map is the identity.
+
+What is also already true here (#46, ADR-0008): a transmit configuration
+names the **one probe profile it runs on**, by id, and carries no bandwidth
+of its own. The runtime config ID a record carries selects the
+configuration and therefore, transitively, the profile; the profile is part
+of the table set that config ID names (docs/dataplane.md). Nothing about
+the pulse is duplicated into the transmit description or the frame header.
 """
 
 from __future__ import annotations
@@ -28,6 +35,30 @@ class TxEvent:
     tx_type: str
     line_x_m: float  # lateral position of the scanline (the beam axis)
     virtual_source_m: tuple[float, float]  # virtual source (x, z)
+
+
+@dataclass(frozen=True)
+class TransmitConfig:
+    """One entry of the setup-time configuration set (design.md §19).
+
+    `config_id` is what the runtime announces and what every record carries;
+    `probe_profile_id` is the one `ProbeProfile.name` this configuration runs
+    on. Bandwidth is the profile's and is not a field here — the mapping is
+    the whole of what this type adds to the contract.
+    """
+
+    config_id: str
+    probe_profile_id: str
+    events: tuple[TxEvent, ...]
+
+
+def make_bmode_config(profile: ProbeProfile, *, config_id: str = "bmode-focused") -> TransmitConfig:
+    """The conventional B-mode configuration on one profile."""
+    return TransmitConfig(
+        config_id=config_id,
+        probe_profile_id=profile.name,
+        events=tuple(make_bmode_sequence(profile)),
+    )
 
 
 def make_bmode_sequence(profile: ProbeProfile) -> list[TxEvent]:

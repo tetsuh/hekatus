@@ -6,10 +6,15 @@ the oracle that error is measured against, the candidates that were weighed,
 and the cost of each on the golden's own workload — so that the method
 `rf_delay.py` uses is a number rather than an argument.
 
-**The oracle is frozen and discrete-time.** For a carrier f0 in {5, 13} MHz,
-the record is 256 samples at 40 MHz of the simulator's own pulse,
-`gaussian_pulse((n − 128)/fs, f0, 0.7)`, in float64. The ideal delay of that
-finite sampled record is its zero-extended sinc reconstruction,
+**The oracle is frozen and discrete-time**, and it has a name:
+`rf-oracle-frozen-0p7`. For a carrier f0 in {5, 13} MHz, the record is 256
+samples at 40 MHz of the simulator's own pulse,
+`gaussian_pulse((n − 128)/fs, f0, 0.7)`, in float64 — 0.7 written here as a
+constant, not read from a profile: the record is historical synthetic
+evidence and stays what it is whether or not a profile carries the same
+number (#46; `profile_reconciliation.py` is where a profile's own result
+goes). The ideal delay of that finite sampled record is its zero-extended
+sinc reconstruction,
 
     ideal(t) = Σ_{k=0}^{255} record[k] · sinc(t − k),
 
@@ -21,10 +26,16 @@ scored on the same grid with the same zero-extended boundary rule, as
 
     residual = sqrt( Σ (candidate − ideal)² / Σ ideal² ).
 
-The acceptance limit a candidate has to stay under is one tenth of the
-IQ-side error it will be used to measure: **1.082 % at 5 MHz and 0.791 % at
-13 MHz** (design.md §5, the −6 dB pulse-weighted error at D=8 and D=2). Both
-are pinned by `tests/test_rf_golden_interp.py`. The residual a candidate
+The acceptance limit a candidate has to stay under was set at one tenth of
+the IQ-side error as design.md §5 stated it when this benchmark was frozen
+(#25): **1.082 % at 5 MHz and 0.791 % at 13 MHz**, from 10.82 % at the
+former 1.5 MHz edge and 7.91 % at a 6 dB rounding. The limits are frozen
+with the record and are not re-derived: §5's profile-derived figures are now
+14.00 % and 7.88 % (#46), so the 5 MHz limit is stricter than a tenth of
+what is measured and the 13 MHz one is 0.003 points looser than a tenth of
+the exact-level envelope figure — both sit far above the production
+residuals. Both limits are pinned by `tests/test_rf_golden_interp.py`. The
+residual a candidate
 actually reaches is the *floor* of any comparison made with it: a limit on
 attribution, not detection. The comparison observes smaller differences
 numerically; it cannot tell them apart from the yardstick's own error, so
@@ -46,15 +57,19 @@ from enodia.spec.beamform.interp import fractional_delay
 from enodia.spec.beamform.rf_delay import delay_rf
 from enodia.spec.sim import gaussian_pulse
 
+# The frozen record's name (design.md §15). Not a profile; never relabelled
+# as one. The 0.7 is the record's own constant.
+BENCHMARK_NAME = "rf-oracle-frozen-0p7"
 BENCHMARK_N = 256
 BENCHMARK_FS_HZ = 40e6
 BENCHMARK_BANDWIDTH_FRAC = 0.7
 BENCHMARK_CARRIERS_HZ: dict[str, float] = {"5MHz": 5e6, "13MHz": 13e6}
 BENCHMARK_FRACTIONS = 201
 
-# One tenth of the IQ + 4-tap error the golden is used to measure: the −6 dB
-# pulse-weighted figures of design.md §5 at 5 MHz D=8 (10.82 %) and 13 MHz
-# D=2 (7.91 %).
+# One tenth of the IQ + 4-tap error as design.md §5 stated it when #25 froze
+# this benchmark: 10.82 % at 5 MHz D=8 (former 1.5 MHz edge, 6 dB rounding)
+# and 7.91 % at 13 MHz D=2. Frozen with the record; not re-derived from §5's
+# current profile-derived figures (14.00 % and 7.88 %, #46).
 RESIDUAL_LIMIT_PCT: dict[str, float] = {"5MHz": 1.082, "13MHz": 0.791}
 
 
