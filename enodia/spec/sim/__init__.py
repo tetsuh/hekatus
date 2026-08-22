@@ -37,7 +37,13 @@ class PointScatterer:
 def gaussian_pulse(t: np.ndarray, f0_hz: float, bandwidth_frac: float) -> np.ndarray:
     """Two-way pulse: a Gaussian envelope on the carrier.
 
-    The envelope width follows from the -6 dB fractional bandwidth.
+    `bandwidth_frac` is the profile's definition (design.md §4, ADR-0008): the
+    full fractional width between the two points where the amplitude
+    spectrum is half its peak — `BANDWIDTH_LEVEL_DB` ≈ 6.0206 dB down. The
+    envelope's σ follows from that: the amplitude spectrum of
+    exp(−t²/2σ²) is exp(−2π²f²σ²), which equals 1/2 at
+    f = bandwidth_frac·f0/2 when σ = √(2 ln 2) / (π·bandwidth_frac·f0).
+    `tests/test_sim_format.py` checks the spectrum rather than the formula.
     """
     sigma = np.sqrt(2.0 * np.log(2.0)) / (np.pi * bandwidth_frac * f0_hz)
     return np.exp(-0.5 * (t / sigma) ** 2) * np.cos(2.0 * np.pi * f0_hz * t)
