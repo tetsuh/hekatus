@@ -1454,11 +1454,18 @@ the RF, which is what #25 replaced.
 
 **How its error is measured** — a frozen, discrete-time oracle
 (`enodia/spec/beamform/rf_delay_sweep.py`), so the figure cannot drift with
-the machine or the session: for each carrier in {5, 13} MHz, the record is
-256 samples at 40 MHz of the simulator's own pulse (0.7 fractional
-bandwidth at −6 dB), and the ideal delay of that finite sampled record is
-its zero-extended sinc reconstruction, evaluated at t = n − μ over every
-sample and 201 fractions. The residual is
+the machine or the session. It has a name, **`rf-oracle-frozen-0p7`**: for
+each carrier in {5, 13} MHz, the record is 256 samples at 40 MHz of the
+simulator's own pulse at 0.7 fractional bandwidth (full width at half
+amplitude, §4's convention — the 0.7 is the record's own constant, not read
+from a profile), and the ideal delay of that finite sampled record is its
+zero-extended sinc reconstruction, evaluated at t = n − μ over every sample
+and 201 fractions. The record is historical synthetic evidence: it is not a
+probe profile, its 13 MHz half in particular is not the 13 MHz profile #10
+will create, and it is never relabelled as one — even though `linear-5mhz`
+currently carries the same 0.7 and its 5 MHz record is therefore
+numerically identical to this one. What a *profile* implies is a separate
+output, below. The residual is
 
 ```text
 100 × sqrt( Σ (candidate − ideal)² / Σ ideal² )   [%]
@@ -1468,9 +1475,15 @@ with both sums over all 256 samples and all 201 fractions. It measures
 interpolation of the same sampled record #6 consumes; it says nothing about
 pre-ADC fidelity or AFE aliasing (§4).
 
-**The acceptance limit is one tenth of the IQ error being measured** —
-1.082 % at 5 MHz and 0.791 % at 13 MHz, from §5's −6 dB pulse-weighted
-figures at D=8 and D=2. Every *residual* below is pinned by
+**The acceptance limit was set at one tenth of the IQ error being
+measured, as §5 stated it when the benchmark was frozen** (#25) — 1.082 % at
+5 MHz and 0.791 % at 13 MHz, from 10.82 % at the former 1.5 MHz edge and
+7.91 % at a 6 dB rounding of the level. The limits are frozen with the
+record and were not re-derived when #46 moved §5's figures to the
+profile-derived 14.00 % and the exact-level 7.88 %: the 5 MHz limit is now
+stricter than a tenth of what is measured, and the 13 MHz one is 0.003
+points looser than a tenth of the envelope figure — both far above the
+production residuals. Every *residual* below is pinned by
 `tests/test_rf_golden_interp.py`, to the digit shown; the runtimes and
 memory are measurements of one host and are not.
 
@@ -1530,9 +1543,27 @@ it cannot do is tell a difference smaller than the yardstick's own residual
 apart from that residual. So such a difference is not, by itself, evidence
 of error or of improvement relative to the ideal — the golden itself sits
 that far from the ideal, in a direction the comparison does not know.
-Rerun the benchmark when #46 settles the pulse bandwidth or #10 supplies
-the real 13 MHz profile; neither changes the frozen figures above, both may
-change the profile-specific residual quoted beside a comparison.
+
+**Profile reconciliation — beside the frozen oracle, never in its place.**
+The frozen figures above do not move. What a named profile implies is a
+separate output (`enodia/spec/beamform/profile_reconciliation.py`,
+`tests/test_profile_reconciliation.py`): for the profile and a decimation
+ratio it records the profile name, status and source, carrier, bandwidth
+fraction and one-sided edge, spectral level and width convention, the
+revision that produced it, the profile-specific IQ-side result — the
+Lagrange cubic's band-edge and pulse-weighted error at the profile's edge,
+from §5's sweep — and the golden operator's residual on a record built from
+the profile, with whether that record is numerically the frozen one. For
+`linear-5mhz` (provisional, no source) at 5 MHz it reads: 8.25° / 36.58 %
+at the edge and **14.00 %** pulse-weighted at D=8, 0.29° / 3.10 % and
+**2.39 %** at D=4; RF golden residual 0.0003 %, the record being the frozen
+5 MHz one to the bit. The IQ figure is what changed against what §5 said
+before #46 — the former 1.5 MHz edge was inconsistent with that pulse — not
+the RF record or its residual. **#10 is the trigger for the 13 MHz
+reconciliation**: when it supplies a profile under §4's definition, the same
+output is produced for it and reported beside the frozen 13 MHz figure. A
+change to a profile's value or provenance reruns its reconciliation and
+whatever consumed it; #6 consumes `linear-5mhz` on those terms.
 
 ### The simulator's role
 

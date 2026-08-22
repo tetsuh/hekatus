@@ -336,3 +336,9 @@ if __name__ == "__main__":
         f"(the first column, -{BANDWIDTH_LEVEL_DB:.2f} dB, is the case's own pulse model):"
     )
     print(weighted_table())
+    print()
+    # The profile-specific reconciliation beside the frozen RF oracle
+    # (design.md §15). Imported here so the sweep's own import stays light.
+    from enodia.spec.beamform.profile_reconciliation import report
+
+    print(report(linear_5mhz()))
