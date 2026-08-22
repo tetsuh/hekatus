@@ -59,9 +59,15 @@ writing one, not by measuring again.
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?). The
   kernel is now fixed — Lagrange cubic, design.md §5 — and the sweep behind
-  it puts a number on the question: 22% band-edge magnitude error at D=8
-  against 2% at D=4. What is open is the axial-PSF consequence, measured on
-  the point-scatterer phantom between D=8 and D=4
+  it puts a number on the question at the profile's own edge (#46): 37%
+  band-edge magnitude error at D=8 against 3% at D=4, 14.00% against 2.39%
+  pulse-weighted. What is open is the axial-PSF consequence, measured on
+  the point-scatterer phantom between D=8 and D=4. **#6 measures it on the
+  named `linear-5mhz` profile, whose bandwidth is provisional** (§4): its
+  artifacts say so, and are rerun if the profile's value or provenance
+  changes. **#10 owns the 13 MHz profile** — until it lands, 13 MHz figures
+  are the synthetic 80% envelope — and triggers the 13 MHz rerun of the §5
+  sweep and the §15 profile reconciliation
 - Diagonal loading (2D may need more than 1D because of μBF grating lobes)
 - Core allocation (front-end / beamforming / inference)
 - Group-batch size and its boundary artifacts
@@ -97,6 +103,10 @@ writing one, not by measuring again.
 - Exact element counts and pitches of the target probes (a placeholder set —
   five 1D probes + one 2D — is in use; kinds and frequency bands are agreed,
   and exact geometry swaps in later as profile data)
+- Effective two-way pulse bandwidth of the target probes, with provenance
+  (manufacturer data or a measured pulse response). `linear-5mhz` runs on a
+  provisional 0.7 with no source (design.md §4, ADR-0008); a sourced value
+  replaces it through a reviewed profile update
 
 ## Settled (recorded; reflected in design.md)
 
