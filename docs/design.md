@@ -1831,6 +1831,15 @@ runtime (cont.):  ROI/gain etc. (independent of derivatives) → frame-tagged ap
 readback:         health, statistics, (future) self-diagnosis
 ```
 
+**Each transmit configuration references exactly one probe profile**, by
+`probe_profile_id` (`ProbeProfile.name`, §4), at setup. The runtime config
+ID therefore selects the profile transitively — the profile is part of the
+table set the config ID names (docs/dataplane.md) — and **no bandwidth
+number travels in the transmit description or the frame header**: the
+effective two-way bandwidth and its provenance live in the profile and
+nowhere else (§4, ADR-0008). Reference: `TransmitConfig` in
+`enodia/spec/sequence/__init__.py`.
+
 ### enodia derives its own derivatives
 
 Contribution maps, delay tables, phase-rotation coefficients are internal
