@@ -598,16 +598,15 @@ worse in the three cases, and a=−3/4 is 1.6×, 3.9× and 13×. So the choice
 buys a factor of several in the narrow-pulse corner at the cost of about a
 fifth to a quarter on the widest pulse.
 
-*It is a trade the document cannot yet settle by measurement, and that is
-why robustness wins.* The level the edge sits at is no longer in question
-— issue #46 fixed it at half amplitude, so the first column is the model —
-but the 5 MHz width behind it is provisional and the 13 MHz one synthetic
-(§4), so
-the narrower columns still describe probes that may turn out to be the real
-ones; and the decimation ratio is open (§17). Lagrange's error decays faster
-as the pulse narrows than the other evaluated closed forms — being exact for
-polynomials to degree 3 it is maximally flat at DC. At −40 dB, a factor of
-1.5 separates the two third-order accurate kernels from every other
+*It is a trade the document cannot yet settle by measurement, and that is why
+robustness wins.* The level the edge sits at is no longer in question —
+issue #46 fixed it at half amplitude, so the first column is the model — but
+the 5 MHz width behind it is provisional and the 13 MHz one synthetic (§4),
+so the narrower columns still describe probes that may turn out to be the
+real ones; and the decimation ratio is open (§17). Lagrange's error decays
+faster as the pulse narrows than the other evaluated closed forms — being
+exact for polynomials to degree 3 it is maximally flat at DC. At −40 dB, a
+factor of 1.5 separates the two third-order accurate kernels from every other
 candidate; the narrowest margin is Keys a=−3/4 at 5 MHz D=8, 1.59×, and
 elsewhere it is at least 3.6×. The kernels that beat it on a wide pulse have
 a larger measured narrow-pulse error in this sweep, so the choice remains a
