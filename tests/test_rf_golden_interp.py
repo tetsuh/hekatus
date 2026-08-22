@@ -65,8 +65,8 @@ def test_the_acceptance_limit_is_one_tenth_of_the_iq_error_the_golden_measures()
     and the 13 MHz one 0.003 points looser, both far above the production
     residuals. A yardstick contributes negligibly at a tenth."""
     assert RESIDUAL_LIMIT_PCT == {"5MHz": pytest.approx(1.082), "13MHz": pytest.approx(0.791)}
-    assert 1.082 < 14.00 / 10
-    assert 0.791 == pytest.approx(7.88 / 10, abs=0.0031)
+    assert RESIDUAL_LIMIT_PCT["5MHz"] < 14.00 / 10
+    assert RESIDUAL_LIMIT_PCT["13MHz"] - 7.88 / 10 == pytest.approx(0.003, abs=0.0005)
 
 
 @pytest.mark.parametrize(

@@ -29,7 +29,8 @@ def test_the_output_carries_every_provenance_field(five_mhz):
     assert r.bandwidth_frac == 0.7
     assert r.bandwidth_edge_hz == pytest.approx(1.75e6)
     assert r.level_db == BANDWIDTH_LEVEL_DB
-    assert "half amplitude" in r.convention and "one-sided" in r.convention
+    assert "half amplitude" in r.convention
+    assert "one-sided" in r.convention
     assert r.decimation == 8
     assert r.producing_revision == "test"
     assert r.iq_kernel == "lagrange4"
@@ -86,7 +87,9 @@ def test_the_frozen_oracle_does_not_drift_with_the_profile():
     """The record is 0.7 by its own constant, the limits are the frozen ones,
     and the production residuals are what §15 quotes — all unchanged by #46."""
     assert rf.BENCHMARK_BANDWIDTH_FRAC == 0.7
-    assert rf.BENCHMARK_N == 256 and rf.BENCHMARK_FS_HZ == 40e6 and rf.BENCHMARK_FRACTIONS == 201
+    assert rf.BENCHMARK_N == 256
+    assert rf.BENCHMARK_FS_HZ == 40e6
+    assert rf.BENCHMARK_FRACTIONS == 201
     assert rf.RESIDUAL_LIMIT_PCT == {"5MHz": 1.082, "13MHz": 0.791}
     for carrier, residual in (("5MHz", 0.0003), ("13MHz", 0.0992)):
         got = rf.residual_pct(rf.production, rf.benchmark_record(rf.BENCHMARK_CARRIERS_HZ[carrier]))

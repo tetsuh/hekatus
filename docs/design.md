@@ -599,9 +599,10 @@ buys a factor of several in the narrow-pulse corner at the cost of about a
 fifth to a quarter on the widest pulse.
 
 *It is a trade the document cannot yet settle by measurement, and that is
-why robustness wins.* The level the edge sits at is no longer in question —
-#46 fixed it at half amplitude, so the first column is the model — but the
-5 MHz width behind it is provisional and the 13 MHz one synthetic (§4), so
+why robustness wins.* The level the edge sits at is no longer in question
+— issue #46 fixed it at half amplitude, so the first column is the model —
+but the 5 MHz width behind it is provisional and the 13 MHz one synthetic
+(§4), so
 the narrower columns still describe probes that may turn out to be the real
 ones; and the decimation ratio is open (§17). Lagrange's error decays faster
 as the pulse narrows than the other evaluated closed forms — being exact for

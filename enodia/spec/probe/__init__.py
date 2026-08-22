@@ -53,7 +53,7 @@ class ProbeProfile:
     depth_m: float  # imaging depth
     tx_focus_m: float  # transmit focal depth
     f_number: float  # F-number of the transmit and receive apertures
-    bandwidth_source: str | None = None  # provenance; None = provisional
+    bandwidth_source: str | None = None  # provenance; absent means provisional
 
     def __post_init__(self) -> None:
         if self.bandwidth_source is not None and not self.bandwidth_source.strip():
@@ -61,7 +61,7 @@ class ProbeProfile:
             # checks for None, while naming no source. Provisional is spelled
             # None, and only None.
             raise ValueError("bandwidth_source must name a source or be None (provisional)")
-        if not self.bandwidth_frac > 0.0:
+        if self.bandwidth_frac <= 0.0:
             raise ValueError(f"bandwidth_frac must be positive, got {self.bandwidth_frac}")
 
     @property

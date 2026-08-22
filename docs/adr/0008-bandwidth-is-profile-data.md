@@ -53,8 +53,8 @@ transmit schema, and how it relates to the frozen oracle.
   unresolved, and leaves §5 and the implemented profile in contradiction.
   Rejected.
 
-A is chosen — owner decision `DEC-46-BANDWIDTH-AUTHORITY-001`, recorded on
-#46.
+A is chosen — owner decision `DEC-46-BANDWIDTH-AUTHORITY-001`, recorded
+on issue #46.
 
 ## Decision
 
