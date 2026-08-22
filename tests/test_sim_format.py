@@ -67,5 +67,6 @@ def test_bandwidth_frac_must_be_finite_and_positive(bad):
     +inf passes it too; either would reach the sweep as a band edge."""
     from dataclasses import replace
 
+    p = linear_5mhz()
     with pytest.raises(ValueError, match="bandwidth_frac"):
-        replace(linear_5mhz(), bandwidth_frac=bad)
+        replace(p, bandwidth_frac=bad)
