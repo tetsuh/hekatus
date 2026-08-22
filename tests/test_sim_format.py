@@ -59,3 +59,13 @@ def test_bandwidth_provenance_is_none_or_a_named_source():
     assert replace(p, bandwidth_source="manufacturer datasheet X").bandwidth_status == "sourced"
     with pytest.raises(ValueError, match="bandwidth_source"):
         replace(p, bandwidth_source="   ")
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.7, float("nan"), float("inf")])
+def test_bandwidth_frac_must_be_finite_and_positive(bad):
+    """NaN passes `x <= 0` because every comparison with NaN is false, and
+    +inf passes it too; either would reach the sweep as a band edge."""
+    from dataclasses import replace
+
+    with pytest.raises(ValueError, match="bandwidth_frac"):
+        replace(linear_5mhz(), bandwidth_frac=bad)

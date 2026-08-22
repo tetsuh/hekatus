@@ -7,6 +7,7 @@ the list of suspects when a phase error shows up (design.md §14).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -61,8 +62,13 @@ class ProbeProfile:
             # checks for None, while naming no source. Provisional is spelled
             # None, and only None.
             raise ValueError("bandwidth_source must name a source or be None (provisional)")
-        if self.bandwidth_frac <= 0.0:
-            raise ValueError(f"bandwidth_frac must be positive, got {self.bandwidth_frac}")
+        if not (math.isfinite(self.bandwidth_frac) and self.bandwidth_frac > 0.0):
+            # Written as the positive condition negated: `x <= 0` lets NaN
+            # through, since every comparison with NaN is false, and +inf
+            # through as well. Both would reach the sweep as an edge.
+            raise ValueError(
+                f"bandwidth_frac must be finite and positive, got {self.bandwidth_frac}"
+            )
 
     @property
     def wavelength_m(self) -> float:
