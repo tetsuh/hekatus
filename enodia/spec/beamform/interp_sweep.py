@@ -16,6 +16,18 @@ beamformer actually sees on a pulse — and, because the answer depends on how
 wide that pulse is, at several assumed bandwidths. What the two metrics
 together say is recorded in design.md §5.
 
+**Every case names the pulse it assumes** (#46). The 5 MHz cases take their
+band edge from the `linear-5mhz` profile — `bandwidth_frac · f0 / 2`, the
+one-sided edge of the full half-amplitude width design.md §4 defines — and
+carry that profile's provenance status, which is *provisional* until a
+sourced value replaces it. The 13 MHz case is not a profile: no 13 MHz
+`ProbeProfile` exists (#10 creates it), so it is the §4 design envelope of
+80% fractional bandwidth under the same convention, labelled
+`synthetic-80pct-design-envelope` and claiming no physical authority. Each
+emitted figure carries its case's identity, spectral level, width
+convention, status and source, so a number cannot be quoted without what it
+assumed.
+
 The candidates other than the chosen one live here and nowhere else: they
 are evidence for a decision, not kernels a port may run.
 
@@ -27,24 +39,113 @@ computes.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 
 from enodia.spec.beamform.interp import fractional_delay_taps
+from enodia.spec.probe import BANDWIDTH_LEVEL_DB, ProbeProfile, linear_5mhz
 
-# Band edge as a fraction of the decimated sampling rate fs', from design.md
-# §5: 5 MHz probe, band edge 1.5 MHz, fs' = 40/D MHz; 13 MHz probe, band edge
-# 5.2 MHz, fs' = 20 MHz at D=2.
-BAND_EDGES: dict[str, float] = {
-    "5MHz_D8": 1.5 / 5.0,
-    "13MHz_D2": 5.2 / 20.0,
-    "5MHz_D4": 1.5 / 10.0,
-}
+# The label every 13 MHz figure of this sweep carries until #10 supplies a
+# real profile. It is not `rf-oracle-frozen-0p7` (design.md §15), which is a
+# different, separately frozen 13 MHz record.
+SYNTHETIC_13MHZ_ENVELOPE = "synthetic-80pct-design-envelope"
 
-# How far down the pulse's amplitude spectrum is at that band edge. design.md
-# does not say, and the kernel ranking depends on it, so the sweep reports a
-# range instead of picking one (#46).
-PULSE_ROLLOFFS_DB: tuple[float, ...] = (6.0, 20.0, 40.0)
+
+@dataclass(frozen=True)
+class SweepCase:
+    """One decimation case, with the provenance of the pulse it assumes.
+
+    `identity` is a profile name or a synthetic-envelope label; `status` is
+    the profile's bandwidth status (`provisional` / `sourced`) or
+    `synthetic`; `source` is the profile's `bandwidth_source`, None when
+    there is none to name. `bandwidth_frac` is the full fractional width at
+    `BANDWIDTH_LEVEL_DB` (half amplitude), and `band_edge` is the one-sided
+    edge in cycles per *decimated* sample — the quantity the metrics below
+    take.
+    """
+
+    name: str
+    identity: str
+    status: str
+    source: str | None
+    f0_hz: float
+    bandwidth_frac: float
+    decimation: int
+    fs_hz: float = 40e6
+
+    @property
+    def level_db(self) -> float:
+        return BANDWIDTH_LEVEL_DB
+
+    @property
+    def edge_hz(self) -> float:
+        """One-sided analysis edge [Hz]: half the full half-amplitude width."""
+        return self.bandwidth_frac * self.f0_hz / 2.0
+
+    @property
+    def fs_decimated_hz(self) -> float:
+        return self.fs_hz / self.decimation
+
+    @property
+    def band_edge(self) -> float:
+        """The edge as a fraction of the decimated sampling rate fs'."""
+        return self.edge_hz / self.fs_decimated_hz
+
+    def describe(self) -> str:
+        """One line carrying every provenance field a quoted figure needs."""
+        return (
+            f"{self.name}: {self.identity} [{self.status}; source: {self.source or 'none'}] "
+            f"f0 {self.f0_hz / 1e6:g} MHz, full fraction {self.bandwidth_frac:g} "
+            f"at -{self.level_db:.4f} dB amplitude, one-sided edge "
+            f"{self.edge_hz / 1e6:g} MHz = {self.band_edge:.3f} fs' at D={self.decimation}"
+        )
+
+
+def profile_case(profile: ProbeProfile, decimation: int) -> SweepCase:
+    """The case a profile defines at one decimation ratio, provenance included."""
+    return SweepCase(
+        name=f"{profile.f0_hz / 1e6:g}MHz_D{decimation}",
+        identity=profile.name,
+        status=profile.bandwidth_status,
+        source=profile.bandwidth_source,
+        f0_hz=profile.f0_hz,
+        bandwidth_frac=profile.bandwidth_frac,
+        decimation=decimation,
+        fs_hz=profile.fs_hz,
+    )
+
+
+# design.md §4's 13 MHz envelope: 80% fractional bandwidth, 7.8–18.2 MHz, a
+# one-sided edge of 5.2 MHz at D=2 (fs' = 20 MHz). Synthetic, not a profile.
+SYNTHETIC_13MHZ_D2 = SweepCase(
+    name="13MHz_D2",
+    identity=SYNTHETIC_13MHZ_ENVELOPE,
+    status="synthetic",
+    source=None,
+    f0_hz=13e6,
+    bandwidth_frac=0.8,
+    decimation=2,
+)
+
+# The three cases design.md §5 names: the 5 MHz profile at D=8 and D=4, and
+# the 13 MHz envelope at D=2.
+CASES: tuple[SweepCase, ...] = (
+    profile_case(linear_5mhz(), 8),
+    SYNTHETIC_13MHZ_D2,
+    profile_case(linear_5mhz(), 4),
+)
+CASES_BY_NAME: dict[str, SweepCase] = {case.name: case for case in CASES}
+
+# Band edge as a fraction of the decimated sampling rate fs', per case.
+BAND_EDGES: dict[str, float] = {case.name: case.band_edge for case in CASES}
+
+# How far down the pulse's amplitude spectrum is at the band edge. The first
+# entry is the case's own model — the edge is by definition the half-amplitude
+# point (#46). The two narrower pulses are kept as a sensitivity sweep: the
+# 5 MHz value is provisional and the 13 MHz one synthetic, and the kernel
+# ranking depends on which applies.
+PULSE_ROLLOFFS_DB: tuple[float, ...] = (BANDWIDTH_LEVEL_DB, 20.0, 40.0)
 
 _OFFSETS = np.array([-1, 0, 1, 2])
 
@@ -115,7 +216,7 @@ def worst_band_edge_error(
     Worst over the fraction μ ∈ [0, 1]: the interpolator's response at the
     edge frequency, H(ω) = Σ h_k(μ) e^(−jωk), against the ideal delay
     e^(−jωμ). This is the quantity design.md §5 states for the
-    no-interpolation case (47° and 54°), extended to a kernel.
+    no-interpolation case (47° and 63°), extended to a kernel.
 
     **One frequency only.** A kernel that trades in-band accuracy for edge
     accuracy scores well here and badly in use; that is what
@@ -150,16 +251,19 @@ def pulse_weighted_rms_error(
 
     which is the normalized error energy the delayed channel signal carries,
     integrated over the band the decimated record can represent.
-    ``rolloff_db`` is an assumption, not a measurement — design.md gives a
-    band edge without saying at what level (#46) — so a caller sweeps it.
+    At ``rolloff_db = BANDWIDTH_LEVEL_DB`` the Gaussian *is* the case's pulse
+    model — the edge is its half-amplitude point by definition (#46); a
+    larger value is a narrower pulse, swept because the 5 MHz width is
+    provisional and the 13 MHz one synthetic.
     """
     sigma = band_edge / np.sqrt(2.0 * np.log(10.0 ** (rolloff_db / 20.0)))
     # Stop at the decimated Nyquist frequency. The record cannot represent
     # anything above 0.5 cycles/sample, so scoring the kernel's response
     # there measures a signal that does not exist in it. Worth noticing that
-    # the widest assumption reaches past it — 3σ is 0.77 at the 5 MHz D=8
-    # edge — which says that assumption and that decimation ratio are in
-    # tension, and is one more thing #46 has to settle.
+    # the profile's own pulse reaches past it at D=8 — 3σ is 0.89 at the
+    # 5 MHz edge of 0.35 fs' — which says that width and that decimation
+    # ratio are in tension: what D=8 costs is the axial-PSF question §17
+    # keeps open.
     f_max = min(3.0 * sigma, 0.5)
     f = np.linspace(-f_max, f_max, n_freq)
     spectrum = np.exp(-(f**2) / (2.0 * sigma**2)) ** 2
@@ -184,6 +288,11 @@ def _all_candidates(band_edge: float) -> dict[str, Callable[[float], np.ndarray]
     return {**CANDIDATES, "ls4_bound": lambda mu: least_squares4(mu, band_edge)}
 
 
+def provenance_block() -> str:
+    """What every figure below assumed, one line per case."""
+    return "\n".join(case.describe() for case in CASES)
+
+
 def edge_table() -> str:
     lines = [f"{'kernel':12s}" + "".join(f"{name:>22s}" for name in BAND_EDGES)]
     for name in _all_candidates(0.0):
@@ -201,22 +310,29 @@ def edge_table() -> str:
 
 def weighted_table() -> str:
     lines = []
-    for label, edge in BAND_EDGES.items():
-        lines.append(f"-- {label} (edge {edge:.2f} fs') --")
+    for case in CASES:
+        edge = case.band_edge
+        lines.append(f"-- {case.name} ({case.identity}, edge {edge:.3f} fs') --")
         lines.append(
-            f"   {'kernel':12s}" + "".join(f"{f'-{db:g}dB':>10s}" for db in PULSE_ROLLOFFS_DB)
+            f"   {'kernel':12s}" + "".join(f"{f'-{db:.2f}dB':>11s}" for db in PULSE_ROLLOFFS_DB)
         )
         for name, fn in _all_candidates(edge).items():
             row = f"   {name:12s}"
             for db in PULSE_ROLLOFFS_DB:
-                row += f"{pulse_weighted_rms_error(fn, edge, rolloff_db=db) * 100:9.2f}%"
+                row += f"{pulse_weighted_rms_error(fn, edge, rolloff_db=db) * 100:10.2f}%"
             lines.append(row)
     return "\n".join(lines)
 
 
 if __name__ == "__main__":
+    print("Cases (identity [status; source], width convention, level, edge):")
+    print(provenance_block())
+    print()
     print("Worst-case error at the band edge (phase / magnitude):")
     print(edge_table())
     print()
-    print("RMS error over a pulse whose amplitude is N dB down at that edge:")
+    print(
+        "RMS error over a Gaussian pulse whose amplitude is N dB down at that edge\n"
+        f"(the first column, -{BANDWIDTH_LEVEL_DB:.2f} dB, is the case's own pulse model):"
+    )
     print(weighted_table())
