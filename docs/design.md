@@ -317,6 +317,15 @@ probes, so L1 usage falls in line naturally. Every configuration fits in
 40 / 13 is only 3.08×. At 80% fractional bandwidth the signal spans
 7.8–18.2 MHz against a 20 MHz Nyquist — 1.8 MHz of margin.
 
+That 80% is a **synthetic design envelope, not a profile**: no 13 MHz
+`ProbeProfile` exists, and #10 creates it under the bandwidth definition
+below. Until it does, every 13 MHz figure §5's sweep derives from the
+envelope — the 5.2 MHz one-sided edge, the 47°, the kernel tables — is
+labelled `synthetic-80pct-design-envelope` and claims no profile or physical
+authority. The label belongs to that envelope alone: it does not apply to
+`rf-oracle-frozen-0p7`, the separately frozen 13 MHz record of §15, nor to
+the profile-specific reconciliation #10's profile will produce.
+
 - Verify that the AFE anti-aliasing filter truly kills everything above
   20 MHz
 - Aliasing would appear as phantom echoes at depth
@@ -342,7 +351,8 @@ Hold the following as one settings bundle; switching is a table swap only
 (kernels are shared).
 
 - geometry (element count, pitch, element width, curvature radius, lens focus)
-- f0, bandwidth
+- f0, bandwidth — the effective two-way bandwidth defined below, with its
+  provenance
 - decimation ratio, complex BPF coefficients
 - expected depth, receive aperture size
 - MLA count
@@ -363,6 +373,51 @@ The sitos session snapshot connects directly to the pipeline flush of §12.
 The inconsistency where only some tables are new during a probe switch (the
 accident of mixing transmits with different settings inside transmit
 compounding) is prevented structurally by snapshot-unit switching.
+
+### Bandwidth (normative — ADR-0008)
+
+The profile owns the pulse bandwidth, and it means one thing:
+
+- `bandwidth_frac` is the **full fractional bandwidth of the effective
+  two-way pulse** the processing profile assumes, relative to `f0`. Its
+  endpoints are the two points **half amplitude** below the spectral peak —
+  `20·log10|A(f)/A(f0)| = −20·log10 2 ≈ −6.0206 dB`, equivalently
+  −6.0206 dB in power since P ∝ |A|². Not a 6 dB rounding, and not the
+  −20 dB point
+- full width `= bandwidth_frac · f0`; the **one-sided analysis edge** of the
+  symmetric baseband model, which is what §5's band-edge figures take, is
+  `bandwidth_edge_hz = bandwidth_frac · f0 / 2`
+- it describes the effective two-way pulse, not a transmit-only spectrum and
+  not an AFE anti-alias guarantee (the 13 MHz caveat above is a separate
+  question)
+- `bandwidth_source` is provenance: a non-empty string naming the
+  manufacturer data or measurement the value comes from, or `None`, which
+  means **provisional** — a working value with no physical backing. `None`
+  never means measured, manufacturer-backed or validated. A consumer of a
+  provisional value says so beside its result and reruns when the value or
+  its provenance changes; "provisional" is a statement of evidence, not
+  permission to pick another number
+
+The bandwidth lives in the profile and nowhere else. The transmit
+description of §19 references a profile by id and carries no bandwidth; the
+frame header carries none (docs/dataplane.md). The simulator's pulse is
+built to this definition and checked on its spectrum
+(`tests/test_sim_format.py`). Reference: `enodia/spec/probe/__init__.py`.
+
+**Implemented profile** — the repository authority for current PoC work:
+
+| profile | f0 | full fraction | full width | one-sided edge | status |
+|---|---:|---:|---:|---:|---|
+| `linear-5mhz` | 5 MHz | 0.7 | 3.5 MHz | 1.75 MHz | **provisional** (`bandwidth_source=None`) |
+
+0.7 is the value the simulator and the sweeps have used since MVP-1; no
+manufacturer or measured pulse response stands behind it, and #46 made that
+explicit rather than inventing one. A sourced value replaces it through a
+reviewed profile update and reruns whatever consumed it — §5's 5 MHz tables,
+the profile reconciliation of §15, and #6's comparison, which may consume
+this named profile for reproducible provisional 5 MHz evidence and labels
+its artifacts accordingly. The 13 MHz envelope above is not in this table
+because it is not a profile.
 
 ---
 
@@ -426,11 +481,20 @@ local. With fixed geometry, the phase term is precomputable.
 
 ### Fractional-delay accuracy (important)
 
-**Phase rotation alone is not enough.** As long as decimation goes to
-Nyquist, the band-edge phase error is ~50° regardless of frequency:
+**Phase rotation alone is not enough.** As long as decimation goes toward
+Nyquist, the band-edge phase error is tens of degrees whatever the carrier.
+The band edge is the profile's one-sided edge of §4 — `bandwidth_frac · f0 /
+2` — and the error is `360° · edge · (max fraction)`:
 
-- 13 MHz (D=2, 50 ns spacing, max fraction 25 ns, band edge 5.2 MHz) → 47°
-- 5 MHz (D=8, 200 ns spacing, max fraction 100 ns, band edge 1.5 MHz) → 54°
+- 13 MHz (D=2, 50 ns spacing, max fraction 25 ns; band edge 5.2 MHz from
+  the **synthetic 80% envelope** of §4, no profile exists) → 46.8°, quoted
+  as 47°
+- 5 MHz (D=8, 200 ns spacing, max fraction 100 ns; band edge 1.75 MHz from
+  `linear-5mhz`, 0.7 × 5 MHz / 2, **provisional**) → **63°**; at D=4
+  (100 ns spacing, max fraction 50 ns) → 31.5°
+
+Before #46 this section said 54° for 5 MHz, from a 1.5 MHz edge that the
+implemented profile never had; the profile's own pulse puts it at 63°.
 
 Left alone, the axial PSF collapses and sidelobes rise.
 **4-tap interpolation on IQ + phase rotation** is required; 2-tap linear is
@@ -462,68 +526,90 @@ real taps apply to I and Q. Reference: `enodia/spec/beamform/interp.py`.
 
 **The sweep** (`enodia/spec/beamform/interp_sweep.py`, every figure below
 pinned by `tests/test_interp_kernel.py`) measures two things, because one of
-them is not enough to choose by.
+them is not enough to choose by. **Every case names the pulse it assumes**:
+the 5 MHz cases are the `linear-5mhz` profile — edge 1.75 MHz, provisional,
+no source — and the 13 MHz case is the synthetic 80% envelope of §4, edge
+5.2 MHz; the sweep prints identity, status, source, spectral level and width
+convention beside its tables, so a figure cannot be quoted without what it
+assumed (#46).
 
 *Worst-case error over the fraction, at the band edge* — the metric this
 section already used for the no-interpolation case — phase / magnitude:
 
-| kernel | 5 MHz D=8 (0.30 fs') | 13 MHz D=2 (0.26 fs') | 5 MHz D=4 (0.15 fs') |
+| kernel | 5 MHz D=8 (0.35 fs') | 13 MHz D=2 (0.26 fs') | 5 MHz D=4 (0.175 fs') |
 |---|---|---|---|
-| none (phase rotation only) | 54° | 47° | 27° |
-| 2-tap linear | 7.5° / 41% | 4.6° / 32% | 0.8° / 11% |
-| **Lagrange cubic (4)** | **3.9° / 22%** | **2.0° / 13%** | **0.1° / 2%** |
-| Keys a=−1/2, Catmull-Rom | 7.5° / 22% | 4.6° / 13% | 0.8° / 2% |
-| Keys a=−3/4 | 3.7° / 12% | 1.1° / 4% | 1.6° / 3% |
-| Keys a=−1 | 0.3° / 3% | 2.2° / 5% | 3.8° / 7% |
-| Hann-windowed sinc (4) | 10.1° / 32% | 6.5° / 23% | 1.2° / 6% |
-| *least-squares 4-tap, bound* | *1.6° / 9%* | *0.7° / 5%* | *0.04° / 0.4%* |
+| none (phase rotation only) | 63° | 47° | 31.5° |
+| 2-tap linear | 13.10° / 54.6% | 4.64° / 31.5% | 1.30° / 14.7% |
+| **Lagrange cubic (4)** | **8.25° / 36.6%** | **1.95° / 13.4%** | **0.29° / 3.1%** |
+| Keys a=−1/2, Catmull-Rom | 13.10° / 36.6% | 4.64° / 13.4% | 1.30° / 3.1% |
+| Keys a=−3/4 | 9.04° / 27.6% | 1.09° / 4.3% | 1.39° / 2.7% |
+| Keys a=−1 | 5.40° / 18.6% | 2.15° / 4.8% | 3.93° / 8.5% |
+| Hann-windowed sinc (4) | 16.55° / 45.9% | 6.45° / 22.7% | 1.95° / 9.1% |
+| *least-squares 4-tap, bound* | *4.09° / 18.4%* | *0.73° / 4.7%* | *0.09° / 0.9%* |
 
 **Read alone, this table does not choose Lagrange.** Keys at a = −1 beats it
-at the 5 MHz D=8 edge by an order of magnitude on both axes. It does so by
-pre-emphasizing high frequencies, which buys the edge and pays for it
-everywhere else — and a metric evaluated at one frequency cannot see the
-bill. So the second measurement is the error over the whole pulse:
+at the 5 MHz D=8 edge on both axes — 5.40° against 8.25°, 18.6% against
+36.6%. It does so by pre-emphasizing high frequencies, which buys the edge
+and pays for it everywhere else — and a metric evaluated at one frequency
+cannot see the bill. So the second measurement is the error over the whole
+pulse:
 
 *RMS error over a Gaussian pulse whose amplitude is N dB down at that band
 edge, averaged over the fraction* — the error energy the delayed channel
-signal actually carries:
+signal actually carries. The first column of each case is **the case's own
+pulse model**: the edge is its half-amplitude point by definition (§4), so
+N = 20·log10 2 = 6.02 dB exactly; −20 and −40 dB are narrower pulses, kept
+as a sensitivity sweep because the 5 MHz width is provisional and the
+13 MHz one synthetic:
 
-| kernel | D=8: −6 dB / −20 / −40 | 13 MHz D=2 | D=4 |
+| kernel | 5 MHz D=8: model / −20 / −40 dB | 13 MHz D=2 | 5 MHz D=4 |
 |---|---|---|---|
-| 2-tap linear | 16.6 / 5.8 / 3.0 % | 13.4 / 4.4 / 2.2 % | 4.9 / 1.5 / 0.76 % |
-| **Lagrange cubic** | **10.8 / 1.9 / 0.55 %** | **7.9 / 1.2 / 0.32 %** | **1.4 / 0.15 / 0.04 %** |
-| Keys a=−1/2 | 10.9 / 2.0 / 0.62 % | 8.0 / 1.3 / 0.38 % | 1.5 / 0.19 / 0.06 % |
-| Keys a=−3/4 | 9.0 / 1.9 / 1.4 % | 6.4 / 1.6 / 1.3 % | 1.7 / 1.1 / 0.77 % |
-| Keys a=−1 | 8.9 / 4.1 / 3.2 % | 6.9 / 3.7 / 2.8 % | 3.8 / 2.3 / 1.6 % |
-| *least-squares, bound* | *8.5 / 1.7 / 1.5 %* | *6.2 / 0.92 / 0.83 %* | *1.0 / 0.10 / 0.09 %* |
+| 2-tap linear | 19.98 / 7.82 / 4.02 % | 13.38 / 4.42 / 2.25 % | 6.55 / 2.04 / 1.03 % |
+| **Lagrange cubic** | **14.00 / 3.27 / 0.97 %** | **7.88 / 1.16 / 0.32 %** | **2.39 / 0.27 / 0.07 %** |
+| Keys a=−1/2 | 14.03 / 3.38 / 1.06 % | 7.97 / 1.26 / 0.38 % | 2.50 / 0.32 / 0.10 % |
+| Keys a=−3/4 | 12.02 / 2.59 / 1.54 % | 6.35 / 1.60 / 1.26 % | 2.06 / 1.21 / 0.89 % |
+| Keys a=−1 | 11.44 / 4.55 / 3.58 % | 6.85 / 3.71 / 2.77 % | 4.25 / 2.64 / 1.85 % |
+| Hann-windowed sinc (4) | 16.36 / 5.20 / 2.29 % | 10.13 / 2.57 / 1.16 % | 4.17 / 1.04 / 0.49 % |
+| *least-squares, bound* | *10.87 / 3.15 / 2.80 %* | *6.22 / 0.92 / 0.83 %* | *1.81 / 0.18 / 0.17 %* |
+
+Before #46 the 5 MHz columns were computed at a 1.5 MHz edge (0.30 and
+0.15 fs') and the model column at a 6 dB rounding; Lagrange read 10.82% at
+D=8 and 1.40% at D=4, and 7.91% at 13 MHz. The 13 MHz edge is unchanged,
+so only its model column moved, from the exact level.
 
 The integration stops at the decimated Nyquist frequency: the record cannot
 represent anything above 0.5 cycles/sample, so scoring the kernel there
-measures a signal that is not in it. Worth noting that the −6 dB assumption
-reaches past that limit at D=8 — its 3σ is 0.77 — which says the widest
-assumption and the heaviest decimation are in tension, and is one more thing
-#46 has to settle.
+measures a signal that is not in it. Worth noting that the profile's own
+pulse reaches past that limit at D=8 — its 3σ is 0.89 — which says that
+width and the heaviest decimation are in tension: what D=8 costs is the
+axial-PSF question §17 keeps open.
 
 **Why Lagrange, stated as what the evidence supports.** Among the six closed
-forms it is **first in six of these nine cells, second in one, and third in
-two** — the two widest-pulse assumptions, where Keys a=−1 and a=−3/4 lead by
-21% and 24%. It is not best everywhere, and the choice is a trade rather
-than a ranking.
+forms it is **first in five of these nine cells, second in two, and third in
+two**. Where it is not first, the leader is a Keys kernel with a < −1/2, by
+16% to 27%: on each case's own pulse model (Keys a=−1 at 5 MHz D=8 by 22%;
+a=−3/4 at 13 MHz by 24% and at 5 MHz D=4 by 16%) and in the −20 dB column at
+5 MHz D=8 (a=−3/4 by 27%). It is not best everywhere, and the choice is a
+trade rather than a ranking.
 
-*The trade.* Those same two kernels are **2.5 to 5.7 times worse** than
-Lagrange once the pulse narrows: at −40 dB, Keys a=−1 gives 3.2% against
-0.55% and a=−3/4 gives 1.4%. So the choice buys a factor of several in the
-narrow-pulse corner at the cost of about a fifth in the wide-pulse one.
+*The trade.* Those same two kernels are **1.6 to 27 times worse** than
+Lagrange once the pulse narrows: at −40 dB, Keys a=−1 is 3.7×, 8.7× and 27×
+worse in the three cases, and a=−3/4 is 1.6×, 3.9× and 13×. So the choice
+buys a factor of several in the narrow-pulse corner at the cost of about a
+fifth to a quarter on the widest pulse.
 
 *It is a trade the document cannot yet settle by measurement, and that is
-why robustness wins.* "Band edge 1.5 MHz" above does not say at what level,
-so which column applies is unknown (#46), and the decimation ratio is open
-too (§17). Lagrange's error decays faster as the pulse narrows than the other
-evaluated closed forms — being exact for polynomials to degree 3 it is
-maximally flat at DC. At −40 dB, a factor of two separates the two third-order
-accurate kernels
-from every other candidate. The kernels that beat it on a wide pulse have a
-larger measured narrow-pulse error in this sweep, so the choice remains a
+why robustness wins.* The level the edge sits at is no longer in question —
+#46 fixed it at half amplitude, so the first column is the model — but the
+5 MHz width behind it is provisional and the 13 MHz one synthetic (§4), so
+the narrower columns still describe probes that may turn out to be the real
+ones; and the decimation ratio is open (§17). Lagrange's error decays faster
+as the pulse narrows than the other evaluated closed forms — being exact for
+polynomials to degree 3 it is maximally flat at DC. At −40 dB, a factor of
+1.5 separates the two third-order accurate kernels from every other
+candidate; the narrowest margin is Keys a=−3/4 at 5 MHz D=8, 1.59×, and
+elsewhere it is at least 3.6×. The kernels that beat it on a wide pulse have
+a larger measured narrow-pulse error in this sweep, so the choice remains a
 robustness trade rather than a universal ranking.
 
 **So the choice is robustness, not dominance, and it is provisional.** What
@@ -531,10 +617,10 @@ settles it is the axial-PSF measurement this section already asks for,
 against the point-scatterer phantom, at D=8 and D=4. Until then a port runs
 Lagrange, because L0 needs one kernel rather than the best one.
 
-**What the sweep also says**: at D=8, four taps still leave 22% band-edge
-magnitude error for the worst fraction, against 2% at D=4 — and the pulse-
-weighted error improves by a rolloff-dependent factor: about 7.7× at −6 dB,
-13.2× at −20 dB, and 14.5× at −40 dB. Whether that matters
+**What the sweep also says**: at D=8, four taps still leave 37% band-edge
+magnitude error for the worst fraction, against 3% at D=4 — and the pulse-
+weighted error improves by a rolloff-dependent factor: about 5.9× on the
+model, 12.3× at −20 dB, and 14.0× at −40 dB. Whether that matters
 is the same PSF question, which is why "decimation ratio and
 interpolation tap count" stays in §17 as a parameter decided by measurement.
 The kernel is fixed; how far to decimate under it is not.
