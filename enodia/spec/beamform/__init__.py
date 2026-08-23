@@ -96,7 +96,8 @@ def aperture_weights(dx: np.ndarray, z: np.ndarray, f_number: float, *, dtype=np
     and ``z`` the depth axis; returns ``(n_ch, n_depth)`` weights normalized
     by their sum at each depth, so the aperture growth does not imprint a
     depth-dependent gain. Shared by the RF golden and the IQ path, so a
-    comparison between them sees the delay stage and nothing else.
+    comparison of their delayed channel vectors sees the front end and the
+    delay stage and nothing else.
     """
     u = dx / (z[None, :] / (2.0 * f_number))
     w = np.where(np.abs(u) <= 1.0, 0.5 * (1.0 + np.cos(np.pi * u)), 0.0)

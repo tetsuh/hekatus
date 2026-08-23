@@ -3,9 +3,10 @@
 This is the delay stage the accelerator runs, written as the reference it
 is compared with at L0 checkpoint 2 (design.md §15). The RF-domain golden
 (`das_rf_golden`) is the yardstick that measures what this path costs; the
-two share the geometry, the depth grid and the aperture weights, so a
-difference between them is the front end and the delay stage and nothing
-else.
+two share the geometry, the depth grid and the aperture weights, so at
+checkpoint 2 a difference between them is the front end and the delay
+stage and nothing else. (At image level the envelope estimators differ
+too: Hilbert transform along depth for the golden, |complex sum| here.)
 
 **The delay, in design.md §5's notation.** For a pixel at depth z on the
 line of transmit event k, with round-trip time t_p = 2z/c along the beam
