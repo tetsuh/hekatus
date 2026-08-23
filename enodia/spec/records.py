@@ -24,7 +24,7 @@ what it was configured for, in the same spirit as the generation tag.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -94,14 +94,25 @@ class IQEventRecord:
     (p − rf_offset) / D for an RF position p. With an even number of FIR taps
     the group delay is a half sample and rf_offset is 0.5 (enodia.spec.frontend).
 
-    The array is marked read-only and not copied, for the reasons
-    RFEventRecord gives.
+    **Ownership differs from RFEventRecord's, on purpose.** RF arrives from
+    outside as a partition and the record wraps it without copying. IQ is
+    *produced* inside enodia, by the front end, and the record is its
+    publication boundary (docs/dataplane.md: a ring buffer is owned by its
+    writer; readers get read-only views). Marking the caller's array
+    read-only is not enough for that: a producer that keeps a writable alias
+    of the same buffer can still change the samples after publication, and
+    every reader sees the change (review of #6 reproduced exactly that). So
+    the record **copies the payload into private storage it alone owns**,
+    freezes that storage, and exposes `data` as a read-only view of it — a
+    view whose base is frozen cannot be made writable again. One int16
+    (channel, sample, 2) copy per event is a few hundred kilobytes.
     """
 
     header: EventHeader
     data: np.ndarray
     decimation: int
     rf_offset: float
+    _owner: np.ndarray = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.data.dtype != np.int16:
@@ -119,7 +130,13 @@ class IQEventRecord:
             # stage turns into zero vectors — a silent black image, not an
             # error. Refuse it here, where it is still a record property.
             raise ValueError(f"rf_offset must be finite, got {self.rf_offset}")
-        self.data.flags.writeable = False
+        # Publication boundary: private frozen owner, read-only view exposed.
+        owner = np.array(self.data, dtype=np.int16, copy=True, order="C")
+        owner.flags.writeable = False
+        view = owner.view()
+        view.flags.writeable = False
+        object.__setattr__(self, "_owner", owner)
+        object.__setattr__(self, "data", view)
 
     @property
     def n_channels(self) -> int:

@@ -190,3 +190,31 @@ def test_invalid_decimation_is_rejected():
     rf = np.zeros((1, 64))
     with pytest.raises(ValueError, match="decimation"):
         complex_bpf_decimate(rf, p, decimation=0)
+
+
+def test_the_iq_record_owns_its_payload_so_a_producer_alias_cannot_change_it():
+    """docs/dataplane.md: a ring buffer is owned by its writer and readers get
+    read-only views. Marking the caller's array read-only does not give that —
+    a writable alias of the same buffer still reaches the samples (review of
+    #6 reproduced it). The record copies into private frozen storage and
+    exposes a view whose base is frozen, so neither the producer's alias nor a
+    reader re-enabling the flag can change what the record validated."""
+    from enodia.spec.records import EventHeader, IQEventRecord
+
+    h = EventHeader(0, "c", 0, 0, "bmode_focused", 0)
+    producer = np.arange(2 * 8 * 2, dtype=np.int16).reshape(2, 8, 2)
+    alias = producer[:, ::1, :]  # a second writable alias of the same buffer
+    rec = IQEventRecord(h, producer, 8, 0.5)
+    before = rec.data.copy()
+
+    producer[...] = 0
+    alias[0, 0, 0] = -7
+    np.testing.assert_array_equal(rec.data, before)
+    np.testing.assert_array_equal(rec.complex().real[0, :3], before[0, :3, 0])
+
+    assert not rec.data.flags.writeable
+    with pytest.raises(ValueError):
+        rec.data.flags.writeable = True
+    assert not np.shares_memory(rec.data, producer)
+    # The producer's own array is left as it was — not frozen behind its back.
+    assert producer.flags.writeable
