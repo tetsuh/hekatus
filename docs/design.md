@@ -538,9 +538,10 @@ not enough.
 Keep the ability to measure how the point-scatterer axial PSF changes
 between decimation ratios 8 and 4. **Measured** (#6,
 `enodia/spec/beamform/decimation_sweep.py`, pinned by
-`tests/test_golden_compare.py`), on the provisional `linear-5mhz` profile
-(§4) and the demo's three point scatterers, full widths of the axial
-profile through each scatterer:
+`tests/test_golden_compare.py`; the record is
+`docs/measurements/2026-08-23-host-iq-path-vs-golden.json`, ADR-0005), on the
+provisional `linear-5mhz` profile (§4) and the demo's three point
+scatterers, full widths of the axial profile through each scatterer:
 
 | | golden | IQ, D=8 | IQ, D=4 |
 |---|---|---|---|
@@ -1510,7 +1511,8 @@ golden's band-limited ideal delay at τ_i·fs, times e^(−j2πf0·t_p)), on the
 lines through the scatterers, inside the aperture, with the phase error
 energy-weighted. The report quotes the yardstick's own residual beside
 every figure and flags a difference below it as not attributable (next
-subsection). Measured on the provisional `linear-5mhz` profile:
+subsection). Measured on the provisional `linear-5mhz` profile; the record
+is `docs/measurements/2026-08-23-host-iq-path-vs-golden.json` (ADR-0005):
 
 | checkpoint | D=8 | D=4 |
 |---|---|---|

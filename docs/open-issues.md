@@ -59,7 +59,8 @@ writing one, not by measuring again.
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?). The
   kernel is fixed — Lagrange cubic, design.md §5 — and the axial-PSF
-  consequence is now **measured** (#6, design.md §5 / §17) on the point-
+  consequence is now **measured** (#6, design.md §5 / §17; record
+  `docs/measurements/2026-08-23-host-iq-path-vs-golden.json`) on the point-
   scatterer phantom with the named `linear-5mhz` profile, whose bandwidth is
   **provisional** (§4): D=8 broadens the axial width by +33–42 % at −6 dB
   (0.257–0.276 vs 0.194 mm) and +23 / +25 / +61 % at −40 dB (0.614 /
