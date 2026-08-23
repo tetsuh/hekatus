@@ -130,7 +130,8 @@ def test_demodulate_refuses_to_clip_rather_than_clipping_silently():
     peak = max(float(np.abs(z.real).max()), float(np.abs(z.imag).max()))
     at_bound = (32767.0 + 0.4) / peak
     iq = demodulate(rec, p, decimation=8, iq_scale=at_bound)
-    assert int(iq.data.max()) <= 32767 and int(iq.data.min()) >= -32768
+    assert int(iq.data.max()) <= 32767
+    assert int(iq.data.min()) >= -32768
     with pytest.raises(ValueError, match="int16"):
         demodulate(rec, p, decimation=8, iq_scale=(32767.0 + 0.6) / peak)
     # A non-finite sample — here through the scale, the one knob that can
