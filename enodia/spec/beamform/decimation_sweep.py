@@ -195,8 +195,27 @@ def environment() -> dict:
     }
 
 
+def json_safe(obj):
+    """Recursively turn a result into strict JSON: non-finite floats become
+    null (a silent reference, an empty region or a crossing that never
+    happens is NaN in the report), NumPy scalars become Python scalars,
+    tuples become lists. `json.dumps(..., allow_nan=False)` then cannot emit
+    the non-standard `NaN` / `Infinity` tokens."""
+    if isinstance(obj, dict):
+        return {str(k): json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    if isinstance(obj, (np.floating, float)):
+        f = float(obj)
+        return f if np.isfinite(f) else None
+    if isinstance(obj, (np.integer, np.bool_)):
+        return obj.item()
+    return obj
+
+
 def measurement_record(result: SweepResult, profile: ProbeProfile) -> dict:
-    """The sweep and the per-stage comparison as data (ADR-0005)."""
+    """The sweep and the per-stage comparison as data (ADR-0005), strict-JSON
+    ready: pass it to `json.dumps(..., allow_nan=False)`."""
 
     def psf(p: AxialPSF) -> dict:
         return {
@@ -232,30 +251,32 @@ def measurement_record(result: SweepResult, profile: ProbeProfile) -> dict:
             "seconds": r.seconds,
         }
 
-    return {
-        "environment": environment(),
-        "what": (
-            "IQ path (front end + IQ DAS) against the RF golden: per-stage errors and"
-            " axial PSF at D=8 and D=4 (#6)"
-        ),
-        "profile": {
-            "name": profile.name,
-            "f0_hz": profile.f0_hz,
-            "fs_hz": profile.fs_hz,
-            "bandwidth_frac": profile.bandwidth_frac,
-            "bandwidth_edge_hz": profile.bandwidth_edge_hz,
-            "bandwidth_status": profile.bandwidth_status,
-            "bandwidth_source": profile.bandwidth_source,
-        },
-        "frozen_oracle": "rf-oracle-frozen-0p7",
-        "front_end": {"n_taps": 64, "window": "hann", "cutoff_frac": 1.0, "iq_scale": 1.0},
-        "kernel": "lagrange4",
-        "width_levels_db": list(WIDTH_LEVELS_DB),
-        "golden_psf": [psf(p) for p in result.golden],
-        "iq_psf": {str(d): [psf(p) for p in ps] for d, ps in result.iq.items()},
-        "comparison": {str(d): report(r) for d, r in result.reports.items()},
-        "seconds": result.seconds,
-    }
+    return json_safe(
+        {
+            "environment": environment(),
+            "what": (
+                "IQ path (front end + IQ DAS) against the RF golden: per-stage errors and"
+                " axial PSF at D=8 and D=4 (#6)"
+            ),
+            "profile": {
+                "name": profile.name,
+                "f0_hz": profile.f0_hz,
+                "fs_hz": profile.fs_hz,
+                "bandwidth_frac": profile.bandwidth_frac,
+                "bandwidth_edge_hz": profile.bandwidth_edge_hz,
+                "bandwidth_status": profile.bandwidth_status,
+                "bandwidth_source": profile.bandwidth_source,
+            },
+            "frozen_oracle": "rf-oracle-frozen-0p7",
+            "front_end": {"n_taps": 64, "window": "hann", "cutoff_frac": 1.0, "iq_scale": 1.0},
+            "kernel": "lagrange4",
+            "width_levels_db": list(WIDTH_LEVELS_DB),
+            "golden_psf": [psf(p) for p in result.golden],
+            "iq_psf": {str(d): [psf(p) for p in ps] for d, ps in result.iq.items()},
+            "comparison": {str(d): report(r) for d, r in result.reports.items()},
+            "seconds": result.seconds,
+        }
+    )
 
 
 def main() -> None:
@@ -287,7 +308,8 @@ def main() -> None:
         if not out.is_relative_to(root):
             raise SystemExit(f"--record must point beneath the current directory {root}, got {out}")
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(measurement_record(result, profile), indent=2) + "\n")
+        record = measurement_record(result, profile)
+        out.write_text(json.dumps(record, indent=2, allow_nan=False) + "\n")
         print(f"record: {out.relative_to(root)}")
 
 

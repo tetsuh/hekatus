@@ -123,6 +123,27 @@ def test_a_silent_golden_frame_compares_to_nan_rather_than_raising():
     assert math.isnan(r.max_db)
 
 
+def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, frame):
+    """ADR-0005 records are data other tools read; `json.dumps` would happily
+    emit `NaN`, which strict parsers reject. Non-finite floats become null and
+    the record is dumped with allow_nan=False."""
+    import json
+
+    from enodia.spec.beamform.decimation_sweep import json_safe, measurement_record
+
+    profile = frame[0]
+    record = measurement_record(sweep, profile)
+    text = json.dumps(record, allow_nan=False)
+    strict = json.loads(text, parse_constant=lambda tok: (_ for _ in ()).throw(ValueError(tok)))
+    assert strict["environment"]["harness_commit"]
+    assert strict["profile"]["bandwidth_status"] == "provisional"
+    assert strict["iq_psf"]["8"][0]["full_width_mm"]["-40"] == pytest.approx(0.614, abs=0.002)
+    # The sanitizer itself, on the shapes the report produces.
+    nasty = {"a": float("nan"), "b": (1.0, float("inf")), "c": np.float32(2.5), "d": np.int64(3)}
+    assert json_safe(nasty) == {"a": None, "b": [1.0, None], "c": 2.5, "d": 3}
+    json.dumps(json_safe(nasty), allow_nan=False)
+
+
 def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):
     text = "\n".join(sweep.lines())
     for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 / -40 dB", "floor"):
