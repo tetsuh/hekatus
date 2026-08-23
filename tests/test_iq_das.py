@@ -4,7 +4,8 @@ Acceptance: the point scatterers land where `tests/test_das_point.py`
 requires of the golden, within a stated tolerance of the golden's own
 peaks; the phase-sign convention is asserted at checkpoint 2, where a
 flipped sign is ~97° and the correct one under a degree — §5 warns the image
-cannot tell them apart; and nothing in `enodia/spec/` names an accelerator.
+cannot tell them apart; and the hardware-neutral reference must not import
+an accelerator backend.
 """
 
 import pathlib

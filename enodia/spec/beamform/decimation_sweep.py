@@ -179,6 +179,8 @@ def environment() -> dict:
     import numpy
     import scipy
 
+    harness_commit = _git("rev-parse", "HEAD")
+    harness_status = _git("status", "--porcelain")
     return {
         "captured_at": _dt.datetime.now(_dt.UTC).isoformat(),
         "host": platform.node(),
@@ -188,8 +190,8 @@ def environment() -> dict:
         "python": sys.version.split()[0],
         "numpy": numpy.__version__,
         "scipy": scipy.__version__,
-        "harness_commit": _git("rev-parse", "HEAD"),
-        "harness_dirty": _git("status", "--porcelain") != "",
+        "harness_commit": None if harness_commit == "unknown" else harness_commit,
+        "harness_dirty": None if harness_status == "unknown" else bool(harness_status),
         "board": None,
         "note": "host-side reference implementation; no accelerator involved",
     }

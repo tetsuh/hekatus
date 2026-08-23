@@ -123,6 +123,34 @@ def test_a_silent_golden_frame_compares_to_nan_rather_than_raising():
     assert math.isnan(r.max_db)
 
 
+def _fake_sweep_git(status_output):
+    def fake_git(*args):
+        return "abc1234def" if args[0] == "rev-parse" else status_output
+
+    return fake_git
+
+
+def test_a_clean_sweep_harness_is_recorded_as_clean(monkeypatch):
+    monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git(""))
+
+    identity = decimation_sweep.environment()
+
+    assert identity["harness_commit"] == "abc1234def"
+    assert identity["harness_dirty"] is False
+
+
+def test_a_modified_sweep_harness_is_recorded_as_dirty(monkeypatch):
+    monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git(" M enodia/spec/frontend/__init__.py"))
+
+    assert decimation_sweep.environment()["harness_dirty"] is True
+
+
+def test_an_unavailable_sweep_harness_status_remains_unknown(monkeypatch):
+    monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git("unknown"))
+
+    assert decimation_sweep.environment()["harness_dirty"] is None
+
+
 def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, frame):
     """ADR-0005 records are data other tools read; `json.dumps` would happily
     emit `NaN`, which strict parsers reject. Non-finite floats become null and
