@@ -546,8 +546,15 @@ profile through each scatterer:
 |---|---|---|---|
 | −6 dB width | 0.194 mm | 0.257–0.276 mm (+33–42 %) | 0.201–0.202 mm (+4 %) |
 | −20 dB width | 0.355–0.356 mm | 0.420–0.426 mm (+18–20 %) | 0.360–0.361 mm (+1.4 %) |
-| peak level vs golden | — | −0.27 to −0.37 dB; one peak moves one RF sample (19 µm) | within 0.02 dB |
+| −40 dB width (§15: never from −6 dB alone) | 0.500–0.501 mm | 0.614 / 0.626 / 0.804 mm (+23 / +25 / +61 %) | 0.490–0.492 mm (−2 %) |
+| peak level, Δ vs golden, per scatterer | — | −0.365 / −0.268 / 0.000 dB; the second peak moves one RF sample (19 µm) | +0.016 / +0.015 / −0.008 dB |
 | post-delay channel vectors, checkpoint 2 | — | 19.9–21.1 % / ≤ 1.2° | 2.43 % / ≤ 0.22° |
+
+The −40 dB column is where the heaviest decimation shows most: +61 % on
+the deepest scatterer at D=8, whose line also carries the transmit-beam
+arc of the MVP-1 simulator (#9), against −2 % at D=4 — the IQ envelope is
+marginally narrower than the golden's Hilbert envelope there, which is a
+difference between two envelope estimators, not a gain.
 
 D=8 broadens the axial PSF by about 40 % at −6 dB on this pulse — the
 width's 3σ reaches past the decimated Nyquist frequency (0.89 fs', above),

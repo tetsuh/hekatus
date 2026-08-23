@@ -23,6 +23,7 @@ what it was configured for, in the same spirit as the generation tag.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -113,6 +114,11 @@ class IQEventRecord:
             raise ValueError(f"IQ payload needs at least 2 samples, got {self.data.shape[1]}")
         if int(self.decimation) != self.decimation or self.decimation < 1:
             raise ValueError(f"decimation must be a positive integer, got {self.decimation}")
+        if not math.isfinite(self.rf_offset):
+            # A NaN offset makes every read position NaN, which the delay
+            # stage turns into zero vectors — a silent black image, not an
+            # error. Refuse it here, where it is still a record property.
+            raise ValueError(f"rf_offset must be finite, got {self.rf_offset}")
         self.data.flags.writeable = False
 
     @property

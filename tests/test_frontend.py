@@ -137,6 +137,32 @@ def test_the_iq_record_contract_is_checked():
         IQEventRecord(h, good, 0, 0.5)
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_rf_offset_is_refused_by_the_record_and_by_the_beamformer(bad):
+    """A NaN offset would make every read position NaN, which the delay stage
+    turns into zero vectors — a silent black image. Refused at construction,
+    and again at the consumer for a record that bypassed construction."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate
+    from enodia.spec.records import EventHeader, IQEventRecord
+    from enodia.spec.sequence import make_bmode_sequence
+    from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+
+    h = EventHeader(0, "c", 0, 0, "bmode_focused", 0)
+    good = np.zeros((2, 8, 2), dtype=np.int16)
+    with pytest.raises(ValueError, match="rf_offset"):
+        IQEventRecord(h, good, 8, bad)
+
+    p = linear_5mhz()
+    events = make_bmode_sequence(p)[:1]
+    iq = demodulate(
+        simulate_bmode_frame(p, events, [PointScatterer(0.0, 20e-3)])[0], p, decimation=8
+    )
+    object.__setattr__(iq, "rf_offset", bad)  # past the constructor, on purpose
+    with pytest.raises(ValueError, match="rf_offset"):
+        das_iq(p, events, [iq], decimation=8)
+
+
 def test_invalid_decimation_is_rejected():
     from enodia.spec.frontend import complex_bpf_decimate
 

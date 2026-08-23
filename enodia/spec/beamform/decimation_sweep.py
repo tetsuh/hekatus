@@ -9,9 +9,10 @@ provisional (§4), so the figures are labelled with that status and are
 rerun if the profile's value or provenance changes.
 
 For each scatterer the axial profile is the log envelope along the
-scanline through its lateral peak; the widths are the full widths at −6 dB
-and −20 dB below the profile's peak, found by linear interpolation of the
-crossings either side, in millimetres. The golden's own widths are the
+scanline through its lateral peak; the widths are the full widths at −6,
+−20 and −40 dB below the profile's peak — design.md §15 says never to argue
+resolution from the −6 dB width alone and to check −40 dB too — found by
+linear interpolation of the crossings either side, in millimetres. The golden's own widths are the
 reference; the IQ path's are given at each decimation ratio, with the
 peak level relative to the golden's and the checkpoint errors of
 `golden_compare` beside them.
@@ -34,7 +35,7 @@ from enodia.spec.sequence import TxEvent
 from enodia.spec.sim import PointScatterer
 
 DECIMATIONS: tuple[int, ...] = (8, 4)
-WIDTH_LEVELS_DB: tuple[float, ...] = (-6.0, -20.0)
+WIDTH_LEVELS_DB: tuple[float, ...] = (-6.0, -20.0, -40.0)
 
 
 @dataclass(frozen=True)
@@ -87,19 +88,24 @@ class SweepResult:
     def lines(self) -> list[str]:
         title = (
             f"axial PSF, {self.profile} (bandwidth {self.bandwidth_status}), point scatterers;"
-            " full widths at -6 / -20 dB [mm], peak relative to frame max [dB]"
+            " full widths at -6 / -20 / -40 dB [mm], peak relative to frame max [dB]"
         )
         out = [title]
         out.append(
-            f"  {'scatterer (x, z) mm':22s} {'golden':>26s}"
-            + "".join(f"{f'IQ D={d}':>26s}" for d in self.iq)
+            f"  {'scatterer (x, z) mm':22s} {'golden':>34s}"
+            + "".join(f"{f'IQ D={d}':>34s}" for d in self.iq)
         )
+
+        def cell(p: AxialPSF) -> str:
+            return (
+                f"{p.widths_mm[-6.0]:7.3f} / {p.widths_mm[-20.0]:6.3f} / {p.widths_mm[-40.0]:6.3f}"
+                f" {p.peak_db:+7.3f}"
+            )
+
         for i, g in enumerate(self.golden):
-            row = f"  ({g.scatterer[0] * 1e3:+.0f}, {g.scatterer[1] * 1e3:.0f}){'':14s}"
-            row += f"{g.widths_mm[-6.0]:7.3f} / {g.widths_mm[-20.0]:6.3f} {g.peak_db:+7.3f}"
-            for d, psfs in self.iq.items():
-                q = psfs[i]
-                row += f"   {q.widths_mm[-6.0]:7.3f} / {q.widths_mm[-20.0]:6.3f} {q.peak_db:+7.3f}"
+            row = f"  ({g.scatterer[0] * 1e3:+.0f}, {g.scatterer[1] * 1e3:.0f}){'':14s}{cell(g)}"
+            for psfs in self.iq.values():
+                row += f"   {cell(psfs[i])}"
             out.append(row)
         for d, r in self.reports.items():
             cp2 = list(r.checkpoint2)

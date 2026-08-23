@@ -75,28 +75,44 @@ def test_a_silent_reference_reports_nan_rather_than_dropping_the_event(frame, go
 
 
 @pytest.mark.parametrize(
-    ("decimation", "w6", "w20", "peaks"),
+    ("decimation", "w6", "w20", "w40", "peaks"),
     [
-        (8, (0.276, 0.270, 0.257), (0.420, 0.423, 0.426), (-0.761, -0.283, 0.000)),
-        (4, (0.202, 0.201, 0.201), (0.361, 0.360, 0.360), (-0.380, 0.000, -0.008)),
+        (
+            8,
+            (0.276, 0.270, 0.257),
+            (0.420, 0.423, 0.426),
+            (0.614, 0.626, 0.804),
+            (-0.761, -0.283, 0.000),
+        ),
+        (
+            4,
+            (0.202, 0.201, 0.201),
+            (0.361, 0.360, 0.360),
+            (0.492, 0.490, 0.490),
+            (-0.380, 0.000, -0.008),
+        ),
     ],
 )
-def test_the_axial_psf_at_each_decimation_ratio_is_pinned(sweep, decimation, w6, w20, peaks):
+def test_the_axial_psf_at_each_decimation_ratio_is_pinned(sweep, decimation, w6, w20, w40, peaks):
     """design.md §5 / §17: how the point-scatterer axial PSF changes between
     D=8 and D=4, on the provisional 5 MHz profile. Golden: 0.194 mm at −6 dB,
-    0.355–0.356 mm at −20 dB."""
+    0.355–0.356 mm at −20 dB, 0.500–0.501 mm at −40 dB — the −40 dB width
+    because §15 says never to argue resolution from the −6 dB width alone."""
+    assert decimation_sweep.WIDTH_LEVELS_DB == (-6.0, -20.0, -40.0)
     for g in sweep.golden:
         assert g.widths_mm[-6.0] == pytest.approx(0.194, abs=0.002)
         assert g.widths_mm[-20.0] == pytest.approx(0.355, abs=0.002)
-    for psf, a, b, pk in zip(sweep.iq[decimation], w6, w20, peaks, strict=True):
+        assert g.widths_mm[-40.0] == pytest.approx(0.500, abs=0.002)
+    for psf, a, b, c, pk in zip(sweep.iq[decimation], w6, w20, w40, peaks, strict=True):
         assert psf.widths_mm[-6.0] == pytest.approx(a, abs=0.002)
         assert psf.widths_mm[-20.0] == pytest.approx(b, abs=0.002)
+        assert psf.widths_mm[-40.0] == pytest.approx(c, abs=0.002)
         assert psf.peak_db == pytest.approx(pk, abs=0.01)
 
 
 def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):
     text = "\n".join(sweep.lines())
-    for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 dB", "floor"):
+    for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 / -40 dB", "floor"):
         assert needle in text, needle
     assert golden_compare.__doc__
     assert "not attributable" in golden_compare.__doc__

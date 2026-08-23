@@ -35,6 +35,8 @@ float64 → complex128, with the phase factor formed in float64 and cast.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from enodia.spec.beamform import _records_by_event, aperture_weights, depth_grid
@@ -63,6 +65,12 @@ def _check_record(profile: ProbeProfile, rec: IQEventRecord, decimation: int) ->
         raise ValueError(
             f"transmit event {rec.header.tx_event_index}: record is decimated by "
             f"{rec.decimation}, beamformer configured for {decimation}"
+        )
+    if not math.isfinite(rec.rf_offset):
+        # The record refuses this at construction; checked again here because
+        # a NaN read position would come out of `fractional_delay` as zeros.
+        raise ValueError(
+            f"transmit event {rec.header.tx_event_index}: rf_offset is {rec.rf_offset}"
         )
 
 
