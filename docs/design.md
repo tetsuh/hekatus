@@ -540,8 +540,7 @@ between decimation ratios 8 and 4. **Measured** (#6,
 `enodia/spec/beamform/decimation_sweep.py`, pinned by
 `tests/test_golden_compare.py`; the record is
 `docs/measurements/2026-08-23-host-iq-path-vs-golden.json`, ADR-0005), on the
-provisional `linear-5mhz` profile (§4) and the demo's three point
-scatterers, full widths of the axial profile through each scatterer:
+provisional `linear-5mhz` profile (§4) and the demo's three point-scatterers, full widths of the axial profile through each scatterer:
 
 | | golden | IQ, D=8 | IQ, D=4 |
 |---|---|---|---|

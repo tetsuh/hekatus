@@ -279,9 +279,15 @@ def main() -> None:
     result = sweep(profile, events, records, DEFAULT_SCATTERERS)
     print("\n".join(result.lines()))
     if args.record is not None:
-        args.record.parent.mkdir(parents=True, exist_ok=True)
-        args.record.write_text(json.dumps(measurement_record(result, profile), indent=2) + "\n")
-        print(f"record: {args.record}")
+        # The record lands under the working tree — docs/measurements/ by
+        # convention — never outside it, whatever the argument says.
+        root = Path.cwd().resolve()
+        out = args.record.resolve()
+        if not out.is_relative_to(root):
+            raise SystemExit(f"--record must point inside the working tree {root}, got {out}")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(measurement_record(result, profile), indent=2) + "\n")
+        print(f"record: {out.relative_to(root)}")
 
 
 if __name__ == "__main__":
