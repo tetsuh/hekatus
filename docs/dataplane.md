@@ -89,7 +89,7 @@ Use: lampas observation; diaplous-internal result buffers → display system.
 
 | # | Stage | Format | Coordinates | Use |
 |---|---|---|---|---|
-| T1 | Front-end output | int16 complex | channel × depth | Raw IQ. Training-data generation, aberration analysis |
+| T1 | Front-end output | int16 complex | channel × depth | Raw IQ. Training-data generation, aberration analysis. In-process form: `IQEventRecord`, two int16 planes (I, Q), carrying D and the half-sample offset of its first sample (design.md §5) |
 | T2 | After delay & transmit compounding | FP32 complex | channel × depth × scanline | Channel vectors |
 | T3 | After R formation | FP32 complex | subaperture² × depth × scanline | Coherence metrics, aberration detection |
 | T4 | Beamformer output | FP32 complex | depth × scanline (polar) | IQ beam sums |

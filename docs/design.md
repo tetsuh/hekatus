@@ -444,6 +444,29 @@ pattern and the multiplies fold into constants — but **other probes are not
 integer ratios**. Even 3.5 MHz cycles in 80 samples, a 320-byte table. Not a
 problem in practice.
 
+**The reference front end** (`enodia/spec/frontend/`, #6) is defined to the
+sample, because L0 checkpoint 1 compares against it:
+
+- prototype: windowed sinc, 64 real taps, Hann window, cutoff `cutoff_frac`
+  × the decimated Nyquist frequency fs/(2D) with `cutoff_frac = 1`, DC gain
+  **2** — the complex envelope at the real signal's own amplitude (unit gain
+  keeps only the positive-frequency half and halves it; checkpoint 2 reads
+  that as a 50 % error, which is how it was caught)
+- fused taps `h_bp[k] = h_lp[k]·e^(+j2πf0·(k − (L−1)/2)/fs)`, the
+  modulation **centred on the filter**; the output sample is rotated by
+  `e^(−j2πf0·t)` at the RF time it stands for. Referenced to tap 0 instead,
+  every IQ sample carries a constant 2πf0·(L−1)/2/fs — 22.5° at fs = 8f0 —
+  that no image shows (checkpoint 2 found that too)
+- alignment: IQ sample m stands for RF position **m·D + δ**, δ = L//2 −
+  (L−1)/2 = ½ sample for L = 64; δ and D travel with the record
+  (`IQEventRecord.rf_offset`, `.decimation`) and the delay stage reads the
+  IQ at (τ_i·fs − δ)/D. Half an RF sample is 12.5 ns, 23° at 5 MHz
+- output: int16 complex as two int16 planes (§14, dataplane T1), scaled by
+  `iq_scale = 1`; a value that would not fit raises rather than clips
+
+Every one of those is a sweepable parameter; what they cost is what the
+golden comparison of §15 says, not what this paragraph argues.
+
 ### Cost
 
 A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of one card. FIR lowers
@@ -479,6 +502,18 @@ The expression decomposes into an **integer shift (a read-address offset)
 phase rotation (one complex multiply)**, making random access small and
 local. With fixed geometry, the phase term is precomputable.
 
+`enodia/spec/beamform/iq_das.py` is that expression as the reference (#6):
+for a pixel at round-trip time t_p = 2z/c on a line, channel i's echo
+arrives at τ_i, the delay is τ = t_p − τ_i, d = τ·fs', and x_i = interp4(z_i,
+n − d)·e^(−j2πf0·τ) read at n = t_p·fs' — so the read position is τ_i·fs',
+the golden's, at the decimated rate. The sign is **asserted at L0
+checkpoint 2** (`tests/test_iq_das.py`): energy-weighted over the aperture,
+the channel vectors agree in phase with the golden's analytic channel
+samples to under 1.2° at D=8 and 0.22° at D=4; with the sign flipped they
+are ~97° off — and the image made with the flipped sign still puts its
+peaks in plausible places, which is the whole reason the test looks at the
+vectors.
+
 ### Fractional-delay accuracy (important)
 
 **Phase rotation alone is not enough.** As long as decimation goes toward
@@ -501,7 +536,26 @@ Left alone, the axial PSF collapses and sidelobes rise.
 not enough.
 
 Keep the ability to measure how the point-scatterer axial PSF changes
-between decimation ratios 8 and 4.
+between decimation ratios 8 and 4. **Measured** (#6,
+`enodia/spec/beamform/decimation_sweep.py`, pinned by
+`tests/test_golden_compare.py`), on the provisional `linear-5mhz` profile
+(§4) and the demo's three point scatterers, full widths of the axial
+profile through each scatterer:
+
+| | golden | IQ, D=8 | IQ, D=4 |
+|---|---|---|---|
+| −6 dB width | 0.194 mm | 0.257–0.276 mm (+33–42 %) | 0.201–0.202 mm (+4 %) |
+| −20 dB width | 0.355–0.356 mm | 0.420–0.426 mm (+18–20 %) | 0.360–0.361 mm (+1.4 %) |
+| peak level vs golden | — | −0.27 to −0.37 dB; one peak moves one RF sample (19 µm) | within 0.02 dB |
+| post-delay channel vectors, checkpoint 2 | — | 19.9–21.1 % / ≤ 1.2° | 2.43 % / ≤ 0.22° |
+
+D=8 broadens the axial PSF by about 40 % at −6 dB on this pulse — the
+width's 3σ reaches past the decimated Nyquist frequency (0.89 fs', above),
+so the front end's low-pass takes part of the band (checkpoint 1: 7.9 %
+against the ideal baseband, against 0.2 % at D=4) and the four taps then
+carry the 14 % §5's sweep predicts; at D=4 the whole chain costs 2.4 % and
+4 % of width. The figures are on a provisional bandwidth and are rerun
+when it changes (§4); what they settle and what stays open is in §17.
 
 ### The interpolation kernel (normative, L0-relevant)
 
@@ -1437,7 +1491,32 @@ If 5 agrees, Newton-Schulz converged correctly, and any image difference is
 downstream. Threshold: from the BF16 theoretical floor (relative 4e-3),
 **within 1e-2 per stage**. Beyond that, suspect a bug.
 
-**L0 is automated and lives in CI.**
+**L0 is automated and lives in CI.** Checkpoints 1 and 2 exist as a
+prototype (`enodia/spec/beamform/golden_compare.py`, #6): not yet TT against
+reference — nothing runs on TT — but the IQ reference path against the RF
+golden, stage by stage, with the reference quantity of each checkpoint
+defined: for 1, the analytic signal of the RF times e^(−j2πf0·t),
+band-limited by a brick-wall low-pass at fs/(2D) and read at the RF
+positions the front end's samples stand for; for 2, the golden's own
+delayed channel samples made complex (analytic signal delayed by the
+golden's band-limited ideal delay at τ_i·fs, times e^(−j2πf0·t_p)), on the
+lines through the scatterers, inside the aperture, with the phase error
+energy-weighted. The report quotes the yardstick's own residual beside
+every figure and flags a difference below it as not attributable (next
+subsection). Measured on the provisional `linear-5mhz` profile:
+
+| checkpoint | D=8 | D=4 |
+|---|---|---|
+| 1 front-end output vs ideal baseband — unquantized FIR / int16 record | 7.946 % / 7.946 %, 8.2° | 0.204 % / 0.204 %, 0.2° |
+| 2 post-delay channel vectors, lines through the three scatterers | 21.1 / 21.1 / 19.9 %, 1.0 / 1.2 / 0.8° | 2.43 / 2.43 / 2.43 %, 0.20 / 0.22 / 0.20° |
+| image, log envelope over pixels the golden puts above −40 dB | RMS 5.10 dB, max 20.8 dB | RMS 0.85 dB, max 5.6 dB |
+| yardstick floor (golden's residual on this profile's record) | 0.0003 % | 0.0003 % |
+
+The int16 record adds under 0.002 points to the FIR's own error at either
+ratio; the 7.9 % at D=8 is the low-pass taking part of a band whose 3σ
+reaches past fs'/2, and the 21 % at checkpoint 2 is that plus the four-tap
+error §5's sweep puts at 14.0 %. Every figure is pinned by
+`tests/test_golden_compare.py`; the axial-PSF consequence is in §5.
 
 ### The yardstick's own floor
 
@@ -1543,6 +1622,9 @@ it cannot do is tell a difference smaller than the yardstick's own residual
 apart from that residual. So such a difference is not, by itself, evidence
 of error or of improvement relative to the ideal — the golden itself sits
 that far from the ideal, in a direction the comparison does not know.
+`golden_compare` prints the floor beside its figures and marks any figure
+below it "not attributable", so the rule is applied by the tool rather
+than remembered by the reader (#6).
 
 **Profile reconciliation — beside the frozen oracle, never in its place.**
 The frozen figures above do not move. What a named profile implies is a
@@ -1681,7 +1763,13 @@ A record, so the same debates are not repeated.
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
-- decimation ratio and interpolation tap count
+- decimation ratio and interpolation tap count — **measured at 5 MHz** (#6,
+  §5): D=8 broadens the axial PSF by ~40 % at −6 dB and costs 21 % at
+  checkpoint 2 on the provisional profile, D=4 by 4 % and 2.4 %. What stays
+  open: whether D=8's width is acceptable for the product (a Layer-2 /
+  image-quality judgement, L1–L2), the same measurement on a sourced
+  bandwidth and on the 13 MHz profile (#10), and the tap count, which the
+  sweep bounds but the PSF does not separate from the front-end low-pass
 - diagonal loading (2D may need more than 1D, μBF grating lobes)
 - core allocation (front end / beamforming / inference)
 - group-batch size and boundary artifacts

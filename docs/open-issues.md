@@ -58,16 +58,17 @@ writing one, not by measuring again.
 - Transmit compounding: window width, apodization, contributing-transmit
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?). The
-  kernel is now fixed — Lagrange cubic, design.md §5 — and the sweep behind
-  it puts a number on the question at the profile's own edge (#46): 37%
-  band-edge magnitude error at D=8 against 3% at D=4, 14.00% against 2.39%
-  pulse-weighted. What is open is the axial-PSF consequence, measured on
-  the point-scatterer phantom between D=8 and D=4. **#6 measures it on the
-  named `linear-5mhz` profile, whose bandwidth is provisional** (§4): its
-  artifacts say so, and are rerun if the profile's value or provenance
-  changes. **#10 owns the 13 MHz profile** — until it lands, 13 MHz figures
-  are the synthetic 80% envelope — and triggers the 13 MHz rerun of the §5
-  sweep and the §15 profile reconciliation
+  kernel is fixed — Lagrange cubic, design.md §5 — and the axial-PSF
+  consequence is now **measured** (#6, design.md §5 / §17) on the point-
+  scatterer phantom with the named `linear-5mhz` profile, whose bandwidth is
+  **provisional** (§4): D=8 broadens the −6 dB axial width by ~40 % and
+  costs 21 % at L0 checkpoint 2; D=4 by 4 % and 2.4 %. The artifacts say
+  "provisional" and are rerun if the profile's value or provenance
+  changes. Still open: whether D=8's width is acceptable for the product
+  (an image-quality judgement), the same on a sourced bandwidth, and the
+  13 MHz case. **#10 owns the 13 MHz profile** — until it lands, 13 MHz
+  figures are the synthetic 80% envelope — and triggers the 13 MHz rerun of
+  the §5 sweep, the §15 profile reconciliation, and this measurement
 - Diagonal loading (2D may need more than 1D because of μBF grating lobes)
 - Core allocation (front-end / beamforming / inference)
 - Group-batch size and its boundary artifacts
