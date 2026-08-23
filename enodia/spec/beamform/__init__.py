@@ -89,6 +89,20 @@ def _check_channel_count(profile: ProbeProfile, rec: RFEventRecord) -> None:
         )
 
 
+def aperture_weights(dx: np.ndarray, z: np.ndarray, f_number: float, *, dtype=np.float32):
+    """Fixed-F-number dynamic receive aperture with Hann apodization.
+
+    ``dx`` is ``(n_ch, 1)`` lateral offsets of the elements from the line
+    and ``z`` the depth axis; returns ``(n_ch, n_depth)`` weights normalized
+    by their sum at each depth, so the aperture growth does not imprint a
+    depth-dependent gain. Shared by the RF golden and the IQ path, so a
+    comparison between them sees the delay stage and nothing else.
+    """
+    u = dx / (z[None, :] / (2.0 * f_number))
+    w = np.where(np.abs(u) <= 1.0, 0.5 * (1.0 + np.cos(np.pi * u)), 0.0)
+    return (w / np.maximum(w.sum(axis=0, keepdims=True), 1e-12)).astype(dtype)
+
+
 def das_rf_golden(
     profile: ProbeProfile,
     events: list[TxEvent],
@@ -127,14 +141,7 @@ def das_rf_golden(
         tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
         pos = tau * profile.fs_hz
         sampled = delay_rf(data, pos)
-
-        # Fixed-F-number dynamic aperture with Hann apodization, normalized
-        # by the weight sum at each depth so the aperture growth does not
-        # imprint a depth-dependent gain.
-        u = dx / (z[None, :] / (2.0 * profile.f_number))
-        w = np.where(np.abs(u) <= 1.0, 0.5 * (1.0 + np.cos(np.pi * u)), 0.0)
-        w = (w / np.maximum(w.sum(axis=0, keepdims=True), 1e-12)).astype(dtype)
-
+        w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
         image[:, ev.line_index] += (w * sampled).sum(axis=0)
 
     return image, z, line_x
