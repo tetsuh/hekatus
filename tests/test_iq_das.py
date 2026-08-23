@@ -136,8 +136,13 @@ def test_the_intermediate_is_complex_fp32_or_wider(frame, dtype, expected):
     assert image.dtype == expected
 
 
-def test_nothing_in_the_spec_names_an_accelerator():
-    """CLAUDE.md: the reference implementation is hardware-neutral."""
+def test_nothing_in_the_spec_imports_an_accelerator_backend():
+    """CLAUDE.md: the reference implementation is hardware-neutral, and #6
+    asks that nothing in enodia/spec acquire an accelerator-specific concept.
+    What a test can check is the executable part of that: no module under
+    enodia/spec imports an accelerator backend. (The generic word
+    "accelerator" appears in docstrings, in its generic sense; that is not
+    what this guards against.)"""
     forbidden = re.compile(
         r"^\s*(import|from)\s+(ttnn|tt_lib|tt_metal|ttml|holoscan|cupy|torch|cuda|pycuda)\b",
         re.MULTILINE,

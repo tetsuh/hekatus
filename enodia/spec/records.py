@@ -106,9 +106,10 @@ class IQEventRecord:
     and re-enable its write flag, because an array that owns its memory may
     always be unfrozen (review reproduced that too). So the record **copies
     the payload into immutable `bytes`** and exposes `data` as
-    `np.frombuffer` over those bytes: the base of the exposed array is the
-    bytes object itself, which nothing can write to, and NumPy refuses to set
-    WRITEABLE on an array whose ultimate exporter is read-only. One int16
+    `np.frombuffer(...).reshape(...)` over those bytes: the base chain of the
+    exposed array (two ndarray hops) ends at the bytes object, which nothing
+    can write to, and NumPy refuses to set WRITEABLE on any array whose
+    ultimate exporter is read-only. One int16
     (channel, sample, 2) copy per event is a few hundred kilobytes.
     """
 

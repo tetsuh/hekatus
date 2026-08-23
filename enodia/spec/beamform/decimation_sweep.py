@@ -16,12 +16,24 @@ linear interpolation of the crossings either side, in millimetres. The golden's 
 reference; the IQ path's are given at each decimation ratio, with the
 peak level relative to the golden's and the checkpoint errors of
 `golden_compare` beside them.
+
+**The result is a measurement record** (ADR-0005): `--record PATH` writes
+the figures as data under `docs/measurements/`, with the environment that
+produced them — host, CPU, kernel, Python, NumPy, SciPy, the harness
+revision and whether the tree was dirty — and the provenance of the profile
+they were taken on. A figure quoted in design.md names that record.
 """
 
 from __future__ import annotations
 
+import datetime as _dt
+import json
+import platform
+import subprocess
+import sys
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -152,17 +164,124 @@ def sweep(
     return SweepResult(profile.name, profile.bandwidth_status, golden_psf, iq_psf, reports, seconds)
 
 
+def _git(*args: str) -> str:
+    try:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, check=True, timeout=5
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def environment() -> dict:
+    """The environment block ADR-0005 asks for, for a host-side measurement:
+    no board, so the host, its kernel and the numeric stack stand in."""
+    import numpy
+    import scipy
+
+    return {
+        "captured_at": _dt.datetime.now(_dt.UTC).isoformat(),
+        "host": platform.node(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "cpu": platform.processor() or "unknown",
+        "python": sys.version.split()[0],
+        "numpy": numpy.__version__,
+        "scipy": scipy.__version__,
+        "harness_commit": _git("rev-parse", "HEAD"),
+        "harness_dirty": _git("status", "--porcelain") != "",
+        "board": None,
+        "note": "host-side reference implementation; no accelerator involved",
+    }
+
+
+def measurement_record(result: SweepResult, profile: ProbeProfile) -> dict:
+    """The sweep and the per-stage comparison as data (ADR-0005)."""
+
+    def psf(p: AxialPSF) -> dict:
+        return {
+            "scatterer_x_m": p.scatterer[0],
+            "scatterer_z_m": p.scatterer[1],
+            "peak_z_m": p.peak_z_m,
+            "peak_db": p.peak_db,
+            "full_width_mm": {f"{lvl:g}": w for lvl, w in p.widths_mm.items()},
+        }
+
+    def report(r: ComparisonReport) -> dict:
+        return {
+            "decimation": r.decimation,
+            "yardstick_floor_pct": r.floor_pct,
+            "checkpoint1": [asdict(e) for e in r.checkpoint1],
+            "checkpoint2": {
+                "events": list(r.checkpoint2_events),
+                "stages": [asdict(e) for e in r.checkpoint2],
+            },
+            "image": {
+                "rms_db": r.image.rms_db,
+                "max_db": r.image.max_db,
+                "region_floor_db": r.image.region_floor_db,
+                "peaks": [
+                    {
+                        "scatterer": list(pk.scatterer),
+                        "golden_z_m_x_m_db": list(pk.golden),
+                        "iq_z_m_x_m_db": list(pk.iq),
+                    }
+                    for pk in r.image.peaks
+                ],
+            },
+            "seconds": r.seconds,
+        }
+
+    return {
+        "environment": environment(),
+        "what": (
+            "IQ path (front end + IQ DAS) against the RF golden: per-stage errors and"
+            " axial PSF at D=8 and D=4 (#6)"
+        ),
+        "profile": {
+            "name": profile.name,
+            "f0_hz": profile.f0_hz,
+            "fs_hz": profile.fs_hz,
+            "bandwidth_frac": profile.bandwidth_frac,
+            "bandwidth_edge_hz": profile.bandwidth_edge_hz,
+            "bandwidth_status": profile.bandwidth_status,
+            "bandwidth_source": profile.bandwidth_source,
+        },
+        "frozen_oracle": "rf-oracle-frozen-0p7",
+        "front_end": {"n_taps": 64, "window": "hann", "cutoff_frac": 1.0, "iq_scale": 1.0},
+        "kernel": "lagrange4",
+        "width_levels_db": list(WIDTH_LEVELS_DB),
+        "golden_psf": [psf(p) for p in result.golden],
+        "iq_psf": {str(d): [psf(p) for p in ps] for d, ps in result.iq.items()},
+        "comparison": {str(d): report(r) for d, r in result.reports.items()},
+        "seconds": result.seconds,
+    }
+
+
 def main() -> None:
+    import argparse
+
     from enodia.demo import DEFAULT_SCATTERERS
     from enodia.spec.probe import linear_5mhz
     from enodia.spec.sequence import make_bmode_config
     from enodia.spec.sim import simulate_bmode_frame
 
+    parser = argparse.ArgumentParser(description="axial PSF and per-stage errors, D=8 vs D=4")
+    parser.add_argument(
+        "--record", type=Path, default=None, help="write the measurement record here"
+    )
+    args = parser.parse_args()
+
     profile = linear_5mhz()
     config = make_bmode_config(profile)
     events = list(config.events)
     records = simulate_bmode_frame(profile, events, DEFAULT_SCATTERERS, config_id=config.config_id)
-    print("\n".join(sweep(profile, events, records, DEFAULT_SCATTERERS).lines()))
+    result = sweep(profile, events, records, DEFAULT_SCATTERERS)
+    print("\n".join(result.lines()))
+    if args.record is not None:
+        args.record.parent.mkdir(parents=True, exist_ok=True)
+        args.record.write_text(json.dumps(measurement_record(result, profile), indent=2) + "\n")
+        print(f"record: {args.record}")
 
 
 if __name__ == "__main__":
