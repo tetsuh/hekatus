@@ -51,7 +51,9 @@ def test_the_fused_filter_has_64_complex_taps_and_analytic_gain():
     assert ANALYTIC_GAIN == 2.0
     t = np.arange(4096) / p.fs_hz
     amplitude = 1000.0
-    z = complex_bpf_decimate(amplitude * np.cos(2.0 * np.pi * p.f0_hz * t)[None, :], p, decimation=8)
+    z = complex_bpf_decimate(
+        amplitude * np.cos(2.0 * np.pi * p.f0_hz * t)[None, :], p, decimation=8
+    )
     assert np.allclose(np.abs(z[0, 32:-32]), amplitude, rtol=1e-3)
 
 
@@ -79,7 +81,9 @@ def test_iq_sample_m_stands_for_rf_position_m_times_d_plus_half_a_sample():
     t = np.arange(n) / p.fs_hz
     phi = 0.7
     for decimation in (8, 4):
-        z = complex_bpf_decimate(np.cos(2.0 * np.pi * p.f0_hz * t + phi)[None, :], p, decimation=decimation)
+        z = complex_bpf_decimate(
+            np.cos(2.0 * np.pi * p.f0_hz * t + phi)[None, :], p, decimation=decimation
+        )
         assert np.allclose(np.angle(z[0, 32:-32]), phi, atol=1e-3)
 
 
