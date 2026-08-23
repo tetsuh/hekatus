@@ -1,6 +1,6 @@
 # ADR-0008: The effective two-way bandwidth is probe-profile data
 
-- Status: **Proposed** — 2026-08-22
+- Status: **Accepted** — 2026-08-23
 - Date: 2026-08-22
 - Owner decision: yes (`DEC-46-BANDWIDTH-AUTHORITY-001`)
 
@@ -124,3 +124,8 @@ on issue #46.
   the transition to `Accepted` is written in the same pull request at the
   owner-authorized pre-merge boundary, so `Proposed` never reaches `main`
   (workflow §6, ADR-0004).
+- 2026-08-23: Accepted at the pre-merge boundary of that pull request, on
+  owner instruction, after four review-driven commits and with every check
+  green at the head that carries this line. The effective date is the day of
+  the transition and the `Date` line above stays the day the record was
+  written, as ADR-0003 and ADR-0007 also separate them.
