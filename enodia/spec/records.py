@@ -101,10 +101,14 @@ class IQEventRecord:
     writer; readers get read-only views). Marking the caller's array
     read-only is not enough for that: a producer that keeps a writable alias
     of the same buffer can still change the samples after publication, and
-    every reader sees the change (review of #6 reproduced exactly that). So
-    the record **copies the payload into private storage it alone owns**,
-    freezes that storage, and exposes `data` as a read-only view of it — a
-    view whose base is frozen cannot be made writable again. One int16
+    every reader sees the change (review of #6 reproduced exactly that). Nor
+    is a private frozen ndarray enough: a reader can walk `data.base` to it
+    and re-enable its write flag, because an array that owns its memory may
+    always be unfrozen (review reproduced that too). So the record **copies
+    the payload into immutable `bytes`** and exposes `data` as
+    `np.frombuffer` over those bytes: the base of the exposed array is the
+    bytes object itself, which nothing can write to, and NumPy refuses to set
+    WRITEABLE on an array whose ultimate exporter is read-only. One int16
     (channel, sample, 2) copy per event is a few hundred kilobytes.
     """
 
@@ -112,7 +116,7 @@ class IQEventRecord:
     data: np.ndarray
     decimation: int
     rf_offset: float
-    _owner: np.ndarray = field(init=False, repr=False, compare=False)
+    _owner: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.data.dtype != np.int16:
@@ -130,11 +134,12 @@ class IQEventRecord:
             # stage turns into zero vectors — a silent black image, not an
             # error. Refuse it here, where it is still a record property.
             raise ValueError(f"rf_offset must be finite, got {self.rf_offset}")
-        # Publication boundary: private frozen owner, read-only view exposed.
-        owner = np.array(self.data, dtype=np.int16, copy=True, order="C")
-        owner.flags.writeable = False
-        view = owner.view()
-        view.flags.writeable = False
+        # Publication boundary: the payload is copied into immutable bytes,
+        # and `data` is a read-only array over them — its base chain ends at
+        # the bytes object, which no flag can make writable.
+        shape = self.data.shape
+        owner = np.ascontiguousarray(self.data, dtype=np.int16).tobytes()
+        view = np.frombuffer(owner, dtype=np.int16).reshape(shape)
         object.__setattr__(self, "_owner", owner)
         object.__setattr__(self, "data", view)
 

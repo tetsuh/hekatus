@@ -213,8 +213,24 @@ def test_the_iq_record_owns_its_payload_so_a_producer_alias_cannot_change_it():
     np.testing.assert_array_equal(rec.complex().real[0, :3], before[0, :3, 0])
 
     assert not rec.data.flags.writeable
-    with pytest.raises(ValueError):
-        rec.data.flags.writeable = True
     assert not np.shares_memory(rec.data, producer)
     # The producer's own array is left as it was — not frozen behind its back.
     assert producer.flags.writeable
+
+    # Walk the whole base chain: every ndarray on it refuses to become
+    # writable, and the chain ends at immutable bytes — a frozen ndarray
+    # owner would not do, since an array that owns its memory can always be
+    # unfrozen by whoever reaches it (review of #6 reproduced that).
+    node = rec.data
+    hops = 0
+    while isinstance(node, np.ndarray):
+        assert not node.flags.writeable
+        with pytest.raises(ValueError):
+            node.flags.writeable = True
+        node = node.base
+        hops += 1
+    assert hops >= 1
+    assert isinstance(node, bytes)
+    assert isinstance(rec._owner, bytes)
+    assert node is rec._owner
+    np.testing.assert_array_equal(rec.data, before)
