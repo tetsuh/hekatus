@@ -18,8 +18,9 @@ rotation at the RF time the sample stands for. (Centring the modulation is
 what makes that so: referenced to tap 0 instead, every IQ sample carries a
 constant phase error of 2πf0·(L−1)/2/fs — 22.5° for 64 taps at fs = 8f0 —
 that no image would show. Found by the checkpoint-2 comparison, #6.) At
-fs = 8·f0 and D = 8 the rotation per sample is e^(−jπ/4)·(1)^m up to the
-half-sample term below; at D = 4, (−1)^m times the same constant.
+fs = 8·f0 and D = 8 the rotation is e^(−j2π(8m + ½)/8) = e^(−jπ/8) for every
+m — one constant, the half-sample term below; at D = 4 it is
+(−1)^m·e^(−jπ/8).
 
 **Gain.** The prototype has DC gain 2, so z is the complex envelope of s at
 s's own amplitude: a tone A·cos(2πf0·t) becomes the phasor A. (Unit gain
@@ -169,15 +170,20 @@ def demodulate(
         window=window,
     )
     scaled = z * iq_scale
-    limit = np.iinfo(np.int16).max
-    peak = max(float(np.abs(scaled.real).max()), float(np.abs(scaled.imag).max()))
-    if peak > limit:
-        # Clipping would be a silent nonlinearity in the one place the
-        # dataflow is supposed to be linear (design.md §14); say so instead.
+    planes = np.stack([np.round(scaled.real), np.round(scaled.imag)], axis=-1)
+    if not np.all(np.isfinite(planes)):
+        raise ValueError("IQ contains non-finite values; the RF record or the filter is not sane")
+    info = np.iinfo(np.int16)
+    lo, hi = float(planes.min()), float(planes.max())
+    if lo < info.min or hi > info.max:
+        # Checked on the rounded values, against both bounds: −32768 is a
+        # valid sample and 32767.4 rounds to a valid one. Clipping would be a
+        # silent nonlinearity in the one place the dataflow is supposed to be
+        # linear (design.md §14); say so instead.
         raise ValueError(
-            f"IQ peak {peak:.0f} exceeds int16 at iq_scale={iq_scale}; lower the scale"
+            f"IQ range [{lo:.0f}, {hi:.0f}] exceeds int16 at iq_scale={iq_scale}; lower the scale"
         )
-    planes = np.stack([np.round(scaled.real), np.round(scaled.imag)], axis=-1).astype(np.int16)
+    planes = planes.astype(np.int16)
     return IQEventRecord(
         header=record.header, data=planes, decimation=decimation, rf_offset=rf_offset(n_taps)
     )

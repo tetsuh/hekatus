@@ -88,6 +88,30 @@ def test_the_phase_sign_convention_is_asserted_at_checkpoint_2_not_in_a_comment(
     assert phase_rms(flipped) > 60.0
 
 
+def test_the_demo_iq_path_images_the_scatterers_on_the_shared_grid():
+    """`run_pipeline(path="iq")` is the one-command path of #6: a finite
+    log-compressed image on the golden's grid, scatterers at their true
+    positions, the same criteria tests/test_das_point.py applies to the golden."""
+    from enodia.demo import DEFAULT_SCATTERERS, run_pipeline
+    from enodia.spec.beamform import depth_grid
+    from enodia.spec.probe import linear_5mhz
+
+    profile = linear_5mhz()
+    db, z, line_x, records = run_pipeline(profile, DEFAULT_SCATTERERS, path="iq", decimation=8)
+    assert np.all(np.isfinite(db))
+    assert db.shape == (depth_grid(profile).size, profile.n_elements)
+    np.testing.assert_array_equal(z, depth_grid(profile))
+    assert line_x.shape == (profile.n_elements,)
+    assert len(records) == profile.n_elements
+    for s in DEFAULT_SCATTERERS:
+        zi, xi, li = _peak(db, z, line_x, s)
+        assert abs(zi - s.z_m) < 0.5e-3
+        assert abs(xi - s.x_m) < 1.0e-3
+        assert li > -6.0
+    with pytest.raises(ValueError, match="path"):
+        run_pipeline(profile, DEFAULT_SCATTERERS, path="rf")
+
+
 def test_the_beamformer_refuses_records_decimated_at_another_ratio(frame):
     profile, events, records, _ = frame
     iq4 = demodulate_frame(records[:2], profile, decimation=4)

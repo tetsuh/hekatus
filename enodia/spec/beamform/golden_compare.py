@@ -272,9 +272,16 @@ def image_comparison(
 ) -> ImageComparison:
     region = db_golden > region_floor_db
     diff = db_iq - db_golden
+    if not region.any():
+        # A silent golden frame has no pixel above the floor: nothing to
+        # compare over, reported as NaN rather than raised from an empty max.
+        rms_db, max_db = float("nan"), float("nan")
+    else:
+        rms_db = float(np.sqrt(np.mean(diff[region] ** 2)))
+        max_db = float(np.abs(diff[region]).max())
     return ImageComparison(
-        rms_db=float(np.sqrt(np.mean(diff[region] ** 2))),
-        max_db=float(np.abs(diff[region]).max()),
+        rms_db=rms_db,
+        max_db=max_db,
         region_floor_db=region_floor_db,
         peaks=tuple(
             PeakComparison(

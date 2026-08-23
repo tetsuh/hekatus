@@ -111,6 +111,9 @@ def test_demodulate_returns_an_int16_two_plane_record_that_names_its_ratio_and_o
 
 
 def test_demodulate_refuses_to_clip_rather_than_clipping_silently():
+    """Checked on the rounded planes against both int16 bounds: a value that
+    rounds to 32767 passes, one that rounds past it does not, and a
+    non-finite sample is refused before any cast can turn it into a number."""
     from enodia.spec.frontend import demodulate
     from enodia.spec.sequence import make_bmode_sequence
     from enodia.spec.sim import PointScatterer, simulate_bmode_frame
@@ -119,6 +122,22 @@ def test_demodulate_refuses_to_clip_rather_than_clipping_silently():
     rec = simulate_bmode_frame(p, make_bmode_sequence(p)[:1], [PointScatterer(0.0, 20e-3)])[0]
     with pytest.raises(ValueError, match="int16"):
         demodulate(rec, p, decimation=8, iq_scale=4.0)
+    # Scale the record so its largest rounded IQ sample lands exactly on the
+    # positive bound: accepted. A hair more: refused.
+    from enodia.spec.frontend import complex_bpf_decimate
+
+    z = complex_bpf_decimate(rec.data, p, decimation=8)
+    peak = max(float(np.abs(z.real).max()), float(np.abs(z.imag).max()))
+    at_bound = (32767.0 + 0.4) / peak
+    iq = demodulate(rec, p, decimation=8, iq_scale=at_bound)
+    assert int(iq.data.max()) <= 32767 and int(iq.data.min()) >= -32768
+    with pytest.raises(ValueError, match="int16"):
+        demodulate(rec, p, decimation=8, iq_scale=(32767.0 + 0.6) / peak)
+    # A non-finite sample — here through the scale, the one knob that can
+    # make one — is refused before the cast can turn it into a number.
+    for bad in (float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="non-finite"):
+            demodulate(rec, p, decimation=8, iq_scale=bad)
 
 
 def test_the_iq_record_contract_is_checked():

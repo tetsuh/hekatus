@@ -8,6 +8,7 @@ difference below it is flagged, not silently reported.
 
 import math
 
+import numpy as np
 import pytest
 
 from enodia.spec.beamform import decimation_sweep, golden_compare
@@ -108,6 +109,18 @@ def test_the_axial_psf_at_each_decimation_ratio_is_pinned(sweep, decimation, w6,
         assert psf.widths_mm[-20.0] == pytest.approx(b, abs=0.002)
         assert psf.widths_mm[-40.0] == pytest.approx(c, abs=0.002)
         assert psf.peak_db == pytest.approx(pk, abs=0.01)
+
+
+def test_a_silent_golden_frame_compares_to_nan_rather_than_raising():
+    from enodia.spec.beamform.golden_compare import image_comparison
+    from enodia.spec.sim import PointScatterer
+
+    silent = np.full((16, 4), -50.0)
+    z = np.linspace(0.01, 0.02, 16)
+    line_x = np.linspace(-1e-3, 1e-3, 4)
+    r = image_comparison(silent, silent, z, line_x, [PointScatterer(0.0, 15e-3)])
+    assert math.isnan(r.rms_db)
+    assert math.isnan(r.max_db)
 
 
 def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):

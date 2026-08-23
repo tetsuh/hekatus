@@ -61,8 +61,11 @@ writing one, not by measuring again.
   kernel is fixed — Lagrange cubic, design.md §5 — and the axial-PSF
   consequence is now **measured** (#6, design.md §5 / §17) on the point-
   scatterer phantom with the named `linear-5mhz` profile, whose bandwidth is
-  **provisional** (§4): D=8 broadens the −6 dB axial width by ~40 % and
-  costs 21 % at L0 checkpoint 2; D=4 by 4 % and 2.4 %. The artifacts say
+  **provisional** (§4): D=8 broadens the axial width by +33–42 % at −6 dB
+  (0.257–0.276 vs 0.194 mm) and +23 / +25 / +61 % at −40 dB (0.614 /
+  0.626 / 0.804 vs 0.500–0.501 mm, per scatterer at 15 / 25 / 40 mm) and
+  costs 21 % at L0 checkpoint 2; D=4 +4 % at −6 dB (0.201–0.202 mm), −2 %
+  at −40 dB (0.490–0.492 mm) and 2.4 %. The artifacts say
   "provisional" and are rerun if the profile's value or provenance
   changes. Still open: whether D=8's width is acceptable for the product
   (an image-quality judgement), the same on a sourced bandwidth, and the
