@@ -102,7 +102,7 @@ class SweepResult:
                 row += f"   {q.widths_mm[-6.0]:7.3f} / {q.widths_mm[-20.0]:6.3f} {q.peak_db:+7.3f}"
             out.append(row)
         for d, r in self.reports.items():
-            cp2 = [e for e in r.checkpoint2]
+            cp2 = list(r.checkpoint2)
             rel = np.nanmean([e.relative_error_pct for e in cp2])
             ph = np.nanmean([e.phase_error_deg for e in cp2])
             out.append(

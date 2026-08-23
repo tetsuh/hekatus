@@ -45,7 +45,8 @@ def test_the_fused_filter_has_64_complex_taps_and_analytic_gain():
 
     p = linear_5mhz()
     h = bpf_taps(p, 8)
-    assert h.shape == (64,) and N_TAPS == 64
+    assert h.shape == (64,)
+    assert N_TAPS == 64
     assert np.iscomplexobj(h)
     assert ANALYTIC_GAIN == 2.0
     t = np.arange(4096) / p.fs_hz
@@ -122,10 +123,12 @@ def test_the_iq_record_contract_is_checked():
     h = EventHeader(0, "c", 0, 0, "bmode_focused", 0)
     good = np.zeros((2, 8, 2), dtype=np.int16)
     IQEventRecord(h, good, 8, 0.5)
+    as_float = good.astype(np.float32)
     with pytest.raises(ValueError, match="int16"):
-        IQEventRecord(h, good.astype(np.float32), 8, 0.5)
+        IQEventRecord(h, as_float, 8, 0.5)
+    one_plane = np.zeros((2, 8), dtype=np.int16)
     with pytest.raises(ValueError, match="I, Q"):
-        IQEventRecord(h, np.zeros((2, 8), dtype=np.int16), 8, 0.5)
+        IQEventRecord(h, one_plane, 8, 0.5)
     with pytest.raises(ValueError, match="decimation"):
         IQEventRecord(h, good, 0, 0.5)
 
@@ -133,5 +136,7 @@ def test_the_iq_record_contract_is_checked():
 def test_invalid_decimation_is_rejected():
     from enodia.spec.frontend import complex_bpf_decimate
 
+    p = linear_5mhz()
+    rf = np.zeros((1, 64))
     with pytest.raises(ValueError, match="decimation"):
-        complex_bpf_decimate(np.zeros((1, 64)), linear_5mhz(), decimation=0)
+        complex_bpf_decimate(rf, p, decimation=0)

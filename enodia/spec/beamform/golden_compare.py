@@ -143,7 +143,7 @@ class ComparisonReport:
 
 def _relative_error_pct(a: np.ndarray, b: np.ndarray) -> float:
     denom = float(np.linalg.norm(b))
-    if denom == 0.0:
+    if denom <= 0.0:
         return float("nan")
     return 100.0 * float(np.linalg.norm(a - b) / denom)
 
@@ -151,7 +151,7 @@ def _relative_error_pct(a: np.ndarray, b: np.ndarray) -> float:
 def _energy_weighted_phase_rms_deg(a: np.ndarray, ref: np.ndarray, weight=None) -> float:
     energy = np.abs(ref) ** 2 if weight is None else np.abs(ref) ** 2 * weight
     total = float(np.sum(energy))
-    if total == 0.0:
+    if total <= 0.0:
         return float("nan")
     ph = np.angle(a * np.conj(ref))
     return float(np.degrees(np.sqrt(np.sum(energy * ph**2) / total)))
@@ -245,7 +245,7 @@ def events_through(events: list[TxEvent], scatterers: list[PointScatterer]) -> l
     """The transmit event whose line is nearest each scatterer, in event order."""
     chosen: dict[int, TxEvent] = {}
     for s in scatterers:
-        ev = min(events, key=lambda e: abs(e.line_x_m - s.x_m))
+        ev = min(events, key=lambda e, x=s.x_m: abs(e.line_x_m - x))
         chosen[ev.event_index] = ev
     return [chosen[k] for k in sorted(chosen)]
 

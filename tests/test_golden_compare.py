@@ -31,7 +31,8 @@ def test_the_per_stage_figures_quoted_in_the_design_are_pinned(
     sweep, decimation, cp1_pct, cp1_phase, cp2_pct, cp2_phase, rms_db, max_db
 ):
     r = sweep.reports[decimation]
-    assert r.profile == "linear-5mhz" and r.bandwidth_status == "provisional"
+    assert r.profile == "linear-5mhz"
+    assert r.bandwidth_status == "provisional"
     assert r.checkpoint1[1].relative_error_pct == pytest.approx(cp1_pct, abs=0.005)
     assert r.checkpoint1[1].phase_error_deg == pytest.approx(cp1_phase, abs=0.05)
     # The int16 record adds almost nothing to the FIR's own error.
@@ -48,7 +49,9 @@ def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(swee
     r = sweep.reports[8]
     assert r.floor_pct == pytest.approx(0.0003, abs=0.00005)
     text = "\n".join(r.lines())
-    assert "yardstick floor" in text and "0.0003 %" in text and "not attributable" in text
+    assert "yardstick floor" in text
+    assert "0.0003 %" in text
+    assert "not attributable" in text
     tiny = StageError("hypothetical", 0.0001, 0.0)
     assert "not attributable" in tiny.line(r.floor_pct)
     assert "not attributable" not in r.checkpoint1[1].line(r.floor_pct)
@@ -95,4 +98,5 @@ def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):
     text = "\n".join(sweep.lines())
     for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 dB", "floor"):
         assert needle in text, needle
-    assert golden_compare.__doc__ and "not attributable" in golden_compare.__doc__
+    assert golden_compare.__doc__
+    assert "not attributable" in golden_compare.__doc__
