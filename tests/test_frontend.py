@@ -134,10 +134,10 @@ def test_demodulate_refuses_to_clip_rather_than_clipping_silently():
     assert int(iq.data.min()) >= -32768
     with pytest.raises(ValueError, match="int16"):
         demodulate(rec, p, decimation=8, iq_scale=(32767.0 + 0.6) / peak)
-    # A non-finite sample — here through the scale, the one knob that can
-    # make one — is refused before the cast can turn it into a number.
-    for bad in (float("nan"), float("inf")):
-        with pytest.raises(ValueError, match="non-finite"):
+    # The one knob that could make a non-finite sample is refused up front,
+    # and the rounded planes are checked for finiteness regardless.
+    for bad in (float("nan"), float("inf"), 0.0, -1.0):
+        with pytest.raises(ValueError, match="iq_scale"):
             demodulate(rec, p, decimation=8, iq_scale=bad)
 
 

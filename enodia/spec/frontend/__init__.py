@@ -60,6 +60,8 @@ separates the filter's error from the quantization's.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from scipy.signal import fftconvolve
 from scipy.signal.windows import get_window
@@ -169,6 +171,8 @@ def demodulate(
         cutoff_frac=cutoff_frac,
         window=window,
     )
+    if not (math.isfinite(iq_scale) and iq_scale > 0.0):
+        raise ValueError(f"iq_scale must be finite and positive, got {iq_scale}")
     scaled = z * iq_scale
     planes = np.stack([np.round(scaled.real), np.round(scaled.imag)], axis=-1)
     if not np.all(np.isfinite(planes)):
