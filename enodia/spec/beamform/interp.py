@@ -16,8 +16,10 @@ tolerance (ADR-0007).
 FIR: exact for polynomials to degree 3, so its error decays faster as the
 pulse narrows than the other evaluated candidates. It is not best at every
 operating point — `interp_sweep.py` shows where Keys with a < −1/2 beats it —
-and it is chosen for being robust across the decimation ratio (§17) and the
-pulse bandwidth (#46), both of which are open. design.md §5 carries the
+and it is chosen for being robust across the decimation ratio (§17), which
+is open, and the pulse bandwidth, whose 5 MHz value is a provisional profile
+figure and whose 13 MHz value is a synthetic envelope (§4, #46). design.md
+§5 carries the
 evidence, and the choice is provisional on the axial-PSF measurement §5
 asks for. What is *not* provisional is that the reference and every port run
 the same kernel, whichever it is (ADR-0007).

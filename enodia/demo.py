@@ -13,7 +13,7 @@ import numpy as np
 
 from enodia.spec.beamform import das_rf_golden, envelope, log_compress
 from enodia.spec.probe import ProbeProfile, linear_5mhz
-from enodia.spec.sequence import make_bmode_sequence
+from enodia.spec.sequence import make_bmode_config
 from enodia.spec.sim import PointScatterer, simulate_bmode_frame
 
 DEFAULT_SCATTERERS = [
@@ -30,9 +30,12 @@ def run_pipeline(
     dynamic_range_db: float = 50.0,
 ):
     """Simulate, beamform, and compress. The acceptance test calls this too."""
-    events = make_bmode_sequence(profile)
-    records = simulate_bmode_frame(profile, events, scatterers, config_id=profile.name)
-    rf_image, z, line_x = das_rf_golden(profile, events, records)
+    config = make_bmode_config(profile)
+    assert config.probe_profile_id == profile.name
+    records = simulate_bmode_frame(
+        profile, list(config.events), scatterers, config_id=config.config_id
+    )
+    rf_image, z, line_x = das_rf_golden(profile, list(config.events), records)
     db = log_compress(envelope(rf_image), dynamic_range_db=dynamic_range_db)
     return db, z, line_x, records
 
@@ -103,6 +106,16 @@ def main() -> None:
 
     n_ch, n_t = records[0].data.shape
     print(f"sim: {len(scatterers)} point scatterers, {profile.name}")
+    print(
+        f"probe: {profile.name}, f0 {profile.f0_hz / 1e6:g} MHz, bandwidth_frac"
+        f" {profile.bandwidth_frac:g} (full width at half amplitude; one-sided edge"
+        f" {profile.bandwidth_edge_hz / 1e6:g} MHz) — {profile.bandwidth_status}"
+        f", source: {profile.bandwidth_source or 'none'}"
+    )
+    print(
+        f"cfg: config ID {records[0].header.config_id!r} -> probe profile"
+        f" {profile.name!r} (design.md §19; bandwidth is the profile's only)"
+    )
     print(
         f"rf:  {len(records)} transmit events x {n_ch} ch x {n_t} samples"
         f" (int16, {profile.fs_hz / 1e6:.0f} MHz)"

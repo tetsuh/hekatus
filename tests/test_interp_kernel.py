@@ -20,11 +20,16 @@ from enodia.spec.beamform.interp import (
 from enodia.spec.beamform.interp_sweep import (
     BAND_EDGES,
     CANDIDATES,
+    CASES,
+    CASES_BY_NAME,
     PULSE_ROLLOFFS_DB,
+    SYNTHETIC_13MHZ_ENVELOPE,
     least_squares4,
+    profile_case,
     pulse_weighted_rms_error,
     worst_band_edge_error,
 )
+from enodia.spec.probe import BANDWIDTH_LEVEL_DB, linear_5mhz
 
 
 def test_the_kernel_set_is_closed_and_has_one_member():
@@ -211,11 +216,54 @@ def test_interpolation_runs_along_the_last_axis_of_a_channel_stack():
 
 
 def test_the_sweep_covers_the_decimation_cases_the_design_names():
-    """design.md §5 names three: 5 MHz at D=8 and D=4, 13 MHz at D=2."""
+    """design.md §5 names three: 5 MHz at D=8 and D=4, 13 MHz at D=2. The
+    5 MHz edge is the profile's (0.7 × 5 MHz / 2 = 1.75 MHz); the 13 MHz one
+    is §4's 80% envelope (5.2 MHz)."""
     assert set(BAND_EDGES) == {"5MHz_D8", "13MHz_D2", "5MHz_D4"}
-    assert BAND_EDGES["5MHz_D8"] == pytest.approx(0.30)
+    assert BAND_EDGES["5MHz_D8"] == pytest.approx(0.35)
     assert BAND_EDGES["13MHz_D2"] == pytest.approx(0.26)
-    assert BAND_EDGES["5MHz_D4"] == pytest.approx(0.15)
+    assert BAND_EDGES["5MHz_D4"] == pytest.approx(0.175)
+
+
+def test_every_case_names_the_pulse_it_assumes():
+    """#46: a figure cannot be quoted without its identity, status, source,
+    spectral level and width convention. The 5 MHz cases are the
+    `linear-5mhz` profile, provisional with no source; the 13 MHz case is a
+    synthetic design envelope and claims no profile or physical authority —
+    and is not the frozen RF oracle of §15, which is a different 13 MHz
+    record."""
+    profile = linear_5mhz()
+    for name, decimation in (("5MHz_D8", 8), ("5MHz_D4", 4)):
+        case = CASES_BY_NAME[name]
+        assert case == profile_case(profile, decimation)
+        assert case.identity == "linear-5mhz"
+        assert case.status == "provisional"
+        assert case.source is None
+        assert case.bandwidth_frac == 0.7
+        assert case.edge_hz == pytest.approx(1.75e6)
+        assert case.band_edge == pytest.approx(profile.bandwidth_edge_hz / (40e6 / decimation))
+    envelope = CASES_BY_NAME["13MHz_D2"]
+    assert envelope.identity == SYNTHETIC_13MHZ_ENVELOPE == "synthetic-80pct-design-envelope"
+    assert envelope.status == "synthetic"
+    assert envelope.source is None
+    assert envelope.bandwidth_frac == 0.8
+    assert envelope.edge_hz == pytest.approx(5.2e6)
+    assert envelope.identity != "rf-oracle-frozen-0p7"
+    for case in CASES:
+        assert case.level_db == BANDWIDTH_LEVEL_DB
+        line = case.describe()
+        for field in (
+            case.name,
+            case.identity,
+            case.status,
+            "source: none",
+            "6.0206 dB",
+            "one-sided",
+        ):
+            assert field in line
+    # The first weighted-table column is the case's own model: half amplitude
+    # at the edge, by definition.
+    assert PULSE_ROLLOFFS_DB[0] == BANDWIDTH_LEVEL_DB
 
 
 # Every figure design.md §5 quotes, pinned so the record cannot drift from
@@ -223,12 +271,12 @@ def test_the_sweep_covers_the_decimation_cases_the_design_names():
 # held (#45), which is how a table stops matching its own sweep.
 _EDGE_TABLE = {
     "5MHz_D8": {
-        "linear2": (7.54, 0.412),
-        "lagrange4": (3.87, 0.220),
-        "keys4_a050": (7.54, 0.220),
-        "keys4_a075": (3.71, 0.124),
-        "keys4_a100": (0.27, 0.028),
-        "hann_sinc4": (10.06, 0.319),
+        "linear2": (13.10, 0.546),
+        "lagrange4": (8.25, 0.366),
+        "keys4_a050": (13.10, 0.366),
+        "keys4_a075": (9.04, 0.276),
+        "keys4_a100": (5.40, 0.186),
+        "hann_sinc4": (16.55, 0.459),
     },
     "13MHz_D2": {
         "linear2": (4.64, 0.315),
@@ -239,12 +287,12 @@ _EDGE_TABLE = {
         "hann_sinc4": (6.45, 0.227),
     },
     "5MHz_D4": {
-        "linear2": (0.81, 0.109),
-        "lagrange4": (0.14, 0.017),
-        "keys4_a050": (0.81, 0.017),
-        "keys4_a075": (1.57, 0.029),
-        "keys4_a100": (3.84, 0.075),
-        "hann_sinc4": (1.23, 0.064),
+        "linear2": (1.30, 0.147),
+        "lagrange4": (0.29, 0.031),
+        "keys4_a050": (1.30, 0.031),
+        "keys4_a075": (1.39, 0.027),
+        "keys4_a100": (3.93, 0.085),
+        "hann_sinc4": (1.95, 0.091),
     },
 }
 
@@ -260,9 +308,9 @@ def test_every_band_edge_figure_quoted_in_the_design_is_pinned(case):
 @pytest.mark.parametrize(
     ("case", "expected"),
     [
-        ("5MHz_D8", (1.63, 0.090)),
+        ("5MHz_D8", (4.09, 0.184)),
         ("13MHz_D2", (0.73, 0.047)),
-        ("5MHz_D4", (0.04, 0.004)),
+        ("5MHz_D4", (0.09, 0.009)),
     ],
 )
 def test_the_least_squares_bound_is_pinned_too(case, expected):
@@ -276,28 +324,31 @@ def test_the_least_squares_bound_is_pinned_too(case, expected):
 
 _WEIGHTED_TABLE = {
     "5MHz_D8": {
-        "linear2": (16.60, 5.83, 2.98),
-        "lagrange4": (10.82, 1.93, 0.55),
-        "keys4_a050": (10.88, 2.04, 0.62),
-        "keys4_a075": (9.03, 1.86, 1.40),
-        "keys4_a100": (8.91, 4.08, 3.16),
-        "ls4_bound": (8.50, 1.66, 1.50),
+        "linear2": (19.98, 7.82, 4.02),
+        "lagrange4": (14.00, 3.27, 0.97),
+        "keys4_a050": (14.03, 3.38, 1.06),
+        "keys4_a075": (12.02, 2.59, 1.54),
+        "keys4_a100": (11.44, 4.55, 3.58),
+        "hann_sinc4": (16.36, 5.20, 2.29),
+        "ls4_bound": (10.87, 3.15, 2.80),
     },
     "13MHz_D2": {
-        "linear2": (13.42, 4.42, 2.25),
-        "lagrange4": (7.91, 1.16, 0.32),
-        "keys4_a050": (8.00, 1.26, 0.38),
-        "keys4_a075": (6.38, 1.60, 1.26),
-        "keys4_a100": (6.87, 3.71, 2.77),
-        "ls4_bound": (6.25, 0.92, 0.83),
+        "linear2": (13.38, 4.42, 2.25),
+        "lagrange4": (7.88, 1.16, 0.32),
+        "keys4_a050": (7.97, 1.26, 0.38),
+        "keys4_a075": (6.35, 1.60, 1.26),
+        "keys4_a100": (6.85, 3.71, 2.77),
+        "hann_sinc4": (10.13, 2.57, 1.16),
+        "ls4_bound": (6.22, 0.92, 0.83),
     },
     "5MHz_D4": {
-        "linear2": (4.89, 1.50, 0.76),
-        "lagrange4": (1.40, 0.15, 0.04),
-        "keys4_a050": (1.50, 0.19, 0.06),
-        "keys4_a075": (1.67, 1.07, 0.77),
-        "keys4_a100": (3.85, 2.26, 1.58),
-        "ls4_bound": (1.04, 0.10, 0.09),
+        "linear2": (6.55, 2.04, 1.03),
+        "lagrange4": (2.39, 0.27, 0.07),
+        "keys4_a050": (2.50, 0.32, 0.10),
+        "keys4_a075": (2.06, 1.21, 0.89),
+        "keys4_a100": (4.25, 2.64, 1.85),
+        "hann_sinc4": (4.17, 1.04, 0.49),
+        "ls4_bound": (1.81, 0.18, 0.17),
     },
 }
 
@@ -310,6 +361,9 @@ def _candidate(name, edge):
 
 @pytest.mark.parametrize("case", sorted(_WEIGHTED_TABLE))
 def test_every_pulse_weighted_figure_quoted_in_the_design_is_pinned(case):
+    """The first column is the case's own pulse model — half amplitude at the
+    edge, exactly −6.0206 dB, not a 6 dB rounding (#46); the other two are
+    narrower pulses, kept as the sensitivity sweep."""
     edge = BAND_EDGES[case]
     for name, expected in _WEIGHTED_TABLE[case].items():
         for db, want in zip(PULSE_ROLLOFFS_DB, expected, strict=True):
@@ -320,16 +374,17 @@ def test_every_pulse_weighted_figure_quoted_in_the_design_is_pinned(case):
 def test_the_pulse_metric_stops_at_the_decimated_nyquist_frequency():
     """The record cannot represent anything above 0.5 cycles/sample, so
     scoring the kernel's response there measures a signal that is not in it.
-    Two of the nine cells reach past it — the widest pulse assumption puts 3σ
-    at 0.77 for 5 MHz D=8 — and integrating that far changed the figures,
-    though not the order. A wider integration cannot lower the error, so
-    clipping must not raise it."""
+    The profile's own pulse reaches past it at D=8 — its 3σ is 0.89 at the
+    0.35 fs' edge — and integrating that far changed the figures, though not
+    the order. A wider integration cannot lower the error, so clipping must
+    not raise it."""
     edge = BAND_EDGES["5MHz_D8"]
-    sigma = edge / np.sqrt(2.0 * np.log(10.0 ** (6.0 / 20.0)))
+    sigma = edge / np.sqrt(2.0 * np.log(10.0 ** (BANDWIDTH_LEVEL_DB / 20.0)))
+    assert 3.0 * sigma == pytest.approx(0.89, abs=0.005)
     assert 3.0 * sigma > 0.5
 
-    clipped = pulse_weighted_rms_error(CANDIDATES["lagrange4"], edge, rolloff_db=6.0)
-    assert clipped == pytest.approx(0.1082, abs=0.0001)
+    clipped = pulse_weighted_rms_error(CANDIDATES["lagrange4"], edge, rolloff_db=BANDWIDTH_LEVEL_DB)
+    assert clipped == pytest.approx(0.1400, abs=0.0001)
 
 
 def test_the_spec_kernel_and_the_sweep_candidate_are_the_same_function():
@@ -353,27 +408,29 @@ def test_the_band_edge_metric_alone_does_not_choose_lagrange():
 
 
 def test_the_ranking_flips_with_the_assumed_pulse_bandwidth():
-    """The reason §5 chooses on robustness rather than on a winner, and the
-    reason #46 exists: the design states a band edge without a level, and the
-    order changes across the plausible range."""
+    """The reason §5 chooses on robustness rather than on a winner. #46 fixed
+    the level the edge sits at, but the 5 MHz width itself is provisional, so
+    the order across narrower pulses still matters: Keys a=−1 wins on the
+    profile's own pulse and loses by a factor of several on a narrow one."""
     edge = BAND_EDGES["5MHz_D8"]
     lag = CANDIDATES["lagrange4"]
     keys = CANDIDATES["keys4_a100"]
+    model = BANDWIDTH_LEVEL_DB
 
-    assert pulse_weighted_rms_error(keys, edge, rolloff_db=6.0) < pulse_weighted_rms_error(
-        lag, edge, rolloff_db=6.0
+    assert pulse_weighted_rms_error(keys, edge, rolloff_db=model) < pulse_weighted_rms_error(
+        lag, edge, rolloff_db=model
     )
     assert pulse_weighted_rms_error(lag, edge, rolloff_db=40.0) < pulse_weighted_rms_error(
         keys, edge, rolloff_db=40.0
     )
 
 
-def test_lagrange_leads_six_of_the_nine_cells_and_never_falls_below_third():
-    """The claim §5 makes, pinned. An earlier version said "never worse than
-    second", which was false in two cells — the same overstatement, one round
-    later, as the claim it replaced. The trade is stated instead: third in the
-    two widest-pulse cells, by 21% and 24%, and first wherever the pulse is
-    narrow."""
+def test_lagrange_leads_five_of_the_nine_cells_and_never_falls_below_third():
+    """The claim §5 makes, pinned. At the 1.5 MHz edge it read "six of nine";
+    at the profile-derived 1.75 MHz edge (#46) Lagrange is first in five,
+    second in two and third in two — the widest-pulse cells, where the Keys
+    kernels lead by 14–22%. An earlier version said "never worse than second",
+    which was false then too; the trade is stated, not a ranking."""
     ranks = []
     for edge in BAND_EDGES.values():
         for db in PULSE_ROLLOFFS_DB:
@@ -383,12 +440,13 @@ def test_lagrange_leads_six_of_the_nine_cells_and_never_falls_below_third():
             }
             ranks.append(sorted(scores, key=scores.get).index("lagrange4") + 1)
 
-    assert ranks.count(1) == 6
+    assert ranks.count(1) == 5
+    assert ranks.count(2) == 2
     assert max(ranks) == 3
 
 
 @pytest.mark.parametrize(
-    ("rolloff_db", "factor"), [(6.0, 7.73), (20.0, 13.15), (40.0, 14.46)]
+    ("rolloff_db", "factor"), [(BANDWIDTH_LEVEL_DB, 5.86), (20.0, 12.32), (40.0, 13.97)]
 )
 def test_the_decimation_gain_quoted_in_the_design_is_pinned(rolloff_db, factor):
     """§5 quotes what D=4 buys over D=8 for the specified kernel, and says
@@ -440,20 +498,25 @@ def test_candidates_decay_toward_dc_and_lagrange_has_lowest_narrow_pulse_error(c
     for name in CANDIDATES:
         assert narrower[name] < broad[name], name
     assert narrower["lagrange4"] == min(narrower.values())
-    # At -40 dB, a factor of two separates the two third-order accurate
-    # kernels from every other candidate in each decimation case.
-    assert broad["keys4_a050"] < 2.0 * broad["lagrange4"]
+    # At -40 dB the other third-order accurate kernel (Keys a=-1/2) stays
+    # within 1.5x of Lagrange in every case, and every other candidate is
+    # more than 1.5x away. It used to read "a factor of two"; at the
+    # profile-derived 5 MHz D=8 edge Keys a=-3/4 is 1.59x, so two was no
+    # longer true (#46).
+    assert broad["keys4_a050"] < 1.5 * broad["lagrange4"]
     for name in ("linear2", "keys4_a075", "keys4_a100", "hann_sinc4"):
-        assert broad[name] > 2.0 * broad["lagrange4"], name
+        assert broad[name] > 1.5 * broad["lagrange4"], name
 
 
 @pytest.mark.parametrize(
-    ("case", "degrees"), [("5MHz_D8", 54.0), ("13MHz_D2", 46.8), ("5MHz_D4", 27.0)]
+    ("case", "degrees"), [("5MHz_D8", 63.0), ("13MHz_D2", 46.8), ("5MHz_D4", 31.5)]
 )
 def test_phase_rotation_alone_is_the_error_the_design_states(case, degrees):
-    """The 47° and 54° in design.md §5 are the no-interpolation case at the
+    """The 47° and 63° in design.md §5 are the no-interpolation case at the
     worst fraction; the sweep's metric reduces to them, which pins the metric
-    to the design's framing. The 27° at D=4 is quoted in the same table."""
+    to the design's framing. The 31.5° at D=4 is quoted in the same table.
+    (Before #46 the 5 MHz figures were 54° and 27°, from a 1.5 MHz edge the
+    profile does not have.)"""
     assert interp_sweep_no_interp_worst(BAND_EDGES[case]) == pytest.approx(degrees, abs=0.1)
 
 
@@ -465,3 +528,30 @@ def interp_sweep_no_interp_worst(edge: float) -> float:
 
 def test_the_module_docstring_names_the_issue_that_pinned_it():
     assert "#22" in interp.__doc__
+
+
+def test_profile_derived_5mhz_sweep_is_pinned():
+    """#46: the 5 MHz cases take their band edge from the `linear-5mhz`
+    profile — 0.7 × 5 MHz / 2 = 1.75 MHz, so 0.35 fs' at D=8 and 0.175 fs'
+    at D=4 — and the pulse model is that profile's: a Gaussian exactly half
+    amplitude (−6.0206 dB) at the edge. The Lagrange figures the issue froze
+    as acceptance targets are reproduced here to 0.01° and 0.01 point."""
+    profile = linear_5mhz()
+    level_db = 20.0 * np.log10(2.0)
+    assert BANDWIDTH_LEVEL_DB == pytest.approx(level_db, abs=1e-12)
+    expected = {
+        "5MHz_D8": (8, 8.25, 0.3658, 14.00),
+        "5MHz_D4": (4, 0.29, 0.0310, 2.39),
+    }
+    for name, (decimation, phase, mag, weighted) in expected.items():
+        edge = BAND_EDGES[name]
+        assert edge == pytest.approx(
+            profile.bandwidth_frac * profile.f0_hz / 2 / (40e6 / decimation)
+        )
+        assert CASES_BY_NAME[name].identity == profile.name
+        assert CASES_BY_NAME[name].status == "provisional"
+        got_phase, got_mag = worst_band_edge_error(CANDIDATES["lagrange4"], edge)
+        assert got_phase == pytest.approx(phase, abs=0.01), name
+        assert got_mag == pytest.approx(mag, abs=0.0001), name
+        got = 100.0 * pulse_weighted_rms_error(CANDIDATES["lagrange4"], edge, rolloff_db=level_db)
+        assert got == pytest.approx(weighted, abs=0.01), name
