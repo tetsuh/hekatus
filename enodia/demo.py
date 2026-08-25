@@ -1,7 +1,12 @@
-"""MVP-1 demo: point scatterers -> golden DAS -> B-mode image.
+"""Demo: point scatterers -> RF golden DAS, or front end -> IQ DAS -> B-mode image.
 
 One command, one image, one acceptance test behind it. The point of an MVP
 here is that the whole path runs end to end, not that any stage is finished.
+`--path golden` is MVP-1's RF-domain ideal-delay yardstick; `--path iq` is
+the pipeline design.md §5 describes — complex band-pass FIR, decimation by
+`--decimation`, integer shift + 4-tap interpolation + phase rotation (#6).
+`python -m enodia.spec.beamform.golden_compare` is the second command that
+compares the two, stage by stage.
 """
 
 from __future__ import annotations
@@ -12,6 +17,8 @@ from pathlib import Path
 import numpy as np
 
 from enodia.spec.beamform import das_rf_golden, envelope, log_compress
+from enodia.spec.beamform.iq_das import das_iq
+from enodia.spec.frontend import demodulate_frame
 from enodia.spec.probe import ProbeProfile, linear_5mhz
 from enodia.spec.sequence import make_bmode_config
 from enodia.spec.sim import PointScatterer, simulate_bmode_frame
@@ -23,20 +30,38 @@ DEFAULT_SCATTERERS = [
 ]
 
 
+PATHS = ("golden", "iq")
+DEFAULT_DECIMATION = 8
+
+
 def run_pipeline(
     profile: ProbeProfile,
     scatterers: list[PointScatterer],
     *,
     dynamic_range_db: float = 50.0,
+    path: str = "golden",
+    decimation: int = DEFAULT_DECIMATION,
 ):
-    """Simulate, beamform, and compress. The acceptance test calls this too."""
+    """Simulate, beamform, and compress. The acceptance tests call this too.
+
+    ``path`` is "golden" (RF-domain ideal delay) or "iq" (front end at
+    ``decimation``, then the IQ-domain DAS). Both return the log-compressed
+    envelope on the same grid.
+    """
+    if path not in PATHS:
+        raise ValueError(f"path must be one of {PATHS}, got {path!r}")
     config = make_bmode_config(profile)
     assert config.probe_profile_id == profile.name
-    records = simulate_bmode_frame(
-        profile, list(config.events), scatterers, config_id=config.config_id
-    )
-    rf_image, z, line_x = das_rf_golden(profile, list(config.events), records)
-    db = log_compress(envelope(rf_image), dynamic_range_db=dynamic_range_db)
+    events = list(config.events)
+    records = simulate_bmode_frame(profile, events, scatterers, config_id=config.config_id)
+    if path == "golden":
+        rf_image, z, line_x = das_rf_golden(profile, events, records)
+        env = envelope(rf_image)
+    else:
+        iq_records = demodulate_frame(records, profile, decimation=decimation)
+        iq_image, z, line_x = das_iq(profile, events, iq_records, decimation=decimation)
+        env = np.abs(iq_image)
+    db = log_compress(env, dynamic_range_db=dynamic_range_db)
     return db, z, line_x, records
 
 
@@ -84,15 +109,26 @@ def save_png(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="enodia MVP-1 demo")
+    parser = argparse.ArgumentParser(description="enodia demo: RF golden or IQ path")
     parser.add_argument("--out", type=Path, default=Path("out/bmode.png"))
     parser.add_argument("--dynamic-range-db", type=float, default=50.0)
+    parser.add_argument("--path", choices=PATHS, default="golden")
+    parser.add_argument("--decimation", type=int, default=DEFAULT_DECIMATION)
     args = parser.parse_args()
 
     profile = linear_5mhz()
     scatterers = DEFAULT_SCATTERERS
     db, z, line_x, records = run_pipeline(
-        profile, scatterers, dynamic_range_db=args.dynamic_range_db
+        profile,
+        scatterers,
+        dynamic_range_db=args.dynamic_range_db,
+        path=args.path,
+        decimation=args.decimation,
+    )
+    stage = (
+        "RF golden DAS"
+        if args.path == "golden"
+        else f"front end D={args.decimation} + IQ DAS (Lagrange cubic)"
     )
     save_png(
         db,
@@ -101,7 +137,7 @@ def main() -> None:
         scatterers,
         args.out,
         dynamic_range_db=args.dynamic_range_db,
-        title=f"{profile.name} — RF golden DAS",
+        title=f"{profile.name} — {stage}",
     )
 
     n_ch, n_t = records[0].data.shape
@@ -120,7 +156,18 @@ def main() -> None:
         f"rf:  {len(records)} transmit events x {n_ch} ch x {n_t} samples"
         f" (int16, {profile.fs_hz / 1e6:.0f} MHz)"
     )
-    print(f"das: RF golden (ideal delay, float32), dynamic aperture F={profile.f_number}")
+    if args.path == "golden":
+        print(f"das: RF golden (ideal delay, float32), dynamic aperture F={profile.f_number}")
+    else:
+        n_iq = n_t // args.decimation
+        print(
+            f"fe:  complex BPF (64 taps, Hann, cutoff fs/2D) + decimation by {args.decimation}"
+            f" -> {n_ch} ch x {n_iq} IQ samples (int16 complex, {profile.fs_hz / 1e6 / args.decimation:g} MHz)"
+        )
+        print(
+            "das: IQ (integer shift + Lagrange cubic + phase rotation, float32), dynamic"
+            f" aperture F={profile.f_number}"
+        )
     print(f"out: {args.out}")
 
 

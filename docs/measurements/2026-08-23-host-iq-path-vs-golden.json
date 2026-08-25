@@ -1,0 +1,353 @@
+{
+  "environment": {
+    "captured_at": "2026-08-23T09:19:56.359061+00:00",
+    "host": "midnight",
+    "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "machine": "x86_64",
+    "cpu": "x86_64",
+    "python": "3.12.3",
+    "numpy": "2.5.1",
+    "scipy": "1.18.0",
+    "harness_commit": "c625120ac07f6a5758c5d3fc7f21d4376c11c845",
+    "harness_dirty": false,
+    "board": null,
+    "note": "host-side reference implementation; no accelerator involved"
+  },
+  "what": "IQ path (front end + IQ DAS) against the RF golden: per-stage errors and axial PSF at D=8 and D=4 (#6)",
+  "profile": {
+    "name": "linear-5mhz",
+    "f0_hz": 5000000.0,
+    "fs_hz": 40000000.0,
+    "bandwidth_frac": 0.7,
+    "bandwidth_edge_hz": 1750000.0,
+    "bandwidth_status": "provisional",
+    "bandwidth_source": null
+  },
+  "frozen_oracle": "rf-oracle-frozen-0p7",
+  "front_end": {
+    "n_taps": 64,
+    "window": "hann",
+    "cutoff_frac": 1.0,
+    "iq_scale": 1.0
+  },
+  "kernel": "lagrange4",
+  "width_levels_db": [
+    -6.0,
+    -20.0,
+    -40.0
+  ],
+  "golden_psf": [
+    {
+      "scatterer_x_m": 0.0,
+      "scatterer_z_m": 0.015,
+      "peak_z_m": 0.01499375,
+      "peak_db": -0.3956131637096405,
+      "full_width_mm": {
+        "-6": 0.1943046416044234,
+        "-20": 0.3557686013430355,
+        "-40": 0.5013113437220464
+      }
+    },
+    {
+      "scatterer_x_m": -0.005,
+      "scatterer_z_m": 0.025,
+      "peak_z_m": 0.025003749999999998,
+      "peak_db": -0.014550777152180672,
+      "full_width_mm": {
+        "-6": 0.1937951662838444,
+        "-20": 0.3547069020559991,
+        "-40": 0.4999539668448273
+      }
+    },
+    {
+      "scatterer_x_m": 0.007,
+      "scatterer_z_m": 0.04,
+      "peak_z_m": 0.0399995,
+      "peak_db": 0.0,
+      "full_width_mm": {
+        "-6": 0.194088988724625,
+        "-20": 0.35457255143299393,
+        "-40": 0.5001744806398603
+      }
+    }
+  ],
+  "iq_psf": {
+    "8": [
+      {
+        "scatterer_x_m": 0.0,
+        "scatterer_z_m": 0.015,
+        "peak_z_m": 0.01499375,
+        "peak_db": -0.7607832551002502,
+        "full_width_mm": {
+          "-6": 0.27605391241609933,
+          "-20": 0.4196129148826,
+          "-40": 0.6139477316811689
+        }
+      },
+      {
+        "scatterer_x_m": -0.005,
+        "scatterer_z_m": 0.025,
+        "peak_z_m": 0.0249845,
+        "peak_db": -0.2833288908004761,
+        "full_width_mm": {
+          "-6": 0.2701803666390473,
+          "-20": 0.4228558292748638,
+          "-40": 0.6256778694093239
+        }
+      },
+      {
+        "scatterer_x_m": 0.007,
+        "scatterer_z_m": 0.04,
+        "peak_z_m": 0.0399995,
+        "peak_db": 0.0,
+        "full_width_mm": {
+          "-6": 0.25654306375980096,
+          "-20": 0.425977463871241,
+          "-40": 0.8037908581290387
+        }
+      }
+    ],
+    "4": [
+      {
+        "scatterer_x_m": 0.0,
+        "scatterer_z_m": 0.015,
+        "peak_z_m": 0.01499375,
+        "peak_db": -0.380048006772995,
+        "full_width_mm": {
+          "-6": 0.20192318395525177,
+          "-20": 0.361118803303688,
+          "-40": 0.4916428550817073
+        }
+      },
+      {
+        "scatterer_x_m": -0.005,
+        "scatterer_z_m": 0.025,
+        "peak_z_m": 0.025003749999999998,
+        "peak_db": 0.0,
+        "full_width_mm": {
+          "-6": 0.20062039011344013,
+          "-20": 0.36024904656037704,
+          "-40": 0.49025672692060496
+        }
+      },
+      {
+        "scatterer_x_m": 0.007,
+        "scatterer_z_m": 0.04,
+        "peak_z_m": 0.0399995,
+        "peak_db": -0.008025250397622585,
+        "full_width_mm": {
+          "-6": 0.20063971559330235,
+          "-20": 0.36037234187125816,
+          "-40": 0.49002033831178904
+        }
+      }
+    ]
+  },
+  "comparison": {
+    "8": {
+      "decimation": 8,
+      "yardstick_floor_pct": 0.00025540342506152593,
+      "checkpoint1": [
+        {
+          "stage": "front-end output, unquantized FIR",
+          "relative_error_pct": 7.946248566339424,
+          "phase_error_deg": 8.443725381434591
+        },
+        {
+          "stage": "front-end output, int16 record",
+          "relative_error_pct": 7.9461976178998,
+          "phase_error_deg": 8.227729181154054
+        }
+      ],
+      "checkpoint2": {
+        "events": [
+          47,
+          63,
+          87
+        ],
+        "stages": [
+          {
+            "stage": "post-delay channel vectors, event 47 (x -4.95 mm)",
+            "relative_error_pct": 21.089507983745154,
+            "phase_error_deg": 1.043470536568643
+          },
+          {
+            "stage": "post-delay channel vectors, event 63 (x -0.15 mm)",
+            "relative_error_pct": 21.074288886248194,
+            "phase_error_deg": 1.204778428930137
+          },
+          {
+            "stage": "post-delay channel vectors, event 87 (x +7.05 mm)",
+            "relative_error_pct": 19.925388879978566,
+            "phase_error_deg": 0.8188746754948396
+          }
+        ]
+      },
+      "image": {
+        "rms_db": 5.101991653442383,
+        "max_db": 20.818326950073242,
+        "region_floor_db": -40.0,
+        "peaks": [
+          {
+            "scatterer": [
+              0.0,
+              0.015
+            ],
+            "golden_z_m_x_m_db": [
+              0.01499375,
+              0.00015,
+              -0.3956131637096405
+            ],
+            "iq_z_m_x_m_db": [
+              0.01499375,
+              0.00015,
+              -0.7607832551002502
+            ]
+          },
+          {
+            "scatterer": [
+              -0.005,
+              0.025
+            ],
+            "golden_z_m_x_m_db": [
+              0.025003749999999998,
+              -0.0049499999999999995,
+              -0.014550777152180672
+            ],
+            "iq_z_m_x_m_db": [
+              0.0249845,
+              -0.0049499999999999995,
+              -0.2833288908004761
+            ]
+          },
+          {
+            "scatterer": [
+              0.007,
+              0.04
+            ],
+            "golden_z_m_x_m_db": [
+              0.0399995,
+              0.007049999999999999,
+              0.0
+            ],
+            "iq_z_m_x_m_db": [
+              0.0399995,
+              0.007049999999999999,
+              0.0
+            ]
+          }
+        ]
+      },
+      "seconds": {
+        "front end": 1.0577401840128005,
+        "iq das": 5.238281130004907,
+        "checkpoint 2": 0.7581371179840062
+      }
+    },
+    "4": {
+      "decimation": 4,
+      "yardstick_floor_pct": 0.00025540342506152593,
+      "checkpoint1": [
+        {
+          "stage": "front-end output, unquantized FIR",
+          "relative_error_pct": 0.20363455443010342,
+          "phase_error_deg": 0.17793170102317712
+        },
+        {
+          "stage": "front-end output, int16 record",
+          "relative_error_pct": 0.20375371509126974,
+          "phase_error_deg": 0.18617738646628262
+        }
+      ],
+      "checkpoint2": {
+        "events": [
+          47,
+          63,
+          87
+        ],
+        "stages": [
+          {
+            "stage": "post-delay channel vectors, event 47 (x -4.95 mm)",
+            "relative_error_pct": 2.4325501496840563,
+            "phase_error_deg": 0.20371227204680678
+          },
+          {
+            "stage": "post-delay channel vectors, event 63 (x -0.15 mm)",
+            "relative_error_pct": 2.4321934370801217,
+            "phase_error_deg": 0.2212366166387701
+          },
+          {
+            "stage": "post-delay channel vectors, event 87 (x +7.05 mm)",
+            "relative_error_pct": 2.43276640692078,
+            "phase_error_deg": 0.201851370653283
+          }
+        ]
+      },
+      "image": {
+        "rms_db": 0.8498386740684509,
+        "max_db": 5.5691375732421875,
+        "region_floor_db": -40.0,
+        "peaks": [
+          {
+            "scatterer": [
+              0.0,
+              0.015
+            ],
+            "golden_z_m_x_m_db": [
+              0.01499375,
+              0.00015,
+              -0.3956131637096405
+            ],
+            "iq_z_m_x_m_db": [
+              0.01499375,
+              0.00015,
+              -0.380048006772995
+            ]
+          },
+          {
+            "scatterer": [
+              -0.005,
+              0.025
+            ],
+            "golden_z_m_x_m_db": [
+              0.025003749999999998,
+              -0.0049499999999999995,
+              -0.014550777152180672
+            ],
+            "iq_z_m_x_m_db": [
+              0.025003749999999998,
+              -0.0049499999999999995,
+              0.0
+            ]
+          },
+          {
+            "scatterer": [
+              0.007,
+              0.04
+            ],
+            "golden_z_m_x_m_db": [
+              0.0399995,
+              0.007049999999999999,
+              0.0
+            ],
+            "iq_z_m_x_m_db": [
+              0.0399995,
+              0.007049999999999999,
+              -0.008025250397622585
+            ]
+          }
+        ]
+      },
+      "seconds": {
+        "front end": 1.1924683890247252,
+        "iq das": 5.250256992992945,
+        "checkpoint 2": 0.7801159840018954
+      }
+    }
+  },
+  "seconds": {
+    "golden": 8.653055456990842,
+    "iq path D=8": 6.160121904016705,
+    "iq path D=4": 6.5239782860153355
+  }
+}
