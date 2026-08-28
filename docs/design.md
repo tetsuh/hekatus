@@ -1933,8 +1933,54 @@ ID therefore selects the profile transitively — the profile is part of the
 table set the config ID names (docs/dataplane.md) — and **no bandwidth
 number travels in the transmit description or the frame header**: the
 effective two-way bandwidth and its provenance live in the profile and
-nowhere else (§4, ADR-0008). Reference: `TransmitConfig` in
-`enodia/spec/sequence/__init__.py`.
+nowhere else (§4, ADR-0008). Reference: `TransmitDescription` and
+`TransmitConfig` in `enodia/spec/sequence/__init__.py`.
+
+### Ingress: what enodia accepts (ADR-0009)
+
+The description and the accepted configuration are **two types**.
+`TransmitDescription` is the external form, in the units above —
+millimetres, nanoseconds, dimensionless apodization, a transmit-type tag
+that is an open set of strings. `accept(description, profile)` returns
+`TransmitConfig` in SI units, and nothing downstream reads the external
+form.
+
+**The description carries no derivative.** In particular it does not say
+which output line an event forms: maps are enodia's (below). The accepted
+event's `line_index` is derived, and is the identity while the contribution
+map is the identity.
+
+**Canonical geometry wins.** The description transports element coordinates
+and the probe profile already holds them (§4). They are compared, and then
+the transported numbers are dropped: every derivative is computed from
+`ProbeProfile.element_x()`, so a port and this reference implementation
+compute from one geometry and L0 compares like with like (ADR-0007's
+principle). The comparison cannot be equality — converting `linear-5mhz`'s
+coordinates to millimetres and back moves 6 of 128 of them, by at most
+8.7e-19 m — so the tolerance is **4 units in the last place of the aperture
+half-width**, 1.4e-17 m on that profile: thirteen orders below one element
+pitch, and above what the unit conversion costs.
+
+**The description must be self-consistent.** For every element that fires —
+apodization strictly positive — the firing delay plus the geometric time of
+flight to the declared virtual source is one instant, within **1 ns**. This
+is the first of the three lines of defence below, made executable: the
+physical schema is the specification, so a description that disagrees with
+itself is refused rather than beamformed. Silent elements are not checked;
+a zero-weighted element's delay makes no physical claim.
+
+**Refuse, never repair.** A profile-id mismatch, a wrong element count, a
+non-finite quantity, a negative apodization weight, an all-silent aperture,
+an empty transmit-type tag, a duplicate event index, or a coordinate or
+delay past tolerance is an error. Processing with a wrong description is
+worse than dropping frames, and a repaired description is a description
+nobody wrote.
+
+**Carried, not consumed.** The per-element firing delays and apodization are
+validated at ingress; no transmit field is synthesized from them. The
+transmit beam model — the virtual-source focal blend and the switch to
+aperture superposition — is §18's implementation-time detail and stays with
+it.
 
 ### enodia derives its own derivatives
 
@@ -1986,7 +2032,11 @@ subtly degraded, near-undiscoverable) are constrained by verification:
 
 The Track A simulator's transmit definition *is* this physical schema, and
 making the simulator the schema's first consumer stress-tests its
-expressiveness before anything else is built.
+expressiveness before anything else is built. It does: `simulate_frame`
+takes an accepted `TransmitConfig`, so a frame cannot be stamped with the
+identity of a configuration it did not come from, and the schema had to
+express the focused B-mode sequence — aperture, apodization and per-element
+firing delays — before that frame could be produced (#52).
 
 ---
 
