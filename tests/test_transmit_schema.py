@@ -153,10 +153,10 @@ def test_an_empty_transmit_type_tag_is_refused():
     """Open set, not absent set: an unnamed transmit type would reach the
     frame header and label data nothing at all."""
     profile = linear_5mhz()
-    description = _replace_event(_description(profile), 0, tx_type="")
+    untagged = _replace_event(_description(profile), 0, tx_type="")
 
     with pytest.raises(ValueError, match="tx_type"):
-        accept(description, profile)
+        accept(untagged, profile)
 
 
 # --- the ingress rule -----------------------------------------------------
@@ -204,8 +204,10 @@ def test_a_geometry_mismatch_beyond_the_tolerance_is_refused():
     moved = list(description.element_x_mm)
     moved[3] += profile.pitch_m * 1e3
 
+    displaced = replace(description, element_x_mm=tuple(moved))
+
     with pytest.raises(ValueError, match="element coordinate"):
-        accept(replace(description, element_x_mm=tuple(moved)), profile)
+        accept(displaced, profile)
 
 
 def test_a_displacement_just_past_the_tolerance_is_refused():
@@ -215,25 +217,30 @@ def test_a_displacement_just_past_the_tolerance_is_refused():
     description = _description(profile)
     moved = list(description.element_x_mm)
     moved[0] += coordinate_tolerance_m(profile) * 1e3 * 4.0
+    displaced = replace(description, element_x_mm=tuple(moved))
 
     with pytest.raises(ValueError, match="element coordinate"):
-        accept(replace(description, element_x_mm=tuple(moved)), profile)
+        accept(displaced, profile)
 
 
 def test_a_configuration_naming_another_profile_is_refused():
     profile = linear_5mhz()
     description = _description(profile)
 
+    renamed = replace(description, probe_profile_id="linear-13mhz")
+
     with pytest.raises(ValueError, match="probe profile"):
-        accept(replace(description, probe_profile_id="linear-13mhz"), profile)
+        accept(renamed, profile)
 
 
 def test_a_wrong_element_count_is_refused():
     profile = linear_5mhz()
     description = _description(profile)
 
+    truncated = replace(description, element_x_mm=description.element_x_mm[:-1])
+
     with pytest.raises(ValueError, match="element"):
-        accept(replace(description, element_x_mm=description.element_x_mm[:-1]), profile)
+        accept(truncated, profile)
 
 
 def test_a_non_finite_coordinate_is_refused():
@@ -243,9 +250,54 @@ def test_a_non_finite_coordinate_is_refused():
     description = _description(profile)
     poisoned = list(description.element_x_mm)
     poisoned[10] = float("nan")
+    with_nan = replace(description, element_x_mm=tuple(poisoned))
 
     with pytest.raises(ValueError, match="finite"):
-        accept(replace(description, element_x_mm=tuple(poisoned)), profile)
+        accept(with_nan, profile)
+
+
+def test_a_sparse_event_index_is_refused():
+    """The index is the event's name in the frame header and, through the
+    identity map, its scanline. A description numbering two events 0 and 5
+    beamforms into a two-column image at column 5."""
+    profile = linear_5mhz()
+    description = _description(profile)
+    sparse = replace(
+        description,
+        events=(
+            replace(description.events[0], event_index=0),
+            replace(description.events[1], event_index=5),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="event index"):
+        accept(sparse, profile)
+
+
+def test_a_reordered_event_index_is_refused():
+    """Reordering does not index past the image — it puts each transmit's
+    data on the other's scanline, which is the failure that looks fine."""
+    profile = linear_5mhz()
+    description = _description(profile)
+    swapped = replace(
+        description,
+        events=(
+            replace(description.events[0], event_index=1),
+            replace(description.events[1], event_index=0),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="event index"):
+        accept(swapped, profile)
+
+
+def test_a_negative_event_index_is_refused():
+    profile = linear_5mhz()
+    description = _description(profile)
+    negative = replace(description, events=(replace(description.events[0], event_index=-1),))
+
+    with pytest.raises(ValueError, match="event index"):
+        accept(negative, profile)
 
 
 # --- delays against the declared virtual source ---------------------------
@@ -273,9 +325,10 @@ def test_delays_inconsistent_with_the_virtual_source_are_refused():
     fires = _an_active_element(description.events[0])
     broken = list(description.events[0].firing_delays_ns)
     broken[fires] += 50.0 * DELAY_TOLERANCE_NS
+    inconsistent = _replace_event(description, 0, firing_delays_ns=tuple(broken))
 
     with pytest.raises(ValueError, match="firing delay"):
-        accept(_replace_event(description, 0, firing_delays_ns=tuple(broken)), profile)
+        accept(inconsistent, profile)
 
 
 def test_a_delay_error_inside_the_tolerance_is_accepted():
@@ -312,9 +365,10 @@ def test_a_negative_apodization_weight_is_refused():
     description = _description(profile)
     weights = list(description.events[0].apodization)
     weights[20] = -0.5
+    negative = _replace_event(description, 0, apodization=tuple(weights))
 
     with pytest.raises(ValueError, match="apodization"):
-        accept(_replace_event(description, 0, apodization=tuple(weights)), profile)
+        accept(negative, profile)
 
 
 def test_a_silent_aperture_is_refused():
@@ -322,10 +376,10 @@ def test_a_silent_aperture_is_refused():
     delay check would pass vacuously."""
     profile = linear_5mhz()
     description = _description(profile)
-    weights = (0.0,) * profile.n_elements
+    silent = _replace_event(description, 0, apodization=(0.0,) * profile.n_elements)
 
     with pytest.raises(ValueError, match="aperture"):
-        accept(_replace_event(description, 0, apodization=weights), profile)
+        accept(silent, profile)
 
 
 # --- the schema changes no image ------------------------------------------

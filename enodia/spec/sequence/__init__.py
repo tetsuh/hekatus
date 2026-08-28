@@ -257,16 +257,26 @@ def accept(description: TransmitDescription, profile: ProbeProfile) -> TransmitC
     profile it names, or with itself, describes a machine other than the one
     the data is coming from, and an image formed from it looks plausible and
     is wrong — the failure mode §19's three lines of defence exist for.
+
+    Event indices must run 0..n-1 in sequence order: the index is the event's
+    name in the frame header and, through the identity map, its scanline.
     """
     canonical = _check_geometry(description, profile)
     if not description.events:
         raise ValueError(f"configuration {description.config_id!r} describes no transmit events")
-    seen: set[int] = set()
     events = []
-    for ev in description.events:
-        if ev.event_index in seen:
-            raise ValueError(f"duplicate transmit event index {ev.event_index}")
-        seen.add(ev.event_index)
+    for position, ev in enumerate(description.events):
+        if ev.event_index != position:
+            # The index names the event within the frame, and it is what a
+            # record header is matched on (`tx_event_index`) and what the
+            # identity contribution map turns into a scanline. A sparse,
+            # negative or reordered sequence would either index past the
+            # image or put a transmit's data on another transmit's line, and
+            # both produce a plausible picture rather than an error.
+            raise ValueError(
+                f"transmit event at position {position} carries event index"
+                f" {ev.event_index}; indices run 0..n-1 in sequence order"
+            )
         events.append(_check_event(ev, canonical, profile))
     return TransmitConfig(
         config_id=description.config_id,

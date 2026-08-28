@@ -104,10 +104,18 @@ refuses, and a schema that refuses nothing does not make it.
    physical claim, and checking it would refuse every sparse aperture.
 6. **Refuse, never repair.** A profile-id mismatch, a wrong element count, a
    non-finite quantity, a negative apodization weight, an all-silent
-   aperture, an empty transmit-type tag, a duplicate event index, or a
-   coordinate or delay past tolerance raises. Processing with a wrong
-   description is worse than dropping frames (absolute rules), and a repaired
-   description is a description nobody wrote.
+   aperture, an empty transmit-type tag, an event index that is not its
+   position in the sequence, or a coordinate or delay past tolerance raises.
+   Processing with a wrong description is worse than dropping frames
+   (absolute rules), and a repaired description is a description nobody
+   wrote.
+
+   Event indices run 0..n-1 in sequence order rather than merely being
+   distinct. The index is the event's name in the frame header
+   (`tx_event_index`) and, through the identity map, its scanline: a sparse
+   sequence indexes past an image allocated for the events it holds, and a
+   reordered one puts each transmit's data on another transmit's line
+   without erroring at all.
 7. **The transmit-type tag stays an open set of strings.** A configuration
    carrying a tag this implementation has never seen is accepted and carried
    to the frame header; only the empty tag is refused. Shear-wave push and

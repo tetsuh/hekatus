@@ -1971,10 +1971,14 @@ a zero-weighted element's delay makes no physical claim.
 
 **Refuse, never repair.** A profile-id mismatch, a wrong element count, a
 non-finite quantity, a negative apodization weight, an all-silent aperture,
-an empty transmit-type tag, a duplicate event index, or a coordinate or
-delay past tolerance is an error. Processing with a wrong description is
-worse than dropping frames, and a repaired description is a description
-nobody wrote.
+an empty transmit-type tag, an event index that is not its position in the
+sequence, or a coordinate or delay past tolerance is an error. Processing
+with a wrong description is worse than dropping frames, and a repaired
+description is a description nobody wrote.
+
+Event indices run 0..n-1 in sequence order rather than merely being
+distinct: the index is the event's name in the frame header and, through the
+identity map, its scanline.
 
 **Carried, not consumed.** The per-element firing delays and apodization are
 validated at ingress; no transmit field is synthesized from them. The
