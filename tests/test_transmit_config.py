@@ -52,6 +52,11 @@ def test_no_bandwidth_field_exists_outside_the_profile():
         "tx_type",
         "timestamp_ns",
     }
-    assert {f.name for f in fields(TransmitConfig)} == {"config_id", "probe_profile_id", "events"}
+    assert {f.name for f in fields(TransmitConfig)} == {
+        "config_id",
+        "probe_profile_id",
+        "element_x_m",
+        "events",
+    }
     for cls in (TransmitConfig, TxEvent, EventHeader):
         assert not any("bandwidth" in f.name for f in fields(cls)), cls.__name__

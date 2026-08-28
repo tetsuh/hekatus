@@ -56,6 +56,18 @@ def _description(profile: ProbeProfile) -> TransmitDescription:
     return describe_bmode(profile)
 
 
+def _an_active_element(ev: TxEventDescription) -> int:
+    """An element that actually fires — the only kind the delay check reads.
+
+    Picked from the description rather than hardcoded: the focused aperture
+    of an edge scanline covers a handful of elements, and an index chosen by
+    hand lands outside it and makes the test pass vacuously.
+    """
+    firing = [i for i, w in enumerate(ev.apodization) if w > 0.0]
+    assert firing, "the focused aperture should fire some elements"
+    return firing[len(firing) // 2]
+
+
 def _replace_event(
     description: TransmitDescription, index: int, **changes
 ) -> TransmitDescription:
@@ -272,8 +284,9 @@ def test_delays_inconsistent_with_the_virtual_source_are_refused():
     this; the schema being self-checking is the first."""
     profile = linear_5mhz()
     description = _description(profile)
+    fires = _an_active_element(description.events[0])
     broken = list(description.events[0].firing_delays_ns)
-    broken[64] += 50.0 * DELAY_TOLERANCE_NS
+    broken[fires] += 50.0 * DELAY_TOLERANCE_NS
 
     with pytest.raises(ValueError, match="firing delay"):
         accept(_replace_event(description, 0, firing_delays_ns=tuple(broken)), profile)
@@ -282,8 +295,9 @@ def test_delays_inconsistent_with_the_virtual_source_are_refused():
 def test_a_delay_error_inside_the_tolerance_is_accepted():
     profile = linear_5mhz()
     description = _description(profile)
+    fires = _an_active_element(description.events[0])
     nudged = list(description.events[0].firing_delays_ns)
-    nudged[64] += 0.5 * DELAY_TOLERANCE_NS
+    nudged[fires] += 0.5 * DELAY_TOLERANCE_NS
 
     config = accept(_replace_event(description, 0, firing_delays_ns=tuple(nudged)), profile)
 
