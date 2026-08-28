@@ -11,7 +11,7 @@ from enodia.demo import DEFAULT_SCATTERERS
 from enodia.spec.beamform import das_rf_golden
 from enodia.spec.probe import linear_5mhz
 from enodia.spec.sequence import make_bmode_config
-from enodia.spec.sim import simulate_bmode_frame
+from enodia.spec.sim import simulate_frame
 
 
 @pytest.fixture(scope="session")
@@ -19,7 +19,7 @@ def frame():
     profile = linear_5mhz()
     config = make_bmode_config(profile)
     events = list(config.events)
-    records = simulate_bmode_frame(profile, events, DEFAULT_SCATTERERS, config_id=config.config_id)
+    records = simulate_frame(profile, config, DEFAULT_SCATTERERS)
     return profile, events, records, list(DEFAULT_SCATTERERS)
 
 
