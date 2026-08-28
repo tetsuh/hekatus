@@ -198,9 +198,7 @@ def _check_geometry(description: TransmitDescription, profile: ProbeProfile) -> 
     return canonical
 
 
-def _check_event(
-    ev: TxEventDescription, canonical: np.ndarray, profile: ProbeProfile
-) -> TxEvent:
+def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbeProfile) -> TxEvent:
     if not ev.tx_type.strip():
         raise ValueError(f"transmit event {ev.event_index} has an empty tx_type")
 

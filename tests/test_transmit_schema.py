@@ -15,7 +15,7 @@ exists, and a tolerance that is never exercised is a tolerance nobody knows
 the sign of.
 """
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 import numpy as np
 import pytest
@@ -68,11 +68,7 @@ def _an_active_element(ev: TxEventDescription) -> int:
     return firing[len(firing) // 2]
 
 
-def _replace_event(
-    description: TransmitDescription, index: int, **changes
-) -> TransmitDescription:
-    from dataclasses import replace
-
+def _replace_event(description: TransmitDescription, index: int, **changes) -> TransmitDescription:
     events = list(description.events)
     events[index] = replace(events[index], **changes)
     return replace(description, events=tuple(events))
@@ -92,8 +88,8 @@ def test_every_described_quantity_names_its_unit_or_is_dimensionless():
 
 
 def test_the_description_carries_no_machine_facing_vocabulary():
-    """"No FPGA-internal representations (clock counts, register values)" is
-    §19's wording, and this is what it means field by field."""
+    """§19 rejects FPGA-internal representations — "clock counts, register
+    values" is its wording — and this is what that means field by field."""
     for cls in (TransmitDescription, TxEventDescription):
         for f in fields(cls):
             for word in MACHINE_WORDS:
@@ -208,8 +204,6 @@ def test_a_geometry_mismatch_beyond_the_tolerance_is_refused():
     moved = list(description.element_x_mm)
     moved[3] += profile.pitch_m * 1e3
 
-    from dataclasses import replace
-
     with pytest.raises(ValueError, match="element coordinate"):
         accept(replace(description, element_x_mm=tuple(moved)), profile)
 
@@ -222,8 +216,6 @@ def test_a_displacement_just_past_the_tolerance_is_refused():
     moved = list(description.element_x_mm)
     moved[0] += coordinate_tolerance_m(profile) * 1e3 * 4.0
 
-    from dataclasses import replace
-
     with pytest.raises(ValueError, match="element coordinate"):
         accept(replace(description, element_x_mm=tuple(moved)), profile)
 
@@ -232,8 +224,6 @@ def test_a_configuration_naming_another_profile_is_refused():
     profile = linear_5mhz()
     description = _description(profile)
 
-    from dataclasses import replace
-
     with pytest.raises(ValueError, match="probe profile"):
         accept(replace(description, probe_profile_id="linear-13mhz"), profile)
 
@@ -241,8 +231,6 @@ def test_a_configuration_naming_another_profile_is_refused():
 def test_a_wrong_element_count_is_refused():
     profile = linear_5mhz()
     description = _description(profile)
-
-    from dataclasses import replace
 
     with pytest.raises(ValueError, match="element"):
         accept(replace(description, element_x_mm=description.element_x_mm[:-1]), profile)
@@ -255,8 +243,6 @@ def test_a_non_finite_coordinate_is_refused():
     description = _description(profile)
     poisoned = list(description.element_x_mm)
     poisoned[10] = float("nan")
-
-    from dataclasses import replace
 
     with pytest.raises(ValueError, match="finite"):
         accept(replace(description, element_x_mm=tuple(poisoned)), profile)
