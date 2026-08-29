@@ -247,7 +247,7 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
             distance_numerator,
             distance_denominator,
             out=np.zeros_like(distances),
-            where=distance_denominator != 0.0,
+            where=distance_denominator > 0.0,
         )
         relative_tof_ns = relative_distance / profile.c_m_s * 1e9
         relative_arrival_ns = (delays_ns[active] - delays_ns[reference]) + relative_tof_ns
