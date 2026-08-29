@@ -534,15 +534,20 @@ def test_simulate_frame_preserves_the_mvp1_rf_and_golden_image_fingerprints(fram
     for record in records:
         payload = np.asarray(record.data, dtype="<i2", order="C")
         rf_digest.update(payload.tobytes())
-    compressed = np.asarray(
-        log_compress(envelope(golden_image), dynamic_range_db=50.0), dtype="<f4", order="C"
+    compressed = log_compress(envelope(golden_image), dynamic_range_db=50.0)
+    # Sixteen levels span the complete 50 dB display range, making this
+    # full-image fingerprint independent of lower float bits from FFT stacks.
+    image_q4 = np.asarray(
+        np.rint((np.clip(compressed, -50.0, 0.0) + 50.0) / 50.0 * 15.0),
+        dtype=np.uint8,
+        order="C",
     )
 
     assert rf_digest.hexdigest() == (
         "b6401ee80154dfb83800f38bf17298dd65026798c5757903a766dacc891e824a"
     )
-    assert hashlib.sha256(compressed.tobytes()).hexdigest() == (
-        "236a276f15452f1305bb46e7e5eb59d3dd466db00aa60534b2fc4748b36b1206"
+    assert hashlib.sha256(image_q4.tobytes()).hexdigest() == (
+        "7dbcfd06085b927484be75234b39d621db0940d9f75063c2ff297c0b50ab0b39"
     )
 
 

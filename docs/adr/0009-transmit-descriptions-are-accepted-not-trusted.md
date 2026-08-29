@@ -133,10 +133,12 @@ refuses, and a schema that refuses nothing does not make it.
   anything is built on it. `simulate_frame(profile, config, scatterers)`
   takes the accepted configuration, so a frame cannot be stamped with the
   identity of a configuration it did not come from.
-- No image moves. The raw RF and the golden image of the demo are
-  bit-identical to what they were before this record (`rf_sha256`
-  `b6401ee8…`, `img_sha256` `236a276f…`), which is the sense in which the
-  schema re-describes MVP-1 rather than changing it.
+- No image moves. The raw RF is bit-identical to what it was before this
+  record and is pinned by `rf_sha256` (`b6401ee8…`). The complete displayed
+  golden image is pinned by a 16-level (4-bit) quantized hash over the 50 dB
+  display range (`img_q4_sha256` `7dbcfd06…`), because lower float bits from
+  the raw FFT-derived image vary across numerical stacks. Both match the
+  pre-schema MVP-1 baseline in their declared representations.
 - §19's second line of defence — the test-only reverse converter, diffed
   against the enodia description at ns-class tolerance — now has something to
   diff against. Building it belongs to whatever first carries FPGA-facing
