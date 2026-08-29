@@ -30,10 +30,21 @@ to say which one the delay tables are derived from and what happens when
 they differ.
 
 They do differ. Converting `linear-5mhz`'s element coordinates to
-millimetres and back moves 6 of the 128, by at most 8.673617379884035e-19 m.
-Bit equality is therefore not available as an acceptance rule for a schema
-whose units are millimetres, and a tolerance has to be chosen and justified
-rather than assumed away.
+millimetres and back moves 6 of the 128, by at most 8.673617379884035e-19 m,
+where the conversion divides by an exact power of ten. Bit equality is
+therefore not available as an acceptance rule for a schema whose units are
+millimetres, and a tolerance has to be chosen and justified rather than
+assumed away.
+
+How the conversion is written is part of the measurement, not an
+implementation detail underneath it. 1e3 and 1e9 are representable in
+binary64; 1e-3 and 1e-9 are not. Dividing by the former is one correctly
+rounded operation, and multiplying by the latter adds a second rounding
+against an approximated constant: 20 coordinates move instead of 6, by
+3.469446951953614e-18 m instead of 8.673617379884035e-19 m. Both sit inside
+any tolerance this record would choose, which is exactly why the difference
+went unrecorded until review caught the prose and the code quoting different
+numbers.
 
 §19 also sets out three lines of defence against a transmit description that
 disagrees with the machine — the failure mode it describes as "image looks
@@ -82,9 +93,12 @@ refuses, and a schema that refuses nothing does not make it.
    which output line an event forms; `TxEvent.line_index` is derived, and is
    the identity while the map is the identity (#53 generalizes it).
 3. **Canonical geometry wins.** Transported element coordinates are compared
-   against `ProbeProfile.element_x()` and then dropped. Every derivative is
-   computed from the profile's geometry, so two implementations of the same
-   profile compute from the same numbers and L0 compares like with like.
+   against `ProbeProfile.element_x()` and then dropped. Every
+   geometry-dependent derivative — delay tables, phase-rotation
+   coefficients, aperture weights — is computed from the profile's geometry,
+   so two implementations of the same profile compute from the same numbers
+   and L0 compares like with like. (`line_index` is a derivative too, but of
+   the event index rather than of any coordinate.)
 4. **The coordinate tolerance is stated in units in the last place of the
    aperture scale**, `COORDINATE_TOLERANCE_ULP = 4` times `np.spacing` of the
    aperture half-width — 4 ulp because a description may pass through more
@@ -93,8 +107,11 @@ refuses, and a schema that refuses nothing does not make it.
    of binary64 varies with magnitude and an element near the array centre
    would otherwise be held to a tolerance hundreds of times tighter for no
    physical reason. On `linear-5mhz` this is 1.4e-17 m: thirteen orders below
-   one element pitch (3e-4 m), and above the 8.7e-19 m the millimetre round
-   trip actually costs.
+   one element pitch (3e-4 m), and above the 8.673617379884035e-19 m the
+   millimetre round trip actually costs. Unit conversion divides by an exact
+   power of ten (`/ 1e3`, `/ 1e9`); the reciprocal form is not wrong under
+   this tolerance, it is merely four times more expensive in residue for
+   nothing.
 5. **The description must be self-consistent, and inconsistency is refused.**
    For every element that fires — apodization strictly positive — the firing
    delay plus the geometric time of flight to the declared virtual source is

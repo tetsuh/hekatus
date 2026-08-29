@@ -171,16 +171,39 @@ def test_an_empty_transmit_type_tag_is_refused():
 
 
 def test_the_millimetre_round_trip_is_not_bit_equal_on_the_current_profile():
-    """The measured fact the tolerance exists for. If this ever passes with
-    zero differing coordinates, the tolerance is still right but its
-    justification has changed, and the ADR needs rereading."""
+    """The measured fact the tolerance exists for, pinned exactly.
+
+    Loose assertions here are how the figures in §19 and ADR-0009 drifted
+    from the code once already: `differing > 0` passes whether the residue is
+    8.7e-19 m or four times that, so it cannot tell the contract prose it has
+    gone stale. If either number moves, the record needs rereading, and the
+    way to be told is for this to fail."""
     canonical = linear_5mhz().element_x()
 
-    round_tripped = (canonical * 1e3) * 1e-3
+    round_tripped = (canonical * 1e3) / 1e3
 
-    differing = int(np.count_nonzero(round_tripped != canonical))
-    assert differing > 0
+    assert int(np.count_nonzero(round_tripped != canonical)) == 6
+    assert np.abs(round_tripped - canonical).max() == 8.673617379884035e-19
     assert np.abs(round_tripped - canonical).max() < coordinate_tolerance_m(linear_5mhz())
+
+
+def test_unit_conversion_divides_by_an_exact_power_of_ten():
+    """1e3 is representable in binary64 and 1e-3 is not, so dividing rounds
+    once where multiplying by the reciprocal rounds twice. The cheaper form
+    costs four times the residue on this profile — 20 coordinates moving by
+    3.5e-18 m instead of 6 by 8.7e-19 m — and this pins which one ingress
+    uses, since both pass every other assertion in this module."""
+    canonical = linear_5mhz().element_x()
+    millimetres = canonical * 1e3
+
+    by_division = millimetres / 1e3
+    by_reciprocal = millimetres * 1e-3
+
+    assert int(np.count_nonzero(by_reciprocal != canonical)) == 20
+    assert np.abs(by_division - canonical).max() < np.abs(by_reciprocal - canonical).max()
+
+    accepted = accept(describe_bmode(linear_5mhz()), linear_5mhz())
+    assert np.array_equal(np.asarray(accepted.element_x_m), canonical)
 
 
 def test_ingress_accepts_the_millimetre_round_trip_of_its_own_profile():
@@ -355,9 +378,10 @@ def test_a_large_common_delay_cannot_hide_geometric_inconsistency():
     profile = linear_5mhz()
     description = _description(profile)
     event = description.events[0]
-    huge = tuple(1e20 if weight > 0.0 else delay for weight, delay in zip(
-        event.apodization, event.firing_delays_ns, strict=True
-    ))
+    huge = tuple(
+        1e20 if weight > 0.0 else delay
+        for weight, delay in zip(event.apodization, event.firing_delays_ns, strict=True)
+    )
     inconsistent = _replace_event(description, 0, firing_delays_ns=huge)
 
     with pytest.raises(ValueError, match="firing delay"):

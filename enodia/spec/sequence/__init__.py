@@ -24,10 +24,20 @@ equivalence with this reference implementation (L0, ADR-0007's principle),
 which requires both sides to compute from one geometry rather than from
 whatever each was handed. And the comparison cannot be equality: converting
 this profile's coordinates to millimetres and back moves 6 of 128 of them,
-by at most 8.7e-19 m, so a tolerance is unavoidable. It is stated in units
-in the last place of the aperture scale, which puts it thirteen orders below
-one element pitch — tight enough that a real geometry mismatch cannot hide
-under it, loose enough that binary64 unit conversion never trips it.
+by at most 8.673617379884035e-19 m, so a tolerance is unavoidable. It is
+stated in units in the last place of the aperture scale, which puts it
+thirteen orders below one element pitch — tight enough that a real geometry
+mismatch cannot hide under it, loose enough that binary64 unit conversion
+never trips it.
+
+**Unit conversion divides by an exact power of ten** — `/ 1e3`, `/ 1e9` —
+rather than multiplying by its reciprocal. 1e3 and 1e9 are representable in
+binary64 and 1e-3 and 1e-9 are not, so division is one correctly-rounded
+operation where the multiplication would add a second rounding against an
+approximated constant. On this profile that is the difference between 6
+coordinates moving by 8.7e-19 m and 20 moving by 3.5e-18 m. Both sit under
+the tolerance; the tolerance is there for the format, and there is no reason
+to spend four times the residue reaching it.
 
 **What ingress does with delays.** §19 sets out three lines of defence
 against a transmit description that disagrees with the machine, and the
@@ -186,7 +196,7 @@ def _check_geometry(description: TransmitDescription, profile: ProbeProfile) -> 
             f"description carries {len(description.element_x_mm)} element coordinates,"
             f" profile {profile.name!r} has {canonical.size}"
         )
-    transported = _finite(description.element_x_mm, "element coordinates") * 1e-3
+    transported = _finite(description.element_x_mm, "element coordinates") / 1e3
     tolerance = coordinate_tolerance_m(profile)
     worst = int(np.argmax(np.abs(transported - canonical)))
     error = abs(float(transported[worst] - canonical[worst]))
@@ -215,14 +225,14 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
         raise ValueError(f"event {ev.event_index} describes a silent aperture")
 
     delays_ns = _finite(ev.firing_delays_ns, f"firing delays of event {ev.event_index}")
-    delays_s = delays_ns * 1e-9
+    delays_s = delays_ns / 1e9
     if delays_s.size != canonical.size:
         raise ValueError(
             f"event {ev.event_index} carries {delays_s.size} firing delays,"
             f" profile {profile.name!r} has {canonical.size} elements"
         )
 
-    source = _finite(ev.virtual_source_mm, f"virtual source of event {ev.event_index}") * 1e-3
+    source = _finite(ev.virtual_source_mm, f"virtual source of event {ev.event_index}") / 1e3
     if source.size != 2:
         raise ValueError(f"event {ev.event_index} virtual source must be (x, z)")
     vx, vz = float(source[0]), float(source[1])
@@ -277,7 +287,7 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
             f" by {spread_ns:.3f} ns, past the {DELAY_TOLERANCE_NS:g} ns ingress tolerance"
         )
 
-    line_x_m = float(_finite((ev.line_x_mm,), f"scanline of event {ev.event_index}")[0]) * 1e-3
+    line_x_m = float(_finite((ev.line_x_mm,), f"scanline of event {ev.event_index}")[0]) / 1e3
     return TxEvent(
         event_index=ev.event_index,
         line_index=ev.event_index,  # identity contribution map; #53 generalizes it

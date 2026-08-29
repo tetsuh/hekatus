@@ -1952,14 +1952,22 @@ map is the identity.
 
 **Canonical geometry wins.** The description transports element coordinates
 and the probe profile already holds them (§4). They are compared, and then
-the transported numbers are dropped: every derivative is computed from
-`ProbeProfile.element_x()`, so a port and this reference implementation
+the transported numbers are dropped: every **geometry-dependent** derivative
+— delay tables, phase-rotation coefficients, aperture weights — is computed
+from `ProbeProfile.element_x()`, so a port and this reference implementation
 compute from one geometry and L0 compares like with like (ADR-0007's
 principle). The comparison cannot be equality — converting `linear-5mhz`'s
 coordinates to millimetres and back moves 6 of 128 of them, by at most
-8.7e-19 m — so the tolerance is **4 units in the last place of the aperture
-half-width**, 1.4e-17 m on that profile: thirteen orders below one element
-pitch, and above what the unit conversion costs.
+8.673617379884035e-19 m — so the tolerance is **4 units in the last place of
+the aperture half-width**, 1.4e-17 m on that profile: thirteen orders below
+one element pitch, and above what the unit conversion costs.
+
+Conversion **divides by an exact power of ten** (`/ 1e3`, `/ 1e9`) rather
+than multiplying by its reciprocal: 1e3 and 1e9 are representable in
+binary64 and 1e-3 and 1e-9 are not, so division rounds once where the
+multiplication rounds twice. The reciprocal form costs four times the
+residue on this profile — 20 coordinates moving by 3.5e-18 m — which the
+tolerance would still admit; the point is not to spend it.
 
 **The description must be self-consistent.** For every element that fires —
 apodization strictly positive — the firing delay plus the geometric time of
