@@ -389,6 +389,21 @@ def test_a_single_element_at_a_zero_distance_source_is_checked():
     assert config.events[0].apodization[reference] == 1.0
 
 
+def test_nonfinite_derived_distance_denominator_is_refused():
+    profile = linear_5mhz()
+    description = _description(profile)
+    event = description.events[0]
+    sparse = replace(
+        event,
+        firing_delays_ns=(0.0,) * profile.n_elements,
+        apodization=(1.0,) + (0.0,) * (profile.n_elements - 1),
+    )
+    malformed_profile = replace(profile, pitch_m=float("nan"))
+
+    with pytest.raises(ValueError, match="non-finite distance denominator"):
+        accept(replace(description, events=(sparse,)), malformed_profile)
+
+
 def test_delays_inconsistent_with_the_virtual_source_are_refused():
     """A converter bug that shifts one element's delay produces an image that
     looks fine and is wrong. §19 puts three lines of defence against exactly

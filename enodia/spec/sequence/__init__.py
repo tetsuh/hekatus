@@ -242,6 +242,11 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
         reference_distance = np.hypot(reference_x - vx, vz)
         distances = np.hypot(active_x - vx, vz)
         distance_denominator = distances + reference_distance
+        if not np.all(np.isfinite(distance_denominator)):
+            raise ValueError(
+                f"firing delays of event {ev.event_index} produced a non-finite"
+                " distance denominator"
+            )
         distance_numerator = (active_x - reference_x) * (active_x + reference_x - 2.0 * vx)
         relative_distance = np.divide(
             distance_numerator,
