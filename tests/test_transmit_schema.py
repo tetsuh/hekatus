@@ -243,8 +243,9 @@ def test_coordinate_tolerance_accepts_boundary_and_rejects_next_value():
 
     past_boundary = list(description.element_x_mm)
     past_boundary[0] = float(past_mm)
+    rejected = replace(description, element_x_mm=tuple(past_boundary))
     with pytest.raises(ValueError, match="element coordinate"):
-        accept(replace(description, element_x_mm=tuple(past_boundary)), profile)
+        accept(rejected, profile)
 
 
 def test_a_configuration_naming_another_profile_is_refused():
@@ -399,9 +400,10 @@ def test_nonfinite_derived_distance_denominator_is_refused():
         apodization=(1.0,) + (0.0,) * (profile.n_elements - 1),
     )
     malformed_profile = replace(profile, pitch_m=float("nan"))
+    invalid = replace(description, events=(sparse,))
 
     with pytest.raises(ValueError, match="non-finite distance denominator"):
-        accept(replace(description, events=(sparse,)), malformed_profile)
+        accept(invalid, malformed_profile)
 
 
 def test_delays_inconsistent_with_the_virtual_source_are_refused():

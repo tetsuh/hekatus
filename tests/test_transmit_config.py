@@ -33,17 +33,18 @@ def test_the_runtime_config_id_selects_the_profile_transitively_and_carries_no_b
     profile — and so the bandwidth — is reached through the configuration."""
     p = linear_5mhz()
     config = make_bmode_config(p)
+    scatterers = [PointScatterer(0.0, 20e-3)]
     records = simulate_frame(
         p,
         replace(config, events=config.events[:2]),
-        [PointScatterer(0.0, 20e-3)],
+        scatterers,
     )
     assert all(r.header.config_id == config.config_id for r in records)
     with pytest.raises(TypeError):
         simulate_frame(
             p,
             config,
-            [PointScatterer(0.0, 20e-3)],
+            scatterers,
             config_id="independent-config",
         )
 
