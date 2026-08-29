@@ -214,7 +214,8 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
     if not np.any(active):
         raise ValueError(f"event {ev.event_index} describes a silent aperture")
 
-    delays_s = _finite(ev.firing_delays_ns, f"firing delays of event {ev.event_index}") * 1e-9
+    delays_ns = _finite(ev.firing_delays_ns, f"firing delays of event {ev.event_index}")
+    delays_s = delays_ns * 1e-9
     if delays_s.size != canonical.size:
         raise ValueError(
             f"event {ev.event_index} carries {delays_s.size} firing delays,"
@@ -229,9 +230,42 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
     # The wavefront each firing element launches has to reach the virtual
     # source at one instant; that is what "focused at the virtual source"
     # means as a physical claim, and it is checkable without a beam model.
-    time_of_flight = np.hypot(canonical - vx, vz) / profile.c_m_s
-    arrival = (delays_s + time_of_flight)[active]
-    spread_ns = float(arrival.max() - arrival.min()) * 1e9
+    active_indices = np.flatnonzero(active)
+    reference = int(active_indices[0])
+    active_x = canonical[active]
+    reference_x = canonical[reference]
+    # Compare relative arrivals so a common event-time offset cannot erase
+    # the geometric spread through float64 cancellation. Compute the
+    # distance difference directly: (a²-b²)/(a+b), factored before the
+    # multiplication, avoids overflow when the source is extremely distant.
+    with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+        reference_distance = np.hypot(reference_x - vx, vz)
+        distances = np.hypot(active_x - vx, vz)
+        distance_denominator = distances + reference_distance
+        distance_numerator = (active_x - reference_x) * (active_x + reference_x - 2.0 * vx)
+        relative_distance = np.divide(
+            distance_numerator,
+            distance_denominator,
+            out=np.zeros_like(distances),
+            where=distance_denominator != 0.0,
+        )
+        relative_tof_ns = relative_distance / profile.c_m_s * 1e9
+        relative_arrival_ns = (delays_ns[active] - delays_ns[reference]) + relative_tof_ns
+    if not np.all(np.isfinite(relative_tof_ns)):
+        raise ValueError(
+            f"firing delays of event {ev.event_index} produced a non-finite"
+            " relative time of flight"
+        )
+    if not np.all(np.isfinite(relative_arrival_ns)):
+        raise ValueError(
+            f"firing delays of event {ev.event_index} produced a non-finite"
+            " relative arrival time"
+        )
+    spread_ns = float(relative_arrival_ns.max() - relative_arrival_ns.min())
+    if not np.isfinite(spread_ns):
+        raise ValueError(
+            f"firing delays of event {ev.event_index} produced a non-finite arrival spread"
+        )
     if spread_ns > DELAY_TOLERANCE_NS:
         raise ValueError(
             f"firing delays of event {ev.event_index} disagree with its virtual source"
@@ -266,6 +300,13 @@ def accept(description: TransmitDescription, profile: ProbeProfile) -> TransmitC
         raise ValueError(f"configuration {description.config_id!r} describes no transmit events")
     events = []
     for position, ev in enumerate(description.events):
+        if isinstance(ev.event_index, (bool, np.bool_)) or not isinstance(
+            ev.event_index, (int, np.integer)
+        ):
+            raise TypeError(
+                f"transmit event at position {position} has non-integer event index"
+                f" {ev.event_index!r}"
+            )
         if ev.event_index != position:
             # The index names the event within the frame, and it is what a
             # record header is matched on (`tx_event_index`) and what the

@@ -26,6 +26,8 @@ from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import EventHeader, RFEventRecord
 from enodia.spec.sequence import TransmitConfig, TxEvent
 
+__all__ = ["PointScatterer", "gaussian_pulse", "n_rf_samples", "simulate_frame"]
+
 
 @dataclass(frozen=True)
 class PointScatterer:
@@ -55,7 +57,7 @@ def n_rf_samples(profile: ProbeProfile) -> int:
     return int(np.ceil(t_max * profile.fs_hz)) + 256
 
 
-def simulate_bmode_frame(
+def _simulate_bmode_frame(
     profile: ProbeProfile,
     events: list[TxEvent],
     scatterers: list[PointScatterer],
@@ -154,7 +156,7 @@ def simulate_frame(
             f"configuration {config.config_id!r} runs on probe profile"
             f" {config.probe_profile_id!r}, simulated on {profile.name!r}"
         )
-    return simulate_bmode_frame(
+    return _simulate_bmode_frame(
         profile,
         list(config.events),
         scatterers,

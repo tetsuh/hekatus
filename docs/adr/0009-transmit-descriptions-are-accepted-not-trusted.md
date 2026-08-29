@@ -1,8 +1,8 @@
 # ADR-0009: The transmit description is accepted, not trusted
 
-- Status: **Proposed** — 2026-08-28
+- Status: **Accepted** — 2026-08-29
 - Date: 2026-08-28
-- Owner decision: pending
+- Owner decision: yes
 
 ## Context
 
@@ -160,3 +160,6 @@ refuses, and a schema that refuses nothing does not make it.
   the transition to `Accepted` is written in the same pull request at the
   owner-authorized pre-merge boundary, so `Proposed` never reaches `main`
   (workflow §6, ADR-0004).
+- 2026-08-29: Accepted at PR #54's owner-authorized pre-merge boundary after
+  the final review found no remaining technical P1 findings and validation was
+  green.

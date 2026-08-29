@@ -15,6 +15,7 @@ exists, and a tolerance that is never exercised is a tolerance nobody knows
 the sign of.
 """
 
+import hashlib
 from dataclasses import fields, replace
 
 import numpy as np
@@ -148,6 +149,13 @@ def test_an_unseen_transmit_type_tag_is_accepted_and_carried():
 
     assert config.events[0].tx_type == "shear_wave_push"
 
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    single_event = replace(config, events=config.events[:1])
+    records = simulate_frame(profile, single_event, [PointScatterer(0.0, 20e-3)])
+    assert records[0].header.tx_type == "shear_wave_push"
+    assert records[0].header.tx_event_index == 0
+
 
 def test_an_empty_transmit_type_tag_is_refused():
     """Open set, not absent set: an unnamed transmit type would reach the
@@ -210,17 +218,33 @@ def test_a_geometry_mismatch_beyond_the_tolerance_is_refused():
         accept(displaced, profile)
 
 
-def test_a_displacement_just_past_the_tolerance_is_refused():
-    """The tolerance is a boundary, and a boundary nobody tests is a
-    boundary that drifts."""
+def test_coordinate_tolerance_accepts_boundary_and_rejects_next_value():
+    """Pin both sides of the first representable transported-mm boundary."""
     profile = linear_5mhz()
     description = _description(profile)
-    moved = list(description.element_x_mm)
-    moved[0] += coordinate_tolerance_m(profile) * 1e3 * 4.0
-    displaced = replace(description, element_x_mm=tuple(moved))
+    canonical = float(profile.element_x()[0])
+    tolerance = coordinate_tolerance_m(profile)
+    accepted_mm = np.float64(description.element_x_mm[0])
+    while True:
+        candidate_mm = np.nextafter(accepted_mm, np.inf)
+        candidate_error = abs(float(candidate_mm * 1e-3) - canonical)
+        if candidate_error > tolerance:
+            past_mm = candidate_mm
+            break
+        accepted_mm = candidate_mm
 
+    accepted_error = abs(float(accepted_mm * 1e-3) - canonical)
+    assert accepted_error <= tolerance
+    assert abs(float(past_mm * 1e-3) - canonical) > tolerance
+
+    at_boundary = list(description.element_x_mm)
+    at_boundary[0] = float(accepted_mm)
+    assert accept(replace(description, element_x_mm=tuple(at_boundary)), profile)
+
+    past_boundary = list(description.element_x_mm)
+    past_boundary[0] = float(past_mm)
     with pytest.raises(ValueError, match="element coordinate"):
-        accept(displaced, profile)
+        accept(replace(description, element_x_mm=tuple(past_boundary)), profile)
 
 
 def test_a_configuration_naming_another_profile_is_refused():
@@ -300,6 +324,16 @@ def test_a_negative_event_index_is_refused():
         accept(negative, profile)
 
 
+@pytest.mark.parametrize("bad_index", [0.0, False], ids=["float", "bool"])
+def test_non_integer_event_indices_are_refused(bad_index):
+    profile = linear_5mhz()
+    description = _description(profile)
+    invalid = replace(description, events=(replace(description.events[0], event_index=bad_index),))
+
+    with pytest.raises(TypeError, match="non-integer event index"):
+        accept(invalid, profile)
+
+
 # --- delays against the declared virtual source ---------------------------
 
 
@@ -314,6 +348,45 @@ def test_firing_delays_agree_with_the_declared_virtual_source():
     ev = config.events[0]
     assert len(ev.firing_delays_s) == profile.n_elements
     assert all(np.isfinite(ev.firing_delays_s))
+
+
+def test_a_large_common_delay_cannot_hide_geometric_inconsistency():
+    profile = linear_5mhz()
+    description = _description(profile)
+    event = description.events[0]
+    huge = tuple(1e20 if weight > 0.0 else delay for weight, delay in zip(
+        event.apodization, event.firing_delays_ns, strict=True
+    ))
+    inconsistent = _replace_event(description, 0, firing_delays_ns=huge)
+
+    with pytest.raises(ValueError, match="firing delay"):
+        accept(inconsistent, profile)
+
+
+def test_a_finite_extreme_virtual_source_cannot_hide_geometric_inconsistency():
+    profile = linear_5mhz()
+    description = _description(profile)
+    extreme = _replace_event(description, 0, virtual_source_mm=(1e308, 1e308))
+
+    with pytest.raises(ValueError, match="firing delay"):
+        accept(extreme, profile)
+
+
+def test_a_single_element_at_a_zero_distance_source_is_checked():
+    profile = linear_5mhz()
+    description = _description(profile)
+    event = description.events[0]
+    reference = 0
+    sparse = replace(
+        event,
+        virtual_source_mm=(float(profile.element_x()[reference] * 1e3), 0.0),
+        firing_delays_ns=(0.0,) * profile.n_elements,
+        apodization=tuple(1.0 if i == reference else 0.0 for i in range(profile.n_elements)),
+    )
+
+    config = accept(replace(description, events=(sparse,)), profile)
+
+    assert config.events[0].apodization[reference] == 1.0
 
 
 def test_delays_inconsistent_with_the_virtual_source_are_refused():
@@ -404,7 +477,7 @@ def test_the_simulated_frame_is_unchanged_by_the_schema():
     """The acceptance criterion, at frame scale: the raw RF the simulator
     produces through the schema is the RF it produced from events built
     directly in SI."""
-    from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+    from enodia.spec.sim import PointScatterer, simulate_frame
 
     profile = linear_5mhz()
     config = make_bmode_config(profile)
@@ -425,11 +498,35 @@ def test_the_simulated_frame_is_unchanged_by_the_schema():
         for ev in events
     ]
 
-    through_schema = simulate_bmode_frame(profile, events, scatterers)
-    built_directly = simulate_bmode_frame(profile, direct, scatterers)
+    through_schema = simulate_frame(profile, replace(config, events=tuple(events)), scatterers)
+    direct_config = replace(config, events=tuple(direct))
+    built_directly = simulate_frame(profile, direct_config, scatterers)
 
     for a, b in zip(through_schema, built_directly, strict=True):
         assert np.array_equal(a.data, b.data)
+
+
+def test_simulate_frame_preserves_the_mvp1_rf_and_golden_image_fingerprints(frame, golden):
+    """The complete accepted default configuration remains MVP-1 byte-identical."""
+    from enodia.spec.beamform import envelope, log_compress
+
+    _, _, records, _ = frame
+    golden_image, _, _ = golden
+
+    rf_digest = hashlib.sha256()
+    for record in records:
+        payload = np.asarray(record.data, dtype="<i2", order="C")
+        rf_digest.update(payload.tobytes())
+    compressed = np.asarray(
+        log_compress(envelope(golden_image), dynamic_range_db=50.0), dtype="<f4", order="C"
+    )
+
+    assert rf_digest.hexdigest() == (
+        "b6401ee80154dfb83800f38bf17298dd65026798c5757903a766dacc891e824a"
+    )
+    assert hashlib.sha256(compressed.tobytes()).hexdigest() == (
+        "236a276f15452f1305bb46e7e5eb59d3dd466db00aa60534b2fc4748b36b1206"
+    )
 
 
 def test_the_tolerance_is_far_below_anything_physical_and_far_above_the_noise():
