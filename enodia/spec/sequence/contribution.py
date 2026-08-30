@@ -122,7 +122,11 @@ class ContributionMap:
             )
         if np.any(weights < 0.0) or not np.all(np.isfinite(weights)):
             raise ValueError("contribution weights must be finite and non-negative")
-        sums = weights.sum(axis=1)
+        with np.errstate(over="ignore"):
+            sums = weights.sum(axis=1)
+        if not np.all(np.isfinite(sums)):
+            worst = int(np.flatnonzero(~np.isfinite(sums))[0])
+            raise ValueError(f"line {worst} has a non-finite weight sum; refused rather than normalized")
         if np.any(sums < WEIGHT_SUM_FLOOR):
             worst = int(np.argmin(sums))
             raise ValueError(

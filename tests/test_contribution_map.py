@@ -133,6 +133,20 @@ def test_every_line_of_a_derived_map_has_unit_weight_sum():
     assert np.allclose(sums, 1.0, rtol=0.0, atol=1e-12)
 
 
+def test_finite_weights_with_an_overflowing_sum_are_refused():
+    """Review-driven regression: finite weights can overflow their aggregate.
+
+    The resulting infinity must be refused before normalization could turn it
+    into an accepted all-zero row.
+    """
+    with pytest.raises(ValueError, match="non-finite"):
+        ContributionMap(
+            line_x_m=(0.0,),
+            event_indices=np.array([[0, 1]], dtype=np.intp),
+            weights=np.array([[1e308, 1e308]], dtype=np.float64),
+        )
+
+
 def test_a_near_zero_weight_sum_is_refused_not_amplified():
     """Dividing by a vanishing sum multiplies noise into a plausible line.
     The floor turns that into a refusal (absolute rules: wrong output is
