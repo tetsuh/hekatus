@@ -37,6 +37,7 @@ float64 → complex128, with the phase factor formed in float64 and cast.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 import numpy as np
 
@@ -112,29 +113,47 @@ def das_iq(
     records: list[IQEventRecord],
     *,
     decimation: int,
+    contribution=None,
     dtype=np.float32,
     z_min_m: float = 2e-3,
     kernel: str = "lagrange4",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """IQ-domain delay-and-sum.
 
-    Returns (complex image [depth × scanline], depth axis, scanline x axis) —
+    Returns (complex image [depth × line], depth axis, line x axis) —
     the same grid as `das_rf_golden`, so the two compare pixel for pixel.
     The image is the complex envelope along each line; |image| is the
     B-mode envelope (no Hilbert transform needed).
+
+    ``contribution`` is §7's map, exactly as in `das_rf_golden` (#53): the
+    identity by default, and there is one summation structure across both
+    paths, not two.
     """
+    from enodia.spec.beamform import _identity_contribution, _slots_by_event
+
     cdtype = _complex_dtype(dtype)
+    if contribution is None:
+        contribution = _identity_contribution(events)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
-    line_x = np.array([ev.line_x_m for ev in events], dtype=np.float64)
+    line_x = np.array(contribution.line_x_m, dtype=np.float64)
     by_event = _records_by_event(events, records)
-    image = np.zeros((z.size, len(events)), dtype=cdtype)
-    for ev in events:
+    event_by_index = {ev.event_index: ev for ev in events}
+    image = np.zeros((z.size, contribution.n_lines), dtype=cdtype)
+    for event_index, slots in _slots_by_event(contribution).items():
+        ev = event_by_index[event_index]
         rec = by_event[ev.event_index]
-        x = delayed_channel_vectors(
-            profile, ev, rec, z, decimation=decimation, dtype=dtype, kernel=kernel
-        )
-        dx = el_x[:, None] - ev.line_x_m
-        w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
-        image[:, ev.line_index] += (w * x).sum(axis=0)
+        for line, weight in slots:
+            x = delayed_channel_vectors(
+                profile,
+                replace(ev, line_x_m=float(line_x[line])),
+                rec,
+                z,
+                decimation=decimation,
+                dtype=dtype,
+                kernel=kernel,
+            )
+            dx = el_x[:, None] - line_x[line]
+            w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
+            image[:, line] += cdtype(weight) * (w * x).sum(axis=0)
     return image, z, line_x

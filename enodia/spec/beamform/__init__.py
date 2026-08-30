@@ -104,21 +104,46 @@ def aperture_weights(dx: np.ndarray, z: np.ndarray, f_number: float, *, dtype=np
     return (w / np.maximum(w.sum(axis=0, keepdims=True), 1e-12)).astype(dtype)
 
 
+def _slots_by_event(contribution) -> dict[int, list[tuple[int, float]]]:
+    """Group a map's live slots by the event they read: {event: [(line, w)]}.
+
+    The reference implementation is a plain loop (§7 scheme (c)), but per
+    event rather than per slot, so the delayed record of one transmit is
+    computed once however many lines read it. Inert slots (weight zero)
+    are skipped here — on the host their contribution is exactly zero and
+    the fixed-work property is the map's shape, asserted by test, not a
+    property this loop needs to reproduce.
+    """
+    by_event: dict[int, list[tuple[int, float]]] = {}
+    indices = np.asarray(contribution.event_indices)
+    weights = np.asarray(contribution.weights)
+    for line in range(contribution.n_lines):
+        for slot in range(contribution.cap):
+            w = float(weights[line, slot])
+            if w > 0.0:
+                by_event.setdefault(int(indices[line, slot]), []).append((line, w))
+    return by_event
+
+
 def das_rf_golden(
     profile: ProbeProfile,
     events: list[TxEvent],
     records: list[RFEventRecord],
     *,
+    contribution=None,
     dtype=np.float32,
     z_min_m: float = 2e-3,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Ideal-delay delay-and-sum in the RF domain.
 
-    Returns (RF image [depth x scanline], depth axis, scanline x axis).
+    Returns (RF image [depth x line], depth axis, line x axis).
 
     The delay is the transmit leg z/c along the beam axis plus the receive
-    leg |r_p - r_j| / c. The contribution map is the identity (event k forms
-    line k); MLA and transmit compounding generalize it in #53.
+    leg |r_p - r_j| / c. ``contribution`` is the map of §7 — which events
+    form which lines, with weights (`enodia.spec.sequence.contribution`,
+    #53); by default the identity, event k forming line k, which is a case
+    of the general structure and reproduces the pre-#53 image to the bit.
+    The beamformer is never told an MLA count: the map alone carries it.
     """
     if not np.issubdtype(np.dtype(dtype), np.floating):
         # The dtype parameter exists to sweep precision (float64 / float32 /
@@ -127,25 +152,41 @@ def das_rf_golden(
         # silently wrong image rather than a lower-precision one.
         raise ValueError(f"dtype must be floating-point for beamforming, got {np.dtype(dtype)}")
 
+    if contribution is None:
+        contribution = _identity_contribution(events)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     c = profile.c_m_s
-    line_x = np.array([ev.line_x_m for ev in events], dtype=np.float64)
+    line_x = np.array(contribution.line_x_m, dtype=np.float64)
 
     by_event = _records_by_event(events, records)
-    image = np.zeros((z.size, len(events)), dtype=dtype)
-    for ev in events:
+    event_by_index = {ev.event_index: ev for ev in events}
+    image = np.zeros((z.size, contribution.n_lines), dtype=dtype)
+    for event_index, slots in _slots_by_event(contribution).items():
+        ev = event_by_index[event_index]
         rec = by_event[ev.event_index]
         _check_channel_count(profile, rec)
         data = rec.data.astype(dtype)
-        dx = el_x[:, None] - ev.line_x_m  # (n_ch, 1)
-        tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
-        pos = tau * profile.fs_hz
-        sampled = delay_rf(data, pos)
-        w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
-        image[:, ev.line_index] += (w * sampled).sum(axis=0)
+        for line, weight in slots:
+            dx = el_x[:, None] - line_x[line]  # (n_ch, 1)
+            tau = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth)
+            pos = tau * profile.fs_hz
+            sampled = delay_rf(data, pos)
+            w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
+            image[:, line] += dtype(weight) * (w * sampled).sum(axis=0)
 
     return image, z, line_x
+
+
+def _identity_contribution(events: list[TxEvent]):
+    from enodia.spec.sequence.contribution import ContributionMap
+
+    n = len(events)
+    return ContributionMap(
+        line_x_m=tuple(ev.line_x_m for ev in events),
+        event_indices=np.array([[ev.event_index] for ev in events], dtype=np.intp),
+        weights=np.ones((n, 1), dtype=np.float64),
+    )
 
 
 def envelope(rf_image: np.ndarray) -> np.ndarray:

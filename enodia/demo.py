@@ -21,6 +21,7 @@ from enodia.spec.beamform.iq_das import das_iq
 from enodia.spec.frontend import demodulate_frame
 from enodia.spec.probe import ProbeProfile, linear_5mhz
 from enodia.spec.sequence import make_bmode_config
+from enodia.spec.sequence.contribution import mla_map
 from enodia.spec.sim import PointScatterer, simulate_frame
 
 DEFAULT_SCATTERERS = [
@@ -41,24 +42,31 @@ def run_pipeline(
     dynamic_range_db: float = 50.0,
     path: str = "golden",
     decimation: int = DEFAULT_DECIMATION,
+    mla: int = 1,
 ):
     """Simulate, beamform, and compress. The acceptance tests call this too.
 
     ``path`` is "golden" (RF-domain ideal delay) or "iq" (front end at
     ``decimation``, then the IQ-domain DAS). Both return the log-compressed
-    envelope on the same grid.
+    envelope on the same grid. ``mla`` forms that many receive lines per
+    transmit, through the contribution map alone (#53): the beamformer call
+    does not change, only the map handed to it. 1 is the conventional case
+    and stays the default.
     """
     if path not in PATHS:
         raise ValueError(f"path must be one of {PATHS}, got {path!r}")
     config = make_bmode_config(profile)
     events = list(config.events)
     records = simulate_frame(profile, config, scatterers)
+    contribution = mla_map(config, profile, mla=mla) if mla != 1 else None
     if path == "golden":
-        rf_image, z, line_x = das_rf_golden(profile, events, records)
+        rf_image, z, line_x = das_rf_golden(profile, events, records, contribution=contribution)
         env = envelope(rf_image)
     else:
         iq_records = demodulate_frame(records, profile, decimation=decimation)
-        iq_image, z, line_x = das_iq(profile, events, iq_records, decimation=decimation)
+        iq_image, z, line_x = das_iq(
+            profile, events, iq_records, decimation=decimation, contribution=contribution
+        )
         env = np.abs(iq_image)
     db = log_compress(env, dynamic_range_db=dynamic_range_db)
     return db, z, line_x, records
@@ -113,6 +121,7 @@ def main() -> None:
     parser.add_argument("--dynamic-range-db", type=float, default=50.0)
     parser.add_argument("--path", choices=PATHS, default="golden")
     parser.add_argument("--decimation", type=int, default=DEFAULT_DECIMATION)
+    parser.add_argument("--mla", type=int, choices=(1, 2, 4), default=1)
     args = parser.parse_args()
 
     profile = linear_5mhz()
@@ -123,12 +132,15 @@ def main() -> None:
         dynamic_range_db=args.dynamic_range_db,
         path=args.path,
         decimation=args.decimation,
+        mla=args.mla,
     )
     stage = (
         "RF golden DAS"
         if args.path == "golden"
         else f"front end D={args.decimation} + IQ DAS (Lagrange cubic)"
     )
+    if args.mla != 1:
+        stage += f", MLA {args.mla}"
     save_png(
         db,
         z,

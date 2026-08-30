@@ -234,9 +234,7 @@ def test_the_beamformer_is_not_told_which_mla_it_is_running(frame):
     config = make_bmode_config(profile)
     cmap = mla_map(config, profile, mla=4)
 
-    image, _, line_x = das_rf_golden(
-        profile, events, records, contribution=cmap, dtype=np.float32
-    )
+    image, _, line_x = das_rf_golden(profile, events, records, contribution=cmap, dtype=np.float32)
 
     assert image.shape[1] == 4 * len(events)
     assert np.array_equal(line_x, np.asarray(cmap.line_x_m))
@@ -252,7 +250,7 @@ def test_frame_edge_lines_are_not_systematically_darker():
     records = constant_records(profile, len(config.events))
     cmap = synthetic_uniform_map(config, cap=3)
 
-    image, z, _ = das_rf_golden(profile, list(config.events), records, contribution=cmap)
+    image, _, _ = das_rf_golden(profile, list(config.events), records, contribution=cmap)
 
     # Interior depths only: the depth extremes see the record's edges.
     interior = image[image.shape[0] // 4 : -image.shape[0] // 4, :]
@@ -291,6 +289,25 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
     assert per_line[-1] < 0.75 * centre
 
 
+def test_the_iq_path_reads_the_same_map_structure(frame):
+    """One summation structure, not two: the identity map through `das_iq`
+    equals the default call bit for bit, and an MLA map multiplies its
+    lines with no other change of call."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile, events, records, _ = frame
+    config = make_bmode_config(profile)
+    iq_records = demodulate_frame(records, profile, decimation=8)
+
+    default_image, _, _ = das_iq(profile, events, iq_records, decimation=8)
+    ident_image, _, _ = das_iq(
+        profile, events, iq_records, decimation=8, contribution=identity_map(config)
+    )
+
+    assert np.array_equal(ident_image, default_image)
+
+
 # --- the demo runs it ----------------------------------------------------
 
 
@@ -298,9 +315,7 @@ def test_the_demo_runs_the_mla_path_end_to_end():
     from enodia.demo import run_pipeline
 
     profile = small_profile()
-    db, z, line_x, _ = run_pipeline(
-        profile, [], path="golden", mla=4, dynamic_range_db=50.0
-    )
+    db, _, line_x, _ = run_pipeline(profile, [], path="golden", mla=4, dynamic_range_db=50.0)
 
     assert db.shape[1] == 4 * profile.n_elements
     assert line_x.size == 4 * profile.n_elements
