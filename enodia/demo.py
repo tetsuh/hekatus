@@ -167,6 +167,11 @@ def main() -> None:
         f"rf:  {len(records)} transmit events x {n_ch} ch x {n_t} samples"
         f" (int16, {profile.fs_hz / 1e6:.0f} MHz)"
     )
+    print(
+        f"map: {'identity' if args.mla == 1 else f'MLA {args.mla}'} contribution map"
+        f" -> {db.shape[1]} lines from {len(records)} transmit events"
+        f" (design.md §7; the beamformer is not told the MLA count)"
+    )
     if args.path == "golden":
         print(f"das: RF golden (ideal delay, float32), dynamic aperture F={profile.f_number}")
     else:
