@@ -105,23 +105,28 @@ def aperture_weights(dx: np.ndarray, z: np.ndarray, f_number: float, *, dtype=np
 
 
 def _slots_by_event(contribution) -> dict[int, list[tuple[int, float]]]:
-    """Group a map's live slots by the event they read: {event: [(line, w)]}.
+    """Group a map's slots by the event they read: {event: [(line, w)]}.
 
-    The reference implementation is a plain loop (§7 scheme (c)), but per
-    event rather than per slot, so the delayed record of one transmit is
-    computed once however many lines read it. Inert slots (weight zero)
-    are skipped here — on the host their contribution is exactly zero and
-    the fixed-work property is the map's shape, asserted by test, not a
-    property this loop needs to reproduce.
+    The reference implementation is a plain loop (§7 scheme (c)), grouped by
+    event rather than by slot so the delayed record of one transmit is
+    fetched once however many lines read it.
+
+    **Every slot is here, inert ones included.** Skipping zero-weight slots
+    would give a frame-edge line fewer delay-and-aperture evaluations than
+    an interior line, which is the variable-work shape the absolute rules
+    forbid — and this reference implementation is the specification a port
+    is written against, so a shortcut taken here reads as sanctioned. The
+    slots contribute exactly zero and cost host time; that is the trade the
+    fixed-work contract is.
     """
     by_event: dict[int, list[tuple[int, float]]] = {}
     indices = np.asarray(contribution.event_indices)
     weights = np.asarray(contribution.weights)
     for line in range(contribution.n_lines):
         for slot in range(contribution.cap):
-            w = float(weights[line, slot])
-            if w > 0.0:
-                by_event.setdefault(int(indices[line, slot]), []).append((line, w))
+            by_event.setdefault(int(indices[line, slot]), []).append(
+                (line, float(weights[line, slot]))
+            )
     return by_event
 
 
@@ -186,13 +191,23 @@ def _check_frame_provenance(contribution, events, records) -> None:
     other, which is identity within a frame. It cannot see that the *map*
     belongs elsewhere: event indices are small integers every configuration
     has, so a stale map resolves cleanly and puts the frame on the wrong
-    scanlines. The records name their configuration in the header, which is
-    the single source of truth for exactly this (§19).
+    scanlines. The records name their configuration **and its parameter
+    generation** in the header, and that pair is the single source of truth
+    for exactly this (§19). The generation matters on its own: a depth or
+    focus change is an in-config change, so the id holds still while every
+    derivative behind it is invalidated.
     """
     config_ids = {rec.header.config_id for rec in records}
     if len(config_ids) > 1:
         raise ValueError(f"frame mixes transmit configurations {sorted(config_ids)}")
-    contribution.check_frame(config_ids.pop() if config_ids else "", len(events))
+    generations = {rec.header.param_generation for rec in records}
+    if len(generations) > 1:
+        raise ValueError(f"frame mixes parameter generations {sorted(generations)}")
+    contribution.check_frame(
+        config_ids.pop() if config_ids else "",
+        len(events),
+        generations.pop() if generations else None,
+    )
 
 
 def _identity_contribution(events: list[TxEvent]):

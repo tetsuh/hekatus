@@ -71,14 +71,21 @@ class ContributionMap:
     `normalized=False` — which exists so a test can show the artifact
     renormalization prevents, and for no other reason.
 
-    **A map names the configuration it was derived from.** `config_id` and
-    `n_events` are its provenance, and a consumer checks them against the
-    frame it is about to form (`enodia.spec.beamform`). Without that check,
-    a map derived for one configuration renders another configuration's
-    records — the event indices line up, the record identity checks pass,
-    and the line geometry is silently stale. That is the accident the
-    generation tag exists to prevent: processing with the wrong tables is
-    worse than dropping frames (absolute rules, §19).
+    **A map names the configuration it was derived from.** `config_id`,
+    `n_events` and `param_generation` are its provenance, and a consumer
+    checks them against the frame it is about to form
+    (`enodia.spec.beamform`). Without that check, a map derived for one
+    configuration renders another configuration's records — the event
+    indices line up, the record identity checks pass, and the line geometry
+    is silently stale. That is the accident the generation tag exists to
+    prevent: processing with the wrong tables is worse than dropping frames
+    (absolute rules, §19).
+
+    The generation is carried separately from the id because a depth or
+    focus change is an **in-config** change (§19): the configuration id
+    holds still while every derivative behind it — delay tables, and this
+    map — is invalidated and re-derived. A map checked on the id alone would
+    survive exactly the change that invalidates it.
 
     Both arrays are frozen at construction: a map is a derivative of one
     configuration generation, and a consumer mutating it would desynchronize
@@ -90,6 +97,7 @@ class ContributionMap:
     weights: np.ndarray  # (n_lines, cap) float64
     config_id: str = ""
     n_events: int = 0
+    param_generation: int | None = None
     normalized: bool = True
 
     def __post_init__(self) -> None:
@@ -137,14 +145,16 @@ class ContributionMap:
         """Contributing-transmit slots per line — the fixed work."""
         return int(self.event_indices.shape[1])
 
-    def check_frame(self, config_id: str, n_events: int) -> None:
+    def check_frame(
+        self, config_id: str, n_events: int, param_generation: int | None = None
+    ) -> None:
         """Refuse a frame this map was not derived for.
 
-        The map carries line geometry; the records carry a configuration id
-        (`EventHeader.config_id`). When they disagree, the events still
-        resolve — indices are small integers and every configuration has
-        them — so nothing downstream would notice, and the frame would be
-        formed on another configuration's scanlines.
+        The map carries line geometry; the records carry the configuration
+        id and its parameter generation (`EventHeader`). When they disagree,
+        the events still resolve — indices are small integers and every
+        configuration has them — so nothing downstream would notice, and the
+        frame would be formed on stale scanlines.
         """
         if self.config_id and config_id and self.config_id != config_id:
             raise ValueError(
@@ -156,9 +166,18 @@ class ContributionMap:
                 f"contribution map was derived for {self.n_events} transmit"
                 f" events, frame carries {n_events}"
             )
+        if (
+            self.param_generation is not None
+            and param_generation is not None
+            and self.param_generation != param_generation
+        ):
+            raise ValueError(
+                f"contribution map was derived at parameter generation"
+                f" {self.param_generation}, frame carries {param_generation}"
+            )
 
 
-def identity_map(config: TransmitConfig) -> ContributionMap:
+def identity_map(config: TransmitConfig, *, param_generation: int = 0) -> ContributionMap:
     """Event k forms line k with unit weight — the conventional case.
 
     This is the map every pre-#53 image was formed under, and the general
@@ -172,6 +191,7 @@ def identity_map(config: TransmitConfig) -> ContributionMap:
         weights=np.ones((n, 1), dtype=np.float64),
         config_id=config.config_id,
         n_events=n,
+        param_generation=param_generation,
     )
 
 
@@ -206,7 +226,7 @@ def element_pitch_m(config: TransmitConfig) -> float:
     return pitch
 
 
-def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
+def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> ContributionMap:
     """MLA as a property of the map: `mla` receive lines per transmit.
 
     The lines of transmit k sit at
@@ -237,10 +257,13 @@ def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
         weights=np.ones((mla * len(config.events), 1), dtype=np.float64),
         config_id=config.config_id,
         n_events=len(config.events),
+        param_generation=param_generation,
     )
 
 
-def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMap:
+def synthetic_uniform_map(
+    config: TransmitConfig, *, cap: int, param_generation: int = 0
+) -> ContributionMap:
     """A multi-contribution map with uniform weights — a fixture, not a spec.
 
     Line k draws from the `cap` events centred on k, clipped at the frame
@@ -283,4 +306,5 @@ def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMa
         weights=weights,
         config_id=config.config_id,
         n_events=n,
+        param_generation=param_generation,
     )

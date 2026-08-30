@@ -414,6 +414,54 @@ def test_a_frame_mixing_configurations_is_refused():
         das_rf_golden(profile, list(config.events), mixed, contribution=identity_map(config))
 
 
+def test_every_line_gets_the_same_number_of_delay_evaluations():
+    """Fixed work, asserted on the executable path rather than only on the
+    map's shape. An earlier version of `_slots_by_event` skipped inert
+    slots, so a cap=3 edge line ran two delay-and-aperture evaluations
+    where an interior line ran three — the variable-work shape the absolute
+    rules forbid, in the very implementation a port is written against."""
+    from enodia.spec.beamform import _slots_by_event
+
+    config = make_bmode_config(small_profile())
+    cmap = synthetic_uniform_map(config, cap=3)
+
+    per_line: dict[int, int] = {}
+    for slots in _slots_by_event(cmap).values():
+        for line, _ in slots:
+            per_line[line] = per_line.get(line, 0) + 1
+
+    assert set(per_line) == set(range(cmap.n_lines))
+    assert set(per_line.values()) == {cmap.cap}
+
+
+def test_a_map_from_an_earlier_parameter_generation_is_refused():
+    """A depth or focus change is an in-config change (§19): the id holds
+    still while every derivative behind it is invalidated. A map checked on
+    the id alone would survive exactly the change that invalidates it."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))  # generation 0
+    stale = identity_map(config, param_generation=1)
+
+    with pytest.raises(ValueError, match="parameter generation"):
+        das_rf_golden(profile, list(config.events), records, contribution=stale)
+
+
+def test_a_frame_mixing_parameter_generations_is_refused():
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    from dataclasses import replace as dc_replace
+
+    mixed = list(records)
+    mixed[0] = RFEventRecord(
+        header=dc_replace(records[0].header, param_generation=7), data=records[0].data.copy()
+    )
+
+    with pytest.raises(ValueError, match="mixes parameter generations"):
+        das_rf_golden(profile, list(config.events), mixed, contribution=identity_map(config))
+
+
 # --- the demo runs it ----------------------------------------------------
 
 

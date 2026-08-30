@@ -824,13 +824,24 @@ output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
 
 **A map names the configuration it was derived from** (`config_id`, event
-count) and both consumers compare that against the configuration the
-records' headers name before forming a frame. Event indices are small
+count, **parameter generation**) and both consumers compare that against
+what the records' headers name before forming a frame. The generation is
+carried separately because depth and focus are in-config parameters (§19):
+the id holds still across a knob turn while every derivative behind it,
+this map included, is invalidated and re-derived — so a map checked on the
+id alone would survive exactly the change that invalidates it. Event indices are small
 integers every configuration has, so a map derived elsewhere resolves
 cleanly and would put the frame on another configuration's scanlines with
 nothing raised — the accident the generation tag exists to prevent (§19).
-A frame whose records name more than one configuration is refused for the
-same reason.
+A frame whose records name more than one configuration, or more than one
+generation, is refused for the same reason.
+
+**Every slot runs, inert ones included.** The reference implementation does
+not skip zero-weight slots: doing so would give a frame-edge line fewer
+delay-and-aperture evaluations than an interior one, which is the
+variable-work shape the absolute rules forbid — and this implementation is
+the specification a port is written against, so a shortcut taken here reads
+as sanctioned.
 
 What stays measured, not chosen here (§17): the compounding weight
 function (needs the beam model, #9), window width, and truncation count.
