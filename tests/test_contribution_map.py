@@ -147,6 +147,9 @@ def test_finite_weights_with_an_overflowing_sum_are_refused():
             line_x_m=(0.0,),
             event_indices=np.array([[0, 1]], dtype=np.intp),
             weights=np.array([[1e308, 1e308]], dtype=np.float64),
+            config_id="overflow",
+            n_events=2,
+            param_generation=0,
         )
 
 
@@ -164,7 +167,74 @@ def test_a_near_zero_weight_sum_is_refused_not_amplified():
             line_x_m=cmap.line_x_m,
             event_indices=np.asarray(cmap.event_indices),
             weights=tiny,
+            config_id=cmap.config_id,
+            n_events=cmap.n_events,
+            param_generation=cmap.param_generation,
         )
+
+
+def test_a_map_without_provenance_cannot_be_built():
+    """`SOL-57-3`: while the fields could be empty, `check_frame` had nothing
+    to compare and an explicitly supplied unbound map was consumed
+    unchecked — the same hole as the default path, through the other door.
+    Provenance is required at construction, so no such map exists to pass."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+
+    with pytest.raises(ValueError, match="must name the configuration"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=np.asarray(cmap.event_indices),
+            weights=np.asarray(cmap.weights),
+            config_id="",
+            n_events=len(config.events),
+            param_generation=0,
+        )
+
+
+def test_a_map_claiming_no_events_cannot_be_built():
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+
+    with pytest.raises(ValueError, match="must name the configuration"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=np.asarray(cmap.event_indices),
+            weights=np.asarray(cmap.weights),
+            config_id=config.config_id,
+            n_events=0,
+            param_generation=0,
+        )
+
+
+def test_every_derived_map_takes_its_generation_from_the_configuration():
+    """`SOL-57-2`: the helpers each defaulted to generation 0 while the
+    events carried the accepted one, so a configuration accepted at
+    generation 7 produced maps claiming 0 — a derivative disagreeing with
+    what it was derived from, which no check could see because both sides
+    were self-consistent. The configuration is now the single source."""
+    profile = linear_5mhz()
+    config = make_bmode_config(profile, param_generation=7)
+
+    assert config.param_generation == 7
+    assert {ev.param_generation for ev in config.events} == {7}
+    for cmap in (
+        identity_map(config),
+        mla_map(config, mla=2),
+        synthetic_uniform_map(config, cap=3),
+    ):
+        assert cmap.param_generation == 7
+
+
+def test_a_frame_at_another_generation_is_refused_through_the_default_path():
+    """The consequence at consumption: a configuration accepted at
+    generation 7 cannot form a frame whose records carry 0."""
+    profile = small_profile()
+    config = make_bmode_config(profile, param_generation=7)
+    records = constant_records(profile, len(config.events))  # generation 0
+
+    with pytest.raises(ValueError, match="parameter generation"):
+        das_rf_golden(profile, list(config.events), records)
 
 
 # --- MLA as a property of the map ---------------------------------------
@@ -241,6 +311,9 @@ def test_a_non_integer_event_index_is_refused():
             line_x_m=cmap.line_x_m,
             event_indices=np.asarray(cmap.event_indices, dtype=np.float64) + 0.5,
             weights=np.asarray(cmap.weights),
+            config_id=cmap.config_id,
+            n_events=cmap.n_events,
+            param_generation=cmap.param_generation,
         )
 
 
@@ -254,7 +327,12 @@ def test_a_negative_event_index_is_refused():
 
     with pytest.raises(ValueError, match="negative"):
         ContributionMap(
-            line_x_m=cmap.line_x_m, event_indices=indices, weights=np.asarray(cmap.weights)
+            line_x_m=cmap.line_x_m,
+            event_indices=indices,
+            weights=np.asarray(cmap.weights),
+            config_id=cmap.config_id,
+            n_events=cmap.n_events,
+            param_generation=cmap.param_generation,
         )
 
 
@@ -272,6 +350,7 @@ def test_an_event_index_past_the_configuration_is_refused_at_derivation():
             weights=np.asarray(cmap.weights),
             config_id=config.config_id,
             n_events=len(config.events),
+            param_generation=config.param_generation,
         )
 
 
@@ -426,6 +505,9 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
         line_x_m=cmap.line_x_m,
         event_indices=np.asarray(cmap.event_indices),
         weights=weights,
+        config_id=cmap.config_id,
+        n_events=cmap.n_events,
+        param_generation=cmap.param_generation,
         normalized=False,
     )
 
@@ -518,7 +600,7 @@ def test_a_map_from_an_earlier_parameter_generation_is_refused():
     profile = small_profile()
     config = make_bmode_config(profile)
     records = constant_records(profile, len(config.events))  # generation 0
-    stale = identity_map(config, param_generation=1)
+    stale = identity_map(replace(config, param_generation=1))
 
     with pytest.raises(ValueError, match="parameter generation"):
         das_rf_golden(profile, list(config.events), records, contribution=stale)

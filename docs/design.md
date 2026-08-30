@@ -828,8 +828,13 @@ output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
 
 **A map names the configuration it was derived from** (`config_id`, event
-count, **parameter generation**) and both consumers compare that against
-what the records' headers name before forming a frame. The generation is
+count, **parameter generation**) — required fields, not optional ones, so an
+unbound map cannot be built — and both consumers compare all three against
+what the records' headers name before forming a frame. The generation has a
+single source: the accepted `TransmitConfig` carries it, and every
+derivative reads it from there rather than defaulting on its own, because a
+derivative that supplies its own generation can disagree with what it was
+derived from while both sides stay self-consistent. The generation is
 carried separately because depth and focus are in-config parameters (§19):
 the id holds still across a knob turn while every derivative behind it,
 this map included, is invalidated and re-derived — so a map checked on the

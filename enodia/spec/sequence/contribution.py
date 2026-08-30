@@ -71,9 +71,10 @@ class ContributionMap:
     `normalized=False` — which exists so a test can show the artifact
     renormalization prevents, and for no other reason.
 
-    **A map names the configuration it was derived from.** `config_id`,
-    `n_events` and `param_generation` are its provenance, and a consumer
-    checks them against the frame it is about to form
+    **A map names the configuration it was derived from — always.**
+    `config_id`, `n_events` and `param_generation` are required fields, not
+    optional ones, and a consumer checks them against the frame it is about
+    to form
     (`enodia.spec.beamform`). Without that check, a map derived for one
     configuration renders another configuration's records — the event
     indices line up, the record identity checks pass, and the line geometry
@@ -95,12 +96,20 @@ class ContributionMap:
     line_x_m: tuple[float, ...]
     event_indices: np.ndarray  # (n_lines, cap) int
     weights: np.ndarray  # (n_lines, cap) float64
-    config_id: str = ""
-    n_events: int = 0
-    param_generation: int | None = None
+    config_id: str
+    n_events: int
+    param_generation: int
     normalized: bool = True
 
     def __post_init__(self) -> None:
+        if not self.config_id or self.n_events <= 0:
+            # Provenance is required, not optional. While it could be empty,
+            # `check_frame` had nothing to compare and every unbound map —
+            # including one supplied explicitly — was consumed unchecked.
+            raise ValueError(
+                "a contribution map must name the configuration it was derived"
+                f" from; got config_id={self.config_id!r}, n_events={self.n_events}"
+            )
         indices = np.ascontiguousarray(self.event_indices)
         weights = np.ascontiguousarray(self.weights, dtype=np.float64)
         n_lines = len(self.line_x_m)
@@ -152,9 +161,7 @@ class ContributionMap:
         """Contributing-transmit slots per line — the fixed work."""
         return int(self.event_indices.shape[1])
 
-    def check_frame(
-        self, config_id: str, n_events: int, param_generation: int | None = None
-    ) -> None:
+    def check_frame(self, config_id: str, n_events: int, param_generation: int) -> None:
         """Refuse a frame this map was not derived for.
 
         The map carries line geometry; the records carry the configuration
@@ -163,28 +170,24 @@ class ContributionMap:
         configuration has them — so nothing downstream would notice, and the
         frame would be formed on stale scanlines.
         """
-        if self.config_id and config_id and self.config_id != config_id:
+        if self.config_id != config_id:
             raise ValueError(
                 f"contribution map was derived for configuration"
                 f" {self.config_id!r}, frame carries {config_id!r}"
             )
-        if self.n_events and n_events and self.n_events != n_events:
+        if self.n_events != n_events:
             raise ValueError(
                 f"contribution map was derived for {self.n_events} transmit"
                 f" events, frame carries {n_events}"
             )
-        if (
-            self.param_generation is not None
-            and param_generation is not None
-            and self.param_generation != param_generation
-        ):
+        if self.param_generation != param_generation:
             raise ValueError(
                 f"contribution map was derived at parameter generation"
                 f" {self.param_generation}, frame carries {param_generation}"
             )
 
 
-def identity_map(config: TransmitConfig, *, param_generation: int = 0) -> ContributionMap:
+def identity_map(config: TransmitConfig) -> ContributionMap:
     """Event k forms line k with unit weight — the conventional case.
 
     This is the map every pre-#53 image was formed under, and the general
@@ -198,7 +201,7 @@ def identity_map(config: TransmitConfig, *, param_generation: int = 0) -> Contri
         weights=np.ones((n, 1), dtype=np.float64),
         config_id=config.config_id,
         n_events=n,
-        param_generation=param_generation,
+        param_generation=config.param_generation,
     )
 
 
@@ -265,7 +268,7 @@ def transmit_line_pitch_m(config: TransmitConfig) -> float:
     )
 
 
-def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> ContributionMap:
+def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
     """MLA as a property of the map: `mla` receive lines per transmit.
 
     The lines of transmit k sit at
@@ -297,13 +300,11 @@ def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> C
         weights=np.ones((mla * len(config.events), 1), dtype=np.float64),
         config_id=config.config_id,
         n_events=len(config.events),
-        param_generation=param_generation,
+        param_generation=config.param_generation,
     )
 
 
-def synthetic_uniform_map(
-    config: TransmitConfig, *, cap: int, param_generation: int = 0
-) -> ContributionMap:
+def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMap:
     """A multi-contribution map with uniform weights — a fixture, not a spec.
 
     Line k draws from the `cap` events centred on k, clipped at the frame
@@ -346,5 +347,5 @@ def synthetic_uniform_map(
         weights=weights,
         config_id=config.config_id,
         n_events=n,
-        param_generation=param_generation,
+        param_generation=config.param_generation,
     )

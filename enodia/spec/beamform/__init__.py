@@ -203,11 +203,9 @@ def _check_frame_provenance(contribution, events, records) -> None:
     generations = {rec.header.param_generation for rec in records}
     if len(generations) > 1:
         raise ValueError(f"frame mixes parameter generations {sorted(generations)}")
-    contribution.check_frame(
-        config_ids.pop() if config_ids else "",
-        len(events),
-        generations.pop() if generations else None,
-    )
+    if not config_ids or not generations:
+        raise ValueError("frame carries no records, so nothing names its configuration")
+    contribution.check_frame(config_ids.pop(), len(events), generations.pop())
 
 
 def _identity_contribution(events: list[TxEvent]):

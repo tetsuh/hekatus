@@ -181,12 +181,21 @@ class TransmitConfig:
     — see the module docstring. It is carried here so that a consumer holding
     only a configuration still reads the same coordinates the delay tables
     were derived from.
+
+    `param_generation` is the generation this configuration was accepted at,
+    and it is the **one** place a derivative reads it from. Every derivative
+    — the events' own tag, the contribution maps of #53 — takes it from
+    here rather than defaulting on its own, because a derivative that
+    supplies its own generation can disagree with the configuration it was
+    derived from and no check would see it (§19: the generation tag is the
+    single source of truth, so it has to have a single source).
     """
 
     config_id: str
     probe_profile_id: str
     element_x_m: tuple[float, ...]
     events: tuple[TxEvent, ...]
+    param_generation: int = 0
 
 
 def _finite(values, what: str) -> np.ndarray:
@@ -371,6 +380,7 @@ def accept(
         probe_profile_id=description.probe_profile_id,
         element_x_m=tuple(float(x) for x in canonical),
         events=tuple(events),
+        param_generation=param_generation,
     )
 
 
