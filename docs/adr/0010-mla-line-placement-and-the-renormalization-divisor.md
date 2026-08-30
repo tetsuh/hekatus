@@ -50,16 +50,39 @@ the value every gCNR and PSF figure is computed from.
   Simplest to state, but it detaches the receive lines from the beam that
   illuminated them, which is the one fact MLA exists to exploit (§7:
   "the transmit beam has finite width"). Rejected.
+- **D. Sensitivity-weighted placement, pulled toward the transmit axis.**
+  The two-way physics invites it: for Gaussian transmit (width a) and
+  receive (width b) beams, the two-way response of a line at nominal offset
+  d peaks at `d·a²/(a²+b²)` — between the line and the transmit axis — with
+  amplitude falling as `exp(−d²/2(a²+b²))`. An even nominal grid is
+  therefore even in neither sensitivity nor effective position, and trading
+  sampling uniformity for outer-line sensitivity is a defensible response.
+  Rejected here, in two halves. With no beam model in the repository there
+  is nothing to derive the pull-in from, so it could only enter as a
+  hand-tuned constant with no provenance — which this project rejects
+  everywhere else (ADR-0008 records what an unsourced number costs). And as
+  compensation it addresses MLA run *without* transmit compounding: the
+  illumination non-uniformity it patches is the artifact §7 adopts stage-2
+  compounding to remove, and under compounding an output line is formed
+  from several transmits, so "the" axis to pull toward stops being well
+  defined — the same physics returns instead as the compounding weight
+  function, which is data (§17, gated on the beam model of #9). **Re-heard
+  when both hold**: the beam model of #9 has landed, so a placement could
+  be *derived* — equalized two-way effective spacing, or an SNR floor —
+  rather than tuned; and measurement shows compounding does not recover the
+  outer-line sensitivity on its own. The map-as-data structure keeps the
+  door open: a derived placement is one more derivation function, uniform
+  across transmits, so translation invariance survives it.
 
 **What frame-edge renormalization divides by**
 
-- **D. The sum of the weights actually applied to that line (chosen).**
+- **E. The sum of the weights actually applied to that line (chosen).**
   With a floor below which the line is refused rather than normalized.
-- **E. The count of contributing transmits.** Equivalent to D while weights
+- **F. The count of contributing transmits.** Equivalent to E while weights
   are uniform, and wrong the moment they are not — which is the moment
   compounding weights arrive (§17, gated on the beam model, #9). Adopting it
   would mean rewriting every figure measured under it. Rejected.
-- **F. No renormalization; correct the gain downstream.** Rejected: the
+- **G. No renormalization; correct the gain downstream.** Rejected: the
   artifact is a smooth lateral shading that reads as anatomy, and a
   downstream correction would need the map anyway.
 
@@ -74,7 +97,7 @@ the value every gCNR and PSF figure is computed from.
 2. **A non-uniform transmit-line grid is refused**, not averaged. It has no
    single pitch to subdivide, and what MLA should do on one is not defined
    here; an angular sequence arrives with convex and sector probes.
-3. **Renormalization divides by the applied weight sum.** Option D, at
+3. **Renormalization divides by the applied weight sum.** Option E, at
    derivation rather than in the beamformer, so the beamformer stays a plain
    weighted sum and every consumer of a map sees the same normalization.
 4. **A line whose weight sum falls below `WEIGHT_SUM_FLOOR` is refused.**
@@ -96,7 +119,7 @@ the value every gCNR and PSF figure is computed from.
   that its line positions equal the identity map's exactly, with no
   tolerance.
 - Every image-quality figure measured under compounding is stated against
-  the applied-weight-sum normalization. If option E were ever adopted, those
+  the applied-weight-sum normalization. If option F were ever adopted, those
   figures would have to be retaken, which is the reason to record the choice
   now rather than when the weights stop being uniform.
 - Frame-edge lines have the same *work* as interior lines and differ only in
@@ -106,6 +129,11 @@ the value every gCNR and PSF figure is computed from.
 - A sequence whose beam axes are unevenly spaced cannot use `mla_map` at
   all. That is deliberate for now; defining angular MLA is work that belongs
   with the probes that need it.
+- Sensitivity-weighted placement is recorded in option D with its two
+  re-hearing conditions, because this record's content is immutable once it
+  lands (workflow §6). Until a re-hearing, an outer MLA line that measures
+  dark is evidence for the compounding weights to absorb, not a reason to
+  move the line.
 
 ## Status history
 
