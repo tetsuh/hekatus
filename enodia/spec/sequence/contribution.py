@@ -138,6 +138,7 @@ class ContributionMap:
 
     @property
     def n_lines(self) -> int:
+        """Output lines this map forms — not the transmit-event count."""
         return len(self.line_x_m)
 
     @property

@@ -183,6 +183,10 @@ def test_mla_1_degenerates_to_the_identity_geometry_exactly():
 
 @pytest.mark.parametrize("mla", [2, 4])
 def test_mla_lines_subdivide_the_transmit_pitch_symmetrically(mla):
+    """The placement decision #53 records, checked as geometry rather than
+    taken on trust: symmetry about the transmit axis is what makes MLA 1
+    degenerate exactly, and even spacing is what keeps the group
+    translating with the transmit."""
     profile = linear_5mhz()
     config = make_bmode_config(profile)
 
@@ -410,8 +414,10 @@ def test_a_frame_mixing_configurations_is_refused():
         header=dc_replace(records[0].header, config_id="other"), data=records[0].data.copy()
     )
 
+    cmap = identity_map(config)
+
     with pytest.raises(ValueError, match="mixes transmit configurations"):
-        das_rf_golden(profile, list(config.events), mixed, contribution=identity_map(config))
+        das_rf_golden(profile, list(config.events), mixed, contribution=cmap)
 
 
 def test_every_line_gets_the_same_number_of_delay_evaluations():
@@ -448,6 +454,9 @@ def test_a_map_from_an_earlier_parameter_generation_is_refused():
 
 
 def test_a_frame_mixing_parameter_generations_is_refused():
+    """The generation half of the same rule: a frame assembled across a
+    depth or focus change is compounded from transmits acquired under
+    different tables (§4, §19)."""
     profile = small_profile()
     config = make_bmode_config(profile)
     records = constant_records(profile, len(config.events))
@@ -458,8 +467,10 @@ def test_a_frame_mixing_parameter_generations_is_refused():
         header=dc_replace(records[0].header, param_generation=7), data=records[0].data.copy()
     )
 
+    cmap = identity_map(config)
+
     with pytest.raises(ValueError, match="mixes parameter generations"):
-        das_rf_golden(profile, list(config.events), mixed, contribution=identity_map(config))
+        das_rf_golden(profile, list(config.events), mixed, contribution=cmap)
 
 
 # --- the demo runs it ----------------------------------------------------

@@ -37,7 +37,6 @@ float64 → complex128, with the phase factor formed in float64 and cast.
 from __future__ import annotations
 
 import math
-from dataclasses import replace
 
 import numpy as np
 
@@ -78,7 +77,7 @@ def _check_record(profile: ProbeProfile, rec: IQEventRecord, decimation: int) ->
 
 def delayed_channel_vectors(
     profile: ProbeProfile,
-    ev: TxEvent,
+    line_x_m: float,
     rec: IQEventRecord,
     z: np.ndarray,
     *,
@@ -89,12 +88,18 @@ def delayed_channel_vectors(
     """x_i[n] for every channel and depth of one event — L0 checkpoint 2.
 
     Returns ``(n_ch, n_depth)`` complex in the intermediate dtype.
+
+    Takes the line abscissa rather than the transmit event it used to be
+    read from. After #53 a line belongs to the contribution map, not to an
+    event: under MLA one event feeds several lines, and passing the event
+    meant rebuilding a throwaway copy of it per line to override the one
+    field this function reads.
     """
     _check_record(profile, rec, decimation)
     cdtype = _complex_dtype(dtype)
     c = profile.c_m_s
     fs_dec = profile.fs_hz / decimation
-    dx = profile.element_x()[:, None] - ev.line_x_m  # (n_ch, 1)
+    dx = profile.element_x()[:, None] - line_x_m  # (n_ch, 1)
     tau_i = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth) arrival time
     t_p = 2.0 * z[None, :] / c  # (1, n_depth) pixel round-trip time
     tau = t_p - tau_i  # the delay of design.md §5, ≤ 0
@@ -151,7 +156,7 @@ def das_iq(
         for line, weight in slots:
             x = delayed_channel_vectors(
                 profile,
-                replace(ev, line_x_m=float(line_x[line])),
+                float(line_x[line]),
                 rec,
                 z,
                 decimation=decimation,

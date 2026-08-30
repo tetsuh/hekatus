@@ -211,6 +211,14 @@ def _check_frame_provenance(contribution, events, records) -> None:
 
 
 def _identity_contribution(events: list[TxEvent]):
+    """The default map when a caller passes none: event k forms line k.
+
+    Built from the events rather than from a configuration, because a
+    caller holding only an event list has no configuration to name. It
+    therefore carries no provenance, and `check_frame` treats empty
+    provenance as "do not compare" — the pre-#53 callers are exactly the
+    ones with nothing to compare against.
+    """
     from enodia.spec.sequence.contribution import ContributionMap
 
     n = len(events)

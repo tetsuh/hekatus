@@ -71,7 +71,7 @@ def test_the_phase_sign_convention_is_asserted_at_checkpoint_2_not_in_a_comment(
     ev = min(events, key=lambda e: abs(e.line_x_m - scatterers[0].x_m))
     rec = next(r for r in records if r.header.tx_event_index == ev.event_index)
     iq = next(r for r in iq_records if r.header.tx_event_index == ev.event_index)
-    x = delayed_channel_vectors(profile, ev, iq, z, decimation=d, dtype=np.float64)
+    x = delayed_channel_vectors(profile, ev.line_x_m, iq, z, decimation=d, dtype=np.float64)
     ref, w = golden_channel_vectors(profile, ev, rec, z)
     inside = w > 0
 
