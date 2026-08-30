@@ -809,13 +809,14 @@ of slots** (`cap`), each naming a transmit event and a weight. A frame-edge
 line with fewer real contributions is padded with inert slots — weight
 zero, pointing at a real event — so work per line is constant, which is
 where the no-variable-loops absolute rule becomes an assertable property
-of data. Weights are **renormalized at derivation** (each line sums to
-one, with a floor below which the line is refused rather than amplified),
+of data. Weights are **renormalized at derivation** — each line divided by the sum
+of the weights actually applied to it (ADR-0010), with a floor below which
+the line is refused rather than amplified —
 so the beamformer stays a plain weighted sum and edge lines are not darker
 for their position. Both DAS paths — RF golden and IQ — read the map; the
 identity map reproduces the pre-map images bit for bit.
 
-**MLA line placement (decided in #53):** the receive lines of one transmit
+**MLA line placement (ADR-0010):** the receive lines of one transmit
 subdivide the **transmit line** pitch evenly, symmetric about the transmit
 axis — `x_k + pitch·(2j−(mla−1))/(2·mla)` — where the pitch is the spacing
 of the beam axes, not of the elements. The two coincide only for the

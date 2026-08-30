@@ -544,6 +544,60 @@ def test_a_frame_mixing_parameter_generations_is_refused():
         das_rf_golden(profile, list(config.events), mixed, contribution=cmap)
 
 
+def test_the_default_identity_path_refuses_another_configurations_records():
+    """`SOL-57-001`: the default `contribution=None` path used to carry no
+    provenance, so a caller could pair configuration A's events with
+    configuration B's records and render them on A's line geometry with
+    nothing raised. Event indices are the same small integers in both, so
+    `_records_by_event` cannot see it. Accepted events now carry their
+    generation tag, which makes the default path checkable like any other."""
+    profile = small_profile()
+    config_a = make_bmode_config(profile)
+    config_b = make_bmode_config(profile, config_id="another-config")
+    records_b = constant_records(profile, len(config_b.events), config_id=config_b.config_id)
+
+    with pytest.raises(ValueError, match="derived for configuration"):
+        das_rf_golden(profile, list(config_a.events), records_b)
+
+
+def test_the_default_iq_path_refuses_another_configurations_records():
+    """The same hole through the IQ path, which reads the map identically."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = small_profile()
+    config_a = make_bmode_config(profile)
+    config_b = make_bmode_config(profile, config_id="another-config")
+    records_b = constant_records(profile, len(config_b.events), config_id=config_b.config_id)
+    iq_b = demodulate_frame(records_b, profile, decimation=8)
+
+    with pytest.raises(ValueError, match="derived for configuration"):
+        das_iq(profile, list(config_a.events), iq_b, decimation=8)
+
+
+def test_the_default_path_refuses_events_that_name_no_configuration():
+    """Provenance is required, not merely compared: an event list assembled
+    by hand has nothing a frame can be checked against."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    unbound = [replace(ev, config_id="") for ev in config.events]
+
+    with pytest.raises(ValueError, match="name no configuration"):
+        das_rf_golden(profile, unbound, records)
+
+
+def test_the_default_path_refuses_events_from_two_configurations():
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    mixed = list(config.events)
+    mixed[0] = replace(mixed[0], config_id="other")
+
+    with pytest.raises(ValueError, match="span transmit configurations"):
+        das_rf_golden(profile, mixed, records)
+
+
 # --- the demo runs it ----------------------------------------------------
 
 

@@ -213,19 +213,41 @@ def _check_frame_provenance(contribution, events, records) -> None:
 def _identity_contribution(events: list[TxEvent]):
     """The default map when a caller passes none: event k forms line k.
 
-    Built from the events rather than from a configuration, because a
-    caller holding only an event list has no configuration to name. It
-    therefore carries no provenance, and `check_frame` treats empty
-    provenance as "do not compare" — the pre-#53 callers are exactly the
-    ones with nothing to compare against.
+    **Bound to its configuration like any other map.** Accepted events carry
+    the generation tag they were accepted under, so this path is checked
+    against the records exactly as an explicitly derived map is. It used to
+    carry no provenance, on the reasoning that a caller holding only events
+    had no configuration to name; that left the default — which is every
+    pre-#53 call site — as the one way to render one configuration's records
+    on another's line geometry with nothing raised.
+
+    A list whose events disagree about their configuration, or that names
+    none, is refused: there is no line geometry a frame could be checked
+    against.
     """
     from enodia.spec.sequence.contribution import ContributionMap
 
     n = len(events)
+    config_ids = {ev.config_id for ev in events}
+    generations = {ev.param_generation for ev in events}
+    if len(config_ids) > 1 or len(generations) > 1:
+        raise ValueError(
+            f"events span transmit configurations {sorted(config_ids)}"
+            f" at generations {sorted(generations)}"
+        )
+    config_id = config_ids.pop() if config_ids else ""
+    if not config_id:
+        raise ValueError(
+            "transmit events name no configuration; they must come from"
+            " `enodia.spec.sequence.accept` so the frame can be checked against them"
+        )
     return ContributionMap(
         line_x_m=tuple(ev.line_x_m for ev in events),
         event_indices=np.array([[ev.event_index] for ev in events], dtype=np.intp),
         weights=np.ones((n, 1), dtype=np.float64),
+        config_id=config_id,
+        n_events=n,
+        param_generation=generations.pop() if generations else 0,
     )
 
 
