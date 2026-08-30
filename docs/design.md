@@ -922,8 +922,9 @@ cancel signal. CF/SLSC look at coherence and are comparatively robust.
 - estimation at 1–5 Hz refresh suffices (speed/aberration are set by
   patient and probe placement). Amortized cost under 1%
 
-**Why not (b)** — three reasons, and they do not all bind at the same
-level (§0 separates role from placement, and placement may change):
+**Why not (b)** — two rejection reasons and one expectation-setting note,
+and the reasons do not bind at the same level (§0 separates role from
+placement, and placement may change):
 - **[role]** translation invariance collapses; the delay table stops being
   one table shifted per scanline and becomes per-pixel data, and the
   contribution map has to be re-derived from the sound-speed map. This cost
