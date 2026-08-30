@@ -101,6 +101,18 @@ writing one, not by measuring again.
 
 ---
 
+## Gated (held in an issue; not active)
+
+- **Local sound-speed map — §8 model (b) re-hearing (#44).** Rejected in
+  design.md §8; #43 records which rejection reasons are bound to the
+  placement and which to the role. The question re-activates only when both
+  of #44's conditions hold: the hardware-neutral estimator (#42) has passed
+  L0, and a placement exists in this repository on which per-pixel path
+  integrals are cheap. First product on activation is an ADR, and its
+  evidence must include the implicit-table hypothesis §8 marks as
+  unverified. Until then this line exists so the question is not re-derived
+  from scratch
+
 ## Needs external input (open)
 
 - Concrete clinical use for organ recognition (determines model scale and

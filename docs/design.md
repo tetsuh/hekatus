@@ -922,14 +922,40 @@ cancel signal. CF/SLSC look at coherence and are comparatively robust.
 - estimation at 1–5 Hz refresh suffices (speed/aberration are set by
   patient and probe placement). Amortized cost under 1%
 
-**Why not (b):**
-- translation invariance collapses; per pixel × channel path integrals
-- that is gather/sequential work, **the shape Tensix is worst at**
-- the 29% figure belongs to (b), so **keep expectations honest**
+**Why not (b)** — two rejection reasons and one expectation-setting note,
+and the reasons do not bind at the same level (§0 separates role from
+placement, and placement may change):
+- **[role]** translation invariance collapses; the delay table stops being
+  one table shifted per scanline and becomes per-pixel data, and the
+  contribution map has to be re-derived from the sound-speed map. This cost
+  is paid on any hardware. Whether it can be *hidden* — a table made
+  implicit by, say, hardware interpolation — is an **unverified
+  hypothesis**, and it is the first thing a re-hearing would have to
+  measure; nothing here asserts it in either direction
+- **[placement]** per pixel × channel path integrals are gather/sequential
+  work, the shape the current placement's compute (Tensix) is worst at. A
+  placement on which per-pixel gather is cheap removes this objection — the
+  property is what matters, and no such placement exists in this repository
+  today
+- **[expectation-setting]** the 29% figure belongs to (b), so **keep
+  expectations honest** — this is not a reason against (b); it is a reason
+  not to promise (b)'s results while running (a)
 
 Delay computation is nevertheless abstracted as "path integral over a
 sound-speed map," degenerating to conventional DAS under a constant map —
 leaving room to grow into (b).
+
+**What would walk through that door.** The rejection is re-heard — not
+reversed here — when both conditions of #44 hold: the hardware-neutral
+estimator of #42 has passed L0, so (b) would be measured against a working
+(a) rather than against a fixed 1540 m/s; and a placement exists in this
+repository on which the placement-bound objection does not hold. The
+re-hearing's first product is an ADR (ADR-0004 lifecycle), and its evidence
+must include the implicit-table hypothesis above, measured. Either way, (b)
+would not touch the fixed-iteration rule of the real-time path: the
+estimator producing a map is an asynchronous producer of parameter
+generations, outside the determinism boundary, exactly as (a)'s estimator
+is.
 
 ### Estimation algorithm
 
@@ -1744,7 +1770,7 @@ A record, so the same debates are not repeated.
 | Keys / Catmull-Rom 4-tap (a=−1/2) | magnitude flatness equal to Lagrange, phase error equal to linear (§5) |
 | Keys 4-tap with a < −1/2 | wins the band edge by pre-emphasis; its error also tends toward zero as the pulse narrows, but more slowly than Lagrange (§5) |
 | least-squares 4-tap fractional delay | a table per pass-band, not a formula two ports can check against each other (§5) |
-| local sound-speed map (Layer-1 (b)) | breaks translation invariance, gather-bound. Reserved as an extension |
+| local sound-speed map (Layer-1 (b)) | breaks translation invariance (role-bound); gather-bound (placement-bound). Re-hearing gated by #44 (§8) |
 | full MV on 2D probes | two orders of magnitude short |
 | synthetic transmit aperture (STA, Stage 3) | single-element transmit SNR; deep field collapses |
 | gather-style compounding | 340 GB/s DRAM traffic; collides with MV |
