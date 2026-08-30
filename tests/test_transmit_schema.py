@@ -187,23 +187,87 @@ def test_the_millimetre_round_trip_is_not_bit_equal_on_the_current_profile():
     assert np.abs(round_tripped - canonical).max() < coordinate_tolerance_m(linear_5mhz())
 
 
-def test_unit_conversion_divides_by_an_exact_power_of_ten():
-    """1e3 is representable in binary64 and 1e-3 is not, so dividing rounds
-    once where multiplying by the reciprocal rounds twice. The cheaper form
-    costs four times the residue on this profile — 20 coordinates moving by
-    3.5e-18 m instead of 6 by 8.7e-19 m — and this pins which one ingress
-    uses, since both pass every other assertion in this module."""
-    canonical = linear_5mhz().element_x()
-    millimetres = canonical * 1e3
+def test_the_reciprocal_form_costs_four_times_the_residue():
+    """The other half of what §19 and ADR-0009 quote, pinned the same way.
 
-    by_division = millimetres / 1e3
-    by_reciprocal = millimetres * 1e-3
+    Multiplying by 1e-3 rounds twice, because 1e-3 is not representable in
+    binary64 while 1e3 is. Both figures are in the contract prose, so both
+    are pinned here rather than one being derivable and the other trusted."""
+    canonical = linear_5mhz().element_x()
+
+    by_reciprocal = (canonical * 1e3) * 1e-3
 
     assert int(np.count_nonzero(by_reciprocal != canonical)) == 20
-    assert np.abs(by_division - canonical).max() < np.abs(by_reciprocal - canonical).max()
+    assert np.abs(by_reciprocal - canonical).max() == 3.469446951953614e-18
 
-    accepted = accept(describe_bmode(linear_5mhz()), linear_5mhz())
-    assert np.array_equal(np.asarray(accepted.element_x_m), canonical)
+
+def test_ingress_converts_millimetres_by_dividing_by_an_exact_power_of_ten():
+    """Pinned through `accept()` itself, not by recomputing both forms.
+
+    The first attempt at this test compared two independently computed arrays
+    and then checked the canonicalized element coordinates — which are the
+    profile's either way, so it passed no matter what ingress did
+    (`SOL-54-005`). The scanline abscissa and the virtual source are kept
+    from the description rather than replaced, so they are where the
+    conversion is actually observable: 22 of the 128 differ between the two
+    forms."""
+    profile = linear_5mhz()
+    description = describe_bmode(profile)
+
+    accepted = accept(description, profile)
+
+    millimetres = np.array([ev.line_x_mm for ev in description.events])
+    got = np.array([ev.line_x_m for ev in accepted.events])
+    assert np.array_equal(got, millimetres / 1e3)
+    assert not np.array_equal(got, millimetres * 1e-3)
+
+    source_mm = np.array([ev.virtual_source_mm[0] for ev in description.events])
+    source_m = np.array([ev.virtual_source_m[0] for ev in accepted.events])
+    assert np.array_equal(source_m, source_mm / 1e3)
+
+
+def test_ingress_converts_nanoseconds_by_dividing_by_an_exact_power_of_ten():
+    """The same pin for the delay axis, which the public claim also names.
+
+    1e9 is representable in binary64 and 1e-9 is not. The accepted delays are
+    kept rather than recomputed, so the form is directly observable: 4 of the
+    128 delays of this event differ between `/ 1e9` and `* 1e-9`."""
+    profile = linear_5mhz()
+    description = describe_bmode(profile)
+
+    accepted = accept(description, profile)
+
+    nanoseconds = np.array(description.events[64].firing_delays_ns)
+    got = np.array(accepted.events[64].firing_delays_s)
+    assert np.array_equal(got, nanoseconds / 1e9)
+    assert not np.array_equal(got, nanoseconds * 1e-9)
+
+
+def test_the_coordinate_check_classifies_by_the_division_form():
+    """A coordinate the two forms disagree about, put through `accept()`.
+
+    Element 5 sits at −17.55 mm. Displaced to −17.550000000000015 mm it is
+    1.3877787807814457e-17 m from the profile under `/ 1e3` — exactly the
+    tolerance, so accepted — and 1.734723475976807e-17 m under `* 1e-3`,
+    which is past it. Ingress replaces the transported coordinates with the
+    profile's, so accept-or-refuse is the only place the geometry check's
+    conversion shows, and this is the boundary where it shows."""
+    profile = linear_5mhz()
+    tolerance = coordinate_tolerance_m(profile)
+    canonical = profile.element_x()[5]
+    displaced_mm = -17.550000000000015
+
+    assert abs(displaced_mm / 1e3 - canonical) == tolerance
+    assert abs(displaced_mm * 1e-3 - canonical) > tolerance
+
+    description = describe_bmode(profile)
+    coordinates = list(description.element_x_mm)
+    coordinates[5] = displaced_mm
+    at_boundary = replace(description, element_x_mm=tuple(coordinates))
+
+    accepted = accept(at_boundary, profile)
+
+    assert accepted.probe_profile_id == profile.name
 
 
 def test_ingress_accepts_the_millimetre_round_trip_of_its_own_profile():
