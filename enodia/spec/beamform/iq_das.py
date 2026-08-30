@@ -155,5 +155,5 @@ def das_iq(
             )
             dx = el_x[:, None] - line_x[line]
             w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
-            image[:, line] += cdtype(weight) * (w * x).sum(axis=0)
+            image[:, line] += weight * (w * x).sum(axis=0)
     return image, z, line_x

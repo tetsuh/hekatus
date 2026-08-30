@@ -173,7 +173,7 @@ def das_rf_golden(
             pos = tau * profile.fs_hz
             sampled = delay_rf(data, pos)
             w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
-            image[:, line] += dtype(weight) * (w * sampled).sum(axis=0)
+            image[:, line] += weight * (w * sampled).sum(axis=0)
 
     return image, z, line_x
 

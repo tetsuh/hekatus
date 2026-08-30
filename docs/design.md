@@ -801,6 +801,33 @@ Compounding averages the per-transmit illumination non-uniformity away.
 
 **One technique, three gains — without touching the transmit sequence.**
 
+### The contribution map as implemented (#53)
+
+Both uses run through one structure,
+`enodia/spec/sequence/contribution.py`: per output line, a **fixed number
+of slots** (`cap`), each naming a transmit event and a weight. A frame-edge
+line with fewer real contributions is padded with inert slots — weight
+zero, pointing at a real event — so work per line is constant, which is
+where the no-variable-loops absolute rule becomes an assertable property
+of data. Weights are **renormalized at derivation** (each line sums to
+one, with a floor below which the line is refused rather than amplified),
+so the beamformer stays a plain weighted sum and edge lines are not darker
+for their position. Both DAS paths — RF golden and IQ — read the map; the
+identity map reproduces the pre-map images bit for bit.
+
+**MLA line placement (decided in #53):** the receive lines of one transmit
+subdivide the transmit line pitch evenly, symmetric about the transmit
+axis — `x_k + pitch·(2j−(mla−1))/(2·mla)` — so MLA 1 recovers the
+conventional geometry exactly and the placement translates with the
+transmit (delay-table translation invariance on convex/sector probes). An
+output line pitch decoupled from the transmit pitch was considered and
+set aside for exactly that invariance.
+
+What stays measured, not chosen here (§17): the compounding weight
+function (needs the beam model, #9), window width, and truncation count.
+The multi-contribution structure is exercised by a uniform-weight
+synthetic map, which selects no production value.
+
 ### Compute cost
 
 **Receive-beamforming work is "formed scanlines × contributing transmits
