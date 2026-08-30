@@ -823,6 +823,15 @@ transmit (delay-table translation invariance on convex/sector probes). An
 output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
 
+**A map names the configuration it was derived from** (`config_id`, event
+count) and both consumers compare that against the configuration the
+records' headers name before forming a frame. Event indices are small
+integers every configuration has, so a map derived elsewhere resolves
+cleanly and would put the frame on another configuration's scanlines with
+nothing raised — the accident the generation tag exists to prevent (§19).
+A frame whose records name more than one configuration is refused for the
+same reason.
+
 What stays measured, not chosen here (§17): the compounding weight
 function (needs the beam model, #9), window width, and truncation count.
 The multi-contribution structure is exercised by a uniform-weight

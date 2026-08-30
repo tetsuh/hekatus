@@ -154,6 +154,7 @@ def das_rf_golden(
 
     if contribution is None:
         contribution = _identity_contribution(events)
+    _check_frame_provenance(contribution, events, records)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     c = profile.c_m_s
@@ -176,6 +177,22 @@ def das_rf_golden(
             image[:, line] += weight * (w * sampled).sum(axis=0)
 
     return image, z, line_x
+
+
+def _check_frame_provenance(contribution, events, records) -> None:
+    """Refuse a map that was derived for another configuration.
+
+    `_records_by_event` checks that the records and the events name each
+    other, which is identity within a frame. It cannot see that the *map*
+    belongs elsewhere: event indices are small integers every configuration
+    has, so a stale map resolves cleanly and puts the frame on the wrong
+    scanlines. The records name their configuration in the header, which is
+    the single source of truth for exactly this (§19).
+    """
+    config_ids = {rec.header.config_id for rec in records}
+    if len(config_ids) > 1:
+        raise ValueError(f"frame mixes transmit configurations {sorted(config_ids)}")
+    contribution.check_frame(config_ids.pop() if config_ids else "", len(events))
 
 
 def _identity_contribution(events: list[TxEvent]):

@@ -58,7 +58,7 @@ def run_pipeline(
     config = make_bmode_config(profile)
     events = list(config.events)
     records = simulate_frame(profile, config, scatterers)
-    contribution = mla_map(config, profile, mla=mla) if mla != 1 else None
+    contribution = mla_map(config, mla=mla) if mla != 1 else None
     if path == "golden":
         rf_image, z, line_x = das_rf_golden(profile, events, records, contribution=contribution)
         env = envelope(rf_image)

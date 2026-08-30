@@ -26,6 +26,7 @@ from enodia.spec.sequence.contribution import (
     MLA_COUNTS,
     WEIGHT_SUM_FLOOR,
     ContributionMap,
+    element_pitch_m,
     identity_map,
     mla_map,
     synthetic_uniform_map,
@@ -53,18 +54,22 @@ def small_profile() -> ProbeProfile:
     )
 
 
-def constant_records(profile: ProbeProfile, n_events: int, n_t: int = 512):
+def constant_records(
+    profile: ProbeProfile, n_events: int, n_t: int = 512, *, config_id: str = "bmode-focused"
+):
     """One frame in which every event carries the same constant data.
 
     On such a frame, every output line must come out identical: any line
-    that differs is showing the summation structure, not the field.
+    that differs is showing the summation structure, not the field. The
+    header names the configuration the map is derived from, because a
+    beamformer refuses a map derived for another one.
     """
     data = np.full((profile.n_elements, n_t), 100, dtype=np.int16)
     return [
         RFEventRecord(
             header=EventHeader(
                 seq=k,
-                config_id="uniform",
+                config_id=config_id,
                 param_generation=0,
                 tx_event_index=k,
                 tx_type="bmode_focused",
@@ -156,7 +161,7 @@ def test_mla_produces_its_line_count_from_the_same_sequence(mla):
     profile = linear_5mhz()
     config = make_bmode_config(profile)
 
-    cmap = mla_map(config, profile, mla=mla)
+    cmap = mla_map(config, mla=mla)
 
     assert len(cmap.line_x_m) == mla * len(config.events)
     assert cmap.event_indices.shape[1] == 1  # pure MLA: one transmit per line
@@ -169,7 +174,7 @@ def test_mla_1_degenerates_to_the_identity_geometry_exactly():
     profile = linear_5mhz()
     config = make_bmode_config(profile)
 
-    cmap = mla_map(config, profile, mla=1)
+    cmap = mla_map(config, mla=1)
     ident = identity_map(config)
 
     assert np.array_equal(np.asarray(cmap.line_x_m), np.asarray(ident.line_x_m))
@@ -181,7 +186,7 @@ def test_mla_lines_subdivide_the_transmit_pitch_symmetrically(mla):
     profile = linear_5mhz()
     config = make_bmode_config(profile)
 
-    cmap = mla_map(config, profile, mla=mla)
+    cmap = mla_map(config, mla=mla)
 
     line_x = np.asarray(cmap.line_x_m)
     for k, ev in enumerate(config.events):
@@ -201,7 +206,76 @@ def test_an_unsupported_mla_count_is_refused():
 
     assert MLA_COUNTS == (1, 2, 4, 8)
     with pytest.raises(ValueError, match="MLA"):
-        mla_map(config, profile, mla=3)
+        mla_map(config, mla=3)
+
+
+def test_a_non_integer_event_index_is_refused():
+    """A float index truncates at the read: line k would draw event
+    floor(k) and nothing would ever raise."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+
+    with pytest.raises(ValueError, match="integer"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=np.asarray(cmap.event_indices, dtype=np.float64) + 0.5,
+            weights=np.asarray(cmap.weights),
+        )
+
+
+def test_a_negative_event_index_is_refused():
+    """Negative indices resolve backwards through the event list rather
+    than failing, so the frame forms on the wrong transmits."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+    indices = np.asarray(cmap.event_indices).copy()
+    indices[3, 0] = -1
+
+    with pytest.raises(ValueError, match="negative"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m, event_indices=indices, weights=np.asarray(cmap.weights)
+        )
+
+
+def test_an_event_index_past_the_configuration_is_refused_at_derivation():
+    """Caught where the map is built, not later during image formation."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+    indices = np.asarray(cmap.event_indices).copy()
+    indices[0, 0] = len(config.events)
+
+    with pytest.raises(ValueError, match="past the"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=indices,
+            weights=np.asarray(cmap.weights),
+            config_id=config.config_id,
+            n_events=len(config.events),
+        )
+
+
+def test_the_mla_pitch_comes_from_the_configuration_not_a_profile():
+    """The map is derived from the accepted configuration's own geometry,
+    so a caller cannot pair it with a different profile's pitch: there is
+    no profile argument to get wrong."""
+    profile = linear_5mhz()
+    config = make_bmode_config(profile)
+
+    assert element_pitch_m(config) == profile.pitch_m
+
+    cmap = mla_map(config, mla=2)
+    offsets = np.asarray(cmap.line_x_m)[:2] - config.events[0].line_x_m
+    assert np.allclose(offsets, [-profile.pitch_m / 4, profile.pitch_m / 4], atol=1e-18)
+
+
+def test_an_even_synthetic_cap_is_refused():
+    """A line-centred map has no centre slot at an even cap: the
+    contributions straddle the line and shift the fixture laterally by half
+    a line, biasing exactly what it is built to isolate."""
+    config = make_bmode_config(linear_5mhz())
+
+    with pytest.raises(ValueError, match="odd"):
+        synthetic_uniform_map(config, cap=2)
 
 
 # --- the beamformer reads the map ---------------------------------------
@@ -232,7 +306,7 @@ def test_the_beamformer_is_not_told_which_mla_it_is_running(frame):
     four times the lines with no other change of call."""
     profile, events, records, _ = frame
     config = make_bmode_config(profile)
-    cmap = mla_map(config, profile, mla=4)
+    cmap = mla_map(config, mla=4)
 
     image, _, line_x = das_rf_golden(profile, events, records, contribution=cmap, dtype=np.float32)
 
@@ -306,6 +380,38 @@ def test_the_iq_path_reads_the_same_map_structure(frame):
     )
 
     assert np.array_equal(ident_image, default_image)
+
+
+def test_a_map_from_another_configuration_is_refused():
+    """The Major case: event indices are small integers every configuration
+    has, so a stale map resolves cleanly and forms the frame on another
+    configuration's scanlines with nothing raised. The records name their
+    configuration in the header — the single source of truth for exactly
+    this (§19) — so the map names its own and they are compared."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events), config_id="another-config")
+    cmap = identity_map(config)
+
+    with pytest.raises(ValueError, match="derived for configuration"):
+        das_rf_golden(profile, list(config.events), records, contribution=cmap)
+
+
+def test_a_frame_mixing_configurations_is_refused():
+    """Compounding several transmits acquired under different tables is the
+    accident snapshot switching exists to prevent (§4, §19)."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    mixed = list(records)
+    from dataclasses import replace as dc_replace
+
+    mixed[0] = RFEventRecord(
+        header=dc_replace(records[0].header, config_id="other"), data=records[0].data.copy()
+    )
+
+    with pytest.raises(ValueError, match="mixes transmit configurations"):
+        das_rf_golden(profile, list(config.events), mixed, contribution=identity_map(config))
 
 
 # --- the demo runs it ----------------------------------------------------

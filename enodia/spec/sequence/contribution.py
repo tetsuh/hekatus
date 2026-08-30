@@ -48,7 +48,6 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from enodia.spec.probe import ProbeProfile
 from enodia.spec.sequence import TransmitConfig
 
 # The MLA counts a map can be derived for: {2, 4} are the fixed
@@ -72,6 +71,15 @@ class ContributionMap:
     `normalized=False` — which exists so a test can show the artifact
     renormalization prevents, and for no other reason.
 
+    **A map names the configuration it was derived from.** `config_id` and
+    `n_events` are its provenance, and a consumer checks them against the
+    frame it is about to form (`enodia.spec.beamform`). Without that check,
+    a map derived for one configuration renders another configuration's
+    records — the event indices line up, the record identity checks pass,
+    and the line geometry is silently stale. That is the accident the
+    generation tag exists to prevent: processing with the wrong tables is
+    worse than dropping frames (absolute rules, §19).
+
     Both arrays are frozen at construction: a map is a derivative of one
     configuration generation, and a consumer mutating it would desynchronize
     every other consumer of the same generation (§19).
@@ -80,6 +88,8 @@ class ContributionMap:
     line_x_m: tuple[float, ...]
     event_indices: np.ndarray  # (n_lines, cap) int
     weights: np.ndarray  # (n_lines, cap) float64
+    config_id: str = ""
+    n_events: int = 0
     normalized: bool = True
 
     def __post_init__(self) -> None:
@@ -90,6 +100,17 @@ class ContributionMap:
             raise ValueError(
                 f"map shape mismatch: {len(self.line_x_m)} lines,"
                 f" indices {indices.shape}, weights {weights.shape}"
+            )
+        if not np.issubdtype(indices.dtype, np.integer):
+            # A float index silently truncates at the read, so line k would
+            # draw event floor(k) and no error would ever be raised.
+            raise ValueError(f"event indices must be an integer dtype, got {indices.dtype}")
+        if indices.size and int(indices.min()) < 0:
+            raise ValueError(f"event index {int(indices.min())} is negative")
+        if self.n_events and indices.size and int(indices.max()) >= self.n_events:
+            raise ValueError(
+                f"event index {int(indices.max())} is past the"
+                f" {self.n_events} events of configuration {self.config_id!r}"
             )
         if np.any(weights < 0.0) or not np.all(np.isfinite(weights)):
             raise ValueError("contribution weights must be finite and non-negative")
@@ -116,6 +137,26 @@ class ContributionMap:
         """Contributing-transmit slots per line — the fixed work."""
         return int(self.event_indices.shape[1])
 
+    def check_frame(self, config_id: str, n_events: int) -> None:
+        """Refuse a frame this map was not derived for.
+
+        The map carries line geometry; the records carry a configuration id
+        (`EventHeader.config_id`). When they disagree, the events still
+        resolve — indices are small integers and every configuration has
+        them — so nothing downstream would notice, and the frame would be
+        formed on another configuration's scanlines.
+        """
+        if self.config_id and config_id and self.config_id != config_id:
+            raise ValueError(
+                f"contribution map was derived for configuration"
+                f" {self.config_id!r}, frame carries {config_id!r}"
+            )
+        if self.n_events and n_events and self.n_events != n_events:
+            raise ValueError(
+                f"contribution map was derived for {self.n_events} transmit"
+                f" events, frame carries {n_events}"
+            )
+
 
 def identity_map(config: TransmitConfig) -> ContributionMap:
     """Event k forms line k with unit weight — the conventional case.
@@ -129,10 +170,43 @@ def identity_map(config: TransmitConfig) -> ContributionMap:
         line_x_m=tuple(ev.line_x_m for ev in config.events),
         event_indices=np.arange(n, dtype=np.intp)[:, None],
         weights=np.ones((n, 1), dtype=np.float64),
+        config_id=config.config_id,
+        n_events=n,
     )
 
 
-def mla_map(config: TransmitConfig, profile: ProbeProfile, *, mla: int) -> ContributionMap:
+def element_pitch_m(config: TransmitConfig) -> float:
+    """The element pitch of an accepted configuration's own geometry [m].
+
+    Taken from `config.element_x_m` rather than from a `ProbeProfile`
+    handed in beside it. A caller can hold a valid configuration and a
+    different valid profile, and a map built from the second one's pitch
+    puts every line in the wrong place without raising: the shapes match,
+    the indices resolve, and only the image is wrong. Deriving from the
+    configuration removes the mismatch instead of detecting it.
+
+    A non-uniform array has no single pitch, and the line geometry for one
+    is not defined (§4 keeps exact element positions as profile data). It
+    is refused rather than averaged.
+    """
+    x = np.asarray(config.element_x_m, dtype=np.float64)
+    if x.size < 2:
+        raise ValueError(f"configuration {config.config_id!r} has too few elements for a pitch")
+    # From the span rather than one neighbour difference: consecutive
+    # differences of a centred float64 grid vary in their last bits, and
+    # the span divided by the interval count recovers the pitch the profile
+    # was built from exactly.
+    pitch = float((x[-1] - x[0]) / (x.size - 1))
+    spacing = np.diff(x)
+    if not np.allclose(spacing, pitch, rtol=0.0, atol=abs(pitch) * 1e-9):
+        raise ValueError(
+            f"configuration {config.config_id!r} has non-uniform element spacing;"
+            " MLA line geometry is defined for a uniform pitch"
+        )
+    return pitch
+
+
+def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
     """MLA as a property of the map: `mla` receive lines per transmit.
 
     The lines of transmit k sit at
@@ -140,24 +214,29 @@ def mla_map(config: TransmitConfig, profile: ProbeProfile, *, mla: int) -> Contr
         x_k + pitch · (2j − (mla − 1)) / (2 · mla),   j = 0 .. mla−1
 
     — the transmit pitch subdivided evenly, symmetric about the transmit
-    axis. At mla=1 the offset is exactly zero, so the conventional geometry
-    is recovered with no epsilon. Pure MLA keeps one contributing transmit
-    per line (cap 1); several transmits per line is transmit compounding,
-    whose weights are measured quantities (§17) and are not chosen here.
+    axis, with the pitch read from the configuration's own accepted
+    geometry. At mla=1 the offset is exactly zero, so the conventional
+    geometry is recovered with no epsilon. Pure MLA keeps one contributing
+    transmit per line (cap 1); several transmits per line is transmit
+    compounding, whose weights are measured quantities (§17) and are not
+    chosen here.
     """
     if mla not in MLA_COUNTS:
         raise ValueError(f"MLA count must be one of {MLA_COUNTS}, got {mla}")
+    pitch = element_pitch_m(config)
     line_x: list[float] = []
     indices = np.empty((mla * len(config.events), 1), dtype=np.intp)
     for k, ev in enumerate(config.events):
         for j in range(mla):
-            offset = profile.pitch_m * (2 * j - (mla - 1)) / (2 * mla)
+            offset = pitch * (2 * j - (mla - 1)) / (2 * mla)
             line_x.append(ev.line_x_m + offset)
             indices[k * mla + j, 0] = k
     return ContributionMap(
         line_x_m=tuple(line_x),
         event_indices=indices,
         weights=np.ones((mla * len(config.events), 1), dtype=np.float64),
+        config_id=config.config_id,
+        n_events=len(config.events),
     )
 
 
@@ -179,6 +258,13 @@ def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMa
     n = len(config.events)
     if not (1 <= cap <= n):
         raise ValueError(f"cap must be within [1, {n}], got {cap}")
+    if cap % 2 == 0:
+        # This map is centred on line k. An even cap has no centre slot, so
+        # the contributions straddle the line and non-uniform data shifts
+        # the result laterally by half a line — a fixture that biases what
+        # it is meant to isolate. A centred even cap needs a half-line
+        # output geometry, which is not defined here.
+        raise ValueError(f"cap must be odd for a line-centred map, got {cap}")
     half = (cap - 1) // 2
     indices = np.empty((n, cap), dtype=np.intp)
     weights = np.zeros((n, cap), dtype=np.float64)
@@ -195,4 +281,6 @@ def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMa
         line_x_m=tuple(ev.line_x_m for ev in config.events),
         event_indices=indices,
         weights=weights,
+        config_id=config.config_id,
+        n_events=n,
     )

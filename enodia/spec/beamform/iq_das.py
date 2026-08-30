@@ -129,11 +129,16 @@ def das_iq(
     identity by default, and there is one summation structure across both
     paths, not two.
     """
-    from enodia.spec.beamform import _identity_contribution, _slots_by_event
+    from enodia.spec.beamform import (
+        _check_frame_provenance,
+        _identity_contribution,
+        _slots_by_event,
+    )
 
     cdtype = _complex_dtype(dtype)
     if contribution is None:
         contribution = _identity_contribution(events)
+    _check_frame_provenance(contribution, events, records)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     line_x = np.array(contribution.line_x_m, dtype=np.float64)
