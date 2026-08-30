@@ -1,26 +1,29 @@
+from dataclasses import replace
 from itertools import pairwise
 
 import numpy as np
 import pytest
 
 from enodia.spec.probe import linear_5mhz
-from enodia.spec.sequence import make_bmode_sequence
-from enodia.spec.sim import PointScatterer, n_rf_samples, simulate_bmode_frame
+from enodia.spec.sequence import make_bmode_config
+from enodia.spec.sim import PointScatterer, n_rf_samples, simulate_frame
 
 
 def test_rf_records_carry_the_specified_format_and_metadata():
     """Format accuracy is the simulator's first requirement (design.md §15),
     and every record names its generation (docs/dataplane.md)."""
     p = linear_5mhz()
-    events = make_bmode_sequence(p)[:4]
-    records = simulate_bmode_frame(p, events, [PointScatterer(0.0, 20e-3)])
+    config = make_bmode_config(p)
+    records = simulate_frame(
+        p, replace(config, events=config.events[:4]), [PointScatterer(0.0, 20e-3)]
+    )
 
     assert len(records) == 4
     for k, r in enumerate(records):
         assert r.data.dtype == np.int16
         assert r.data.shape == (p.n_elements, n_rf_samples(p))
         assert r.header.seq == k
-        assert r.header.config_id == "default"
+        assert r.header.config_id == config.config_id
         assert r.header.tx_type == "bmode_focused"
 
     timestamps = [r.header.timestamp_ns for r in records]

@@ -88,13 +88,18 @@ def test_iq_sample_m_stands_for_rf_position_m_times_d_plus_half_a_sample():
 
 
 def test_demodulate_returns_an_int16_two_plane_record_that_names_its_ratio_and_offset():
+    from dataclasses import replace
+
     from enodia.spec.frontend import demodulate
     from enodia.spec.records import IQEventRecord
-    from enodia.spec.sequence import make_bmode_sequence
-    from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+    from enodia.spec.sequence import make_bmode_config
+    from enodia.spec.sim import PointScatterer, simulate_frame
 
     p = linear_5mhz()
-    rec = simulate_bmode_frame(p, make_bmode_sequence(p)[:1], [PointScatterer(0.0, 20e-3)])[0]
+    config = make_bmode_config(p)
+    rec = simulate_frame(
+        p, replace(config, events=config.events[:1]), [PointScatterer(0.0, 20e-3)]
+    )[0]
     iq = demodulate(rec, p, decimation=8)
 
     assert isinstance(iq, IQEventRecord)
@@ -114,12 +119,17 @@ def test_demodulate_refuses_to_clip_rather_than_clipping_silently():
     """Checked on the rounded planes against both int16 bounds: a value that
     rounds to 32767 passes, one that rounds past it does not, and a
     non-finite sample is refused before any cast can turn it into a number."""
+    from dataclasses import replace
+
     from enodia.spec.frontend import demodulate
-    from enodia.spec.sequence import make_bmode_sequence
-    from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+    from enodia.spec.sequence import make_bmode_config
+    from enodia.spec.sim import PointScatterer, simulate_frame
 
     p = linear_5mhz()
-    rec = simulate_bmode_frame(p, make_bmode_sequence(p)[:1], [PointScatterer(0.0, 20e-3)])[0]
+    config = make_bmode_config(p)
+    rec = simulate_frame(
+        p, replace(config, events=config.events[:1]), [PointScatterer(0.0, 20e-3)]
+    )[0]
     with pytest.raises(ValueError, match="int16"):
         demodulate(rec, p, decimation=8, iq_scale=4.0)
     # Scale the record so its largest rounded IQ sample lands exactly on the
@@ -162,11 +172,13 @@ def test_a_non_finite_rf_offset_is_refused_by_the_record_and_by_the_beamformer(b
     """A NaN offset would make every read position NaN, which the delay stage
     turns into zero vectors — a silent black image. Refused at construction,
     and again at the consumer for a record that bypassed construction."""
+    from dataclasses import replace
+
     from enodia.spec.beamform.iq_das import das_iq
     from enodia.spec.frontend import demodulate
     from enodia.spec.records import EventHeader, IQEventRecord
-    from enodia.spec.sequence import make_bmode_sequence
-    from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+    from enodia.spec.sequence import make_bmode_config
+    from enodia.spec.sim import PointScatterer, simulate_frame
 
     h = EventHeader(0, "c", 0, 0, "bmode_focused", 0)
     good = np.zeros((2, 8, 2), dtype=np.int16)
@@ -174,9 +186,16 @@ def test_a_non_finite_rf_offset_is_refused_by_the_record_and_by_the_beamformer(b
         IQEventRecord(h, good, 8, bad)
 
     p = linear_5mhz()
-    events = make_bmode_sequence(p)[:1]
+    config = make_bmode_config(p)
+    events = list(config.events[:1])
     iq = demodulate(
-        simulate_bmode_frame(p, events, [PointScatterer(0.0, 20e-3)])[0], p, decimation=8
+        simulate_frame(
+            p,
+            replace(config, events=config.events[:1]),
+            [PointScatterer(0.0, 20e-3)],
+        )[0],
+        p,
+        decimation=8,
     )
     object.__setattr__(iq, "rf_offset", bad)  # past the constructor, on purpose
     with pytest.raises(ValueError, match="rf_offset"):

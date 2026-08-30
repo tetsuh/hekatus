@@ -8,12 +8,14 @@ into neither the transmit description nor the frame header
 cannot part.
 """
 
-from dataclasses import fields
+from dataclasses import fields, replace
+
+import pytest
 
 from enodia.spec.probe import linear_5mhz
 from enodia.spec.records import EventHeader
 from enodia.spec.sequence import TransmitConfig, TxEvent, make_bmode_config, make_bmode_sequence
-from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+from enodia.spec.sim import PointScatterer, simulate_frame
 
 
 def test_each_configuration_references_exactly_one_probe_profile_by_id():
@@ -31,10 +33,20 @@ def test_the_runtime_config_id_selects_the_profile_transitively_and_carries_no_b
     profile — and so the bandwidth — is reached through the configuration."""
     p = linear_5mhz()
     config = make_bmode_config(p)
-    records = simulate_bmode_frame(
-        p, list(config.events[:2]), [PointScatterer(0.0, 20e-3)], config_id=config.config_id
+    scatterers = [PointScatterer(0.0, 20e-3)]
+    records = simulate_frame(
+        p,
+        replace(config, events=config.events[:2]),
+        scatterers,
     )
     assert all(r.header.config_id == config.config_id for r in records)
+    with pytest.raises(TypeError):
+        simulate_frame(
+            p,
+            config,
+            scatterers,
+            config_id="independent-config",
+        )
 
     setup = {config.config_id: config}
     assert setup[records[0].header.config_id].probe_profile_id == p.name
@@ -52,6 +64,11 @@ def test_no_bandwidth_field_exists_outside_the_profile():
         "tx_type",
         "timestamp_ns",
     }
-    assert {f.name for f in fields(TransmitConfig)} == {"config_id", "probe_profile_id", "events"}
+    assert {f.name for f in fields(TransmitConfig)} == {
+        "config_id",
+        "probe_profile_id",
+        "element_x_m",
+        "events",
+    }
     for cls in (TransmitConfig, TxEvent, EventHeader):
         assert not any("bandwidth" in f.name for f in fields(cls)), cls.__name__

@@ -24,7 +24,9 @@ import numpy as np
 
 from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import EventHeader, RFEventRecord
-from enodia.spec.sequence import TxEvent
+from enodia.spec.sequence import TransmitConfig, TxEvent
+
+__all__ = ["PointScatterer", "gaussian_pulse", "n_rf_samples", "simulate_frame"]
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,7 @@ def n_rf_samples(profile: ProbeProfile) -> int:
     return int(np.ceil(t_max * profile.fs_hz)) + 256
 
 
-def simulate_bmode_frame(
+def _simulate_bmode_frame(
     profile: ProbeProfile,
     events: list[TxEvent],
     scatterers: list[PointScatterer],
@@ -124,3 +126,41 @@ def simulate_bmode_frame(
             RFEventRecord(header=header, data=np.round(frame[k] * scale).astype(np.int16))
         )
     return records
+
+
+def simulate_frame(
+    profile: ProbeProfile,
+    config: TransmitConfig,
+    scatterers: list[PointScatterer],
+    *,
+    param_generation: int = 0,
+    int16_fullscale_frac: float = 0.5,
+) -> list[RFEventRecord]:
+    """Generate one frame from an accepted transmit configuration (#52).
+
+    The simulator is the transmit schema's first consumer, which is how the
+    schema gets exercised rather than merely defined (design.md §18 item 2,
+    §19). Taking the configuration rather than a bare event list is the whole
+    of it: the config ID travels with the events it describes, so a frame
+    cannot be stamped with the identity of a configuration it did not come
+    from.
+
+    What the simulator reads from each event is the virtual source, the beam
+    axis and the transmit-type tag. The per-element firing delays and
+    apodization the schema carries are checked at ingress
+    (`enodia.spec.sequence.accept`) and not synthesized into a field here:
+    the transmit beam model is #9.
+    """
+    if config.probe_profile_id != profile.name:
+        raise ValueError(
+            f"configuration {config.config_id!r} runs on probe profile"
+            f" {config.probe_profile_id!r}, simulated on {profile.name!r}"
+        )
+    return _simulate_bmode_frame(
+        profile,
+        list(config.events),
+        scatterers,
+        config_id=config.config_id,
+        param_generation=param_generation,
+        int16_fullscale_frac=int16_fullscale_frac,
+    )

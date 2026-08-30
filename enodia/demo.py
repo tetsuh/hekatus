@@ -21,7 +21,7 @@ from enodia.spec.beamform.iq_das import das_iq
 from enodia.spec.frontend import demodulate_frame
 from enodia.spec.probe import ProbeProfile, linear_5mhz
 from enodia.spec.sequence import make_bmode_config
-from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+from enodia.spec.sim import PointScatterer, simulate_frame
 
 DEFAULT_SCATTERERS = [
     PointScatterer(0.0, 15e-3),
@@ -51,9 +51,8 @@ def run_pipeline(
     if path not in PATHS:
         raise ValueError(f"path must be one of {PATHS}, got {path!r}")
     config = make_bmode_config(profile)
-    assert config.probe_profile_id == profile.name
     events = list(config.events)
-    records = simulate_bmode_frame(profile, events, scatterers, config_id=config.config_id)
+    records = simulate_frame(profile, config, scatterers)
     if path == "golden":
         rf_image, z, line_x = das_rf_golden(profile, events, records)
         env = envelope(rf_image)

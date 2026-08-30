@@ -375,12 +375,12 @@ def main() -> None:
     args = parser.parse_args()
     from enodia.spec.probe import linear_5mhz
     from enodia.spec.sequence import make_bmode_config
-    from enodia.spec.sim import simulate_bmode_frame
+    from enodia.spec.sim import simulate_frame
 
     profile = linear_5mhz()
     config = make_bmode_config(profile)
     events = list(config.events)
-    records = simulate_bmode_frame(profile, events, DEFAULT_SCATTERERS, config_id=config.config_id)
+    records = simulate_frame(profile, config, DEFAULT_SCATTERERS)
     golden = das_rf_golden(profile, events, records)
     for d in args.decimation:
         report = compare(profile, events, records, DEFAULT_SCATTERERS, decimation=d, golden=golden)

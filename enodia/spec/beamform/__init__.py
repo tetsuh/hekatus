@@ -118,7 +118,7 @@ def das_rf_golden(
 
     The delay is the transmit leg z/c along the beam axis plus the receive
     leg |r_p - r_j| / c. The contribution map is the identity (event k forms
-    line k); MLA and transmit compounding generalize it in #7.
+    line k); MLA and transmit compounding generalize it in #53.
     """
     if not np.issubdtype(np.dtype(dtype), np.floating):
         # The dtype parameter exists to sweep precision (float64 / float32 /

@@ -5,14 +5,21 @@ misalign data silently: a wrong-but-plausible image is worse than an error
 (design.md §19).
 """
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 from enodia.spec.beamform import das_rf_golden, envelope, log_compress
 from enodia.spec.probe import linear_5mhz
 from enodia.spec.records import EventHeader, RFEventRecord
-from enodia.spec.sequence import make_bmode_sequence
-from enodia.spec.sim import PointScatterer, simulate_bmode_frame
+from enodia.spec.sequence import make_bmode_config
+from enodia.spec.sim import PointScatterer, simulate_frame
+
+
+def _config_for_events(profile, count):
+    config = make_bmode_config(profile)
+    return replace(config, events=config.events[:count])
 
 
 def _header(**kw):
@@ -47,8 +54,9 @@ def test_record_payload_is_read_only():
 
 def test_beamform_rejects_a_record_set_that_does_not_match_the_events():
     profile = linear_5mhz()
-    events = make_bmode_sequence(profile)[:4]
-    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+    config = _config_for_events(profile, 4)
+    events = list(config.events)
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 20e-3)])
 
     short = records[:-1]
 
@@ -58,8 +66,9 @@ def test_beamform_rejects_a_record_set_that_does_not_match_the_events():
 
 def test_beamform_rejects_records_from_mixed_generations():
     profile = linear_5mhz()
-    events = make_bmode_sequence(profile)[:4]
-    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+    config = _config_for_events(profile, 4)
+    events = list(config.events)
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 20e-3)])
     stale = RFEventRecord(
         header=_header(
             seq=records[-1].header.seq,
@@ -79,8 +88,9 @@ def test_beamform_rejects_records_from_mixed_generations():
 def test_beamform_matches_records_by_event_index_not_by_position():
     """The header names the event; arrival order carries no meaning."""
     profile = linear_5mhz()
-    events = make_bmode_sequence(profile)[:6]
-    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+    config = _config_for_events(profile, 6)
+    events = list(config.events)
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 20e-3)])
 
     in_order, _, _ = das_rf_golden(profile, events, records)
     shuffled, _, _ = das_rf_golden(profile, events, list(reversed(records)))
@@ -112,8 +122,9 @@ def test_beamform_rejects_an_integer_dtype():
     """The dtype parameter sweeps precision; an integer one silently destroys
     the fractional delays and the apodization weights alike."""
     profile = linear_5mhz()
-    events = make_bmode_sequence(profile)[:2]
-    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+    config = _config_for_events(profile, 2)
+    events = list(config.events)
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 20e-3)])
 
     with pytest.raises(ValueError):
         das_rf_golden(profile, events, records, dtype=np.int16)
@@ -123,8 +134,9 @@ def test_beamform_rejects_a_payload_whose_channel_count_is_not_the_aperture():
     """A record must carry exactly the profile's channels: too few fails on an
     incidental index, too many are summed as if the aperture were smaller."""
     profile = linear_5mhz()
-    events = make_bmode_sequence(profile)[:2]
-    records = simulate_bmode_frame(profile, events, [PointScatterer(0.0, 20e-3)])
+    config = _config_for_events(profile, 2)
+    events = list(config.events)
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 20e-3)])
 
     for n_ch in (profile.n_elements - 1, profile.n_elements + 1):
         resized = [
