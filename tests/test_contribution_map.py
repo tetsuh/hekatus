@@ -15,6 +15,8 @@ latency. And frame-edge lines are renormalized, because the artifact of not
 doing so is visible but easy to accept by eye, so the eye is not the check.
 """
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -30,6 +32,7 @@ from enodia.spec.sequence.contribution import (
     identity_map,
     mla_map,
     synthetic_uniform_map,
+    transmit_line_pitch_m,
 )
 
 
@@ -294,6 +297,60 @@ def test_an_even_synthetic_cap_is_refused():
 
     with pytest.raises(ValueError, match="odd"):
         synthetic_uniform_map(config, cap=2)
+
+
+def _sparse_line_config(profile: ProbeProfile, stride: int):
+    """A configuration whose transmits sit every `stride` elements.
+
+    The conventional sequence puts one transmit above each element, which
+    makes the element pitch and the transmit-line pitch the same number and
+    hides which one MLA is subdividing.
+    """
+    config = make_bmode_config(profile)
+    return replace(config, events=tuple(config.events[::stride]))
+
+
+def test_the_transmit_line_pitch_is_not_the_element_pitch():
+    """They coincide only for one-transmit-per-element, which is the whole
+    reason a map built on the wrong one goes unnoticed."""
+    profile = linear_5mhz()
+    sparse = _sparse_line_config(profile, 2)
+
+    assert element_pitch_m(sparse) == profile.pitch_m
+    # One ulp of tolerance on the derived value: the span of a decimated
+    # line grid does not land on 2·pitch bit-exactly the way the full
+    # element grid lands on pitch. The point is the factor, not the bits.
+    assert transmit_line_pitch_m(sparse) == pytest.approx(2 * profile.pitch_m, rel=1e-15)
+
+
+def test_mla_subdivides_the_transmit_line_pitch_not_the_element_pitch():
+    """§7 defines MLA against the gap to the next *transmit*: the receive
+    lines of one transmit fill it. Deriving the pitch from the elements made
+    the groups too narrow whenever a sequence fires fewer events than there
+    are elements, and MLA 1 could not show it, its offset being zero either
+    way."""
+    profile = linear_5mhz()
+    sparse = _sparse_line_config(profile, 2)
+    line_pitch = transmit_line_pitch_m(sparse)
+
+    cmap = mla_map(sparse, mla=2)
+
+    line_x = np.asarray(cmap.line_x_m)
+    offsets = line_x[:2] - sparse.events[0].line_x_m
+    assert np.allclose(offsets, [-line_pitch / 4, line_pitch / 4], atol=1e-18)
+    # Consecutive groups tile the line grid without gap or overlap.
+    assert np.allclose(np.diff(line_x), line_pitch / 2, atol=1e-15)
+
+
+def test_a_non_uniform_transmit_line_grid_is_refused():
+    """A sequence whose beam axes are unevenly spaced has no single pitch to
+    subdivide, and what MLA should do there is not defined."""
+    profile = linear_5mhz()
+    config = make_bmode_config(profile)
+    uneven = replace(config, events=(config.events[0], config.events[1], config.events[3]))
+
+    with pytest.raises(ValueError, match="non-uniform transmit line"):
+        mla_map(uneven, mla=2)
 
 
 # --- the beamformer reads the map ---------------------------------------

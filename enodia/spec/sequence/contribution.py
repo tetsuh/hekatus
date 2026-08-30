@@ -126,7 +126,9 @@ class ContributionMap:
             sums = weights.sum(axis=1)
         if not np.all(np.isfinite(sums)):
             worst = int(np.flatnonzero(~np.isfinite(sums))[0])
-            raise ValueError(f"line {worst} has a non-finite weight sum; refused rather than normalized")
+            raise ValueError(
+                f"line {worst} has a non-finite weight sum; refused rather than normalized"
+            )
         if np.any(sums < WEIGHT_SUM_FLOOR):
             worst = int(np.argmin(sums))
             raise ValueError(
@@ -200,6 +202,26 @@ def identity_map(config: TransmitConfig, *, param_generation: int = 0) -> Contri
     )
 
 
+def _uniform_pitch_m(values: np.ndarray, what: str, config_id: str) -> float:
+    """The single spacing of a uniform 1D grid [m], or a refusal.
+
+    From the span over the interval count rather than one neighbour
+    difference: consecutive differences of a centred float64 grid vary in
+    their last bits, and the span recovers the pitch the grid was built
+    from exactly.
+    """
+    if values.size < 2:
+        raise ValueError(f"configuration {config_id!r} has too few {what} for a pitch")
+    pitch = float((values[-1] - values[0]) / (values.size - 1))
+    spacing = np.diff(values)
+    if not np.allclose(spacing, pitch, rtol=0.0, atol=abs(pitch) * 1e-9):
+        raise ValueError(
+            f"configuration {config_id!r} has a non-uniform {what} grid;"
+            " MLA line geometry is defined for a uniform pitch"
+        )
+    return pitch
+
+
 def element_pitch_m(config: TransmitConfig) -> float:
     """The element pitch of an accepted configuration's own geometry [m].
 
@@ -210,25 +232,37 @@ def element_pitch_m(config: TransmitConfig) -> float:
     the indices resolve, and only the image is wrong. Deriving from the
     configuration removes the mismatch instead of detecting it.
 
-    A non-uniform array has no single pitch, and the line geometry for one
-    is not defined (§4 keeps exact element positions as profile data). It
-    is refused rather than averaged.
+    This is the **element** pitch. It is not what MLA subdivides — see
+    `transmit_line_pitch_m` — and the two coincide only for a sequence that
+    puts one transmit above each element.
     """
-    x = np.asarray(config.element_x_m, dtype=np.float64)
-    if x.size < 2:
-        raise ValueError(f"configuration {config.config_id!r} has too few elements for a pitch")
-    # From the span rather than one neighbour difference: consecutive
-    # differences of a centred float64 grid vary in their last bits, and
-    # the span divided by the interval count recovers the pitch the profile
-    # was built from exactly.
-    pitch = float((x[-1] - x[0]) / (x.size - 1))
-    spacing = np.diff(x)
-    if not np.allclose(spacing, pitch, rtol=0.0, atol=abs(pitch) * 1e-9):
-        raise ValueError(
-            f"configuration {config.config_id!r} has non-uniform element spacing;"
-            " MLA line geometry is defined for a uniform pitch"
-        )
-    return pitch
+    return _uniform_pitch_m(
+        np.asarray(config.element_x_m, dtype=np.float64), "element", config.config_id
+    )
+
+
+def transmit_line_pitch_m(config: TransmitConfig) -> float:
+    """The spacing between the transmit beam axes of a configuration [m].
+
+    This is what §7's MLA subdivision is defined against: the receive lines
+    of one transmit fill the gap to the next *transmit*, not the gap to the
+    next element. The two coincide for the conventional sequence — one
+    scanline above each element — and part as soon as a sequence walks the
+    aperture at some other stride or fires fewer events than there are
+    elements. Deriving from `element_x_m` made MLA groups too narrow or too
+    wide in exactly those cases, and MLA 1 could not show it because its
+    offset is zero either way.
+
+    A non-uniform line grid is refused rather than averaged: a sequence with
+    varying line spacing has no single pitch to subdivide, and what MLA
+    should do there is not defined (a convex or sector sequence is angular,
+    which arrives with those probes).
+    """
+    return _uniform_pitch_m(
+        np.array([ev.line_x_m for ev in config.events], dtype=np.float64),
+        "transmit line",
+        config.config_id,
+    )
 
 
 def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> ContributionMap:
@@ -238,9 +272,10 @@ def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> C
 
         x_k + pitch · (2j − (mla − 1)) / (2 · mla),   j = 0 .. mla−1
 
-    — the transmit pitch subdivided evenly, symmetric about the transmit
-    axis, with the pitch read from the configuration's own accepted
-    geometry. At mla=1 the offset is exactly zero, so the conventional
+    — the **transmit line** pitch subdivided evenly, symmetric about the
+    transmit axis, read from the configuration's own beam axes rather than
+    from its elements: the receive lines of one transmit fill the gap to the
+    next transmit. At mla=1 the offset is exactly zero, so the conventional
     geometry is recovered with no epsilon. Pure MLA keeps one contributing
     transmit per line (cap 1); several transmits per line is transmit
     compounding, whose weights are measured quantities (§17) and are not
@@ -248,7 +283,7 @@ def mla_map(config: TransmitConfig, *, mla: int, param_generation: int = 0) -> C
     """
     if mla not in MLA_COUNTS:
         raise ValueError(f"MLA count must be one of {MLA_COUNTS}, got {mla}")
-    pitch = element_pitch_m(config)
+    pitch = transmit_line_pitch_m(config)
     line_x: list[float] = []
     indices = np.empty((mla * len(config.events), 1), dtype=np.intp)
     for k, ev in enumerate(config.events):

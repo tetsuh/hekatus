@@ -816,9 +816,12 @@ for their position. Both DAS paths — RF golden and IQ — read the map; the
 identity map reproduces the pre-map images bit for bit.
 
 **MLA line placement (decided in #53):** the receive lines of one transmit
-subdivide the transmit line pitch evenly, symmetric about the transmit
-axis — `x_k + pitch·(2j−(mla−1))/(2·mla)` — so MLA 1 recovers the
-conventional geometry exactly and the placement translates with the
+subdivide the **transmit line** pitch evenly, symmetric about the transmit
+axis — `x_k + pitch·(2j−(mla−1))/(2·mla)` — where the pitch is the spacing
+of the beam axes, not of the elements. The two coincide only for the
+conventional sequence that fires one transmit above each element, and a
+sequence at another stride would otherwise get groups of the wrong width.
+MLA 1 recovers the conventional geometry exactly and the placement translates with the
 transmit (delay-table translation invariance on convex/sector probes). An
 output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
