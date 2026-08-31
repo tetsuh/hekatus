@@ -1,8 +1,8 @@
 # ADR-0010: MLA line placement, and what frame-edge renormalization divides by
 
-- Status: **Proposed** — 2026-08-30
+- Status: **Accepted** — 2026-08-31
 - Date: 2026-08-30
-- Owner decision: pending
+- Owner decision: yes (`DEC-57-001`)
 
 ## Context
 
@@ -143,3 +143,15 @@ the value every gCNR and PSF figure is computed from.
   `Accepted` is written in the same pull request at the owner-authorized
   pre-merge boundary, so `Proposed` never reaches `main` (workflow §6,
   ADR-0004).
+- 2026-08-31: Option D added to the placement alternatives —
+  sensitivity-weighted placement pulled toward the transmit axis, argued
+  from the two-way response peaking between the line and the transmit axis
+  — rejected with two named re-hearing conditions. The decision itself was
+  unchanged; the record's rejected alternatives were completed while it was
+  still `Proposed`, which is the only time this record's content may change
+  (workflow §6). The divisor options were relabelled E, F, G so no letter is
+  used twice.
+- 2026-08-31: Accepted at PR #57's owner-authorized pre-merge boundary
+  (`DEC-57-001`), after the review's implementation findings were corrected
+  — transmit-type matching in the map, and the frame's parameter generation
+  taken from the configuration — and validation was green at that head.
