@@ -432,6 +432,86 @@ def test_a_non_uniform_transmit_line_grid_is_refused():
         mla_map(uneven, mla=2)
 
 
+def _interleaved_config(profile: ProbeProfile):
+    """A sequence alternating two transmit kinds, as a B-mode/colour
+    interleave does. Built through the schema, so the tags travel the same
+    open-set path a real interleave would (§11.5)."""
+    from enodia.spec.sequence import accept, describe_bmode
+
+    description = describe_bmode(profile)
+    events = tuple(
+        replace(ev, tx_type="bmode_focused" if k % 2 == 0 else "color_flow")
+        for k, ev in enumerate(description.events)
+    )
+    return accept(replace(description, events=events), profile)
+
+
+def test_each_line_records_the_one_transmit_kind_it_is_formed_from():
+    """§7: the map carries transmit-type matching conditions."""
+    config = make_bmode_config(linear_5mhz())
+
+    cmap = identity_map(config)
+
+    assert len(cmap.line_tx_type) == cmap.n_lines
+    assert set(cmap.line_tx_type) == {"bmode_focused"}
+
+
+def test_mla_lines_inherit_the_kind_of_their_transmit():
+    profile = linear_5mhz()
+    interleaved = _interleaved_config(profile)
+
+    cmap = mla_map(interleaved, mla=2)
+
+    # Pure MLA never mixes: each line reads exactly one transmit.
+    assert cmap.line_tx_type[:4] == (
+        "bmode_focused",
+        "bmode_focused",
+        "color_flow",
+        "color_flow",
+    )
+
+
+def test_a_line_that_would_sum_two_transmit_kinds_is_refused():
+    """The condition §7 states in those words: B-mode and colour-Doppler
+    interleaves never mix transmit kinds. A multi-contribution map over an
+    interleaved sequence would sum a B-mode and a colour transmit into one
+    pixel — different pulses, different slow-time meaning, and a
+    plausible-looking number with no physical reading."""
+    profile = linear_5mhz()
+    interleaved = _interleaved_config(profile)
+
+    with pytest.raises(ValueError, match="would sum transmit kinds"):
+        synthetic_uniform_map(interleaved, cap=3)
+
+
+def test_an_interleaved_sequence_still_forms_single_kind_lines():
+    """The matching condition refuses mixed rows, not interleaves: the same
+    sequence maps fine while each line reads one kind."""
+    profile = linear_5mhz()
+    interleaved = _interleaved_config(profile)
+
+    cmap = identity_map(interleaved)
+
+    assert set(cmap.line_tx_type) == {"bmode_focused", "color_flow"}
+    assert cmap.cap == 1
+
+
+def test_the_simulator_stamps_the_configurations_own_generation():
+    """`SOL-57-003`: the frame used to default to generation 0 whatever the
+    configuration was accepted at, so the official default path failed
+    closed at any other generation unless the caller passed it twice."""
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile, param_generation=7)
+
+    records = simulate_frame(profile, config, [PointScatterer(0.0, 5e-3)])
+
+    assert {r.header.param_generation for r in records} == {7}
+    image, _, _ = das_rf_golden(profile, list(config.events), records)
+    assert image.shape[1] == len(config.events)
+
+
 # --- the beamformer reads the map ---------------------------------------
 
 

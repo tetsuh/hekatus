@@ -827,6 +827,13 @@ transmit (delay-table translation invariance on convex/sector probes). An
 output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
 
+Each line also records **the one transmit kind it is formed from**, and a
+line whose live slots would span kinds is refused at derivation — the
+transmit-type matching condition above, made executable, so a B-mode and a
+colour-flow transmit of an interleaved sequence cannot be summed into one
+pixel. The tag is an open set, so the condition is equality between whatever
+strings the sequence uses.
+
 **A map names the configuration it was derived from** (`config_id`, event
 count, **parameter generation**) — required fields, not optional ones, so an
 unbound map cannot be built — and both consumers compare all three against
@@ -834,7 +841,8 @@ what the records' headers name before forming a frame. The generation has a
 single source: the accepted `TransmitConfig` carries it, and every
 derivative reads it from there rather than defaulting on its own, because a
 derivative that supplies its own generation can disagree with what it was
-derived from while both sides stay self-consistent. The generation is
+derived from while both sides stay self-consistent. The simulator stamps
+frames with the configuration's generation for the same reason. The generation is
 carried separately because depth and focus are in-config parameters (§19):
 the id holds still across a knob turn while every derivative behind it,
 this map included, is invalidated and re-derived — so a map checked on the

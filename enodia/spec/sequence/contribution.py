@@ -88,6 +88,14 @@ class ContributionMap:
     map — is invalidated and re-derived. A map checked on the id alone would
     survive exactly the change that invalidates it.
 
+    **`line_tx_type` is the transmit-type matching condition §7 requires**:
+    the one kind of transmit each line is formed from. A line is refused at
+    derivation if its live slots span kinds, so a B-mode and a colour-flow
+    transmit of an interleaved sequence can never be summed into one pixel.
+    The tag is an open set of strings (§11.5), so the condition is equality
+    between whatever strings the sequence uses, not membership of an enum
+    this module would have to be edited to extend.
+
     Both arrays are frozen at construction: a map is a derivative of one
     configuration generation, and a consumer mutating it would desynchronize
     every other consumer of the same generation (§19).
@@ -99,6 +107,7 @@ class ContributionMap:
     config_id: str
     n_events: int
     param_generation: int
+    line_tx_type: tuple[str, ...] = ()
     normalized: bool = True
 
     def __post_init__(self) -> None:
@@ -109,6 +118,11 @@ class ContributionMap:
             raise ValueError(
                 "a contribution map must name the configuration it was derived"
                 f" from; got config_id={self.config_id!r}, n_events={self.n_events}"
+            )
+        if self.line_tx_type and len(self.line_tx_type) != len(self.line_x_m):
+            raise ValueError(
+                f"map has {len(self.line_x_m)} lines but"
+                f" {len(self.line_tx_type)} transmit-type conditions"
             )
         indices = np.ascontiguousarray(self.event_indices)
         weights = np.ascontiguousarray(self.weights, dtype=np.float64)
@@ -187,6 +201,35 @@ class ContributionMap:
             )
 
 
+def _line_tx_types(
+    config: TransmitConfig, indices: np.ndarray, weights: np.ndarray
+) -> tuple[str, ...]:
+    """The one transmit kind each line is formed from — §7's matching condition.
+
+    Refuses a line whose live slots span kinds. §7 requires it so that a
+    B-mode and a colour-flow transmit of an interleaved sequence are never
+    summed into one pixel: they carry different pulses and different slow-time
+    meaning, and the sum is a plausible-looking number with no physical
+    reading. Inert slots (weight zero) are ignored — they contribute nothing,
+    and a padded frame-edge row must not be refused for the kind of a
+    transmit it does not use.
+    """
+    types: list[str] = []
+    for line in range(indices.shape[0]):
+        live = {
+            config.events[int(indices[line, slot])].tx_type
+            for slot in range(indices.shape[1])
+            if weights[line, slot] > 0.0
+        }
+        if len(live) > 1:
+            raise ValueError(
+                f"line {line} would sum transmit kinds {sorted(live)};"
+                " the contribution map matches transmit type (design.md §7)"
+            )
+        types.append(live.pop() if live else "")
+    return tuple(types)
+
+
 def identity_map(config: TransmitConfig) -> ContributionMap:
     """Event k forms line k with unit weight — the conventional case.
 
@@ -195,13 +238,16 @@ def identity_map(config: TransmitConfig) -> ContributionMap:
     the identity is a case of the structure, not a preserved second path.
     """
     n = len(config.events)
+    indices = np.arange(n, dtype=np.intp)[:, None]
+    weights = np.ones((n, 1), dtype=np.float64)
     return ContributionMap(
         line_x_m=tuple(ev.line_x_m for ev in config.events),
-        event_indices=np.arange(n, dtype=np.intp)[:, None],
-        weights=np.ones((n, 1), dtype=np.float64),
+        event_indices=indices,
+        weights=weights,
         config_id=config.config_id,
         n_events=n,
         param_generation=config.param_generation,
+        line_tx_type=_line_tx_types(config, indices, weights),
     )
 
 
@@ -294,13 +340,15 @@ def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
             offset = pitch * (2 * j - (mla - 1)) / (2 * mla)
             line_x.append(ev.line_x_m + offset)
             indices[k * mla + j, 0] = k
+    weights = np.ones((mla * len(config.events), 1), dtype=np.float64)
     return ContributionMap(
         line_x_m=tuple(line_x),
         event_indices=indices,
-        weights=np.ones((mla * len(config.events), 1), dtype=np.float64),
+        weights=weights,
         config_id=config.config_id,
         n_events=len(config.events),
         param_generation=config.param_generation,
+        line_tx_type=_line_tx_types(config, indices, weights),
     )
 
 
@@ -348,4 +396,5 @@ def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMa
         config_id=config.config_id,
         n_events=n,
         param_generation=config.param_generation,
+        line_tx_type=_line_tx_types(config, indices, weights),
     )
