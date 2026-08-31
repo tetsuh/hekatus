@@ -167,6 +167,7 @@ def das_rf_golden(
 
     by_event = _records_by_event(events, records)
     event_by_index = {ev.event_index: ev for ev in events}
+    _check_transmit_types(contribution, event_by_index, by_event)
     image = np.zeros((z.size, contribution.n_lines), dtype=dtype)
     for event_index, slots in _slots_by_event(contribution).items():
         ev = event_by_index[event_index]
@@ -208,6 +209,40 @@ def _check_frame_provenance(contribution, events, records) -> None:
     contribution.check_frame(config_ids.pop(), len(events), generations.pop())
 
 
+def _check_transmit_types(contribution, event_by_index, record_by_index) -> None:
+    """Every live slot must carry the transmit kind its line names (§7).
+
+    Enforced here and not only where the map is derived, because a map can
+    be built by hand: the derivation helpers refuse a mixed row, and this
+    refuses one that reached a consumer anyway. Both the event and the
+    record are checked, so a record whose header disagrees with the event it
+    names is caught too — the header is what the data calls itself.
+
+    Inert slots are skipped: they contribute nothing, and a padded
+    frame-edge row must not be refused for a transmit it does not use.
+
+    Runs after `_records_by_event`, so every index it reads is one that
+    mapping has already matched to a record; a missing or extra record is
+    that function's error to report, and reporting it here as a lookup
+    failure would bury it.
+    """
+    indices = np.asarray(contribution.event_indices)
+    weights = np.asarray(contribution.weights)
+    for line in range(contribution.n_lines):
+        wanted = contribution.line_tx_type[line]
+        for slot in range(contribution.cap):
+            if weights[line, slot] <= 0.0:
+                continue
+            index = int(indices[line, slot])
+            found = {event_by_index[index].tx_type, record_by_index[index].header.tx_type}
+            if found != {wanted}:
+                raise ValueError(
+                    f"line {line} is formed from transmit type {wanted!r} but event"
+                    f" {index} carries {sorted(found)}; the contribution map matches"
+                    " transmit type (design.md §7)"
+                )
+
+
 def _identity_contribution(events: list[TxEvent]):
     """The default map when a caller passes none: event k forms line k.
 
@@ -246,6 +281,7 @@ def _identity_contribution(events: list[TxEvent]):
         config_id=config_id,
         n_events=n,
         param_generation=generations.pop() if generations else 0,
+        line_tx_type=tuple(ev.tx_type for ev in events),
     )
 
 

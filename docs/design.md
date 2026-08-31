@@ -827,9 +827,13 @@ transmit (delay-table translation invariance on convex/sector probes). An
 output line pitch decoupled from the transmit pitch was considered and
 set aside for exactly that invariance.
 
-Each line also records **the one transmit kind it is formed from**, and a
-line whose live slots would span kinds is refused at derivation — the
-transmit-type matching condition above, made executable, so a B-mode and a
+Each line also records **the one transmit kind it is formed from** — a
+required condition with no empty entries — and a line whose live slots would
+span kinds is refused at derivation. Both consumers check every live slot's
+event *and* record header against it before summing, so a map that reached
+them without passing through a derivation helper is refused too, as is a
+record whose header disagrees with the event it names. This is the
+transmit-type matching condition above, made executable: a B-mode and a
 colour-flow transmit of an interleaved sequence cannot be summed into one
 pixel. The tag is an open set, so the condition is equality between whatever
 strings the sequence uses.

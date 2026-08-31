@@ -94,7 +94,12 @@ class ContributionMap:
     transmit of an interleaved sequence can never be summed into one pixel.
     The tag is an open set of strings (§11.5), so the condition is equality
     between whatever strings the sequence uses, not membership of an enum
-    this module would have to be edited to extend.
+    this module would have to be edited to extend. It is a **required**
+    field with no empty entries: a condition that may be absent is a
+    condition a hand-built map can omit, and a consumer that skips absent
+    conditions is back where this field started. Both consumers check every
+    live slot against it, so the condition is enforced where the sum happens
+    and not only where the map is derived.
 
     Both arrays are frozen at construction: a map is a derivative of one
     configuration generation, and a consumer mutating it would desynchronize
@@ -107,7 +112,7 @@ class ContributionMap:
     config_id: str
     n_events: int
     param_generation: int
-    line_tx_type: tuple[str, ...] = ()
+    line_tx_type: tuple[str, ...]
     normalized: bool = True
 
     def __post_init__(self) -> None:
@@ -119,11 +124,15 @@ class ContributionMap:
                 "a contribution map must name the configuration it was derived"
                 f" from; got config_id={self.config_id!r}, n_events={self.n_events}"
             )
-        if self.line_tx_type and len(self.line_tx_type) != len(self.line_x_m):
+        if len(self.line_tx_type) != len(self.line_x_m):
             raise ValueError(
                 f"map has {len(self.line_x_m)} lines but"
                 f" {len(self.line_tx_type)} transmit-type conditions"
             )
+        if any(not t for t in self.line_tx_type):
+            # An empty condition matches everything, which is the same as
+            # having no condition — the state this field exists to remove.
+            raise ValueError("every line must name the transmit type it is formed from")
         indices = np.ascontiguousarray(self.event_indices)
         weights = np.ascontiguousarray(self.weights, dtype=np.float64)
         n_lines = len(self.line_x_m)

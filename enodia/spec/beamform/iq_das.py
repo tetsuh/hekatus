@@ -136,6 +136,7 @@ def das_iq(
     """
     from enodia.spec.beamform import (
         _check_frame_provenance,
+        _check_transmit_types,
         _identity_contribution,
         _slots_by_event,
     )
@@ -149,6 +150,7 @@ def das_iq(
     line_x = np.array(contribution.line_x_m, dtype=np.float64)
     by_event = _records_by_event(events, records)
     event_by_index = {ev.event_index: ev for ev in events}
+    _check_transmit_types(contribution, event_by_index, by_event)
     image = np.zeros((z.size, contribution.n_lines), dtype=cdtype)
     for event_index, slots in _slots_by_event(contribution).items():
         ev = event_by_index[event_index]

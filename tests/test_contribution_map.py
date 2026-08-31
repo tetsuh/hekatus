@@ -58,7 +58,12 @@ def small_profile() -> ProbeProfile:
 
 
 def constant_records(
-    profile: ProbeProfile, n_events: int, n_t: int = 512, *, config_id: str = "bmode-focused"
+    profile: ProbeProfile,
+    n_events: int,
+    n_t: int = 512,
+    *,
+    config_id: str = "bmode-focused",
+    tx_types: tuple[str, ...] | None = None,
 ):
     """One frame in which every event carries the same constant data.
 
@@ -75,7 +80,7 @@ def constant_records(
                 config_id=config_id,
                 param_generation=0,
                 tx_event_index=k,
-                tx_type="bmode_focused",
+                tx_type=tx_types[k] if tx_types else "bmode_focused",
                 timestamp_ns=k,
             ),
             data=data.copy(),
@@ -150,6 +155,7 @@ def test_finite_weights_with_an_overflowing_sum_are_refused():
             config_id="overflow",
             n_events=2,
             param_generation=0,
+            line_tx_type=("bmode_focused",),
         )
 
 
@@ -170,6 +176,7 @@ def test_a_near_zero_weight_sum_is_refused_not_amplified():
             config_id=cmap.config_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -189,6 +196,7 @@ def test_a_map_without_provenance_cannot_be_built():
             config_id="",
             n_events=len(config.events),
             param_generation=0,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -204,6 +212,7 @@ def test_a_map_claiming_no_events_cannot_be_built():
             config_id=config.config_id,
             n_events=0,
             param_generation=0,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -314,6 +323,7 @@ def test_a_non_integer_event_index_is_refused():
             config_id=cmap.config_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -333,6 +343,7 @@ def test_a_negative_event_index_is_refused():
             config_id=cmap.config_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -351,6 +362,7 @@ def test_an_event_index_past_the_configuration_is_refused_at_derivation():
             config_id=config.config_id,
             n_events=len(config.events),
             param_generation=config.param_generation,
+            line_tx_type=cmap.line_tx_type,
         )
 
 
@@ -588,6 +600,7 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
         config_id=cmap.config_id,
         n_events=cmap.n_events,
         param_generation=cmap.param_generation,
+        line_tx_type=cmap.line_tx_type,
         normalized=False,
     )
 
@@ -758,6 +771,114 @@ def test_the_default_path_refuses_events_from_two_configurations():
 
     with pytest.raises(ValueError, match="span transmit configurations"):
         das_rf_golden(profile, mixed, records)
+
+
+def test_a_map_with_no_transmit_type_condition_cannot_be_built():
+    """`SOL-57-004`: while the condition was optional, a hand-built map could
+    omit it and a consumer that skipped absent conditions was back where the
+    field started. It is required, and no entry may be empty — an empty
+    condition matches everything, which is the same as having none."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+
+    with pytest.raises(TypeError):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=np.asarray(cmap.event_indices),
+            weights=np.asarray(cmap.weights),
+            config_id=cmap.config_id,
+            n_events=cmap.n_events,
+            param_generation=cmap.param_generation,
+        )
+
+    with pytest.raises(ValueError, match="must name the transmit type"):
+        ContributionMap(
+            line_x_m=cmap.line_x_m,
+            event_indices=np.asarray(cmap.event_indices),
+            weights=np.asarray(cmap.weights),
+            config_id=cmap.config_id,
+            n_events=cmap.n_events,
+            param_generation=cmap.param_generation,
+            line_tx_type=("",) * cmap.n_lines,
+        )
+
+
+def test_the_default_identity_map_names_each_lines_transmit_type():
+    """The default path populates the condition like any derived map."""
+    from enodia.spec.beamform import _identity_contribution
+
+    config = _interleaved_config(linear_5mhz())
+
+    cmap = _identity_contribution(list(config.events))
+
+    assert cmap.line_tx_type == tuple(ev.tx_type for ev in config.events)
+
+
+def _mixed_kind_map(config):
+    """A map that violates the condition, built by hand rather than derived.
+
+    The derivation helpers refuse this shape, which is exactly why the
+    consumers need their own check: a map can reach them without passing
+    through a helper.
+    """
+    cmap = identity_map(config)
+    indices = np.asarray(cmap.event_indices).copy()
+    indices[0, 0] = 1  # line 0 says bmode_focused, now reads a color_flow event
+    return ContributionMap(
+        line_x_m=cmap.line_x_m,
+        event_indices=indices,
+        weights=np.asarray(cmap.weights),
+        config_id=cmap.config_id,
+        n_events=cmap.n_events,
+        param_generation=cmap.param_generation,
+        line_tx_type=cmap.line_tx_type,
+    )
+
+
+def test_the_rf_consumer_refuses_a_slot_of_the_wrong_transmit_type():
+    profile = small_profile()
+    config = _interleaved_config(profile)
+    records = constant_records(
+        profile, len(config.events), tx_types=tuple(ev.tx_type for ev in config.events)
+    )
+    mixed = _mixed_kind_map(config)
+
+    with pytest.raises(ValueError, match="matches transmit type"):
+        das_rf_golden(profile, list(config.events), records, contribution=mixed)
+
+
+def test_the_iq_consumer_refuses_a_slot_of_the_wrong_transmit_type():
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = small_profile()
+    config = _interleaved_config(profile)
+    records = constant_records(
+        profile, len(config.events), tx_types=tuple(ev.tx_type for ev in config.events)
+    )
+    iq = demodulate_frame(records, profile, decimation=8)
+    mixed = _mixed_kind_map(config)
+
+    with pytest.raises(ValueError, match="matches transmit type"):
+        das_iq(profile, list(config.events), iq, decimation=8, contribution=mixed)
+
+
+def test_a_record_whose_header_disagrees_with_its_event_is_refused():
+    """The header is what the data calls itself, so both sides are checked:
+    a record tagged `color_flow` cannot be summed onto a `bmode_focused`
+    line even though the event it names is B-mode."""
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    records[0] = RFEventRecord(
+        header=dc_replace(records[0].header, tx_type="color_flow"),
+        data=records[0].data.copy(),
+    )
+
+    with pytest.raises(ValueError, match="matches transmit type"):
+        das_rf_golden(profile, list(config.events), records)
 
 
 # --- the demo runs it ----------------------------------------------------
