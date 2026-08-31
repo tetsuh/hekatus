@@ -44,7 +44,7 @@ production value.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -101,9 +101,17 @@ class ContributionMap:
     live slot against it, so the condition is enforced where the sum happens
     and not only where the map is derived.
 
-    Both arrays are frozen at construction: a map is a derivative of one
-    configuration generation, and a consumer mutating it would desynchronize
-    every other consumer of the same generation (§19).
+    **The map owns its data at construction**, the same way `IQEventRecord`
+    does at its publication boundary (#6): the arrays are copied into
+    immutable `bytes` and exposed as `np.frombuffer` views over them, and
+    `line_x_m` is coerced to a tuple of floats. Clearing the writeable flag
+    on a caller's array is not enough — `np.ascontiguousarray` returns the
+    caller's own array when it is already contiguous, and NumPy lets an
+    array that owns its memory have WRITEABLE set back to True. A map is a
+    derivative of one configuration generation; a caller that could still
+    reach its routes or its normalized weights afterwards could make two
+    consumers of the same map form different images from the same frame
+    (§19).
     """
 
     line_x_m: tuple[float, ...]
@@ -114,6 +122,8 @@ class ContributionMap:
     param_generation: int
     line_tx_type: tuple[str, ...]
     normalized: bool = True
+    _index_owner: bytes = field(init=False, repr=False, compare=False)
+    _weight_owner: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not self.config_id or self.n_events <= 0:
@@ -169,10 +179,23 @@ class ContributionMap:
             )
         if self.normalized:
             weights = weights / sums[:, None]
-        indices.flags.writeable = False
-        weights.flags.writeable = False
-        object.__setattr__(self, "event_indices", indices)
-        object.__setattr__(self, "weights", weights)
+
+        # Publication boundary: copy into immutable bytes and expose
+        # read-only views whose base chain ends at those bytes, which no
+        # flag can make writable.
+        shape = indices.shape
+        index_owner = np.ascontiguousarray(indices, dtype=np.intp).tobytes()
+        weight_owner = np.ascontiguousarray(weights, dtype=np.float64).tobytes()
+        object.__setattr__(self, "_index_owner", index_owner)
+        object.__setattr__(self, "_weight_owner", weight_owner)
+        object.__setattr__(
+            self, "event_indices", np.frombuffer(index_owner, dtype=np.intp).reshape(shape)
+        )
+        object.__setattr__(
+            self, "weights", np.frombuffer(weight_owner, dtype=np.float64).reshape(shape)
+        )
+        object.__setattr__(self, "line_x_m", tuple(float(x) for x in self.line_x_m))
+        object.__setattr__(self, "line_tx_type", tuple(str(t) for t in self.line_tx_type))
 
     @property
     def n_lines(self) -> int:

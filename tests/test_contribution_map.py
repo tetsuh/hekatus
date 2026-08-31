@@ -15,7 +15,7 @@ latency. And frame-edge lines are renormalized, because the artifact of not
 doing so is visible but easy to accept by eye, so the eye is not the check.
 """
 
-from dataclasses import replace
+from dataclasses import FrozenInstanceError, replace
 
 import numpy as np
 import pytest
@@ -244,6 +244,73 @@ def test_a_frame_at_another_generation_is_refused_through_the_default_path():
 
     with pytest.raises(ValueError, match="parameter generation"):
         das_rf_golden(profile, list(config.events), records)
+
+
+def _hand_built(config, *, line_x_m=None, indices=None, weights=None):
+    """A map built from caller-owned, writable inputs."""
+    cmap = identity_map(config)
+    return ContributionMap(
+        line_x_m=cmap.line_x_m if line_x_m is None else line_x_m,
+        event_indices=np.array(cmap.event_indices, dtype=np.intp) if indices is None else indices,
+        weights=np.array(cmap.weights, dtype=np.float64) if weights is None else weights,
+        config_id=cmap.config_id,
+        n_events=cmap.n_events,
+        param_generation=cmap.param_generation,
+        line_tx_type=cmap.line_tx_type,
+    )
+
+
+def test_the_map_does_not_alias_a_caller_owned_array():
+    """`TERRA-57-001`: `np.ascontiguousarray` returns the caller's own array
+    when it is already contiguous, so clearing the writeable flag froze the
+    caller's array rather than owning a copy — and the caller could set it
+    back. The map copies into immutable bytes at construction, as
+    `IQEventRecord` does at its publication boundary (#6)."""
+    config = make_bmode_config(linear_5mhz())
+    indices = np.array(identity_map(config).event_indices, dtype=np.intp)
+    weights = np.array(identity_map(config).weights, dtype=np.float64)
+
+    cmap = _hand_built(config, indices=indices, weights=weights)
+    before = int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])
+    indices[0, 0] = 99
+    weights[0, 0] = 42.0
+
+    assert cmap.event_indices is not indices
+    assert (int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])) == before
+    assert indices.flags.writeable and weights.flags.writeable
+
+
+@pytest.mark.parametrize("attribute", ["event_indices", "weights"])
+def test_writeability_cannot_be_re_enabled(attribute):
+    """NumPy lets an array that owns its memory be unfrozen, so a cleared
+    flag is not ownership. The exposed arrays are views over `bytes`, whose
+    base chain no flag can make writable."""
+    cmap = identity_map(make_bmode_config(linear_5mhz()))
+
+    with pytest.raises(ValueError, match="WRITEABLE"):
+        getattr(cmap, attribute).flags.writeable = True
+
+
+def test_a_mutable_line_coordinate_input_is_coerced():
+    """A list passed as `line_x_m` used to be retained, so the validated
+    line geometry could be rewritten after every check had passed."""
+    config = make_bmode_config(linear_5mhz())
+    coordinates = list(identity_map(config).line_x_m)
+
+    cmap = _hand_built(config, line_x_m=coordinates)
+    coordinates[0] = -1.0
+
+    assert isinstance(cmap.line_x_m, tuple)
+    assert cmap.line_x_m[0] != -1.0
+
+
+def test_the_map_fields_cannot_be_reassigned():
+    """`frozen=True` covers rebinding; the tests above cover the buffers it
+    does not reach."""
+    cmap = identity_map(make_bmode_config(linear_5mhz()))
+
+    with pytest.raises(FrozenInstanceError):
+        cmap.line_x_m = ()
 
 
 # --- MLA as a property of the map ---------------------------------------

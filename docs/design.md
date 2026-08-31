@@ -838,6 +838,15 @@ colour-flow transmit of an interleaved sequence cannot be summed into one
 pixel. The tag is an open set, so the condition is equality between whatever
 strings the sequence uses.
 
+**A map owns its data.** Its arrays are copied into immutable bytes at
+construction and exposed as read-only views over them, and its coordinate
+and type tuples are coerced — the same publication boundary
+`IQEventRecord` uses (§14, #6), for the same reason: clearing a writeable
+flag freezes the caller's array rather than owning a copy, and an array
+that owns its memory can be unfrozen again. A derivative that could change
+after validation would let two consumers of one map form different images
+from one frame.
+
 **A map names the configuration it was derived from** (`config_id`, event
 count, **parameter generation**) — required fields, not optional ones, so an
 unbound map cannot be built — and both consumers compare all three against
