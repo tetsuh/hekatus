@@ -246,18 +246,26 @@ def test_a_frame_at_another_generation_is_refused_through_the_default_path():
         das_rf_golden(profile, list(config.events), records)
 
 
-def _hand_built(config, *, line_x_m=None, indices=None, weights=None):
-    """A map built from caller-owned, writable inputs."""
+def _hand_built(config, *, indices=None, weights=None, **overrides):
+    """A map built from caller-owned, writable inputs.
+
+    Any field can be overridden, so a sweep of one field against one
+    invariant is one call.
+    """
     cmap = identity_map(config)
-    return ContributionMap(
-        line_x_m=cmap.line_x_m if line_x_m is None else line_x_m,
-        event_indices=np.array(cmap.event_indices, dtype=np.intp) if indices is None else indices,
-        weights=np.array(cmap.weights, dtype=np.float64) if weights is None else weights,
-        config_id=cmap.config_id,
-        n_events=cmap.n_events,
-        param_generation=cmap.param_generation,
-        line_tx_type=cmap.line_tx_type,
-    )
+    fields = {
+        "line_x_m": cmap.line_x_m,
+        "event_indices": np.array(cmap.event_indices, dtype=np.intp)
+        if indices is None
+        else indices,
+        "weights": np.array(cmap.weights, dtype=np.float64) if weights is None else weights,
+        "config_id": cmap.config_id,
+        "n_events": cmap.n_events,
+        "param_generation": cmap.param_generation,
+        "line_tx_type": cmap.line_tx_type,
+    }
+    fields.update(overrides)
+    return ContributionMap(**fields)
 
 
 def test_the_map_does_not_alias_a_caller_owned_array():
@@ -278,6 +286,52 @@ def test_the_map_does_not_alias_a_caller_owned_array():
     assert cmap.event_indices is not indices
     assert (int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])) == before
     assert indices.flags.writeable and weights.flags.writeable
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("param_generation", -1, ValueError),
+        ("param_generation", 1.5, TypeError),
+        ("param_generation", float("nan"), TypeError),
+        ("n_events", 1e9, TypeError),
+    ],
+    ids=["negative-generation", "fractional-generation", "nan-generation", "float-event-count"],
+)
+def test_the_provenance_counters_must_be_whole_and_non_negative(field, value, error):
+    """Found by sweeping every field against every invariant class rather
+    than waiting for the next review to name one. The generation is a
+    counter (§19); a fractional or negative one compares unequal to every
+    real frame, so it fails closed — but it fails at consumption, far from
+    the construction that made it wrong."""
+    config = make_bmode_config(linear_5mhz())
+
+    with pytest.raises(error):
+        _hand_built(config, **{field: value})
+
+
+def test_a_non_string_transmit_type_condition_is_refused():
+    """`str()` would turn 123 into "123": a tag that looks valid, matches no
+    record, and surfaces at consumption instead of here."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+
+    with pytest.raises(TypeError, match="must be strings"):
+        _hand_built(config, line_tx_type=(123,) + tuple(cmap.line_tx_type[1:]))
+
+
+def test_a_map_that_forms_no_line_is_refused():
+    """An empty map produces an empty image rather than an error."""
+    with pytest.raises(ValueError, match="at least one line"):
+        ContributionMap(
+            line_x_m=(),
+            event_indices=np.zeros((0, 1), dtype=np.intp),
+            weights=np.zeros((0, 1), dtype=np.float64),
+            config_id="empty",
+            n_events=1,
+            param_generation=0,
+            line_tx_type=(),
+        )
 
 
 @pytest.mark.parametrize(

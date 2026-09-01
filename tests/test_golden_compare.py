@@ -140,7 +140,9 @@ def test_a_clean_sweep_harness_is_recorded_as_clean(monkeypatch):
 
 
 def test_a_modified_sweep_harness_is_recorded_as_dirty(monkeypatch):
-    monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git(" M enodia/spec/frontend/__init__.py"))
+    monkeypatch.setattr(
+        decimation_sweep, "_git", _fake_sweep_git(" M enodia/spec/frontend/__init__.py")
+    )
 
     assert decimation_sweep.environment()["harness_dirty"] is True
 

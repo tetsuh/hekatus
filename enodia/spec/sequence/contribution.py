@@ -144,6 +144,23 @@ class ContributionMap:
             worst = next(i for i, x in enumerate(line_x) if not math.isfinite(x))
             raise ValueError(f"line {worst} has a non-finite abscissa {line_x[worst]}")
         object.__setattr__(self, "line_x_m", line_x)
+        if not self.line_x_m:
+            raise ValueError("a contribution map must form at least one line")
+        if isinstance(self.param_generation, bool) or not isinstance(self.param_generation, int):
+            raise TypeError(
+                f"parameter generation must be an integer, got {self.param_generation!r}"
+            )
+        if self.param_generation < 0:
+            raise ValueError(
+                f"parameter generation must not be negative, got {self.param_generation}"
+            )
+        if isinstance(self.n_events, bool) or not isinstance(self.n_events, int):
+            raise TypeError(f"event count must be an integer, got {self.n_events!r}")
+        if any(not isinstance(t, str) for t in self.line_tx_type):
+            # Coercing with `str()` would turn 123 into "123": a tag that
+            # looks valid, matches no record, and fails at consumption
+            # instead of here.
+            raise TypeError("transmit-type conditions must be strings")
         if not self.config_id or self.n_events <= 0:
             # Provenance is required, not optional. While it could be empty,
             # `check_frame` had nothing to compare and every unbound map —
@@ -212,7 +229,7 @@ class ContributionMap:
         object.__setattr__(
             self, "weights", np.frombuffer(weight_owner, dtype=np.float64).reshape(shape)
         )
-        object.__setattr__(self, "line_tx_type", tuple(str(t) for t in self.line_tx_type))
+        object.__setattr__(self, "line_tx_type", tuple(self.line_tx_type))
 
     @property
     def n_lines(self) -> int:

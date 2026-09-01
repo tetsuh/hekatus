@@ -840,7 +840,12 @@ strings the sequence uses.
 
 Line abscissae are coerced and checked for finiteness first: a non-finite
 coordinate does not produce a non-finite image, it produces a silently black
-scanline, because the read position casts to a garbage integer index.
+scanline, because the read position casts to a garbage integer index. The
+provenance counters are whole and non-negative, the type conditions are
+strings rather than anything `str()` would flatter into one, and a map that
+forms no line at all is refused — every field is checked against every
+invariant the others are, so the next gap is not found one review at a
+time.
 
 **A map owns its data.** Its arrays are copied into immutable bytes at
 construction and exposed as read-only views over them, and its coordinate

@@ -343,6 +343,10 @@ def accept(
     Event indices must run 0..n-1 in sequence order: the index is the event's
     name in the frame header and, through the identity map, its scanline.
     """
+    if isinstance(param_generation, bool) or not isinstance(param_generation, int):
+        raise TypeError(f"parameter generation must be an integer, got {param_generation!r}")
+    if param_generation < 0:
+        raise ValueError(f"parameter generation must not be negative, got {param_generation}")
     canonical = _check_geometry(description, profile)
     if not description.events:
         raise ValueError(f"configuration {description.config_id!r} describes no transmit events")
