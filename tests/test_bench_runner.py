@@ -159,25 +159,10 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     monkeypatch.setitem(sys.modules, "ttnn", ttnn)
 
     output = tmp_path / "results.json"
-    assert (
-        run_matmul.main(
-            [
-                "--only",
-                "frontend_fir_taps64_w2",
-                "--dtype",
-                "bfloat16",
-                "--memory",
-                "dram",
-                "--iters",
-                "1",
-                "--repeats",
-                "2",
-                "--out",
-                str(output),
-            ]
-        )
-        == 0
-    )
+    assert run_matmul.main(
+        ["--only", "frontend_fir_taps64_w2", "--dtype", "bfloat16", "--memory", "dram",
+         "--iters", "1", "--repeats", "2", "--out", str(output)]
+    ) == 0
 
     payload = json.loads(output.read_text())
     assert len(payload["results"]) == 1

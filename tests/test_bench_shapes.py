@@ -34,7 +34,9 @@ def test_catalogue_names_are_unique_and_dimensions_are_positive():
 def test_catalogue_pins_the_exact_workload_inventory():
     catalogue = default_catalogue()
 
-    actual = {(s.name, s.batch, s.m, s.k, s.n, s.real_matmuls, s.family) for s in catalogue}
+    actual = {
+        (s.name, s.batch, s.m, s.k, s.n, s.real_matmuls, s.family) for s in catalogue
+    }
     expected = {
         *{
             (f"newton_schulz_L{size}_b{batch}", batch, size, size, size, 4, "newton_schulz")
@@ -88,4 +90,6 @@ def test_representative_and_reference_are_mutually_exclusive():
 
 def test_a_shape_rejects_a_batch_that_would_not_run():
     with pytest.raises(ValueError):
-        MatmulShape(name="bad", batch=0, m=4, k=4, n=4, real_matmuls=1, family="reference", note="")
+        MatmulShape(
+            name="bad", batch=0, m=4, k=4, n=4, real_matmuls=1, family="reference", note=""
+        )

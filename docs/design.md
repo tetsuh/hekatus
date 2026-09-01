@@ -811,7 +811,8 @@ zero, pointing at a real event — so work per line is constant, which is
 where the no-variable-loops absolute rule becomes an assertable property
 of data. Weights are **renormalized at derivation** — each line divided by the sum
 of the weights actually applied to it (ADR-0010), with a floor below which
-the line is refused rather than amplified —
+the line is refused rather than amplified, and with no way to construct a
+map that skips it —
 so the beamformer stays a plain weighted sum and edge lines are not darker
 for their position. Both DAS paths — RF golden and IQ — read the map; the
 identity map reproduces the pre-map images bit for bit.

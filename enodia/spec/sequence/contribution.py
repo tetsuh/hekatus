@@ -67,10 +67,14 @@ class ContributionMap:
     """Event → line, with weights, at fixed work per line.
 
     `event_indices[l, s]` names the transmit event slot `s` of line `l`
-    reads; `weights[l, s]` is its weight, 0.0 for an inert slot. Every
-    line's weights sum to one unless the map was explicitly constructed
-    `normalized=False` — which exists so a test can show the artifact
-    renormalization prevents, and for no other reason.
+    reads; `weights[l, s]` is its weight, 0.0 for an inert slot. **Every
+    line's weights sum to one**, with no way to construct one that does
+    not: ADR-0010 decision 3 puts the normalization at derivation precisely
+    so every consumer of a map sees the same normalization, and an escape
+    hatch on the accepted type would be a second normalization the decision
+    says does not exist. A test that needs the un-normalized behaviour as a
+    negative control builds its own object rather than asking this one to
+    be less than it is.
 
     **A map names the configuration it was derived from — always.**
     `config_id`, `n_events` and `param_generation` are required fields, not
@@ -129,7 +133,6 @@ class ContributionMap:
     n_events: int
     param_generation: int
     line_tx_type: tuple[str, ...]
-    normalized: bool = True
     _index_owner: bytes = field(init=False, repr=False, compare=False)
     _weight_owner: bytes = field(init=False, repr=False, compare=False)
 
@@ -214,8 +217,7 @@ class ContributionMap:
                 f"line {worst} has weight sum {sums[worst]:.3e}, below the"
                 f" {WEIGHT_SUM_FLOOR:g} floor; refused rather than amplified"
             )
-        if self.normalized:
-            weights = weights / sums[:, None]
+        weights = weights / sums[:, None]
 
         # Publication boundary: copy into immutable bytes and expose
         # read-only views whose base chain ends at those bytes, which no

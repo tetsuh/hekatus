@@ -727,31 +727,74 @@ def test_frame_edge_lines_are_not_systematically_darker():
     np.testing.assert_allclose(per_line, per_line[len(per_line) // 2], rtol=1e-5)
 
 
+class _UnnormalizedMap:
+    """A stand-in that reads like a map but skips the normalization.
+
+    It lives here rather than as a flag on `ContributionMap` because
+    ADR-0010 decision 3 puts the normalization at derivation so that **every**
+    consumer of a map sees the same one; a production escape hatch would be a
+    second normalization the decision says does not exist (`SOL-57-001`).
+    A negative control needs the behaviour, not the type, so it builds the
+    behaviour.
+    """
+
+    def __init__(self, derived):
+        weights = np.asarray(derived.weights).copy()
+        live = weights > 0.0
+        # Every live slot at the uniform weight the interior lines get, with
+        # nothing dividing the shorter edge rows back up.
+        weights[live] = 1.0 / weights.shape[1]
+        self.weights = weights
+        self.line_x_m = derived.line_x_m
+        self.event_indices = np.asarray(derived.event_indices)
+        self.line_tx_type = derived.line_tx_type
+        self.config_id = derived.config_id
+        self.probe_profile_id = derived.probe_profile_id
+        self.n_events = derived.n_events
+        self.param_generation = derived.param_generation
+        self.n_lines = derived.n_lines
+        self.cap = derived.cap
+
+    def check_profile(self, profile_name):
+        pass
+
+    def check_frame(self, config_id, n_events, param_generation):
+        pass
+
+
+def test_every_constructible_map_has_unit_row_sums():
+    """ADR-0010 decision 3, as an invariant of the type rather than a habit
+    of its constructors: there is no argument that produces a map whose rows
+    sum to anything else."""
+    config = make_bmode_config(linear_5mhz())
+    cmap = identity_map(config)
+    lopsided = np.asarray(cmap.weights).copy()
+    lopsided[:, 0] = 7.0
+
+    for candidate in (
+        identity_map(config),
+        mla_map(config, mla=2),
+        synthetic_uniform_map(config, cap=3),
+        _hand_built(config, weights=lopsided),
+    ):
+        np.testing.assert_allclose(
+            np.asarray(candidate.weights).sum(axis=1), 1.0, rtol=0.0, atol=1e-12
+        )
+
+
 def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
     """The check on the check: un-normalized weights on the same constant
     field leave the outermost lines visibly darker. If this stops failing
-    the way it should, the previous test is not testing anything."""
+    the way it should, the previous test is not testing anything.
+
+    The stand-in is a test-local object, not a `ContributionMap`: the
+    accepted type cannot be built this way at all."""
     profile = small_profile()
     config = make_bmode_config(profile)
     records = constant_records(profile, len(config.events))
     cmap = synthetic_uniform_map(config, cap=3)
 
-    # The raw structure with renormalization undone: every live slot at the
-    # uniform weight the interior lines get.
-    weights = np.asarray(cmap.weights).copy()
-    live = weights > 0.0
-    weights[live] = 1.0 / cmap.weights.shape[1]
-    raw = ContributionMap(
-        line_x_m=cmap.line_x_m,
-        event_indices=np.asarray(cmap.event_indices),
-        weights=weights,
-        config_id=cmap.config_id,
-        probe_profile_id=cmap.probe_profile_id,
-        n_events=cmap.n_events,
-        param_generation=cmap.param_generation,
-        line_tx_type=cmap.line_tx_type,
-        normalized=False,
-    )
+    raw = _UnnormalizedMap(cmap)
 
     image, _, _ = das_rf_golden(profile, list(config.events), records, contribution=raw)
 

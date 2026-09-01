@@ -72,7 +72,9 @@ def parse_environment(snapshot: str) -> dict:
     device = _device_info(snapshot)
     if device is None:
         return {"board_snapshot_error": "no device information in the snapshot"}
-    return {key: device[key] for key in ("board_info", "firmwares", "limits") if key in device} | {
+    return {
+        key: device[key] for key in ("board_info", "firmwares", "limits") if key in device
+    } | {
         "board": device.get("board_info"),
         "firmware": device.get("firmwares"),
         "limits": device.get("limits"),
@@ -157,9 +159,7 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
         "image": image,
         "image_pinned": image_pinned,
         "kernel": _run("uname -sr").strip(),
-        "kmd_version": _run(
-            "modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'"
-        ).strip(),
+        "kmd_version": _run("modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'").strip(),
         "tt_env_active_release": _run(
             "tt-env status 2>/dev/null | awk '/Active release:/{print $3}'"
         ).strip(),
