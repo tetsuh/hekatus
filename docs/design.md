@@ -864,15 +864,21 @@ that owns its memory can be unfrozen again. A derivative that could change
 after validation would let two consumers of one map form different images
 from one frame.
 
-**A map names the configuration it was derived from** (`config_id`, event
-count, **parameter generation**) — required fields, not optional ones, so an
+**A map names the configuration it was derived from** (`config_id`,
+**probe profile id**, event count, **parameter generation**) — required fields, not optional ones, so an
 unbound map cannot be built — and both consumers compare all three against
 what the records' headers name before forming a frame. The generation has a
 single source: the accepted `TransmitConfig` carries it, and every
 derivative reads it from there rather than defaulting on its own, because a
 derivative that supplies its own generation can disagree with what it was
 derived from while both sides stay self-consistent. The simulator stamps
-frames with the configuration's generation for the same reason. The generation is
+frames with the configuration's generation for the same reason.
+
+The **probe profile** is checked the same way. A configuration names exactly
+one profile (§19, #46) and the producing side already refuses a mismatch;
+the consumers take the profile as a separate argument and read the whole of
+the geometry from it, so an unchecked one beamforms a real acquisition on
+another probe's delays and returns a plausible image. The generation is
 carried separately because depth and focus are in-config parameters (§19):
 the id holds still across a knob turn while every derivative behind it,
 this map included, is invalidated and re-derived — so a map checked on the

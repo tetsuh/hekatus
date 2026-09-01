@@ -153,6 +153,7 @@ def test_finite_weights_with_an_overflowing_sum_are_refused():
             event_indices=np.array([[0, 1]], dtype=np.intp),
             weights=np.array([[1e308, 1e308]], dtype=np.float64),
             config_id="overflow",
+            probe_profile_id="linear-5mhz",
             n_events=2,
             param_generation=0,
             line_tx_type=("bmode_focused",),
@@ -174,6 +175,7 @@ def test_a_near_zero_weight_sum_is_refused_not_amplified():
             event_indices=np.asarray(cmap.event_indices),
             weights=tiny,
             config_id=cmap.config_id,
+            probe_profile_id=cmap.probe_profile_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
             line_tx_type=cmap.line_tx_type,
@@ -194,6 +196,7 @@ def test_a_map_without_provenance_cannot_be_built():
             event_indices=np.asarray(cmap.event_indices),
             weights=np.asarray(cmap.weights),
             config_id="",
+            probe_profile_id=cmap.probe_profile_id,
             n_events=len(config.events),
             param_generation=0,
             line_tx_type=cmap.line_tx_type,
@@ -210,6 +213,7 @@ def test_a_map_claiming_no_events_cannot_be_built():
             event_indices=np.asarray(cmap.event_indices),
             weights=np.asarray(cmap.weights),
             config_id=config.config_id,
+            probe_profile_id=config.probe_profile_id,
             n_events=0,
             param_generation=0,
             line_tx_type=cmap.line_tx_type,
@@ -260,6 +264,7 @@ def _hand_built(config, *, indices=None, weights=None, **overrides):
         else indices,
         "weights": np.array(cmap.weights, dtype=np.float64) if weights is None else weights,
         "config_id": cmap.config_id,
+        "probe_profile_id": cmap.probe_profile_id,
         "n_events": cmap.n_events,
         "param_generation": cmap.param_generation,
         "line_tx_type": cmap.line_tx_type,
@@ -328,6 +333,7 @@ def test_a_map_that_forms_no_line_is_refused():
             event_indices=np.zeros((0, 1), dtype=np.intp),
             weights=np.zeros((0, 1), dtype=np.float64),
             config_id="empty",
+            probe_profile_id="linear-5mhz",
             n_events=1,
             param_generation=0,
             line_tx_type=(),
@@ -460,6 +466,7 @@ def test_a_non_integer_event_index_is_refused():
             event_indices=np.asarray(cmap.event_indices, dtype=np.float64) + 0.5,
             weights=np.asarray(cmap.weights),
             config_id=cmap.config_id,
+            probe_profile_id=cmap.probe_profile_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
             line_tx_type=cmap.line_tx_type,
@@ -480,6 +487,7 @@ def test_a_negative_event_index_is_refused():
             event_indices=indices,
             weights=np.asarray(cmap.weights),
             config_id=cmap.config_id,
+            probe_profile_id=cmap.probe_profile_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
             line_tx_type=cmap.line_tx_type,
@@ -499,6 +507,7 @@ def test_an_event_index_past_the_configuration_is_refused_at_derivation():
             event_indices=indices,
             weights=np.asarray(cmap.weights),
             config_id=config.config_id,
+            probe_profile_id=config.probe_profile_id,
             n_events=len(config.events),
             param_generation=config.param_generation,
             line_tx_type=cmap.line_tx_type,
@@ -737,6 +746,7 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
         event_indices=np.asarray(cmap.event_indices),
         weights=weights,
         config_id=cmap.config_id,
+        probe_profile_id=cmap.probe_profile_id,
         n_events=cmap.n_events,
         param_generation=cmap.param_generation,
         line_tx_type=cmap.line_tx_type,
@@ -926,6 +936,7 @@ def test_a_map_with_no_transmit_type_condition_cannot_be_built():
             event_indices=np.asarray(cmap.event_indices),
             weights=np.asarray(cmap.weights),
             config_id=cmap.config_id,
+            probe_profile_id=cmap.probe_profile_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
         )
@@ -936,6 +947,7 @@ def test_a_map_with_no_transmit_type_condition_cannot_be_built():
             event_indices=np.asarray(cmap.event_indices),
             weights=np.asarray(cmap.weights),
             config_id=cmap.config_id,
+            probe_profile_id=cmap.probe_profile_id,
             n_events=cmap.n_events,
             param_generation=cmap.param_generation,
             line_tx_type=("",) * cmap.n_lines,
@@ -968,6 +980,7 @@ def _mixed_kind_map(config):
         event_indices=indices,
         weights=np.asarray(cmap.weights),
         config_id=cmap.config_id,
+        probe_profile_id=cmap.probe_profile_id,
         n_events=cmap.n_events,
         param_generation=cmap.param_generation,
         line_tx_type=cmap.line_tx_type,
@@ -1081,6 +1094,64 @@ def test_a_reordered_or_sparse_event_list_is_refused():
 
     with pytest.raises(ValueError, match="in sequence order"):
         das_rf_golden(profile, swapped, records)
+
+
+def _other_profile() -> ProbeProfile:
+    """A different probe of the same channel count — the case a shape check
+    cannot catch."""
+    return ProbeProfile(
+        name="linear-13mhz",
+        n_elements=128,
+        pitch_m=0.1e-3,
+        f0_hz=13.0e6,
+        bandwidth_frac=0.7,
+        bandwidth_source=None,
+        fs_hz=40.0e6,
+        c_m_s=1540.0,
+        depth_m=60e-3,
+        tx_focus_m=20e-3,
+        f_number=2.0,
+    )
+
+
+def test_the_rf_consumer_refuses_another_probe_profile():
+    """A configuration names exactly one probe profile (§19, #46), and the
+    producing side already refuses a mismatch (`simulate_frame`). The
+    consumers took the profile as a separate argument and read the whole
+    geometry from it — element positions, sound speed, sampling rate,
+    F-number — so a mismatched profile beamformed a real acquisition on
+    another probe's delays and returned a plausible image. Found by sweeping
+    the consumers' parameters, not by a review."""
+    profile = linear_5mhz()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+
+    with pytest.raises(ValueError, match="derived for probe profile"):
+        das_rf_golden(_other_profile(), list(config.events), records)
+
+
+def test_the_iq_consumer_refuses_another_probe_profile():
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = linear_5mhz()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    iq = demodulate_frame(records, profile, decimation=8)
+
+    with pytest.raises(ValueError, match="derived for probe profile"):
+        das_iq(_other_profile(), list(config.events), iq, decimation=8)
+
+
+def test_the_default_path_refuses_events_from_two_probe_profiles():
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    mixed = list(config.events)
+    mixed[0] = replace(mixed[0], probe_profile_id="linear-13mhz")
+
+    with pytest.raises(ValueError, match="span transmit configurations"):
+        das_rf_golden(profile, mixed, records)
 
 
 # --- the demo runs it ----------------------------------------------------

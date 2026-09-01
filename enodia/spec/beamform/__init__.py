@@ -160,6 +160,7 @@ def das_rf_golden(
     _check_event_sequence(events)
     if contribution is None:
         contribution = _identity_contribution(events)
+    contribution.check_profile(profile.name)
     _check_frame_provenance(contribution, events, records)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
@@ -288,7 +289,8 @@ def _identity_contribution(events: list[TxEvent]):
     n = len(events)
     config_ids = {ev.config_id for ev in events}
     generations = {ev.param_generation for ev in events}
-    if len(config_ids) > 1 or len(generations) > 1:
+    profile_ids = {ev.probe_profile_id for ev in events}
+    if len(config_ids) > 1 or len(generations) > 1 or len(profile_ids) > 1:
         raise ValueError(
             f"events span transmit configurations {sorted(config_ids)}"
             f" at generations {sorted(generations)}"
@@ -307,6 +309,7 @@ def _identity_contribution(events: list[TxEvent]):
         n_events=n,
         param_generation=generations.pop() if generations else 0,
         line_tx_type=tuple(ev.tx_type for ev in events),
+        probe_profile_id=profile_ids.pop() if profile_ids else "",
     )
 
 

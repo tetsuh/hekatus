@@ -154,10 +154,11 @@ class TxEvent:
     MLA and transmit compounding, and this field remains the conventional
     one-line case a caller can beamform without deriving a map first.
 
-    `config_id` and `param_generation` are the generation tag the event was
-    accepted under, carried so a consumer holding events rather than a
-    configuration can still be told it is pairing them with another
-    configuration's records (§19, `enodia.spec.beamform`). Without them the
+    `config_id`, `probe_profile_id` and `param_generation` are the identity
+    the event was accepted under, carried so a consumer holding events
+    rather than a configuration can still be told it is pairing them with
+    another configuration's records, or beamforming them on another probe's
+    geometry (§19, `enodia.spec.beamform`). Without them the
     identity path had no provenance to check and would render one
     configuration's records on another's line geometry.
     """
@@ -170,6 +171,7 @@ class TxEvent:
     firing_delays_s: tuple[float, ...]
     apodization: tuple[float, ...]
     config_id: str = ""
+    probe_profile_id: str = ""
     param_generation: int = 0
 
 
@@ -238,6 +240,7 @@ def _check_event(
     profile: ProbeProfile,
     *,
     config_id: str = "",
+    probe_profile_id: str = "",
     param_generation: int = 0,
 ) -> TxEvent:
     if not ev.tx_type.strip():
@@ -326,6 +329,7 @@ def _check_event(
         firing_delays_s=tuple(float(d) for d in delays_s),
         apodization=tuple(float(w) for w in weights),
         config_id=config_id,
+        probe_profile_id=probe_profile_id,
         param_generation=param_generation,
     )
 
@@ -376,6 +380,7 @@ def accept(
                 canonical,
                 profile,
                 config_id=description.config_id,
+                probe_profile_id=description.probe_profile_id,
                 param_generation=param_generation,
             )
         )

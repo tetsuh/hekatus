@@ -146,6 +146,7 @@ def das_iq(
     _check_event_sequence(events)
     if contribution is None:
         contribution = _identity_contribution(events)
+    contribution.check_profile(profile.name)
     _check_frame_provenance(contribution, events, records)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)

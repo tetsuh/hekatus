@@ -125,6 +125,7 @@ class ContributionMap:
     event_indices: np.ndarray  # (n_lines, cap) int
     weights: np.ndarray  # (n_lines, cap) float64
     config_id: str
+    probe_profile_id: str
     n_events: int
     param_generation: int
     line_tx_type: tuple[str, ...]
@@ -161,13 +162,14 @@ class ContributionMap:
             # looks valid, matches no record, and fails at consumption
             # instead of here.
             raise TypeError("transmit-type conditions must be strings")
-        if not self.config_id or self.n_events <= 0:
+        if not self.config_id or not self.probe_profile_id or self.n_events <= 0:
             # Provenance is required, not optional. While it could be empty,
             # `check_frame` had nothing to compare and every unbound map —
             # including one supplied explicitly — was consumed unchecked.
             raise ValueError(
                 "a contribution map must name the configuration it was derived"
-                f" from; got config_id={self.config_id!r}, n_events={self.n_events}"
+                f" from; got config_id={self.config_id!r},"
+                f" probe_profile_id={self.probe_profile_id!r}, n_events={self.n_events}"
             )
         if len(self.line_tx_type) != len(self.line_x_m):
             raise ValueError(
@@ -241,6 +243,22 @@ class ContributionMap:
         """Contributing-transmit slots per line — the fixed work."""
         return int(self.event_indices.shape[1])
 
+    def check_profile(self, profile_name: str) -> None:
+        """Refuse a probe this map's configuration was not accepted against.
+
+        A configuration names exactly one probe profile (§19, #46), and the
+        producing side already refuses a mismatch (`simulate_frame`). The
+        consumers take the profile as a separate argument and read the whole
+        of the geometry from it — element positions, sound speed, sampling
+        rate, F-number — so a mismatched profile beamforms a real
+        acquisition on another probe's delays and returns a plausible image.
+        """
+        if self.probe_profile_id != profile_name:
+            raise ValueError(
+                f"contribution map was derived for probe profile"
+                f" {self.probe_profile_id!r}, beamforming on {profile_name!r}"
+            )
+
     def check_frame(self, config_id: str, n_events: int, param_generation: int) -> None:
         """Refuse a frame this map was not derived for.
 
@@ -311,6 +329,7 @@ def identity_map(config: TransmitConfig) -> ContributionMap:
         event_indices=indices,
         weights=weights,
         config_id=config.config_id,
+        probe_profile_id=config.probe_profile_id,
         n_events=n,
         param_generation=config.param_generation,
         line_tx_type=_line_tx_types(config, indices, weights),
@@ -412,6 +431,7 @@ def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
         event_indices=indices,
         weights=weights,
         config_id=config.config_id,
+        probe_profile_id=config.probe_profile_id,
         n_events=len(config.events),
         param_generation=config.param_generation,
         line_tx_type=_line_tx_types(config, indices, weights),
@@ -460,6 +480,7 @@ def synthetic_uniform_map(config: TransmitConfig, *, cap: int) -> ContributionMa
         event_indices=indices,
         weights=weights,
         config_id=config.config_id,
+        probe_profile_id=config.probe_profile_id,
         n_events=n,
         param_generation=config.param_generation,
         line_tx_type=_line_tx_types(config, indices, weights),
