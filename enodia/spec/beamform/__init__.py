@@ -157,6 +157,7 @@ def das_rf_golden(
         # silently wrong image rather than a lower-precision one.
         raise ValueError(f"dtype must be floating-point for beamforming, got {np.dtype(dtype)}")
 
+    _check_event_sequence(events)
     if contribution is None:
         contribution = _identity_contribution(events)
     _check_frame_provenance(contribution, events, records)
@@ -183,6 +184,30 @@ def das_rf_golden(
             image[:, line] += weight * (w * sampled).sum(axis=0)
 
     return image, z, line_x
+
+
+def _check_event_sequence(events) -> None:
+    """The event list must be one distinct event per sequence position.
+
+    `accept` guarantees this of a configuration (indices run 0..n-1 in
+    order), but the consumers take a bare list, and a caller can duplicate
+    an entry after the fact. `_records_by_event` derives the set of wanted
+    indices, so duplicates collapse there and its missing-record check
+    passes: four events naming three transmits form four lines from three
+    acquisitions, and the duplicated line carries the wrong one at a
+    coordinate of its own. Nothing else sees it — configuration,
+    generation, weights and transmit type all agree — so the image is
+    plausible and wrong, which is what §19's fail-stop rule exists to stop.
+    """
+    indices = [ev.event_index for ev in events]
+    if len(set(indices)) != len(indices):
+        duplicated = sorted({i for i in indices if indices.count(i) > 1})
+        raise ValueError(f"transmit events {duplicated} appear more than once in the frame")
+    if indices != list(range(len(indices))):
+        raise ValueError(
+            f"transmit event indices must run 0..{len(indices) - 1} in sequence order,"
+            f" got {indices[:8]}{'...' if len(indices) > 8 else ''}"
+        )
 
 
 def _check_frame_provenance(contribution, events, records) -> None:

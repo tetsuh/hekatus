@@ -1020,6 +1020,69 @@ def test_a_record_whose_header_disagrees_with_its_event_is_refused():
         das_rf_golden(profile, list(config.events), records)
 
 
+def _duplicated_events(config, n=4):
+    """A provenance-valid event list whose position 1 repeats event 0.
+
+    Every other check agrees: same configuration, same generation, same
+    transmit type, unit weights. Only the identity of the acquisition is
+    wrong, and it carries a line coordinate of its own.
+    """
+    events = list(config.events[:n])
+    events[1] = replace(events[0], line_x_m=events[1].line_x_m)
+    return events
+
+
+def test_the_rf_consumer_refuses_a_duplicated_transmit_event():
+    """`TERRA-57-003`: `_records_by_event` derives the wanted indices as a
+    **set**, so a duplicate collapses there and its missing-record check
+    passes. Measured before fixing: four events naming three transmits
+    formed a finite four-line image from three acquisitions, the duplicated
+    line carrying the wrong one at a coordinate of its own — plausible and
+    wrong, which is what §19's fail-stop rule exists to stop."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    events = _duplicated_events(config)
+    records = [
+        r
+        for r in constant_records(profile, len(config.events))
+        if r.header.tx_event_index in {ev.event_index for ev in events}
+    ]
+
+    with pytest.raises(ValueError, match="appear more than once"):
+        das_rf_golden(profile, events, records)
+
+
+def test_the_iq_consumer_refuses_a_duplicated_transmit_event():
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    events = _duplicated_events(config)
+    records = [
+        r
+        for r in constant_records(profile, len(config.events))
+        if r.header.tx_event_index in {ev.event_index for ev in events}
+    ]
+
+    with pytest.raises(ValueError, match="appear more than once"):
+        das_iq(profile, events, demodulate_frame(records, profile, decimation=8), decimation=8)
+
+
+def test_a_reordered_or_sparse_event_list_is_refused():
+    """The other half of the same rule `accept` applies to a configuration:
+    indices run 0..n-1 in sequence order. Reordering does not lose an
+    acquisition, it puts each transmit's data on the other's line."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    swapped = list(config.events)
+    swapped[0], swapped[1] = swapped[1], swapped[0]
+
+    with pytest.raises(ValueError, match="in sequence order"):
+        das_rf_golden(profile, swapped, records)
+
+
 # --- the demo runs it ----------------------------------------------------
 
 

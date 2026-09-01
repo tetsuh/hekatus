@@ -847,6 +847,14 @@ forms no line at all is refused — every field is checked against every
 invariant the others are, so the next gap is not found one review at a
 time.
 
+Before any of that, the **event list itself** must be one distinct event per
+sequence position, indices running 0..n-1 — the rule ingress already applies
+to a configuration (§19), applied again where a bare list arrives. Matching
+records to events resolves the *set* of indices, so a duplicate collapses
+there silently: n events naming n−1 transmits form n lines from n−1
+acquisitions, and the duplicated line carries the wrong one at a coordinate
+of its own.
+
 **A map owns its data.** Its arrays are copied into immutable bytes at
 construction and exposed as read-only views over them, and its coordinate
 and type tuples are coerced — the same publication boundary
