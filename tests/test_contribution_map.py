@@ -280,6 +280,24 @@ def test_the_map_does_not_alias_a_caller_owned_array():
     assert indices.flags.writeable and weights.flags.writeable
 
 
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "+inf", "-inf"]
+)
+def test_a_non_finite_line_coordinate_is_refused(bad):
+    """`TERRA-57-002`: weights and routes were checked for finiteness and the
+    abscissae were not. It does not surface as a non-finite image — measured
+    before fixing, the read position casts to a garbage integer index and the
+    line comes back **all zero**, a silently black scanline rather than an
+    error, which is the failure the absolute rules call worse than no
+    output."""
+    config = make_bmode_config(linear_5mhz())
+    coordinates = list(identity_map(config).line_x_m)
+    coordinates[3] = bad
+
+    with pytest.raises(ValueError, match="non-finite abscissa"):
+        _hand_built(config, line_x_m=coordinates)
+
+
 @pytest.mark.parametrize("attribute", ["event_indices", "weights"])
 def test_writeability_cannot_be_re_enabled(attribute):
     """NumPy lets an array that owns its memory be unfrozen, so a cleared

@@ -838,6 +838,10 @@ colour-flow transmit of an interleaved sequence cannot be summed into one
 pixel. The tag is an open set, so the condition is equality between whatever
 strings the sequence uses.
 
+Line abscissae are coerced and checked for finiteness first: a non-finite
+coordinate does not produce a non-finite image, it produces a silently black
+scanline, because the read position casts to a garbage integer index.
+
 **A map owns its data.** Its arrays are copied into immutable bytes at
 construction and exposed as read-only views over them, and its coordinate
 and type tuples are coerced — the same publication boundary

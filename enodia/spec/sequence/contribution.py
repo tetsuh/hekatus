@@ -44,6 +44,7 @@ production value.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -101,6 +102,12 @@ class ContributionMap:
     live slot against it, so the condition is enforced where the sum happens
     and not only where the map is derived.
 
+    Line abscissae are coerced and checked for finiteness before anything
+    else reads them, for the same reason the schema checks its own
+    quantities at ingress (`enodia.spec.sequence`): a non-finite coordinate
+    reaches the delay and aperture arithmetic and comes back as a silently
+    black line, not as an error.
+
     **The map owns its data at construction**, the same way `IQEventRecord`
     does at its publication boundary (#6): the arrays are copied into
     immutable `bytes` and exposed as `np.frombuffer` views over them, and
@@ -126,6 +133,17 @@ class ContributionMap:
     _weight_owner: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        line_x = tuple(float(x) for x in self.line_x_m)
+        if not all(math.isfinite(x) for x in line_x):
+            # Written as "not all finite" rather than a comparison: every
+            # comparison against NaN is false. A non-finite abscissa does not
+            # produce a non-finite image — the read position casts to a
+            # garbage integer index and the line comes out silently black,
+            # which is the failure the absolute rules single out as worse
+            # than no output at all.
+            worst = next(i for i, x in enumerate(line_x) if not math.isfinite(x))
+            raise ValueError(f"line {worst} has a non-finite abscissa {line_x[worst]}")
+        object.__setattr__(self, "line_x_m", line_x)
         if not self.config_id or self.n_events <= 0:
             # Provenance is required, not optional. While it could be empty,
             # `check_frame` had nothing to compare and every unbound map —
@@ -194,7 +212,6 @@ class ContributionMap:
         object.__setattr__(
             self, "weights", np.frombuffer(weight_owner, dtype=np.float64).reshape(shape)
         )
-        object.__setattr__(self, "line_x_m", tuple(float(x) for x in self.line_x_m))
         object.__setattr__(self, "line_tx_type", tuple(str(t) for t in self.line_tx_type))
 
     @property
