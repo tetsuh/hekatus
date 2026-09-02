@@ -147,7 +147,7 @@ def das_iq(
     if contribution is None:
         contribution = _identity_contribution(events)
     contribution.check_profile(profile.name)
-    _check_frame_provenance(contribution, events, records)
+    _check_frame_provenance(contribution, events, records, profile.name)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     line_x = np.array(contribution.line_x_m, dtype=np.float64)

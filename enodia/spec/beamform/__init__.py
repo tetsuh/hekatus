@@ -161,7 +161,7 @@ def das_rf_golden(
     if contribution is None:
         contribution = _identity_contribution(events)
     contribution.check_profile(profile.name)
-    _check_frame_provenance(contribution, events, records)
+    _check_frame_provenance(contribution, events, records, profile.name)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
     c = profile.c_m_s
@@ -211,7 +211,30 @@ def _check_event_sequence(events) -> None:
         )
 
 
-def _check_frame_provenance(contribution, events, records) -> None:
+def _event_identity(events) -> tuple[str, str, int]:
+    """The one `(config, profile, generation)` the events were accepted under.
+
+    Refuses a list that names none, or that disagrees with itself. This used
+    to live inside `_identity_contribution`, which only runs when a caller
+    passes no map — so the explicit-map path never reached it, and events
+    from one configuration could be beamformed against another's map and
+    records with nothing raised.
+    """
+    identities = {(ev.config_id, ev.probe_profile_id, ev.param_generation) for ev in events}
+    if len(identities) > 1:
+        raise ValueError(f"events span transmit configurations {sorted(identities)}")
+    if not identities:
+        raise ValueError("no transmit events to form a frame from")
+    config_id, profile_id, generation = identities.pop()
+    if not config_id or not profile_id:
+        raise ValueError(
+            "transmit events name no configuration; they must come from"
+            " `enodia.spec.sequence.accept` so the frame can be checked against them"
+        )
+    return config_id, profile_id, generation
+
+
+def _check_frame_provenance(contribution, events, records, profile_name: str) -> None:
     """Refuse a map that was derived for another configuration.
 
     `_records_by_event` checks that the records and the events name each
@@ -232,7 +255,35 @@ def _check_frame_provenance(contribution, events, records) -> None:
         raise ValueError(f"frame mixes parameter generations {sorted(generations)}")
     if not config_ids or not generations:
         raise ValueError("frame carries no records, so nothing names its configuration")
-    contribution.check_frame(config_ids.pop(), len(events), generations.pop())
+    record_config, record_generation = config_ids.pop(), generations.pop()
+
+    # The events' own identity is compared here, on every path, and not only
+    # where the default map is built from them.
+    event_config, event_profile, event_generation = _event_identity(events)
+    if (event_config, event_generation) != (record_config, record_generation):
+        raise ValueError(
+            f"transmit events were accepted under configuration {event_config!r}"
+            f" at generation {event_generation}, frame carries {record_config!r}"
+            f" at generation {record_generation}"
+        )
+    if event_profile != profile_name:
+        raise ValueError(
+            f"transmit events were accepted for probe profile {event_profile!r},"
+            f" beamforming on {profile_name!r}"
+        )
+    if (event_config, event_profile, event_generation) != (
+        contribution.config_id,
+        contribution.probe_profile_id,
+        contribution.param_generation,
+    ):
+        raise ValueError(
+            f"contribution map was derived for {contribution.config_id!r} /"
+            f" {contribution.probe_profile_id!r} at generation"
+            f" {contribution.param_generation}, events were accepted under"
+            f" {event_config!r} / {event_profile!r} at generation {event_generation}"
+        )
+
+    contribution.check_frame(record_config, len(events), record_generation)
 
 
 def _check_transmit_types(contribution, event_by_index, record_by_index) -> None:
@@ -287,29 +338,16 @@ def _identity_contribution(events: list[TxEvent]):
     from enodia.spec.sequence.contribution import ContributionMap
 
     n = len(events)
-    config_ids = {ev.config_id for ev in events}
-    generations = {ev.param_generation for ev in events}
-    profile_ids = {ev.probe_profile_id for ev in events}
-    if len(config_ids) > 1 or len(generations) > 1 or len(profile_ids) > 1:
-        raise ValueError(
-            f"events span transmit configurations {sorted(config_ids)}"
-            f" at generations {sorted(generations)}"
-        )
-    config_id = config_ids.pop() if config_ids else ""
-    if not config_id:
-        raise ValueError(
-            "transmit events name no configuration; they must come from"
-            " `enodia.spec.sequence.accept` so the frame can be checked against them"
-        )
+    config_id, profile_id, generation = _event_identity(events)
     return ContributionMap(
         line_x_m=tuple(ev.line_x_m for ev in events),
         event_indices=np.array([[ev.event_index] for ev in events], dtype=np.intp),
         weights=np.ones((n, 1), dtype=np.float64),
         config_id=config_id,
         n_events=n,
-        param_generation=generations.pop() if generations else 0,
+        param_generation=generation,
         line_tx_type=tuple(ev.tx_type for ev in events),
-        probe_profile_id=profile_ids.pop() if profile_ids else "",
+        probe_profile_id=profile_id,
     )
 
 

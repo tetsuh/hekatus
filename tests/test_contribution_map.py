@@ -246,7 +246,7 @@ def test_a_frame_at_another_generation_is_refused_through_the_default_path():
     config = make_bmode_config(profile, param_generation=7)
     records = constant_records(profile, len(config.events))  # generation 0
 
-    with pytest.raises(ValueError, match="parameter generation"):
+    with pytest.raises(ValueError, match="at generation 7, frame carries"):
         das_rf_golden(profile, list(config.events), records)
 
 
@@ -832,11 +832,11 @@ def test_a_map_from_another_configuration_is_refused():
     this (§19) — so the map names its own and they are compared."""
     profile = small_profile()
     config = make_bmode_config(profile)
-    records = constant_records(profile, len(config.events), config_id="another-config")
-    cmap = identity_map(config)
+    records = constant_records(profile, len(config.events))
+    other = identity_map(make_bmode_config(profile, config_id="another-config"))
 
-    with pytest.raises(ValueError, match="derived for configuration"):
-        das_rf_golden(profile, list(config.events), records, contribution=cmap)
+    with pytest.raises(ValueError, match="contribution map was derived for"):
+        das_rf_golden(profile, list(config.events), records, contribution=other)
 
 
 def test_a_frame_mixing_configurations_is_refused():
@@ -887,7 +887,7 @@ def test_a_map_from_an_earlier_parameter_generation_is_refused():
     records = constant_records(profile, len(config.events))  # generation 0
     stale = identity_map(replace(config, param_generation=1))
 
-    with pytest.raises(ValueError, match="parameter generation"):
+    with pytest.raises(ValueError, match="events were accepted under"):
         das_rf_golden(profile, list(config.events), records, contribution=stale)
 
 
@@ -923,7 +923,7 @@ def test_the_default_identity_path_refuses_another_configurations_records():
     config_b = make_bmode_config(profile, config_id="another-config")
     records_b = constant_records(profile, len(config_b.events), config_id=config_b.config_id)
 
-    with pytest.raises(ValueError, match="derived for configuration"):
+    with pytest.raises(ValueError, match="accepted under configuration"):
         das_rf_golden(profile, list(config_a.events), records_b)
 
 
@@ -938,7 +938,7 @@ def test_the_default_iq_path_refuses_another_configurations_records():
     records_b = constant_records(profile, len(config_b.events), config_id=config_b.config_id)
     iq_b = demodulate_frame(records_b, profile, decimation=8)
 
-    with pytest.raises(ValueError, match="derived for configuration"):
+    with pytest.raises(ValueError, match="accepted under configuration"):
         das_iq(profile, list(config_a.events), iq_b, decimation=8)
 
 
@@ -1195,6 +1195,78 @@ def test_the_default_path_refuses_events_from_two_probe_profiles():
 
     with pytest.raises(ValueError, match="span transmit configurations"):
         das_rf_golden(profile, mixed, records)
+
+
+def _four_line_map(config):
+    """A valid explicit map over the first four events of a configuration."""
+    cmap = identity_map(config)
+    return ContributionMap(
+        line_x_m=cmap.line_x_m[:4],
+        event_indices=np.asarray(cmap.event_indices)[:4],
+        weights=np.asarray(cmap.weights)[:4],
+        config_id=cmap.config_id,
+        probe_profile_id=cmap.probe_profile_id,
+        n_events=4,
+        param_generation=cmap.param_generation,
+        line_tx_type=cmap.line_tx_type[:4],
+    )
+
+
+@pytest.mark.parametrize("path", ["rf", "iq"])
+def test_the_explicit_map_path_refuses_events_from_another_configuration(path):
+    """`SOL-57-001`: the event-provenance check lived inside
+    `_identity_contribution`, which only runs when a caller passes **no**
+    map — so the explicit-map path never reached it. Measured before fixing:
+    config-B / generation-2 events with a config-A / generation-1 map and
+    config-A / generation-1 records formed an image, with the events'
+    provenance never once compared."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = small_profile()
+    config_a = make_bmode_config(profile, config_id="config-A", param_generation=1)
+    config_b = make_bmode_config(profile, config_id="config-B", param_generation=2)
+    records = constant_records(profile, 4, config_id="config-A")
+    cmap = _four_line_map(config_a)
+    events_b = list(config_b.events[:4])
+
+    with pytest.raises(ValueError, match="accepted under configuration"):
+        if path == "rf":
+            das_rf_golden(profile, events_b, records, contribution=cmap)
+        else:
+            das_iq(
+                profile,
+                events_b,
+                demodulate_frame(records, profile, decimation=8),
+                decimation=8,
+                contribution=cmap,
+            )
+
+
+@pytest.mark.parametrize("path", ["rf", "iq"])
+def test_the_explicit_map_path_refuses_unbound_events(path):
+    """The same path, the other shape: events that name no configuration at
+    all were previously only refused when they had to build the map."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, 4)
+    cmap = _four_line_map(config)
+    unbound = [replace(ev, config_id="") for ev in config.events[:4]]
+
+    with pytest.raises(ValueError, match="name no configuration"):
+        if path == "rf":
+            das_rf_golden(profile, unbound, records, contribution=cmap)
+        else:
+            das_iq(
+                profile,
+                unbound,
+                demodulate_frame(records, profile, decimation=8),
+                decimation=8,
+                contribution=cmap,
+            )
 
 
 # --- the demo runs it ----------------------------------------------------

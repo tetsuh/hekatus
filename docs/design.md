@@ -848,6 +848,13 @@ forms no line at all is refused — every field is checked against every
 invariant the others are, so the next gap is not found one review at a
 time.
 
+The **events' own identity** — the configuration, probe profile and
+generation they were accepted under — is compared against the map, the
+records' headers and the profile in one place, on every path. It used to be
+derived only where the default map was built from the events, so a caller
+supplying a map explicitly never reached it and could beamform one
+configuration's events against another's map and records.
+
 Before any of that, the **event list itself** must be one distinct event per
 sequence position, indices running 0..n-1 — the rule ingress already applies
 to a configuration (§19), applied again where a bare list arrives. Matching
