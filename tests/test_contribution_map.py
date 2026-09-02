@@ -17,6 +17,7 @@ doing so is visible but easy to accept by eye, so the eye is not the check.
 
 from dataclasses import FrozenInstanceError, replace
 from functools import partial
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -838,6 +839,79 @@ def test_the_iq_consumer_refuses_a_map_shaped_object_that_is_not_a_map(frame):
 
     with pytest.raises(TypeError, match="must be a ContributionMap"):
         das_iq(profile, events, iq_records, decimation=8, contribution=raw)
+
+
+def test_the_map_type_refuses_to_be_subclassed():
+    """The seam the exact-type ingress exists for.
+
+    `__post_init__` ends in `self._publish`, so an override sits between
+    the weights `_validated_routes` normalized and the weights a consumer
+    reads. The subclass below is the smallest thing that uses it, and it is
+    not adversarial in shape: overriding a private hook to adjust weights is
+    what subclassing is normally for. That is why the refusal is at the
+    class and not only at the ingress — a consumer written later without an
+    exact-type check would otherwise reopen it (`SOL-57-001`)."""
+    with pytest.raises(TypeError, match="is final"):
+
+        class _Reweighted(ContributionMap):
+            def _publish(self, indices, weights):
+                super()._publish(indices, np.asarray(weights) * (2.0 / 3.0))
+
+
+def _spec_spoofing_double(derived):
+    """A double that answers `isinstance` and carries a full map's fields.
+
+    `Mock(spec=ContributionMap)` reports the accepted class without having
+    run a line of the validation, and every field the summation reads is
+    set here from a real derived map — with the weights left un-normalized,
+    the way `_ProvenanceShapedMap` leaves them. So it is the ingress that
+    has to refuse this, not a missing attribute further in: without the
+    exact-type check it reaches the summation and forms an image.
+    """
+    double = Mock(spec=ContributionMap)
+    weights = np.asarray(derived.weights).copy()
+    weights[weights > 0.0] = 1.0 / weights.shape[1]
+    double.weights = weights
+    double.event_indices = np.asarray(derived.event_indices)
+    double.line_x_m = derived.line_x_m
+    double.line_tx_type = derived.line_tx_type
+    double.config_id = derived.config_id
+    double.probe_profile_id = derived.probe_profile_id
+    double.n_events = derived.n_events
+    double.param_generation = derived.param_generation
+    double.n_lines = derived.n_lines
+    double.cap = derived.cap
+    return double
+
+
+def test_the_rf_consumer_refuses_a_double_that_only_claims_the_type():
+    """`isinstance` asks the object what class it is, and the answer is not
+    the question: what the ingress has to establish is the derivation. So it
+    asks for the exact type instead (`SOL-57-001`)."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    double = _spec_spoofing_double(synthetic_uniform_map(config, cap=3))
+    assert isinstance(double, ContributionMap)
+
+    with pytest.raises(TypeError, match="must be a ContributionMap"):
+        das_rf_golden(profile, list(config.events), records, contribution=double)
+
+
+def test_the_iq_consumer_refuses_a_double_that_only_claims_the_type(frame):
+    """Both consumers, for the reason the ingress is one function: a
+    correction applied to one of them is no correction."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile, events, records, _ = frame
+    config = make_bmode_config(profile)
+    iq_records = demodulate_frame(records, profile, decimation=8)
+    double = _spec_spoofing_double(synthetic_uniform_map(config, cap=3))
+    assert isinstance(double, ContributionMap)
+
+    with pytest.raises(TypeError, match="must be a ContributionMap"):
+        das_iq(profile, events, iq_records, decimation=8, contribution=double)
 
 
 def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():

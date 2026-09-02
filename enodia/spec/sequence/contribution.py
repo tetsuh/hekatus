@@ -170,10 +170,12 @@ class ContributionMap:
     `event_indices[l, s]` names the transmit event slot `s` of line `l`
     reads; `weights[l, s]` is its weight, 0.0 for an inert slot. **Every
     line's weights sum to one**, with no way to construct one that does
-    not: ADR-0010 decision 3 puts the normalization at derivation precisely
-    so every consumer of a map sees the same normalization, and an escape
-    hatch on the accepted type would be a second normalization the decision
-    says does not exist. A test that needs the un-normalized behaviour as a
+    not — and, since the validation publishes through an overridable
+    method, **no way to subclass one that does not** either: ADR-0010
+    decision 3 puts the normalization at derivation precisely so every
+    consumer of a map sees the same normalization, and an escape hatch on
+    the accepted type — a constructor flag or an inherited seam — would be a
+    second normalization the decision says does not exist. A test that needs the un-normalized behaviour as a
     negative control builds its own object rather than asking this one to
     be less than it is.
 
@@ -236,6 +238,27 @@ class ContributionMap:
     line_tx_type: tuple[str, ...]
     _index_owner: bytes = field(init=False, repr=False, compare=False)
     _weight_owner: bytes = field(init=False, repr=False, compare=False)
+
+    def __init_subclass__(cls, **kwargs) -> None:
+        """The type is final, because the type is what carries the guarantee.
+
+        `__post_init__` dispatches through `self._publish`, so a subclass
+        that overrides it runs the whole validation and then publishes
+        something else: the rows a consumer reads need never be the rows
+        `_validated_routes` normalized. An `isinstance` check at a consumer
+        then confirms the class and not the derivation (`SOL-57-001`).
+
+        Sealing the class is the correction at the seam rather than at the
+        one call site that happened to notice it — an exact-type check
+        wherever a map is consumed leaves the seam in place for the next
+        consumer written without one. The ingress checks the exact type as
+        well, because a spec-spoofing test double satisfies `isinstance`
+        without being a subclass at all.
+        """
+        raise TypeError(
+            "ContributionMap is final: a subclass can override _publish and "
+            "expose weights that _validated_routes never normalized"
+        )
 
     def __post_init__(self) -> None:
         # One validator per group, so the field-against-invariant matrix is

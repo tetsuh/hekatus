@@ -338,6 +338,15 @@ def _accepted_contribution(contribution, events):
     buffer ownership, and of the map-owned fail-stop checks, and wrong
     tables are worse than no output (absolute rules).
 
+    The check is on the **exact** type, and the type is sealed against
+    subclassing at its own definition. `isinstance` was not enough in either
+    direction: it admits a subclass, which can override the `_publish` the
+    validation ends in and expose rows `_validated_routes` never normalized,
+    and it is satisfied by a spec-spoofing test double that never ran the
+    validation at all (`SOL-57-001`). What the ingress has to establish is
+    not the class but the derivation, and the exact sealed type is the only
+    statement of the class that implies it.
+
     The default identity map is constructed *before* the check, so the
     default path is held to the same requirement as an explicit one rather
     than being a way around it.
@@ -346,7 +355,7 @@ def _accepted_contribution(contribution, events):
 
     if contribution is None:
         contribution = _identity_contribution(events)
-    if not isinstance(contribution, ContributionMap):
+    if type(contribution) is not ContributionMap:
         raise TypeError(
             "contribution must be a ContributionMap derived by "
             "enodia.spec.sequence.contribution, got "
