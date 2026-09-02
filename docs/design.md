@@ -814,8 +814,13 @@ of the weights actually applied to it (ADR-0010), with a floor below which
 the line is refused rather than amplified, and with no way to construct a
 map that skips it —
 so the beamformer stays a plain weighted sum and edge lines are not darker
-for their position. Both DAS paths — RF golden and IQ — read the map; the
-identity map reproduces the pre-map images bit for bit.
+for their position. Both DAS paths — RF golden and IQ — read the map through
+**one ingress that requires the derived type**, not merely an object carrying
+its field names: the type is the only carrier of the normalization, of the
+immutable buffer ownership and of the map-owned checks, so duck typing at the
+consumer would reopen exactly the escape hatch derivation-time normalization
+closes. The default identity map is built before that check and held to it.
+The identity map reproduces the pre-map images bit for bit.
 
 **MLA line placement (ADR-0010):** the receive lines of one transmit
 subdivide the **transmit line** pitch evenly, symmetric about the transmit

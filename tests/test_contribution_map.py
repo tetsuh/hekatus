@@ -746,15 +746,22 @@ def test_frame_edge_lines_are_not_systematically_darker():
     np.testing.assert_allclose(per_line, per_line[len(per_line) // 2], rtol=1e-5)
 
 
-class _UnnormalizedMap:
-    """A stand-in that reads like a map but skips the normalization.
+class _ProvenanceShapedMap:
+    """Reads like a map, but never went through the type.
 
-    It lives here rather than as a flag on `ContributionMap` because
-    ADR-0010 decision 3 puts the normalization at derivation so that **every**
-    consumer of a map sees the same one; a production escape hatch would be a
-    second normalization the decision says does not exist (`SOL-57-001`).
-    A negative control needs the behaviour, not the type, so it builds the
-    behaviour.
+    Every public field a consumer touches is present and correctly shaped
+    and the provenance fields are the derived map's own; only the
+    derivation is missing, so the rows do not sum to one. It lives here
+    rather than as a flag on `ContributionMap` because ADR-0010 decision 3
+    puts the normalization at derivation so that **every** consumer of a
+    map sees the same one; a production escape hatch would be a second
+    normalization the decision says does not exist (`SOL-57-001`).
+
+    This is the object `TERRA-57-004` constructed: removing that escape
+    hatch closed one way to reach a consumer with un-normalized weights and
+    left the consumer's own untyped ingress open, so both consumers read
+    their weights off it and formed a silently wrong image. Its role now is
+    the regression that they refuse it.
     """
 
     def __init__(self, derived):
@@ -801,27 +808,76 @@ def test_every_constructible_map_has_unit_row_sums():
         )
 
 
-def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
-    """The check on the check: un-normalized weights on the same constant
-    field leave the outermost lines visibly darker. If this stops failing
-    the way it should, the previous test is not testing anything.
+def test_the_rf_consumer_refuses_a_map_shaped_object_that_is_not_a_map():
+    """The invariant above is carried by the type, so the type is what the
+    consumer must require (`TERRA-57-004`). An object with every public
+    field correctly shaped, correct provenance, and passing
+    `check_profile` / `check_frame` reaches the summation on attribute
+    names alone unless the ingress asks what it is."""
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    records = constant_records(profile, len(config.events))
+    raw = _ProvenanceShapedMap(synthetic_uniform_map(config, cap=3))
 
-    The stand-in is a test-local object, not a `ContributionMap`: the
-    accepted type cannot be built this way at all."""
+    with pytest.raises(TypeError, match="must be a ContributionMap"):
+        das_rf_golden(profile, list(config.events), records, contribution=raw)
+
+
+def test_the_iq_consumer_refuses_a_map_shaped_object_that_is_not_a_map(frame):
+    """The same ingress, and the reason it is one function rather than two:
+    the IQ path was the second consumer to read its weights off whatever it
+    was handed, and a correction applied to only one of them is no
+    correction (`SOL-57-001`, `SOL-57-3`)."""
+    from enodia.spec.beamform.iq_das import das_iq
+    from enodia.spec.frontend import demodulate_frame
+
+    profile, events, records, _ = frame
+    config = make_bmode_config(profile)
+    iq_records = demodulate_frame(records, profile, decimation=8)
+    raw = _ProvenanceShapedMap(synthetic_uniform_map(config, cap=3))
+
+    with pytest.raises(TypeError, match="must be a ContributionMap"):
+        das_iq(profile, events, iq_records, decimation=8, contribution=raw)
+
+
+def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
+    """The check on the check: on the constant field above, the outermost
+    lines draw from fewer transmits than the interior ones, and would be
+    visibly darker without the derivation-time normalization. If that
+    difference in live slots ever went away, the flat-image test above
+    would be passing for no reason.
+
+    Two assertions of different kinds, labelled as such. The first is
+    measured: the map's own rows, where the edge really does carry fewer
+    live slots than the centre. The second is *arithmetic, not
+    beamformed* — there is no longer a way to hand un-normalized weights to
+    a consumer (`TERRA-57-004`) and there should not be, so the magnitude
+    is derived from the one property of the summation that decides it:
+    `image[:, line] += weight * (...)` is linear in the weight, so scaling
+    a row's weights by a constant scales that line by the same constant.
+    The factor is what the row summed to before it was normalized,
+    `live_slots / cap`.
+    """
     profile = small_profile()
     config = make_bmode_config(profile)
     records = constant_records(profile, len(config.events))
     cmap = synthetic_uniform_map(config, cap=3)
 
-    raw = _UnnormalizedMap(cmap)
-
-    image, _, _ = das_rf_golden(profile, list(config.events), records, contribution=raw)
-
+    image, _, _ = das_rf_golden(profile, list(config.events), records, contribution=cmap)
     interior = image[image.shape[0] // 4 : -image.shape[0] // 4, :]
     per_line = np.abs(interior).mean(axis=0)
-    centre = per_line[len(per_line) // 2]
-    assert per_line[0] < 0.75 * centre
-    assert per_line[-1] < 0.75 * centre
+
+    weights = np.asarray(cmap.weights)
+    live = (weights > 0.0).sum(axis=1)
+    middle = len(live) // 2
+    assert live[0] < live[middle]
+    assert live[-1] < live[middle]
+
+    raw_row_sum = live / weights.shape[1]
+    assert raw_row_sum[middle] == 1.0
+    unnormalized = per_line * raw_row_sum
+    assert unnormalized[0] < 0.75 * unnormalized[middle]
+    assert unnormalized[-1] < 0.75 * unnormalized[middle]
 
 
 def test_the_iq_path_reads_the_same_map_structure(frame):

@@ -135,17 +135,16 @@ def das_iq(
     paths, not two.
     """
     from enodia.spec.beamform import (
+        _accepted_contribution,
         _check_event_sequence,
         _check_frame_provenance,
         _check_transmit_types,
-        _identity_contribution,
         _slots_by_event,
     )
 
     cdtype = _complex_dtype(dtype)
     _check_event_sequence(events)
-    if contribution is None:
-        contribution = _identity_contribution(events)
+    contribution = _accepted_contribution(contribution, events)
     contribution.check_profile(profile.name)
     _check_frame_provenance(contribution, events, records, profile.name)
     el_x = profile.element_x()

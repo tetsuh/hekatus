@@ -158,8 +158,7 @@ def das_rf_golden(
         raise ValueError(f"dtype must be floating-point for beamforming, got {np.dtype(dtype)}")
 
     _check_event_sequence(events)
-    if contribution is None:
-        contribution = _identity_contribution(events)
+    contribution = _accepted_contribution(contribution, events)
     contribution.check_profile(profile.name)
     _check_frame_provenance(contribution, events, records, profile.name)
     el_x = profile.element_x()
@@ -318,6 +317,42 @@ def _check_transmit_types(contribution, event_by_index, record_by_index) -> None
                     f" {index} carries {sorted(found)}; the contribution map matches"
                     " transmit type (design.md §7)"
                 )
+
+
+def _accepted_contribution(contribution, events):
+    """The one ingress both consumers take a map through.
+
+    ADR-0010 decision 3 puts the row normalization at derivation so that
+    **every** consumer of a map sees the same one. That holds only while the
+    consumer's map is one that went through `ContributionMap.__post_init__`.
+    The beamformer reads `weights`, `event_indices` and `line_x_m` off
+    whatever it is handed, so an object that merely carries those attribute
+    names -- correct provenance fields, arbitrary geometry and raw weights --
+    is summed into a plausible but wrongly weighted image instead of being
+    refused (`TERRA-57-004`). Removing the constructor's `normalized=False`
+    escape hatch (`SOL-57-001`) closed one way to build such a map and left
+    this one open.
+
+    Duck typing is the normal Python posture and it is the wrong one here:
+    the type is the only carrier of the normalization, of the immutable
+    buffer ownership, and of the map-owned fail-stop checks, and wrong
+    tables are worse than no output (absolute rules).
+
+    The default identity map is constructed *before* the check, so the
+    default path is held to the same requirement as an explicit one rather
+    than being a way around it.
+    """
+    from enodia.spec.sequence.contribution import ContributionMap
+
+    if contribution is None:
+        contribution = _identity_contribution(events)
+    if not isinstance(contribution, ContributionMap):
+        raise TypeError(
+            "contribution must be a ContributionMap derived by "
+            "enodia.spec.sequence.contribution, got "
+            f"{type(contribution).__name__}"
+        )
+    return contribution
 
 
 def _identity_contribution(events: list[TxEvent]):
