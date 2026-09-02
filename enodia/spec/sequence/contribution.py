@@ -62,6 +62,107 @@ MLA_COUNTS: tuple[int, ...] = (1, 2, 4, 8)
 WEIGHT_SUM_FLOOR: float = 1e-6
 
 
+def _validated_line_x(line_x_m) -> tuple[float, ...]:
+    """The line abscissae, coerced and finite.
+
+    A non-finite abscissa does not produce a non-finite image: the read
+    position casts to a garbage integer index and the line comes out
+    silently black, which the absolute rules single out as worse than no
+    output at all. Written as "not all finite" rather than a comparison,
+    since every comparison against NaN is false.
+    """
+    line_x = tuple(float(x) for x in line_x_m)
+    if not line_x:
+        raise ValueError("a contribution map must form at least one line")
+    if not all(math.isfinite(x) for x in line_x):
+        worst = next(i for i, x in enumerate(line_x) if not math.isfinite(x))
+        raise ValueError(f"line {worst} has a non-finite abscissa {line_x[worst]}")
+    return line_x
+
+
+def _check_provenance(cmap: ContributionMap) -> None:
+    """The identity a consumer compares against the frame, and its counters.
+
+    Required, not optional: while these could be empty, `check_frame` had
+    nothing to compare and every unbound map — including one supplied
+    explicitly — was consumed unchecked.
+    """
+    if isinstance(cmap.param_generation, bool) or not isinstance(cmap.param_generation, int):
+        raise TypeError(f"parameter generation must be an integer, got {cmap.param_generation!r}")
+    if cmap.param_generation < 0:
+        raise ValueError(f"parameter generation must not be negative, got {cmap.param_generation}")
+    if isinstance(cmap.n_events, bool) or not isinstance(cmap.n_events, int):
+        raise TypeError(f"event count must be an integer, got {cmap.n_events!r}")
+    if not cmap.config_id or not cmap.probe_profile_id or cmap.n_events <= 0:
+        raise ValueError(
+            "a contribution map must name the configuration it was derived"
+            f" from; got config_id={cmap.config_id!r},"
+            f" probe_profile_id={cmap.probe_profile_id!r}, n_events={cmap.n_events}"
+        )
+
+
+def _check_type_conditions(line_tx_type, n_lines: int) -> None:
+    """§7's transmit-type matching condition, one per line.
+
+    Coercing with `str()` would turn 123 into "123": a tag that looks valid,
+    matches no record, and fails at consumption instead of here. An empty
+    condition matches everything, which is the state this field exists to
+    remove.
+    """
+    if any(not isinstance(t, str) for t in line_tx_type):
+        raise TypeError("transmit-type conditions must be strings")
+    if len(line_tx_type) != n_lines:
+        raise ValueError(
+            f"map has {n_lines} lines but {len(line_tx_type)} transmit-type conditions"
+        )
+    if any(not t for t in line_tx_type):
+        raise ValueError("every line must name the transmit type it is formed from")
+
+
+def _validated_routes(
+    event_indices, weights, n_lines: int, n_events: int, config_id: str
+) -> tuple[np.ndarray, np.ndarray]:
+    """The routes and their weights, checked and normalized to unit row sums.
+
+    ADR-0010 decision 3 puts the normalization here, at derivation, so every
+    consumer of a map sees the same one.
+    """
+    indices = np.ascontiguousarray(event_indices)
+    weight_array = np.ascontiguousarray(weights, dtype=np.float64)
+    if indices.shape != weight_array.shape or indices.ndim != 2 or indices.shape[0] != n_lines:
+        raise ValueError(
+            f"map shape mismatch: {n_lines} lines,"
+            f" indices {indices.shape}, weights {weight_array.shape}"
+        )
+    if not np.issubdtype(indices.dtype, np.integer):
+        # A float index silently truncates at the read, so line k would draw
+        # event floor(k) and no error would ever be raised.
+        raise ValueError(f"event indices must be an integer dtype, got {indices.dtype}")
+    if indices.size and int(indices.min()) < 0:
+        raise ValueError(f"event index {int(indices.min())} is negative")
+    if n_events and indices.size and int(indices.max()) >= n_events:
+        raise ValueError(
+            f"event index {int(indices.max())} is past the"
+            f" {n_events} events of configuration {config_id!r}"
+        )
+    if np.any(weight_array < 0.0) or not np.all(np.isfinite(weight_array)):
+        raise ValueError("contribution weights must be finite and non-negative")
+    with np.errstate(over="ignore"):
+        sums = weight_array.sum(axis=1)
+    if not np.all(np.isfinite(sums)):
+        worst = int(np.flatnonzero(~np.isfinite(sums))[0])
+        raise ValueError(
+            f"line {worst} has a non-finite weight sum; refused rather than normalized"
+        )
+    if np.any(sums < WEIGHT_SUM_FLOOR):
+        worst = int(np.argmin(sums))
+        raise ValueError(
+            f"line {worst} has weight sum {sums[worst]:.3e}, below the"
+            f" {WEIGHT_SUM_FLOOR:g} floor; refused rather than amplified"
+        )
+    return indices, weight_array / sums[:, None]
+
+
 @dataclass(frozen=True)
 class ContributionMap:
     """Event → line, with weights, at fixed work per line.
@@ -137,91 +238,23 @@ class ContributionMap:
     _weight_owner: bytes = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        line_x = tuple(float(x) for x in self.line_x_m)
-        if not all(math.isfinite(x) for x in line_x):
-            # Written as "not all finite" rather than a comparison: every
-            # comparison against NaN is false. A non-finite abscissa does not
-            # produce a non-finite image — the read position casts to a
-            # garbage integer index and the line comes out silently black,
-            # which is the failure the absolute rules single out as worse
-            # than no output at all.
-            worst = next(i for i, x in enumerate(line_x) if not math.isfinite(x))
-            raise ValueError(f"line {worst} has a non-finite abscissa {line_x[worst]}")
+        # One validator per group, so the field-against-invariant matrix is
+        # visible rather than implied by the order of forty lines.
+        line_x = _validated_line_x(self.line_x_m)
         object.__setattr__(self, "line_x_m", line_x)
-        if not self.line_x_m:
-            raise ValueError("a contribution map must form at least one line")
-        if isinstance(self.param_generation, bool) or not isinstance(self.param_generation, int):
-            raise TypeError(
-                f"parameter generation must be an integer, got {self.param_generation!r}"
-            )
-        if self.param_generation < 0:
-            raise ValueError(
-                f"parameter generation must not be negative, got {self.param_generation}"
-            )
-        if isinstance(self.n_events, bool) or not isinstance(self.n_events, int):
-            raise TypeError(f"event count must be an integer, got {self.n_events!r}")
-        if any(not isinstance(t, str) for t in self.line_tx_type):
-            # Coercing with `str()` would turn 123 into "123": a tag that
-            # looks valid, matches no record, and fails at consumption
-            # instead of here.
-            raise TypeError("transmit-type conditions must be strings")
-        if not self.config_id or not self.probe_profile_id or self.n_events <= 0:
-            # Provenance is required, not optional. While it could be empty,
-            # `check_frame` had nothing to compare and every unbound map —
-            # including one supplied explicitly — was consumed unchecked.
-            raise ValueError(
-                "a contribution map must name the configuration it was derived"
-                f" from; got config_id={self.config_id!r},"
-                f" probe_profile_id={self.probe_profile_id!r}, n_events={self.n_events}"
-            )
-        if len(self.line_tx_type) != len(self.line_x_m):
-            raise ValueError(
-                f"map has {len(self.line_x_m)} lines but"
-                f" {len(self.line_tx_type)} transmit-type conditions"
-            )
-        if any(not t for t in self.line_tx_type):
-            # An empty condition matches everything, which is the same as
-            # having no condition — the state this field exists to remove.
-            raise ValueError("every line must name the transmit type it is formed from")
-        indices = np.ascontiguousarray(self.event_indices)
-        weights = np.ascontiguousarray(self.weights, dtype=np.float64)
-        n_lines = len(self.line_x_m)
-        if indices.shape != weights.shape or indices.ndim != 2 or indices.shape[0] != n_lines:
-            raise ValueError(
-                f"map shape mismatch: {len(self.line_x_m)} lines,"
-                f" indices {indices.shape}, weights {weights.shape}"
-            )
-        if not np.issubdtype(indices.dtype, np.integer):
-            # A float index silently truncates at the read, so line k would
-            # draw event floor(k) and no error would ever be raised.
-            raise ValueError(f"event indices must be an integer dtype, got {indices.dtype}")
-        if indices.size and int(indices.min()) < 0:
-            raise ValueError(f"event index {int(indices.min())} is negative")
-        if self.n_events and indices.size and int(indices.max()) >= self.n_events:
-            raise ValueError(
-                f"event index {int(indices.max())} is past the"
-                f" {self.n_events} events of configuration {self.config_id!r}"
-            )
-        if np.any(weights < 0.0) or not np.all(np.isfinite(weights)):
-            raise ValueError("contribution weights must be finite and non-negative")
-        with np.errstate(over="ignore"):
-            sums = weights.sum(axis=1)
-        if not np.all(np.isfinite(sums)):
-            worst = int(np.flatnonzero(~np.isfinite(sums))[0])
-            raise ValueError(
-                f"line {worst} has a non-finite weight sum; refused rather than normalized"
-            )
-        if np.any(sums < WEIGHT_SUM_FLOOR):
-            worst = int(np.argmin(sums))
-            raise ValueError(
-                f"line {worst} has weight sum {sums[worst]:.3e}, below the"
-                f" {WEIGHT_SUM_FLOOR:g} floor; refused rather than amplified"
-            )
-        weights = weights / sums[:, None]
+        _check_provenance(self)
+        _check_type_conditions(self.line_tx_type, len(line_x))
+        indices, weights = _validated_routes(
+            self.event_indices, self.weights, len(line_x), self.n_events, self.config_id
+        )
+        self._publish(indices, weights)
 
-        # Publication boundary: copy into immutable bytes and expose
-        # read-only views whose base chain ends at those bytes, which no
-        # flag can make writable.
+    def _publish(self, indices: np.ndarray, weights: np.ndarray) -> None:
+        """Copy into immutable bytes and expose read-only views over them.
+
+        The base chain of each exposed array ends at a `bytes` object, which
+        no flag can make writable.
+        """
         shape = indices.shape
         index_owner = np.ascontiguousarray(indices, dtype=np.intp).tobytes()
         weight_owner = np.ascontiguousarray(weights, dtype=np.float64).tobytes()

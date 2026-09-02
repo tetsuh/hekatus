@@ -16,6 +16,7 @@ doing so is visible but easy to accept by eye, so the eye is not the check.
 """
 
 from dataclasses import FrozenInstanceError, replace
+from functools import partial
 
 import numpy as np
 import pytest
@@ -103,7 +104,7 @@ def test_the_identity_map_is_derived_from_the_configuration():
     assert np.array_equal(cmap.event_indices[:, 0], np.arange(len(config.events)))
     assert np.all(cmap.weights == 1.0)
     assert np.array_equal(
-        np.asarray(cmap.line_x_m), np.array([ev.line_x_m for ev in config.events])
+        np.asarray(cmap.line_x_m), np.asarray([ev.line_x_m for ev in config.events])
     )
 
 
@@ -290,7 +291,8 @@ def test_the_map_does_not_alias_a_caller_owned_array():
 
     assert cmap.event_indices is not indices
     assert (int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])) == before
-    assert indices.flags.writeable and weights.flags.writeable
+    assert indices.flags.writeable
+    assert weights.flags.writeable
 
 
 @pytest.mark.parametrize(
@@ -1121,8 +1123,10 @@ def test_the_iq_consumer_refuses_a_duplicated_transmit_event():
         if r.header.tx_event_index in {ev.event_index for ev in events}
     ]
 
+    iq = demodulate_frame(records, profile, decimation=8)
+
     with pytest.raises(ValueError, match="appear more than once"):
-        das_iq(profile, events, demodulate_frame(records, profile, decimation=8), decimation=8)
+        das_iq(profile, events, iq, decimation=8)
 
 
 def test_a_reordered_or_sparse_event_list_is_refused():
@@ -1169,8 +1173,11 @@ def test_the_rf_consumer_refuses_another_probe_profile():
     config = make_bmode_config(profile)
     records = constant_records(profile, len(config.events))
 
+    other = _other_profile()
+    events = list(config.events)
+
     with pytest.raises(ValueError, match="derived for probe profile"):
-        das_rf_golden(_other_profile(), list(config.events), records)
+        das_rf_golden(other, events, records)
 
 
 def test_the_iq_consumer_refuses_another_probe_profile():
@@ -1182,8 +1189,11 @@ def test_the_iq_consumer_refuses_another_probe_profile():
     records = constant_records(profile, len(config.events))
     iq = demodulate_frame(records, profile, decimation=8)
 
+    other = _other_profile()
+    events = list(config.events)
+
     with pytest.raises(ValueError, match="derived for probe profile"):
-        das_iq(_other_profile(), list(config.events), iq, decimation=8)
+        das_iq(other, events, iq, decimation=8)
 
 
 def test_the_default_path_refuses_events_from_two_probe_profiles():
@@ -1230,17 +1240,14 @@ def test_the_explicit_map_path_refuses_events_from_another_configuration(path):
     cmap = _four_line_map(config_a)
     events_b = list(config_b.events[:4])
 
+    if path == "rf":
+        beamform = partial(das_rf_golden, profile, events_b, records, contribution=cmap)
+    else:
+        iq = demodulate_frame(records, profile, decimation=8)
+        beamform = partial(das_iq, profile, events_b, iq, decimation=8, contribution=cmap)
+
     with pytest.raises(ValueError, match="accepted under configuration"):
-        if path == "rf":
-            das_rf_golden(profile, events_b, records, contribution=cmap)
-        else:
-            das_iq(
-                profile,
-                events_b,
-                demodulate_frame(records, profile, decimation=8),
-                decimation=8,
-                contribution=cmap,
-            )
+        beamform()
 
 
 @pytest.mark.parametrize("path", ["rf", "iq"])
@@ -1256,17 +1263,14 @@ def test_the_explicit_map_path_refuses_unbound_events(path):
     cmap = _four_line_map(config)
     unbound = [replace(ev, config_id="") for ev in config.events[:4]]
 
+    if path == "rf":
+        beamform = partial(das_rf_golden, profile, unbound, records, contribution=cmap)
+    else:
+        iq = demodulate_frame(records, profile, decimation=8)
+        beamform = partial(das_iq, profile, unbound, iq, decimation=8, contribution=cmap)
+
     with pytest.raises(ValueError, match="name no configuration"):
-        if path == "rf":
-            das_rf_golden(profile, unbound, records, contribution=cmap)
-        else:
-            das_iq(
-                profile,
-                unbound,
-                demodulate_frame(records, profile, decimation=8),
-                decimation=8,
-                contribution=cmap,
-            )
+        beamform()
 
 
 # --- the demo runs it ----------------------------------------------------

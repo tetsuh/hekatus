@@ -432,9 +432,10 @@ def test_a_parameter_generation_that_is_not_a_counter_is_refused(value, error):
     accepted event and every derivative. A value that is not one propagates
     from here into all of them."""
     profile = linear_5mhz()
+    description = _description(profile)
 
     with pytest.raises(error):
-        accept(_description(profile), profile, param_generation=value)
+        accept(description, profile, param_generation=value)
 
 
 # --- delays against the declared virtual source ---------------------------
