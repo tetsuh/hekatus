@@ -285,12 +285,14 @@ def test_the_map_does_not_alias_a_caller_owned_array():
     weights = np.array(identity_map(config).weights, dtype=np.float64)
 
     cmap = _hand_built(config, indices=indices, weights=weights)
-    before = int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])
+    route_before = int(cmap.event_indices[0, 0])
+    weight_before = float(cmap.weights[0, 0])
     indices[0, 0] = 99
     weights[0, 0] = 42.0
 
     assert cmap.event_indices is not indices
-    assert (int(cmap.event_indices[0, 0]), float(cmap.weights[0, 0])) == before
+    assert int(cmap.event_indices[0, 0]) == route_before
+    assert float(cmap.weights[0, 0]) == weight_before
     assert indices.flags.writeable
     assert weights.flags.writeable
 
