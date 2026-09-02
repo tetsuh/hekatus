@@ -452,7 +452,7 @@ def mla_map(config: TransmitConfig, *, mla: int) -> ContributionMap:
     """
     if mla not in MLA_COUNTS:
         raise ValueError(f"MLA count must be one of {MLA_COUNTS}, got {mla}")
-    pitch = transmit_line_pitch_m(config)
+    pitch = transmit_line_pitch_m(config) if mla > 1 else 0.0
     line_x: list[float] = []
     indices = np.empty((mla * len(config.events), 1), dtype=np.intp)
     for k, ev in enumerate(config.events):

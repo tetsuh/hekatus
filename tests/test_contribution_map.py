@@ -24,7 +24,7 @@ import pytest
 from enodia.spec.beamform import das_rf_golden
 from enodia.spec.probe import ProbeProfile, linear_5mhz
 from enodia.spec.records import EventHeader, RFEventRecord
-from enodia.spec.sequence import make_bmode_config
+from enodia.spec.sequence import accept, describe_bmode, make_bmode_config
 from enodia.spec.sequence.contribution import (
     MLA_COUNTS,
     WEIGHT_SUM_FLOOR,
@@ -65,6 +65,7 @@ def constant_records(
     *,
     config_id: str = "bmode-focused",
     tx_types: tuple[str, ...] | None = None,
+    param_generation: int = 0,
 ):
     """One frame in which every event carries the same constant data.
 
@@ -79,7 +80,7 @@ def constant_records(
             header=EventHeader(
                 seq=k,
                 config_id=config_id,
-                param_generation=0,
+                param_generation=param_generation,
                 tx_event_index=k,
                 tx_type=tx_types[k] if tx_types else "bmode_focused",
                 timestamp_ns=k,
@@ -424,6 +425,20 @@ def test_mla_1_degenerates_to_the_identity_geometry_exactly():
 
     assert np.array_equal(np.asarray(cmap.line_x_m), np.asarray(ident.line_x_m))
     assert np.array_equal(cmap.event_indices, ident.event_indices)
+
+
+def test_mla_1_accepts_a_one_event_configuration_and_preserves_identity():
+    """MLA 1 must not require a pitch for an accepted one-event sequence."""
+    profile = linear_5mhz()
+    description = describe_bmode(profile)
+    config = accept(replace(description, events=(description.events[0],)), profile)
+
+    cmap = mla_map(config, mla=1)
+    ident = identity_map(config)
+
+    assert np.array_equal(np.asarray(cmap.line_x_m), np.asarray(ident.line_x_m))
+    assert np.array_equal(cmap.event_indices, ident.event_indices)
+    assert np.array_equal(cmap.weights, ident.weights)
 
 
 @pytest.mark.parametrize("mla", [2, 4])
@@ -1238,7 +1253,9 @@ def test_the_explicit_map_path_refuses_events_from_another_configuration(path):
     profile = small_profile()
     config_a = make_bmode_config(profile, config_id="config-A", param_generation=1)
     config_b = make_bmode_config(profile, config_id="config-B", param_generation=2)
-    records = constant_records(profile, 4, config_id="config-A")
+    records = constant_records(
+        profile, 4, config_id="config-A", param_generation=1
+    )
     cmap = _four_line_map(config_a)
     events_b = list(config_b.events[:4])
 
