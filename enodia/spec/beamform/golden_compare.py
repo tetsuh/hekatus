@@ -231,7 +231,7 @@ def checkpoint2(
     decimation: int,
     dtype=np.float32,
 ) -> StageError:
-    x = delayed_channel_vectors(profile, ev, iq, z, decimation=decimation, dtype=dtype)
+    x = delayed_channel_vectors(profile, ev.line_x_m, iq, z, decimation=decimation, dtype=dtype)
     ref, w = golden_channel_vectors(profile, ev, record, z)
     inside = w > 0.0
     return StageError(

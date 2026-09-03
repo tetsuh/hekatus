@@ -53,11 +53,17 @@ wrong description is worse than dropping frames (absolute rules).
 and apodization weights are carried and validated here; no transmit field is
 synthesized from them. The transmit beam model — the virtual-source focal
 blend and the switch to aperture superposition — is #9, and §18 records it
-as a detail settled at implementation time. And the contribution map stays
-the identity: event k forms line k. §19 calls maps derivatives, which enodia
-derives rather than receives, and the external description accordingly says
-nothing about which line an event forms. Generalizing that map to MLA and
-transmit compounding is #53.
+as a detail settled at implementation time.
+
+**Where the contribution map lives.** §19 calls maps derivatives, which
+enodia derives rather than receives, and the external description
+accordingly says nothing about which line an event forms. The general map —
+MLA and transmit compounding — is derived in
+`enodia.spec.sequence.contribution` from an accepted configuration (#53).
+`TxEvent.line_index` remains the conventional one-line-per-transmit case, so
+a caller can beamform without deriving a map first; that path is bound to
+its configuration through the event's own `config_id` and
+`param_generation`.
 
 What is also already true here (#46, ADR-0008): a transmit configuration
 names the **one probe profile it runs on**, by id, and carries no bandwidth
@@ -142,11 +148,19 @@ class TxEvent:
     """One accepted transmit event, in SI units.
 
     `line_index` is the first derivative: which output line this event forms.
-    It is not received — §19 keeps maps on enodia's side of the boundary —
-    and while the contribution map is the identity it is simply the event
-    index. #53 generalizes it to MLA and transmit compounding, at which point
-    one event reaches several lines with weights and this field is replaced
-    by the map.
+    It is not received — §19 keeps maps on enodia's side of the boundary. It
+    is the identity, event k forming line k, and stays that under the
+    general contribution map (#53): a map holds the event→line relation for
+    MLA and transmit compounding, and this field remains the conventional
+    one-line case a caller can beamform without deriving a map first.
+
+    `config_id`, `probe_profile_id` and `param_generation` are the identity
+    the event was accepted under, carried so a consumer holding events
+    rather than a configuration can still be told it is pairing them with
+    another configuration's records, or beamforming them on another probe's
+    geometry (§19, `enodia.spec.beamform`). Without them the
+    identity path had no provenance to check and would render one
+    configuration's records on another's line geometry.
     """
 
     event_index: int
@@ -156,6 +170,9 @@ class TxEvent:
     virtual_source_m: tuple[float, float]
     firing_delays_s: tuple[float, ...]
     apodization: tuple[float, ...]
+    config_id: str = ""
+    probe_profile_id: str = ""
+    param_generation: int = 0
 
 
 @dataclass(frozen=True)
@@ -166,12 +183,21 @@ class TransmitConfig:
     — see the module docstring. It is carried here so that a consumer holding
     only a configuration still reads the same coordinates the delay tables
     were derived from.
+
+    `param_generation` is the generation this configuration was accepted at,
+    and it is the **one** place a derivative reads it from. Every derivative
+    — the events' own tag, the contribution maps of #53 — takes it from
+    here rather than defaulting on its own, because a derivative that
+    supplies its own generation can disagree with the configuration it was
+    derived from and no check would see it (§19: the generation tag is the
+    single source of truth, so it has to have a single source).
     """
 
     config_id: str
     probe_profile_id: str
     element_x_m: tuple[float, ...]
     events: tuple[TxEvent, ...]
+    param_generation: int = 0
 
 
 def _finite(values, what: str) -> np.ndarray:
@@ -208,7 +234,15 @@ def _check_geometry(description: TransmitDescription, profile: ProbeProfile) -> 
     return canonical
 
 
-def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbeProfile) -> TxEvent:
+def _check_event(
+    ev: TxEventDescription,
+    canonical: np.ndarray,
+    profile: ProbeProfile,
+    *,
+    config_id: str = "",
+    probe_profile_id: str = "",
+    param_generation: int = 0,
+) -> TxEvent:
     if not ev.tx_type.strip():
         raise ValueError(f"transmit event {ev.event_index} has an empty tx_type")
 
@@ -268,13 +302,11 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
         relative_arrival_ns = (delays_ns[active] - delays_ns[reference]) + relative_tof_ns
     if not np.all(np.isfinite(relative_tof_ns)):
         raise ValueError(
-            f"firing delays of event {ev.event_index} produced a non-finite"
-            " relative time of flight"
+            f"firing delays of event {ev.event_index} produced a non-finite relative time of flight"
         )
     if not np.all(np.isfinite(relative_arrival_ns)):
         raise ValueError(
-            f"firing delays of event {ev.event_index} produced a non-finite"
-            " relative arrival time"
+            f"firing delays of event {ev.event_index} produced a non-finite relative arrival time"
         )
     spread_ns = float(relative_arrival_ns.max() - relative_arrival_ns.min())
     if not np.isfinite(spread_ns):
@@ -296,10 +328,15 @@ def _check_event(ev: TxEventDescription, canonical: np.ndarray, profile: ProbePr
         virtual_source_m=(vx, vz),
         firing_delays_s=tuple(float(d) for d in delays_s),
         apodization=tuple(float(w) for w in weights),
+        config_id=config_id,
+        probe_profile_id=probe_profile_id,
+        param_generation=param_generation,
     )
 
 
-def accept(description: TransmitDescription, profile: ProbeProfile) -> TransmitConfig:
+def accept(
+    description: TransmitDescription, profile: ProbeProfile, *, param_generation: int = 0
+) -> TransmitConfig:
     """Check a received transmit description and convert it to SI (§19).
 
     Refuses rather than repairs. A description that disagrees with the probe
@@ -310,6 +347,10 @@ def accept(description: TransmitDescription, profile: ProbeProfile) -> TransmitC
     Event indices must run 0..n-1 in sequence order: the index is the event's
     name in the frame header and, through the identity map, its scanline.
     """
+    if isinstance(param_generation, bool) or not isinstance(param_generation, int):
+        raise TypeError(f"parameter generation must be an integer, got {param_generation!r}")
+    if param_generation < 0:
+        raise ValueError(f"parameter generation must not be negative, got {param_generation}")
     canonical = _check_geometry(description, profile)
     if not description.events:
         raise ValueError(f"configuration {description.config_id!r} describes no transmit events")
@@ -333,12 +374,22 @@ def accept(description: TransmitDescription, profile: ProbeProfile) -> TransmitC
                 f"transmit event at position {position} carries event index"
                 f" {ev.event_index}; indices run 0..n-1 in sequence order"
             )
-        events.append(_check_event(ev, canonical, profile))
+        events.append(
+            _check_event(
+                ev,
+                canonical,
+                profile,
+                config_id=description.config_id,
+                probe_profile_id=description.probe_profile_id,
+                param_generation=param_generation,
+            )
+        )
     return TransmitConfig(
         config_id=description.config_id,
         probe_profile_id=description.probe_profile_id,
         element_x_m=tuple(float(x) for x in canonical),
         events=tuple(events),
+        param_generation=param_generation,
     )
 
 
@@ -412,9 +463,13 @@ def describe_bmode(
     )
 
 
-def make_bmode_config(profile: ProbeProfile, *, config_id: str = "bmode-focused") -> TransmitConfig:
+def make_bmode_config(
+    profile: ProbeProfile, *, config_id: str = "bmode-focused", param_generation: int = 0
+) -> TransmitConfig:
     """The conventional B-mode configuration on one profile, described and accepted."""
-    return accept(describe_bmode(profile, config_id=config_id), profile)
+    return accept(
+        describe_bmode(profile, config_id=config_id), profile, param_generation=param_generation
+    )
 
 
 def make_bmode_sequence(profile: ProbeProfile) -> list[TxEvent]:

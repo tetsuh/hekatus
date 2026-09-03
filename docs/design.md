@@ -801,6 +801,124 @@ Compounding averages the per-transmit illumination non-uniformity away.
 
 **One technique, three gains — without touching the transmit sequence.**
 
+### The contribution map as implemented (#53)
+
+Both uses run through one structure,
+`enodia/spec/sequence/contribution.py`: per output line, a **fixed number
+of slots** (`cap`), each naming a transmit event and a weight. A frame-edge
+line with fewer real contributions is padded with inert slots — weight
+zero, pointing at a real event — so work per line is constant, which is
+where the no-variable-loops absolute rule becomes an assertable property
+of data. Weights are **renormalized at derivation** — each line divided by the sum
+of the weights actually applied to it (ADR-0010), with a floor below which
+the line is refused rather than amplified, and with no way to construct a
+map that skips it —
+so the beamformer stays a plain weighted sum and edge lines are not darker
+for their position. Both DAS paths — RF golden and IQ — read the map through
+**one ingress that requires the derived type exactly**, not merely an object
+carrying its field names and not merely something that answers to the class:
+the type is the only carrier of the normalization, of the immutable buffer
+ownership and of the map-owned checks, so duck typing at the consumer would
+reopen exactly the escape hatch derivation-time normalization closes. **The
+type is sealed against subclassing** at its own definition, because the
+validation publishes through an overridable method and an override sits
+between the normalized rows and the rows a consumer reads; sealing puts the
+refusal at that seam rather than only at the consumers that happen to check.
+The default identity map is built before that check and held to it.
+The identity map reproduces the pre-map images bit for bit.
+
+**MLA line placement (ADR-0010):** the receive lines of one transmit
+subdivide the **transmit line** pitch evenly, symmetric about the transmit
+axis — `x_k + pitch·(2j−(mla−1))/(2·mla)` — where the pitch is the spacing
+of the beam axes, not of the elements. The two coincide only for the
+conventional sequence that fires one transmit above each element, and a
+sequence at another stride would otherwise get groups of the wrong width.
+MLA 1 recovers the conventional geometry exactly and the placement translates with the
+transmit (delay-table translation invariance on convex/sector probes). An
+output line pitch decoupled from the transmit pitch was considered and
+set aside for exactly that invariance.
+
+Each line also records **the one transmit kind it is formed from** — a
+required condition with no empty entries — and a line whose live slots would
+span kinds is refused at derivation. Both consumers check every live slot's
+event *and* record header against it before summing, so a map that reached
+them without passing through a derivation helper is refused too, as is a
+record whose header disagrees with the event it names. This is the
+transmit-type matching condition above, made executable: a B-mode and a
+colour-flow transmit of an interleaved sequence cannot be summed into one
+pixel. The tag is an open set, so the condition is equality between whatever
+strings the sequence uses.
+
+Line abscissae are coerced and checked for finiteness first: a non-finite
+coordinate does not produce a non-finite image, it produces a silently black
+scanline, because the read position casts to a garbage integer index. The
+provenance counters are whole and non-negative, the type conditions are
+strings rather than anything `str()` would flatter into one, and a map that
+forms no line at all is refused — every field is checked against every
+invariant the others are, so the next gap is not found one review at a
+time.
+
+The **events' own identity** — the configuration, probe profile and
+generation they were accepted under — is compared against the map, the
+records' headers and the profile in one place, on every path. It used to be
+derived only where the default map was built from the events, so a caller
+supplying a map explicitly never reached it and could beamform one
+configuration's events against another's map and records.
+
+Before any of that, the **event list itself** must be one distinct event per
+sequence position, indices running 0..n-1 — the rule ingress already applies
+to a configuration (§19), applied again where a bare list arrives. Matching
+records to events resolves the *set* of indices, so a duplicate collapses
+there silently: n events naming n−1 transmits form n lines from n−1
+acquisitions, and the duplicated line carries the wrong one at a coordinate
+of its own.
+
+**A map owns its data.** Its arrays are copied into immutable bytes at
+construction and exposed as read-only views over them, and its coordinate
+and type tuples are coerced — the same publication boundary
+`IQEventRecord` uses (§14, #6), for the same reason: clearing a writeable
+flag freezes the caller's array rather than owning a copy, and an array
+that owns its memory can be unfrozen again. A derivative that could change
+after validation would let two consumers of one map form different images
+from one frame.
+
+**A map names the configuration it was derived from** (`config_id`,
+**probe profile id**, event count, **parameter generation**) — required fields, not optional ones, so an
+unbound map cannot be built — and both consumers compare all three against
+what the records' headers name before forming a frame. The generation has a
+single source: the accepted `TransmitConfig` carries it, and every
+derivative reads it from there rather than defaulting on its own, because a
+derivative that supplies its own generation can disagree with what it was
+derived from while both sides stay self-consistent. The simulator stamps
+frames with the configuration's generation for the same reason.
+
+The **probe profile** is checked the same way. A configuration names exactly
+one profile (§19, #46) and the producing side already refuses a mismatch;
+the consumers take the profile as a separate argument and read the whole of
+the geometry from it, so an unchecked one beamforms a real acquisition on
+another probe's delays and returns a plausible image. The generation is
+carried separately because depth and focus are in-config parameters (§19):
+the id holds still across a knob turn while every derivative behind it,
+this map included, is invalidated and re-derived — so a map checked on the
+id alone would survive exactly the change that invalidates it. Event indices are small
+integers every configuration has, so a map derived elsewhere resolves
+cleanly and would put the frame on another configuration's scanlines with
+nothing raised — the accident the generation tag exists to prevent (§19).
+A frame whose records name more than one configuration, or more than one
+generation, is refused for the same reason.
+
+**Every slot runs, inert ones included.** The reference implementation does
+not skip zero-weight slots: doing so would give a frame-edge line fewer
+delay-and-aperture evaluations than an interior one, which is the
+variable-work shape the absolute rules forbid — and this implementation is
+the specification a port is written against, so a shortcut taken here reads
+as sanctioned.
+
+What stays measured, not chosen here (§17): the compounding weight
+function (needs the beam model, #9), window width, and truncation count.
+The multi-contribution structure is exercised by a uniform-weight
+synthetic map, which selects no production value.
+
 ### Compute cost
 
 **Receive-beamforming work is "formed scanlines × contributing transmits

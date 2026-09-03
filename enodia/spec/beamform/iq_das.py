@@ -77,7 +77,7 @@ def _check_record(profile: ProbeProfile, rec: IQEventRecord, decimation: int) ->
 
 def delayed_channel_vectors(
     profile: ProbeProfile,
-    ev: TxEvent,
+    line_x_m: float,
     rec: IQEventRecord,
     z: np.ndarray,
     *,
@@ -88,12 +88,18 @@ def delayed_channel_vectors(
     """x_i[n] for every channel and depth of one event — L0 checkpoint 2.
 
     Returns ``(n_ch, n_depth)`` complex in the intermediate dtype.
+
+    Takes the line abscissa rather than the transmit event it used to be
+    read from. After #53 a line belongs to the contribution map, not to an
+    event: under MLA one event feeds several lines, and passing the event
+    meant rebuilding a throwaway copy of it per line to override the one
+    field this function reads.
     """
     _check_record(profile, rec, decimation)
     cdtype = _complex_dtype(dtype)
     c = profile.c_m_s
     fs_dec = profile.fs_hz / decimation
-    dx = profile.element_x()[:, None] - ev.line_x_m  # (n_ch, 1)
+    dx = profile.element_x()[:, None] - line_x_m  # (n_ch, 1)
     tau_i = (z[None, :] + np.hypot(dx, z[None, :])) / c  # (n_ch, n_depth) arrival time
     t_p = 2.0 * z[None, :] / c  # (1, n_depth) pixel round-trip time
     tau = t_p - tau_i  # the delay of design.md §5, ≤ 0
@@ -112,29 +118,56 @@ def das_iq(
     records: list[IQEventRecord],
     *,
     decimation: int,
+    contribution=None,
     dtype=np.float32,
     z_min_m: float = 2e-3,
     kernel: str = "lagrange4",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """IQ-domain delay-and-sum.
 
-    Returns (complex image [depth × scanline], depth axis, scanline x axis) —
+    Returns (complex image [depth × line], depth axis, line x axis) —
     the same grid as `das_rf_golden`, so the two compare pixel for pixel.
     The image is the complex envelope along each line; |image| is the
     B-mode envelope (no Hilbert transform needed).
+
+    ``contribution`` is §7's map, exactly as in `das_rf_golden` (#53): the
+    identity by default, and there is one summation structure across both
+    paths, not two.
     """
+    from enodia.spec.beamform import (
+        _accepted_contribution,
+        _check_event_sequence,
+        _check_frame_provenance,
+        _check_transmit_types,
+        _slots_by_event,
+    )
+
     cdtype = _complex_dtype(dtype)
+    _check_event_sequence(events)
+    contribution = _accepted_contribution(contribution, events)
+    contribution.check_profile(profile.name)
+    _check_frame_provenance(contribution, events, records, profile.name)
     el_x = profile.element_x()
     z = depth_grid(profile, z_min_m=z_min_m)
-    line_x = np.array([ev.line_x_m for ev in events], dtype=np.float64)
+    line_x = np.array(contribution.line_x_m, dtype=np.float64)
     by_event = _records_by_event(events, records)
-    image = np.zeros((z.size, len(events)), dtype=cdtype)
-    for ev in events:
+    event_by_index = {ev.event_index: ev for ev in events}
+    _check_transmit_types(contribution, event_by_index, by_event)
+    image = np.zeros((z.size, contribution.n_lines), dtype=cdtype)
+    for event_index, slots in _slots_by_event(contribution).items():
+        ev = event_by_index[event_index]
         rec = by_event[ev.event_index]
-        x = delayed_channel_vectors(
-            profile, ev, rec, z, decimation=decimation, dtype=dtype, kernel=kernel
-        )
-        dx = el_x[:, None] - ev.line_x_m
-        w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
-        image[:, ev.line_index] += (w * x).sum(axis=0)
+        for line, weight in slots:
+            x = delayed_channel_vectors(
+                profile,
+                float(line_x[line]),
+                rec,
+                z,
+                decimation=decimation,
+                dtype=dtype,
+                kernel=kernel,
+            )
+            dx = el_x[:, None] - line_x[line]
+            w = aperture_weights(dx, z, profile.f_number, dtype=dtype)
+            image[:, line] += weight * (w * x).sum(axis=0)
     return image, z, line_x

@@ -422,6 +422,22 @@ def test_non_integer_event_indices_are_refused(bad_index):
         accept(invalid, profile)
 
 
+@pytest.mark.parametrize(
+    ("value", "error"),
+    [(-1, ValueError), (1.5, TypeError), (float("nan"), TypeError), (True, TypeError)],
+    ids=["negative", "fractional", "nan", "bool"],
+)
+def test_a_parameter_generation_that_is_not_a_counter_is_refused(value, error):
+    """§19 makes the generation a counter, and it is stamped onto every
+    accepted event and every derivative. A value that is not one propagates
+    from here into all of them."""
+    profile = linear_5mhz()
+    description = _description(profile)
+
+    with pytest.raises(error):
+        accept(description, profile, param_generation=value)
+
+
 # --- delays against the declared virtual source ---------------------------
 
 

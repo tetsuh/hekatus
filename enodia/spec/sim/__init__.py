@@ -133,7 +133,6 @@ def simulate_frame(
     config: TransmitConfig,
     scatterers: list[PointScatterer],
     *,
-    param_generation: int = 0,
     int16_fullscale_frac: float = 0.5,
 ) -> list[RFEventRecord]:
     """Generate one frame from an accepted transmit configuration (#52).
@@ -150,6 +149,13 @@ def simulate_frame(
     apodization the schema carries are checked at ingress
     (`enodia.spec.sequence.accept`) and not synthesized into a field here:
     the transmit beam model is #9.
+
+    The frame is stamped with the configuration's own **parameter
+    generation**, not a separately supplied one. It used to default to 0
+    regardless, so a configuration accepted at any other generation produced
+    records the beamformer then refused — the official path failing closed
+    unless the caller passed the generation a second time (§19: the tag has
+    one source, and it is the configuration).
     """
     if config.probe_profile_id != profile.name:
         raise ValueError(
@@ -161,6 +167,6 @@ def simulate_frame(
         list(config.events),
         scatterers,
         config_id=config.config_id,
-        param_generation=param_generation,
+        param_generation=config.param_generation,
         int16_fullscale_frac=int16_fullscale_frac,
     )
