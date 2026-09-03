@@ -1,4 +1,5 @@
 _private/
+.pi/
 __pycache__/
 *.pyc
 .venv/
