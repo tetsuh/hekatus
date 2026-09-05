@@ -20,10 +20,11 @@ one-sided limits at the focal depth differ by `2|x_s − x_v| / c` — several
 periods of `f0` for a scatterer a few wavelengths off axis.
 
 **The existing suite could not have caught it.** Every simulator test places
-its scatterer at exactly `z = 20 mm`, which is the focal depth, and that is
-the one depth where the unblended model is well behaved: `sign(0)` is zero,
-so the blended and unblended models agree there exactly. The artifact lives
-immediately either side of the focus, not on it.
+its scatterer at its profile's focal depth — `z = 20 mm` on `linear-5mhz`,
+`z = 5 mm` on the shrunken profile `tests/test_contribution_map.py` uses —
+and that is the one depth where the unblended model is well behaved:
+`sign(0)` is zero, so the blended and unblended models agree there exactly.
+The artifact lives immediately either side of the focus, not on it.
 
 Three things had to be decided to close this, and none of them is a
 parameter a later sweep can quietly revise: they fix what the reference
@@ -110,6 +111,19 @@ carries and validates.
    RF-domain ideal-delay DAS is kept as the golden path for the IQ
    approximation rather than becoming the processing path.
 
+6. **The virtual-source model states its domain and refuses outside it.**
+   The ingress binds the two models to the same *focus* — a delay set that
+   disagrees with its declared virtual source is refused — but says nothing
+   about amplitude. The virtual-source Gaussian is set by the profile's
+   F-number about the beam axis and reads no apodization; superposition
+   reads nothing else. An accepted single-element or asymmetric event
+   therefore focuses where it says and is lit nothing like the Gaussian.
+   Rather than approximate, the model requires the event's apodization to be
+   `focused_aperture(profile, vx, vz)` and its beam axis to pass through the
+   virtual source, and refuses otherwise, naming superposition in the
+   message. A walking aperture (#10) extends this domain as its own
+   decision.
+
 5. **The unblended model stays, as a named function.** `virtual_source_unblended`
    is not a model a caller should select for imaging; it exists so the defect
    the blend removes can be exhibited. A fix whose defect cannot be shown is
@@ -129,10 +143,19 @@ carries and validates.
   implement superposition; it is required to reproduce the blended
   virtual-source field, kernel and all, in the same way ADR-0007 requires the
   interpolation kernel.
-- The residual is bounded below and known: a one-delay model cannot beat the
-  spread of the arrivals it stands for, which the sweep reports as 0.44
-  periods. The blend reaches 1.33. Closing that gap means abandoning the
-  one-delay model, which is what selecting superposition does.
+- The sweep reports the intrinsic arrival spread beside the error — 0.44
+  periods over the focal region — as a diagnostic of how far the field is
+  from being a single arrival. It is **not a lower bound** on the error: a
+  single arrival placed at the centroid has zero centroid error at any
+  spread, and a test exhibits exactly that. What the spread says is that
+  where it is large, no single arrival describes the field the metric is
+  scoring, whichever one is chosen.
+- Away from the focus the blended model and superposition agree to within
+  0.3 periods beyond it (`z ≥ 1.5 z_f`, up to two beam widths off axis)
+  and within 1.4 periods before it (`z ≥ 0.25 z_f`). The near field is the
+  weaker side because that is where a converging wavefront least resembles
+  a point source's; these figures are pinned by test and reported by the
+  sweep.
 - **The contribution-map weight function is now unblocked but not decided.**
   design.md §7 and §17 keep it open, ADR-0010 records what stops holding once
   the weights are not uniform, and this ADR supplies the beam model that
@@ -146,3 +169,7 @@ carries and validates.
 ## Status history
 
 - 2026-09-05: Proposed with #9.
+- 2026-09-05: Decision 6 (the virtual-source model's domain) added, the
+  spread reframed from a bound to a diagnostic, the away-from-focus figures
+  added, and the coverage-gap statement qualified — all on review of #62
+  (`ADV-62-001`, `-002`, `-004`).

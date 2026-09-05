@@ -33,9 +33,19 @@ IQ approximation (absolute rules). It is also the only consumer of the
 per-element firing delays and apodization that `enodia.spec.sequence` carries
 and validates (#52).
 
-The two models describe the same beam by construction, not by coincidence:
-`accept` refuses a configuration whose per-element delays disagree with its
-declared virtual source by more than `DELAY_TOLERANCE_NS`.
+**What the ingress binds, and what it does not.** `accept` refuses a
+configuration whose per-element delays disagree with its declared virtual
+source by more than `DELAY_TOLERANCE_NS`, so the two models focus at the
+same point by construction. It says nothing about amplitude: the
+virtual-source model's Gaussian is parameterized by the profile's F-number
+and the declared beam axis and never reads the apodization, while
+superposition reads nothing else. For an aperture other than the profile's
+own focused one — a single element, a walking aperture (#10), anything
+asymmetric about the axis — the two would silently diverge. So the
+virtual-source model **states its domain and refuses outside it**: the
+event's apodization must be `focused_aperture(profile, vx, vz)` and its beam
+axis must be the virtual source's abscissa. Outside that, superposition is
+the model that reads what was actually described.
 """
 
 from __future__ import annotations
@@ -43,7 +53,7 @@ from __future__ import annotations
 import numpy as np
 
 from enodia.spec.probe import ProbeProfile
-from enodia.spec.sequence import TxEvent
+from enodia.spec.sequence import TxEvent, coordinate_tolerance_m, focused_aperture
 
 __all__ = [
     "BLEND_HALF_WIDTH_FACTOR",
@@ -51,6 +61,7 @@ __all__ = [
     "aperture_superposition",
     "blend_half_width_m",
     "blended_sign",
+    "check_virtual_source_domain",
     "transmit_contributions",
     "virtual_source",
     "virtual_source_unblended",
@@ -63,6 +74,11 @@ __all__ = [
 # 1.33 periods here against 4.02 unblended, with the minimum interior to the
 # swept range rather than at an end. Not chosen by eye; see ADR-0011.
 BLEND_HALF_WIDTH_FACTOR: float = 2.0
+
+# Apodization equality for the virtual-source model's domain check. The
+# description carries dimensionless weights that round-trip unchanged, so
+# this is a guard against a different aperture, not against transport noise.
+_APODIZATION_RTOL: float = 1e-12
 
 
 def blend_half_width_m(profile: ProbeProfile, *, factor: float = BLEND_HALF_WIDTH_FACTOR) -> float:
@@ -130,12 +146,45 @@ def virtual_source_unblended(
     return np.array([t_tx]), np.array([_beam_amplitude(profile, event, x_m, z_m)])
 
 
+def check_virtual_source_domain(profile: ProbeProfile, event: TxEvent) -> None:
+    """Refuse an event the virtual-source amplitude model does not describe.
+
+    The Gaussian is parameterized by the profile's F-number about the beam
+    axis and reads no apodization, so it is a model of exactly one aperture:
+    the profile's own focused one, `focused_aperture(profile, vx, vz)`, on an
+    axis through the virtual source. The ingress guarantees the focus, not
+    the aperture — an accepted single-element or asymmetric event focuses
+    where it says and is lit nothing like this Gaussian. Refused rather than
+    approximated, with the model that reads the apodization named in the
+    message, because a plausible frame from the wrong beam is worse than no
+    frame (absolute rules).
+    """
+    vx, vz = event.virtual_source_m
+    if abs(event.line_x_m - vx) > coordinate_tolerance_m(profile):
+        raise ValueError(
+            f"transmit event {event.event_index}: the virtual-source model assumes the beam"
+            f" axis passes through the virtual source, but line_x_m={event.line_x_m!r} and"
+            f" virtual source x={vx!r}; use transmit_model='aperture-superposition'"
+        )
+    expected = focused_aperture(profile, vx, vz)
+    actual = np.asarray(event.apodization, dtype=np.float64)
+    if not np.allclose(actual, expected, rtol=_APODIZATION_RTOL, atol=0.0):
+        raise ValueError(
+            f"transmit event {event.event_index}: the virtual-source model assumes the"
+            f" profile's F={profile.f_number:g} focused aperture about the beam axis, and"
+            f" this event's apodization is a different aperture;"
+            f" use transmit_model='aperture-superposition', which reads it"
+        )
+
+
 def _beam_amplitude(profile: ProbeProfile, event: TxEvent, x_m: float, z_m: float) -> float:
     """Gaussian across the beam, widening away from the focus at the F-number's rate.
 
     Floored at `λ·F#`: the amplitude side of the focus is already regular, and
     this floor is what keeps it so. The defect #9 addresses is in the delay.
+    Valid only on the domain `check_virtual_source_domain` enforces.
     """
+    check_virtual_source_domain(profile, event)
     _, vz = event.virtual_source_m
     beam_w = max(profile.wavelength_m * profile.f_number, abs(z_m - vz) / (2.0 * profile.f_number))
     return float(np.exp(-0.5 * ((x_m - event.line_x_m) / beam_w) ** 2))

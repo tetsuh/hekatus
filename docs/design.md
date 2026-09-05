@@ -2042,14 +2042,26 @@ exists from the start.
       (`enodia.spec.sim.blend_sweep`), which minimises the worst
       arrival-time shape error against aperture superposition over the focal
       region: 1.33 periods against 4.02 unblended, with the minimum interior
-      to the swept range. A one-delay model cannot beat the spread of the
-      arrivals it stands for, which the same sweep reports as 0.44 periods
+      to the swept range. The sweep reports the intrinsic arrival spread
+      beside it (0.44 periods) as a diagnostic of how far the field is from
+      a single arrival — not as a bound, since a single arrival placed at
+      the centroid has zero centroid error at any spread
     - aperture superposition is the reference the blend is measured against,
       not the processing default — the arrangement §5's RF-domain golden path
       already uses. It is also the only consumer that synthesizes a field
       from the per-element firing delays and apodization §19's schema carries
+    - the ingress binds the two models to the same **focus**, not the same
+      aperture: the virtual-source amplitude is a Gaussian set by the
+      profile's F-number about the beam axis and reads no apodization. So
+      that model states its domain — the profile's own focused aperture on an
+      axis through the virtual source — and refuses an event outside it,
+      naming superposition as the model that reads what was described
+    - away from the focus the two agree to within 0.3 periods of `f0`
+      beyond it (`z ≥ 1.5 z_f`, up to two beam widths off axis) and within
+      1.4 periods before it (`z ≥ 0.25 z_f`), the near field being where a
+      converging wavefront least resembles a point source's
     - the discontinuity was invisible to the suite that existed, because
-      every simulator test placed its scatterer at exactly the focal depth,
+      every simulator test placed its scatterer at its profile's focal depth,
       where `sign(0)` is zero and the blended and unblended models agree
 - the contribution-map weight function (how the transmit-beam amplitude
   profile enters) — **unblocked by #9, still open**: the beam model it
@@ -2154,11 +2166,15 @@ Event indices run 0..n-1 in sequence order rather than merely being
 distinct: the index is the event's name in the frame header and, through the
 identity map, its scanline.
 
-**Carried, not consumed.** The per-element firing delays and apodization are
-validated at ingress; no transmit field is synthesized from them. The
-transmit beam model — the virtual-source focal blend and the switch to
-aperture superposition — is §18's implementation-time detail and stays with
-it.
+**Carried, validated, and consumed by one model only.** The per-element
+firing delays and apodization are validated at ingress. The default
+transmit beam model, the virtual-source approximation, synthesizes no field
+from them; the switchable aperture-superposition model (#9, §18, ADR-0011)
+is the one consumer that does, and it is the yardstick the default's focal
+blend is measured against. The ingress binds the two to the same focus — a
+delay set that disagrees with its declared virtual source is refused — but
+not to the same aperture, which is why the default model states the
+aperture it assumes and refuses others.
 
 ### enodia derives its own derivatives
 

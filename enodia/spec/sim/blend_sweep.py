@@ -25,10 +25,13 @@ follow from that set, and both matter:
 
 - its apodization-weighted **centroid**, which is the single arrival time a
   one-delay model should be reproducing, and
-- its apodization-weighted **spread**, which is how well any one-delay model
-  can do — where the spread is a large fraction of a period, no single
-  arrival time describes the field and the error being measured is the
-  model's, not the blend's.
+- its apodization-weighted **spread**, reported beside the error as a
+  diagnostic of how far the field is from being a single arrival at all.
+  It is **not a bound on the centroid error**: a one-delay model whose
+  arrival equals the centroid has zero centroid error at any spread
+  (`tests/test_transmit_model.py` exhibits that). What a large spread does
+  say is that the field is one the metric cannot fully describe, whichever
+  single arrival is chosen.
 
 The blend width is chosen to minimise the worst centroid error over the
 region where the blend is active, reported in periods of `f0` so the figure
@@ -148,7 +151,12 @@ def worst_centroid_error_periods(case: BlendCase, factor: float, *, n_depths: in
 
 
 def worst_spread_periods(case: BlendCase, *, n_depths: int = 241) -> float:
-    """Worst arrival spread over the window, in periods — the one-delay model's own floor."""
+    """Worst intrinsic arrival spread over the window, in periods.
+
+    A diagnostic, not a bound: it says how far the superposition field is
+    from a single arrival, and nothing about how well a given single arrival
+    tracks the centroid.
+    """
     z_axis, offsets = _sample_points(case, n_depths)
     worst = 0.0
     for x in offsets:
@@ -202,8 +210,56 @@ def table(case: BlendCase | None = None) -> str:
     )
     lines.append(
         f"{'spread':>8s} {'—':>16s} {worst_spread_periods(case):30.4f}"
-        + "   (the one-delay model's own floor)"
+        + "   (intrinsic arrival spread; a diagnostic, not a bound)"
     )
+    return "\n".join(lines)
+
+
+# Where the away-from-focus comparison samples, as multiples of the focal
+# depth. The near field is where the virtual-source picture is weakest — the
+# wavefront is still converging — so it is sampled more finely than the far
+# field, whose figures settle.
+AWAY_FROM_FOCUS_DEPTH_MULTIPLES: tuple[float, ...] = (0.25, 0.5, 0.75, 1.5, 2.0, 2.5, 3.0)
+
+
+def away_from_focus_report(
+    case: BlendCase | None = None,
+) -> list[tuple[float, float, float, float]]:
+    """Shape error and intrinsic spread away from the focus (#9 criterion 3).
+
+    Rows of `(z / z_f, lateral offset in beam widths, error in periods,
+    spread in periods)`, over the depths in `AWAY_FROM_FOCUS_DEPTH_MULTIPLES`
+    that lie within the profile's imaging depth and the lateral offsets in
+    `LATERAL_OFFSETS_BEAMWIDTHS`. Both fields are referred to their own
+    on-axis focal value, as in the sweep.
+    """
+    case = centre_case() if case is None else case
+    vx, vz = case.event.virtual_source_m
+    beam_w = case.profile.wavelength_m * case.profile.f_number
+
+    def arrival(x: float, z: float) -> float:
+        taus, _ = virtual_source(case.profile, case.event, x, z)
+        return float(taus[0])
+
+    model_ref = arrival(vx, vz)
+    centroid_ref, _ = superposition_centroid_and_spread(case, vx, vz)
+    rows = []
+    for mult in AWAY_FROM_FOCUS_DEPTH_MULTIPLES:
+        z = vz * mult
+        if z > case.profile.depth_m:
+            continue
+        for n in LATERAL_OFFSETS_BEAMWIDTHS:
+            x = vx + n * beam_w
+            centroid, spread = superposition_centroid_and_spread(case, x, z)
+            err = ((arrival(x, z) - model_ref) - (centroid - centroid_ref)) / case.period_s
+            rows.append((mult, n, err, spread / case.period_s))
+    return rows
+
+
+def away_from_focus_table(case: BlendCase | None = None) -> str:
+    lines = [f"{'z / z_f':>8s} {'offset [bw]':>12s} {'shape err [periods]':>20s} {'spread':>8s}"]
+    for mult, n, err, spread in away_from_focus_report(case):
+        lines.append(f"{mult:8.2f} {n:12.1f} {err:+20.3f} {spread:8.2f}")
     return "\n".join(lines)
 
 
@@ -211,3 +267,6 @@ if __name__ == "__main__":
     print(table())
     print()
     print(f"selected factor: {selected_factor():g}")
+    print()
+    print("Away from the focus, under the selected factor:")
+    print(away_from_focus_table())

@@ -254,7 +254,6 @@ def test_the_blend_beats_the_unblended_model_against_the_yardstick():
         centre_case,
         unblended_worst_centroid_error_periods,
         worst_centroid_error_periods,
-        worst_spread_periods,
     )
 
     case = centre_case()
@@ -262,9 +261,99 @@ def test_the_blend_beats_the_unblended_model_against_the_yardstick():
     unblended = unblended_worst_centroid_error_periods(case, n_depths=41)
 
     assert blended < 0.5 * unblended
-    # A one-delay model cannot beat the spread of the arrivals it stands for,
-    # so the residual is bounded below and this is not a demand for zero.
-    assert blended > worst_spread_periods(case, n_depths=41)
+
+
+def test_the_spread_is_a_diagnostic_and_not_a_bound_on_the_error():
+    """A one-delay model whose arrival *is* the centroid scores zero under the
+    sweep's metric at every point, however wide the arrivals are spread. So
+    the spread the sweep reports beside the error is a statement about the
+    field, not a floor under any model (`ADV-62-002` corrected an earlier
+    "cannot beat" claim)."""
+    from enodia.spec.sim.blend_sweep import (
+        _worst_shape_error_periods,
+        centre_case,
+        superposition_centroid_and_spread,
+        worst_spread_periods,
+    )
+
+    case = centre_case()
+
+    def centroid_model(x: float, z: float) -> float:
+        centroid, _ = superposition_centroid_and_spread(case, x, z)
+        return centroid
+
+    assert worst_spread_periods(case, n_depths=21) > 0.1
+    assert _worst_shape_error_periods(case, centroid_model, n_depths=21) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_the_models_agree_away_from_the_focus_to_a_stated_tolerance():
+    """#9 acceptance criterion 3, with the numbers in it.
+
+    Beyond the focus the virtual-source picture is at its best and the two
+    models agree to within 0.3 periods out to two beam widths off axis;
+    before it, where the wavefront is still converging and least resembles a
+    point source's, they agree to within 1.4 periods from a quarter of the
+    focal depth. The figures are pinned here and reported by
+    `blend_sweep.away_from_focus_table`, so the prose that quotes them
+    cannot drift from what the code computes.
+    """
+    from enodia.spec.sim.blend_sweep import away_from_focus_report, centre_case
+
+    rows = away_from_focus_report(centre_case())
+    beyond = [abs(err) for mult, _, err, _ in rows if mult > 1.0]
+    before = [abs(err) for mult, _, err, _ in rows if mult < 1.0]
+
+    assert beyond and before  # both sides sampled, or the tolerances mean nothing
+    assert max(beyond) < 0.3
+    assert max(before) < 1.4
+
+
+def test_the_virtual_source_model_refuses_an_aperture_it_does_not_describe():
+    """The ingress binds the two models to the same focus, not the same
+    aperture (`ADV-62-001`). A single-element event passes `accept` and
+    focuses exactly where it says; the Gaussian set by the profile's F-number
+    describes nothing about how it is lit. Refused, naming the model that
+    reads the apodization, rather than approximated."""
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    event = centre_event(profile)
+    single = dc_replace(
+        event,
+        apodization=tuple(1.0 if i == profile.n_elements // 2 else 0.0 for i in range(profile.n_elements)),
+    )
+
+    with pytest.raises(ValueError, match="aperture-superposition"):
+        virtual_source(profile, single, 0.0, 6e-3)
+    with pytest.raises(ValueError, match="aperture-superposition"):
+        virtual_source_unblended(profile, single, 0.0, 6e-3)
+
+    taus, weights = aperture_superposition(profile, single, 0.0, 6e-3)
+    assert taus.shape == (profile.n_elements,)
+    assert float(weights.sum()) == pytest.approx(1.0)
+
+
+def test_the_virtual_source_model_refuses_a_beam_axis_off_the_virtual_source():
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    event = centre_event(profile)
+    skewed = dc_replace(event, line_x_m=event.line_x_m + 2.0 * profile.pitch_m)
+
+    with pytest.raises(ValueError, match="beam axis passes through the virtual source"):
+        virtual_source(profile, skewed, 0.0, 6e-3)
+
+
+def test_every_event_of_the_profile_configuration_is_inside_the_domain():
+    """Edge events have truncated, asymmetric apertures — and they are still
+    the profile's focused aperture, because that is what `focused_aperture`
+    returns at the edge. The domain is what the configuration produces, not
+    an idealisation the edges fall outside of."""
+    from enodia.spec.sim.transmit import check_virtual_source_domain
+
+    profile = linear_5mhz()
+    for event in make_bmode_config(profile).events:
+        check_virtual_source_domain(profile, event)
 
 
 def _peak_sample(record, channel: int) -> int:
@@ -279,10 +368,11 @@ def test_the_simulator_carries_the_blend_into_the_rf():
     the round-trip of `2|x − x_v|`; under the default model it does not.
 
     **The existing suite could not have caught this.** Every other simulator
-    test places its scatterer at exactly `z = 20 mm`, the focal depth — and
-    that is the one depth where the unblended model is well behaved, because
-    `sign(0)` is zero and the two models agree there exactly. The artifact
-    lives just off the focus, not on it.
+    test places its scatterer at its profile's focal depth — 20 mm on
+    `linear-5mhz`, 5 mm on the shrunken profile `test_contribution_map` uses
+    — and that is the one depth where the unblended model is well behaved,
+    because `sign(0)` is zero and the two models agree there exactly. The
+    artifact lives just off the focus, not on it.
     """
     from enodia.spec.sim import PointScatterer, simulate_frame
 
@@ -328,8 +418,9 @@ def test_the_simulator_carries_the_blend_into_the_rf():
     assert abs(blended_step - rx_only) < 0.25 * abs(unblended_step - rx_only)
 
     # And the residual is the size the sweep says to expect: about one period
-    # of f0, not zero. A one-delay model cannot do better than the spread of
-    # the arrivals it stands for.
+    # of f0, not zero. The blend is a one-delay stand-in for a field the
+    # sweep shows is not a single arrival near the focus; zero would be
+    # surprising, not reassuring.
     samples_per_period = profile.fs_hz / profile.f0_hz
     assert abs(blended_step - rx_only) < 2.0 * samples_per_period
 
