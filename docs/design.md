@@ -915,7 +915,10 @@ the specification a port is written against, so a shortcut taken here reads
 as sanctioned.
 
 What stays measured, not chosen here (§17): the compounding weight
-function (needs the beam model, #9), window width, and truncation count.
+function, window width, and truncation count. The weight function needed a
+transmit beam model, which #9 supplied (§18, ADR-0011); what it enters *as*
+is still open, and ADR-0010 records what stops holding the moment a map's
+weights are not uniform.
 The multi-contribution structure is exercised by a uniform-weight
 synthetic map, which selects no production value.
 
@@ -2025,14 +2028,33 @@ exists from the start.
 
 ### Details settled at implementation time
 
-- transmit-beam model (**virtual-source approximation adopted**, switchable
-  to aperture superposition)
-- **the virtual-source focal singularity (mandatory)**: the transmit delay
-  `±|z − z_f|/c` flips sign at the focal depth, producing a discontinuity
-  and hourglass artifacts near focus — a classic retrospective-transmit-
-  focusing pitfall. Build the smooth blend across the focus from the start
+- **the transmit beam model — settled by #9 (ADR-0011)**. The
+  virtual-source approximation is the default, with aperture superposition
+  switchable, as this section already directed. What #9 added is the blend
+  the singularity requires and the yardstick its width is chosen against:
+    - `sign(z_s − z_v)` becomes `sin(π u / 2h)` inside `|u| < h` and stays
+      `sign(u)` outside, so the transition is C¹ across the focus and across
+      both seams while the delay field elsewhere is unchanged **bit for
+      bit**. A global smooth sign such as `tanh` would perturb every depth
+      to repair one
+    - the half-width is `2.0 · λ · F#²`, the depth-of-field scale, so it
+      travels between profiles. The factor is **selected by measurement**
+      (`enodia.spec.sim.blend_sweep`), which minimises the worst
+      arrival-time shape error against aperture superposition over the focal
+      region: 1.33 periods against 4.02 unblended, with the minimum interior
+      to the swept range. A one-delay model cannot beat the spread of the
+      arrivals it stands for, which the same sweep reports as 0.44 periods
+    - aperture superposition is the reference the blend is measured against,
+      not the processing default — the arrangement §5's RF-domain golden path
+      already uses. It is also the only consumer that synthesizes a field
+      from the per-element firing delays and apodization §19's schema carries
+    - the discontinuity was invisible to the suite that existed, because
+      every simulator test placed its scatterer at exactly the focal depth,
+      where `sign(0)` is zero and the blended and unblended models agree
 - the contribution-map weight function (how the transmit-beam amplitude
-  profile enters)
+  profile enters) — **unblocked by #9, still open**: the beam model it
+  needed now exists, ADR-0010 records what stops holding once a map's
+  weights are not uniform, and choosing the function is its own decision
 - spatial correlation of injected aberration (**give it a correlation
   length**; real fat layers are not white)
 
