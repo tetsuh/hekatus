@@ -23,7 +23,7 @@ jobs:
           echo "Re-run the branch from a branch in this repository before merging."
           exit 1
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Scans all tracked files (contents and paths) for prohibited words.
       # The word list comes from the KEYWORD_GUARD_WORDS secret
