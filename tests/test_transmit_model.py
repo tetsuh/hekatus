@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 from enodia.spec.probe import ProbeProfile, linear_5mhz
-from enodia.spec.sequence import make_bmode_config
+from enodia.spec.sequence import accept, describe_bmode, make_bmode_config
 from enodia.spec.sim.transmit import (
     BLEND_HALF_WIDTH_FACTOR,
     aperture_superposition,
@@ -342,6 +342,69 @@ def test_the_virtual_source_model_refuses_a_beam_axis_off_the_virtual_source():
 
     with pytest.raises(ValueError, match="beam axis passes through the virtual source"):
         virtual_source(profile, skewed, 0.0, 6e-3)
+
+
+def _scaled_description(profile: ProbeProfile, scale: float):
+    """The profile's own B-mode description with every apodization weight
+    multiplied by `scale` — the same apertures, described at another scale."""
+    from dataclasses import replace as dc_replace
+
+    description = describe_bmode(profile)
+    events = tuple(
+        dc_replace(ev, apodization=tuple(w * scale for w in ev.apodization))
+        for ev in description.events
+    )
+    return dc_replace(description, events=events)
+
+
+def test_the_superposition_model_normalizes_weights_of_any_accepted_scale():
+    """`accept` bounds the apodization below (finite, non-negative) and not
+    above, so a description whose weights are individually finite and whose
+    direct sum is not is an accepted one. Normalizing by that sum divides by
+    infinity and returns an all-zero aperture and a silent frame with no
+    error raised (`ADV-62-006`). The normalized weights do not depend on the
+    scale, and the model removes it before summing: at a power-of-two scale
+    the weights, and the frame, are bit-identical to the unit-scale ones."""
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    profile = small_profile()
+    scale = 2.0**1023  # every weight stays finite; the direct sum does not
+    unit = accept(describe_bmode(profile), profile)
+    scaled = accept(_scaled_description(profile, scale), profile)
+
+    event = scaled.events[len(scaled.events) // 2]
+    apod = np.asarray(event.apodization)
+    assert np.all(np.isfinite(apod))
+    with np.errstate(over="ignore"):
+        assert np.isinf(apod.sum()), "the case must be one where the direct sum overflows"
+
+    _, weights = aperture_superposition(profile, event, 0.0, 6e-3)
+    _, unit_weights = aperture_superposition(profile, unit.events[len(unit.events) // 2], 0.0, 6e-3)
+    assert np.all(np.isfinite(weights))
+    assert float(weights.sum()) == pytest.approx(1.0)
+    assert np.array_equal(weights, unit_weights)
+
+    scatterers = [PointScatterer(0.0, 6e-3)]
+    frame = simulate_frame(profile, scaled, scatterers, transmit_model="aperture-superposition")
+    reference = simulate_frame(profile, unit, scatterers, transmit_model="aperture-superposition")
+    assert np.abs(np.asarray(frame[0].data)).max() > 0
+    for a, b in zip(frame, reference, strict=True):
+        assert np.array_equal(np.asarray(a.data), np.asarray(b.data))
+
+
+def test_the_superposition_model_refuses_a_non_finite_apodization():
+    """`accept` never passes one; an event built directly is refused rather
+    than normalized into NaN."""
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    event = centre_event(profile)
+    weights = list(event.apodization)
+    weights[profile.n_elements // 2] = float("inf")
+    broken = dc_replace(event, apodization=tuple(weights))
+
+    with pytest.raises(ValueError, match="non-finite apodization"):
+        aperture_superposition(profile, broken, 0.0, 6e-3)
 
 
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():

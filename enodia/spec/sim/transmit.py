@@ -201,11 +201,21 @@ def aperture_superposition(
     to blend — which is what makes it the yardstick the blend's width is
     swept against.
 
-    Amplitudes are normalized by the apodization sum, so that a scatterer at
-    the focus, where the element contributions arrive together, sees unit
-    amplitude — the same normalization the Gaussian beam profile carries.
-    The lateral beam shape is then not assumed but emerges from the elements
-    falling out of phase off axis, which is the whole point of the model.
+    Amplitudes are normalized to unit sum, so that a scatterer at the focus,
+    where the element contributions arrive together, sees unit amplitude —
+    the same normalization the Gaussian beam profile carries. The lateral
+    beam shape is then not assumed but emerges from the elements falling out
+    of phase off axis, which is the whole point of the model.
+
+    **The normalization removes the apodization's scale before it sums.**
+    The ingress accepts any finite non-negative weights, and the normalized
+    weights do not depend on their scale — so the scale is divided out
+    first, by the largest weight, which puts every weight in [0, 1] and the
+    sum in [1, n_elements]. A direct sum has no such bound: seven accepted
+    weights of 1e308 sum to infinity, and dividing by infinity returns an
+    all-zero aperture and a silent frame with no error raised (ADV-62-006).
+    A weight that is not finite cannot come through `accept`; an event built
+    directly is refused here rather than normalized into NaN.
 
     Silent elements (`apodization == 0`) are still returned rather than
     dropped: their pulse copies are multiplied by zero, and a variable-length
@@ -216,11 +226,15 @@ def aperture_superposition(
     el_x = profile.element_x()
     apod = np.asarray(event.apodization, dtype=np.float64)
     delays = np.asarray(event.firing_delays_s, dtype=np.float64)
-    total = float(apod.sum())
-    if total <= 0.0:
+    if not np.all(np.isfinite(apod)):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite apodization weight")
+    peak = float(apod.max()) if apod.size else 0.0
+    if not peak > 0.0:
         raise ValueError(f"transmit event {event.event_index} has no firing elements")
+    weights = apod / peak
+    weights /= weights.sum()
     taus = delays + np.hypot(x_m - el_x, z_m) / profile.c_m_s
-    return taus, apod / total
+    return taus, weights
 
 
 TRANSMIT_MODELS = {
