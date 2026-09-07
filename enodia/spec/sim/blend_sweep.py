@@ -114,11 +114,6 @@ def _sample_points(case: BlendCase, n_depths: int) -> tuple[np.ndarray, tuple[fl
     return z[z > 0.0], offsets
 
 
-def _referenced(model_at, case: BlendCase, x: float, z: float, ref: float) -> float:
-    """A model's arrival at (x, z), referred to its own on-axis focal value."""
-    return model_at(x, z) - ref
-
-
 def _worst_shape_error_periods(case: BlendCase, arrival, *, n_depths: int) -> float:
     """Worst disagreement in arrival-time *shape*, in periods of f0.
 

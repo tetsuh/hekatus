@@ -407,6 +407,32 @@ def test_the_superposition_model_refuses_a_non_finite_apodization():
         aperture_superposition(profile, broken, 0.0, 6e-3)
 
 
+def test_the_superposition_model_refuses_a_negative_apodization():
+    """The same rule `accept` enforces, on the same direct-construction path
+    the non-finite check covers (`CONV-62-001`): a mixed-sign aperture is
+    refused rather than normalized into a negative amplitude — or, when the
+    weights cancel, into a zero sum."""
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    event = centre_event(profile)
+    firing = [i for i, w in enumerate(event.apodization) if w > 0.0]
+    weights = list(event.apodization)
+    weights[firing[0]] = -weights[firing[0]]
+    mixed = dc_replace(event, apodization=tuple(weights))
+    cancelling = dc_replace(
+        event,
+        apodization=tuple(
+            1.0 if i == firing[0] else -1.0 if i == firing[-1] else 0.0
+            for i in range(profile.n_elements)
+        ),
+    )
+
+    for broken in (mixed, cancelling):
+        with pytest.raises(ValueError, match="negative apodization"):
+            aperture_superposition(profile, broken, 0.0, 6e-3)
+
+
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():
     """Edge events have truncated, asymmetric apertures — and they are still
     the profile's focused aperture, because that is what `focused_aperture`

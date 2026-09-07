@@ -214,8 +214,10 @@ def aperture_superposition(
     sum in [1, n_elements]. A direct sum has no such bound: seven accepted
     weights of 1e308 sum to infinity, and dividing by infinity returns an
     all-zero aperture and a silent frame with no error raised (ADV-62-006).
-    A weight that is not finite cannot come through `accept`; an event built
-    directly is refused here rather than normalized into NaN.
+    The bounds hold for what `accept` passes — finite, non-negative weights —
+    and an event built directly is held to the same rule here: a non-finite
+    or negative weight is refused rather than normalized into NaN, a zero
+    sum, or a negative amplitude.
 
     Silent elements (`apodization == 0`) are still returned rather than
     dropped: their pulse copies are multiplied by zero, and a variable-length
@@ -228,6 +230,8 @@ def aperture_superposition(
     delays = np.asarray(event.firing_delays_s, dtype=np.float64)
     if not np.all(np.isfinite(apod)):
         raise ValueError(f"transmit event {event.event_index} has a non-finite apodization weight")
+    if np.any(apod < 0.0):
+        raise ValueError(f"transmit event {event.event_index} has a negative apodization weight")
     peak = float(apod.max()) if apod.size else 0.0
     if not peak > 0.0:
         raise ValueError(f"transmit event {event.event_index} has no firing elements")
