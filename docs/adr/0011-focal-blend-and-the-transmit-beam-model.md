@@ -1,8 +1,8 @@
 # ADR-0011: The focal blend, and what the transmit beam model is measured against
 
-- Status: **Proposed**
+- Status: **Accepted** — 2026-09-08
 - Date: 2026-09-05
-- Owner decision: pending
+- Owner decision: yes (`DEC-62-001`)
 
 ## Context
 
@@ -173,3 +173,12 @@ carries and validates.
   spread reframed from a bound to a diagnostic, the away-from-focus figures
   added, and the coverage-gap statement qualified — all on review of #62
   (`ADV-62-001`, `-002`, `-004`).
+- 2026-09-08: Decisions renumbered into order (the domain decision to 5, the
+  unblended-model decision to 6), text unchanged, while the record was still
+  `Proposed` (`CONV-62-004`).
+- 2026-09-08: Accepted at PR #62's owner-authorized pre-merge boundary
+  (`DEC-62-001`), after the review's findings were corrected — the
+  virtual-source domain check, the overflow-safe superposition
+  normalization and its non-negative rule on the direct-construction path —
+  and validation was green at that head. The transition is written in the
+  same pull request, so `Proposed` never reaches `main` (workflow §6).
