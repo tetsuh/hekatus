@@ -2036,7 +2036,7 @@ exists from the start.
       `sign(u)` outside, so the transition is C¹ across the focus and across
       both seams while the delay field elsewhere is unchanged **bit for
       bit**. A global smooth sign such as `tanh` would perturb every depth
-      to repair one
+      to repair one defect at the focus
     - the half-width is `2.0 · λ · F#²`, the depth-of-field scale, so it
       travels between profiles. The factor is **selected by measurement**
       (`enodia.spec.sim.blend_sweep`), which minimises the worst

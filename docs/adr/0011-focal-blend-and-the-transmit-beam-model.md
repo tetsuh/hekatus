@@ -111,7 +111,7 @@ carries and validates.
    RF-domain ideal-delay DAS is kept as the golden path for the IQ
    approximation rather than becoming the processing path.
 
-6. **The virtual-source model states its domain and refuses outside it.**
+5. **The virtual-source model states its domain and refuses outside it.**
    The ingress binds the two models to the same *focus* — a delay set that
    disagrees with its declared virtual source is refused — but says nothing
    about amplitude. The virtual-source Gaussian is set by the profile's
@@ -124,7 +124,7 @@ carries and validates.
    message. A walking aperture (#10) extends this domain as its own
    decision.
 
-5. **The unblended model stays, as a named function.** `virtual_source_unblended`
+6. **The unblended model stays, as a named function.** `virtual_source_unblended`
    is not a model a caller should select for imaging; it exists so the defect
    the blend removes can be exhibited. A fix whose defect cannot be shown is
    not evidence of anything.
@@ -169,7 +169,7 @@ carries and validates.
 ## Status history
 
 - 2026-09-05: Proposed with #9.
-- 2026-09-05: Decision 6 (the virtual-source model's domain) added, the
+- 2026-09-05: Decision 5 (the virtual-source model's domain) added, the
   spread reframed from a bound to a diagnostic, the away-from-focus figures
   added, and the coverage-gap statement qualified — all on review of #62
   (`ADV-62-001`, `-002`, `-004`).
