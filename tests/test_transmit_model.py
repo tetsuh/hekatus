@@ -433,6 +433,35 @@ def test_the_superposition_model_refuses_a_negative_apodization():
             aperture_superposition(profile, broken, 0.0, 6e-3)
 
 
+def test_the_superposition_model_refuses_a_non_finite_firing_delay():
+    """The other field the model reads, held to the same rule (`ADV-62-008`).
+    An infinite delay is an infinite arrival time, which the simulator would
+    sum into a plausible all-zero frame; refused, at the model and through
+    `simulate_frame`, rather than returned."""
+    from dataclasses import replace as dc_replace
+
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    k = len(config.events) // 2
+    event = config.events[k]
+    firing = [i for i, w in enumerate(event.apodization) if w > 0.0]
+    delays = list(event.firing_delays_s)
+    delays[firing[0]] = float("inf")
+    broken = dc_replace(event, firing_delays_s=tuple(delays))
+    events = list(config.events)
+    events[k] = broken
+    broken_config = dc_replace(config, events=tuple(events))
+
+    with pytest.raises(ValueError, match="non-finite firing delay"):
+        aperture_superposition(profile, broken, 0.0, 6e-3)
+    with pytest.raises(ValueError, match="non-finite firing delay"):
+        simulate_frame(
+            profile, broken_config, [PointScatterer(0.0, 6e-3)], transmit_model="aperture-superposition"
+        )
+
+
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():
     """Edge events have truncated, asymmetric apertures — and they are still
     the profile's focused aperture, because that is what `focused_aperture`
