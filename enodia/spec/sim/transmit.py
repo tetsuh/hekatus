@@ -124,7 +124,7 @@ def virtual_source(
     is a named function (`virtual_source_unblended`) so that using it is a
     choice a reader can see, not an argument value.
     """
-    vx, vz = event.virtual_source_m
+    _, _, vx, vz = _checked_event(profile, event)
     half_width = blend_half_width_m(profile) if blend_half_width is None else blend_half_width
     r_sv = float(np.hypot(x_m - vx, z_m - vz))
     t_tx = (vz + float(blended_sign(z_m - vz, half_width)) * r_sv) / profile.c_m_s
@@ -140,7 +140,7 @@ def virtual_source_unblended(
     discontinuity `blended_sign` exists to remove, and it is here because a
     fix whose defect cannot be shown is not evidence of anything.
     """
-    vx, vz = event.virtual_source_m
+    _, _, vx, vz = _checked_event(profile, event)
     r_sv = float(np.hypot(x_m - vx, z_m - vz))
     t_tx = (vz + float(np.sign(z_m - vz)) * r_sv) / profile.c_m_s
     return np.array([t_tx]), np.array([_beam_amplitude(profile, event, x_m, z_m)])
@@ -158,8 +158,13 @@ def check_virtual_source_domain(profile: ProbeProfile, event: TxEvent) -> None:
     approximated, with the model that reads the apodization named in the
     message, because a plausible frame from the wrong beam is worse than no
     frame (absolute rules).
+
+    Reads the event through `_checked_event` first: a NaN in the geometry
+    makes every comparison below false, so an unchecked tolerance test
+    would pass a non-finite axis straight into a NaN amplitude and a silent
+    frame (`CONV-62-009`).
     """
-    vx, vz = event.virtual_source_m
+    actual, _, vx, vz = _checked_event(profile, event)
     if abs(event.line_x_m - vx) > coordinate_tolerance_m(profile):
         raise ValueError(
             f"transmit event {event.event_index}: the virtual-source model assumes the beam"
@@ -167,7 +172,6 @@ def check_virtual_source_domain(profile: ProbeProfile, event: TxEvent) -> None:
             f" virtual source x={vx!r}; use transmit_model='aperture-superposition'"
         )
     expected = focused_aperture(profile, vx, vz)
-    actual = np.asarray(event.apodization, dtype=np.float64)
     if not np.allclose(actual, expected, rtol=_APODIZATION_RTOL, atol=0.0):
         raise ValueError(
             f"transmit event {event.event_index}: the virtual-source model assumes the"
@@ -215,8 +219,8 @@ def aperture_superposition(
     weights of 1e308 sum to infinity, and dividing by infinity returns an
     all-zero aperture and a silent frame with no error raised (ADV-62-006).
     The bounds hold for what `accept` passes, and an event built directly is
-    held to every ingress rule on the two fields this model reads before
-    anything is computed from them — see `_superposition_fields`.
+    held to every ingress rule on the fields this model reads before
+    anything is computed from them — see `_checked_event`.
 
     Silent elements (`apodization == 0`) are still returned rather than
     dropped: their pulse copies are multiplied by zero, and a variable-length
@@ -225,35 +229,48 @@ def aperture_superposition(
     implementation must not sanction by example.
     """
     el_x = profile.element_x()
-    apod, delays = _superposition_fields(profile, event)
+    apod, delays, _, _ = _checked_event(profile, event)
     weights = apod / float(apod.max())
     weights /= weights.sum()
     taus = delays + np.hypot(x_m - el_x, z_m) / profile.c_m_s
     return taus, weights
 
 
-def _superposition_fields(profile: ProbeProfile, event: TxEvent) -> tuple[np.ndarray, np.ndarray]:
-    """The two fields the superposition model reads, held to the ingress rules.
+def _checked_event(
+    profile: ProbeProfile, event: TxEvent
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """The event's fields as the models read them, held to the ingress rules.
 
-    `accept` (`enodia.spec.sequence`) establishes, for the apodization and
-    the firing delays, that each is finite, that each has exactly one entry
-    per element of the profile, that no weight is negative, and that some
-    weight is positive. Nothing it passes fails here. A `TxEvent` built
-    directly, without `accept`, can violate any of them, and each violation
-    has a silent failure mode in this model if it is let through: a
-    non-finite weight normalizes into NaN, a negative one into a negative
-    amplitude or a zero sum, a wrong count broadcasts against the element
-    geometry into a plausible frame for a transmit nobody described
-    (`ADV-62-009`), and a non-finite delay becomes an arrival time the
-    simulator sums into silence (`ADV-62-008`). The whole list is checked
-    here, in one place, so that the direct path fails closed on every field
-    this model reads and not on the ones a review happened to probe.
+    `accept` (`enodia.spec.sequence`) establishes, for every field a transmit
+    model reads, that the scanline abscissa is finite; that the virtual
+    source is an (x, z) pair and finite; and, for the apodization and the
+    firing delays, that each is finite, that each has exactly one entry per
+    element of the profile, that no weight is negative, and that some weight
+    is positive. Nothing it passes fails here. A `TxEvent` built directly,
+    without `accept`, can violate any of them, and each violation has a
+    silent failure mode in some model if it is let through: a NaN in the
+    geometry makes every tolerance comparison false and comes out as a NaN
+    amplitude (`CONV-62-009`); a non-finite weight normalizes into NaN, a
+    negative one into a negative amplitude or a zero sum; a wrong count
+    broadcasts against the element geometry into a plausible frame for a
+    transmit nobody described (`ADV-62-009`); a non-finite delay becomes an
+    arrival time the simulator sums into silence (`ADV-62-008`). The whole
+    list is checked here, in one place, by every model before it computes
+    anything, so that the direct path fails closed on every field and not on
+    the ones a review happened to probe.
 
     The geometric consistency of the delays with the declared virtual
-    source is also an ingress rule, but this model does not read the
-    virtual source, so it is not this model's to re-check.
+    source is also an ingress rule; it needs both fields together and no
+    model reads both, so it stays at ingress.
     """
     n = profile.n_elements
+    if not np.isfinite(event.line_x_m):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite scanline abscissa")
+    source = np.asarray(event.virtual_source_m, dtype=np.float64)
+    if source.shape != (2,):
+        raise ValueError(f"transmit event {event.event_index} virtual source must be (x, z)")
+    if not np.all(np.isfinite(source)):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite virtual source")
     apod = np.asarray(event.apodization, dtype=np.float64)
     delays = np.asarray(event.firing_delays_s, dtype=np.float64)
     if apod.shape != (n,):
@@ -274,7 +291,7 @@ def _superposition_fields(profile: ProbeProfile, event: TxEvent) -> tuple[np.nda
         raise ValueError(f"transmit event {event.event_index} has no firing elements")
     if not np.all(np.isfinite(delays)):
         raise ValueError(f"transmit event {event.event_index} has a non-finite firing delay")
-    return apod, delays
+    return apod, delays, float(source[0]), float(source[1])
 
 
 TRANSMIT_MODELS = {

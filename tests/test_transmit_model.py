@@ -492,9 +492,11 @@ def test_the_superposition_model_refuses_a_wrong_element_count_on_either_field()
             )
 
 
-def test_the_superposition_model_checks_every_ingress_rule_on_the_fields_it_reads():
+def test_every_model_checks_every_ingress_rule_on_the_fields_it_reads():
     """The list, not a sample of it: each rule `accept` establishes on the
-    apodization and the firing delays is refused on the direct path."""
+    fields a model reads is refused on the direct path, by every model,
+    before it computes anything (`CONV-62-001`, `ADV-62-008`, `ADV-62-009`,
+    `CONV-62-009` were each one item of this list found one at a time)."""
     from dataclasses import replace as dc_replace
 
     profile = small_profile()
@@ -503,6 +505,7 @@ def test_the_superposition_model_checks_every_ingress_rule_on_the_fields_it_read
     firing = [i for i, w in enumerate(event.apodization) if w > 0.0]
     apod = list(event.apodization)
     delays = list(event.firing_delays_s)
+    vx, vz = event.virtual_source_m
 
     def with_apod(values):
         return dc_replace(event, apodization=tuple(values))
@@ -511,6 +514,10 @@ def test_the_superposition_model_checks_every_ingress_rule_on_the_fields_it_read
         return dc_replace(event, firing_delays_s=tuple(values))
 
     violations = {
+        "non-finite scanline": dc_replace(event, line_x_m=float("nan")),
+        "non-finite virtual source x": dc_replace(event, virtual_source_m=(float("nan"), vz)),
+        "non-finite virtual source z": dc_replace(event, virtual_source_m=(vx, float("inf"))),
+        "virtual source not (x, z)": dc_replace(event, virtual_source_m=(vx,)),
         "apodization count": with_apod(apod[:-1]),
         "firing-delay count": with_delays(delays[:-1]),
         "non-finite apodization": with_apod([float("nan") if i == firing[0] else w for i, w in enumerate(apod)]),
@@ -519,8 +526,29 @@ def test_the_superposition_model_checks_every_ingress_rule_on_the_fields_it_read
         "non-finite firing delay": with_delays([float("inf") if i == firing[0] else d for i, d in enumerate(delays)]),
     }
     for broken in violations.values():
-        with pytest.raises(ValueError, match="transmit event"):
-            aperture_superposition(profile, broken, 0.0, 6e-3)
+        for model in (virtual_source, virtual_source_unblended, aperture_superposition):
+            with pytest.raises(ValueError, match="transmit event"):
+                model(profile, broken, 0.0, 6e-3)
+
+
+def test_the_default_model_refuses_a_non_finite_beam_axis_instead_of_a_silent_frame():
+    """`check_virtual_source_domain` compares `line_x_m` against the virtual
+    source with a tolerance; a NaN makes that comparison false, so it used
+    to pass and come out of `simulate_frame` as an all-zero record
+    (`CONV-62-009`). Refused, through the official path, with no frame."""
+    from dataclasses import replace as dc_replace
+
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    k = len(config.events) // 2
+    events = list(config.events)
+    events[k] = dc_replace(events[k], line_x_m=float("nan"))
+    broken_config = dc_replace(config, events=tuple(events))
+
+    with pytest.raises(ValueError, match="non-finite scanline"):
+        simulate_frame(profile, broken_config, [PointScatterer(0.0, 6e-3)])
 
 
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():
