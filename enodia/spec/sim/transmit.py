@@ -214,12 +214,9 @@ def aperture_superposition(
     sum in [1, n_elements]. A direct sum has no such bound: seven accepted
     weights of 1e308 sum to infinity, and dividing by infinity returns an
     all-zero aperture and a silent frame with no error raised (ADV-62-006).
-    The bounds hold for what `accept` passes — finite, non-negative weights
-    and finite delays — and an event built directly is held to the same
-    rules here, on both fields this model reads: a non-finite or negative
-    weight is refused rather than normalized into NaN, a zero sum, or a
-    negative amplitude, and a non-finite delay is refused rather than
-    returned as an arrival time that the simulator sums into a silent frame.
+    The bounds hold for what `accept` passes, and an event built directly is
+    held to every ingress rule on the two fields this model reads before
+    anything is computed from them — see `_superposition_fields`.
 
     Silent elements (`apodization == 0`) are still returned rather than
     dropped: their pulse copies are multiplied by zero, and a variable-length
@@ -228,21 +225,56 @@ def aperture_superposition(
     implementation must not sanction by example.
     """
     el_x = profile.element_x()
+    apod, delays = _superposition_fields(profile, event)
+    weights = apod / float(apod.max())
+    weights /= weights.sum()
+    taus = delays + np.hypot(x_m - el_x, z_m) / profile.c_m_s
+    return taus, weights
+
+
+def _superposition_fields(profile: ProbeProfile, event: TxEvent) -> tuple[np.ndarray, np.ndarray]:
+    """The two fields the superposition model reads, held to the ingress rules.
+
+    `accept` (`enodia.spec.sequence`) establishes, for the apodization and
+    the firing delays, that each is finite, that each has exactly one entry
+    per element of the profile, that no weight is negative, and that some
+    weight is positive. Nothing it passes fails here. A `TxEvent` built
+    directly, without `accept`, can violate any of them, and each violation
+    has a silent failure mode in this model if it is let through: a
+    non-finite weight normalizes into NaN, a negative one into a negative
+    amplitude or a zero sum, a wrong count broadcasts against the element
+    geometry into a plausible frame for a transmit nobody described
+    (`ADV-62-009`), and a non-finite delay becomes an arrival time the
+    simulator sums into silence (`ADV-62-008`). The whole list is checked
+    here, in one place, so that the direct path fails closed on every field
+    this model reads and not on the ones a review happened to probe.
+
+    The geometric consistency of the delays with the declared virtual
+    source is also an ingress rule, but this model does not read the
+    virtual source, so it is not this model's to re-check.
+    """
+    n = profile.n_elements
     apod = np.asarray(event.apodization, dtype=np.float64)
     delays = np.asarray(event.firing_delays_s, dtype=np.float64)
+    if apod.shape != (n,):
+        raise ValueError(
+            f"transmit event {event.event_index} carries {apod.size} apodization weights,"
+            f" profile {profile.name!r} has {n} elements"
+        )
+    if delays.shape != (n,):
+        raise ValueError(
+            f"transmit event {event.event_index} carries {delays.size} firing delays,"
+            f" profile {profile.name!r} has {n} elements"
+        )
     if not np.all(np.isfinite(apod)):
         raise ValueError(f"transmit event {event.event_index} has a non-finite apodization weight")
     if np.any(apod < 0.0):
         raise ValueError(f"transmit event {event.event_index} has a negative apodization weight")
+    if not np.any(apod > 0.0):
+        raise ValueError(f"transmit event {event.event_index} has no firing elements")
     if not np.all(np.isfinite(delays)):
         raise ValueError(f"transmit event {event.event_index} has a non-finite firing delay")
-    peak = float(apod.max()) if apod.size else 0.0
-    if not peak > 0.0:
-        raise ValueError(f"transmit event {event.event_index} has no firing elements")
-    weights = apod / peak
-    weights /= weights.sum()
-    taus = delays + np.hypot(x_m - el_x, z_m) / profile.c_m_s
-    return taus, weights
+    return apod, delays
 
 
 TRANSMIT_MODELS = {

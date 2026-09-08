@@ -462,6 +462,67 @@ def test_the_superposition_model_refuses_a_non_finite_firing_delay():
         )
 
 
+def test_the_superposition_model_refuses_a_wrong_element_count_on_either_field():
+    """A singleton in place of a per-element vector broadcasts against the
+    element geometry and comes back as a plausible frame for a transmit
+    nobody described (`ADV-62-009`). Refused, at the model and through
+    `simulate_frame`, on either field, before anything is computed."""
+    from dataclasses import replace as dc_replace
+
+    from enodia.spec.sim import PointScatterer, simulate_frame
+
+    profile = small_profile()
+    config = make_bmode_config(profile)
+    k = len(config.events) // 2
+    event = config.events[k]
+
+    for field, message in (
+        ("firing_delays_s", "firing delays"),
+        ("apodization", "apodization weights"),
+    ):
+        broken = dc_replace(event, **{field: (1.0,)})
+        events = list(config.events)
+        events[k] = broken
+        broken_config = dc_replace(config, events=tuple(events))
+        with pytest.raises(ValueError, match=f"carries 1 {message}"):
+            aperture_superposition(profile, broken, 0.0, 6e-3)
+        with pytest.raises(ValueError, match=f"carries 1 {message}"):
+            simulate_frame(
+                profile, broken_config, [PointScatterer(0.0, 6e-3)], transmit_model="aperture-superposition"
+            )
+
+
+def test_the_superposition_model_checks_every_ingress_rule_on_the_fields_it_reads():
+    """The list, not a sample of it: each rule `accept` establishes on the
+    apodization and the firing delays is refused on the direct path."""
+    from dataclasses import replace as dc_replace
+
+    profile = small_profile()
+    event = centre_event(profile)
+    n = profile.n_elements
+    firing = [i for i, w in enumerate(event.apodization) if w > 0.0]
+    apod = list(event.apodization)
+    delays = list(event.firing_delays_s)
+
+    def with_apod(values):
+        return dc_replace(event, apodization=tuple(values))
+
+    def with_delays(values):
+        return dc_replace(event, firing_delays_s=tuple(values))
+
+    violations = {
+        "apodization count": with_apod(apod[:-1]),
+        "firing-delay count": with_delays(delays[:-1]),
+        "non-finite apodization": with_apod([float("nan") if i == firing[0] else w for i, w in enumerate(apod)]),
+        "negative apodization": with_apod([-w if i == firing[0] else w for i, w in enumerate(apod)]),
+        "silent aperture": with_apod([0.0] * n),
+        "non-finite firing delay": with_delays([float("inf") if i == firing[0] else d for i, d in enumerate(delays)]),
+    }
+    for broken in violations.values():
+        with pytest.raises(ValueError, match="transmit event"):
+            aperture_superposition(profile, broken, 0.0, 6e-3)
+
+
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():
     """Edge events have truncated, asymmetric apertures — and they are still
     the profile's focused aperture, because that is what `focused_aperture`
