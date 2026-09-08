@@ -1,6 +1,7 @@
 # ADR-0011: The focal blend, and what the transmit beam model is measured against
 
 - Status: **Accepted** — 2026-09-08
+- Amends: ADR-0009 (Decision 8 — the fields are validated, not consumed)
 - Date: 2026-09-05
 - Owner decision: yes (`DEC-62-001`)
 
@@ -182,3 +183,10 @@ carries and validates.
   normalization and its non-negative rule on the direct-construction path —
   and validation was green at that head. The transition is written in the
   same pull request, so `Proposed` never reaches `main` (workflow §6).
+- 2026-09-08: Recorded as amending ADR-0009 Decision 8, which named the
+  switch to aperture superposition as #9's to settle and did not pre-empt
+  it: that record's "validated, not consumed" now holds at ingress and for
+  the default model, and Decision 4 here makes the switchable
+  aperture-superposition model the one consumer of the per-element firing
+  delays and apodization. ADR-0009's Status history carries the matching
+  entry; its decision text is unchanged (`CONV-62-007`).
