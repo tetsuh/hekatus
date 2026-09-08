@@ -303,7 +303,8 @@ def test_the_models_agree_away_from_the_focus_to_a_stated_tolerance():
     beyond = [abs(err) for mult, _, err, _ in rows if mult > 1.0]
     before = [abs(err) for mult, _, err, _ in rows if mult < 1.0]
 
-    assert beyond and before  # both sides sampled, or the tolerances mean nothing
+    assert beyond  # both sides sampled, or the tolerances mean nothing
+    assert before
     assert max(beyond) < 0.3
     assert max(before) < 1.4
 
@@ -453,13 +454,12 @@ def test_the_superposition_model_refuses_a_non_finite_firing_delay():
     events = list(config.events)
     events[k] = broken
     broken_config = dc_replace(config, events=tuple(events))
+    scatterers = [PointScatterer(0.0, 6e-3)]
 
     with pytest.raises(ValueError, match="non-finite firing delay"):
         aperture_superposition(profile, broken, 0.0, 6e-3)
     with pytest.raises(ValueError, match="non-finite firing delay"):
-        simulate_frame(
-            profile, broken_config, [PointScatterer(0.0, 6e-3)], transmit_model="aperture-superposition"
-        )
+        simulate_frame(profile, broken_config, scatterers, transmit_model="aperture-superposition")
 
 
 def test_the_superposition_model_refuses_a_wrong_element_count_on_either_field():
@@ -475,6 +475,7 @@ def test_the_superposition_model_refuses_a_wrong_element_count_on_either_field()
     config = make_bmode_config(profile)
     k = len(config.events) // 2
     event = config.events[k]
+    scatterers = [PointScatterer(0.0, 6e-3)]
 
     for field, message in (
         ("firing_delays_s", "firing delays"),
@@ -487,9 +488,7 @@ def test_the_superposition_model_refuses_a_wrong_element_count_on_either_field()
         with pytest.raises(ValueError, match=f"carries 1 {message}"):
             aperture_superposition(profile, broken, 0.0, 6e-3)
         with pytest.raises(ValueError, match=f"carries 1 {message}"):
-            simulate_frame(
-                profile, broken_config, [PointScatterer(0.0, 6e-3)], transmit_model="aperture-superposition"
-            )
+            simulate_frame(profile, broken_config, scatterers, transmit_model="aperture-superposition")
 
 
 def test_every_model_checks_every_ingress_rule_on_the_fields_it_reads():
@@ -546,9 +545,10 @@ def test_the_default_model_refuses_a_non_finite_beam_axis_instead_of_a_silent_fr
     events = list(config.events)
     events[k] = dc_replace(events[k], line_x_m=float("nan"))
     broken_config = dc_replace(config, events=tuple(events))
+    scatterers = [PointScatterer(0.0, 6e-3)]
 
     with pytest.raises(ValueError, match="non-finite scanline"):
-        simulate_frame(profile, broken_config, [PointScatterer(0.0, 6e-3)])
+        simulate_frame(profile, broken_config, scatterers)
 
 
 def test_every_event_of_the_profile_configuration_is_inside_the_domain():
