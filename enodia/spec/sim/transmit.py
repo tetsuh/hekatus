@@ -50,6 +50,9 @@ the model that reads what was actually described.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+
 import numpy as np
 
 from enodia.spec.probe import ProbeProfile
@@ -294,11 +297,16 @@ def _checked_event(
     return apod, delays, float(source[0]), float(source[1])
 
 
-TRANSMIT_MODELS = {
-    "virtual-source": virtual_source,
-    "virtual-source-unblended": virtual_source_unblended,
-    "aperture-superposition": aperture_superposition,
-}
+# Read-only: the set of transmit models is part of the specification, and a
+# registry an importer could rebind would let one process's dispatch differ
+# from another's on identical inputs after validation (SAFETY-62-001).
+TRANSMIT_MODELS: Mapping[str, Callable[..., tuple[np.ndarray, np.ndarray]]] = MappingProxyType(
+    {
+        "virtual-source": virtual_source,
+        "virtual-source-unblended": virtual_source_unblended,
+        "aperture-superposition": aperture_superposition,
+    }
+)
 
 
 def transmit_contributions(

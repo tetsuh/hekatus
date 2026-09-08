@@ -225,6 +225,32 @@ def test_the_model_seam_names_its_models_and_refuses_others():
         )
 
 
+def test_the_model_registry_cannot_be_rebound():
+    """The set of models is part of the specification: an importer that could
+    replace an entry would change every later dispatch in the process
+    (`SAFETY-62-001`). Refused at the mapping, and the dispatch is unchanged."""
+    from enodia.spec.sim.transmit import TRANSMIT_MODELS
+
+    with pytest.raises(TypeError):
+        TRANSMIT_MODELS["aperture-superposition"] = lambda *args: ("overridden", "overridden")  # type: ignore[index]
+    with pytest.raises(TypeError):
+        TRANSMIT_MODELS["another"] = aperture_superposition  # type: ignore[index]
+    with pytest.raises(TypeError):
+        del TRANSMIT_MODELS["virtual-source"]  # type: ignore[attr-defined]
+
+    assert set(TRANSMIT_MODELS) == {
+        "virtual-source",
+        "virtual-source-unblended",
+        "aperture-superposition",
+    }
+    profile = small_profile()
+    event = centre_event(profile)
+    taus, weights = transmit_contributions(profile, event, 0.0, 6e-3, model="aperture-superposition")
+    reference_taus, reference_weights = aperture_superposition(profile, event, 0.0, 6e-3)
+    assert np.array_equal(taus, reference_taus)
+    assert np.array_equal(weights, reference_weights)
+
+
 def test_the_default_blend_width_is_the_depth_of_field_scale():
     """λ·F#² is where a converging wavefront stops resembling a point source's,
     so that is the scale the swept factor multiplies — not a length in
