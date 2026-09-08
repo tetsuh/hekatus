@@ -1,0 +1,335 @@
+"""The transmit beam model (#9, design.md §18).
+
+The simulator needs, for one transmit event and one scatterer, the transmit
+pulse arriving at that scatterer. Both models here express it the same way —
+**as a set of (arrival time, amplitude) pairs**, each naming one delayed copy
+of the two-way pulse — so the simulator's summation is identical under either
+and neither model introduces an interpolation the other does not. The
+virtual-source model returns one pair; aperture superposition returns one per
+transmitting element.
+
+**The virtual-source approximation is discontinuous at the focus.** Writing
+the transmit time of flight as `(z_v + sign(z_s − z_v)·|r_s − r_v|)/c`
+gives, on either side of the focal depth, `(z_v ∓ |x_s − x_v|)/c` — a jump of
+`2|x_s − x_v|/c` for every scatterer off the beam axis. design.md §18 names
+the consequence (hourglass artifacts around the focus, a classic
+retrospective-transmit-focusing pitfall) and says to build the blend from the
+start. `blended_sign` is that blend.
+
+**Where the approximation actually fails** sets the blend's width. A virtual
+source is a spherical wave from a point; the real converging wavefront stops
+resembling one when its curvature across the aperture falls below a
+wavelength, which happens over an axial extent of order `λ·F#²` around the
+focus — the depth-of-field scale. The blend half-width is therefore
+`BLEND_HALF_WIDTH_FACTOR · λ · F#²`, with the factor a swept quantity rather
+than a constant chosen by eye (`enodia.spec.sim.blend_sweep`).
+
+**Aperture superposition is the yardstick, not the default.** design.md §18
+adopts the virtual-source approximation and keeps superposition switchable;
+this module follows that. Superposition exists because an approximation with
+a free parameter needs a reference that does not share its assumption — the
+same reason the RF-domain ideal-delay DAS is kept as the golden path for the
+IQ approximation (absolute rules). It is also the only consumer of the
+per-element firing delays and apodization that `enodia.spec.sequence` carries
+and validates (#52).
+
+**What the ingress binds, and what it does not.** `accept` refuses a
+configuration whose per-element delays disagree with its declared virtual
+source by more than `DELAY_TOLERANCE_NS`, so the two models focus at the
+same point by construction. It says nothing about amplitude: the
+virtual-source model's Gaussian is parameterized by the profile's F-number
+and the declared beam axis and never reads the apodization, while
+superposition reads nothing else. For an aperture other than the profile's
+own focused one — a single element, a walking aperture (#10), anything
+asymmetric about the axis — the two would silently diverge. So the
+virtual-source model **states its domain and refuses outside it**: the
+event's apodization must be `focused_aperture(profile, vx, vz)` and its beam
+axis must be the virtual source's abscissa. Outside that, superposition is
+the model that reads what was actually described.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+
+import numpy as np
+
+from enodia.spec.probe import ProbeProfile
+from enodia.spec.sequence import TxEvent, coordinate_tolerance_m, focused_aperture
+
+__all__ = [
+    "BLEND_HALF_WIDTH_FACTOR",
+    "TRANSMIT_MODELS",
+    "aperture_superposition",
+    "blend_half_width_m",
+    "blended_sign",
+    "check_virtual_source_domain",
+    "transmit_contributions",
+    "virtual_source",
+    "virtual_source_unblended",
+]
+
+# Blend half-width in units of λ·F#², the axial scale over which a converging
+# wavefront stops resembling a spherical wave from a point. **Selected by
+# `enodia.spec.sim.blend_sweep`**, which minimises the worst arrival-time
+# shape error against the aperture-superposition model over the focal region:
+# 1.33 periods here against 4.02 unblended, with the minimum interior to the
+# swept range rather than at an end. Not chosen by eye; see ADR-0011.
+BLEND_HALF_WIDTH_FACTOR: float = 2.0
+
+# Apodization equality for the virtual-source model's domain check. The
+# description carries dimensionless weights that round-trip unchanged, so
+# this is a guard against a different aperture, not against transport noise.
+_APODIZATION_RTOL: float = 1e-12
+
+
+def blend_half_width_m(profile: ProbeProfile, *, factor: float = BLEND_HALF_WIDTH_FACTOR) -> float:
+    """Half-width of the transition zone around the focal depth [m]."""
+    if not np.isfinite(factor) or factor <= 0.0:
+        raise ValueError(f"blend half-width factor must be finite and positive, got {factor!r}")
+    return float(factor) * profile.wavelength_m * profile.f_number**2
+
+
+def blended_sign(u: np.ndarray | float, half_width: float) -> np.ndarray:
+    """`sign(u)`, made continuous and once differentiable across zero.
+
+    Equal to `sign(u)` for `|u| ≥ half_width`, so the blend is **local**: the
+    delay field outside the transition zone is the unblended one, bit for
+    bit, and this is not a global reshaping of the beam.
+
+    Inside, `sin(πu / 2h)` carries the sign smoothly through zero. It meets
+    ±1 at ±h with zero slope, which is `sign`'s own slope there, so the
+    result is C¹ across both seams as well as across the focus. A linear ramp
+    would be continuous but would leave a corner at ±h, and a global `tanh`
+    would perturb the delay at every depth to remove a defect that exists at
+    one.
+    """
+    if not np.isfinite(half_width) or half_width <= 0.0:
+        raise ValueError(f"blend half-width must be finite and positive, got {half_width!r}")
+    u = np.asarray(u, dtype=np.float64)
+    inside = np.abs(u) < half_width
+    return np.where(inside, np.sin(np.pi * u / (2.0 * half_width)), np.sign(u))
+
+
+def virtual_source(
+    profile: ProbeProfile,
+    event: TxEvent,
+    x_m: float,
+    z_m: float,
+    *,
+    blend_half_width: float | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """One (arrival time, amplitude) pair: the virtual-source approximation.
+
+    `blend_half_width=None` takes the profile's swept default. Passing `0.0`
+    is refused rather than silently meaning "unblended": the unblended model
+    is a named function (`virtual_source_unblended`) so that using it is a
+    choice a reader can see, not an argument value.
+    """
+    _, _, vx, vz = _checked_event(profile, event)
+    half_width = blend_half_width_m(profile) if blend_half_width is None else blend_half_width
+    r_sv = float(np.hypot(x_m - vx, z_m - vz))
+    t_tx = (vz + float(blended_sign(z_m - vz, half_width)) * r_sv) / profile.c_m_s
+    return np.array([t_tx]), np.array([_beam_amplitude(profile, event, x_m, z_m)])
+
+
+def virtual_source_unblended(
+    profile: ProbeProfile, event: TxEvent, x_m: float, z_m: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """The pre-#9 model, kept so the defect it has can be exhibited.
+
+    Not a transmit model a caller should select for imaging: it is the
+    discontinuity `blended_sign` exists to remove, and it is here because a
+    fix whose defect cannot be shown is not evidence of anything.
+    """
+    _, _, vx, vz = _checked_event(profile, event)
+    r_sv = float(np.hypot(x_m - vx, z_m - vz))
+    t_tx = (vz + float(np.sign(z_m - vz)) * r_sv) / profile.c_m_s
+    return np.array([t_tx]), np.array([_beam_amplitude(profile, event, x_m, z_m)])
+
+
+def check_virtual_source_domain(profile: ProbeProfile, event: TxEvent) -> None:
+    """Refuse an event the virtual-source amplitude model does not describe.
+
+    The Gaussian is parameterized by the profile's F-number about the beam
+    axis and reads no apodization, so it is a model of exactly one aperture:
+    the profile's own focused one, `focused_aperture(profile, vx, vz)`, on an
+    axis through the virtual source. The ingress guarantees the focus, not
+    the aperture — an accepted single-element or asymmetric event focuses
+    where it says and is lit nothing like this Gaussian. Refused rather than
+    approximated, with the model that reads the apodization named in the
+    message, because a plausible frame from the wrong beam is worse than no
+    frame (absolute rules).
+
+    Reads the event through `_checked_event` first: a NaN in the geometry
+    makes every comparison below false, so an unchecked tolerance test
+    would pass a non-finite axis straight into a NaN amplitude and a silent
+    frame (`CONV-62-009`).
+    """
+    actual, _, vx, vz = _checked_event(profile, event)
+    if abs(event.line_x_m - vx) > coordinate_tolerance_m(profile):
+        raise ValueError(
+            f"transmit event {event.event_index}: the virtual-source model assumes the beam"
+            f" axis passes through the virtual source, but line_x_m={event.line_x_m!r} and"
+            f" virtual source x={vx!r}; use transmit_model='aperture-superposition'"
+        )
+    expected = focused_aperture(profile, vx, vz)
+    if not np.allclose(actual, expected, rtol=_APODIZATION_RTOL, atol=0.0):
+        raise ValueError(
+            f"transmit event {event.event_index}: the virtual-source model assumes the"
+            f" profile's F={profile.f_number:g} focused aperture about the beam axis, and"
+            f" this event's apodization is a different aperture;"
+            f" use transmit_model='aperture-superposition', which reads it"
+        )
+
+
+def _beam_amplitude(profile: ProbeProfile, event: TxEvent, x_m: float, z_m: float) -> float:
+    """Gaussian across the beam, widening away from the focus at the F-number's rate.
+
+    Floored at `λ·F#`: the amplitude side of the focus is already regular, and
+    this floor is what keeps it so. The defect #9 addresses is in the delay.
+    Valid only on the domain `check_virtual_source_domain` enforces.
+    """
+    check_virtual_source_domain(profile, event)
+    _, vz = event.virtual_source_m
+    beam_w = max(profile.wavelength_m * profile.f_number, abs(z_m - vz) / (2.0 * profile.f_number))
+    return float(np.exp(-0.5 * ((x_m - event.line_x_m) / beam_w) ** 2))
+
+
+def aperture_superposition(
+    profile: ProbeProfile, event: TxEvent, x_m: float, z_m: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """One pair per transmitting element: the higher-fidelity alternative.
+
+    The scatterer receives the apodization-weighted sum of the pulse from
+    every element, each delayed by its own firing delay plus its own travel
+    time. There is no virtual source in this, and so no `sign()` and nothing
+    to blend — which is what makes it the yardstick the blend's width is
+    swept against.
+
+    Amplitudes are normalized to unit sum, so that a scatterer at the focus,
+    where the element contributions arrive together, sees unit amplitude —
+    the same normalization the Gaussian beam profile carries. The lateral
+    beam shape is then not assumed but emerges from the elements falling out
+    of phase off axis, which is the whole point of the model.
+
+    **The normalization removes the apodization's scale before it sums.**
+    The ingress accepts any finite non-negative weights, and the normalized
+    weights do not depend on their scale — so the scale is divided out
+    first, by the largest weight, which puts every weight in [0, 1] and the
+    sum in [1, n_elements]. A direct sum has no such bound: seven accepted
+    weights of 1e308 sum to infinity, and dividing by infinity returns an
+    all-zero aperture and a silent frame with no error raised (ADV-62-006).
+    The bounds hold for what `accept` passes, and an event built directly is
+    held to every ingress rule on the fields this model reads before
+    anything is computed from them — see `_checked_event`.
+
+    Silent elements (`apodization == 0`) are still returned rather than
+    dropped: their pulse copies are multiplied by zero, and a variable-length
+    return would make the work depend on the aperture, which is the shape the
+    absolute rules forbid on the real-time path and which this reference
+    implementation must not sanction by example.
+    """
+    el_x = profile.element_x()
+    apod, delays, _, _ = _checked_event(profile, event)
+    weights = apod / float(apod.max())
+    weights /= weights.sum()
+    taus = delays + np.hypot(x_m - el_x, z_m) / profile.c_m_s
+    return taus, weights
+
+
+def _checked_event(
+    profile: ProbeProfile, event: TxEvent
+) -> tuple[np.ndarray, np.ndarray, float, float]:
+    """The event's fields as the models read them, held to the ingress rules.
+
+    `accept` (`enodia.spec.sequence`) establishes, for every field a transmit
+    model reads, that the scanline abscissa is finite; that the virtual
+    source is an (x, z) pair and finite; and, for the apodization and the
+    firing delays, that each is finite, that each has exactly one entry per
+    element of the profile, that no weight is negative, and that some weight
+    is positive. Nothing it passes fails here. A `TxEvent` built directly,
+    without `accept`, can violate any of them, and each violation has a
+    silent failure mode in some model if it is let through: a NaN in the
+    geometry makes every tolerance comparison false and comes out as a NaN
+    amplitude (`CONV-62-009`); a non-finite weight normalizes into NaN, a
+    negative one into a negative amplitude or a zero sum; a wrong count
+    broadcasts against the element geometry into a plausible frame for a
+    transmit nobody described (`ADV-62-009`); a non-finite delay becomes an
+    arrival time the simulator sums into silence (`ADV-62-008`). The whole
+    list is checked here, in one place, by every model before it computes
+    anything, so that the direct path fails closed on every field and not on
+    the ones a review happened to probe.
+
+    The geometric consistency of the delays with the declared virtual
+    source is also an ingress rule; it needs both fields together and no
+    model reads both, so it stays at ingress.
+    """
+    n = profile.n_elements
+    if not np.isfinite(event.line_x_m):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite scanline abscissa")
+    source = np.asarray(event.virtual_source_m, dtype=np.float64)
+    if source.shape != (2,):
+        raise ValueError(f"transmit event {event.event_index} virtual source must be (x, z)")
+    if not np.all(np.isfinite(source)):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite virtual source")
+    apod = np.asarray(event.apodization, dtype=np.float64)
+    delays = np.asarray(event.firing_delays_s, dtype=np.float64)
+    if apod.shape != (n,):
+        raise ValueError(
+            f"transmit event {event.event_index} carries {apod.size} apodization weights,"
+            f" profile {profile.name!r} has {n} elements"
+        )
+    if delays.shape != (n,):
+        raise ValueError(
+            f"transmit event {event.event_index} carries {delays.size} firing delays,"
+            f" profile {profile.name!r} has {n} elements"
+        )
+    if not np.all(np.isfinite(apod)):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite apodization weight")
+    if np.any(apod < 0.0):
+        raise ValueError(f"transmit event {event.event_index} has a negative apodization weight")
+    if not np.any(apod > 0.0):
+        raise ValueError(f"transmit event {event.event_index} has no firing elements")
+    if not np.all(np.isfinite(delays)):
+        raise ValueError(f"transmit event {event.event_index} has a non-finite firing delay")
+    return apod, delays, float(source[0]), float(source[1])
+
+
+# Read-only: the set of transmit models is part of the specification, and a
+# registry an importer could rebind would let one process's dispatch differ
+# from another's on identical inputs after validation (SAFETY-62-001).
+TRANSMIT_MODELS: Mapping[str, Callable[..., tuple[np.ndarray, np.ndarray]]] = MappingProxyType(
+    {
+        "virtual-source": virtual_source,
+        "virtual-source-unblended": virtual_source_unblended,
+        "aperture-superposition": aperture_superposition,
+    }
+)
+
+
+def transmit_contributions(
+    profile: ProbeProfile,
+    event: TxEvent,
+    x_m: float,
+    z_m: float,
+    *,
+    model: str = "virtual-source",
+    blend_half_width: float | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Arrival times [s] and amplitudes of the transmit pulse at one scatterer.
+
+    The seam design.md §18 calls switchable. `model` names one of
+    `TRANSMIT_MODELS`; the default is the virtual-source approximation §18
+    adopts, blended.
+    """
+    if model not in TRANSMIT_MODELS:
+        raise ValueError(
+            f"unknown transmit model {model!r}; expected one of {sorted(TRANSMIT_MODELS)}"
+        )
+    if model == "virtual-source":
+        return virtual_source(profile, event, x_m, z_m, blend_half_width=blend_half_width)
+    if blend_half_width is not None:
+        raise ValueError(f"transmit model {model!r} takes no blend half-width")
+    return TRANSMIT_MODELS[model](profile, event, x_m, z_m)

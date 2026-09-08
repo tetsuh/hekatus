@@ -49,11 +49,14 @@ of flight to the declared virtual source must be the same instant, within
 that fails is refused rather than beamformed, because processing with a
 wrong description is worse than dropping frames (absolute rules).
 
-**What this module deliberately does not do.** The per-element firing delays
-and apodization weights are carried and validated here; no transmit field is
-synthesized from them. The transmit beam model — the virtual-source focal
-blend and the switch to aperture superposition — is #9, and §18 records it
-as a detail settled at implementation time.
+**What this module does not consume.** The per-element firing delays and
+apodization weights are carried and validated here, and ingress synthesizes
+no transmit field from them. Which consumer does is settled by #9
+(ADR-0011, `enodia.spec.sim.transmit`): the default virtual-source model
+reads the virtual source and the beam axis, requires the apodization to be
+the profile's own focused aperture, and consumes neither field; the
+switchable aperture-superposition model is the one consumer that reads both
+and synthesizes the transmit field from them.
 
 **Where the contribution map lives.** §19 calls maps derivatives, which
 enodia derives rather than receives, and the external description

@@ -182,3 +182,11 @@ refuses, and a schema that refuses nothing does not make it.
 - 2026-08-29: Accepted at PR #54's owner-authorized pre-merge boundary after
   the final review found no remaining technical P1 findings and validation was
   green.
+- 2026-09-08: Amended by ADR-0011 — Decision 8's "validated, not consumed"
+  now holds at ingress only: ingress still checks the per-element firing
+  delays and apodization and synthesizes nothing from them, and the default
+  virtual-source model still consumes neither, but the switchable
+  aperture-superposition model that decision names as #9's to settle, and
+  does not pre-empt, is the one consumer that reads both and synthesizes
+  the transmit field from them — effective on that record's acceptance. The
+  rest of this decision stands.
