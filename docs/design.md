@@ -221,8 +221,9 @@ and `tt-metal`'s own test for that operation skips `BoardType::P150` in
 upstream main as of 2026-09-19 — while every other `generic_op` test in the
 same file runs. The same minimal kernel completes in 0.75.0. A hand-written
 kernel is therefore impossible under the old pin and possible under the new
-one. Earlier records are not restated: each names the image that produced it,
-which is what makes a moved pin readable rather than confusing, and whether
+one. Earlier accelerator measurement records are not restated: each names
+the image that produced it, which is what makes a moved pin readable rather
+than confusing, and whether
 the toolchain moves the figures at all is measured rather than assumed.
 
 Ethernet is present but no link was up as delivered, and the topology tool
