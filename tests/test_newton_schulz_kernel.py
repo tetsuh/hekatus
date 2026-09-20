@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import os
 import unittest
+from pathlib import Path
 
 import numpy as np
 
@@ -49,6 +51,24 @@ class ReferenceTests(unittest.TestCase):
             inverse_flops(shape),
             COMPLEX_MATMULS_PER_INVERSE * total_flops(shape),
         )
+
+    def test_accelerator_modules_do_not_import_the_numpy_reference(self):
+        accelerator_root = Path(__file__).parents[1] / "enodia" / "tt"
+        forbidden_module = "enodia.tt.bench.newton_schulz_reference"
+        violations = []
+        for path in accelerator_root.rglob("*.py"):
+            tree = ast.parse(path.read_text(), filename=str(path))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == forbidden_module:
+                    violations.append(str(path.relative_to(accelerator_root)))
+                elif isinstance(node, ast.Import):
+                    violations.extend(
+                        str(path.relative_to(accelerator_root))
+                        for alias in node.names
+                        if alias.name == forbidden_module
+                    )
+
+        self.assertEqual(violations, [])
 
 
 @unittest.skipUnless(DEVICE_TEST and HAS_TTNN, "requires the pinned TT container and a board")

@@ -12,11 +12,7 @@ from typing import Any
 
 import numpy as np
 
-from enodia.tt.bench.newton_schulz_reference import (
-    NEWTON_SCHULZ_ITERATIONS,
-    initial_value,
-)
-
+_NEWTON_SCHULZ_ITERATIONS = 8
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _KERNEL_DIR = Path(__file__).with_name("kernels")
@@ -26,6 +22,14 @@ _VARIANTS = {
     "packed_fused": (False, True),
     "packed_fused_resident": (True, True),
 }
+
+
+def _initial_value(matrices: np.ndarray) -> np.ndarray:
+    """Return the fixed X0 without depending on the NumPy oracle."""
+    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
+    norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
+    denominator = (norm_1 * norm_inf)[:, None, None]
+    return np.swapaxes(matrices.conj(), -1, -2) / denominator
 
 
 def _pack_matrices(matrices: np.ndarray, *, packed: bool, tile_count: int) -> np.ndarray:
@@ -119,11 +123,11 @@ class NewtonSchulzKernel:
         matrices: np.ndarray,
         *,
         variant: str = "fused_resident",
-        iterations: int = NEWTON_SCHULZ_ITERATIONS,
+        iterations: int = _NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
-        if iterations != NEWTON_SCHULZ_ITERATIONS:
+        if iterations != _NEWTON_SCHULZ_ITERATIONS:
             raise ValueError(
-                f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
+                f"the kernel is fixed at {_NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
             )
         try:
             keep_r_resident, packed = _VARIANTS[variant]
@@ -145,7 +149,7 @@ class NewtonSchulzKernel:
         tiles_per_core = (useful_tiles + core_count - 1) // core_count
         tile_count = tiles_per_core * core_count
 
-        x0 = initial_value(matrices)
+        x0 = _initial_value(matrices)
         r_real_values = _pack_matrices(matrices.real, packed=packed, tile_count=tile_count)
         r_imag_values = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)
         x_real_values = _pack_matrices(x0.real, packed=packed, tile_count=tile_count)
