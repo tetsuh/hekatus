@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -410,3 +411,23 @@ while True:
         for pid in pids:
             with suppress(ProcessLookupError):
                 os.kill(pid, 9)
+
+
+def test_the_default_toolchain_image_is_digest_pinned():
+    """A tag would still run, and would silently record no provenance.
+
+    `run_in_container.sh` resolves a tag to a digest when it can and records
+    `image_pinned: false` when it cannot, so a tag-pinned default does not
+    fail — it produces results whose toolchain cannot be named again later,
+    which is the failure ADR-0005 exists to prevent. The default is the one
+    image nobody passes explicitly, so it is the one worth pinning by test.
+    """
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "enodia" / "tt" / "bench" / "run_in_container.sh"
+    ).read_text()
+    match = re.search(r'^IMAGE="\$\{HEKATUS_TT_IMAGE:-([^}]+)\}"', wrapper, re.MULTILINE)
+    assert match is not None, "the wrapper no longer defines IMAGE with a default"
+    default = match.group(1)
+    assert re.search(r"@sha256:[0-9a-f]{64}$", default), (
+        f"the default toolchain image is not digest-pinned: {default}"
+    )
