@@ -200,8 +200,9 @@ the board, firmware, driver, and toolchain image that produced it
 
 The development machine now carries **two p150a boards**, matching the
 target: 120 Tensix and 32 GB each, Ethernet present, firmware 19.6.0.0 and
-driver 2.8.0 pinned by the environment manifest. Two differences from the
-table are worth recording:
+driver 2.11.0 pinned by the environment manifest — the driver has moved since
+the 2026-08-14 measurement, which ran under 2.8.0 and says so in its own
+record. Two differences from the table are worth recording:
 
 - **PCIe negotiates at gen4**, not 5.0. The ingest path is Ethernet, so this
   does not touch the 20 GB/s of §3, but enodia → diaplous is a DMA push
@@ -210,6 +211,20 @@ table are worth recording:
   and 300 W as the board limit. Under the compute measurement neither bound:
   the board peaked at 102 W at full clock. Which one is enforced remains
   unresolved, and will stay so until a workload approaches it.
+
+**The toolchain image is pinned by digest, and the pin has moved once.**
+Measurements through 2026-08-14 were taken in the ttnn 0.70.1 release image;
+`enodia/tt/bench/run_in_container.sh` now defaults to the ttnn 0.75.0 one.
+The reason is a capability rather than a preference: a `ttnn.generic_op`
+compute kernel performing a matmul does not complete on this board in 0.70.1,
+and `tt-metal`'s own test for that operation skips `BoardType::P150` in
+upstream main as of 2026-09-19 — while every other `generic_op` test in the
+same file runs. The same minimal kernel completes in 0.75.0. A hand-written
+kernel is therefore impossible under the old pin and possible under the new
+one. Earlier accelerator measurement records are not restated: each names
+the image that produced it, which is what makes a moved pin readable rather
+than confusing, and whether
+the toolchain moves the figures at all is measured rather than assumed.
 
 Ethernet is present but no link was up as delivered, and the topology tool
 does not support this generation — Blackhole trains its links from the

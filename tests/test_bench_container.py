@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -410,3 +411,96 @@ while True:
         for pid in pids:
             with suppress(ProcessLookupError):
                 os.kill(pid, 9)
+
+
+def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):
+    """The default invocation records the exact immutable image provenance."""
+    expected_image = (
+        "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
+        "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+    )
+    wrapper = (
+        Path(__file__).resolve().parents[1] / "enodia" / "tt" / "bench" / "run_in_container.sh"
+    ).read_text()
+    match = re.search(r'^IMAGE="\$\{HEKATUS_TT_IMAGE:-([^}]+)\}"', wrapper, re.MULTILINE)
+    assert match is not None, "the wrapper no longer defines IMAGE with a default"
+    default = match.group(1)
+    assert default == expected_image
+    # Against the wrapper's own default, not against the constant above: the
+    # equality already pins the value, and this keeps the property being
+    # guarded — a digest rather than a tag — checked where it can still fail.
+    assert re.search(r"@sha256:[0-9a-f]{64}$", default)
+
+    bindir = _fake_tools(tmp_path)
+    telemetry = tmp_path / "repo/enodia/tt/bench/telemetry.py"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", telemetry)
+    copied_root = copied_wrapper.parents[3]
+    (bindir / "python3").write_text(
+        f"""#!{sys.executable}
+import json
+import signal
+import sys
+import time
+from pathlib import Path
+
+def raise_system_exit(*_):
+    raise SystemExit
+
+if sys.argv[2] == "capture-env":
+    arguments = sys.argv[1:]
+    output = arguments[arguments.index("--out") + 1]
+    image = arguments[arguments.index("--image") + 1]
+    Path(output).write_text(json.dumps({{
+        "capture_env_argv": arguments,
+        "image": image,
+        "image_pinned": "--image-pinned" in arguments,
+    }}))
+else:
+    signal.signal(signal.SIGTERM, raise_system_exit)
+    while True:
+        time.sleep(1)
+"""
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "output"
+    child_env = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "DOCKER_ARGS": str(args_log),
+    }
+    # This test is about the default the wrapper falls back to, and the wrapper
+    # honours HEKATUS_TT_IMAGE over it. Anyone aiming a run at another image
+    # exports that variable, so inheriting it from the shell would silently
+    # measure the override instead and fail reporting the wrong digest.
+    child_env.pop("HEKATUS_TT_IMAGE", None)
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--", "--iters", "1"],
+        cwd=copied_root,
+        env=child_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+    env_files = list(output_dir.glob("env-*.json"))
+    assert len(env_files) == 1
+    environment = json.loads(env_files[0].read_text())
+    assert environment == {
+        "capture_env_argv": [
+            str(telemetry),
+            "capture-env",
+            "--out",
+            str(env_files[0]),
+            "--image",
+            expected_image,
+            "--image-pinned",
+        ],
+        "image": expected_image,
+        "image_pinned": True,
+    }
