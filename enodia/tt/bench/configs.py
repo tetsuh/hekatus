@@ -69,7 +69,9 @@ def _tiles(value: int) -> int:
 
 
 def _largest_divisor_at_most(value: int, limit: int) -> int:
-    return next(candidate for candidate in range(min(value, limit), 0, -1) if value % candidate == 0)
+    return next(
+        candidate for candidate in range(min(value, limit), 0, -1) if value % candidate == 0
+    )
 
 
 def _subblock(block_h: int, block_w: int) -> tuple[int, int]:
@@ -84,12 +86,16 @@ def _block_widths(k_tiles: int) -> tuple[int, ...]:
 
 def _reuse_cb_bytes(per_core_m: int, per_core_n: int, in0_block_w: int) -> int:
     """Pinned ttnn's double-buffered input plus output/intermediate CB estimate."""
-    tiles = 2 * (
-        per_core_m * in0_block_w
-        + per_core_n * in0_block_w
-        + per_core_m * per_core_n
-    )
+    tiles = 2 * (per_core_m * in0_block_w + per_core_n * in0_block_w + per_core_m * per_core_n)
     return tiles * _BFLOAT16_TILE_BYTES
+
+
+def _batched_dram_l1_bytes(shape: MatmulShape) -> int:
+    batch = ceil(shape.batch / P150_DRAM_BANKS) * P150_DRAM_BANKS
+    batches_per_core = batch // P150_DRAM_BANKS
+    m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
+    resident_tiles = batches_per_core * m_tiles * (k_tiles + n_tiles)
+    return resident_tiles * _BFLOAT16_TILE_BYTES + _reuse_cb_bytes(m_tiles, n_tiles, k_tiles)
 
 
 def _reuse_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
@@ -201,6 +207,8 @@ def _dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
         return []
     storage_cores = _largest_divisor_at_most(k_tiles, min(k_tiles, P150_DRAM_BANKS))
     per_n = n_tiles // _largest_divisor_at_most(n_tiles, storage_cores)
+    if _reuse_cb_bytes(1, per_n, 1) > P150_MATMUL_CB_BUDGET_BYTES:
+        return []
     sub_h, sub_w = _subblock(1, per_n)
     return [
         ProgramConfigSpec(
@@ -218,7 +226,7 @@ def _dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
 
 
 def _batched_dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
-    if shape.batch == 1:
+    if shape.batch == 1 or _batched_dram_l1_bytes(shape) > P150_MATMUL_CB_BUDGET_BYTES:
         return []
     m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
     sub_h, sub_w = _subblock(m_tiles, n_tiles)
@@ -289,10 +297,10 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
             )
         blocks = (m_tiles // config.per_core_m) * (n_tiles // config.per_core_n)
         if blocks > grid_x * grid_y:
-            raise ValueError(f"{config.name}: {blocks} output blocks exceed compute grid {config.grid}")
-        cb_bytes = _reuse_cb_bytes(
-            config.per_core_m, config.per_core_n, config.in0_block_w
-        )
+            raise ValueError(
+                f"{config.name}: {blocks} output blocks exceed compute grid {config.grid}"
+            )
+        cb_bytes = _reuse_cb_bytes(config.per_core_m, config.per_core_n, config.in0_block_w)
         if cb_bytes > P150_MATMUL_CB_BUDGET_BYTES:
             raise ValueError(
                 f"{config.name}: circular buffers need {cb_bytes} bytes, above the p150 budget"
@@ -301,7 +309,9 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
 
     if config.kind in {"mcast_1d", "mcast_2d"}:
         if shape.batch != 1:
-            raise ValueError(f"{config.name}: multicast cannot consume independently batched operands")
+            raise ValueError(
+                f"{config.name}: multicast cannot consume independently batched operands"
+            )
         block_h = config.out_block_h or config.per_core_m
         block_w = config.out_block_w or config.per_core_n
         if config.per_core_m % block_h or config.per_core_n % block_w:
@@ -313,14 +323,23 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
                 raise ValueError(f"{config.name}: 2D grid does not cover M and N tiles exactly")
         elif config.mcast_in0:
             if config.per_core_m != m_tiles or config.per_core_n * grid_x * grid_y != n_tiles:
-                raise ValueError(f"{config.name}: 1D in0 multicast does not cover output tiles exactly")
+                raise ValueError(
+                    f"{config.name}: 1D in0 multicast does not cover output tiles exactly"
+                )
         elif config.per_core_n != n_tiles or config.per_core_m * grid_x * grid_y != m_tiles:
             raise ValueError(f"{config.name}: 1D in1 multicast does not cover output tiles exactly")
         return
 
     if config.kind == "dram_sharded":
         if shape.batch != 1 or m_tiles != 1 or config.per_core_m != 1:
-            raise ValueError(f"{config.name}: DRAM sharding requires an unbatched one-tile-high output")
+            raise ValueError(
+                f"{config.name}: DRAM sharding requires an unbatched one-tile-high output"
+            )
+        cb_bytes = _reuse_cb_bytes(config.per_core_m, config.per_core_n, config.in0_block_w)
+        if cb_bytes > P150_MATMUL_CB_BUDGET_BYTES:
+            raise ValueError(
+                f"{config.name}: circular buffers need {cb_bytes} bytes, above the p150 budget"
+            )
         return
 
     if shape.batch == 1:
@@ -329,6 +348,11 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
         raise ValueError(f"{config.name}: each DRAM worker must execute complete batched matrices")
     if config.batch_multiple != P150_DRAM_BANKS:
         raise ValueError(f"{config.name}: batch padding must match the p150 DRAM-bank count")
+    l1_bytes = _batched_dram_l1_bytes(shape)
+    if l1_bytes > P150_MATMUL_CB_BUDGET_BYTES:
+        raise ValueError(
+            f"{config.name}: sharded input, output, and circular buffers need {l1_bytes} bytes"
+        )
 
 
 def executed_shape(shape: MatmulShape, config: ProgramConfigSpec) -> MatmulShape:

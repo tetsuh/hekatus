@@ -21,12 +21,36 @@ class _StubTensor:
         self.deallocated = False
 
 
+class _StubConfig:
+    def __init__(self, **kwargs) -> None:
+        self.kwargs = kwargs
+
+
+class _StubCoreGrid:
+    def __init__(self, *, y: int, x: int) -> None:
+        self.y = y
+        self.x = x
+
+
+class _StubCoreCoord:
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+
 class _StubTtnn:
     """Records what the runner asked the toolchain to do."""
 
     TILE_LAYOUT = "tile"
     DRAM_MEMORY_CONFIG = "dram"
     L1_MEMORY_CONFIG = "l1"
+    CoreGrid = _StubCoreGrid
+    CoreCoord = _StubCoreCoord
+    MatmulMultiCoreReuseProgramConfig = _StubConfig
+    MatmulMultiCoreReuseMultiCastProgramConfig = _StubConfig
+    MatmulMultiCoreReuseMultiCast1DProgramConfig = _StubConfig
+    MatmulMultiCoreReuseMultiCastDRAMShardedProgramConfig = _StubConfig
+    MatmulMultiCoreReuseMultiCastBatchedDRAMShardedProgramConfig = _StubConfig
 
     def __init__(self, fail_on: str | None = None) -> None:
         self.matmul_calls = 0
@@ -49,7 +73,7 @@ class _StubTtnn:
             raise RuntimeError("out of memory")
         return _StubTensor(f"zeros{shape}")
 
-    def matmul(self, a, b):
+    def matmul(self, a, b, **kwargs):
         self.matmul_calls += 1
         return _StubTensor("out")
 
@@ -159,17 +183,84 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     monkeypatch.setitem(sys.modules, "ttnn", ttnn)
 
     output = tmp_path / "results.json"
-    assert run_matmul.main(
-        ["--only", "frontend_fir_taps64_w2", "--dtype", "bfloat16", "--memory", "dram",
-         "--iters", "1", "--repeats", "2", "--out", str(output)]
-    ) == 0
+    assert (
+        run_matmul.main(
+            [
+                "--only",
+                "frontend_fir_taps64_w2",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "dram",
+                "--iters",
+                "1",
+                "--repeats",
+                "2",
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
 
     payload = json.loads(output.read_text())
-    assert len(payload["results"]) == 1
-    result = payload["results"][0]
-    assert result["status"] == "ok"
-    assert len(result["seconds_per_iteration_samples"]) == 2
-    assert result["seconds_per_iteration"] == min(result["seconds_per_iteration_samples"])
+    assert len(payload["results"]) == 5
+    assert [result["program_config"]["kind"] for result in payload["results"]] == [
+        "default",
+        "reuse",
+        "mcast_1d",
+        "mcast_1d",
+        "mcast_2d",
+    ]
+    for result in payload["results"]:
+        assert result["status"] == "ok"
+        assert result["memory_placement"] == {
+            name: {"buffer": "dram", "layout": "interleaved"}
+            for name in ("input_a", "input_b", "output")
+        }
+        assert len(result["seconds_per_iteration_samples"]) == 2
+        assert result["seconds_per_iteration"] == min(result["seconds_per_iteration_samples"])
+
+
+def test_a_program_config_failure_is_recorded_without_aborting_the_sweep(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+
+    def reject_reuse(**kwargs):
+        raise RuntimeError("program config rejected")
+
+    ttnn.MatmulMultiCoreReuseProgramConfig = reject_reuse
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+
+    output = tmp_path / "results.json"
+    assert (
+        run_matmul.main(
+            [
+                "--only",
+                "frontend_fir_taps64_w2",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "dram",
+                "--iters",
+                "1",
+                "--repeats",
+                "1",
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+
+    results = json.loads(output.read_text())["results"]
+    assert len(results) == 5
+    assert results[1]["program_config"]["kind"] == "reuse"
+    assert results[1]["status"] == "failed"
+    assert "program config rejected" in results[1]["error"]
+    assert results[-1]["status"] == "ok"
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):

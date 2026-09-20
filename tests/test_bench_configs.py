@@ -95,8 +95,7 @@ def test_multicast_is_not_offered_for_independently_batched_operands():
     shape = _shape(batch=1024)
 
     assert all(
-        config.kind not in {"mcast_1d", "mcast_2d"}
-        for config in configuration_catalogue(shape)
+        config.kind not in {"mcast_1d", "mcast_2d"} for config in configuration_catalogue(shape)
     )
 
 
@@ -111,9 +110,7 @@ def test_unbatched_dram_sharding_is_only_offered_for_one_tile_high_outputs():
 def test_batch_sharding_counts_the_padding_it_executes():
     shape = _shape(batch=1024, m=32, k=32, n=32)
     config = next(
-        config
-        for config in configuration_catalogue(shape)
-        if config.kind == "batched_dram_sharded"
+        config for config in configuration_catalogue(shape) if config.kind == "batched_dram_sharded"
     )
 
     execution = executed_shape(shape, config)
