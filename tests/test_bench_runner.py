@@ -223,6 +223,41 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
         assert result["seconds_per_iteration"] == min(result["seconds_per_iteration_samples"])
 
 
+def test_default_only_mode_omits_the_explicit_catalogue(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+
+    output = tmp_path / "results.json"
+    assert (
+        run_matmul.main(
+            [
+                "--only",
+                "frontend_fir_taps64_w2",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "dram",
+                "--config-mode",
+                "default-only",
+                "--iters",
+                "1",
+                "--repeats",
+                "1",
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(output.read_text())
+    assert payload["configuration_mode"] == "default-only"
+    assert [result["program_config"]["kind"] for result in payload["results"]] == ["default"]
+
+
 def test_a_program_config_failure_is_recorded_without_aborting_the_sweep(monkeypatch, tmp_path):
     ttnn = _StubTtnn()
     ttnn.bfloat16 = "bf16"

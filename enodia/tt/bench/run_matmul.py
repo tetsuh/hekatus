@@ -380,6 +380,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--only", default=None, help="substring filter on the shape name")
+    parser.add_argument(
+        "--config-mode",
+        choices=("all", "default-only"),
+        default="all",
+        help="run the explicit stock catalogue or default ttnn.matmul rows only",
+    )
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--out", type=Path, default=Path("bench-results.json"))
     parser.add_argument("--peak-tflops", type=float, default=None)
@@ -400,10 +406,10 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(f"--peak-tflops must be positive and finite, got {args.peak_tflops}")
 
 
-def _row_specs(shape: MatmulShape, memories: list[str]):
+def _row_specs(shape: MatmulShape, memories: list[str], config_mode: str):
     for memory_name in memories:
         yield None, memory_name, memory_name
-    if not shape.representative:
+    if config_mode == "default-only" or not shape.representative:
         return
     for config in configuration_catalogue(shape):
         if config.memory_plan == "interleaved":
@@ -459,7 +465,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
-                for program_spec, memory_name, base_memory_name in _row_specs(shape, memories):
+                for program_spec, memory_name, base_memory_name in _row_specs(
+                    shape, memories, args.config_mode
+                ):
                     config_record = (
                         {"name": "default", "kind": "default"}
                         if program_spec is None
@@ -509,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = {
         "environment": environment,
+        "configuration_mode": args.config_mode,
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,
         "results": results,
