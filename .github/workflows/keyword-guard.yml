@@ -46,8 +46,8 @@ jobs:
           WORDS: ${{ secrets.KEYWORD_GUARD_WORDS }}
         run: |
           if [ -z "$WORDS" ]; then
-            echo "::warning::KEYWORD_GUARD_WORDS secret is not set; guard skipped."
-            exit 0
+            echo "::error::KEYWORD_GUARD_WORDS repository secret is not set; configure it before merging."
+            exit 1
           fi
 
           words=()
@@ -57,8 +57,8 @@ jobs:
             [ -n "$w" ] && words+=("$w")
           done
           if [ "${#words[@]}" -eq 0 ]; then
-            echo "::warning::KEYWORD_GUARD_WORDS is empty; guard skipped."
-            exit 0
+            echo "::error::KEYWORD_GUARD_WORDS word list is empty after parsing; set the repository secret to a comma-separated list before merging."
+            exit 1
           fi
 
           # Replace every prohibited word in a path with *** so that a
@@ -88,7 +88,7 @@ jobs:
             for w in "${words[@]}"; do
               # -a: scan binary contents as text; -w: word boundaries;
               # -F: literal; -i: case-insensitive.
-              hits=$(grep -oaiwF -- "$w" "$f" 2>/dev/null | wc -l)
+              hits=$(grep -oaiwF -- "$w" "$f" 2>/dev/null | wc -l || :)
               if [ "$hits" -gt 0 ]; then
                 if [ "$safe" = "$f" ]; then
                   echo "::error file=$f::prohibited word in contents ($hits occurrence(s))"
@@ -97,7 +97,7 @@ jobs:
                 fi
                 fail=1
               fi
-              phits=$(printf '%s' "$f" | grep -oiwF -- "$w" | wc -l)
+              phits=$(printf '%s' "$f" | grep -oiwF -- "$w" | wc -l || :)
               if [ "$phits" -gt 0 ]; then
                 echo "::error::prohibited word in path $safe ($phits occurrence(s))"
                 fail=1
