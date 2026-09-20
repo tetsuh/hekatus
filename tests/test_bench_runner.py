@@ -204,6 +204,7 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     )
 
     payload = json.loads(output.read_text())
+    assert "host" not in payload["environment"]
     assert len(payload["results"]) == 5
     assert [result["program_config"]["kind"] for result in payload["results"]] == [
         "default",

@@ -450,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no shape matches {args.only!r}", file=sys.stderr)
         return 2
 
-    environment = {"python": platform.python_version(), "host": platform.node()}
+    environment = {"python": platform.python_version()}
     if args.env_json and args.env_json.exists():
         environment.update(json.loads(args.env_json.read_text()))
 
