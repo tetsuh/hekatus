@@ -5,11 +5,19 @@ on:
   push:
     branches: [main]
 
+# Least privilege: every unlisted scope becomes `none`. Neither job writes
+# to the repository, and neither needs the token after checkout.
+permissions:
+  contents: read
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Do not leave the token in the checked-out tree's git config.
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@v7
         with:
