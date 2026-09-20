@@ -112,7 +112,7 @@ void kernel_main() {
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(7);
 
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
-    constexpr auto r_real_args = TensorAccessorArgs<2>();
+    constexpr auto r_real_args = TensorAccessorArgs<1>();
     constexpr auto r_imag_args = TensorAccessorArgs<r_real_args.next_compile_time_args_offset()>();
     constexpr auto x_real_args = TensorAccessorArgs<r_imag_args.next_compile_time_args_offset()>();
     constexpr auto x_imag_args = TensorAccessorArgs<x_real_args.next_compile_time_args_offset()>();

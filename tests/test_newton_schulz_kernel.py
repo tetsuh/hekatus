@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
+from enodia.tt.bench import newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_reference import (
     COMPLEX_MATMULS_PER_INVERSE,
@@ -26,6 +27,14 @@ HAS_TTNN = importlib.util.find_spec("ttnn") is not None
 
 
 class ReferenceTests(unittest.TestCase):
+    def test_accelerator_initial_value_matches_the_independent_oracle(self):
+        matrices = random_hpd_batch(3, 16, seed=19)
+
+        actual = newton_schulz_kernel._initial_value(matrices)
+        expected = initial_value(matrices)
+
+        np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-7)
+
     def test_random_input_is_hermitian_positive_definite_at_the_requested_condition(self):
         matrices = random_hpd_batch(3, 16, condition_number=100.0, seed=7)
 
@@ -51,6 +60,121 @@ class ReferenceTests(unittest.TestCase):
             inverse_flops(shape),
             COMPLEX_MATMULS_PER_INVERSE * total_flops(shape),
         )
+        self.assertEqual(
+            newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
+            COMPLEX_MATMULS_PER_INVERSE,
+        )
+
+    def test_kernel_variants_only_claim_implemented_behaviors(self):
+        self.assertEqual(set(newton_schulz_kernel._VARIANTS), {"fused", "packed_fused"})
+        self.assertFalse(newton_schulz_kernel._VARIANTS["fused"])
+        self.assertTrue(newton_schulz_kernel._VARIANTS["packed_fused"])
+
+    def test_fixed_count_and_compile_argument_layout_match_the_host_driver(self):
+        compute_source = (
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "kernels"
+            / "newton_schulz_compute.cpp"
+        ).read_text()
+        reader_source = (
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "kernels"
+            / "newton_schulz_reader.cpp"
+        ).read_text()
+
+        self.assertEqual(newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS, 8)
+        self.assertEqual(
+            newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
+            2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
+        )
+        self.assertEqual(compute_source.count("matmul_one();"), 4)
+        self.assertNotIn("break;", compute_source)
+        self.assertIn("get_compile_time_arg_val(1)", compute_source)
+        self.assertNotIn("get_compile_time_arg_val(2)", compute_source)
+        self.assertIn("TensorAccessorArgs<1>()", reader_source)
+        self.assertNotIn("TensorAccessorArgs<2>()", reader_source)
+
+    def test_packed_odd_batch_round_trips_and_isolates_blocks(self):
+        matrices = np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16)
+        packed = newton_schulz_kernel._pack_matrices(matrices, packed=True, tile_count=2)
+
+        self.assertEqual(packed.shape, (2, 1, 32, 32))
+        np.testing.assert_array_equal(packed[0, 0, :16, :16], matrices[0])
+        np.testing.assert_array_equal(packed[0, 0, 16:, 16:], matrices[1])
+        np.testing.assert_array_equal(packed[1, 0, :16, :16], matrices[2])
+        np.testing.assert_array_equal(packed[1, 0, 16:, 16:], np.zeros((16, 16)))
+        np.testing.assert_array_equal(packed[:, 0, :16, 16:], np.zeros((2, 16, 16)))
+        np.testing.assert_array_equal(packed[:, 0, 16:, :16], np.zeros((2, 16, 16)))
+
+        unpacked = newton_schulz_kernel._unpack_matrices(
+            packed, batch=3, size=16, packed=True
+        )
+        np.testing.assert_array_equal(unpacked, matrices)
+
+    def test_packed_odd_batch_matmul_matches_independent_products(self):
+        left = (np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16) % 5)
+        right = (np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16) % 7)
+        packed_left = newton_schulz_kernel._pack_matrices(left, packed=True, tile_count=2)
+        packed_right = newton_schulz_kernel._pack_matrices(right, packed=True, tile_count=2)
+
+        packed_products = np.matmul(packed_left[:, 0], packed_right[:, 0])
+        expected = newton_schulz_kernel._pack_matrices(
+            np.matmul(left, right), packed=True, tile_count=2
+        )
+
+        np.testing.assert_array_equal(packed_products[:, None], expected)
+
+    def test_nonpacked_l32_preserves_each_tile_and_zero_fills_extra_tiles(self):
+        matrices = np.arange(3 * 32 * 32, dtype=np.float32).reshape(3, 32, 32)
+        padded = newton_schulz_kernel._pack_matrices(matrices, packed=False, tile_count=4)
+
+        self.assertEqual(padded.shape, (4, 1, 32, 32))
+        np.testing.assert_array_equal(padded[:3, 0], matrices)
+        np.testing.assert_array_equal(padded[3], np.zeros((1, 32, 32)))
+        np.testing.assert_array_equal(
+            newton_schulz_kernel._unpack_matrices(padded, batch=3, size=32, packed=False),
+            matrices,
+        )
+
+    def test_prepare_rejects_unimplemented_shapes_variants_and_iteration_counts(self):
+        matrices = np.zeros((1, 16, 16), dtype=np.complex64)
+
+        with self.assertRaisesRegex(ValueError, "fixed at 8"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, matrices, iterations=7
+            )
+        with self.assertRaisesRegex(ValueError, "unknown kernel variant"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, matrices, variant="resident"
+            )
+        with self.assertRaisesRegex(ValueError, "matrices must have shape"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, np.zeros((16, 16), dtype=np.complex64)
+            )
+        with self.assertRaisesRegex(ValueError, "matrices must have shape"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, np.zeros((1, 16, 15), dtype=np.complex64)
+            )
+        with self.assertRaisesRegex(ValueError, "only L=16 and L=32"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, np.zeros((1, 8, 8), dtype=np.complex64)
+            )
+        with self.assertRaisesRegex(ValueError, "tile packing is only defined for L=16"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, np.zeros((1, 32, 32), dtype=np.complex64), variant="packed_fused"
+            )
+
+    def test_prepare_rejects_empty_batch_before_device_access(self):
+        with self.assertRaisesRegex(ValueError, "batch must be positive"):
+            newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                None, None, np.zeros((0, 16, 16), dtype=np.complex64)
+            )
 
     def test_accelerator_modules_do_not_import_the_numpy_reference(self):
         accelerator_root = Path(__file__).parents[1] / "enodia" / "tt"

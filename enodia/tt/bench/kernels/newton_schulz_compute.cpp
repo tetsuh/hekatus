@@ -88,7 +88,7 @@ void complex_matmul() {
 
 void kernel_main() {
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
-    constexpr std::uint32_t tile_count = get_compile_time_arg_val(2);
+    constexpr std::uint32_t tile_count = get_compile_time_arg_val(1);
     static_assert(iterations > 0, "the fixed iteration count must be positive");
 
     compute_kernel_hw_startup<SrcOrder::Reverse>(cb_matmul_a, cb_matmul_b, cb_matmul_product);

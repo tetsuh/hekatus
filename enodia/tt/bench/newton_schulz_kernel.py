@@ -12,15 +12,14 @@ from typing import Any
 
 import numpy as np
 
-_NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATIONS = 8
+COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 _VARIANTS = {
-    "fused": (False, False),
-    "fused_resident": (True, False),
-    "packed_fused": (False, True),
-    "packed_fused_resident": (True, True),
+    "fused": False,
+    "packed_fused": True,
 }
 
 
@@ -109,7 +108,6 @@ class NewtonSchulzKernel:
     size: int
     variant: str
     packed: bool
-    keep_r_resident: bool
     tile_count: int
     inputs: list[Any]
     outputs: list[Any]
@@ -122,15 +120,15 @@ class NewtonSchulzKernel:
         device,
         matrices: np.ndarray,
         *,
-        variant: str = "fused_resident",
-        iterations: int = _NEWTON_SCHULZ_ITERATIONS,
+        variant: str = "fused",
+        iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
-        if iterations != _NEWTON_SCHULZ_ITERATIONS:
+        if iterations != NEWTON_SCHULZ_ITERATIONS:
             raise ValueError(
-                f"the kernel is fixed at {_NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
+                f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
             )
         try:
-            keep_r_resident, packed = _VARIANTS[variant]
+            packed = _VARIANTS[variant]
         except KeyError as exc:
             raise ValueError(f"unknown kernel variant {variant!r}") from exc
 
@@ -138,6 +136,8 @@ class NewtonSchulzKernel:
         if matrices.ndim != 3 or matrices.shape[-1] != matrices.shape[-2]:
             raise ValueError("matrices must have shape (batch, size, size)")
         batch, size, _ = matrices.shape
+        if batch < 1:
+            raise ValueError("batch must be positive")
         if size not in (16, 32):
             raise ValueError(f"only L=16 and L=32 are supported, got {size}")
         if packed and size != 16:
@@ -199,7 +199,7 @@ class NewtonSchulzKernel:
             for format_descriptor in formats
         ]
 
-        reader_compile_args = [iterations, int(keep_r_resident)]
+        reader_compile_args = [iterations]
         for tensor in inputs:
             reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
         writer_compile_args: list[int] = []
@@ -218,7 +218,7 @@ class NewtonSchulzKernel:
             [tensor.buffer_address() for tensor in outputs],
             tiles_per_core=tiles_per_core,
         )
-        compute_args = [iterations, int(keep_r_resident), tiles_per_core]
+        compute_args = [iterations, tiles_per_core]
 
         kernels = [
             ttnn.KernelDescriptor(
@@ -254,7 +254,6 @@ class NewtonSchulzKernel:
             size=size,
             variant=variant,
             packed=packed,
-            keep_r_resident=keep_r_resident,
             tile_count=tile_count,
             inputs=inputs,
             outputs=outputs,
@@ -293,7 +292,7 @@ def run_newton_schulz_kernel(
     device,
     matrices: np.ndarray,
     *,
-    variant: str = "fused_resident",
+    variant: str = "fused",
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, variant=variant)
