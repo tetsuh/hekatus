@@ -5,6 +5,11 @@ on:
   push:
     branches: [main]
 
+# Least privilege: every unlisted scope becomes `none`. Neither job writes
+# to the repository, and neither needs the token after checkout.
+permissions:
+  contents: read
+
 jobs:
   keyword-guard:
     runs-on: ubuntu-latest
@@ -24,6 +29,9 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v7
+        with:
+          # Do not leave the token in the checked-out tree's git config.
+          persist-credentials: false
 
       # Scans all tracked files (contents and paths) for prohibited words.
       # The word list comes from the KEYWORD_GUARD_WORDS secret
