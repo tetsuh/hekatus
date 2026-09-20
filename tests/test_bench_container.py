@@ -424,8 +424,12 @@ def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):
     ).read_text()
     match = re.search(r'^IMAGE="\$\{HEKATUS_TT_IMAGE:-([^}]+)\}"', wrapper, re.MULTILINE)
     assert match is not None, "the wrapper no longer defines IMAGE with a default"
-    assert match.group(1) == expected_image
-    assert re.search(r"@sha256:[0-9a-f]{64}$", expected_image)
+    default = match.group(1)
+    assert default == expected_image
+    # Against the wrapper's own default, not against the constant above: the
+    # equality already pins the value, and this keeps the property being
+    # guarded — a digest rather than a tag — checked where it can still fail.
+    assert re.search(r"@sha256:[0-9a-f]{64}$", default)
 
     bindir = _fake_tools(tmp_path)
     telemetry = tmp_path / "repo/enodia/tt/bench/telemetry.py"
