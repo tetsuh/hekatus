@@ -467,14 +467,20 @@ else:
     (bindir / "python3").chmod(stat.S_IRWXU)
     args_log = tmp_path / "docker-args"
     output_dir = tmp_path / "output"
+    child_env = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "DOCKER_ARGS": str(args_log),
+    }
+    # This test is about the default the wrapper falls back to, and the wrapper
+    # honours HEKATUS_TT_IMAGE over it. Anyone aiming a run at another image
+    # exports that variable, so inheriting it from the shell would silently
+    # measure the override instead and fail reporting the wrong digest.
+    child_env.pop("HEKATUS_TT_IMAGE", None)
     completed = subprocess.run(
         [str(copied_wrapper), str(output_dir), "--", "--iters", "1"],
         cwd=copied_root,
-        env={
-            **os.environ,
-            "PATH": f"{bindir}:{os.environ['PATH']}",
-            "DOCKER_ARGS": str(args_log),
-        },
+        env=child_env,
         capture_output=True,
         text=True,
         check=False,
