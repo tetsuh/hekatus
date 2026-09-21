@@ -72,7 +72,9 @@ jobs:
             for w in "${words[@]}"; do
               output=""
               rest="$text"
-              while match=$(printf '%s' "$rest" | grep -oaiF -m1 -- "$w"); do
+              # grep -o may emit every match on one input line; sed selects
+              # exactly one match so each iteration consumes actual input.
+              while match=$(printf '%s' "$rest" | grep -oaiF -- "$w" | sed -n '1p'); do
                 prefix="${rest%%"$match"*}"
                 output+="${prefix}***"
                 rest="${rest#*"$match"}"

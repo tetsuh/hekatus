@@ -27,6 +27,11 @@ def _workflow_step(step_name: str) -> tuple[str, str]:
     return "\n".join(lines[name_index:run_index]), "\n".join(body) + "\n"
 
 
+def _assert_no_configured_terms(output: str, words: list[str]) -> None:
+    for word in words:
+        assert word.casefold() not in output.casefold()
+
+
 def _run_scan(
     tmp_path: Path, *, words: str | None, tracked: dict[str, str]
 ) -> subprocess.CompletedProcess:
@@ -64,6 +69,7 @@ def test_missing_word_list_fails_with_actionable_message(tmp_path):
     assert completed.returncode != 0
     assert "secret is not set" in completed.stdout
     assert "repository secret" in completed.stdout
+    assert "configure it before merging" in completed.stdout
 
 
 def test_word_list_with_only_separators_and_whitespace_fails(tmp_path):
@@ -72,6 +78,7 @@ def test_word_list_with_only_separators_and_whitespace_fails(tmp_path):
     assert completed.returncode != 0
     assert "word list is empty" in completed.stdout
     assert "repository secret" in completed.stdout
+    assert "set the repository secret" in completed.stdout
 
 
 def test_valid_word_list_scans_tracked_files_and_passes_a_clean_tree(tmp_path):
@@ -96,7 +103,7 @@ def test_valid_word_list_fails_without_disclosing_content_hit(tmp_path):
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
     assert "prohibited word in contents (1 occurrence(s))" in output
-    assert word.casefold() not in output.casefold()
+    _assert_no_configured_terms(output, [word])
 
 
 def test_path_hit_is_masked_literally_when_word_contains_regex_metacharacters(tmp_path):
@@ -110,7 +117,7 @@ def test_path_hit_is_masked_literally_when_word_contains_regex_metacharacters(tm
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
     assert "prohibited word in path notes/***-record.txt (1 occurrence(s))" in output
-    assert word.casefold() not in output.casefold()
+    _assert_no_configured_terms(output, [word])
 
 
 def test_unicode_case_equivalent_path_hits_are_masked_with_grep_semantics(tmp_path):
@@ -127,7 +134,7 @@ def test_unicode_case_equivalent_path_hits_are_masked_with_grep_semantics(tmp_pa
         output = completed.stdout + completed.stderr
         assert completed.returncode != 0
         assert f"prohibited word in path {masked_path}" in output
-        assert word.casefold() not in output.casefold()
+        _assert_no_configured_terms(output, [word])
 
 
 def test_configured_terms_are_masked_in_fixed_reporter_messages(tmp_path):
@@ -143,8 +150,42 @@ def test_configured_terms_are_masked_in_fixed_reporter_messages(tmp_path):
 
         output = completed.stdout + completed.stderr
         assert completed.returncode == (0 if word == "clean" else 1)
-        assert word.casefold() not in output.casefold()
+        _assert_no_configured_terms(output, [word])
         assert "***" in output
+        if word == "clean":
+            assert "keyword guard: ***" in output
+        else:
+            assert "prohibited word in ***" in output
+            assert "(1 occurrence(s))" in output
+
+
+def test_repeated_path_matches_terminate_and_mask_every_occurrence(tmp_path):
+    word = "x"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={"x-x.log": "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "prohibited word in path ***-***.log (2 occurrence(s))" in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_repeated_reporter_matches_terminate_and_mask_every_occurrence(tmp_path):
+    word = "s"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={"clean.txt": "s\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "prohibited word" in output
+    assert "***" in output
+    _assert_no_configured_terms(output, [word])
 
 
 def test_fork_pull_request_rejection_stays_fail_closed_with_existing_message(tmp_path):
