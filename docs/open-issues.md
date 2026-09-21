@@ -111,9 +111,11 @@ and the historical source is
   granularity). **With MLA, the depth-to-TGC correspondence shifts per
   scanline, which can create inconsistencies under transmit compounding**
 - Which power limit the board enforces — the firmware reports 150 W as
-  `tdp_limit` and 300 W as the board limit. The compute measurement did not
-  approach either (102 W peak at full clock), so the question waits for a
-  workload that does
+  `tdp_limit` and 300 W as the board limit. The historical 102 W comparison
+  is from `docs/measurements/2026-08-14-p150a-effective-efficiency-power.csv`
+  (the 2026-08-14 effective-efficiency trace); the 110 W result is from the
+  2026-09-20 ttnn 0.75.0 full-sweep trace. Neither bound was reached, so the
+  question waits for a workload that does
 - **The latency budget does not close across the full range of its own
   stage estimates** (docs/budget.md): the critical path sums to ~27 ms at
   the optimistic end and ~39 ms at the pessimistic end, against a ≤ 30 ms

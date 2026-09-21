@@ -62,6 +62,24 @@ def test_program_config_rejects_dimension_combinations_ttnn_rejects(config, mess
         validate_config(_shape(), config)
 
 
+@pytest.mark.parametrize(
+    ("m", "expected_grid"),
+    [(320, (10, 1)), (384, (6, 2))],
+)
+def test_rectangular_mcast_1d_grids_cover_exactly(m, expected_grid):
+    shape = _shape(m=m, k=96, n=160)
+
+    configs = configuration_catalogue(shape)
+    multicast = [config for config in configs if config.kind == "mcast_1d"]
+
+    assert multicast
+    assert {config.grid for config in multicast} == {expected_grid}
+    for config in multicast:
+        validate_config(shape, config)
+        assert config.per_core_n == (shape.n + 31) // 32
+        assert config.per_core_m * config.grid[0] * config.grid[1] == (shape.m + 31) // 32
+
+
 def test_every_catalogued_configuration_is_valid_for_its_shape():
     representative = [shape for shape in default_catalogue() if shape.representative]
 

@@ -140,7 +140,11 @@ def _mcast_1d_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
     wide = n_tiles >= m_tiles
     split_tiles = n_tiles if wide else m_tiles
     cores = _largest_divisor_at_most(split_tiles, 64)
-    grid = (min(8, cores), ceil(cores / min(8, cores)))
+    grid_x = _largest_divisor_at_most(cores, P150_COMPUTE_GRID[0])
+    grid_y = cores // grid_x
+    if grid_y > P150_COMPUTE_GRID[1]:
+        return []
+    grid = (grid_x, grid_y)
     per_m = m_tiles if wide else m_tiles // cores
     per_n = n_tiles // cores if wide else n_tiles
     block_h, block_w = min(per_m, 4), min(per_n, 4)

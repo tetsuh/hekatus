@@ -111,8 +111,8 @@ full tiles, fusing the four real matmuls of a complex one, keeping R resident
 across the iteration, and avoiding per-operation dispatch remain kernel work.
 
 **Power and clock did not bind in the full sweep.** The 0.75.0 trace peaked
-at 110 W, 1350 MHz, and 73.9 °C; neither the 150 W nor the 300 W
-firmware-reported limit was reached.
+at 110 W, 1350 MHz, and 73.9 °C; neither the 150 W firmware-reported
+limit nor the 300 W board limit was reached.
 
 ---
 

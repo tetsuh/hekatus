@@ -208,9 +208,12 @@ record. Two differences from the table are worth recording:
   does not touch the 20 GB/s of §3, but enodia → diaplous is a DMA push
   across this link, and gen4 x16 is roughly 32 GB/s.
 - **The firmware reports two different power limits** — 150 W as `tdp_limit`
-  and 300 W as the board limit. Under the compute measurement neither bound:
-  the board peaked at 102 W at full clock. Which one is enforced remains
-  unresolved, and will stay so until a workload approaches it.
+  and 300 W as the board limit. The 102 W comparison comes from
+  `docs/measurements/2026-08-14-p150a-effective-efficiency-power.csv` (the
+  2026-08-14 effective-efficiency trace); the 110 W result comes from the
+  2026-09-20 ttnn 0.75.0 full-sweep trace. Neither bound was reached. Which
+  one is enforced remains unresolved, and will stay so until a workload
+  approaches it.
 
 **The toolchain image is pinned by digest, and the pin has moved once.**
 Measurements through 2026-08-14 were taken in the ttnn 0.70.1 release image;
