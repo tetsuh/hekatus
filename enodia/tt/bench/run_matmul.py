@@ -379,7 +379,18 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory", action="append", default=None, choices=["dram", "l1"])
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--only", default=None, help="substring filter on the shape name")
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=None,
+        help="repeatable exact-or-substring shape-name filter (OR semantics)",
+    )
+    parser.add_argument(
+        "--config-kind",
+        action="append",
+        default=None,
+        help="repeatable program-config kind filter; excludes default rows (OR semantics)",
+    )
     parser.add_argument(
         "--config-mode",
         choices=("all", "default-only"),
@@ -406,12 +417,27 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(f"--peak-tflops must be positive and finite, got {args.peak_tflops}")
 
 
-def _row_specs(shape: MatmulShape, memories: list[str], config_mode: str):
-    for memory_name in memories:
-        yield None, memory_name, memory_name
+def _select_shapes(shapes: list[MatmulShape], selectors: list[str] | None) -> list[MatmulShape]:
+    """Select shapes by exact name or substring, preserving catalogue order."""
+    if not selectors:
+        return shapes
+    return [shape for shape in shapes if any(selector in shape.name for selector in selectors)]
+
+
+def _row_specs(
+    shape: MatmulShape,
+    memories: list[str],
+    config_mode: str,
+    config_kinds: list[str] | None = None,
+):
+    if config_kinds is None:
+        for memory_name in memories:
+            yield None, memory_name, memory_name
     if config_mode == "default-only" or not shape.representative:
         return
     for config in configuration_catalogue(shape):
+        if config_kinds is not None and config.kind not in config_kinds:
+            continue
         if config.memory_plan == "interleaved":
             for memory_name in memories:
                 yield config, memory_name, memory_name
@@ -451,7 +477,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     memory_map = {"dram": ttnn.DRAM_MEMORY_CONFIG, "l1": ttnn.L1_MEMORY_CONFIG}
 
-    catalogue = [s for s in default_catalogue() if not args.only or args.only in s.name]
+    catalogue = _select_shapes(default_catalogue(), args.only)
     if not catalogue:
         print(f"no shape matches {args.only!r}", file=sys.stderr)
         return 2
@@ -466,7 +492,7 @@ def main(argv: list[str] | None = None) -> int:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
                 for program_spec, memory_name, base_memory_name in _row_specs(
-                    shape, memories, args.config_mode
+                    shape, memories, args.config_mode, args.config_kind
                 ):
                     config_record = (
                         {"name": "default", "kind": "default"}
@@ -518,6 +544,10 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "environment": environment,
         "configuration_mode": args.config_mode,
+        "selection": {
+            "shape_filters": args.only or [],
+            "program_config_kind_filters": args.config_kind or [],
+        },
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,
         "results": results,

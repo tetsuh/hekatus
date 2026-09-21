@@ -14,7 +14,7 @@ import pytest
 
 from enodia.tt.bench import run_matmul
 from enodia.tt.bench.configs import configuration_catalogue
-from enodia.tt.bench.shapes import MatmulShape
+from enodia.tt.bench.shapes import MatmulShape, default_catalogue
 
 
 class _StubTensor:
@@ -120,6 +120,65 @@ class _StubDevice:
         return [object()] * self.worker_count
 
 
+def test_repeatable_shape_and_config_filters_parse_without_a_device():
+    args = run_matmul._build_parser().parse_args(
+        [
+            "--only",
+            "newton_schulz_L16_b1024",
+            "--only",
+            "newton_schulz_L32_b1024",
+            "--config-kind",
+            "batched_dram_sharded",
+        ]
+    )
+
+    assert args.only == ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"]
+    assert args.config_kind == ["batched_dram_sharded"]
+
+
+def test_repeatable_shape_filters_use_or_substring_semantics():
+    shapes = default_catalogue()
+
+    selected = run_matmul._select_shapes(
+        shapes,
+        ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
+    )
+
+    assert [shape.name for shape in selected] == [
+        "newton_schulz_L16_b1024",
+        "newton_schulz_L32_b1024",
+    ]
+    assert [shape.name for shape in run_matmul._select_shapes(shapes, ["L16_b1024"])] == [
+        "newton_schulz_L16_b1024"
+    ]
+
+
+def test_config_kind_filter_enumerates_exactly_four_default_dtype_rows():
+    selected = run_matmul._select_shapes(
+        default_catalogue(),
+        ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
+    )
+    rows = [
+        (shape.name, dtype_name, program_spec, memory_name, base_memory_name)
+        for shape in selected
+        for dtype_name in ("bfloat16", "float32")
+        for program_spec, memory_name, base_memory_name in run_matmul._row_specs(
+            shape, ["dram", "l1"], "all", ["batched_dram_sharded"]
+        )
+    ]
+
+    assert len(rows) == 4
+    assert {(name, dtype) for name, dtype, *_ in rows} == {
+        ("newton_schulz_L16_b1024", "bfloat16"),
+        ("newton_schulz_L16_b1024", "float32"),
+        ("newton_schulz_L32_b1024", "bfloat16"),
+        ("newton_schulz_L32_b1024", "float32"),
+    }
+    assert all(program_spec.kind == "batched_dram_sharded" for _, _, program_spec, *_ in rows)
+    assert all(memory_name == "batch_sharded_dram" for _, _, _, memory_name, _ in rows)
+    assert all(base_memory_name == "dram" for _, _, _, _, base_memory_name in rows)
+
+
 def test_batched_dram_worker_mismatch_fails_before_board_work():
     ttnn = _StubTtnn()
     device = _StubDevice(worker_count=7)
@@ -223,6 +282,48 @@ def test_invalid_controls_are_rejected_before_the_device_is_opened(argv):
         run_matmul.main(argv)
 
     assert excinfo.value.code == 2
+
+
+def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.float32 = "fp32"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(
+        run_matmul,
+        "run_shape",
+        lambda *args, **kwargs: {"status": "failed", "error": "host-only stub"},
+    )
+
+    output = tmp_path / "results.json"
+    assert (
+        run_matmul.main(
+            [
+                "--only",
+                "newton_schulz_L16_b1024",
+                "--only",
+                "newton_schulz_L32_b1024",
+                "--config-kind",
+                "batched_dram_sharded",
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(output.read_text())
+    assert payload["selection"] == {
+        "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
+        "program_config_kind_filters": ["batched_dram_sharded"],
+    }
+    assert len(payload["results"]) == 4
+    assert all(
+        result["program_config"]["kind"] == "batched_dram_sharded"
+        for result in payload["results"]
+    )
 
 
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
