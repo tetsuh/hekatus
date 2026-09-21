@@ -38,9 +38,9 @@ jobs:
       # (comma-separated, matched case-insensitively on word boundaries)
       # and is never stored in this repository.
       #
-      # Reporting never discloses the prohibited text itself: contents hits
-      # report the file and an occurrence count, and paths that contain a
-      # prohibited word are printed with the word masked.
+      # Reporting never discloses the prohibited text itself: after a valid
+      # list is parsed, every reporter message is masked, while contents hits
+      # report the file and an occurrence count and paths are locatable.
       - name: Scan tracked files for prohibited words
         env:
           WORDS: ${{ secrets.KEYWORD_GUARD_WORDS }}
@@ -61,25 +61,33 @@ jobs:
             exit 1
           fi
 
-          # Replace every prohibited word in a path with *** so that a
-          # violating path can be located without republishing the word.
-          # The replacement is literal and case-insensitive, matching the
-          # semantics of `grep -F`: a regular-expression engine would leave
-          # a term containing metacharacters unmasked, disclosing it.
-          mask_path() {
-            local p="$1" w lw out rest lrest idx
+          # GNU grep is the source of truth for case equivalence. Use the
+          # same locale and literal fixed-string matching for detection and
+          # masking, including Unicode equivalents such as final sigma and
+          # long s. Never use Bash lowercasing here: it does not implement
+          # grep's complete case mapping.
+          export LC_ALL=C.UTF-8
+          mask_text() {
+            local text="$1" w match prefix output rest
             for w in "${words[@]}"; do
-              lw=${w,,}; out=""; rest="$p"
-              while :; do
-                lrest=${rest,,}
-                idx=${lrest%%"$lw"*}
-                [ "${#idx}" -eq "${#rest}" ] && break
-                out+="${rest:0:${#idx}}***"
-                rest="${rest:$(( ${#idx} + ${#w} ))}"
+              output=""
+              rest="$text"
+              while match=$(printf '%s' "$rest" | grep -oaiF -m1 -- "$w"); do
+                prefix="${rest%%"$match"*}"
+                output+="${prefix}***"
+                rest="${rest#*"$match"}"
               done
-              p="$out$rest"
+              text="$output$rest"
             done
-            printf '%s' "$p"
+            printf '%s' "$text"
+          }
+
+          mask_path() {
+            mask_text "$1"
+          }
+
+          report() {
+            printf '%s\n' "$(mask_text "$1")"
           }
 
           fail=0
@@ -91,21 +99,21 @@ jobs:
               hits=$(grep -oaiwF -- "$w" "$f" 2>/dev/null | wc -l || :)
               if [ "$hits" -gt 0 ]; then
                 if [ "$safe" = "$f" ]; then
-                  echo "::error file=$f::prohibited word in contents ($hits occurrence(s))"
+                  report "::error file=$f::prohibited word in contents ($hits occurrence(s))"
                 else
-                  echo "::error::prohibited word in contents of $safe ($hits occurrence(s))"
+                  report "::error::prohibited word in contents of $safe ($hits occurrence(s))"
                 fi
                 fail=1
               fi
               phits=$(printf '%s' "$f" | grep -oiwF -- "$w" | wc -l || :)
               if [ "$phits" -gt 0 ]; then
-                echo "::error::prohibited word in path $safe ($phits occurrence(s))"
+                report "::error::prohibited word in path $safe ($phits occurrence(s))"
                 fail=1
               fi
             done
           done < <(git ls-files -z)
 
           if [ "$fail" -eq 0 ]; then
-            echo "keyword guard: clean"
+            report "keyword guard: clean"
           fi
           exit $fail

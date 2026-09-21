@@ -41,6 +41,7 @@ def _run_scan(
 
     _, script = _workflow_step("Scan tracked files for prohibited words")
     environment = dict(os.environ)
+    environment["LC_ALL"] = "C.UTF-8"
     if words is None:
         environment.pop("WORDS", None)
     else:
@@ -110,6 +111,40 @@ def test_path_hit_is_masked_literally_when_word_contains_regex_metacharacters(tm
     assert completed.returncode != 0
     assert "prohibited word in path notes/***-record.txt (1 occurrence(s))" in output
     assert word.casefold() not in output.casefold()
+
+
+def test_unicode_case_equivalent_path_hits_are_masked_with_grep_semantics(tmp_path):
+    cases = [
+        ("σ", "docs/ο-ς.txt", "docs/ο-***.txt"),
+        ("s", "dir/ſ-afe.txt", "dir/***-afe.txt"),
+    ]
+
+    for directory, (word, path, masked_path) in enumerate(cases):
+        run_path = tmp_path / f"unicode-{directory}"
+        run_path.mkdir()
+        completed = _run_scan(run_path, words=word, tracked={path: "safe\n"})
+
+        output = completed.stdout + completed.stderr
+        assert completed.returncode != 0
+        assert f"prohibited word in path {masked_path}" in output
+        assert word.casefold() not in output.casefold()
+
+
+def test_configured_terms_are_masked_in_fixed_reporter_messages(tmp_path):
+    cases = [
+        ("clean", {"safe.txt": "safe\n"}),
+        ("contents", {"safe.txt": "contents\n"}),
+    ]
+
+    for directory, (word, tracked) in enumerate(cases):
+        run_path = tmp_path / f"reporter-{directory}"
+        run_path.mkdir()
+        completed = _run_scan(run_path, words=word, tracked=tracked)
+
+        output = completed.stdout + completed.stderr
+        assert completed.returncode == (0 if word == "clean" else 1)
+        assert word.casefold() not in output.casefold()
+        assert "***" in output
 
 
 def test_fork_pull_request_rejection_stays_fail_closed_with_existing_message(tmp_path):

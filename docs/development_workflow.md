@@ -223,8 +223,9 @@ when a need appears — no staged plan):
 - **keyword guard**: scans tracked file contents and paths for prohibited
   internal keywords. The word list is supplied via a CI repository secret and
   is never committed to this repository. Reporting never discloses the
-  prohibited text: contents hits report the file and an occurrence count, and
-  a violating path is printed with the word masked.
+  prohibited text: after a valid list is parsed, every reporter message is
+  masked; contents hits report the file and an occurrence count, and a
+  violating path remains locatable.
 
   The guard covers tracked file contents and paths on same-repository pull
   requests and pushes to `main`. It does not cover issue or pull-request
