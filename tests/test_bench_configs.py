@@ -6,6 +6,7 @@ import pytest
 
 from enodia.tt.bench.configs import (
     P150_COMPUTE_GRID,
+    P150_DRAM_BANKS,
     ProgramConfigSpec,
     configuration_catalogue,
     executed_shape,
@@ -133,5 +134,7 @@ def test_batch_sharding_counts_the_padding_it_executes():
 
     execution = executed_shape(shape, config)
 
-    assert execution.batch == 1029
-    assert total_flops(execution) == 1029 * 2 * 32**3
+    assert config.grid == (P150_DRAM_BANKS, 1)
+    assert config.batch_multiple == P150_DRAM_BANKS
+    assert execution.batch == 1024
+    assert total_flops(execution) == 1024 * 2 * 32**3

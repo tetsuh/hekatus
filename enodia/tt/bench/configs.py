@@ -19,7 +19,7 @@ from enodia.tt.bench.shapes import MatmulShape
 
 TILE_SIZE = 32
 P150_COMPUTE_GRID = (11, 10)
-P150_DRAM_BANKS = 7
+P150_DRAM_BANKS = 8
 # The board has about 1.5 MB of L1 per Tensix (design.md section 2). Keep
 # explicit reuse configs below 1.3 MB so runtime and allocator-reserved space
 # are not mistaken for circular-buffer capacity.

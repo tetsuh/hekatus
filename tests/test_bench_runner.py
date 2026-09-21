@@ -8,10 +8,12 @@ toolchain so they run anywhere.
 
 import json
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 from enodia.tt.bench import run_matmul
+from enodia.tt.bench.configs import configuration_catalogue
 from enodia.tt.bench.shapes import MatmulShape
 
 
@@ -42,6 +44,7 @@ class _StubTtnn:
     """Records what the runner asked the toolchain to do."""
 
     TILE_LAYOUT = "tile"
+    NOC = SimpleNamespace(NOC_0="noc-0")
     DRAM_MEMORY_CONFIG = "dram"
     L1_MEMORY_CONFIG = "l1"
     CoreGrid = _StubCoreGrid
@@ -55,20 +58,29 @@ class _StubTtnn:
     def __init__(self, fail_on: str | None = None) -> None:
         self.matmul_calls = 0
         self.sync_calls = 0
+        self.memory_config_calls = 0
+        self.tensor_factory_calls = 0
         self.deallocated: list[str] = []
         self.fail_on = fail_on
 
+    def MemoryConfig(self, *args, **kwargs):
+        self.memory_config_calls += 1
+        return _StubConfig(args=args, kwargs=kwargs)
+
     def rand(self, shape, **kwargs):
+        self.tensor_factory_calls += 1
         if self.fail_on == "rand":
             raise RuntimeError("out of memory")
         return _StubTensor(f"rand{shape}")
 
     def ones(self, shape, **kwargs):
+        self.tensor_factory_calls += 1
         if self.fail_on in ("rand", "ones"):
             raise RuntimeError("out of memory")
         return _StubTensor(f"ones{shape}")
 
     def zeros(self, shape, **kwargs):
+        self.tensor_factory_calls += 1
         if self.fail_on in ("rand", "ones", "zeros"):
             raise RuntimeError("out of memory")
         return _StubTensor(f"zeros{shape}")
@@ -85,10 +97,10 @@ class _StubTtnn:
         self.deallocated.append(tensor.name)
 
 
-def _shape(real_matmuls: int) -> MatmulShape:
+def _shape(real_matmuls: int, *, batch: int = 2) -> MatmulShape:
     return MatmulShape(
         name="probe",
-        batch=2,
+        batch=batch,
         m=4,
         k=4,
         n=4,
@@ -96,6 +108,45 @@ def _shape(real_matmuls: int) -> MatmulShape:
         family="newton_schulz",
         note="",
     )
+
+
+class _StubDevice:
+    def __init__(self, worker_count: int) -> None:
+        self.worker_count = worker_count
+        self.assignment_calls = 0
+
+    def get_optimal_dram_bank_to_logical_worker_assignment(self, noc):
+        self.assignment_calls += 1
+        return [object()] * self.worker_count
+
+
+def test_batched_dram_worker_mismatch_fails_before_board_work():
+    ttnn = _StubTtnn()
+    device = _StubDevice(worker_count=7)
+    shape = _shape(real_matmuls=1, batch=1024)
+    config = next(
+        config
+        for config in configuration_catalogue(shape)
+        if config.kind == "batched_dram_sharded"
+    )
+
+    record = run_matmul.run_shape(
+        ttnn,
+        device=device,
+        shape=shape,
+        dtype="bf16",
+        memory_config="dram",
+        program_spec=config,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert "catalogue expects 8 p150 DRAM workers, device reported 7" in record["error"]
+    assert device.assignment_calls == 1
+    assert ttnn.memory_config_calls == 0
+    assert ttnn.tensor_factory_calls == 0
+    assert ttnn.matmul_calls == 0
 
 
 @pytest.mark.parametrize("real_matmuls", [1, 2, 4])

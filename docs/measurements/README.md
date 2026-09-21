@@ -8,7 +8,11 @@ core count, and the first measurements on this project ran on a different
 board from the target — so every result file here carries, in its own
 `environment` block, the board type and serial, firmware bundle, kernel
 driver version, the toolchain image by digest, and the revision of the
-harness that computed the numbers. A host-side measurement — one the
+harness that computed the numbers. For accelerator-backed records,
+`environment.tt_env_active_release` is host-side context captured before the
+pinned container starts; it is not the release identity of the container.
+The immutable image digest in `environment.image` is authoritative for the
+container and toolchain identity. A host-side measurement — one the
 reference implementation takes with no board involved — carries the host,
 its platform and CPU, the Python / NumPy / SciPy versions and the harness
 revision instead, and says `"board": null`. A companion trace is
