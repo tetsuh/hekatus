@@ -45,6 +45,11 @@ jobs:
         env:
           WORDS: ${{ secrets.KEYWORD_GUARD_WORDS }}
         run: |
+          # GitHub's default bash -e shell does not enable pipefail. Set it
+          # explicitly so mask_text's grep/sed pipeline returns grep's no-match
+          # status instead of sed's success, allowing its loop to terminate.
+          set -o pipefail
+
           if [ -z "$WORDS" ]; then
             echo "::error::KEYWORD_GUARD_WORDS repository secret is not set; configure it before merging."
             exit 1

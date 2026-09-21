@@ -33,7 +33,11 @@ def _assert_no_configured_terms(output: str, words: list[str]) -> None:
 
 
 def _run_scan(
-    tmp_path: Path, *, words: str | None, tracked: dict[str, str]
+    tmp_path: Path,
+    *,
+    words: str | None,
+    tracked: dict[str, str],
+    timeout: float = 10,
 ) -> subprocess.CompletedProcess:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -52,14 +56,14 @@ def _run_scan(
     else:
         environment["WORDS"] = words
     return subprocess.run(
-        ["bash", "--noprofile", "--norc", "-eo", "pipefail"],
+        ["bash", "--noprofile", "--norc", "-e"],
         cwd=repo,
         env=environment,
         input=script,
         capture_output=True,
         text=True,
         check=False,
-        timeout=10,
+        timeout=timeout,
     )
 
 
@@ -90,6 +94,18 @@ def test_valid_word_list_scans_tracked_files_and_passes_a_clean_tree(tmp_path):
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
     assert "keyword guard: clean" in completed.stdout
+
+
+def test_clean_tree_with_absent_word_terminates_under_ci_shell(tmp_path):
+    completed = _run_scan(
+        tmp_path,
+        words="not-present",
+        tracked={"clean.txt": "safe\n"},
+        timeout=2,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert completed.stdout.splitlines() == ["keyword guard: clean"]
 
 
 def test_valid_word_list_fails_without_disclosing_content_hit(tmp_path):
@@ -248,7 +264,7 @@ def test_broken_working_tree_symlink_scan_failure_is_not_clean(tmp_path):
     environment["LC_ALL"] = "C.UTF-8"
     environment["WORDS"] = word
     completed = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-eo", "pipefail"],
+        ["bash", "--noprofile", "--norc", "-e"],
         cwd=repo,
         env=environment,
         input=script,
@@ -317,7 +333,7 @@ def test_fork_pull_request_rejection_stays_fail_closed_with_existing_message(tmp
     assert "github.event.pull_request.head.repo.full_name != github.repository" in header
 
     completed = subprocess.run(
-        ["bash", "--noprofile", "--norc", "-eo", "pipefail"],
+        ["bash", "--noprofile", "--norc", "-e"],
         cwd=tmp_path,
         input=script,
         capture_output=True,
