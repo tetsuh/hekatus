@@ -406,7 +406,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    """Reject controls that would produce nonsense, before any device is opened."""
+    """Reject controls and selections before importing or opening the device."""
     if args.iters < 1:
         parser.error(f"--iters must be at least 1, got {args.iters}")
     if args.repeats < 1:
@@ -415,6 +415,41 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         math.isfinite(args.peak_tflops) and args.peak_tflops > 0
     ):
         parser.error(f"--peak-tflops must be positive and finite, got {args.peak_tflops}")
+
+    shapes = _select_shapes(default_catalogue(), args.only)
+    if not shapes:
+        parser.error(f"no shape matches {args.only!r}")
+
+    if args.config_kind is None:
+        return
+
+    known_kinds = sorted(
+        {
+            config.kind
+            for shape in default_catalogue()
+            for config in configuration_catalogue(shape)
+        }
+    )
+    unknown = sorted(set(args.config_kind) - set(known_kinds))
+    if unknown:
+        parser.error(
+            f"unknown --config-kind value(s): {unknown}; choose from {known_kinds}"
+        )
+    if args.config_mode == "default-only":
+        parser.error("--config-kind cannot be combined with --config-mode default-only")
+
+    rows = [
+        config
+        for shape in shapes
+        if shape.representative
+        for config in configuration_catalogue(shape)
+        if config.kind in args.config_kind
+    ]
+    if not rows:
+        parser.error(
+            "no explicit catalogue rows match "
+            f"shape filter(s) {args.only!r} and --config-kind {args.config_kind!r}"
+        )
 
 
 def _select_shapes(shapes: list[MatmulShape], selectors: list[str] | None) -> list[MatmulShape]:

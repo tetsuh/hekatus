@@ -284,6 +284,41 @@ def test_invalid_controls_are_rejected_before_the_device_is_opened(argv):
     assert excinfo.value.code == 2
 
 
+@pytest.mark.parametrize(
+    "selection",
+    [
+        ["--config-kind", "not-a-catalogue-kind"],
+        ["--config-kind", "reuse", "--config-mode", "default-only"],
+        [
+            "--only",
+            "newton_schulz_L16_b1024",
+            "--config-kind",
+            "mcast_1d",
+        ],
+        [
+            "--only",
+            "reference_square_4096",
+            "--config-kind",
+            "reuse",
+        ],
+    ],
+)
+def test_invalid_catalogue_selections_fail_before_device_or_output(
+    monkeypatch, tmp_path, selection
+):
+    opened = []
+    ttnn = SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs))
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    output = tmp_path / "results.json"
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_matmul.main([*selection, "--out", str(output)])
+
+    assert excinfo.value.code == 2
+    assert opened == []
+    assert not output.exists()
+
+
 def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_path):
     ttnn = _StubTtnn()
     ttnn.bfloat16 = "bf16"
