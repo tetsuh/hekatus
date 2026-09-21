@@ -116,14 +116,63 @@ def test_path_hit_is_masked_literally_when_word_contains_regex_metacharacters(tm
 
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
-    assert "prohibited word in path notes/***-record.txt (1 occurrence(s))" in output
+    assert "prohibited word in path notes/ -record.txt (1 occurrence(s))" in output
     _assert_no_configured_terms(output, [word])
+
+
+def test_skeleton_substrings_and_replacement_markers_never_leak(tmp_path):
+    words = ["err", "rror", "fi", "ile", ":", "::", "*", "**", "***"]
+    for directory, word in enumerate(words):
+        cases = [
+            ("clean", {"safe.txt": "safe\n"}, 0),
+            ("contents", {"safe.txt": f"before {word} after\n"}, 1),
+            ("path", {f"{word}.txt": "safe\n"}, 1),
+        ]
+        for mode, tracked, expected_returncode in cases:
+            run_path = tmp_path / f"skeleton-{directory}-{mode}"
+            run_path.mkdir()
+            completed = _run_scan(run_path, words=word, tracked=tracked)
+
+            output = completed.stdout + completed.stderr
+            assert completed.returncode == expected_returncode
+            _assert_no_configured_terms(output, [word])
+            if mode == "clean":
+                assert "keyword guard" in output
+            else:
+                assert "prohibited word" in output
+
+            # These terms occur inside the command syntax itself. Their hit
+            # reports must be one plain masked line rather than a command.
+            if word in {"err", "rror", "fi", "ile", ":", "::"}:
+                assert "::" not in output
+                assert len(output.splitlines()) == 1
+
+
+def test_configured_terms_cannot_cross_rendered_annotation_boundaries(tmp_path):
+    cases = [
+        ("::keyword", {"clean.txt": "safe\n"}, 0),
+        ("=safe", {"safe.txt": "=safe\n"}, 1),
+        ("txt::prohibited", {"safe.txt": "txt::prohibited\n"}, 1),
+        ("::prohibited", {"::prohibited.txt": "safe\n"}, 1),
+    ]
+
+    for directory, (word, tracked, expected_returncode) in enumerate(cases):
+        run_path = tmp_path / f"boundary-{directory}"
+        run_path.mkdir()
+        completed = _run_scan(run_path, words=word, tracked=tracked)
+
+        output = completed.stdout + completed.stderr
+        assert completed.returncode == expected_returncode
+        assert len(output.splitlines()) == 1
+        assert not output.startswith("::")
+        assert "::error" not in output
+        _assert_no_configured_terms(output, [word])
 
 
 def test_unicode_case_equivalent_path_hits_are_masked_with_grep_semantics(tmp_path):
     cases = [
-        ("σ", "docs/ο-ς.txt", "docs/ο-***.txt"),
-        ("s", "dir/ſ-afe.txt", "dir/***-afe.txt"),
+        ("σ", "docs/ο-ς.txt", "docs/ο- .txt"),
+        ("s", "dir/ſ-afe.txt", "dir/ -afe.txt"),
     ]
 
     for directory, (word, path, masked_path) in enumerate(cases):
@@ -151,11 +200,10 @@ def test_configured_terms_are_masked_in_fixed_reporter_messages(tmp_path):
         output = completed.stdout + completed.stderr
         assert completed.returncode == (0 if word == "clean" else 1)
         _assert_no_configured_terms(output, [word])
-        assert "***" in output
         if word == "clean":
-            assert "keyword guard: ***" in output
+            assert output.splitlines() == ["keyword guard:  "]
         else:
-            assert "prohibited word in ***" in output
+            assert "prohibited word in" in output
             assert "(1 occurrence(s))" in output
 
 
@@ -169,7 +217,7 @@ def test_repeated_path_matches_terminate_and_mask_every_occurrence(tmp_path):
 
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
-    assert "prohibited word in path ***-***.log (2 occurrence(s))" in output
+    assert "prohibited word in path  - .log (2 occurrence(s))" in output
     _assert_no_configured_terms(output, [word])
 
 
@@ -184,7 +232,83 @@ def test_repeated_reporter_matches_terminate_and_mask_every_occurrence(tmp_path)
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
     assert "prohibited word" in output
-    assert "***" in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_broken_working_tree_symlink_scan_failure_is_not_clean(tmp_path):
+    word = "needle"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "broken-link").symlink_to("missing-target")
+    subprocess.run(["git", "-C", str(repo), "add", "--all"], check=True)
+
+    _, script = _workflow_step("Scan tracked files for prohibited words")
+    environment = dict(os.environ)
+    environment["LC_ALL"] = "C.UTF-8"
+    environment["WORDS"] = word
+    completed = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail"],
+        cwd=repo,
+        env=environment,
+        input=script,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "unable to scan tracked contents" in output
+    assert "keyword guard: clean" not in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_reserved_error_word_falls_back_to_fully_masked_plain_text(tmp_path):
+    word = "error"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={"error.txt": "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "::" not in output
+    assert "prohibited word in path" in output
+    assert " .txt" in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_reserved_file_word_falls_back_to_fully_masked_plain_text(tmp_path):
+    word = "file"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={"file.txt": "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "::" not in output
+    assert "prohibited word in path" in output
+    assert " .txt" in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_fixed_reporter_occurrence_word_is_masked_without_leaking(tmp_path):
+    word = "occurrence"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={"safe.txt": f"{word}\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "prohibited word in contents" in output
+    assert "(1  (s))" in output
     _assert_no_configured_terms(output, [word])
 
 

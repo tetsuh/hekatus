@@ -68,15 +68,18 @@ jobs:
           # grep's complete case mapping.
           export LC_ALL=C.UTF-8
           mask_text() {
-            local text="$1" w match prefix output rest
+            local text="$1" w match prefix output rest replacement=' '
             for w in "${words[@]}"; do
               output=""
               rest="$text"
+              # The parser above removes every [:space:] byte before accepting
+              # a term. A whitespace replacement is therefore not itself an
+              # accepted term and cannot join terms across its boundaries.
               # grep -o may emit every match on one input line; sed selects
               # exactly one match so each iteration consumes actual input.
               while match=$(printf '%s' "$rest" | grep -oaiF -- "$w" | sed -n '1p'); do
                 prefix="${rest%%"$match"*}"
-                output+="${prefix}***"
+                output+="${prefix}${replacement}"
                 rest="${rest#*"$match"}"
               done
               text="$output$rest"
@@ -88,34 +91,125 @@ jobs:
             mask_text "$1"
           }
 
+          skeleton_is_safe() {
+            local skeleton="$1" w
+            for w in "${words[@]}"; do
+              # Match each configured term against the actual unmasked
+              # skeleton, literally and case-insensitively. Whole-word
+              # matching would miss substrings such as "err" and ":".
+              if printf '%s' "$skeleton" | grep -qaiF -- "$w"; then
+                return 1
+              fi
+            done
+            return 0
+          }
+
+          contains_configured_term() {
+            local text="$1" w
+            for w in "${words[@]}"; do
+              if printf '%s' "$text" | grep -qaiF -- "$w"; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
           report() {
-            printf '%s\n' "$(mask_text "$1")"
+            local annotation_path="$1" message="$2" human masked masked_path masked_message skeleton candidate
+            if [ -n "$annotation_path" ]; then
+              human="$annotation_path: $message"
+            else
+              human="$message"
+            fi
+            # Check the complete annotation command family before emitting
+            # either its annotated or unannotated form. This retains the
+            # existing fail-closed behavior for the reserved `file` token.
+            skeleton='::error file=::'
+            masked=$(mask_text "$human")
+            if [ -n "$annotation_path" ]; then
+              masked_path=$(mask_text "$annotation_path")
+              masked_message=$(mask_text "$message")
+            fi
+
+            # Only the workflow-command skeleton bypasses masking. Assemble
+            # the exact rendered command before checking it, so a configured
+            # term cannot cross from the skeleton into a masked component (or
+            # between any other rendered boundaries).
+            if ! skeleton_is_safe "$skeleton"; then
+              printf '%s\n' "$masked"
+            elif [ -n "$annotation_path" ]; then
+              candidate=$(printf '::error file=%s::%s' "$masked_path" "$masked_message")
+              if contains_configured_term "$candidate"; then
+                printf '%s\n' "$masked"
+              else
+                printf '%s\n' "$candidate"
+              fi
+            else
+              candidate=$(printf '::error::%s' "$masked")
+              if contains_configured_term "$candidate"; then
+                printf '%s\n' "$masked"
+              else
+                printf '%s\n' "$candidate"
+              fi
+            fi
+          }
+
+          report_plain() {
+            mask_text "$1"
+            printf '\n'
           }
 
           fail=0
+          scan_dir=$(mktemp -d)
+          trap 'rm -rf "$scan_dir"' EXIT
           while IFS= read -r -d '' f; do
             safe=$(mask_path "$f")
             for w in "${words[@]}"; do
               # -a: scan binary contents as text; -w: word boundaries;
-              # -F: literal; -i: case-insensitive.
-              hits=$(grep -oaiwF -- "$w" "$f" 2>/dev/null | wc -l || :)
+              # -F: literal; -i: case-insensitive. grep status 1 means
+              # ordinary no-match; every other failure is a scan failure.
+              matches_file="$scan_dir/matches"
+              hits=0
+              if grep -oaiwF -- "$w" "$f" >"$matches_file" 2>/dev/null; then
+                hits=$(wc -l <"$matches_file")
+              else
+                grep_status=$?
+                if [ "$grep_status" -ne 1 ]; then
+                  report "" "keyword guard: unable to scan tracked contents"
+                  fail=1
+                fi
+              fi
               if [ "$hits" -gt 0 ]; then
                 if [ "$safe" = "$f" ]; then
-                  report "::error file=$f::prohibited word in contents ($hits occurrence(s))"
+                  report "$f" "prohibited word in contents ($hits occurrence(s))"
                 else
-                  report "::error::prohibited word in contents of $safe ($hits occurrence(s))"
+                  report "" "prohibited word in contents of $f ($hits occurrence(s))"
                 fi
                 fail=1
               fi
-              phits=$(printf '%s' "$f" | grep -oiwF -- "$w" | wc -l || :)
+
+              path_file="$scan_dir/path"
+              printf '%s' "$f" >"$path_file"
+              if grep -oiwF -- "$w" "$path_file" >"$matches_file" 2>/dev/null; then
+                phits=$(wc -l <"$matches_file")
+              else
+                grep_status=$?
+                if [ "$grep_status" -eq 1 ]; then
+                  phits=0
+                else
+                  report "" "keyword guard: unable to scan tracked path"
+                  fail=1
+                  phits=0
+                fi
+              fi
               if [ "$phits" -gt 0 ]; then
-                report "::error::prohibited word in path $safe ($phits occurrence(s))"
+                report "" "prohibited word in path $f ($phits occurrence(s))"
                 fail=1
               fi
             done
           done < <(git ls-files -z)
 
           if [ "$fail" -eq 0 ]; then
-            report "keyword guard: clean"
+            report_plain "keyword guard: clean"
           fi
           exit $fail
