@@ -1271,15 +1271,30 @@ Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
 **Two capacity bases appear**: "of one card" percentages are against the
 332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
 efficiency (133 TFLOPS usable per card). Never combine a percentage from
-one basis with a count from the other. **The 40% is a target for
-hand-written kernels, not a measured figure**: measured on one p150a
-development board, the stock toolchain delivers 3.2% on this workload's
-shapes, against 58.6%
-on a large square matmul in the same run (docs/budget.md). The card counts
-here therefore state what the design aims at, with a factor of twelve still
-to close. The 4096-channel row follows
-the N⁴ law from the 256-channel volume row; an earlier revision carried
-1.85e8 there, which did not reconcile.
+one basis with a count from the other. **The 40% is a target for hand-written kernels, not a measured figure**:
+issue #65's ttnn 0.75.0 full sweep measured a best BF16 Newton-Schulz result
+of 3.024% (L=64, batch 1024, default L1) and 58.410% on a large square
+matmul. Explicit stock configs help broad shapes: front-end FIR width 32 in
+L1 rises from 1.307% by default to 4.605% with an explicit multicast config,
+and beamspace reaches 2.167% (128 channels) and 2.208% (256 channels) with
+explicit configs. For Newton-Schulz, explicit configs do not beat the best
+default where the default L1 row succeeds; DRAM-only large-batch reuse gains
+7.7%, 10.0%, and about 35% for L=16, L=32, and L=64, but the largest reaches
+only 0.128% of peak. The roughly 13.2x gap to 40% is therefore not a missed
+stock configuration; hand-written kernel recovery remains the MV-inverse
+lever. The full record contains 284 rows, including 94 failures, and the
+separate 0.70.1 default-only comparison contains 68 rows, including 9
+failures. Their bounded comparison supports the conclusion that the repin does not
+explain the roughly 3% denominator: the 4096-square BF16 rows are 58.687% versus
+58.410%, and NS L=32 batch 8192 L1 is 3.026% versus 2.992%; small
+dispatch-bound beamspace p4096 rows differ by up to 0.872 percentage points.
+The records are
+`docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
+and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
+the companion power traces use the matching result stems with a `-power.csv`
+suffix. The card counts here therefore state what the design aims at. The
+4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
+revision carried 1.85e8 there, which did not reconcile.
 
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises
@@ -1926,10 +1941,27 @@ A record, so the same debates are not repeated.
 
 ### Parameters decided by measurement
 
-- **how much of the measured gap a hand-written kernel recovers.** The
-  efficiency itself is measured: 3.2% from the stock toolchain against
-  58.6% on a large square matmul, on one p150a (§10, docs/budget.md). The
-  40% the card counts assume is the target that gap has to reach
+- **how much of the measured gap a hand-written kernel recovers.** Issue
+  #65 measured stock explicit configurations rather than only the default.
+  Broad shapes benefit: front-end FIR width 32 rises from 1.307% to 4.605%
+  in L1, and beamspace reaches 2.167% or 2.208% with explicit configs. For
+  Newton-Schulz, no explicit config beats the best default where default L1
+  succeeds; DRAM-only reuse gains 7.7%, 10.0%, and about 35% on the large
+  L=16, L=32, and L=64 batches, but tops out at 0.128%. The stock inverse
+  denominator remains 3.024% (L=64, batch 1024, default L1), leaving roughly
+  13.2x to the 40% target for a hand-written kernel. The two toolchains agree
+  on the decision-driving rows without a universal claim: square BF16 is
+  58.687% versus 58.410%, NS L=32 batch 8192 L1 is 3.026% versus 2.992%,
+  and small beamspace p4096 defaults differ by up to 0.872 percentage points.
+  Both current records fail the August L=64 batch 8192 BF16 L1 row with
+  allocator OOM because the current harness explicitly places output in L1,
+  whereas the August harness left output at the operation default. The exact
+  records are
+  `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
+  and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
+  the historical row is in
+  `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40% the
+  card counts assume is the target that gap has to reach
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count

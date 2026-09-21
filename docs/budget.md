@@ -17,72 +17,102 @@ A percentage from one table cannot be combined with a card count from
 another without converting: 1-card % × 2.5 gives the share of usable
 capacity.
 
-> **The 40% is now read as a target for hand-written kernels rather than an
-> expectation of the toolchain.** This document previously called it an
-> unverified assumption and said the "fits on one card" claim would collapse
-> if it halved. Effective efficiency has since been measured on a p150a: the
-> stock toolchain delivers **3.2%** on this workload's shapes — see below.
-> Reading the 40% as a target is therefore a change of claim, not a
-> restatement of what was meant before, and it is justified only because
-> design.md assumes hand-written kernels throughout. Every card count here
-> describes what the design aims at, with a factor of twelve still to close.
+> **The 40% is a target for hand-written kernels, not an expectation of the
+> stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
+> of peak, so about 13.2x remains to the target. The earlier 3.2% figure is
+> retained as historical evidence, with its non-reproduction explained below.
+> Every card count here describes what the design aims at.
 
 ---
 
-## Measured efficiency (p150a, 2026-08-14)
+## Measured efficiency (p150a, 2026-09-20)
 
-Measured with `enodia/tt/bench`, one development board, bfloat16, against
-the 332 TFLOPS peak above. Raw results and the environment that produced
-them — board, firmware, driver, toolchain digest, and the harness revision:
-`docs/measurements/2026-08-14-p150a-effective-efficiency.json`.
+Issue #65 measured stock `ttnn.matmul` with the catalogue on one p150a,
+against the 332 TFLOPS peak above. The authoritative 0.75.0 record is a full
+sweep: 284 rows, including the default and every valid catalogue candidate,
+with 190 successes and 94 failures. The separate 0.70.1 record is default-only:
+68 rows, with 59 successes and 9 failures. Both records report firmware
+19.6.0.0 and KMD 2.11.0; their image digests and companion traces remain
+separate. The full record and its 183-sample trace are
+`docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
+and
+`docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0-power.csv`.
 
-| Shape | DRAM | L1 | best, as % of peak |
-|---|---|---|---|
-| Newton-Schulz L=64, batch 8192 | 0.31 | **10.71** | **3.2%** |
-| Newton-Schulz L=32, batch 8192 | 0.07 | 8.60 | 2.6% |
-| Beamspace B=16, 256 ch, 65536 px | 4.98 | 4.38 | 1.5% |
-| Front-end FIR, output width 32 | 7.16 | 4.39 | 2.2% |
-| *Reference: 4096³ square matmul* | *194.69* | *10.95* | *58.6%* |
+| Shape | Best BF16 result in 0.75.0 full sweep | % of peak | Configuration |
+|---|---:|---:|---|
+| Newton-Schulz L=64, batch 1024 | **10.0391 TFLOPS** | **3.024%** | default, L1 |
+| Newton-Schulz L=32, batch 8192 | 9.9326 TFLOPS | 2.992% | default, L1 |
+| Newton-Schulz L=64, batch 8192 | 0.4250 TFLOPS | 0.128% | reuse `g1x1_k2_m2_n2_s2x2`, DRAM |
+| Beamspace B=16, 128 ch, 65536 px | 7.1949 TFLOPS | 2.167% | `mcast1d_in0_g8x8_k4_m1_n32_b1x4_s1x4`, L1 |
+| Beamspace B=16, 256 ch, 65536 px | 7.3298 TFLOPS | 2.208% | `mcast1d_in0_g8x8_k1_m1_n32_b1x4_s1x4`, L1 |
+| Front-end FIR, output width 32 | 15.2871 TFLOPS | 4.605% | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1`, L1 |
+| *Reference: 4096³ square matmul* | *193.9204 TFLOPS* | *58.410%* | *default, DRAM* |
 
-Each figure is the best of three timed blocks, and the record keeps all
-three. Behind the rows above the three agree to within 1.4% — worst on the
-L=32 L1 line at 1.37%, and closest on the two figures the argument rests on,
-0.14% for Newton-Schulz L=64 and 0.24% for the reference — so the
-differences between shapes are the shapes and not the noise.
+Explicit stock configurations help the broad shapes. For front-end FIR width
+32 in L1, the default is 4.3389 TFLOPS (1.307%) and the best explicit row is
+15.2871 TFLOPS (4.605%), a 3.52x gain. For beamspace B=16, 128 channels and
+65536 pixels, L1 improves from 3.5508 TFLOPS (1.070%) to 7.1949 TFLOPS
+(2.167%), or 2.03x; for 256 channels it improves from 4.3593 TFLOPS (1.313%)
+to 7.3298 TFLOPS (2.208%), or 1.68x. These rows and their configuration
+names are in the 0.75.0 full-sweep record cited above.
 
-Not every record is that steady: eight of the sixty-one successful ones
-spread by more than 1.4%, and all eight are the catalogue's smallest shapes
-(batch 1024, or 4096 pixels), where one block costs tens of microseconds and
-per-dispatch overhead dominates what it measures. The largest, a factor of
-3.6, falls from the first block to the last and is a warm-up cost; the rest
-scatter in both directions. No figure quoted here comes from those shapes,
-and a reported figure is the best of three rather than their mean.
+Newton-Schulz is different. No explicit configuration beats the best default
+on a shape where the default L1 row succeeds. On DRAM-only large-batch rows,
+explicit reuse does beat the DRAM default: by 7.7% for L=16 batch 65536, 10.0%
+for L=32 batch 65536, and about 35% for L=64 batch 8192 and 65536. The largest
+of those gains reaches only 0.4251 TFLOPS (0.128%), so it does not change the
+3.024% best inverse denominator at L=64 batch 1024. Configuration selection
+therefore does not close the roughly 13.2x gap to 40%; hand-written kernel
+recovery remains the lever for the MV inverse.
 
-Three things follow, and the third is the one that matters.
+The two toolchains agree on the decision-driving default rows without implying
+that every row is identical. The 4096-square BF16 reference is 58.687% in the
+0.70.1 default-only record versus 58.410% in the 0.75.0 full sweep, and
+Newton-Schulz L=32 batch 8192 in L1 is 3.026% versus 2.992%. Small,
+dispatch-bound beamspace p4096 rows differ more, by up to 0.872 percentage
+points in the overlapping successful defaults. The bounded comparison supports
+the conclusion that the repin does not explain the roughly 3% inverse
+denominator; it is not a claim that every row is toolchain-invariant. The
+0.70.1 record is
+`docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`,
+with its 88-sample trace at
+`docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1-power.csv`.
 
-**The silicon reaches 58.6% on a shape it likes.** The 40% assumption was
-never unreasonable *for the hardware*; a large square matmul beats it. So
-the deficit is not silicon, and not the measurement.
+### The August L1 row does not reproduce
 
-**On-chip residency is worth 34x.** The same Newton-Schulz shape moves from
-0.31 to 10.71 TFLOPS between DRAM and L1 — a factor of 34.0 — which is design.md §2's "fitting
-on-chip is the paramount design concern" as a number. The L1 configurations
-that fail — batch 65536 at every L, and L=64/float32 at batch 8192 — map the
-on-chip budget by where they stop.
+The 2026-08-14 record contains `newton_schulz_L64_b8192`, BF16, L1 at
+10.7136 TFLOPS (3.227%). It used image digest
+`ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4`, KMD
+2.8.0, and harness `112ff585f4b52f90525d23650a90b14ec6d7a55d`. Both September
+records fail that BF16 default L1 row with allocator OOM. The 0.75.0 record
+reports an attempted 67,108,864-byte output allocation, 610,304 bytes needed
+per bank, 1,220,608 bytes already allocated, and only 240,896 of 1,461,504
+bytes free per bank. The 0.70.1 record reports the same allocation and
+per-bank allocation, with 241,152 of 1,461,760 bytes free.
 
-**What the stock toolchain gives for free is 3.2%, and the gap to 40% is the
-work.** The representative shapes reach one eighteenth of what the flattering
-one does, because they are small, thin, or both (design.md §10). Closing that
-is what a hand-written kernel is for: packing small matrices into full tiles,
-fusing the four real matmuls of a complex one, keeping R resident across the
-iteration, and a resident kernel that pays no per-operation dispatch. How
-much of the twelvefold is recoverable is now the central open question of
-Track B, and it is a question about kernels rather than about the board.
+This is not an equivalent reproduction. In the August harness,
+`_execute_once` called `ttnn.matmul(a, b)` after creating A and B with the
+selected memory config, leaving output placement at the operation default. In
+the current harness, `_RuntimePlan` assigns A, B, and output to the selected
+memory and `_execute_once` calls `ttnn.matmul(...,
+memory_config=plan.output_memory_config)`. Thus the August L1 label means L1
+inputs with default output placement, while the September L1 label means all
+three tensors explicitly in L1. The old 3.2% headline did not reproduce under
+the stricter all-L1 placement; the difference is the harness's output-placement
+semantics. Both current images fail identically, so this failure is not
+evidence of a toolchain regression. The board is powered off and no rerun is
+available.
 
-**Power and clock did not bind.** Across the run the board peaked at 102 W at
-its full 1350 MHz and 77.7 °C, so neither the 150 W nor the 300 W reading of
-the firmware limit constrains this workload — a figure that itself says the
-engines are idle much of the time.
+**The silicon reaches 58.410% on a shape it likes.** The 40% target remains
+plausible for the hardware: the large square matmul beats it, while the
+workload-shaped Newton-Schulz cases do not. The stock baseline leaves the
+remaining inverse gap to a hand-written kernel: packing small matrices into
+full tiles, fusing the four real matmuls of a complex one, keeping R resident
+across the iteration, and avoiding per-operation dispatch remain kernel work.
+
+**Power and clock did not bind in the full sweep.** The 0.75.0 trace peaked
+at 110 W, 1350 MHz, and 73.9 °C; neither the 150 W nor the 300 W
+firmware-reported limit was reached.
 
 ---
 

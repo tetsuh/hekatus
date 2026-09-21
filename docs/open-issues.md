@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
-| B2 | Effective efficiency **measured**: 3.2% from the stock toolchain against 58.6% on a large square matmul, both on one p150a development board (docs/budget.md). What remains open is not the number but the gap — how much of the twelvefold a hand-written kernel recovers | Track B | measured; gap open |
+| B2 | Effective efficiency **measured** with stock explicit matmul configurations: the 0.75.0 full sweep reaches 3.024% on its best BF16 Newton-Schulz row and 58.410% on a large square matmul (source: `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`); broad FIR and beamspace shapes improve with explicit configs, but the roughly 13.2x gap to 40% remains open for the MV inverse | Track B | measured; gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
@@ -28,11 +28,32 @@ has trained, and this generation trains from the runtime rather than from a
 flashing step (design.md §2) — so each of them now waits on the same thing:
 a transfer that actually crosses the wire.
 
-**B2 still matters most**, but the question has changed shape. It was "is
-40% real?"; the board answers 58.6% on a shape it likes, so the hardware is
-not the doubt. It is now "how much of the eighteenfold penalty this
-workload's shapes carry can a kernel take back?" — and that is answered by
-writing one, not by measuring again.
+**B2 still matters most**, but the question has changed shape. The #65
+0.75.0 full sweep found 190 successful rows and 94 failed rows out of 284.
+Explicit stock configs help broad shapes: front-end FIR width 32 in L1 rises
+from 4.3389 TFLOPS (1.307%) by default to 15.2871 (4.605%), and beamspace
+B=16, 128 channels, 65536 pixels rises from 3.5508 (1.070%) to 7.1949
+(2.167%). Newton-Schulz has a stricter boundary: no explicit config beats the
+best default where the default L1 row succeeds, while DRAM-only large-batch
+reuse gains 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64 respectively;
+the largest is only 0.4251 TFLOPS (0.128%). The best inverse denominator is
+therefore still 3.024% at L=64, batch 1024, default L1, leaving roughly 13.2x
+to the 40% target. The 0.70.1 default-only comparison is separate, with 59
+successes and 9 failures out of 68. Its 4096-square reference is 58.687%
+versus 58.410% in 0.75.0, and NS L=32 batch 8192 L1 is 3.026% versus 2.992%;
+small dispatch-bound beamspace p4096 rows differ by up to 0.872 percentage
+points, so this is bounded evidence rather than a universal toolchain claim.
+The records also show that the August 3.227% L=64 batch 8192 L1 row does not
+reproduce under the current all-L1 output placement: both September records
+fail it with allocator OOM. The old harness placed only inputs in L1 and left
+output placement at the operation default; the current harness explicitly
+places output in L1. The identical failure in both current images is not
+evidence of a toolchain regression. The remaining MV-inverse lever is a
+hand-written kernel. The exact records are
+`docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`,
+`docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`,
+and the historical source is
+`docs/measurements/2026-08-14-p150a-effective-efficiency.json`.
 
 ---
 
