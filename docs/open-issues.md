@@ -51,6 +51,8 @@ places output in L1. The identical failure in both current images is not
 evidence of a toolchain regression. The remaining MV-inverse lever is a
 hand-written kernel. The exact records are
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`,
+its targeted four-row superseder
+`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`,
 `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`,
 and the historical source is
 `docs/measurements/2026-08-14-p150a-effective-efficiency.json`.

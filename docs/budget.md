@@ -25,18 +25,26 @@ capacity.
 
 ---
 
-## Measured efficiency (p150a, 2026-09-20)
+## Measured efficiency (p150a, 2026-09-20; targeted correction 2026-09-21)
 
 Issue #65 measured stock `ttnn.matmul` with the catalogue on one p150a,
-against the 332 TFLOPS peak above. The authoritative 0.75.0 record is a full
-sweep: 284 rows, including the default and every valid catalogue candidate,
-with 190 successes and 94 failures. The separate 0.70.1 record is default-only:
-68 rows, with 59 successes and 9 failures. Both records report firmware
-19.6.0.0 and KMD 2.11.0; their image digests and companion traces remain
-separate. The full record and its 183-sample trace are
+against the 332 TFLOPS peak above. The 0.75.0 full sweep has 284 rows,
+including the default and every catalogue candidate, with 190 successes and
+94 failures. A targeted record supersedes its four batch-1024 L16/L32
+`batched_dram_sharded` failures after correcting the catalogue's DRAM-worker
+count: two BF16 replacements succeed and two FP32 replacements fail later at
+program compilation, making the effective totals 192 successes and 92
+failures. The separate 0.70.1 record is default-only: 68 rows, with 59
+successes and 9 failures. All records report firmware 19.6.0.0 and KMD 2.11.0;
+their image digests and companion traces remain separate. The full record and
+its 183-sample trace are
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
 and
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0-power.csv`.
+The four-row superseding record and its 2-sample trace are
+`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`
+and
+`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`.
 
 | Shape | Best BF16 result in 0.75.0 full sweep | % of peak | Configuration |
 |---|---:|---:|---|
