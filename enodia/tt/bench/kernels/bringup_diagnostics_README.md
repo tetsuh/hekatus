@@ -16,5 +16,6 @@
 - **Stage 53:** completed on board but failed numerically at relative error `3.75525451`; unpacker reconfiguration alone did not repair stage 51.
 - **Stage 54:** completed on board but failed numerically at relative error `4.05933809`; packer reconfiguration alone did not repair stage 51.
 - **Stage 55:** completed on board but produced non-finite output (`Infinity` relative error); it switched the second result to a distinct BF16 output CB and used the documented old/new-CB packer reconfiguration overload.
+- **Stages 56–57:** host-validated follow-up diagnostics correcting the matmul source mapping: stage 56 reconfigures SrcB for the Float32 intermediate, while stage 57 additionally switches to a distinct BF16 output CB. They have not been run on board.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.

@@ -12,7 +12,7 @@ class BringupHostTests(unittest.TestCase):
     def test_stages_add_one_named_behavior_at_a_time(self):
         self.assertEqual(
             tuple(bringup.STAGES),
-            (1, 2, 3, 4, 5, 6, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55),
+            (1, 2, 3, 4, 5, 6, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
         self.assertEqual(
@@ -74,7 +74,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55):
+            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -206,6 +206,34 @@ class BringupHostTests(unittest.TestCase):
             bringup.expected_output(stage, inputs),
             np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
         )
+
+    def test_correct_srcb_reconfig_stages_isolate_input_and_output_transitions(self):
+        stage56 = bringup.STAGES[56]
+        stage57 = bringup.STAGES[57]
+        compute56 = (bringup.KERNEL_DIR / stage56.compute_source).read_text()
+        compute57 = (bringup.KERNEL_DIR / stage57.compute_source).read_text()
+        writer57 = (bringup.KERNEL_DIR / stage57.writer_source).read_text()
+        self.assertIn("reconfig_data_format_srcb(cb_first_a, cb_second_a);", compute56)
+        self.assertNotIn("reconfig_data_format_srca", compute56)
+        self.assertNotIn("pack_reconfig_data_format", compute56)
+        self.assertIn("reconfig_data_format_srcb(cb_first_a, cb_second_a);", compute57)
+        self.assertIn("pack_reconfig_data_format(cb_product, cb_second_product);", compute57)
+        self.assertIn("matmul_one(cb_second_a, cb_second_b, cb_second_product);", compute57)
+        self.assertIn("cb_wait_front(19, 1);", writer57)
+        self.assertIn("get_read_ptr(19)", writer57)
+        for stage in (stage56, stage57):
+            self.assertTrue(stage.fp32_dest_acc_en)
+            self.assertEqual(stage.cb_formats[16:18], ("float32", "float32"))
+            self.assertEqual(stage.cb_page_sizes[16:18], (bringup.TILE_BYTES_FLOAT32,) * 2)
+            inputs = bringup._inputs(stage)
+            np.testing.assert_allclose(
+                bringup.expected_output(stage, inputs),
+                np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+            )
+        self.assertEqual(stage56.output_dtype, "float32")
+        self.assertEqual(stage57.output_dtype, "bfloat16")
+        self.assertEqual(stage57.cb_formats[19], "bfloat16")
+        self.assertEqual(stage57.cb_page_sizes[19], bringup.TILE_BYTES_BFLOAT16)
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
         for number in (5, 6, 46, 47, 48):
