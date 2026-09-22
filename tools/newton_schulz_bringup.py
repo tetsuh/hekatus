@@ -38,6 +38,12 @@ STAGE_57_CB_FORMATS = tuple("float32" if index in (16, 17) else "bfloat16" for i
 STAGE_57_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in (16, 17) else TILE_BYTES_BFLOAT16 for index in range(25)
 )
+STAGE_59_CB_FORMATS = tuple(
+    "float32" if index in (16, 17, 19) else "bfloat16" for index in range(25)
+)
+STAGE_59_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in (16, 17, 19) else TILE_BYTES_BFLOAT16 for index in range(25)
+)
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -401,6 +407,25 @@ STAGES = {
         "float32",
         STAGE_51_CB_FORMATS,
         STAGE_51_CB_PAGE_SIZES,
+        1,
+    ),
+    59: Stage(
+        59,
+        "real_fp32_dest_acc_two_matmuls_correct_srcb_distinct_float32_output",
+        1,
+        1,
+        "bringup_precision_real_two_correct_srcb_distinct_float32_output_compute.cpp",
+        "bringup_precision_real_two_reader.cpp",
+        "bringup_precision_real_two_correct_srcb_output_writer.cpp",
+        "precision_real_two",
+        1,
+        True,
+        6359,
+        3,
+        ("bfloat16", "bfloat16", "bfloat16"),
+        "float32",
+        STAGE_59_CB_FORMATS,
+        STAGE_59_CB_PAGE_SIZES,
         1,
     ),
 }
