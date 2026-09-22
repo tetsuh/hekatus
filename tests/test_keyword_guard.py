@@ -4,6 +4,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).parents[1]
 WORKFLOW = ROOT / ".github/workflows/keyword-guard.yml"
 
@@ -83,6 +85,19 @@ def test_word_list_with_only_separators_and_whitespace_fails(tmp_path):
     assert "word list is empty" in completed.stdout
     assert "repository secret" in completed.stdout
     assert "set the repository secret" in completed.stdout
+
+
+@pytest.mark.parametrize("whitespace", ["\u00a0", "\u2003", "\u3000"])
+def test_word_list_with_only_unicode_whitespace_fails(tmp_path, whitespace):
+    completed = _run_scan(
+        tmp_path,
+        words=f",{whitespace},",
+        tracked={"clean.txt": "safe\n"},
+    )
+
+    assert completed.returncode != 0
+    assert "word list is empty" in completed.stdout
+    assert "repository secret" in completed.stdout
 
 
 def test_valid_word_list_scans_tracked_files_and_passes_a_clean_tree(tmp_path):

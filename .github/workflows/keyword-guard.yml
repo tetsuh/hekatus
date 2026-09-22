@@ -58,7 +58,9 @@ jobs:
           words=()
           IFS=',' read -ra raw <<< "$WORDS"
           for w in "${raw[@]}"; do
-            w="$(printf '%s' "$w" | tr -d '[:space:]')"
+            # Perl's Unicode White_Space property covers non-ASCII separators
+            # that the locale-dependent tr [:space:] class can leave behind.
+            w="$(printf '%s' "$w" | perl -CSD -pe 's/\p{White_Space}//g')"
             [ -n "$w" ] && words+=("$w")
           done
           if [ "${#words[@]}" -eq 0 ]; then
