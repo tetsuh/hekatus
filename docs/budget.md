@@ -46,15 +46,48 @@ The four-row superseding record and its 2-sample trace are
 and
 `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`.
 
-| Shape | Best BF16 result in 0.75.0 full sweep | % of peak | Configuration |
+The tables below keep all 16 representative shapes visible while grouping them by
+workload family. Each result cell is `efficiency / TFLOPS (memory)`. **Default**
+is the fastest successful BF16 default row among the recorded memory placements;
+**Best** is the fastest successful BF16 row across the full stock catalogue for
+that shape. Values are taken from the 0.75.0 full-sweep record cited above; the
+targeted superseding record replaces four failed rows but does not change any
+best row below.
+
+#### Newton-Schulz
+
+| Shape | Default BF16 | Best BF16 | Best configuration |
 |---|---:|---:|---|
-| Newton-Schulz L=64, batch 1024 | **10.0391 TFLOPS** | **3.024%** | default, L1 |
-| Newton-Schulz L=32, batch 8192 | 9.9326 TFLOPS | 2.992% | default, L1 |
-| Newton-Schulz L=64, batch 8192 | 0.4250 TFLOPS | 0.128% | reuse `g1x1_k2_m2_n2_s2x2`, DRAM |
-| Beamspace B=16, 128 ch, 65536 px | 7.1949 TFLOPS | 2.167% | `mcast1d_in0_g8x8_k4_m1_n32_b1x4_s1x4`, L1 |
-| Beamspace B=16, 256 ch, 65536 px | 7.3298 TFLOPS | 2.208% | `mcast1d_in0_g8x8_k1_m1_n32_b1x4_s1x4`, L1 |
-| Front-end FIR, output width 32 | 15.2871 TFLOPS | 4.605% | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1`, L1 |
-| *Reference: 4096³ square matmul* | *193.9204 TFLOPS* | *58.410%* | *default, DRAM* |
+| Newton-Schulz L=16, batch 1024 | 0.194% / 0.6424 TFLOPS (L1) | 0.194% / 0.6424 TFLOPS (L1) | `default` |
+| Newton-Schulz L=16, batch 8192 | 0.239% / 0.7919 TFLOPS (L1) | 0.239% / 0.7919 TFLOPS (L1) | `default` |
+| Newton-Schulz L=16, batch 65536 | 0.003% / 0.0089 TFLOPS (DRAM) | 0.003% / 0.0095 TFLOPS (DRAM) | `reuse_g1x1_k1_m1_n1_s1x1` |
+| Newton-Schulz L=32, batch 1024 | 1.426% / 4.7359 TFLOPS (L1) | 1.426% / 4.7359 TFLOPS (L1) | `default` |
+| Newton-Schulz L=32, batch 8192 | 2.992% / 9.9326 TFLOPS (L1) | 2.992% / 9.9326 TFLOPS (L1) | `default` |
+| Newton-Schulz L=32, batch 65536 | 0.021% / 0.0708 TFLOPS (DRAM) | 0.023% / 0.0779 TFLOPS (DRAM) | `reuse_g1x1_k1_m1_n1_s1x1` |
+| Newton-Schulz L=64, batch 1024 | 3.024% / 10.0391 TFLOPS (L1) | 3.024% / 10.0391 TFLOPS (L1) | `default` |
+| Newton-Schulz L=64, batch 8192 | 0.095% / 0.3148 TFLOPS (DRAM) | 0.128% / 0.4250 TFLOPS (DRAM) | `reuse_g1x1_k2_m2_n2_s2x2` |
+| Newton-Schulz L=64, batch 65536 | 0.095% / 0.3149 TFLOPS (DRAM) | 0.128% / 0.4251 TFLOPS (DRAM) | `reuse_g1x1_k2_m2_n2_s2x2` |
+
+#### Beamspace
+
+| Shape | Default BF16 | Best BF16 | Best configuration |
+|---|---:|---:|---|
+| Beamspace B=16, 128 ch, 4096 px | 0.384% / 1.2740 TFLOPS (L1) | 0.492% / 1.6339 TFLOPS (DRAM) | `mcast1d_in0_g8x8_k4_m1_n2_b1x2_s1x2` |
+| Beamspace B=16, 128 ch, 65536 px | 1.368% / 4.5424 TFLOPS (DRAM) | 2.167% / 7.1949 TFLOPS (L1) | `mcast1d_in0_g8x8_k4_m1_n32_b1x4_s1x4` |
+| Beamspace B=16, 256 ch, 4096 px | 0.775% / 2.5745 TFLOPS (L1) | 0.918% / 3.0470 TFLOPS (L1) | `mcast1d_in0_g8x8_k8_m1_n2_b1x2_s1x2` |
+| Beamspace B=16, 256 ch, 65536 px | 1.494% / 4.9616 TFLOPS (DRAM) | 2.208% / 7.3298 TFLOPS (L1) | `mcast1d_in0_g8x8_k1_m1_n32_b1x4_s1x4` |
+
+#### Front-end FIR
+
+| Shape | Default BF16 | Best BF16 | Best configuration |
+|---|---:|---:|---|
+| Front-end FIR, output width 2 | 0.134% / 0.4461 TFLOPS (DRAM) | 0.287% / 0.9534 TFLOPS (L1) | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1` |
+| Front-end FIR, output width 8 | 0.534% / 1.7725 TFLOPS (DRAM) | 1.162% / 3.8570 TFLOPS (L1) | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1` |
+| Front-end FIR, output width 32 | 2.139% / 7.1005 TFLOPS (DRAM) | 4.605% / 15.2871 TFLOPS (L1) | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1` |
+
+For contrast only, the non-representative 4096³ square matmul reaches
+58.410% / 193.9204 TFLOPS (DRAM) with the default configuration; it is not
+included in the representative-shape tables.
 
 Explicit stock configurations help the broad shapes. For front-end FIR width
 32 in L1, the default is 4.3389 TFLOPS (1.307%) and the best explicit row is
