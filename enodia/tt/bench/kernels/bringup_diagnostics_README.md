@@ -15,5 +15,6 @@
 - **Stage 52:** completed on board but failed numerically at relative error `3.79775143`; explicit unpacker and packer reconfiguration together did not repair stage 51.
 - **Stage 53:** completed on board but failed numerically at relative error `3.75525451`; unpacker reconfiguration alone did not repair stage 51.
 - **Stage 54:** completed on board but failed numerically at relative error `4.05933809`; packer reconfiguration alone did not repair stage 51.
+- **Stage 55:** completed on board but produced non-finite output (`Infinity` relative error); it switched the second result to a distinct BF16 output CB and used the documented old/new-CB packer reconfiguration overload.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
