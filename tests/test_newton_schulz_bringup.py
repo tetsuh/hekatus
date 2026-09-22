@@ -12,7 +12,7 @@ class BringupHostTests(unittest.TestCase):
     def test_stages_add_one_named_behavior_at_a_time(self):
         self.assertEqual(
             tuple(bringup.STAGES),
-            (1, 2, 3, 4, 5, 6, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51),
+            (1, 2, 3, 4, 5, 6, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
         self.assertEqual(
@@ -74,7 +74,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51):
+            if number not in (49, 50, 51, 52, 53, 54):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -129,6 +129,50 @@ class BringupHostTests(unittest.TestCase):
             bringup.expected_output(stage51, stage51_inputs),
             np.matmul(np.matmul(stage51_inputs[0], stage51_inputs[1]), stage51_inputs[2]),
         )
+
+    def test_precision_reconfig_stage_explicitly_reconfigures_mixed_formats(self):
+        stage = bringup.STAGES[52]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.input_count, stage.output_dtype), (1, 1, 3, "float32")
+        )
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(stage.cb_formats[16:18], ("float32", "float32"))
+        self.assertEqual(stage.cb_page_sizes[16:18], (bringup.TILE_BYTES_FLOAT32,) * 2)
+        self.assertIn('#include "api/compute/reconfig_data_format.h"', compute)
+        self.assertIn("reconfig_data_format_srca(cb_first_b, cb_second_a);", compute)
+        self.assertIn("pack_reconfig_data_format(cb_product);", compute)
+        self.assertLess(
+            compute.index("reconfig_data_format_srca"),
+            compute.index("matmul_block_init(cb_second_a, cb_second_b"),
+        )
+        self.assertLess(
+            compute.index("matmul_block_init(cb_second_a, cb_second_b"),
+            compute.index("pack_reconfig_data_format"),
+        )
+        inputs = bringup._inputs(stage)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+        )
+
+    def test_precision_reconfig_variants_isolate_unpacker_and_packer(self):
+        unpack = (bringup.KERNEL_DIR / bringup.STAGES[53].compute_source).read_text()
+        pack = (bringup.KERNEL_DIR / bringup.STAGES[54].compute_source).read_text()
+        self.assertIn("reconfig_data_format_srca(cb_first_b, cb_second_a);", unpack)
+        self.assertNotIn("pack_reconfig_data_format", unpack)
+        self.assertIn("pack_reconfig_data_format(cb_product);", pack)
+        self.assertNotIn("reconfig_data_format_srca", pack)
+        for number in (53, 54):
+            stage = bringup.STAGES[number]
+            self.assertTrue(stage.fp32_dest_acc_en)
+            self.assertEqual(stage.cb_formats[16:18], ("float32", "float32"))
+            self.assertEqual(stage.cb_page_sizes[16:18], (bringup.TILE_BYTES_FLOAT32,) * 2)
+            inputs = bringup._inputs(stage)
+            np.testing.assert_allclose(
+                bringup.expected_output(stage, inputs),
+                np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+            )
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
         for number in (5, 6, 46, 47, 48):
