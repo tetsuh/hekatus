@@ -12,7 +12,32 @@ class BringupHostTests(unittest.TestCase):
     def test_stages_add_one_named_behavior_at_a_time(self):
         self.assertEqual(
             tuple(bringup.STAGES),
-            (1, 2, 3, 4, 5, 6, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57),
+            (
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                41,
+                42,
+                43,
+                44,
+                45,
+                46,
+                47,
+                48,
+                49,
+                50,
+                51,
+                52,
+                53,
+                54,
+                55,
+                56,
+                57,
+                58,
+            ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
         self.assertEqual(
@@ -74,7 +99,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57):
+            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -234,6 +259,32 @@ class BringupHostTests(unittest.TestCase):
         self.assertEqual(stage57.output_dtype, "bfloat16")
         self.assertEqual(stage57.cb_formats[19], "bfloat16")
         self.assertEqual(stage57.cb_page_sizes[19], bringup.TILE_BYTES_BFLOAT16)
+
+    def test_same_output_packer_reconfig_isolated_after_correct_srcb_transition(self):
+        stage = bringup.STAGES[58]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.input_count, stage.output_dtype), (1, 1, 3, "float32")
+        )
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(stage.input_seed, 6358)
+        self.assertEqual(stage.cb_formats[16:19], ("float32", "float32", "bfloat16"))
+        self.assertEqual(
+            stage.cb_page_sizes[16:19],
+            (bringup.TILE_BYTES_FLOAT32, bringup.TILE_BYTES_FLOAT32, bringup.TILE_BYTES_BFLOAT16),
+        )
+        self.assertIn("reconfig_data_format_srcb(cb_first_a, cb_second_a);", compute)
+        self.assertIn("pack_reconfig_data_format(cb_product);", compute)
+        self.assertNotIn("cb_second_product", compute)
+        self.assertLess(
+            compute.index("matmul_block_init(cb_second_a, cb_second_b"),
+            compute.index("pack_reconfig_data_format(cb_product)"),
+        )
+        inputs = bringup._inputs(stage)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+        )
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
         for number in (5, 6, 46, 47, 48):
