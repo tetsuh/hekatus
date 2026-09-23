@@ -20,5 +20,6 @@
 - **Stage 58:** completed on board with relative error `3.67779350`; it kept the Float32 output CB and added explicit same-output packer reconfiguration after the corrected SrcB transition.
 - **Stage 59:** passed on board at relative error `0.0031062583`; it switches to a distinct Float32 output CB while keeping the output format unchanged, separating output-CB switching from output-format switching.
 - **Stage 60:** passed on board at relative error `0.0030487294`; it keeps the distinct Float32 output CB and omits explicit packer reconfiguration.
+- **Stage 61:** host-validated upper-bound experiment for eight Newton-Schulz iterations with Float32 X state, intermediates, and output while retaining BF16 R input. It has not been run on board.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.

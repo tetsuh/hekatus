@@ -39,6 +39,7 @@ class BringupHostTests(unittest.TestCase):
                 58,
                 59,
                 60,
+                61,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -101,7 +102,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60):
+            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -350,6 +351,69 @@ class BringupHostTests(unittest.TestCase):
         np.testing.assert_allclose(
             bringup.expected_output(stage, inputs),
             np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+        )
+
+    def test_float32_state_stage_keeps_state_and_intermediates_float32(self):
+        stage = bringup.STAGES[61]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 8, 6)
+        )
+        self.assertEqual(stage.input_seed, bringup.STAGES[6].input_seed)
+        self.assertNotEqual(stage.compute_source, bringup.STAGES[6].compute_source)
+        self.assertNotEqual(stage.reader_source, bringup.STAGES[6].reader_source)
+        self.assertEqual(
+            stage.input_dtypes,
+            ("bfloat16", "float32", "bfloat16", "float32", "float32", "float32"),
+        )
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(stage.output_dtype, "float32")
+        for index in (2, 3, 4, 5, 6, 7, 8, 9, 16, 17, 18, 19, 20, 21, 22, 23, 24):
+            self.assertEqual(stage.cb_formats[index], "float32", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+        self.assertIn("cb_rx_real = 8", compute)
+        self.assertIn("cb_rx_imag = 9", compute)
+        self.assertIn("cb_s_real = 19", compute)
+        self.assertIn("cb_s_imag = 20", compute)
+        self.assertIn("cb_state_real = 21", compute)
+        self.assertIn("cb_state_imag = 22", compute)
+        self.assertIn("cb_out_real = 23", compute)
+        self.assertIn("cb_out_imag = 24", compute)
+        self.assertIn("cb_state_real = 21", reader)
+        self.assertIn("cb_state_imag = 22", reader)
+        self.assertIn("copy_float32_tile", reader)
+        self.assertIn("(32 * 32 * 4) / sizeof(std::uint32_t)", reader)
+        self.assertEqual(compute.count("iteration < 8"), 1)
+        self.assertEqual(reader.count("route_complex_products();"), 2)
+        for destination in ("cb_product_rr", "cb_product_ii", "cb_product_ri", "cb_product_ir"):
+            self.assertEqual(reader.count(f"route_product({destination})"), 1)
+        self.assertEqual(reader.count("read_tile(cb_identity, 0, identity)"), 1)
+        self.assertEqual(reader.count("read_tile(cb_zero, 0, zero)"), 1)
+        self.assertEqual(compute.count("subtract_one<cb_product_rr, cb_product_ii"), 3)
+        self.assertEqual(compute.count("add_one<cb_product_ri, cb_product_ir"), 3)
+        self.assertIn("subtract_one<cb_identity, cb_rx_real, cb_s_real>();", compute)
+        self.assertIn("subtract_one<cb_zero, cb_rx_imag, cb_s_imag>();", compute)
+        self.assertIn("reconfig_data_format_srcb(cb_r, cb_x);", compute)
+        self.assertIn("reconfig_data_format_srcb(cb_x, cb_r);", compute)
+        self.assertLess(
+            compute.index("reconfig_data_format_srcb(cb_r, cb_x)"),
+            compute.index("matmul_block_init(cb_x, cb_s"),
+        )
+        self.assertNotIn("copy_tile(", compute)
+        self.assertNotIn("copy_tile_init", compute)
+        self.assertNotIn("cb_state_real, cb_state_imag", compute)
+        self.assertIn(
+            "stream_state_complex(cb_x, cb_state_real, cb_state_imag, false, false)", reader
+        )
+        self.assertIn(
+            "stream_state_complex(cb_x, cb_state_real, cb_state_imag, true, true)", reader
+        )
+        self.assertNotIn("cb_state_real = cb_s_real", reader)
+        inputs = bringup._inputs(stage)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(bringup.STAGES[6], bringup._inputs(bringup.STAGES[6])),
         )
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
