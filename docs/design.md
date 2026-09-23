@@ -1285,15 +1285,18 @@ default where the default L1 row succeeds; DRAM-only large-batch reuse gains
 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64, but the largest reaches
 only 0.128% of peak. The roughly 13.2x gap to 40% is therefore not a missed
 stock configuration; hand-written kernel recovery remains the MV-inverse
-lever. The original full record contains 284 rows, with 190 successes and 94
-failures. A targeted record supersedes four failed batch-1024 L16/L32
-`batched_dram_sharded` rows after correcting the DRAM-worker count; two BF16
-replacements succeed and two FP32 replacements fail later at program
-compilation. A second targeted record supersedes the two unbatched
+lever. The original full record contains 284 rows, with 190 `ok` and 94
+`failed` entries in its `results` array. A targeted record supersedes four
+failed batch-1024 L16/L32 `batched_dram_sharded` rows after correcting the
+DRAM-worker count; its `results` array has two BF16 successes and two FP32
+compilation failures. A second targeted record supersedes the two unbatched
 `dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after the
-same correction; both BF16 and FP32 replacements succeed, so the effective
-totals remain 192 successes and 92 failures. The separate 0.70.1 default-only
-comparison contains 68 rows, including 9 failures. Their bounded comparison
+same correction; its `results` array has two successful replacements. Thus the
+record-level calculation is `190 + 2 + 2 = 194` successes and
+`94 - 4 - 2 + 2 = 90` failures, with the six predecessor rows identified by
+the two records' `supersedes.rows` arrays. The exact source paths and the
+intermediate count are recorded in `docs/budget.md`. The separate 0.70.1
+default-only comparison contains 68 rows, including 9 failures. Their bounded comparison
 supports the conclusion that the repin does not explain the roughly 3%
 denominator: the 4096-square BF16 rows are 58.687% versus 58.410%, and NS
 L=32 batch 8192 L1 is 3.026% versus 2.992%; small dispatch-bound beamspace

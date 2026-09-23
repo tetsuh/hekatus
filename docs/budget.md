@@ -30,23 +30,32 @@ capacity.
 Issue #65 measured stock `ttnn.matmul` with the catalogue on one p150a,
 against the 332 TFLOPS peak above. The 0.75.0 full sweep has 284 rows,
 including the default and every catalogue candidate, with 190 successes and
-94 failures. The first targeted record supersedes the four batch-1024 L16/L32
-`batched_dram_sharded` failures after correcting the catalogue's DRAM-worker
-count: two BF16 replacements succeed and two FP32 replacements fail later at
-program compilation, making the effective totals 192 successes and 92
-failures. The separate 0.70.1 record is default-only: 68 rows, with 59
-successes and 9 failures. All records report firmware 19.6.0.0 and KMD 2.11.0;
-their image digests and companion traces remain separate. The full record and
-its 183-sample trace are
-`docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
-and
+94 failures. The final effective count is derived from the `results` and
+`supersedes.rows` arrays in the landed records, rather than copied from a
+previous summary:
+
+| Record and role | Rows counted from `results` |
+| --- | --- |
+| `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json` — original catalogue | 190 `ok`, 94 `failed` |
+| `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json` — replaces four failed batch-1024 L16/L32 `batched_dram_sharded` rows named in its `supersedes.rows` | 2 `ok`, 2 `failed` |
+| `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json` — replaces two failed beamspace B=16, 256-channel, 4096-pixel `dram_sharded` rows named in its `supersedes.rows` | 2 `ok` |
+
+The first superseder maps the four original g7x1 rows to two successful and
+two compilation-failed g8x1 replacements. The second maps the two original
+g4x1 rows to two successful g8x1 replacements. Therefore the six named
+predecessor rows are removed from the original count and six replacements are
+added: `190 + 2 + 2 = 194` successes and `94 - 4 - 2 + 2 = 90` failures.
+The other 278 original rows remain authoritative, so the effective catalogue
+still has 284 rows. The separate 0.70.1 record is default-only: 68 rows, with
+59 successes and 9 failures. All records report firmware 19.6.0.0 and KMD
+2.11.0; their image digests and companion traces remain separate. The full
+record and its 183-sample trace are the first JSON path above and
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0-power.csv`.
-The four-row superseding record and its 2-sample trace are
-`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`
-and
-`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`. A second targeted record supersedes the two unbatched `dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after applying the same eight-worker mapping: both BF16 and FP32 replacements succeed, so the effective totals remain 192 successes and 92 failures. Its result and trace are
-`docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`
-and
+The four-row superseding record and its 2-sample trace are the second JSON
+path above and
+`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`.
+The two-row superseding record and its 3-sample trace are the third JSON path
+above and
 `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0-power.csv`.
 
 The tables below keep all 16 representative shapes visible while grouping them by
