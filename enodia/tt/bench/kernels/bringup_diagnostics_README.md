@@ -19,6 +19,6 @@
 - **Stages 56–57:** stage 56 completed on board with relative error `3.56092668` after correcting SrcB but without packer reconfiguration; stage 57 passed at `0.0032820513` with the corrected SrcB transition plus a distinct BF16 output CB and packer reconfiguration.
 - **Stage 58:** completed on board with relative error `3.67779350`; it kept the Float32 output CB and added explicit same-output packer reconfiguration after the corrected SrcB transition.
 - **Stage 59:** passed on board at relative error `0.0031062583`; it switches to a distinct Float32 output CB while keeping the output format unchanged, separating output-CB switching from output-format switching.
-- **Stage 60:** host-validated follow-up that keeps the distinct Float32 output CB but omits explicit packer reconfiguration. It has not been run on board.
+- **Stage 60:** passed on board at relative error `0.0030487294`; it keeps the distinct Float32 output CB and omits explicit packer reconfiguration.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
