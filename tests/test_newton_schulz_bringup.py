@@ -42,6 +42,7 @@ class BringupHostTests(unittest.TestCase):
                 61,
                 62,
                 63,
+                64,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -568,6 +569,74 @@ class BringupHostTests(unittest.TestCase):
         np.testing.assert_array_equal(
             bringup._bfloat16_roundtrip(probe),
             np.array([[1.0, 1.0, 1.015625]], dtype=np.float32),
+        )
+
+    def test_bfloat16_to_float32_startup_precedes_copy_without_matmul(self):
+        stage = bringup.STAGES[64]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        writer = (bringup.KERNEL_DIR / stage.writer_source).read_text()
+        self.assertEqual(len(set(bringup.source_paths(stage))), 3)
+        self.assertEqual(stage.kind, "precision_convert")
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 1, 1)
+        )
+        self.assertEqual(stage.input_seed, bringup.STAGES[63].input_seed)
+        self.assertEqual(stage.input_dtypes, ("bfloat16",))
+        self.assertEqual(stage.output_dtype, "float32")
+        self.assertFalse(stage.fp32_dest_acc_en)
+        self.assertEqual(bringup.output_count(stage), 1)
+        self.assertEqual(stage.cb_formats[20], "bfloat16")
+        self.assertEqual(stage.cb_page_sizes[20], bringup.TILE_BYTES_BFLOAT16)
+        self.assertEqual(stage.cb_formats[23], "float32")
+        self.assertEqual(stage.cb_page_sizes[23], bringup.TILE_BYTES_FLOAT32)
+        self.assertNotEqual(20, 23)
+        self.assertEqual(
+            [stage.cb_formats[index] for index in range(25) if index not in (20, 23)],
+            ["bfloat16"] * 23,
+        )
+        self.assertEqual(
+            [stage.cb_page_sizes[index] for index in range(25) if index not in (20, 23)],
+            [bringup.TILE_BYTES_BFLOAT16] * 23,
+        )
+        for source in (compute, reader, writer):
+            self.assertNotIn("matmul", source)
+            self.assertNotIn("binary_op", source)
+            self.assertNotIn("add_tiles", source)
+            self.assertNotIn("sub_tiles", source)
+        self.assertIn('#include "api/compute/compute_kernel_hw_startup.h"', compute)
+        self.assertEqual(compute.count("compute_kernel_hw_startup<SrcOrder::Reverse>"), 1)
+        startup = "compute_kernel_hw_startup<SrcOrder::Reverse>(\n        cb_bfloat16_input, cb_bfloat16_input, cb_float32_output);"
+        self.assertIn(startup, compute)
+        self.assertIn('#include "api/compute/tile_move_copy.h"', compute)
+        self.assertIn("constexpr std::uint32_t cb_bfloat16_input = 20", compute)
+        self.assertIn("constexpr std::uint32_t cb_float32_output = 23", compute)
+        self.assertIn("pack_reconfig_data_format(cb_bfloat16_input, cb_float32_output);", compute)
+        self.assertIn("copy_tile_init(cb_bfloat16_input);", compute)
+        self.assertIn("copy_tile(cb_bfloat16_input, 0, 0);", compute)
+        self.assertIn("pack_tile(0, cb_float32_output);", compute)
+        kernel_body = compute[compute.index("void kernel_main()") :]
+        startup_index = kernel_body.index(startup)
+        copy_call_index = kernel_body.index("convert_tile();")
+        self.assertLess(startup_index, copy_call_index)
+        pack_reconfig_index = compute.index("pack_reconfig_data_format")
+        copy_init_index = compute.index("copy_tile_init")
+        copy_index = compute.index("copy_tile(")
+        pack_index = compute.index("pack_tile")
+        self.assertLess(pack_reconfig_index, copy_init_index)
+        self.assertLess(copy_init_index, copy_index)
+        self.assertLess(copy_index, pack_index)
+        self.assertIn("read_tile(cb_bfloat16_input, start_tile + offset, input)", reader)
+        self.assertIn("cb_wait_front(cb_float32_output, 1);", writer)
+        self.assertIn("get_read_ptr(cb_float32_output)", writer)
+        inputs = bringup._inputs(stage)
+        for left, right in zip(inputs, bringup._inputs(bringup.STAGES[63])):
+            np.testing.assert_array_equal(left, right)
+        expected = bringup.expected_output(stage, inputs)
+        np.testing.assert_array_equal(expected, bringup._bfloat16_roundtrip(inputs[0]))
+        np.testing.assert_array_equal(
+            expected,
+            bringup.expected_output(stage, bringup._inputs(stage)),
         )
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
