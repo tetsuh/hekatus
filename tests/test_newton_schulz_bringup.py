@@ -45,6 +45,7 @@ class BringupHostTests(unittest.TestCase):
                 64,
                 65,
                 66,
+                67,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -124,6 +125,7 @@ class BringupHostTests(unittest.TestCase):
                 62,
                 65,
                 66,
+                67,
             ):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
@@ -528,6 +530,80 @@ class BringupHostTests(unittest.TestCase):
         np.testing.assert_allclose(
             bringup.expected_output(stage, inputs),
             bringup.expected_output(bringup.STAGES[6], bringup._inputs(bringup.STAGES[6])),
+        )
+
+    def test_four_plus_four_variant_separates_float32_second_group_output_cb(self):
+        control = bringup.STAGES[62]
+        stage = bringup.STAGES[67]
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 8, 6)
+        )
+        self.assertEqual(stage.kind, control.kind)
+        self.assertEqual(stage.input_seed, control.input_seed)
+        self.assertEqual(stage.input_dtypes, control.input_dtypes)
+        self.assertEqual(stage.output_dtype, control.output_dtype)
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(bringup.output_count(stage), bringup.output_count(control))
+        self.assertNotEqual(stage.compute_source, control.compute_source)
+        self.assertNotEqual(stage.reader_source, control.reader_source)
+        self.assertEqual(stage.writer_source, control.writer_source)
+        self.assertEqual(len(set(bringup.source_paths(stage))), 3)
+        self.assertEqual(
+            [index for index in range(25) if stage.cb_formats[index] != control.cb_formats[index]],
+            [13],
+        )
+        self.assertEqual(
+            [
+                index
+                for index in range(25)
+                if stage.cb_page_sizes[index] != control.cb_page_sizes[index]
+            ],
+            [13],
+        )
+        self.assertEqual(stage.cb_formats[13], "float32")
+        self.assertEqual(stage.cb_page_sizes[13], bringup.TILE_BYTES_FLOAT32)
+        self.assertEqual(stage.cb_page_sizes[13] * 4, bringup.TILE_BYTES_FLOAT32 * 4)
+
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        self.assertIn("constexpr std::uint32_t cb_product = 16", compute)
+        self.assertIn("constexpr std::uint32_t cb_product_float32 = 13", compute)
+        self.assertIn(
+            "void matmul_one(std::uint32_t left, std::uint32_t right, std::uint32_t output)",
+            compute,
+        )
+        self.assertIn("cb_reserve_back(output, 1);", compute)
+        self.assertIn("pack_tile(0, output);", compute)
+        self.assertIn("complex_matmul_products(cb_r, first_right, cb_product);", compute)
+        self.assertIn(
+            "complex_matmul_products(cb_x_float32, cb_s_float32_real, cb_product_float32);",
+            compute,
+        )
+        self.assertIn(
+            "complex_matmul_products(cb_x_bfloat16, cb_s_bfloat16_real, cb_product);", compute
+        )
+        self.assertEqual(compute.count("cb_product_float32);"), 1)
+
+        self.assertIn("constexpr std::uint32_t cb_product = 16", reader)
+        self.assertIn("constexpr std::uint32_t cb_product_float32 = 13", reader)
+        self.assertIn("void route_product(std::uint32_t source, std::uint32_t destination)", reader)
+        self.assertIn("void route_complex_products(std::uint32_t source)", reader)
+        self.assertEqual(reader.count("route_complex_products(cb_product);"), 2)
+        self.assertEqual(reader.count("route_complex_products(cb_product_float32);"), 1)
+        for destination in ("cb_product_rr", "cb_product_ii", "cb_product_ri", "cb_product_ir"):
+            self.assertEqual(reader.count(f"route_product(source, {destination})"), 1)
+        float_route = reader.index("route_complex_products(cb_product_float32);")
+        self.assertLess(reader.index("if (float32_phase)"), float_route)
+        self.assertIn(
+            "Four products are routed and popped before the next group can fill CB 13.", reader
+        )
+
+        inputs = bringup._inputs(stage)
+        for left, right in zip(inputs, bringup._inputs(control)):
+            np.testing.assert_array_equal(left, right)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(control, bringup._inputs(control)),
         )
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
