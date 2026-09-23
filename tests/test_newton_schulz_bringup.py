@@ -40,6 +40,7 @@ class BringupHostTests(unittest.TestCase):
                 59,
                 60,
                 61,
+                62,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -102,7 +103,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61):
+            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -411,6 +412,98 @@ class BringupHostTests(unittest.TestCase):
         )
         self.assertNotIn("cb_state_real = cb_s_real", reader)
         inputs = bringup._inputs(stage)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(bringup.STAGES[6], bringup._inputs(bringup.STAGES[6])),
+        )
+
+    def test_four_plus_four_stage_converts_bfloat16_state_before_float32_phase(self):
+        stage = bringup.STAGES[62]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        writer = (bringup.KERNEL_DIR / stage.writer_source).read_text()
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 8, 6)
+        )
+        self.assertEqual(stage.input_seed, bringup.STAGES[6].input_seed)
+        self.assertNotEqual(stage.compute_source, bringup.STAGES[6].compute_source)
+        self.assertNotEqual(stage.compute_source, bringup.STAGES[61].compute_source)
+        self.assertNotEqual(stage.reader_source, bringup.STAGES[6].reader_source)
+        self.assertNotEqual(stage.reader_source, bringup.STAGES[61].reader_source)
+        self.assertEqual(
+            stage.input_dtypes,
+            ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        )
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(stage.output_dtype, "float32")
+        self.assertEqual(stage.writer_source, "bringup_writer.cpp")
+        self.assertIn("cb_wait_front(23, 1)", writer)
+        self.assertIn("cb_wait_front(24, 1)", writer)
+        for index in (2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17, 18, 19, 22, 23, 24):
+            self.assertEqual(stage.cb_formats[index], "float32", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+        for index in (0, 1, 10, 11, 12, 13, 20, 21):
+            self.assertEqual(stage.cb_formats[index], "bfloat16", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_BFLOAT16, index)
+        self.assertIn("constexpr std::uint32_t split_iteration = 4;", compute)
+        self.assertIn("constexpr std::uint32_t cb_state_bfloat16_real = 20", compute)
+        self.assertIn("constexpr std::uint32_t cb_state_float32_intermediate_real = 14", compute)
+        self.assertIn("constexpr std::uint32_t cb_state_float32_real = 23", compute)
+        self.assertIn("void convert_state_to_float32()", compute)
+        self.assertIn('#include "api/compute/tile_move_copy.h"', compute)
+        self.assertIn("copy_tile_init(cb_state_bfloat16_real)", compute)
+        self.assertIn("copy_tile_init(cb_state_bfloat16_imag)", compute)
+        self.assertIn(
+            "pack_reconfig_data_format(cb_state_bfloat16_real, cb_state_float32_intermediate_real);",
+            compute,
+        )
+        self.assertIn("pack_tile(0, cb_state_float32_intermediate_real)", compute)
+        self.assertIn("pack_tile(0, cb_state_float32_intermediate_imag)", compute)
+        self.assertIn("reconfig_data_format_srca(cb_s_bfloat16_operand, cb_x_float32);", compute)
+        self.assertIn("reconfig_data_format_srcb(cb_x_float32, cb_r);", compute)
+        self.assertIn("reconfig_data_format_srcb(cb_r, cb_x_float32);", compute)
+        conversion = compute.index("convert_state_to_float32();")
+        srca_reconfig = compute.index("reconfig_data_format_srca", conversion)
+        float_init = compute.index("matmul_block_init(cb_r, cb_x_float32", srca_reconfig)
+        self.assertLess(conversion, srca_reconfig)
+        self.assertLess(srca_reconfig, float_init)
+        pack_reconfig = compute.index("pack_reconfig_data_format")
+        self.assertLess(
+            pack_reconfig, compute.index("pack_tile(0, cb_state_float32_intermediate_real)")
+        )
+        self.assertIn("subtract_one<cb_identity, cb_rx_real, cb_s_bfloat16_real>();", compute)
+        self.assertIn("subtract_one<cb_identity, cb_rx_real, cb_s_float32_real>();", compute)
+        self.assertIn(
+            "subtract_one<cb_product_rr, cb_product_ii, cb_state_bfloat16_real>();", compute
+        )
+        self.assertIn(
+            "subtract_one<cb_product_rr, cb_product_ii, cb_state_float32_real>();", compute
+        )
+        self.assertIn("copy_bfloat16_tile", reader)
+        self.assertIn("copy_float32_tile", reader)
+        self.assertIn("cb_state_bfloat16_real = 20", reader)
+        self.assertIn("cb_state_float32_intermediate_real = 14", reader)
+        self.assertIn("cb_state_float32_real = 23", reader)
+        self.assertIn("cb_s_bfloat16_operand = 12", reader)
+        self.assertIn("cb_s_float32_operand = 22", reader)
+        self.assertIn(
+            "stream_state_complex(x_operand, state_real, state_imag, false, false, float32_phase)",
+            reader,
+        )
+        self.assertIn(
+            "stream_state_complex(x_operand, state_real, state_imag, true, true, float32_phase)",
+            reader,
+        )
+        self.assertIn("s_source_real", reader)
+        self.assertIn("s_operand", reader)
+        self.assertEqual(reader.count("route_complex_products();"), 2)
+        for destination in ("cb_product_rr", "cb_product_ii", "cb_product_ri", "cb_product_ir"):
+            self.assertEqual(reader.count(f"route_product({destination})"), 1)
+        self.assertEqual(reader.count("read_tile(cb_identity, 0, identity)"), 1)
+        self.assertEqual(reader.count("read_tile(cb_zero, 0, zero)"), 1)
+        inputs = bringup._inputs(stage)
+        for left, right in zip(inputs, bringup._inputs(bringup.STAGES[6])):
+            np.testing.assert_array_equal(left, right)
         np.testing.assert_allclose(
             bringup.expected_output(stage, inputs),
             bringup.expected_output(bringup.STAGES[6], bringup._inputs(bringup.STAGES[6])),

@@ -21,5 +21,6 @@
 - **Stage 59:** passed on board at relative error `0.0031062583`; it switches to a distinct Float32 output CB while keeping the output format unchanged, separating output-CB switching from output-format switching.
 - **Stage 60:** passed on board at relative error `0.0030487294`; it keeps the distinct Float32 output CB and omits explicit packer reconfiguration.
 - **Stage 61:** passed on board at relative error `0.0040098457`; it keeps Float32 X state, intermediates, and output for all eight Newton-Schulz iterations while retaining BF16 R input.
+- **Stage 62:** host-validated but not board-run; it keeps BF16 X state for iterations 1–4, converts the fourth update to Float32 state, and runs iterations 5–8 with Float32 state/intermediates/output. FP32 destination accumulation is enabled for the entire stage, so this is a four-plus-four state/storage experiment rather than a state-only comparison.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.

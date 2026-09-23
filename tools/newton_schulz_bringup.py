@@ -52,6 +52,14 @@ STAGE_61_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in STAGE_61_FLOAT32_CBS else TILE_BYTES_BFLOAT16
     for index in range(25)
 )
+STAGE_62_FLOAT32_CBS = (2, 3, 4, 5, 6, 7, 8, 9, 14, 15, 16, 17, 18, 19, 22, 23, 24)
+STAGE_62_CB_FORMATS = tuple(
+    "float32" if index in STAGE_62_FLOAT32_CBS else "bfloat16" for index in range(25)
+)
+STAGE_62_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in STAGE_62_FLOAT32_CBS else TILE_BYTES_BFLOAT16
+    for index in range(25)
+)
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -472,6 +480,24 @@ STAGES = {
         "float32",
         STAGE_61_CB_FORMATS,
         STAGE_61_CB_PAGE_SIZES,
+    ),
+    62: Stage(
+        62,
+        "complex_newton_schulz_four_bfloat16_four_float32_state",
+        1,
+        1,
+        "bringup_ns_four_plus_four_compute.cpp",
+        "bringup_ns_four_plus_four_reader.cpp",
+        "bringup_writer.cpp",
+        "newton_schulz",
+        8,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "float32",
+        STAGE_62_CB_FORMATS,
+        STAGE_62_CB_PAGE_SIZES,
     ),
 }
 
