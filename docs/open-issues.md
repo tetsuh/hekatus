@@ -53,6 +53,8 @@ hand-written kernel. The exact records are
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`,
 its targeted four-row superseder
 `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`,
+its targeted two-row unbatched superseder
+`docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`,
 `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`,
 and the historical source is
 `docs/measurements/2026-08-14-p150a-effective-efficiency.json`.

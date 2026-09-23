@@ -25,12 +25,12 @@ capacity.
 
 ---
 
-## Measured efficiency (p150a, 2026-09-20; targeted correction 2026-09-21)
+## Measured efficiency (p150a, 2026-09-20; targeted corrections 2026-09-21 and 2026-09-23)
 
 Issue #65 measured stock `ttnn.matmul` with the catalogue on one p150a,
 against the 332 TFLOPS peak above. The 0.75.0 full sweep has 284 rows,
 including the default and every catalogue candidate, with 190 successes and
-94 failures. A targeted record supersedes its four batch-1024 L16/L32
+94 failures. The first targeted record supersedes the four batch-1024 L16/L32
 `batched_dram_sharded` failures after correcting the catalogue's DRAM-worker
 count: two BF16 replacements succeed and two FP32 replacements fail later at
 program compilation, making the effective totals 192 successes and 92
@@ -44,14 +44,17 @@ and
 The four-row superseding record and its 2-sample trace are
 `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`
 and
-`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`.
+`docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0-power.csv`. A second targeted record supersedes the two unbatched `dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after applying the same eight-worker mapping: both BF16 and FP32 replacements succeed, so the effective totals remain 192 successes and 92 failures. Its result and trace are
+`docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`
+and
+`docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0-power.csv`.
 
 The tables below keep all 16 representative shapes visible while grouping them by
 workload family. Each result cell is `efficiency / TFLOPS (memory)`. **Default**
 is the fastest successful BF16 default row among the recorded memory placements;
 **Best** is the fastest successful BF16 row across the full stock catalogue for
 that shape. Values are taken from the 0.75.0 full-sweep record cited above; the
-targeted superseding record replaces four failed rows but does not change any
+two targeted superseding records replace six rows in total and do not change any
 best row below.
 
 #### Newton-Schulz

@@ -1289,15 +1289,18 @@ lever. The original full record contains 284 rows, with 190 successes and 94
 failures. A targeted record supersedes four failed batch-1024 L16/L32
 `batched_dram_sharded` rows after correcting the DRAM-worker count; two BF16
 replacements succeed and two FP32 replacements fail later at program
-compilation, making the effective totals 192 successes and 92 failures. The
-separate 0.70.1 default-only comparison contains 68 rows, including 9
-failures. Their bounded comparison supports the conclusion that the repin does not
-explain the roughly 3% denominator: the 4096-square BF16 rows are 58.687% versus
-58.410%, and NS L=32 batch 8192 L1 is 3.026% versus 2.992%; small
-dispatch-bound beamspace p4096 rows differ by up to 0.872 percentage points.
-The records are
+compilation. A second targeted record supersedes the two unbatched
+`dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after the
+same correction; both BF16 and FP32 replacements succeed, so the effective
+totals remain 192 successes and 92 failures. The separate 0.70.1 default-only
+comparison contains 68 rows, including 9 failures. Their bounded comparison
+supports the conclusion that the repin does not explain the roughly 3%
+denominator: the 4096-square BF16 rows are 58.687% versus 58.410%, and NS
+L=32 batch 8192 L1 is 3.026% versus 2.992%; small dispatch-bound beamspace
+p4096 rows differ by up to 0.872 percentage points. The records are
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`,
 `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`,
+`docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`,
 and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
 suffix. The card counts here therefore state what the design aims at. The
