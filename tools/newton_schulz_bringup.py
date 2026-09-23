@@ -76,6 +76,22 @@ STAGE_64_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in STAGE_64_FLOAT32_CBS else TILE_BYTES_BFLOAT16
     for index in range(25)
 )
+STAGE_65_FLOAT32_CBS = (14, 16, 17)
+STAGE_65_CB_FORMATS = tuple(
+    "float32" if index in STAGE_65_FLOAT32_CBS else "bfloat16" for index in range(25)
+)
+STAGE_65_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in STAGE_65_FLOAT32_CBS else TILE_BYTES_BFLOAT16
+    for index in range(25)
+)
+STAGE_66_FLOAT32_CBS = (14, 16, 17, 19)
+STAGE_66_CB_FORMATS = tuple(
+    "float32" if index in STAGE_66_FLOAT32_CBS else "bfloat16" for index in range(25)
+)
+STAGE_66_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in STAGE_66_FLOAT32_CBS else TILE_BYTES_BFLOAT16
+    for index in range(25)
+)
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -553,6 +569,44 @@ STAGES = {
         STAGE_64_CB_PAGE_SIZES,
         1,
     ),
+    65: Stage(
+        65,
+        "bfloat16_state_to_float32_matmul_same_output_cb",
+        1,
+        1,
+        "bringup_bfloat16_state_matmul_same_output_compute.cpp",
+        "bringup_bfloat16_state_matmul_reader.cpp",
+        "bringup_bfloat16_state_matmul_same_output_writer.cpp",
+        "precision_convert_matmul",
+        1,
+        True,
+        6365,
+        3,
+        ("bfloat16", "bfloat16", "bfloat16"),
+        "float32",
+        STAGE_65_CB_FORMATS,
+        STAGE_65_CB_PAGE_SIZES,
+        1,
+    ),
+    66: Stage(
+        66,
+        "bfloat16_state_to_float32_matmul_distinct_output_cb",
+        1,
+        1,
+        "bringup_bfloat16_state_matmul_distinct_output_compute.cpp",
+        "bringup_bfloat16_state_matmul_reader.cpp",
+        "bringup_bfloat16_state_matmul_distinct_output_writer.cpp",
+        "precision_convert_matmul",
+        1,
+        True,
+        6365,
+        3,
+        ("bfloat16", "bfloat16", "bfloat16"),
+        "float32",
+        STAGE_66_CB_FORMATS,
+        STAGE_66_CB_PAGE_SIZES,
+        1,
+    ),
 }
 
 
@@ -636,6 +690,10 @@ def expected_output(stage: Stage, inputs: list[np.ndarray]) -> np.ndarray:
     a_real, b_real, a_imag, b_imag, identity, _ = inputs
     if stage.kind == "precision_convert":
         return _bfloat16_roundtrip(a_real)
+    if stage.kind == "precision_convert_matmul":
+        r_bfloat16 = _bfloat16_roundtrip(a_real)
+        state_bfloat16 = _bfloat16_roundtrip(a_imag)
+        return np.matmul(r_bfloat16, state_bfloat16).astype(np.float32)
     if stage.kind == "real":
         return np.matmul(a_real, b_real).astype(np.complex64)
     if stage.kind == "precision_real":
@@ -730,7 +788,7 @@ def _descriptor(ttnn: Any, index: int, core_ranges: Any, data_format: str, page_
 def output_count(stage: Stage) -> int:
     if stage.output_count_override is not None:
         return stage.output_count_override
-    return 1 if stage.kind in {"real", "precision_convert"} else 2
+    return 1 if stage.kind in {"real", "precision_convert", "precision_convert_matmul"} else 2
 
 
 def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:

@@ -43,6 +43,8 @@ class BringupHostTests(unittest.TestCase):
                 62,
                 63,
                 64,
+                65,
+                66,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -105,7 +107,24 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62):
+            if number not in (
+                49,
+                50,
+                51,
+                52,
+                53,
+                54,
+                55,
+                56,
+                57,
+                58,
+                59,
+                60,
+                61,
+                62,
+                65,
+                66,
+            ):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -638,6 +657,138 @@ class BringupHostTests(unittest.TestCase):
             expected,
             bringup.expected_output(stage, bringup._inputs(stage)),
         )
+
+    def test_conversion_to_next_matmul_output_cb_pair_is_isolated(self):
+        stage65 = bringup.STAGES[65]
+        stage66 = bringup.STAGES[66]
+        self.assertEqual(stage65.kind, "precision_convert_matmul")
+        self.assertEqual(stage66.kind, stage65.kind)
+        self.assertEqual(
+            (stage65.batch, stage65.cores, stage65.iterations, stage65.input_count), (1, 1, 1, 3)
+        )
+        self.assertEqual(
+            (stage66.batch, stage66.cores, stage66.iterations, stage66.input_count), (1, 1, 1, 3)
+        )
+        self.assertTrue(stage65.fp32_dest_acc_en)
+        self.assertTrue(stage66.fp32_dest_acc_en)
+        self.assertEqual(stage65.input_seed, stage66.input_seed)
+        self.assertEqual(stage65.input_seed, 6365)
+        self.assertEqual(stage65.input_dtypes, ("bfloat16",) * 3)
+        self.assertEqual(stage66.input_dtypes, stage65.input_dtypes)
+        self.assertEqual(stage65.output_dtype, "float32")
+        self.assertEqual(stage66.output_dtype, stage65.output_dtype)
+        self.assertEqual(bringup.output_count(stage65), 1)
+        self.assertEqual(bringup.output_count(stage66), 1)
+        self.assertEqual(stage65.reader_source, stage66.reader_source)
+        self.assertEqual(stage65.cb_formats[19], "bfloat16")
+        self.assertEqual(stage66.cb_formats[19], "float32")
+        self.assertEqual(stage65.cb_page_sizes[19], bringup.TILE_BYTES_BFLOAT16)
+        self.assertEqual(stage66.cb_page_sizes[19], bringup.TILE_BYTES_FLOAT32)
+        for index in (14, 16, 17):
+            self.assertEqual(stage65.cb_formats[index], "float32", index)
+            self.assertEqual(stage66.cb_formats[index], "float32", index)
+            self.assertEqual(stage65.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+            self.assertEqual(stage66.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+        self.assertEqual(stage65.cb_formats[13], "bfloat16")
+        self.assertEqual(stage66.cb_formats[13], "bfloat16")
+        self.assertEqual(stage65.cb_formats[20], "bfloat16")
+        self.assertEqual(stage66.cb_formats[20], "bfloat16")
+        self.assertEqual(
+            [stage65.cb_formats[index] for index in range(25) if index != 19],
+            [stage66.cb_formats[index] for index in range(25) if index != 19],
+        )
+        compute65 = (bringup.KERNEL_DIR / stage65.compute_source).read_text()
+        compute66 = (bringup.KERNEL_DIR / stage66.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage65.reader_source).read_text()
+        self.assertEqual(
+            compute65.replace("cb_final_output = 16", "cb_final_output = OUTPUT"),
+            compute66.replace("cb_final_output = 19", "cb_final_output = OUTPUT"),
+        )
+        writer65 = (bringup.KERNEL_DIR / stage65.writer_source).read_text()
+        writer66 = (bringup.KERNEL_DIR / stage66.writer_source).read_text()
+        self.assertEqual(
+            writer65.replace("cb_final_output = 16", "cb_final_output = OUTPUT"),
+            writer66.replace("cb_final_output = 19", "cb_final_output = OUTPUT"),
+        )
+        for source in (compute65, compute66, reader, writer65, writer66):
+            self.assertNotIn("binary_op", source)
+            self.assertNotIn("add_tiles", source)
+            self.assertNotIn("sub_tiles", source)
+            self.assertNotIn("newton", source.lower())
+        for compute, final_output in ((compute65, 16), (compute66, 19)):
+            self.assertEqual(compute.count("compute_kernel_hw_startup<SrcOrder::Reverse>("), 1)
+            self.assertEqual(compute.count("matmul_block_init("), 2)
+            self.assertEqual(compute.count("matmul_one("), 3)
+            self.assertNotIn("binary_op", compute)
+            self.assertNotIn("add_tiles", compute)
+            self.assertNotIn("sub_tiles", compute)
+            self.assertNotIn("newton", compute.lower())
+            self.assertEqual(compute.count("pack_reconfig_data_format("), 1)
+            self.assertIn(
+                "compute_kernel_hw_startup<SrcOrder::Reverse>(cb_r, cb_warmup_right, cb_warmup_output);",
+                compute,
+            )
+            self.assertIn("constexpr std::uint32_t cb_warmup_output = 16", compute)
+            self.assertIn("constexpr std::uint32_t cb_state_bfloat16 = 20", compute)
+            self.assertIn("constexpr std::uint32_t cb_state_float32_intermediate = 14", compute)
+            self.assertIn("constexpr std::uint32_t cb_float32_operand = 17", compute)
+            self.assertIn(f"constexpr std::uint32_t cb_final_output = {final_output}", compute)
+            self.assertIn(
+                "pack_reconfig_data_format(cb_state_bfloat16, cb_state_float32_intermediate);",
+                compute,
+            )
+            self.assertIn("copy_tile_init(cb_state_bfloat16);", compute)
+            self.assertIn("copy_tile(cb_state_bfloat16, 0, 0);", compute)
+            self.assertIn(
+                "reconfig_data_format_srca(cb_warmup_right, cb_float32_operand);", compute
+            )
+            self.assertIn("matmul_block_init(cb_r, cb_float32_operand, false, 1, 1, 1);", compute)
+            warmup = compute.index("matmul_one(cb_r, cb_warmup_right, cb_warmup_output);")
+            conversion = compute.index("convert_state_to_float32();")
+            srca = compute.index("reconfig_data_format_srca", conversion)
+            second_init = compute.index("matmul_block_init(cb_r, cb_float32_operand", srca)
+            final_matmul = compute.index("matmul_one(cb_r, cb_float32_operand, cb_final_output)")
+            self.assertLess(warmup, conversion)
+            self.assertLess(conversion, srca)
+            self.assertLess(srca, second_init)
+            self.assertLess(second_init, final_matmul)
+        self.assertEqual(reader.count("read_tile(cb_r, tile, r)"), 2)
+        self.assertEqual(reader.count("read_tile(cb_warmup_right, tile, warmup)"), 1)
+        self.assertEqual(reader.count("read_tile(cb_state_bfloat16, tile, state)"), 1)
+        self.assertIn("cb_wait_front(cb_warmup_output, 1);", reader)
+        self.assertIn("cb_pop_front(cb_warmup_output, 1);", reader)
+        self.assertIn("cb_reserve_back(cb_writer_ready, 1);", reader)
+        self.assertIn("cb_push_back(cb_writer_ready, 1);", reader)
+        self.assertIn(
+            "copy_float32_tile(cb_float32_operand, get_read_ptr(cb_state_float32_intermediate));",
+            reader,
+        )
+        self.assertIn("cb_pop_front(cb_state_float32_intermediate, 1);", reader)
+        warmup_read = reader.index("read_tile(cb_warmup_right, tile, warmup)")
+        discard = reader.index("discard_warmup_output();")
+        state_read = reader.index("read_tile(cb_state_bfloat16, tile, state)")
+        route = reader.index("route_converted_state();")
+        self.assertLess(warmup_read, discard)
+        self.assertLess(discard, state_read)
+        self.assertLess(state_read, route)
+        for writer in (writer65, writer66):
+            self.assertIn("cb_wait_front(cb_writer_ready, 1);", writer)
+            self.assertIn("cb_pop_front(cb_writer_ready, 1);", writer)
+            self.assertLess(
+                writer.index("cb_wait_front(cb_writer_ready"),
+                writer.index("cb_wait_front(cb_final_output"),
+            )
+        inputs65 = bringup._inputs(stage65)
+        inputs66 = bringup._inputs(stage66)
+        for left, right in zip(inputs65, inputs66):
+            np.testing.assert_array_equal(left, right)
+        self.assertFalse(np.array_equal(inputs65[1], inputs65[2]))
+        expected = np.matmul(
+            bringup._bfloat16_roundtrip(inputs65[0]),
+            bringup._bfloat16_roundtrip(inputs65[2]),
+        ).astype(np.float32)
+        np.testing.assert_array_equal(bringup.expected_output(stage65, inputs65), expected)
+        np.testing.assert_array_equal(bringup.expected_output(stage66, inputs66), expected)
 
     def test_newton_inputs_are_deterministic_hpd_with_requested_condition(self):
         for number in (5, 6, 46, 47, 48):
