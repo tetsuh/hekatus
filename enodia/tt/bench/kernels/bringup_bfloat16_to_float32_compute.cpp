@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <cstdint>
-#include "api/compute/reconfig_data_format.h"
+#include "api/compute/common.h"
 #include "api/compute/tile_move_copy.h"
 
 namespace {

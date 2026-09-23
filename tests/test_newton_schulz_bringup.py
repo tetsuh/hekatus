@@ -543,7 +543,7 @@ class BringupHostTests(unittest.TestCase):
             self.assertNotIn("binary_op", source)
             self.assertNotIn("add_tiles", source)
             self.assertNotIn("sub_tiles", source)
-        self.assertIn('#include "api/compute/reconfig_data_format.h"', compute)
+        self.assertIn('#include "api/compute/common.h"', compute)
         self.assertIn('#include "api/compute/tile_move_copy.h"', compute)
         self.assertIn("constexpr std::uint32_t cb_bfloat16_input = 20", compute)
         self.assertIn("constexpr std::uint32_t cb_float32_output = 23", compute)
