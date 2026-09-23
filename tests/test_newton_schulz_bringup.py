@@ -38,6 +38,7 @@ class BringupHostTests(unittest.TestCase):
                 57,
                 58,
                 59,
+                60,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -100,7 +101,7 @@ class BringupHostTests(unittest.TestCase):
             np.testing.assert_array_equal(stage6_input, stage49_input)
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
         for number, stage in bringup.STAGES.items():
-            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59):
+            if number not in (49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
         self.assertIn("fp32_dest_acc_en=stage.fp32_dest_acc_en", source)
@@ -315,6 +316,36 @@ class BringupHostTests(unittest.TestCase):
             compute.index("matmul_block_init(cb_second_a, cb_second_b"),
             compute.index("pack_reconfig_data_format(cb_product, cb_second_product)"),
         )
+        inputs = bringup._inputs(stage)
+        np.testing.assert_allclose(
+            bringup.expected_output(stage, inputs),
+            np.matmul(np.matmul(inputs[0], inputs[1]), inputs[2]),
+        )
+
+    def test_distinct_float32_output_cb_without_packer_reconfig_isolated(self):
+        stage = bringup.STAGES[60]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        writer = (bringup.KERNEL_DIR / stage.writer_source).read_text()
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.input_count, stage.output_dtype), (1, 1, 3, "float32")
+        )
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(stage.input_seed, 6360)
+        self.assertEqual(stage.cb_formats[16:20], ("float32", "float32", "bfloat16", "float32"))
+        self.assertEqual(
+            stage.cb_page_sizes[16:20],
+            (
+                bringup.TILE_BYTES_FLOAT32,
+                bringup.TILE_BYTES_FLOAT32,
+                bringup.TILE_BYTES_BFLOAT16,
+                bringup.TILE_BYTES_FLOAT32,
+            ),
+        )
+        self.assertIn("reconfig_data_format_srcb(cb_first_a, cb_second_a);", compute)
+        self.assertNotIn("pack_reconfig_data_format", compute)
+        self.assertIn("matmul_one(cb_second_a, cb_second_b, cb_second_product);", compute)
+        self.assertIn("cb_wait_front(19, 1);", writer)
+        self.assertIn("get_read_ptr(19)", writer)
         inputs = bringup._inputs(stage)
         np.testing.assert_allclose(
             bringup.expected_output(stage, inputs),

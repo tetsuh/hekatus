@@ -428,6 +428,25 @@ STAGES = {
         STAGE_59_CB_PAGE_SIZES,
         1,
     ),
+    60: Stage(
+        60,
+        "real_fp32_dest_acc_two_matmuls_correct_srcb_distinct_float32_output_no_pack",
+        1,
+        1,
+        "bringup_precision_real_two_correct_srcb_distinct_float32_output_no_pack_compute.cpp",
+        "bringup_precision_real_two_reader.cpp",
+        "bringup_precision_real_two_correct_srcb_output_writer.cpp",
+        "precision_real_two",
+        1,
+        True,
+        6360,
+        3,
+        ("bfloat16", "bfloat16", "bfloat16"),
+        "float32",
+        STAGE_59_CB_FORMATS,
+        STAGE_59_CB_PAGE_SIZES,
+        1,
+    ),
 }
 
 
