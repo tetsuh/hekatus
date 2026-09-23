@@ -60,6 +60,14 @@ STAGE_62_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in STAGE_62_FLOAT32_CBS else TILE_BYTES_BFLOAT16
     for index in range(25)
 )
+STAGE_63_FLOAT32_CBS = (23,)
+STAGE_63_CB_FORMATS = tuple(
+    "float32" if index in STAGE_63_FLOAT32_CBS else "bfloat16" for index in range(25)
+)
+STAGE_63_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in STAGE_63_FLOAT32_CBS else TILE_BYTES_BFLOAT16
+    for index in range(25)
+)
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -499,6 +507,25 @@ STAGES = {
         STAGE_62_CB_FORMATS,
         STAGE_62_CB_PAGE_SIZES,
     ),
+    63: Stage(
+        63,
+        "bfloat16_to_float32_tile_conversion",
+        1,
+        1,
+        "bringup_bfloat16_to_float32_compute.cpp",
+        "bringup_bfloat16_to_float32_reader.cpp",
+        "bringup_bfloat16_to_float32_writer.cpp",
+        "precision_convert",
+        1,
+        False,
+        6363,
+        1,
+        ("bfloat16",),
+        "float32",
+        STAGE_63_CB_FORMATS,
+        STAGE_63_CB_PAGE_SIZES,
+        1,
+    ),
 }
 
 
@@ -570,8 +597,18 @@ def _initial_value(values: np.ndarray) -> np.ndarray:
     return np.swapaxes(values.conj(), -1, -2) / (norm_1 * norm_inf)[:, None, None]
 
 
+def _bfloat16_roundtrip(values: np.ndarray) -> np.ndarray:
+    """Round float32 values to BF16 precision and widen them back to float32."""
+    contiguous = np.ascontiguousarray(values, dtype=np.float32)
+    bits = contiguous.view(np.uint32)
+    rounding = np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))
+    return ((bits + rounding) & np.uint32(0xFFFF0000)).view(np.float32)
+
+
 def expected_output(stage: Stage, inputs: list[np.ndarray]) -> np.ndarray:
     a_real, b_real, a_imag, b_imag, identity, _ = inputs
+    if stage.kind == "precision_convert":
+        return _bfloat16_roundtrip(a_real)
     if stage.kind == "real":
         return np.matmul(a_real, b_real).astype(np.complex64)
     if stage.kind == "precision_real":
@@ -666,7 +703,7 @@ def _descriptor(ttnn: Any, index: int, core_ranges: Any, data_format: str, page_
 def output_count(stage: Stage) -> int:
     if stage.output_count_override is not None:
         return stage.output_count_override
-    return 1 if stage.kind == "real" else 2
+    return 1 if stage.kind in {"real", "precision_convert"} else 2
 
 
 def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:
