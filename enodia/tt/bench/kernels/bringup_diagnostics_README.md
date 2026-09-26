@@ -169,3 +169,91 @@ Evidence fingerprints for the pre-stop record are the Watcher log SHA-256 `8aa6b
 The timeout caused cumulative reset #11; the preceding cumulative count was #10. `tt-smi -r all` returned success. The known-good Stage 1 recovery passed with relative error `0.004564372822642326` and elapsed `0.2917247400000633 s`. Post-recovery checks found no running containers and no device-0 users.
 
 This is a runtime/dataflow liveness observation after successful build-only JIT probes, not a numerical acceptance result. The exact compute-side root cause remains unresolved.
+
+## Host-only Stage 62 CB accounting and format-transition audit
+
+This section records the manual source audit performed after the ordinary Stage 62 Watcher run. It used `bringup_ns_four_plus_four_reader.cpp`, `bringup_ns_four_plus_four_compute.cpp`, `bringup_writer.cpp`, and the Stage 62 CB descriptors in `tools/newton_schulz_bringup.py`. No board, container, reset, or device execution was used for this audit.
+
+The notation below describes one tile across the eight iterations:
+
+- `M(A,B) x4`: compute waits for and consumes four tiles from A and B, producing four tiles in CB16.
+- `P`: reader waits for and consumes the four CB16 product tiles, pushing one tile to each of CB2--CB5.
+- `RX`: CB2/CB3 produce CB8 and CB4/CB5 produce CB9.
+- `S`: CB6/CB8 produce CB10 and CB7/CB9 produce CB11.
+
+### Per-iteration ordering
+
+The table records logical kernel order. Reader and compute execute concurrently, so it is not a global wall-clock ordering.
+
+| Iteration | Reader sequence | Compute sequence | State produced |
+|---|---|---|---|
+| 0 | CB0 x4, CB1 x4, `P`, CB6/CB7 x1, CB1 x4, wait/pop CB10/CB11 and push CB12 x4, `P` | `M(CB0,CB1) x4`, `RX`, `S`, `M(CB1,CB12) x4`, then state construction | CB20/CB21 |
+| 1 | CB0 x4, CB20/CB21 to CB1 x4, `P`, CB6/CB7 x1, CB20/CB21 to CB1 x4 and pop, wait/pop S CB10/CB11 and push CB12 x4, `P` | `M(CB0,CB1) x4`, `RX`, `S`, `M(CB1,CB12) x4`, then state construction | CB20/CB21 |
+| 2 | Same state-source sequence as iteration 1 | Same compute sequence as iteration 1 | CB20/CB21 |
+| 3 | Same state-source sequence as iteration 1 | Same compute sequence as iteration 1 | CB20/CB21 |
+| 4 | CB0 x4, CB14/CB15 to CB17 x4, `P`, CB6/CB7 x1, CB14/CB15 to CB17 x4 and pop, wait/pop S CB18/CB19 and push CB22 x4, `P` | Convert CB20/CB21 to CB14/CB15, `M(CB0,CB17) x4`, `RX`, S to CB18/CB19, `M(CB17,CB22) x4`, then state construction | CB14/CB15 |
+| 5 | Same Float32 state-source sequence as iteration 4 | Same Float32 compute sequence as iteration 4 | CB14/CB15 |
+| 6 | Same Float32 state-source sequence as iteration 4 | Same Float32 compute sequence as iteration 4 | CB14/CB15 |
+| 7 | Same Float32 state-source sequence as iteration 4, with final output routing | Same Float32 compute sequence, with final state to CB23/CB24 | CB23/CB24 |
+
+`stream_state_complex()` waits twice for each state source: the first copy does not pop, while the second copy pops. This explains the deliberately larger wait count than push count for CB14/CB15 and the two readers of CB20/CB21.
+
+### Complete push/wait/pop ledger
+
+All Stage 62 descriptors have four pages. Counts below are for one tile and all eight iterations; `R`, `C`, and `W` mean reader, compute, and writer.
+
+| CB | Format | Pushes | `wait_front` | `pop_front` | Capacity observation |
+|---:|---|---|---|---|---|
+| 0 | BF16 | R: 32 | C: 32 | C: 32 | Balanced |
+| 1 | BF16 | R: 32 | C: 32 | C: 32 | Four tiles remain after the second BF16 group is queued |
+| 2 | FP32 | R: 16 | C: 16 | C: 16 | Balanced |
+| 3 | FP32 | R: 16 | C: 16 | C: 16 | Balanced |
+| 4 | FP32 | R: 16 | C: 16 | C: 16 | Balanced |
+| 5 | FP32 | R: 16 | C: 16 | C: 16 | Balanced |
+| 6 | FP32 | R: 8 | C: 8 | C: 8 | Identity input |
+| 7 | FP32 | R: 8 | C: 8 | C: 8 | Zero input |
+| 8 | FP32 | C: 8 | C: 8 | C: 8 | RX real |
+| 9 | FP32 | C: 8 | C: 8 | C: 8 | RX imaginary |
+| 10 | BF16 | C: 4 | R: 4 | R: 4 | BF16 S real |
+| 11 | BF16 | C: 4 | R: 4 | R: 4 | BF16 S imaginary |
+| 12 | BF16 | R: 16 | C: 16 | C: 16 | BF16 second-group operand |
+| 13 | — | 0 | 0 | 0 | Unused by Stage 62 |
+| 14 | FP32 | C: 4 | R: 8 | R: 4 | Two reader waits per Float32 iteration |
+| 15 | FP32 | C: 4 | R: 8 | R: 4 | Two reader waits per Float32 iteration |
+| 16 | FP32 | C: 64 | R: 64 | R: 64 | Product routing drains every tile |
+| 17 | FP32 | R: 32 | C: 32 | C: 32 | Float32 X operand |
+| 18 | FP32 | C: 4 | R: 4 | R: 4 | Float32 S real |
+| 19 | FP32 | C: 4 | R: 4 | R: 4 | Float32 S imaginary |
+| 20 | BF16 | C: 4 | R: 6 + C: 1 | R: 3 + C: 1 | Reader state reuse plus iteration-4 conversion |
+| 21 | BF16 | C: 4 | R: 6 + C: 1 | R: 3 + C: 1 | Reader state reuse plus iteration-4 conversion |
+| 22 | FP32 | R: 16 | C: 16 | C: 16 | Float32 second-group operand |
+| 23 | FP32 | C: 1 | W: 1 | W: 1 | Final real output |
+| 24 | FP32 | C: 1 | W: 1 | W: 1 | Final imaginary output |
+
+The ledger has no unmatched push/pop count and no producer that must reserve a fifth page. CB1 reaches exactly four resident pages, but the Watcher reported `CWFW`, not a producer `CRBW`, and the reader had already completed that four-tile push. CB1 fullness is therefore downstream backpressure after compute stopped before publishing CB10/CB11, not a source-level circular wait. Before the reader waits for CB10/CB11, it has supplied every reader-side input needed for the first residual; CB12 is intentionally delayed until S exists.
+
+### Unpack and pack reconfiguration audit
+
+The relevant API contracts distinguish full operation initialization from format-only reconfiguration:
+
+- `compute_kernel_hw_startup<SrcOrder::Reverse>` is called once at kernel entry with R, BF16 X, and the FP32 product CB. The Reverse mapping is correct for matmul: `in0` feeds SrcB and `in1` feeds SrcA.
+- `binary_op_init_common(left, right, output)` performs full unpacker setup for the two inputs and full packer setup, including `pack_init(output)` and destination initialization. Therefore the first transition from FP32 CB8/CB9 to BF16 CB10/CB11 is not missing a packer call in the source. CB10/CB11 are also distinct from CB8/CB9.
+- `matmul_block_init()` configures matmul unpack/math state but does not configure the packer output. After the BF16 S binary operations, `switch_to_bfloat16_second_group()` calls only `matmul_block_init()`; it does not restore unpacker formats from the preceding FP32 binary inputs to BF16 CB1/CB12, and it does not restore the packer from BF16 CB11 to FP32 product CB16.
+- The same missing pair occurs after BF16 state construction: `switch_to_bfloat16_first_group()` calls only `matmul_block_init()` before the next BF16 matmul, while the preceding binary operation used FP32 product inputs and left the packer targeting BF16 state output.
+- `convert_state_to_float32()` does call `pack_reconfig_data_format(CB20, CB14)` before the first Float32 copy, so the output-side pack transition is explicit. However, `copy_tile_init(CB20)` and `copy_tile_init(CB21)` do not reconfigure unpack data formats by contract. The source does not use the format-aware copy initializer or an equivalent unpack reconfiguration before reading the BF16 state after the preceding FP32 binary operation.
+- At the conversion boundary, `reconfig_data_format_srca(CB12, CB17)` correctly reflects that the new Float32 X state is matmul `SrcA`. The helper does not reconfigure `SrcB` from the preceding state/binary configuration back to BF16 R CB0; that transition remains incomplete in the source audit.
+- Within the Float32 phase, the source-B transitions between BF16 R and Float32 X are explicitly handled, and product, S, and state output CBs remain Float32. No additional output-format transition is missing inside that phase.
+
+Thus the exact FP32 CB8/9 to BF16 CB10/11 binary operation has full operation initialization, so source inspection does not prove that this particular `pack_tile` is missing a reconfiguration. The broader Stage 62 format-transition contract is nevertheless incomplete immediately after that operation and at the BF16-to-Float32 copy boundary. Those missing transitions are higher-priority candidates for the next implementation review and must not be inferred away from the successful isolated conversion probe.
+
+### Approved minimum hardware probe for the next session
+
+The next probe is intentionally narrower than the full hybrid:
+
+1. Use L=32, batch 1, one core, one tile, the Stage 62 four-page CB layout, and the same FP32 destination-accumulation setting.
+2. Preserve the reader's first-iteration sequence through the second four-tile CB1 push, CB6/CB7 supply, and the wait for BF16 S.
+3. Run compute only through the first complex matmul group, RX construction, and S production into CB10/CB11. Omit the second matmul, state output, iteration-4 conversion, and all later iterations.
+4. Have the reader wait for CB10/CB11 and drain them through a matching-format diagnostic output path so the writer adds no unrelated format transition.
+5. Use a fresh process, an external 60-second cap, and Watcher logging.
+
+A timeout would localize the failure to the first residual path, including the FP32-to-BF16 binary output. A pass would justify a one-iteration extension that adds CB12 and the second matmul, with the missing unpack/pack transitions tested explicitly before any full hybrid run. No implementation or board execution was performed in this session.
