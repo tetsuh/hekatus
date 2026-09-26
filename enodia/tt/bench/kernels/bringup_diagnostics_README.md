@@ -70,3 +70,22 @@ P3a/P3b are a paired index-only branch rather than a numerical stage. Stop at th
 No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. The host definitions keep the one-core range, empty semaphore list, and compute argument shape explicit, while the dispatch builder records the zero-work runtime/compile override separately. The dispatch flag is explicit and diagnostic-only; it is not a substitute for a hybrid run. It has been implemented but has not been used on a board.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
+
+## Construction probe board results
+
+On 2026-09-26, each probe ran in a fresh container process with `--device-id 0`, the explicit zero-work dispatch flag, and an external 60-second timeout. The runner selected device 0 for every dispatch; no kernel was dispatched to device 1. The recorded host shape remained `compute_compile_args=[1]`, while every device dispatch used `reader_tile_count=0`, `writer_tile_count=0`, and the documented compute compile override `[0]`. No numerical output was downloaded or accepted.
+
+| Probe | Result | Dispatch time (s) | Log final position |
+|---|---|---:|---|
+| P0 | pass (`status=dispatched`) | 0.304614 | `Cluster destructor completed (cluster.cpp:781)` |
+| P1 | pass (`status=dispatched`) | 0.300803 | `Cluster destructor completed (cluster.cpp:781)` |
+| P2 | pass (`status=dispatched`) | 0.288168 | `Cluster destructor completed (cluster.cpp:781)` |
+| P3a | pass (`status=dispatched`) | 0.229854 | `Cluster destructor completed (cluster.cpp:781)` |
+| P3b | pass (`status=dispatched`) | 0.234593 | `Cluster destructor completed (cluster.cpp:781)` |
+| P4 | pass (`status=dispatched`) | 0.269468 | `Cluster destructor completed (cluster.cpp:781)` |
+| P5 | pass (`status=dispatched`) | 0.283236 | `Cluster destructor completed (cluster.cpp:781)` |
+| P6 | pass (`status=dispatched`) | 0.273749 | `Cluster destructor completed (cluster.cpp:781)` |
+| P7 | pass (`status=dispatched`) | 0.274189 | `Cluster destructor completed (cluster.cpp:781)` |
+| P8 | pass (`status=dispatched`) | 0.274219 | `Cluster destructor completed (cluster.cpp:781)` |
+
+P0 itself exited normally and returned the expected dispatched JSON record. The first orchestration wrapper misquoted its JSON `grep` expressions and falsely classified that successful process as a failure. It then performed the required cleanup, an unnecessary reset recorded as reset #10, and a Stage 1 health probe. The reset command exited 0; the health probe passed with relative error `0.0045643728`, and no container or device user remained. This operational wrapper error is not probe or kernel failure evidence. The corrected wrapper ran P1 through P8; none timed out or errored, so no further reset was needed. The final board state was zero running containers and no device-0 user.
