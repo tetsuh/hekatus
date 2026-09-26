@@ -135,6 +135,10 @@ CONSTRUCTION_CB_COUNT = 25
 CONSTRUCTION_CB_PAGE_COUNT = 4
 CONSTRUCTION_CORE_COORDINATES = ((0, 0),)
 CONSTRUCTION_TIMEOUT_SECONDS = 60
+# The host shape retains one compile tile for comparison with the recorded stages.
+# The authorized dispatch overrides that argument to zero so real compute sources
+# enter no tile loop and cannot wait on CB data.
+CONSTRUCTION_DISPATCH_COMPILE_TILE_COUNT = 0
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -164,8 +168,8 @@ class ConstructionProbe:
     """Host description of one zero-work construction bisection probe.
 
     This is deliberately independent of ttnn.  It records the descriptor and
-    source choices that a future runner may dispatch, but it contains no
-    device handles and no numerical acceptance fields.
+    source choices for the host record and the explicitly gated dispatch, but
+    it contains no device handles and no numerical acceptance fields.
     """
 
     name: str
@@ -248,6 +252,38 @@ class ConstructionProbe:
     @property
     def descriptor_total_bytes(self) -> int:
         return sum(self.descriptor_total_sizes)
+
+
+@dataclass(frozen=True)
+class ConstructionDispatchConfiguration:
+    """Zero-work arguments layered over a recorded construction probe.
+
+    ``ConstructionProbe`` intentionally keeps the host-comparison shape, whose
+    compile-time tile argument is one.  This configuration is only for the
+    explicitly gated device dispatch and changes the compute loop argument to
+    zero while keeping the recorded descriptor and kernel shape unchanged.
+    """
+
+    probe: ConstructionProbe
+    reader_tile_count: int = 0
+    writer_tile_count: int = 0
+    compute_compile_args: tuple[int, ...] = (CONSTRUCTION_DISPATCH_COMPILE_TILE_COUNT,)
+
+    def __post_init__(self) -> None:
+        if self.reader_tile_count != 0 or self.writer_tile_count != 0:
+            raise ValueError("construction dispatch reader and writer tile counts must be zero")
+        if self.compute_compile_args != (CONSTRUCTION_DISPATCH_COMPILE_TILE_COUNT,):
+            raise ValueError("construction dispatch compute loop count must be zero")
+
+
+def construction_dispatch_configuration(
+    probe_or_name: ConstructionProbe | str,
+) -> ConstructionDispatchConfiguration:
+    """Return the explicit zero-work override without importing ttnn."""
+    probe = (
+        construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
+    )
+    return ConstructionDispatchConfiguration(probe=probe)
 
 
 STAGES = {
@@ -1106,6 +1142,7 @@ def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[st
     probe = (
         construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
     )
+    dispatch = construction_dispatch_configuration(probe)
     compute, reader, writer = construction_source_paths(probe)
     return {
         "probe": probe.name,
@@ -1138,6 +1175,11 @@ def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[st
         "writer_runtime_arg_count": probe.writer_runtime_arg_count,
         "compute_compile_args": list(probe.compute_compile_args),
         "compute_runtime_args": [],
+        "dispatch_zero_work": {
+            "reader_tile_count": dispatch.reader_tile_count,
+            "writer_tile_count": dispatch.writer_tile_count,
+            "compute_compile_args": list(dispatch.compute_compile_args),
+        },
         "sources": {
             "compute": compute.name,
             "reader": reader.name,
@@ -1147,19 +1189,151 @@ def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[st
     }
 
 
+def _deallocate_tensors(ttnn: Any, tensors: list[Any]) -> None:
+    for tensor in tensors:
+        try:
+            ttnn.deallocate(tensor)
+        except Exception:  # noqa: BLE001, S110 - diagnostics must attempt all cleanup
+            pass
+
+
+def build_construction_probe_program(
+    ttnn: Any,
+    device: Any,
+    probe_or_name: ConstructionProbe | str,
+) -> tuple[Any, list[Any], list[Any]]:
+    """Allocate tensors and build one probe's zero-work ``ProgramDescriptor``.
+
+    The returned input and output tensors belong to the caller.  This function
+    does not launch or download anything; the authorized dispatch path owns the
+    launch and cleanup.  If construction fails after a partial allocation, the
+    tensors allocated here are released before the exception is propagated.
+    """
+    probe = (
+        construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
+    )
+    dispatch = construction_dispatch_configuration(probe)
+    inputs: list[Any] = []
+    outputs: list[Any] = []
+    handed_off = False
+    try:
+        coordinates, core_ranges = _core_coordinates(ttnn, device, probe.core_count)
+        if tuple(coordinates) != probe.core_coordinates:
+            raise ValueError(
+                f"device core coordinates {tuple(coordinates)!r} do not match "
+                f"probe coordinates {probe.core_coordinates!r}"
+            )
+        input_values = _construction_input_values(probe)
+        for values, dtype_name in zip(input_values, probe.input_dtypes):
+            inputs.append(_device_tensor(ttnn, values, device, dtype_name))
+        output_shape = ttnn.Shape((probe.batch, 1, TILE, TILE))
+        for dtype_name in probe.output_dtypes:
+            outputs.append(
+                ttnn.allocate_tensor_on_device(
+                    output_shape,
+                    getattr(ttnn, dtype_name),
+                    ttnn.TILE_LAYOUT,
+                    device,
+                    ttnn.L1_MEMORY_CONFIG,
+                )
+            )
+
+        reader_compile_args: list[int] = []
+        for tensor in inputs:
+            reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
+        writer_compile_args: list[int] = []
+        for tensor in outputs:
+            writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
+        input_addresses = [tensor.buffer_address() for tensor in inputs]
+        output_addresses = [tensor.buffer_address() for tensor in outputs]
+        compute, reader, writer = construction_source_paths(probe)
+        kernels = [
+            ttnn.KernelDescriptor(
+                kernel_source=str(reader),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                compile_time_args=reader_compile_args,
+                runtime_args=_runtime_args(
+                    ttnn, coordinates, input_addresses, dispatch.reader_tile_count
+                ),
+                config=ttnn.ReaderConfigDescriptor(),
+            ),
+            ttnn.KernelDescriptor(
+                kernel_source=str(writer),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                compile_time_args=writer_compile_args,
+                runtime_args=_runtime_args(
+                    ttnn, coordinates, output_addresses, dispatch.writer_tile_count
+                ),
+                config=ttnn.WriterConfigDescriptor(),
+            ),
+            ttnn.KernelDescriptor(
+                kernel_source=str(compute),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                # The recorded host shape remains [1].  This explicit [0]
+                # override makes every real compute source skip its outer loop.
+                compile_time_args=list(dispatch.compute_compile_args),
+                runtime_args=[],
+                config=ttnn.ComputeConfigDescriptor(
+                    dst_full_sync_en=True, fp32_dest_acc_en=probe.fp32_dest_acc_en
+                ),
+            ),
+        ]
+        # ProgramDescriptor has no separate active-index list in this API.
+        # Keep all 25 indexed descriptors so each probe's source metadata and
+        # format/page mapping are present in the constructed program.
+        program = ttnn.ProgramDescriptor(
+            kernels=kernels,
+            semaphores=list(probe.semaphores),
+            cbs=[
+                _descriptor(
+                    ttnn, index, core_ranges, probe.cb_formats[index], probe.cb_page_sizes[index]
+                )
+                for index in range(CONSTRUCTION_CB_COUNT)
+            ],
+        )
+        handed_off = True
+        return program, inputs, outputs
+    finally:
+        if not handed_off:
+            _deallocate_tensors(ttnn, [*inputs, *outputs])
+
+
+def _construction_dispatch_record(
+    probe: ConstructionProbe,
+    *,
+    device_id: int,
+    elapsed: float,
+) -> dict[str, Any]:
+    record = construction_probe_record(probe)
+    record.update(
+        {
+            "status": "dispatched",
+            "board_run": True,
+            "device_id": device_id,
+            "dispatch_elapsed_s": elapsed,
+        }
+    )
+    return record
+
+
 def dispatch_construction_probe(
     probe_or_name: ConstructionProbe | str,
     *,
     allow_device_dispatch: bool = False,
+    device_id: int = 0,
     dispatcher: Callable[[ConstructionProbe], Any] | None = None,
+    ttnn_module: Any | None = None,
 ) -> Any:
-    """Hand a zero-work configuration to an explicitly authorized future runner.
+    """Dispatch one explicitly authorized zero-work construction probe.
 
-    The current runner cannot safely dispatch the real compute sources with
-    ``tile_count=0`` because their single compile-time tile loop is ``[1]``.
-    Therefore this function never chooses ttnn or a hardware path itself.  A
-    future caller must pass both the explicit gate and a dispatcher that knows
-    how to perform a build-only dispatch under the external timeout.
+    Normal callers must pass ``allow_device_dispatch=True``.  The optional
+    ``dispatcher`` remains a host-only injection seam for tests and does not
+    open a device; the normal authorized path imports ttnn, opens ``device_id``,
+    builds the real source descriptors, invokes ``generic_op``, synchronizes,
+    and releases every tensor and the device.  No output is downloaded.
     """
     probe = (
         construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
@@ -1168,9 +1342,34 @@ def dispatch_construction_probe(
         raise PermissionError(
             "construction probe dispatch is disabled; use the host configuration only"
         )
-    if dispatcher is None:
-        raise RuntimeError("an explicitly supplied zero-work dispatcher is required")
-    return dispatcher(probe)
+    if dispatcher is not None:
+        return dispatcher(probe)
+    if ttnn_module is None:
+        import ttnn
+    else:
+        ttnn = ttnn_module
+
+    device = ttnn.open_device(device_id=device_id)
+    try:
+        program, inputs, outputs = build_construction_probe_program(ttnn, device, probe)
+        try:
+            started = time.perf_counter()
+            ttnn.generic_op([*inputs, *outputs], program)
+            ttnn.synchronize_device(device)
+            elapsed = time.perf_counter() - started
+            return _construction_dispatch_record(probe, device_id=device_id, elapsed=elapsed)
+        finally:
+            _deallocate_tensors(ttnn, [*inputs, *outputs])
+    finally:
+        ttnn.close_device(device)
+
+
+def _construction_input_values(probe: ConstructionProbe) -> list[np.ndarray]:
+    """Return allocation-only tiles; construction dispatch has no oracle."""
+    return [
+        np.zeros((probe.batch, TILE, TILE), dtype=np.float32)
+        for _ in range(len(probe.input_dtypes))
+    ]
 
 
 def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:
@@ -1293,14 +1492,20 @@ def main() -> int:
     parser.add_argument(
         "--dispatch-construction-probe",
         action="store_true",
-        help="reserved explicit gate for a future externally timed zero-work dispatcher",
+        help="explicitly open the selected device for a zero-work construction dispatch",
     )
     args = parser.parse_args()
+    if args.dispatch_construction_probe and args.construction_probe is None:
+        parser.error("--dispatch-construction-probe requires --construction-probe")
     if args.construction_probe is not None:
         probe = construction_probe_for(args.construction_probe)
         if args.dispatch_construction_probe:
             try:
-                dispatch_construction_probe(probe, allow_device_dispatch=True)
+                result = dispatch_construction_probe(
+                    probe,
+                    allow_device_dispatch=True,
+                    device_id=args.device_id,
+                )
             except Exception as exc:  # noqa: BLE001 - keep the gate machine-readable
                 result = construction_probe_record(probe)
                 result.update(
@@ -1309,12 +1514,10 @@ def main() -> int:
                         "error": f"{type(exc).__name__}: {exc}",
                     }
                 )
-            else:  # pragma: no cover - a future dispatcher will replace this path
-                result = construction_probe_record(probe)
         else:
             result = construction_probe_record(probe)
         print(json.dumps(result, sort_keys=True))
-        return 0 if result["status"] == "host-configured" else 1
+        return 0 if result["status"] in {"host-configured", "dispatched"} else 1
 
     try:
         stage = stage_for(args.stage)

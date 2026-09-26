@@ -8,6 +8,163 @@ from tools import newton_schulz_bringup as bringup
 PROBE_NAMES = ("P0", "P1", "P2", "P3a", "P3b", "P4", "P5", "P6", "P7", "P8")
 
 
+class _FakeTensor:
+    _next_address = 100
+
+    def __init__(self, values, dtype):
+        self.values = values
+        self.dtype = dtype
+        self.address = self._next_address
+        type(self)._next_address += 1
+        self.deallocated = False
+
+    def buffer_address(self):
+        return self.address
+
+
+class _FakeDevice:
+    class _Grid:
+        x = 1
+        y = 1
+
+    def compute_with_storage_grid_size(self):
+        return self._Grid()
+
+
+class _FakeRuntimeArgs:
+    def __init__(self):
+        self.values = {}
+
+    def __getitem__(self, x):
+        return _FakeRuntimeRow(self, x)
+
+
+class _FakeRuntimeRow:
+    def __init__(self, args, x):
+        self.args = args
+        self.x = x
+
+    def __setitem__(self, y, values):
+        self.args.values[(self.x, y)] = values
+
+
+class _FakeCoreCoord:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class _FakeCoreRange:
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+
+
+class _FakeCoreRangeSet:
+    def __init__(self, ranges):
+        self.ranges = ranges
+
+
+class _FakeKernelDescriptor:
+    class SourceType:
+        FILE_PATH = "file-path"
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+class _FakeConfig:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.__dict__.update(kwargs)
+
+
+class _FakeFormatDescriptor:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+class _FakeCBDescriptor:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+class _FakeProgramDescriptor:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
+class _FakeAccessorArgs:
+    def __init__(self, tensor):
+        self.tensor = tensor
+
+    def get_compile_time_args(self):
+        return [self.tensor.address + 1000]
+
+
+class _FakeTtnn:
+    bfloat16 = "bfloat16"
+    float32 = "float32"
+    TILE_LAYOUT = "tile"
+    L1_MEMORY_CONFIG = "l1"
+    KernelDescriptor = _FakeKernelDescriptor
+    RuntimeArgs = _FakeRuntimeArgs
+    CoreCoord = _FakeCoreCoord
+    CoreRange = _FakeCoreRange
+    CoreRangeSet = _FakeCoreRangeSet
+    TensorAccessorArgs = _FakeAccessorArgs
+    ReaderConfigDescriptor = _FakeConfig
+    WriterConfigDescriptor = _FakeConfig
+    ComputeConfigDescriptor = _FakeConfig
+    CBFormatDescriptor = _FakeFormatDescriptor
+    CBDescriptor = _FakeCBDescriptor
+    TileDescriptor = _FakeConfig
+    ProgramDescriptor = _FakeProgramDescriptor
+    Shape = tuple
+
+    def __init__(self):
+        self.opened_device_ids = []
+        self.closed_devices = []
+        self.generic_calls = []
+        self.deallocated = []
+
+    def Tensor(self, values, dtype):
+        return _FakeTensor(values, dtype)
+
+    def to_layout(self, tensor, layout):
+        tensor.layout = layout
+        return tensor
+
+    def to_device(self, tensor, device, memory_config):
+        tensor.device = device
+        tensor.memory_config = memory_config
+        return tensor
+
+    def allocate_tensor_on_device(self, shape, dtype, layout, device, memory_config):
+        tensor = _FakeTensor(shape, dtype)
+        tensor.device = device
+        tensor.layout = layout
+        tensor.memory_config = memory_config
+        return tensor
+
+    def open_device(self, device_id):
+        self.opened_device_ids.append(device_id)
+        return _FakeDevice()
+
+    def close_device(self, device):
+        self.closed_devices.append(device)
+
+    def generic_op(self, tensors, program):
+        self.generic_calls.append((tensors, program))
+
+    def synchronize_device(self, device):
+        return None
+
+    def deallocate(self, tensor):
+        tensor.deallocated = True
+        self.deallocated.append(tensor)
+
+
 def _probe_fields(probe):
     ignored = {"name", "purpose"}
     return {
@@ -42,6 +199,10 @@ def test_probe_sequence_is_host_only_and_has_the_fixed_dispatch_shape():
         assert probe.writer_runtime_arg_count == 4
         assert probe.compute_compile_args == (1,)
         assert probe.compute_runtime_args == ()
+        dispatch = bringup.construction_dispatch_configuration(probe)
+        assert dispatch.reader_tile_count == 0
+        assert dispatch.writer_tile_count == 0
+        assert dispatch.compute_compile_args == (0,)
         assert probe.kernel_order == ("reader", "writer", "compute")
         assert probe.semaphores == ()
         assert probe.external_timeout_seconds == 60
@@ -134,6 +295,11 @@ def test_probe_record_is_serializable_and_makes_no_numerical_or_board_claim():
     assert record["tile_count"] == 0
     assert record["compute_compile_args"] == [1]
     assert record["compute_runtime_args"] == []
+    assert record["dispatch_zero_work"] == {
+        "reader_tile_count": 0,
+        "writer_tile_count": 0,
+        "compute_compile_args": [0],
+    }
     assert record["semaphores"] == []
     assert record["core_range_count"] == 1
     assert record["core_ranges"] == [[[0, 0], [0, 0]]]
@@ -143,16 +309,60 @@ def test_probe_record_is_serializable_and_makes_no_numerical_or_board_claim():
     json.loads(json.dumps(record))
 
 
-def test_future_dispatch_is_explicitly_gated_and_accepts_only_an_injected_runner():
+def test_dispatch_builder_uses_zero_work_args_and_all_indexed_cb_descriptors():
+    ttnn = _FakeTtnn()
+    probe = bringup.construction_probe_for("P8")
+    program, inputs, outputs = bringup.build_construction_probe_program(ttnn, _FakeDevice(), probe)
+    try:
+        assert [tensor.dtype for tensor in inputs] == list(probe.input_dtypes)
+        assert [tensor.dtype for tensor in outputs] == ["float32", "float32"]
+        reader, writer, compute = program.kernels
+        assert reader.runtime_args.values[(0, 0)][-2:] == [0, 0]
+        assert writer.runtime_args.values[(0, 0)][-2:] == [0, 0]
+        assert compute.compile_time_args == [0]
+        assert compute.runtime_args == []
+        assert len(program.cbs) == 25
+        for index, descriptor in enumerate(program.cbs):
+            format_descriptor = descriptor.format_descriptors[0]
+            assert format_descriptor.buffer_index == index
+            assert format_descriptor.data_format == getattr(ttnn, probe.cb_formats[index])
+            assert format_descriptor.page_size == probe.cb_page_sizes[index]
+    finally:
+        bringup._deallocate_tensors(ttnn, [*inputs, *outputs])
+
+
+def test_authorized_dispatch_opens_selected_device_and_releases_all_tensors():
+    ttnn = _FakeTtnn()
+    result = bringup.dispatch_construction_probe(
+        "P0",
+        allow_device_dispatch=True,
+        device_id=3,
+        ttnn_module=ttnn,
+    )
+    assert result["status"] == "dispatched"
+    assert result["board_run"] is True
+    assert result["device_id"] == 3
+    assert ttnn.opened_device_ids == [3]
+    assert len(ttnn.generic_calls) == 1
+    tensors, program = ttnn.generic_calls[0]
+    assert len(tensors) == 8
+    assert program.kernels[0].runtime_args.values[(0, 0)][-1] == 0
+    assert program.kernels[1].runtime_args.values[(0, 0)][-1] == 0
+    assert program.kernels[2].compile_time_args == [0]
+    assert all(tensor.deallocated for tensor in tensors)
+    assert len(ttnn.closed_devices) == 1
+
+
+def test_dispatch_is_explicitly_gated_and_keeps_the_host_injection_seam():
+    ttnn = _FakeTtnn()
     with pytest.raises(PermissionError, match="disabled"):
-        bringup.dispatch_construction_probe("P0")
-    with pytest.raises(RuntimeError, match="dispatcher"):
-        bringup.dispatch_construction_probe("P0", allow_device_dispatch=True)
+        bringup.dispatch_construction_probe("P0", ttnn_module=ttnn)
+    assert ttnn.opened_device_ids == []
     seen = []
     result = bringup.dispatch_construction_probe(
         "P0",
         allow_device_dispatch=True,
-        dispatcher=lambda probe: seen.append(probe.name) or "future-result",
+        dispatcher=lambda probe: seen.append(probe.name) or "injected-result",
     )
-    assert result == "future-result"
+    assert result == "injected-result"
     assert seen == ["P0"]
