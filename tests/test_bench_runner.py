@@ -179,6 +179,27 @@ def test_config_kind_filter_enumerates_exactly_four_default_dtype_rows():
     assert all(base_memory_name == "dram" for _, _, _, _, base_memory_name in rows)
 
 
+def test_row_specs_applies_dtype_specific_catalogue_filtering():
+    shape = next(
+        shape for shape in default_catalogue() if shape.name == "beamspace_B16_ch128_p4096"
+    )
+
+    bf16_rows = list(
+        run_matmul._row_specs(
+            shape, ["dram", "l1"], "all", ["reuse"], dtype="bfloat16"
+        )
+    )
+    fp32_rows = list(
+        run_matmul._row_specs(
+            shape, ["dram", "l1"], "all", ["reuse"], dtype="float32"
+        )
+    )
+
+    assert len(bf16_rows) == 2
+    assert fp32_rows == []
+    assert {row[1] for row in bf16_rows} == {"dram", "l1"}
+
+
 def test_batched_dram_worker_mismatch_fails_before_board_work():
     ttnn = _StubTtnn()
     device = _StubDevice(worker_count=7)

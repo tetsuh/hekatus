@@ -423,11 +423,13 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if args.config_kind is None:
         return
 
+    requested_dtypes = args.dtype or ["bfloat16", "float32"]
     known_kinds = sorted(
         {
             config.kind
             for shape in default_catalogue()
-            for config in configuration_catalogue(shape)
+            for dtype in requested_dtypes
+            for config in configuration_catalogue(shape, dtype=dtype)
         }
     )
     unknown = sorted(set(args.config_kind) - set(known_kinds))
@@ -442,7 +444,8 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         config
         for shape in shapes
         if shape.representative
-        for config in configuration_catalogue(shape)
+        for dtype in requested_dtypes
+        for config in configuration_catalogue(shape, dtype=dtype)
         if config.kind in args.config_kind
     ]
     if not rows:
@@ -464,13 +467,14 @@ def _row_specs(
     memories: list[str],
     config_mode: str,
     config_kinds: list[str] | None = None,
+    dtype: str = "bfloat16",
 ):
     if config_kinds is None:
         for memory_name in memories:
             yield None, memory_name, memory_name
     if config_mode == "default-only" or not shape.representative:
         return
-    for config in configuration_catalogue(shape):
+    for config in configuration_catalogue(shape, dtype=dtype):
         if config_kinds is not None and config.kind not in config_kinds:
             continue
         if config.memory_plan == "interleaved":
@@ -527,7 +531,7 @@ def main(argv: list[str] | None = None) -> int:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
                 for program_spec, memory_name, base_memory_name in _row_specs(
-                    shape, memories, args.config_mode, args.config_kind
+                    shape, memories, args.config_mode, args.config_kind, dtype_name
                 ):
                     config_record = (
                         {"name": "default", "kind": "default"}

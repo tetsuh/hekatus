@@ -24,7 +24,10 @@ P150_DRAM_BANKS = 8
 # explicit reuse configs below 1.3 MB so runtime and allocator-reserved space
 # are not mistaken for circular-buffer capacity.
 P150_MATMUL_CB_BUDGET_BYTES = 1_300_000
-_BFLOAT16_TILE_BYTES = TILE_SIZE * TILE_SIZE * 2
+_TILE_BYTES = {
+    "bfloat16": TILE_SIZE * TILE_SIZE * 2,
+    "float32": TILE_SIZE * TILE_SIZE * 4,
+}
 _MAX_SUBBLOCK_TILES = 4  # valid for both BF16 and FP32 destination accumulation
 
 _CONFIG_KINDS = {
@@ -84,21 +87,36 @@ def _block_widths(k_tiles: int) -> tuple[int, ...]:
     return (1,) if k_tiles == 1 else (1, k_tiles)
 
 
-def _reuse_cb_bytes(per_core_m: int, per_core_n: int, in0_block_w: int) -> int:
+def _tile_bytes(dtype: str) -> int:
+    try:
+        return _TILE_BYTES[dtype]
+    except KeyError:
+        supported = ", ".join(sorted(_TILE_BYTES))
+        raise ValueError(f"unsupported matmul dtype {dtype!r}; choose from {supported}") from None
+
+
+def _reuse_cb_bytes(
+    per_core_m: int,
+    per_core_n: int,
+    in0_block_w: int,
+    dtype: str = "bfloat16",
+) -> int:
     """Pinned ttnn's double-buffered input plus output/intermediate CB estimate."""
     tiles = 2 * (per_core_m * in0_block_w + per_core_n * in0_block_w + per_core_m * per_core_n)
-    return tiles * _BFLOAT16_TILE_BYTES
+    return tiles * _tile_bytes(dtype)
 
 
-def _batched_dram_l1_bytes(shape: MatmulShape) -> int:
+def _batched_dram_l1_bytes(shape: MatmulShape, dtype: str = "bfloat16") -> int:
     batch = ceil(shape.batch / P150_DRAM_BANKS) * P150_DRAM_BANKS
     batches_per_core = batch // P150_DRAM_BANKS
     m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
     resident_tiles = batches_per_core * m_tiles * (k_tiles + n_tiles)
-    return resident_tiles * _BFLOAT16_TILE_BYTES + _reuse_cb_bytes(m_tiles, n_tiles, k_tiles)
+    return resident_tiles * _tile_bytes(dtype) + _reuse_cb_bytes(
+        m_tiles, n_tiles, k_tiles, dtype
+    )
 
 
-def _reuse_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
+def _reuse_configs(shape: MatmulShape, dtype: str = "bfloat16") -> list[ProgramConfigSpec]:
     m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
     output_blocks = _largest_divisor_at_most(m_tiles * n_tiles, 64)
     m_blocks = _largest_divisor_at_most(m_tiles, output_blocks)
@@ -111,9 +129,14 @@ def _reuse_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
     partitions = [(m_tiles, n_tiles, (1, 1)), (per_m, per_n, grid)]
     configs = []
     for per_core_m, per_core_n, candidate_grid in dict.fromkeys(partitions):
+        if per_core_n != n_tiles:
+            continue
         sub_h, sub_w = _subblock(per_core_m, per_core_n)
         for block_w in _block_widths(k_tiles):
-            if _reuse_cb_bytes(per_core_m, per_core_n, block_w) > P150_MATMUL_CB_BUDGET_BYTES:
+            if (
+                _reuse_cb_bytes(per_core_m, per_core_n, block_w, dtype)
+                > P150_MATMUL_CB_BUDGET_BYTES
+            ):
                 continue
             configs.append(
                 ProgramConfigSpec(
@@ -205,13 +228,13 @@ def _mcast_2d_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
     ]
 
 
-def _dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
+def _dram_sharded_configs(shape: MatmulShape, dtype: str = "bfloat16") -> list[ProgramConfigSpec]:
     m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
     if shape.batch != 1 or m_tiles != 1:
         return []
     storage_cores = _largest_divisor_at_most(k_tiles, min(k_tiles, P150_DRAM_BANKS))
     per_n = n_tiles // _largest_divisor_at_most(n_tiles, storage_cores)
-    if _reuse_cb_bytes(1, per_n, 1) > P150_MATMUL_CB_BUDGET_BYTES:
+    if _reuse_cb_bytes(1, per_n, 1, dtype) > P150_MATMUL_CB_BUDGET_BYTES:
         return []
     sub_h, sub_w = _subblock(1, per_n)
     return [
@@ -229,8 +252,10 @@ def _dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
     ]
 
 
-def _batched_dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]:
-    if shape.batch == 1 or _batched_dram_l1_bytes(shape) > P150_MATMUL_CB_BUDGET_BYTES:
+def _batched_dram_sharded_configs(
+    shape: MatmulShape, dtype: str = "bfloat16"
+) -> list[ProgramConfigSpec]:
+    if shape.batch == 1 or _batched_dram_l1_bytes(shape, dtype) > P150_MATMUL_CB_BUDGET_BYTES:
         return []
     m_tiles, k_tiles, n_tiles = _tiles(shape.m), _tiles(shape.k), _tiles(shape.n)
     sub_h, sub_w = _subblock(m_tiles, n_tiles)
@@ -253,7 +278,9 @@ def _batched_dram_sharded_configs(shape: MatmulShape) -> list[ProgramConfigSpec]
     ]
 
 
-def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
+def validate_config(
+    shape: MatmulShape, config: ProgramConfigSpec, dtype: str = "bfloat16"
+) -> None:
     """Raise ``ValueError`` before a config can reach ttnn's fatal checks."""
     if config.kind not in _CONFIG_KINDS:
         raise ValueError(f"unknown program config kind: {config.kind}")
@@ -295,6 +322,10 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
         )
 
     if config.kind == "reuse":
+        if config.per_core_n != n_tiles:
+            raise ValueError(
+                f"{config.name}: reuse per-core N {config.per_core_n} must cover all {n_tiles} N tiles"
+            )
         if m_tiles % config.per_core_m or n_tiles % config.per_core_n:
             raise ValueError(
                 f"{config.name}: M tiles {m_tiles} and N tiles {n_tiles} must divide into per-core blocks"
@@ -304,7 +335,9 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
             raise ValueError(
                 f"{config.name}: {blocks} output blocks exceed compute grid {config.grid}"
             )
-        cb_bytes = _reuse_cb_bytes(config.per_core_m, config.per_core_n, config.in0_block_w)
+        cb_bytes = _reuse_cb_bytes(
+            config.per_core_m, config.per_core_n, config.in0_block_w, dtype
+        )
         if cb_bytes > P150_MATMUL_CB_BUDGET_BYTES:
             raise ValueError(
                 f"{config.name}: circular buffers need {cb_bytes} bytes, above the p150 budget"
@@ -339,7 +372,9 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
             raise ValueError(
                 f"{config.name}: DRAM sharding requires an unbatched one-tile-high output"
             )
-        cb_bytes = _reuse_cb_bytes(config.per_core_m, config.per_core_n, config.in0_block_w)
+        cb_bytes = _reuse_cb_bytes(
+            config.per_core_m, config.per_core_n, config.in0_block_w, dtype
+        )
         if cb_bytes > P150_MATMUL_CB_BUDGET_BYTES:
             raise ValueError(
                 f"{config.name}: circular buffers need {cb_bytes} bytes, above the p150 budget"
@@ -352,7 +387,7 @@ def validate_config(shape: MatmulShape, config: ProgramConfigSpec) -> None:
         raise ValueError(f"{config.name}: each DRAM worker must execute complete batched matrices")
     if config.batch_multiple != P150_DRAM_BANKS:
         raise ValueError(f"{config.name}: batch padding must match the p150 DRAM-bank count")
-    l1_bytes = _batched_dram_l1_bytes(shape)
+    l1_bytes = _batched_dram_l1_bytes(shape, dtype)
     if l1_bytes > P150_MATMUL_CB_BUDGET_BYTES:
         raise ValueError(
             f"{config.name}: sharded input, output, and circular buffers need {l1_bytes} bytes"
@@ -365,15 +400,17 @@ def executed_shape(shape: MatmulShape, config: ProgramConfigSpec) -> MatmulShape
     return replace(shape, batch=batch)
 
 
-def configuration_catalogue(shape: MatmulShape) -> list[ProgramConfigSpec]:
-    """Explicit stock configurations admissible for ``shape`` on p150a."""
+def configuration_catalogue(
+    shape: MatmulShape, dtype: str = "bfloat16"
+) -> list[ProgramConfigSpec]:
+    """Explicit stock configurations admissible for ``shape`` and ``dtype`` on p150a."""
     configs = [
-        *_reuse_configs(shape),
+        *_reuse_configs(shape, dtype),
         *_mcast_1d_configs(shape),
         *_mcast_2d_configs(shape),
-        *_dram_sharded_configs(shape),
-        *_batched_dram_sharded_configs(shape),
+        *_dram_sharded_configs(shape, dtype),
+        *_batched_dram_sharded_configs(shape, dtype),
     ]
     for config in configs:
-        validate_config(shape, config)
+        validate_config(shape, config, dtype)
     return configs

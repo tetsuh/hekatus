@@ -138,3 +138,44 @@ def test_batch_sharding_counts_the_padding_it_executes():
     assert config.batch_multiple == P150_DRAM_BANKS
     assert execution.batch == 1024
     assert total_flops(execution) == 1024 * 2 * 32**3
+
+
+@pytest.mark.parametrize(
+    ("shape_name", "expected_reuse_count"),
+    [
+        ("newton_schulz_L64_b1024", 2),
+        ("newton_schulz_L64_b8192", 2),
+        ("newton_schulz_L64_b65536", 2),
+        ("beamspace_B16_ch128_p4096", 1),
+        ("beamspace_B16_ch128_p65536", 0),
+        ("beamspace_B16_ch256_p4096", 1),
+        ("beamspace_B16_ch256_p65536", 0),
+    ],
+)
+def test_reuse_candidates_cover_the_full_n_tile_count(shape_name, expected_reuse_count):
+    shape = next(shape for shape in default_catalogue() if shape.name == shape_name)
+
+    reuse = [config for config in configuration_catalogue(shape) if config.kind == "reuse"]
+
+    assert len(reuse) == expected_reuse_count
+    assert all(config.per_core_n == (shape.n + 31) // 32 for config in reuse)
+
+
+def test_float32_filters_a_reuse_candidate_that_exceeds_the_cb_budget():
+    shape = next(
+        shape for shape in default_catalogue() if shape.name == "beamspace_B16_ch128_p4096"
+    )
+
+    bf16_reuse = [
+        config
+        for config in configuration_catalogue(shape, dtype="bfloat16")
+        if config.kind == "reuse"
+    ]
+    fp32_reuse = [
+        config
+        for config in configuration_catalogue(shape, dtype="float32")
+        if config.kind == "reuse"
+    ]
+
+    assert bf16_reuse
+    assert fp32_reuse == []
