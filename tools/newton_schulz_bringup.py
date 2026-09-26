@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -1187,6 +1188,52 @@ def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[st
         },
         "purpose": probe.purpose,
     }
+
+
+def is_successful_construction_dispatch_record(record: object) -> bool:
+    """Return whether a JSON-decoded record proves a successful zero-work dispatch.
+
+    This pure predicate deliberately validates only machine-readable dispatch
+    evidence, so a shell wrapper can parse JSON and call it without fragile
+    text matching.
+    """
+    if not isinstance(record, dict):
+        return False
+    if record.get("status") != "dispatched" or record.get("board_run") is not True:
+        return False
+
+    device_id = record.get("device_id")
+    if not isinstance(device_id, int) or isinstance(device_id, bool) or device_id < 0:
+        return False
+
+    elapsed = record.get("dispatch_elapsed_s")
+    if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)):
+        return False
+    if isinstance(elapsed, float) and not math.isfinite(elapsed):
+        return False
+    if elapsed < 0:
+        return False
+
+    zero_work = record.get("dispatch_zero_work")
+    if not isinstance(zero_work, dict) or set(zero_work) != {
+        "reader_tile_count",
+        "writer_tile_count",
+        "compute_compile_args",
+    }:
+        return False
+    reader_tile_count = zero_work.get("reader_tile_count")
+    writer_tile_count = zero_work.get("writer_tile_count")
+    compute_compile_args = zero_work.get("compute_compile_args")
+    return (
+        type(reader_tile_count) is int
+        and reader_tile_count == 0
+        and type(writer_tile_count) is int
+        and writer_tile_count == 0
+        and type(compute_compile_args) is list
+        and len(compute_compile_args) == 1
+        and type(compute_compile_args[0]) is int
+        and compute_compile_args[0] == 0
+    )
 
 
 def _deallocate_tensors(ttnn: Any, tensors: list[Any]) -> None:

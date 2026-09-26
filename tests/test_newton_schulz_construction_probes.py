@@ -180,6 +180,12 @@ def _changed_fields(left, right):
     }
 
 
+def _dispatch_record():
+    return bringup._construction_dispatch_record(
+        bringup.construction_probe_for("P8"), device_id=0, elapsed=0.25
+    )
+
+
 def test_probe_sequence_is_host_only_and_has_the_fixed_dispatch_shape():
     assert tuple(bringup.CONSTRUCTION_PROBES) == PROBE_NAMES
     for name in PROBE_NAMES:
@@ -307,6 +313,66 @@ def test_probe_record_is_serializable_and_makes_no_numerical_or_board_claim():
     assert record["cb_page_count"] == 4
     assert record["cb_descriptor_total_bytes"] == 352256
     json.loads(json.dumps(record))
+
+
+def test_dispatch_record_json_round_trip_is_accepted_without_opening_a_device():
+    record = json.loads(json.dumps(_dispatch_record()))
+
+    assert bringup.is_successful_construction_dispatch_record(record)
+
+
+def test_host_configured_and_failed_records_are_rejected_by_dispatch_predicate():
+    host_record = bringup.construction_probe_record("P8")
+    failed_record = dict(host_record, status="fail", error="dispatch failed")
+
+    assert not bringup.is_successful_construction_dispatch_record(host_record)
+    assert not bringup.is_successful_construction_dispatch_record(failed_record)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("status", "dispatch"),
+        ("board_run", 1),
+        ("device_id", True),
+        ("device_id", -1),
+        ("device_id", 1.0),
+        ("dispatch_elapsed_s", True),
+        ("dispatch_elapsed_s", float("nan")),
+        ("dispatch_elapsed_s", float("inf")),
+        ("dispatch_elapsed_s", -1.0),
+    ],
+)
+def test_dispatch_predicate_rejects_malformed_or_typed_dispatch_fields(field, value):
+    record = _dispatch_record()
+    record[field] = value
+
+    assert not bringup.is_successful_construction_dispatch_record(record)
+
+
+@pytest.mark.parametrize(
+    "zero_work",
+    [
+        None,
+        {},
+        {"reader_tile_count": "0", "writer_tile_count": 0, "compute_compile_args": [0]},
+        {"reader_tile_count": 0, "writer_tile_count": True, "compute_compile_args": [0]},
+        {"reader_tile_count": 0, "writer_tile_count": 0, "compute_compile_args": [1]},
+        {"reader_tile_count": 0, "writer_tile_count": 0, "compute_compile_args": [True]},
+        {"reader_tile_count": 0, "writer_tile_count": 0, "compute_compile_args": (0,)},
+        {
+            "reader_tile_count": 0,
+            "writer_tile_count": 0,
+            "compute_compile_args": [0],
+            "unexpected": 0,
+        },
+    ],
+)
+def test_dispatch_predicate_rejects_malformed_or_altered_zero_work(zero_work):
+    record = _dispatch_record()
+    record["dispatch_zero_work"] = zero_work
+
+    assert not bringup.is_successful_construction_dispatch_record(record)
 
 
 def test_dispatch_builder_uses_zero_work_args_and_all_indexed_cb_descriptors():
