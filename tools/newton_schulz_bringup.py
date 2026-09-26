@@ -8,10 +8,14 @@ boundary check.  This script is diagnostic-only; it does not reset hardware.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
+import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -141,6 +145,19 @@ CONSTRUCTION_TIMEOUT_SECONDS = 60
 # enter no tile loop and cannot wait on CB data.
 CONSTRUCTION_DISPATCH_COMPILE_TILE_COUNT = 0
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
+
+# Build-only probing is intentionally a separate path from both ordinary stage
+# execution and the construction-time P0-P8 zero-work probes.  The full stage
+# sources and their normal one-tile compile shape are required here so a cache
+# record says something about the actual failing stages.
+BUILD_ONLY_JIT_STAGES = (62, 67)
+BUILD_ONLY_REQUIRED_ENV = (
+    "TT_METAL_CACHE",
+    "TT_METAL_FORCE_JIT_COMPILE",
+    "TT_METAL_LOG_KERNELS_COMPILE_COMMANDS",
+    "TT_METAL_KERNELS_EARLY_RETURN",
+)
+BUILD_ONLY_REQUIRED_VALUE = "1"
 
 
 @dataclass(frozen=True)
@@ -959,6 +976,127 @@ def stage_for(number: int) -> Stage:
         raise ValueError(f"stage must be one of {sorted(STAGES)}, got {number}") from exc
 
 
+class BuildOnlyProbeConfigurationError(ValueError):
+    """A machine-readable preflight failure for the build-only path."""
+
+    def __init__(self, code: str, message: str, *, details: Mapping[str, object] | None = None):
+        super().__init__(message)
+        self.code = code
+        self.details = dict(details or {})
+
+
+def build_only_stage_for(number: int) -> Stage:
+    """Return a stage allowed by the explicit build-only JIT probe."""
+    if number not in BUILD_ONLY_JIT_STAGES:
+        raise BuildOnlyProbeConfigurationError(
+            "stage_not_allowlisted",
+            f"build-only JIT probe stage must be one of {BUILD_ONLY_JIT_STAGES}, got {number}",
+            details={"allowed_stages": list(BUILD_ONLY_JIT_STAGES), "stage": number},
+        )
+    return stage_for(number)
+
+
+def _resolved_cache_directory(value: str | os.PathLike[str]) -> Path:
+    try:
+        path = Path(value).expanduser().resolve()
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise BuildOnlyProbeConfigurationError(
+            "cache_directory_invalid",
+            "TT_METAL_CACHE must name a usable directory path",
+            details={"reason": "path could not be resolved"},
+        ) from exc
+    if not str(path):
+        raise BuildOnlyProbeConfigurationError(
+            "cache_directory_missing",
+            "TT_METAL_CACHE must name a caller-provided persistent directory",
+        )
+    return path
+
+
+def validate_build_only_environment(
+    environment: Mapping[str, str] | None = None,
+    *,
+    cache_directory: str | os.PathLike[str] | None = None,
+) -> dict[str, str]:
+    """Validate the controls before a build-only path can import ``ttnn``.
+
+    The optional CLI argument is another explicit way for the caller to supply
+    ``TT_METAL_CACHE``.  If both sources are supplied they must resolve to the
+    same directory; no existing runtime setting is silently replaced.
+    """
+    supplied = dict(os.environ if environment is None else environment)
+    invalid: dict[str, str] = {}
+    configured_cache = supplied.get("TT_METAL_CACHE")
+    if cache_directory is None:
+        if configured_cache is None or not configured_cache:
+            invalid["TT_METAL_CACHE"] = "missing"
+            resolved_cache = None
+        else:
+            resolved_cache = _resolved_cache_directory(configured_cache)
+    else:
+        resolved_cache = _resolved_cache_directory(cache_directory)
+        if configured_cache is not None:
+            if not configured_cache:
+                invalid["TT_METAL_CACHE"] = "missing"
+            else:
+                try:
+                    configured_path = _resolved_cache_directory(configured_cache)
+                except BuildOnlyProbeConfigurationError:
+                    invalid["TT_METAL_CACHE"] = "invalid"
+                else:
+                    if configured_path != resolved_cache:
+                        invalid["TT_METAL_CACHE"] = "does not match cache_directory"
+
+    for name in BUILD_ONLY_REQUIRED_ENV[1:]:
+        if supplied.get(name) != BUILD_ONLY_REQUIRED_VALUE:
+            invalid[name] = "missing" if name not in supplied else "expected '1'"
+
+    if invalid:
+        raise BuildOnlyProbeConfigurationError(
+            "required_environment_invalid",
+            "build-only JIT probe requires TT_METAL_CACHE and three explicit TT-Metal controls",
+            details={"variables": invalid},
+        )
+    assert resolved_cache is not None
+    effective = dict(supplied)
+    effective["TT_METAL_CACHE"] = str(resolved_cache)
+    return effective
+
+
+def _ensure_cache_directory(cache_directory: Path) -> None:
+    try:
+        cache_directory.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise BuildOnlyProbeConfigurationError(
+            "cache_directory_unusable",
+            "TT_METAL_CACHE could not be created or opened",
+            details={"reason": type(exc).__name__},
+        ) from exc
+    if not cache_directory.is_dir():
+        raise BuildOnlyProbeConfigurationError(
+            "cache_directory_unusable",
+            "TT_METAL_CACHE must name a directory",
+        )
+
+
+@contextmanager
+def _temporary_required_environment(values: Mapping[str, str]) -> Iterator[None]:
+    """Expose validated controls while importing and running the runtime."""
+    previous: dict[str, str | None] = {
+        name: os.environ.get(name) for name in BUILD_ONLY_REQUIRED_ENV
+    }
+    for name in BUILD_ONLY_REQUIRED_ENV:
+        os.environ[name] = values[name]
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
 def _hpd_batch(batch: int, *, condition_number: float, seed: int) -> np.ndarray:
     """Build deterministic complex HPD matrices with a requested spectrum."""
     eigenvalues = np.geomspace(1.0, condition_number, TILE)
@@ -1079,6 +1217,53 @@ def source_paths(stage_or_probe: Stage | ConstructionProbe) -> tuple[Path, Path,
 def construction_source_paths(probe: ConstructionProbe) -> tuple[Path, Path, Path]:
     """Resolve a probe's source triplet without importing or requiring ttnn."""
     return source_paths(probe)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _cache_artifacts_for_source(cache_directory: Path, source_name: str) -> list[dict[str, object]]:
+    token = Path(source_name).stem.lower()
+    artifacts: list[dict[str, object]] = []
+    for path in cache_directory.rglob("*"):
+        if not path.is_file() or token not in path.relative_to(cache_directory).as_posix().lower():
+            continue
+        relative = path.relative_to(cache_directory).as_posix()
+        artifacts.append(
+            {
+                "relative_path": relative,
+                "size_bytes": path.stat().st_size,
+                "sha256": _sha256(path),
+            }
+        )
+    artifacts.sort(key=lambda artifact: str(artifact["relative_path"]))
+    return artifacts
+
+
+def cache_artifact_manifest(
+    cache_directory: str | os.PathLike[str], stage_or_number: Stage | int
+) -> dict[str, object]:
+    """Return a deterministic manifest for one stage's reader and compute cache entries."""
+    stage = stage_for(stage_or_number) if isinstance(stage_or_number, int) else stage_or_number
+    cache_path = _resolved_cache_directory(cache_directory)
+    _ensure_cache_directory(cache_path)
+    manifest: dict[str, object] = {}
+    for kind, source_name in (
+        ("reader", stage.reader_source),
+        ("compute", stage.compute_source),
+    ):
+        artifacts = _cache_artifacts_for_source(cache_path, source_name)
+        manifest[kind] = {
+            "source": source_name,
+            "status": "matched" if artifacts else "no_matching_artifacts",
+            "artifacts": artifacts,
+        }
+    return manifest
 
 
 def _core_coordinates(ttnn: Any, device: Any, count: int) -> tuple[list[tuple[int, int]], Any]:
@@ -1419,79 +1604,104 @@ def _construction_input_values(probe: ConstructionProbe) -> list[np.ndarray]:
     ]
 
 
-def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:
-    inputs = _inputs(stage)
-    expected = expected_output(stage, inputs)
+def _prepare_stage_program(
+    ttnn: Any,
+    device: Any,
+    stage: Stage,
+    input_values: list[np.ndarray],
+) -> tuple[Any, list[Any], list[Any]]:
+    """Build a normal full-work program from caller-provided allocation values."""
     coordinates, core_ranges = _core_coordinates(ttnn, device, stage.cores)
     if stage.batch % stage.cores:
         raise ValueError("diagnostic stages require an even tile partition")
     tiles_per_core = stage.batch // stage.cores
-    input_values = inputs[:2] if stage.kind == "real" else inputs[: stage.input_count]
     input_dtypes = stage.input_dtypes[: len(input_values)]
-    device_inputs = [
-        _device_tensor(ttnn, value, device, dtype_name)
-        for value, dtype_name in zip(input_values, input_dtypes)
-    ]
-    output_shape = ttnn.Shape((stage.batch, 1, TILE, TILE))
-    outputs = [
-        ttnn.allocate_tensor_on_device(
-            output_shape,
-            getattr(ttnn, stage.output_dtype),
-            ttnn.TILE_LAYOUT,
-            device,
-            ttnn.L1_MEMORY_CONFIG,
-        )
-        for _ in range(output_count(stage))
-    ]
-
-    reader_compile_args: list[int] = []
-    for tensor in device_inputs:
-        reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
-    writer_compile_args: list[int] = []
-    for tensor in outputs:
-        writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
-    input_addresses = [tensor.buffer_address() for tensor in device_inputs]
-    output_addresses = [tensor.buffer_address() for tensor in outputs]
-    compute, reader, writer = source_paths(stage)
-    kernels = [
-        ttnn.KernelDescriptor(
-            kernel_source=str(reader),
-            source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
-            core_ranges=core_ranges,
-            compile_time_args=reader_compile_args,
-            runtime_args=_runtime_args(ttnn, coordinates, input_addresses, tiles_per_core),
-            config=ttnn.ReaderConfigDescriptor(),
-        ),
-        ttnn.KernelDescriptor(
-            kernel_source=str(writer),
-            source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
-            core_ranges=core_ranges,
-            compile_time_args=writer_compile_args,
-            runtime_args=_runtime_args(ttnn, coordinates, output_addresses, tiles_per_core),
-            config=ttnn.WriterConfigDescriptor(),
-        ),
-        ttnn.KernelDescriptor(
-            kernel_source=str(compute),
-            source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
-            core_ranges=core_ranges,
-            compile_time_args=[tiles_per_core],
-            runtime_args=[],
-            config=ttnn.ComputeConfigDescriptor(
-                dst_full_sync_en=True, fp32_dest_acc_en=stage.fp32_dest_acc_en
-            ),
-        ),
-    ]
-    program = ttnn.ProgramDescriptor(
-        kernels=kernels,
-        semaphores=[],
-        cbs=[
-            _descriptor(
-                ttnn, index, core_ranges, stage.cb_formats[index], stage.cb_page_sizes[index]
+    device_inputs: list[Any] = []
+    outputs: list[Any] = []
+    try:
+        device_inputs = [
+            _device_tensor(ttnn, value, device, dtype_name)
+            for value, dtype_name in zip(input_values, input_dtypes)
+        ]
+        output_shape = ttnn.Shape((stage.batch, 1, TILE, TILE))
+        outputs = [
+            ttnn.allocate_tensor_on_device(
+                output_shape,
+                getattr(ttnn, stage.output_dtype),
+                ttnn.TILE_LAYOUT,
+                device,
+                ttnn.L1_MEMORY_CONFIG,
             )
-            for index in range(25)
-        ],
-    )
+            for _ in range(output_count(stage))
+        ]
+
+        reader_compile_args: list[int] = []
+        for tensor in device_inputs:
+            reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
+        writer_compile_args: list[int] = []
+        for tensor in outputs:
+            writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
+        input_addresses = [tensor.buffer_address() for tensor in device_inputs]
+        output_addresses = [tensor.buffer_address() for tensor in outputs]
+        compute, reader, writer = source_paths(stage)
+        kernels = [
+            ttnn.KernelDescriptor(
+                kernel_source=str(reader),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                compile_time_args=reader_compile_args,
+                runtime_args=_runtime_args(ttnn, coordinates, input_addresses, tiles_per_core),
+                config=ttnn.ReaderConfigDescriptor(),
+            ),
+            ttnn.KernelDescriptor(
+                kernel_source=str(writer),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                compile_time_args=writer_compile_args,
+                runtime_args=_runtime_args(ttnn, coordinates, output_addresses, tiles_per_core),
+                config=ttnn.WriterConfigDescriptor(),
+            ),
+            ttnn.KernelDescriptor(
+                kernel_source=str(compute),
+                source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+                core_ranges=core_ranges,
+                # This is the ordinary stage shape.  Build-only probing never
+                # uses the construction probe's zero-work compile override.
+                compile_time_args=[tiles_per_core],
+                runtime_args=[],
+                config=ttnn.ComputeConfigDescriptor(
+                    dst_full_sync_en=True, fp32_dest_acc_en=stage.fp32_dest_acc_en
+                ),
+            ),
+        ]
+        program = ttnn.ProgramDescriptor(
+            kernels=kernels,
+            semaphores=[],
+            cbs=[
+                _descriptor(
+                    ttnn, index, core_ranges, stage.cb_formats[index], stage.cb_page_sizes[index]
+                )
+                for index in range(25)
+            ],
+        )
+        return program, device_inputs, outputs
+    except Exception:
+        _deallocate_tensors(ttnn, [*device_inputs, *outputs])
+        raise
+
+
+def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:
+    inputs = _inputs(stage)
+    expected = expected_output(stage, inputs)
+    input_values = inputs[:2] if stage.kind == "real" else inputs[: stage.input_count]
+    program, device_inputs, outputs = _prepare_stage_program(ttnn, device, stage, input_values)
     return program, device_inputs, outputs, expected
+
+
+def _build_only_input_values(stage: Stage) -> list[np.ndarray]:
+    """Return allocation-only values without constructing a numerical oracle."""
+    input_count = 2 if stage.kind == "real" else stage.input_count
+    return [np.zeros((stage.batch, TILE, TILE), dtype=np.float32) for _ in range(input_count)]
 
 
 def run_stage(ttnn: Any, device: Any, stage: Stage) -> dict[str, Any]:
@@ -1530,6 +1740,237 @@ def run_stage(ttnn: Any, device: Any, stage: Stage) -> dict[str, Any]:
                 pass
 
 
+def _build_only_record(
+    stage: Stage,
+    *,
+    cache_directory: Path,
+    pre_manifest: dict[str, object] | None,
+    post_manifest: dict[str, object] | None,
+    elapsed: float,
+    success: bool,
+    exit_code: int,
+    status: str,
+    error: object | None = None,
+    device_id: int | None = None,
+) -> dict[str, object]:
+    compute, reader, writer = source_paths(stage)
+    record: dict[str, object] = {
+        "stage": stage.number,
+        "name": stage.name,
+        "status": status,
+        "success": success,
+        "exit_code": exit_code,
+        "exit_state": "success" if success else "failure",
+        "build_only": True,
+        "numerical_acceptance": False,
+        "output_download": False,
+        "batch": stage.batch,
+        "cores": stage.cores,
+        "tile_shape": [TILE, TILE],
+        "compile_time_tile_count": [stage.batch // stage.cores],
+        "reader_tile_count": stage.batch // stage.cores,
+        "writer_tile_count": stage.batch // stage.cores,
+        "elapsed_s": elapsed,
+        "cache_directory": str(cache_directory),
+        "cache_artifacts": {"pre": pre_manifest, "post": post_manifest},
+        "sources": {
+            "compute": compute.name,
+            "reader": reader.name,
+            "writer": writer.name,
+        },
+    }
+    if device_id is not None:
+        record["device_id"] = device_id
+    if error is not None:
+        record["error"] = error
+    return record
+
+
+def _build_only_error_record(
+    stage_number: int | None,
+    *,
+    cache_directory: str | os.PathLike[str] | None,
+    elapsed: float,
+    error: BuildOnlyProbeConfigurationError,
+) -> dict[str, object]:
+    stage = STAGES.get(stage_number) if stage_number is not None else None
+    try:
+        cache_path = (
+            _resolved_cache_directory(cache_directory)
+            if cache_directory is not None
+            else Path.cwd()
+        )
+    except BuildOnlyProbeConfigurationError:
+        cache_path = Path.cwd()
+    record: dict[str, object] = {
+        "stage": stage_number,
+        "name": stage.name if stage is not None else None,
+        "status": "configuration-error",
+        "success": False,
+        "exit_code": 2,
+        "exit_state": "configuration-failure",
+        "build_only": True,
+        "numerical_acceptance": False,
+        "output_download": False,
+        "elapsed_s": elapsed,
+        "cache_directory": str(cache_path) if cache_directory is not None else None,
+        "cache_artifacts": {"pre": None, "post": None},
+        "error": {
+            "code": error.code,
+            "message": str(error),
+            "details": error.details,
+        },
+    }
+    if stage is not None:
+        record["sources"] = {
+            "compute": stage.compute_source,
+            "reader": stage.reader_source,
+            "writer": stage.writer_source,
+        }
+    return record
+
+
+def run_build_only_stage(
+    ttnn: Any,
+    device: Any,
+    stage_or_number: Stage | int,
+    cache_directory: str | os.PathLike[str],
+    *,
+    device_id: int | None = None,
+) -> dict[str, object]:
+    """Build and dispatch one allow-listed stage without downloading output.
+
+    This lower-level seam accepts an already-open device so host tests can
+    exercise the full-work program shape with a fake runtime and never import
+    or open a real device.
+    """
+    stage = (
+        build_only_stage_for(stage_or_number)
+        if isinstance(stage_or_number, int)
+        else stage_or_number
+    )
+    if stage.number not in BUILD_ONLY_JIT_STAGES:
+        raise BuildOnlyProbeConfigurationError(
+            "stage_not_allowlisted",
+            f"build-only JIT probe stage must be one of {BUILD_ONLY_JIT_STAGES}, got {stage.number}",
+            details={"allowed_stages": list(BUILD_ONLY_JIT_STAGES), "stage": stage.number},
+        )
+    if stage != build_only_stage_for(stage.number):
+        raise BuildOnlyProbeConfigurationError(
+            "stage_definition_mismatch",
+            "build-only JIT probing requires the registered full stage definition",
+            details={"stage": stage.number},
+        )
+    cache_path = _resolved_cache_directory(cache_directory)
+    _ensure_cache_directory(cache_path)
+    pre_manifest = cache_artifact_manifest(cache_path, stage)
+    started = time.perf_counter()
+    device_inputs: list[Any] = []
+    outputs: list[Any] = []
+    success = False
+    error: object | None = None
+    try:
+        tiles_per_core = stage.batch // stage.cores
+        if tiles_per_core != 1:
+            raise BuildOnlyProbeConfigurationError(
+                "full_tile_shape_unavailable",
+                "allow-listed build-only stages must compile one tile per core",
+                details={"tiles_per_core": tiles_per_core},
+            )
+        program, device_inputs, outputs = _prepare_stage_program(
+            ttnn, device, stage, _build_only_input_values(stage)
+        )
+        ttnn.generic_op([*device_inputs, *outputs], program)
+        ttnn.synchronize_device(device)
+        success = True
+    except BuildOnlyProbeConfigurationError as exc:
+        error = {"code": exc.code, "message": str(exc), "details": exc.details}
+    except Exception as exc:  # noqa: BLE001 - diagnostics must return machine-readable failure
+        error = {"code": "dispatch_failed", "message": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _deallocate_tensors(ttnn, [*device_inputs, *outputs])
+    elapsed = time.perf_counter() - started
+    post_manifest = cache_artifact_manifest(cache_path, stage)
+    return _build_only_record(
+        stage,
+        cache_directory=cache_path,
+        pre_manifest=pre_manifest,
+        post_manifest=post_manifest,
+        elapsed=elapsed,
+        success=success,
+        exit_code=0 if success else 1,
+        status="pass" if success else "fail",
+        error=error,
+        device_id=device_id,
+    )
+
+
+def run_build_only_jit_probe(
+    stage_number: int,
+    *,
+    cache_directory: str | os.PathLike[str] | None = None,
+    device_id: int = 0,
+    environment: Mapping[str, str] | None = None,
+    ttnn_module: Any | None = None,
+) -> dict[str, object]:
+    """Run the explicit full-work build-only probe after a closed preflight."""
+    started = time.perf_counter()
+    try:
+        build_only_stage_for(stage_number)
+        effective_environment = validate_build_only_environment(
+            environment, cache_directory=cache_directory
+        )
+        cache_path = _resolved_cache_directory(effective_environment["TT_METAL_CACHE"])
+        _ensure_cache_directory(cache_path)
+    except BuildOnlyProbeConfigurationError as exc:
+        return _build_only_error_record(
+            stage_number,
+            cache_directory=cache_directory,
+            elapsed=time.perf_counter() - started,
+            error=exc,
+        )
+
+    with _temporary_required_environment(effective_environment):
+        try:
+            if ttnn_module is None:
+                import ttnn
+            else:
+                ttnn = ttnn_module
+            device = ttnn.open_device(device_id=device_id)
+            try:
+                return run_build_only_stage(
+                    ttnn,
+                    device,
+                    stage_number,
+                    cache_path,
+                    device_id=device_id,
+                )
+            finally:
+                ttnn.close_device(device)
+        except Exception as exc:  # noqa: BLE001 - preserve a flushed JSON failure record
+            pre_manifest = cache_artifact_manifest(cache_path, stage_number)
+            post_manifest = cache_artifact_manifest(cache_path, stage_number)
+            stage = stage_for(stage_number)
+            return _build_only_record(
+                stage,
+                cache_directory=cache_path,
+                pre_manifest=pre_manifest,
+                post_manifest=post_manifest,
+                elapsed=time.perf_counter() - started,
+                success=False,
+                exit_code=1,
+                status="fail",
+                error={"code": "runtime_unavailable", "message": f"{type(exc).__name__}: {exc}"},
+                device_id=device_id,
+            )
+
+
+def _emit_json(record: object, *, stream: Any = None) -> None:
+    target = sys.stdout if stream is None else stream
+    target.write(json.dumps(record, sort_keys=True) + "\n")
+    target.flush()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
@@ -1541,7 +1982,38 @@ def main() -> int:
         action="store_true",
         help="explicitly open the selected device for a zero-work construction dispatch",
     )
+    parser.add_argument(
+        "--build-only-jit-probe",
+        action="store_true",
+        help="build and dispatch stage 62 or 67 with early-return, without output download",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        help="caller-provided persistent per-run directory for TT_METAL_CACHE",
+    )
     args = parser.parse_args()
+
+    if args.build_only_jit_probe:
+        if args.construction_probe is not None or args.dispatch_construction_probe:
+            result = _build_only_error_record(
+                None,
+                cache_directory=args.cache_dir,
+                elapsed=0.0,
+                error=BuildOnlyProbeConfigurationError(
+                    "path_conflict",
+                    "build-only JIT probing cannot be combined with construction-probe options",
+                ),
+            )
+        else:
+            result = run_build_only_jit_probe(
+                args.stage,
+                cache_directory=args.cache_dir,
+                device_id=args.device_id,
+            )
+        _emit_json(result)
+        return int(result["exit_code"])
+
     if args.dispatch_construction_probe and args.construction_probe is None:
         parser.error("--dispatch-construction-probe requires --construction-probe")
     if args.construction_probe is not None:
@@ -1563,7 +2035,7 @@ def main() -> int:
                 )
         else:
             result = construction_probe_record(probe)
-        print(json.dumps(result, sort_keys=True))
+        _emit_json(result)
         return 0 if result["status"] in {"host-configured", "dispatched"} else 1
 
     try:
@@ -1588,7 +2060,7 @@ def main() -> int:
             "finite": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
-    print(json.dumps(result, sort_keys=True))
+    _emit_json(result)
     return 0 if result["status"] == "pass" else 1
 
 
