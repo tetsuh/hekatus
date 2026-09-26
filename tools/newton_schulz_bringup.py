@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -100,6 +101,40 @@ STAGE_67_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in STAGE_67_FLOAT32_CBS else TILE_BYTES_BFLOAT16
     for index in range(25)
 )
+STAGE_61_ACTIVE_CB_INDICES = tuple(
+    index for index in range(25) if index in STAGE_61_FLOAT32_CBS or index in (0, 17, 18)
+)
+STAGE_62_ACTIVE_CB_INDICES = (
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+)
+STAGE_67_ACTIVE_CB_INDICES = tuple(range(25))
+CONSTRUCTION_CB_COUNT = 25
+CONSTRUCTION_CB_PAGE_COUNT = 4
+CONSTRUCTION_CORE_COORDINATES = ((0, 0),)
+CONSTRUCTION_TIMEOUT_SECONDS = 60
 KERNEL_DIR = (Path(__file__).resolve().parents[1] / "enodia/tt/bench/kernels").resolve()
 
 
@@ -122,6 +157,97 @@ class Stage:
     cb_formats: tuple[str, ...] = DEFAULT_CB_FORMATS
     cb_page_sizes: tuple[int, ...] = DEFAULT_CB_PAGE_SIZES
     output_count_override: int | None = None
+
+
+@dataclass(frozen=True)
+class ConstructionProbe:
+    """Host description of one zero-work construction bisection probe.
+
+    This is deliberately independent of ttnn.  It records the descriptor and
+    source choices that a future runner may dispatch, but it contains no
+    device handles and no numerical acceptance fields.
+    """
+
+    name: str
+    purpose: str
+    compute_source: str
+    reader_source: str
+    writer_source: str
+    input_dtypes: tuple[str, ...]
+    cb_formats: tuple[str, ...]
+    cb_page_sizes: tuple[int, ...]
+    active_cb_indices: tuple[int, ...]
+    batch: int = 1
+    core_count: int = 1
+    core_coordinates: tuple[tuple[int, int], ...] = CONSTRUCTION_CORE_COORDINATES
+    core_ranges: tuple[tuple[tuple[int, int], tuple[int, int]], ...] = (((0, 0), (0, 0)),)
+    tiles_per_core: int = 1
+    tile_count: int = 0
+    iterations: int = 8
+    fp32_dest_acc_en: bool = True
+    output_dtypes: tuple[str, ...] = ("float32", "float32")
+    input_count: int = 6
+    reader_accessor_count: int = 6
+    writer_accessor_count: int = 2
+    reader_runtime_arg_count: int = 8
+    writer_runtime_arg_count: int = 4
+    compute_compile_args: tuple[int, ...] = (1,)
+    compute_runtime_args: tuple[object, ...] = ()
+    kernel_order: tuple[str, ...] = ("reader", "writer", "compute")
+    semaphores: tuple[object, ...] = ()
+    cb_page_count: int = CONSTRUCTION_CB_PAGE_COUNT
+    external_timeout_seconds: int = CONSTRUCTION_TIMEOUT_SECONDS
+
+    def __post_init__(self) -> None:
+        if self.batch != 1 or self.core_count != 1:
+            raise ValueError("construction probes require batch=1 and one core")
+        if self.core_coordinates != CONSTRUCTION_CORE_COORDINATES:
+            raise ValueError("construction probes use core (0, 0) only")
+        if self.core_ranges != (((0, 0), (0, 0)),):
+            raise ValueError("construction probes use one CoreRange for core (0, 0)")
+        if self.tiles_per_core != 1 or self.tile_count != 0:
+            raise ValueError("construction probes keep one compile tile and zero runtime tiles")
+        if self.iterations != 8 or not self.fp32_dest_acc_en:
+            raise ValueError("construction probes keep the shared iteration configuration")
+        if len(self.input_dtypes) != self.input_count or self.input_count != 6:
+            raise ValueError("construction probes require six input dtypes")
+        if len(self.output_dtypes) != 2 or self.output_dtypes != ("float32", "float32"):
+            raise ValueError("construction probes require two Float32 outputs")
+        if len(self.cb_formats) != CONSTRUCTION_CB_COUNT:
+            raise ValueError("construction probes require 25 CB formats")
+        if len(self.cb_page_sizes) != CONSTRUCTION_CB_COUNT:
+            raise ValueError("construction probes require 25 CB page sizes")
+        if len(self.active_cb_indices) not in (18, 24, 25):
+            raise ValueError("construction probes use the Stage-61, Stage-62, or Stage-67 CB set")
+        if tuple(sorted(set(self.active_cb_indices))) != self.active_cb_indices:
+            raise ValueError("active CB indices must be sorted and unique")
+        if any(index < 0 or index >= CONSTRUCTION_CB_COUNT for index in self.active_cb_indices):
+            raise ValueError("active CB indices must be in the 25-descriptor range")
+        expected_page_sizes = tuple(
+            TILE_BYTES_FLOAT32 if fmt == "float32" else TILE_BYTES_BFLOAT16
+            for fmt in self.cb_formats
+        )
+        if self.cb_page_sizes != expected_page_sizes:
+            raise ValueError("CB page sizes must match their data formats")
+        if self.reader_accessor_count != 6 or self.writer_accessor_count != 2:
+            raise ValueError("construction probes keep six reader and two writer accessors")
+        if self.reader_runtime_arg_count != 8 or self.writer_runtime_arg_count != 4:
+            raise ValueError("construction probes keep the existing runtime argument shapes")
+        if self.compute_compile_args != (self.tiles_per_core,) or self.compute_runtime_args != ():
+            raise ValueError("construction probes keep the existing compute argument shape")
+        if self.kernel_order != ("reader", "writer", "compute") or self.semaphores != ():
+            raise ValueError("construction probes keep kernel order and empty semaphores")
+        if self.external_timeout_seconds != CONSTRUCTION_TIMEOUT_SECONDS:
+            raise ValueError("construction probes require the external 60-second timeout")
+
+    @property
+    def descriptor_total_sizes(self) -> tuple[int, ...]:
+        """Return the four-page allocation size for each CB descriptor."""
+        return tuple(page_size * self.cb_page_count for page_size in self.cb_page_sizes)
+
+    @property
+    def descriptor_total_bytes(self) -> int:
+        return sum(self.descriptor_total_sizes)
 
 
 STAGES = {
@@ -636,6 +762,159 @@ STAGES = {
 }
 
 
+_CONSTRUCTION_NOOP_COMPUTE_SOURCE = "bringup_construction_noop_compute.cpp"
+_CONSTRUCTION_NOOP_READER_SOURCE = "bringup_construction_noop_reader.cpp"
+_CONSTRUCTION_NOOP_WRITER_SOURCE = "bringup_construction_noop_writer.cpp"
+
+
+def _construction_probe(
+    name: str,
+    purpose: str,
+    *,
+    compute_source: str,
+    reader_source: str,
+    writer_source: str,
+    input_dtypes: tuple[str, ...],
+    cb_formats: tuple[str, ...],
+    cb_page_sizes: tuple[int, ...],
+    active_cb_indices: tuple[int, ...],
+) -> ConstructionProbe:
+    return ConstructionProbe(
+        name=name,
+        purpose=purpose,
+        compute_source=compute_source,
+        reader_source=reader_source,
+        writer_source=writer_source,
+        input_dtypes=input_dtypes,
+        cb_formats=cb_formats,
+        cb_page_sizes=cb_page_sizes,
+        active_cb_indices=active_cb_indices,
+    )
+
+
+CONSTRUCTION_PROBES = {
+    "P0": _construction_probe(
+        "P0",
+        "Stage-61 host and source control",
+        compute_source=STAGES[61].compute_source,
+        reader_source=STAGES[61].reader_source,
+        writer_source=STAGES[61].writer_source,
+        input_dtypes=STAGES[61].input_dtypes,
+        cb_formats=STAGES[61].cb_formats,
+        cb_page_sizes=STAGES[61].cb_page_sizes,
+        active_cb_indices=STAGE_61_ACTIVE_CB_INDICES,
+    ),
+    "P1": _construction_probe(
+        "P1",
+        "Initial X real and imaginary inputs in BF16",
+        compute_source=STAGES[61].compute_source,
+        reader_source=STAGES[61].reader_source,
+        writer_source=STAGES[61].writer_source,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[61].cb_formats,
+        cb_page_sizes=STAGES[61].cb_page_sizes,
+        active_cb_indices=STAGE_61_ACTIVE_CB_INDICES,
+    ),
+    "P2": _construction_probe(
+        "P2",
+        "Stage-62 mixed CB formats and coupled page sizes",
+        compute_source=STAGES[61].compute_source,
+        reader_source=STAGES[61].reader_source,
+        writer_source=STAGES[61].writer_source,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[62].cb_formats,
+        cb_page_sizes=STAGES[62].cb_page_sizes,
+        active_cb_indices=STAGE_61_ACTIVE_CB_INDICES,
+    ),
+    "P3a": _construction_probe(
+        "P3a",
+        "No-op source control with the Stage-61 active CB set",
+        compute_source=_CONSTRUCTION_NOOP_COMPUTE_SOURCE,
+        reader_source=_CONSTRUCTION_NOOP_READER_SOURCE,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[62].cb_formats,
+        cb_page_sizes=STAGES[62].cb_page_sizes,
+        active_cb_indices=STAGE_61_ACTIVE_CB_INDICES,
+    ),
+    "P3b": _construction_probe(
+        "P3b",
+        "The same no-op source with the Stage-62 active CB set",
+        compute_source=_CONSTRUCTION_NOOP_COMPUTE_SOURCE,
+        reader_source=_CONSTRUCTION_NOOP_READER_SOURCE,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[62].cb_formats,
+        cb_page_sizes=STAGES[62].cb_page_sizes,
+        active_cb_indices=STAGE_62_ACTIVE_CB_INDICES,
+    ),
+    "P4": _construction_probe(
+        "P4",
+        "Real Stage-62 reader with the no-op compute and writer",
+        compute_source=_CONSTRUCTION_NOOP_COMPUTE_SOURCE,
+        reader_source=STAGES[62].reader_source,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[62].cb_formats,
+        cb_page_sizes=STAGES[62].cb_page_sizes,
+        active_cb_indices=STAGE_62_ACTIVE_CB_INDICES,
+    ),
+    "P5": _construction_probe(
+        "P5",
+        "Real Stage-62 reader and compute with no-op writer",
+        compute_source=STAGES[62].compute_source,
+        reader_source=STAGES[62].reader_source,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[62].cb_formats,
+        cb_page_sizes=STAGES[62].cb_page_sizes,
+        active_cb_indices=STAGE_62_ACTIVE_CB_INDICES,
+    ),
+    "P6": _construction_probe(
+        "P6",
+        "Stage-62 sources with the Stage-67 Float32 CB 13 descriptor",
+        compute_source=STAGES[62].compute_source,
+        reader_source=STAGES[62].reader_source,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[67].cb_formats,
+        cb_page_sizes=STAGES[67].cb_page_sizes,
+        active_cb_indices=STAGE_62_ACTIVE_CB_INDICES,
+    ),
+    "P7": _construction_probe(
+        "P7",
+        "Real Stage-67 reader with the Stage-62 compute",
+        compute_source=STAGES[62].compute_source,
+        reader_source=STAGES[67].reader_source,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[67].cb_formats,
+        cb_page_sizes=STAGES[67].cb_page_sizes,
+        active_cb_indices=STAGE_67_ACTIVE_CB_INDICES,
+    ),
+    "P8": _construction_probe(
+        "P8",
+        "Real Stage-67 reader and compute with the Stage-67 CB set",
+        compute_source=STAGES[67].compute_source,
+        reader_source=STAGES[67].reader_source,
+        writer_source=_CONSTRUCTION_NOOP_WRITER_SOURCE,
+        input_dtypes=STAGES[62].input_dtypes,
+        cb_formats=STAGES[67].cb_formats,
+        cb_page_sizes=STAGES[67].cb_page_sizes,
+        active_cb_indices=STAGE_67_ACTIVE_CB_INDICES,
+    ),
+}
+
+
+def construction_probe_for(name: str) -> ConstructionProbe:
+    try:
+        return CONSTRUCTION_PROBES[name]
+    except KeyError as exc:
+        raise ValueError(
+            f"construction probe must be one of {tuple(CONSTRUCTION_PROBES)}, got {name!r}"
+        ) from exc
+
+
 def stage_for(number: int) -> Stage:
     try:
         return STAGES[number]
@@ -750,14 +1029,19 @@ def expected_output(stage: Stage, inputs: list[np.ndarray]) -> np.ndarray:
     return x.astype(np.complex64)
 
 
-def source_paths(stage: Stage) -> tuple[Path, Path, Path]:
-    compute = (KERNEL_DIR / stage.compute_source).resolve()
-    reader = (KERNEL_DIR / stage.reader_source).resolve()
-    writer = (KERNEL_DIR / stage.writer_source).resolve()
+def source_paths(stage_or_probe: Stage | ConstructionProbe) -> tuple[Path, Path, Path]:
+    compute = (KERNEL_DIR / stage_or_probe.compute_source).resolve()
+    reader = (KERNEL_DIR / stage_or_probe.reader_source).resolve()
+    writer = (KERNEL_DIR / stage_or_probe.writer_source).resolve()
     for path in (compute, reader, writer):
         if not path.is_file():
             raise FileNotFoundError(path)
     return compute, reader, writer
+
+
+def construction_source_paths(probe: ConstructionProbe) -> tuple[Path, Path, Path]:
+    """Resolve a probe's source triplet without importing or requiring ttnn."""
+    return source_paths(probe)
 
 
 def _core_coordinates(ttnn: Any, device: Any, count: int) -> tuple[list[tuple[int, int]], Any]:
@@ -815,6 +1099,78 @@ def output_count(stage: Stage) -> int:
     if stage.output_count_override is not None:
         return stage.output_count_override
     return 1 if stage.kind in {"real", "precision_convert", "precision_convert_matmul"} else 2
+
+
+def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[str, Any]:
+    """Serialize a probe's host configuration without making a device call."""
+    probe = (
+        construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
+    )
+    compute, reader, writer = construction_source_paths(probe)
+    return {
+        "probe": probe.name,
+        "status": "host-configured",
+        "board_run": False,
+        "numerical_acceptance": False,
+        "external_timeout_s": probe.external_timeout_seconds,
+        "batch": probe.batch,
+        "core_count": probe.core_count,
+        "core_range_count": len(probe.core_ranges),
+        "core_coordinates": [list(coordinate) for coordinate in probe.core_coordinates],
+        "core_ranges": [[list(start), list(end)] for start, end in probe.core_ranges],
+        "tiles_per_core": probe.tiles_per_core,
+        "tile_count": probe.tile_count,
+        "iterations": probe.iterations,
+        "fp32_dest_acc_en": probe.fp32_dest_acc_en,
+        "input_dtypes": list(probe.input_dtypes),
+        "output_dtypes": list(probe.output_dtypes),
+        "cb_descriptor_count": len(probe.cb_formats),
+        "cb_page_count": probe.cb_page_count,
+        "cb_formats": list(probe.cb_formats),
+        "cb_page_sizes": list(probe.cb_page_sizes),
+        "cb_descriptor_total_bytes": probe.descriptor_total_bytes,
+        "active_cb_indices": list(probe.active_cb_indices),
+        "kernel_order": list(probe.kernel_order),
+        "semaphores": [],
+        "reader_accessor_count": probe.reader_accessor_count,
+        "writer_accessor_count": probe.writer_accessor_count,
+        "reader_runtime_arg_count": probe.reader_runtime_arg_count,
+        "writer_runtime_arg_count": probe.writer_runtime_arg_count,
+        "compute_compile_args": list(probe.compute_compile_args),
+        "compute_runtime_args": [],
+        "sources": {
+            "compute": compute.name,
+            "reader": reader.name,
+            "writer": writer.name,
+        },
+        "purpose": probe.purpose,
+    }
+
+
+def dispatch_construction_probe(
+    probe_or_name: ConstructionProbe | str,
+    *,
+    allow_device_dispatch: bool = False,
+    dispatcher: Callable[[ConstructionProbe], Any] | None = None,
+) -> Any:
+    """Hand a zero-work configuration to an explicitly authorized future runner.
+
+    The current runner cannot safely dispatch the real compute sources with
+    ``tile_count=0`` because their single compile-time tile loop is ``[1]``.
+    Therefore this function never chooses ttnn or a hardware path itself.  A
+    future caller must pass both the explicit gate and a dispatcher that knows
+    how to perform a build-only dispatch under the external timeout.
+    """
+    probe = (
+        construction_probe_for(probe_or_name) if isinstance(probe_or_name, str) else probe_or_name
+    )
+    if not allow_device_dispatch:
+        raise PermissionError(
+            "construction probe dispatch is disabled; use the host configuration only"
+        )
+    if dispatcher is None:
+        raise RuntimeError("an explicitly supplied zero-work dispatcher is required")
+    return dispatcher(probe)
 
 
 def _prepare(ttnn: Any, device: Any, stage: Stage) -> tuple[Any, list[Any], list[Any], np.ndarray]:
@@ -930,9 +1286,36 @@ def run_stage(ttnn: Any, device: Any, stage: Stage) -> dict[str, Any]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", type=int, required=True)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--stage", type=int)
+    selection.add_argument("--construction-probe", choices=tuple(CONSTRUCTION_PROBES))
     parser.add_argument("--device-id", type=int, default=0)
+    parser.add_argument(
+        "--dispatch-construction-probe",
+        action="store_true",
+        help="reserved explicit gate for a future externally timed zero-work dispatcher",
+    )
     args = parser.parse_args()
+    if args.construction_probe is not None:
+        probe = construction_probe_for(args.construction_probe)
+        if args.dispatch_construction_probe:
+            try:
+                dispatch_construction_probe(probe, allow_device_dispatch=True)
+            except Exception as exc:  # noqa: BLE001 - keep the gate machine-readable
+                result = construction_probe_record(probe)
+                result.update(
+                    {
+                        "status": "fail",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+            else:  # pragma: no cover - a future dispatcher will replace this path
+                result = construction_probe_record(probe)
+        else:
+            result = construction_probe_record(probe)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["status"] == "host-configured" else 1
+
     try:
         stage = stage_for(args.stage)
         import ttnn

@@ -31,9 +31,9 @@
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 
-## Proposed construction-time bisection (not implemented or run)
+## Construction-time bisection (host probes implemented; board probes unrun)
 
-Stages 62 and 67 must not be rerun as full Newton-Schulz programs for this investigation. Their logs stop before stage-specific JIT output, so the next board work must use a zero-work construction probe and must not claim numerical or dataflow evidence.
+Stages 62 and 67 must not be rerun as full Newton-Schulz programs for this investigation. Their logs stop before stage-specific JIT output, so the next board work must use a zero-work construction probe and must not claim numerical or dataflow evidence. The P0-P8 host definitions now live in `tools/newton_schulz_bringup.py` and are covered by host-only tests. Running the runner with `--construction-probe P0` through `P8` emits configuration only; no board probe has been run and no numerical result is implied.
 
 The current host builder constructs the same program shape for all three stages:
 
@@ -67,6 +67,6 @@ The proposed future probes are ordered from the least risky construction change 
 
 P3a/P3b are a paired index-only branch rather than a numerical stage. Stop at the first failing probe. On a timeout or abnormal exit, stop the residual process/container, perform at most one device reset, rerun the known-good Stage 1 health probe, verify that no device user or container remains, and stop the investigation. Do not continue to another probe after recovery in the same allocation. A clean numerical result is not an acceptance criterion for these probes; only construction/dispatch completion and the exact stop point are evidence.
 
-No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. Any code needed to implement these probes must be delegated to the specified worker and reviewed before hardware use.
+No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. The host definitions keep the one-core range, empty semaphore list, and compute argument shape explicit. The dispatch flag is reserved for a future externally timed zero-work runner; it is not a substitute for a hybrid run and has not been used here.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
