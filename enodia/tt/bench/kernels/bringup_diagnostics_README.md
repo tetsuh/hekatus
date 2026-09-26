@@ -31,9 +31,9 @@
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 
-## Construction-time bisection (zero-work dispatch implemented; board probes unrun)
+## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
-Stages 62 and 67 must not be rerun as full Newton-Schulz programs for this investigation. Their logs stop before stage-specific JIT output, so the next board work must use a zero-work construction probe and must not claim numerical or dataflow evidence. The P0-P8 host definitions and the explicitly gated dispatch now live in `tools/newton_schulz_bringup.py` and are covered by host-only tests. Running the runner with `--construction-probe P0` through `P8` remains host-only; adding `--dispatch-construction-probe` is the only path that opens the selected device, allocates the six inputs and two Float32 outputs, builds all descriptors, and invokes `ttnn.generic_op`. That dispatch has been implemented but remains unrun; no board probe or numerical result is implied.
+Stages 62 and 67 must not be rerun as full Newton-Schulz programs for this investigation. Their logs stop before stage-specific JIT output, so the board work uses a zero-work construction probe and must not claim numerical or dataflow evidence. The P0-P8 host definitions and the explicitly gated dispatch now live in `tools/newton_schulz_bringup.py` and are covered by host-only tests. Running the runner with `--construction-probe P0` through `P8` remains host-only; adding `--dispatch-construction-probe` is the only path that opens the selected device, allocates the six inputs and two Float32 outputs, builds all descriptors, and invokes `ttnn.generic_op`. That dispatch has been implemented and used for the P0-P8 board results below; those results do not imply numerical or full-dataflow acceptance.
 
 The current host builder constructs the same program shape for all three stages:
 
@@ -67,7 +67,7 @@ The probes are ordered from the least risky construction change to the closest b
 
 P3a/P3b are a paired index-only branch rather than a numerical stage. Stop at the first failing probe. On a timeout or abnormal exit, stop the residual process/container, perform at most one device reset, rerun the known-good Stage 1 health probe, verify that no device user or container remains, and stop the investigation. Do not continue to another probe after recovery in the same allocation. A clean numerical result is not an acceptance criterion for these probes; only construction/dispatch completion and the exact stop point are evidence.
 
-No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. The host definitions keep the one-core range, empty semaphore list, and compute argument shape explicit, while the dispatch builder records the zero-work runtime/compile override separately. The dispatch flag is explicit and diagnostic-only; it is not a substitute for a hybrid run. It has been implemented but has not been used on a board.
+No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. The host definitions keep the one-core range, empty semaphore list, and compute argument shape explicit, while the dispatch builder records the zero-work runtime/compile override separately. The dispatch flag is explicit and diagnostic-only; it is not a substitute for a hybrid run. It has been implemented and used for the P0-P8 board results below.
 
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
 
@@ -99,15 +99,52 @@ This audit was performed after the historical timeouts and did not access the bo
 - The available historical log tails stop during device initialization/dispatch telemetry. They contain no stage-specific reader or compute compile command, JIT cache statistics, result JSON, or numerical result. `BuildKernels` lines about pre-compiled firmware describe firmware setup, not proof that the user reader and compute kernels were or were not compiled.
 - The runner writes its JSON record after dispatch and synchronization. Redirected Python output is buffered, so a timeout can remove the process before the record is flushed. A cache hit can also suppress per-source compile output. Therefore the apparent pre-JIT log boundary is compatible with buffering or a cache hit and is not proof of a JIT-side failure.
 
-The retrospective classification is consequently unresolved: neither JIT completion nor JIT non-completion can be established, and the timeout cannot yet be assigned to JIT or runtime dataflow.
+The historical timeout records remain inconclusive about their own JIT boundary. The completed probe below is separate evidence from fresh build-only runs: it shows that the stage-specific reader and compute sources can be generated and linked in the pinned image, but it does not retroactively identify what happened during either historical full-hybrid run.
 
-### Proposed next board probe (not run)
+### Approved build-only board probe
 
-Before any board execution, prepare and review a dedicated build-only path for stages 62 and 67:
+The previously proposed build-only path was approved and executed for stages 62 and 67. Each run used device 0 in a fresh process/container, an external 60-second cap, the pinned image, and full compile-time tile count `[1]`. The controls were `TT_METAL_CACHE=/jit-cache`, `TT_METAL_FORCE_JIT_COMPILE=1`, `TT_METAL_LOG_KERNELS_COMPILE_COMMANDS=1`, and `TT_METAL_KERNELS_EARLY_RETURN=1`; runner stdout was unbuffered. Early return compiled the full-size kernels and returned before device-kernel dataflow. The probe intentionally omitted output download and numerical acceptance.
 
-1. Run each stage in a fresh process with the full compile-time tile count `[1]`, `PYTHONUNBUFFERED=1`, `TT_METAL_CACHE` bound to a persistent per-run directory, `TT_METAL_FORCE_JIT_COMPILE=1`, and `TT_METAL_LOG_KERNELS_COMPILE_COMMANDS=1`.
-2. Enable `TT_METAL_KERNELS_EARLY_RETURN=1` only after confirming that the pinned image supports it. This compiles the full-size kernels while making the device kernels return before their dataflow; the probe must skip output download and numerical acceptance.
-3. Record pre/post cache manifests and hashes for the stage-specific reader and compute artifacts, together with the compile-command log. A clean exit plus both artifacts separates compilation from later dataflow; an absent artifact or compile error supports a JIT-side failure; a timeout after both artifacts exist shifts the boundary to dispatch/runtime.
-4. Keep the established fresh-process and approximately 60-second cap, stop after the first abnormal result, and use the existing one-reset plus Stage-1 recovery protocol if normal device close is lost.
+1. Each stage used the real stage-specific reader and compute sources and the shared writer.
+2. Pre/post cache manifests and hashes were recorded for the stage-specific reader and compute artifacts, along with the compile-command log.
+3. The external cap and fresh-process cleanup protocol were retained; both runs closed normally, left no residual container or device-0 user, and required no reset.
 
-This is a proposal only. No build-only or full-hybrid board probe was executed after the P0-P8 construction run, and no new board run should start until the owner reviews and authorizes this path.
+## Build-only JIT/cache probe board results
+
+These results are compile/build and early-return evidence only. A runner `status=pass` means the build-only process exited successfully; it is not a numerical pass. No numerical output was downloaded, and there was no full-hybrid dataflow/liveness acceptance.
+
+### Stage 62 build-only
+
+- Runner JSON: `status=pass`, `success=true`, `exit_code=0`, `exit_state=success`, `runner elapsed_s=0.5411973880000005`, `output_download=false`, `numerical_acceptance=false`.
+- Sources: reader `bringup_ns_four_plus_four_reader.cpp`; compute `bringup_ns_four_plus_four_compute.cpp`; shared writer `bringup_writer.cpp`.
+- Cache was empty before and had 185 manifest/hash entries after. Reader manifest matched with 10 artifacts; compute manifest matched with 30 artifacts.
+- Canonical final ELF artifacts and SHA-256:
+
+| Artifact | Size (bytes) | SHA-256 |
+|---|---:|---|
+| reader `ncrisc.elf` | 337872 | `bb99defc4dcb725b15ff15b81b55d063065417a698a88945648fffe13872d117` |
+| compute `trisc0.elf` | 728628 | `a96a0170d0e3a4e12e5f740a59408a11cf1c0087b8f9b031eea697467d042753` |
+| compute `trisc1.elf` | 623684 | `da74c9ef00843ebf05f9260088952a9f007aee32f08d902890313791bed64283` |
+| compute `trisc2.elf` | 963964 | `2579c67085cb81bb0d62a841551b6927407bb6e6eb3633ced90d2b0ac53079d6` |
+
+- Compile-command log in unbuffered runner stdout: 21 `g++` compile-command lines and 20 `g++` link-command lines; the reader, compute, and shared writer stages each had one compile and one link line. Final log position: `Cluster destructor completed (cluster.cpp:781)`.
+- Cleanup: no residual container or device-0 user remained, and no reset was required.
+
+### Stage 67 build-only
+
+- Runner JSON: `status=pass`, `success=true`, `exit_code=0`, `exit_state=success`, `runner elapsed_s=0.5125056580000091`, `output_download=false`, `numerical_acceptance=false`.
+- Sources: reader `bringup_ns_four_plus_four_distinct_output_reader.cpp`; compute `bringup_ns_four_plus_four_distinct_output_compute.cpp`; shared writer `bringup_writer.cpp`.
+- Cache was empty before and had 185 manifest/hash entries after. Reader manifest matched with 10 artifacts; compute manifest matched with 30 artifacts.
+- Canonical final ELF artifacts and SHA-256:
+
+| Artifact | Size (bytes) | SHA-256 |
+|---|---:|---|
+| reader `ncrisc.elf` | 343836 | `fe27cd2bdddc74216bb0bf9eee63114a92054747712cd52a579aeb55ea75e976` |
+| compute `trisc0.elf` | 729512 | `a319cf5a9cb4d62ae50d880849cdee26288fb62bf8e1e6a97d49336b8f5e2c48` |
+| compute `trisc1.elf` | 616284 | `58c60d5ed5bdeefe831321cdf4f242ccc58c6c37fb1641dfe7f5af5777dffeaa` |
+| compute `trisc2.elf` | 978096 | `b29b6e3eb8a4358db292b5a80c1a785e522887e4c27e4e9ba9de49bed1b2d38f` |
+
+- Compile-command log in unbuffered runner stdout: 21 `g++` compile-command lines and 20 `g++` link-command lines; the distinct-output stage reader, compute, and shared writer each had one compile and one link line. Final log position: `Cluster destructor completed (cluster.cpp:781)`.
+- Cleanup: no residual container or device-0 user remained, and no reset was required.
+
+The fresh build-only runs show that the stage-specific reader/compute ELF artifacts were generated and linked, shifting the historical ambiguity away from inability to compile those sources. This does not claim numerical success, kernel dataflow success, or resolution of the historical Stage-62/67 full-hybrid timeout. The early-return path does not prove normal dataflow liveness; these runs provide compile/build and early-return evidence only, with no numerical output download or full-hybrid dataflow/liveness acceptance.
