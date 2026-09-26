@@ -31,4 +31,42 @@
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 
+## Proposed construction-time bisection (not implemented or run)
+
+Stages 62 and 67 must not be rerun as full Newton-Schulz programs for this investigation. Their logs stop before stage-specific JIT output, so the next board work must use a zero-work construction probe and must not claim numerical or dataflow evidence.
+
+The current host builder constructs the same program shape for all three stages:
+
+- 25 `CBDescriptor` entries, each with four pages, on one `CoreRangeSet` containing one core;
+- no semaphores, the same reader/writer/compute kernel order, and the same `ComputeConfigDescriptor` flags;
+- six reader tensor-accessor argument groups and two writer groups; reader runtime arguments contain six buffer addresses plus `start_tile` and `tile_count`, while writer arguments contain two addresses plus those two counters;
+- compute compile-time arguments are `[tiles_per_core]`, which is `[1]` here, and compute runtime arguments are empty;
+- two Float32 output tensors and the same batch, core count, tile count, iteration count, and `fp32_dest_acc_en` setting.
+
+The construction differences are narrower than the source-level differences:
+
+- Stage 61 uses input dtypes `(BF16, FP32, BF16, FP32, FP32, FP32)`. Stages 62 and 67 use `(BF16, BF16, BF16, BF16, FP32, FP32)`, so only the initial X real/imaginary tensors change dtype and accessor metadata.
+- Stage 61 uses Float32 descriptors at CBs `2–9` and `16–24`; its other descriptors are BF16. Stage 62 moves only CBs `14–15` to Float32 and CBs `20–21` to BF16, giving Float32 descriptors at `2–9`, `14–19`, and `22–24`. The page sizes are coupled to those formats: 4096 bytes for Float32 and 2048 bytes for BF16.
+- Stage 67 changes only CB 13 relative to Stage 62, from an unused BF16 descriptor to an active Float32 product CB. The descriptor totals are 344064 bytes for stages 61/62 and 352256 bytes for stage 67; all still declare 25 descriptors. The source-referenced CB index counts are 18, 24, and 25 respectively, with unused indices `{1,10,11,12,13,14,15}`, `{13}`, and `{}`.
+- The writer source is shared. Stages 62 and 67 add BF16/Float32 state conversion, extra format reconfiguration, and a larger reader/compute source. Stage 67 additionally routes the Float32-phase products through CB 13. These are kernel-source differences, not host descriptor differences.
+
+The proposed future probes are ordered from the least risky construction change to the closest build-only form of the failing stages. Each probe requires a fresh process and an external 60-second wall-clock cap. `tile_count=0` means that no reader, writer, or iteration dataflow is attempted; the probe records only construction/dispatch completion. If the runtime rejects zero work, the delegated implementation must provide an equivalent no-op construction path; it must not fall back to a full hybrid run.
+
+| Probe | Cumulative addition | Purpose |
+|---|---|---|
+| P0 | Stage-61 host fields and sources, zero-work dispatch | Establish the minimal construction control. |
+| P1 | Change only the two initial X input dtypes to BF16 | Isolate device-buffer allocation, tensor-accessor metadata, and address-vector changes. |
+| P2 | Add only the Stage-62 CB format/page changes at 14, 15, 20, and 21 | Isolate the mixed CB descriptor combination while retaining the Stage-61 sources. |
+| P3a | Use a delegated no-op source triplet with the Stage-61 active CB index set (18 indices) | Control for source compilation with no matmul, copy, or binary operation. |
+| P3b | Keep the P3a no-op source body and change only its active CB index set to Stage 62's 24 indices and placements | Isolate active CB index encoding from the descriptor format change. |
+| P4 | Replace only the reader with the real Stage-62 reader; keep the no-op compute source | Determine whether the BF16/Float32 reader source is the first additional boundary. |
+| P5 | Replace the compute source with the real Stage-62 compute source | Test the exact Stage-62 source pair without executing its loops. |
+| P6 | Change only CB 13 from the Stage-62 descriptor to the Stage-67 Float32 descriptor | Test Stage 67's descriptor-only delta with Stage-62 sources. |
+| P7 | Replace only the reader with the real Stage-67 reader | Isolate the CB-13 reader routing and active-index addition. |
+| P8 | Replace the compute source with the real Stage-67 compute source | Test the closest build-only construction to Stage 67 without full hybrid dataflow. |
+
+P3a/P3b are a paired index-only branch rather than a numerical stage. Stop at the first failing probe. On a timeout or abnormal exit, stop the residual process/container, perform at most one device reset, rerun the known-good Stage 1 health probe, verify that no device user or container remains, and stop the investigation. Do not continue to another probe after recovery in the same allocation. A clean numerical result is not an acceptance criterion for these probes; only construction/dispatch completion and the exact stop point are evidence.
+
+No separate core-range or semaphore probe is justified by the current host comparison: all three stages use the same one-core range and `semaphores=[]`. Likewise, the compute argument vector shape is unchanged; only input accessor values and addresses can change as a consequence of the two X dtype changes. Any code needed to implement these probes must be delegated to the specified worker and reviewed before hardware use.
+
 Use the stage number with the bring-up runner to select one diagnostic process at a time. Results from superseded stages must not be used as correctness or liveness evidence for the corrected algorithm.
