@@ -89,3 +89,25 @@ On 2026-09-26, each probe ran in a fresh container process with `--device-id 0`,
 | P8 | pass (`status=dispatched`) | 0.274219 | `Cluster destructor completed (cluster.cpp:781)` |
 
 P0 itself exited normally and returned the expected dispatched JSON record. The first orchestration wrapper misquoted its JSON `grep` expressions and falsely classified that successful process as a failure. It then performed the required cleanup, an unnecessary reset recorded as reset #10, and a Stage 1 health probe. The reset command exited 0; the health probe passed with relative error `0.0045643728`, and no container or device user remained. This operational wrapper error is not probe or kernel failure evidence. The corrected wrapper ran P1 through P8; none timed out or errored, so no further reset was needed. The final board state was zero running containers and no device-0 user.
+
+## Host-only JIT/cache audit for stages 62 and 67
+
+This audit was performed after the historical timeouts and did not access the board.
+
+- The historical stage-62 and stage-67 commands used `docker run --rm` with the repository and hugepage mounts only. They did not mount a persistent kernel-cache directory or a Docker volume. The runtime reported `cache_path=/root/.cache/ttnn` and `tmp_dir=/tmp/ttnn`; the Metalium JIT cache is a separate path, normally `/root/.cache/tt-metal-cache/` when `HOME=/root`.
+- A current host inspection found no retained stage-62 or stage-67 result logs, no `/root/.cache/tt-metal-cache`, `/tmp/tt-metal-cache`, or `/var/cache/tt-metal-cache` tree, no source-specific reader/compute entries, and no Docker volumes. Because the historical containers were removed, this is retention evidence only: missing host artifacts do not prove that the binaries were never generated inside those containers.
+- The available historical log tails stop during device initialization/dispatch telemetry. They contain no stage-specific reader or compute compile command, JIT cache statistics, result JSON, or numerical result. `BuildKernels` lines about pre-compiled firmware describe firmware setup, not proof that the user reader and compute kernels were or were not compiled.
+- The runner writes its JSON record after dispatch and synchronization. Redirected Python output is buffered, so a timeout can remove the process before the record is flushed. A cache hit can also suppress per-source compile output. Therefore the apparent pre-JIT log boundary is compatible with buffering or a cache hit and is not proof of a JIT-side failure.
+
+The retrospective classification is consequently unresolved: neither JIT completion nor JIT non-completion can be established, and the timeout cannot yet be assigned to JIT or runtime dataflow.
+
+### Proposed next board probe (not run)
+
+Before any board execution, prepare and review a dedicated build-only path for stages 62 and 67:
+
+1. Run each stage in a fresh process with the full compile-time tile count `[1]`, `PYTHONUNBUFFERED=1`, `TT_METAL_CACHE` bound to a persistent per-run directory, `TT_METAL_FORCE_JIT_COMPILE=1`, and `TT_METAL_LOG_KERNELS_COMPILE_COMMANDS=1`.
+2. Enable `TT_METAL_KERNELS_EARLY_RETURN=1` only after confirming that the pinned image supports it. This compiles the full-size kernels while making the device kernels return before their dataflow; the probe must skip output download and numerical acceptance.
+3. Record pre/post cache manifests and hashes for the stage-specific reader and compute artifacts, together with the compile-command log. A clean exit plus both artifacts separates compilation from later dataflow; an absent artifact or compile error supports a JIT-side failure; a timeout after both artifacts exist shifts the boundary to dispatch/runtime.
+4. Keep the established fresh-process and approximately 60-second cap, stop after the first abnormal result, and use the existing one-reset plus Stage-1 recovery protocol if normal device close is lost.
+
+This is a proposal only. No build-only or full-hybrid board probe was executed after the P0-P8 construction run, and no new board run should start until the owner reviews and authorizes this path.
