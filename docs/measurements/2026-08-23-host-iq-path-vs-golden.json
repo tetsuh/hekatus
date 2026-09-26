@@ -1,7 +1,6 @@
 {
   "environment": {
     "captured_at": "2026-08-23T09:19:56.359061+00:00",
-    "host": "midnight",
     "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
     "machine": "x86_64",
     "cpu": "x86_64",
