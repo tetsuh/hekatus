@@ -38,13 +38,14 @@ previous summary:
 | --- | --- |
 | `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json` — original catalogue | 190 `ok`, 94 `failed` |
 | `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json` — replaces four failed batch-1024 L16/L32 `batched_dram_sharded` rows named in its `supersedes.rows` | 2 `ok`, 2 `failed` |
-| `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json` — replaces two failed beamspace B=16, 256-channel, 4096-pixel `dram_sharded` rows named in its `supersedes.rows` | 2 `ok` |
+| `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json` — replaces two original `ok` beamspace B=16, 256-channel, 4096-pixel `dram_sharded` rows named in its `supersedes.rows` | 2 `ok` |
 
-The first superseder maps the four original g7x1 rows to two successful and
-two compilation-failed g8x1 replacements. The second maps the two original
-g4x1 rows to two successful g8x1 replacements. Therefore the six named
-predecessor rows are removed from the original count and six replacements are
-added: `190 + 2 + 2 = 194` successes and `94 - 4 - 2 + 2 = 90` failures.
+The first superseder maps the four original failed g7x1 rows to two successful
+and two compilation-failed g8x1 replacements. The second maps the two original
+`ok` g4x1 rows to two successful g8x1 replacements. Apply each
+`supersedes.rows` entry once: remove those six named predecessor rows from the
+original count and add the six replacement rows. The effective count is
+`190 - 2 + 2 + 2 = 192` successes and `94 - 4 + 2 = 92` failures.
 The other 278 original rows remain authoritative, so the effective catalogue
 still has 284 rows. The separate 0.70.1 record is default-only: 68 rows, with
 59 successes and 9 failures. All records report firmware 19.6.0.0 and KMD
