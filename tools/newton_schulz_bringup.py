@@ -106,6 +106,11 @@ STAGE_67_CB_PAGE_SIZES = tuple(
     TILE_BYTES_FLOAT32 if index in STAGE_67_FLOAT32_CBS else TILE_BYTES_BFLOAT16
     for index in range(25)
 )
+# Stage 68 retains the audited Stage-62 descriptors and reuses its BF16 CBs 12/13
+# as the diagnostic output pair after S is produced in CBs 10/11.
+STAGE_68_CB_FORMATS = STAGE_62_CB_FORMATS
+STAGE_68_CB_PAGE_SIZES = STAGE_62_CB_PAGE_SIZES
+STAGE_68_DIAGNOSTIC_OUTPUT_CBS = (12, 13)
 STAGE_61_ACTIVE_CB_INDICES = tuple(
     index for index in range(25) if index in STAGE_61_FLOAT32_CBS or index in (0, 17, 18)
 )
@@ -813,6 +818,24 @@ STAGES = {
         STAGE_67_CB_FORMATS,
         STAGE_67_CB_PAGE_SIZES,
     ),
+    68: Stage(
+        68,
+        "complex_newton_schulz_first_residual_bfloat16_output",
+        1,
+        1,
+        "bringup_ns_first_residual_compute.cpp",
+        "bringup_ns_first_residual_reader.cpp",
+        "bringup_ns_first_residual_writer.cpp",
+        "newton_first_residual",
+        1,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "bfloat16",
+        STAGE_68_CB_FORMATS,
+        STAGE_68_CB_PAGE_SIZES,
+    ),
 }
 
 
@@ -1116,6 +1139,7 @@ def _inputs(stage: Stage) -> list[np.ndarray]:
     shape = (stage.batch, TILE, TILE)
     if stage.kind in {
         "newton_schulz",
+        "newton_first_residual",
         "newton_residual",
         "newton_residual_reader_copy",
         "newton_one_compute_copy",
@@ -1135,6 +1159,7 @@ def _inputs(stage: Stage) -> list[np.ndarray]:
         b_imag = rng.normal(0.0, 0.05, shape).astype(np.float32)
     if stage.kind in {
         "newton_schulz",
+        "newton_first_residual",
         "newton_residual",
         "newton_residual_reader_copy",
         "newton_one_compute_copy",
@@ -1188,6 +1213,7 @@ def expected_output(stage: Stage, inputs: list[np.ndarray]) -> np.ndarray:
 
     r = a_real.astype(np.complex64) + 1j * a_imag
     if stage.kind in {
+        "newton_first_residual",
         "newton_residual",
         "newton_residual_reader_copy",
         "newton_residual_correct",

@@ -46,6 +46,7 @@ class BringupHostTests(unittest.TestCase):
                 65,
                 66,
                 67,
+                68,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -126,6 +127,7 @@ class BringupHostTests(unittest.TestCase):
                 65,
                 66,
                 67,
+                68,
             ):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
@@ -604,6 +606,88 @@ class BringupHostTests(unittest.TestCase):
         np.testing.assert_allclose(
             bringup.expected_output(stage, inputs),
             bringup.expected_output(control, bringup._inputs(control)),
+        )
+
+    def test_first_residual_probe_routes_bfloat16_s_after_one_group(self):
+        stage = bringup.STAGES[68]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        writer = (bringup.KERNEL_DIR / stage.writer_source).read_text()
+
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 1, 6)
+        )
+        self.assertEqual(stage.kind, "newton_first_residual")
+        self.assertEqual(stage.input_dtypes, ("bfloat16",) * 4 + ("float32",) * 2)
+        self.assertEqual(stage.output_dtype, "bfloat16")
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(bringup.output_count(stage), 2)
+        self.assertEqual(
+            bringup.STAGE_68_DIAGNOSTIC_OUTPUT_CBS,
+            (12, 13),
+        )
+        for index in (10, 11, 12, 13):
+            self.assertEqual(stage.cb_formats[index], "bfloat16", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_BFLOAT16, index)
+        for index in bringup.STAGE_62_FLOAT32_CBS:
+            self.assertEqual(stage.cb_formats[index], "float32", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+        self.assertEqual(len(set(bringup.source_paths(stage))), 3)
+
+        self.assertEqual(compute.count("complex_matmul_products();"), 1)
+        self.assertEqual(compute.count("matmul_block_init("), 1)
+        self.assertIn("cb_s_bfloat16_real = 10", compute)
+        self.assertIn("cb_s_bfloat16_imag = 11", compute)
+        self.assertIn("subtract_one<cb_identity, cb_rx_real, cb_s_bfloat16_real>();", compute)
+        self.assertIn("subtract_one<cb_zero, cb_rx_imag, cb_s_bfloat16_imag>();", compute)
+        self.assertNotIn("cb_s_bfloat16_operand", compute)
+        self.assertNotIn("cb_state", compute)
+        self.assertNotIn("split_iteration", compute)
+
+        first_r = reader.index(
+            "stream_external_complex(cb_r, tile, r_real, r_imag, true);"
+        )
+        first_x = reader.index(
+            "stream_external_complex(cb_x_bfloat16, tile, x_real, x_imag, false);"
+        )
+        products = reader.index("route_complex_products();")
+        identity = reader.index("read_tile(cb_identity, 0, identity)")
+        zero = reader.index("read_tile(cb_zero, 0, zero)")
+        second_x = reader.index(
+            "stream_external_complex(cb_x_bfloat16, tile, x_real, x_imag, true);"
+        )
+        output_real = reader.index(
+            "drain_s_to_diagnostic(cb_s_bfloat16_real, cb_diagnostic_real);"
+        )
+        output_imag = reader.index(
+            "drain_s_to_diagnostic(cb_s_bfloat16_imag, cb_diagnostic_imag);"
+        )
+        self.assertEqual(reader.count("route_complex_products();"), 1)
+        self.assertLess(first_r, first_x)
+        self.assertLess(first_x, products)
+        self.assertLess(products, identity)
+        self.assertLess(identity, zero)
+        self.assertLess(zero, second_x)
+        self.assertLess(second_x, output_real)
+        self.assertLess(output_real, output_imag)
+        self.assertIn("cb_wait_front(source, 1);", reader)
+        self.assertIn("cb_pop_front(source, 1);", reader)
+        self.assertNotIn("stream_state_complex", reader)
+
+        self.assertIn("cb_diagnostic_real = 12", writer)
+        self.assertIn("cb_diagnostic_imag = 13", writer)
+        self.assertIn("cb_wait_front(cb_diagnostic_real, 1)", writer)
+        self.assertIn("cb_wait_front(cb_diagnostic_imag, 1)", writer)
+        self.assertEqual(writer.count("noc_async_write_page"), 2)
+
+        inputs = bringup._inputs(stage)
+        r = inputs[0] + 1j * inputs[2]
+        x = inputs[1] + 1j * inputs[3]
+        expected = inputs[4].astype(np.complex64) - np.matmul(r, x)
+        np.testing.assert_allclose(bringup.expected_output(stage, inputs), expected)
+        np.testing.assert_array_equal(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(stage, bringup._inputs(stage)),
         )
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
