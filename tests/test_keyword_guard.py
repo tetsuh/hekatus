@@ -1,6 +1,7 @@
 """Behavioral coverage for the shell run by the keyword-guard workflow."""
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -292,6 +293,52 @@ def test_broken_working_tree_symlink_scan_failure_is_not_clean(tmp_path):
     output = completed.stdout + completed.stderr
     assert completed.returncode != 0
     assert "unable to scan tracked contents" in output
+    assert "keyword guard: clean" not in output
+    _assert_no_configured_terms(output, [word])
+
+
+def test_git_ls_files_failure_is_not_clean(tmp_path):
+    word = "needle"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "clean.txt").write_text("safe\n")
+    subprocess.run(["git", "-C", str(repo), "add", "--all"], check=True)
+
+    real_git = shutil.which("git")
+    assert real_git is not None
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_git = fake_bin / "git"
+    fake_git.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "ls-files" ]; then\n'
+        '  printf "clean.txt\\0"\n'
+        "  exit 23\n"
+        "fi\n"
+        f'exec "{real_git}" "$@"\n'
+    )
+    fake_git.chmod(0o755)
+
+    _, script = _workflow_step("Scan tracked files for prohibited words")
+    environment = dict(os.environ)
+    environment["LC_ALL"] = "C.UTF-8"
+    environment["PATH"] = f"{fake_bin}{os.pathsep}{environment['PATH']}"
+    environment["WORDS"] = word
+    completed = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-e"],
+        cwd=repo,
+        env=environment,
+        input=script,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert "keyword guard: unable to enumerate tracked files" in output
     assert "keyword guard: clean" not in output
     _assert_no_configured_terms(output, [word])
 
