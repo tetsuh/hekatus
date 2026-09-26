@@ -139,6 +139,15 @@ def test_a_clean_sweep_harness_is_recorded_as_clean(monkeypatch):
     assert identity["harness_dirty"] is False
 
 
+def test_a_host_environment_does_not_record_the_runtime_machine_name():
+    import platform
+
+    runtime_machine_name = platform.node()
+    environment = decimation_sweep.environment()
+    if runtime_machine_name in environment.values():
+        pytest.fail("host-side environment contains the runtime machine name")
+
+
 def test_a_modified_sweep_harness_is_recorded_as_dirty(monkeypatch):
     monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git(" M enodia/spec/frontend/__init__.py"))
 
