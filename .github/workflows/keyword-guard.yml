@@ -121,6 +121,14 @@ jobs:
             esac
           }
 
+          diagnostic_is_safe() {
+            local text="$1"
+            case "$text" in
+              *[,=%$'\r'$'\n']*|*::*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
           skeleton_is_safe() {
             local skeleton="$1" w
             for w in "${words[@]}"; do
@@ -157,10 +165,12 @@ jobs:
             masked=$(sanitize_diagnostic "$masked_raw")
             skeleton='::error file=::'
 
-            # Any unmasked command delimiter or encoded/control byte in the
-            # human text must use the inert plain rendering, even when there
-            # is no annotation path to validate separately.
-            if case "$masked_raw" in *[,=%$'\r'$'\n']*|*::*) false ;; *) true ;; esac; then
+            # Check both the original and masked diagnostics. Masking can
+            # remove a control byte when a configured term spans it, so the
+            # original text must also force the inert plain rendering.
+            if diagnostic_is_safe "$human" &&
+              diagnostic_is_safe "$annotation_path" &&
+              diagnostic_is_safe "$masked_raw"; then
               human_is_safe=1
             else
               human_is_safe=0
