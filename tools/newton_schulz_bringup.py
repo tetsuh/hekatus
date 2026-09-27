@@ -3,6 +3,13 @@
 The stages intentionally use separate compute sources.  A later experiment can
 therefore fail to compile without changing the source used by an earlier
 boundary check.  This script is diagnostic-only; it does not reset hardware.
+
+Ordinary numerical stages use :data:`DEFAULT_NUMERICAL_EXECUTION_POLICY` on
+their first execution: Watcher is enabled with ``TT_METAL_WATCHER=1`` and the
+caller is expected to put the command under the external ``timeout 60s``
+wrapper.  ``elapsed_s`` is only an in-process measurement and never stands in
+for that external timeout.  Construction and build-only paths have separate,
+existing controls.
 """
 
 from __future__ import annotations
@@ -209,6 +216,126 @@ BUILD_ONLY_REQUIRED_ENV = (
     "TT_METAL_KERNELS_EARLY_RETURN",
 )
 BUILD_ONLY_REQUIRED_VALUE = "1"
+
+
+@dataclass(frozen=True)
+class WatcherPolicy:
+    """Effective ``TT_METAL_WATCHER`` setting for an ordinary stage run."""
+
+    enabled: bool
+    value: str | None
+
+    def __post_init__(self) -> None:
+        if type(self.enabled) is not bool:
+            raise TypeError("watcher enabled must be a bool")
+        if self.enabled and not self.value:
+            raise ValueError("enabled Watcher policy requires a value")
+
+    def as_record(self) -> dict[str, object]:
+        return {"enabled": self.enabled, "value": self.value}
+
+
+@dataclass(frozen=True)
+class NumericalExecutionPolicy:
+    """Caller-visible safety policy for an ordinary numerical stage."""
+
+    watcher: WatcherPolicy
+    external_timeout_s: int | None
+
+    def __post_init__(self) -> None:
+        if self.external_timeout_s is not None and (
+            type(self.external_timeout_s) is not int or self.external_timeout_s <= 0
+        ):
+            raise ValueError("external timeout must be a positive integer or None")
+
+    @property
+    def external_timeout_command(self) -> tuple[str, str] | None:
+        """Return the external wrapper prefix, without pretending to run it."""
+        if self.external_timeout_s is None:
+            return None
+        return ("timeout", f"{self.external_timeout_s}s")
+
+    def as_record(self) -> dict[str, object]:
+        """Serialize the policy without conflating it with ``elapsed_s``."""
+        command = self.external_timeout_command
+        return {
+            "watcher": self.watcher.as_record(),
+            "external_timeout_s": self.external_timeout_s,
+            "external_timeout_command": list(command) if command is not None else None,
+            "external_timeout_enforced_by": "caller" if command is not None else None,
+        }
+
+
+# This is the one default for ordinary numerical stages.  The timeout is a
+# caller-side ``timeout 60s`` wrapper; it is deliberately not an in-process
+# timer hidden behind the numerical result's elapsed measurement.
+DEFAULT_NUMERICAL_EXECUTION_POLICY = NumericalExecutionPolicy(
+    watcher=WatcherPolicy(enabled=True, value="1"),
+    external_timeout_s=60,
+)
+
+
+_WATCHER_FALSE_VALUES = frozenset({"", "0", "false", "no", "off", "disabled"})
+
+
+def _watcher_value_is_enabled(value: str) -> bool:
+    return value.strip().lower() not in _WATCHER_FALSE_VALUES
+
+
+def resolve_numerical_execution_policy(
+    *,
+    watcher: bool | None = None,
+    timeout_s: int | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> NumericalExecutionPolicy:
+    """Resolve the ordinary-stage policy from explicit options and the environment.
+
+    With no explicit watcher option, an existing ``TT_METAL_WATCHER`` value is
+    treated as the caller's override and is preserved in the record.  If it is
+    absent, the documented default is used.  ``timeout_s=0`` is the explicit
+    no-timeout opt-out; a positive value replaces the 60-second default.
+    """
+    supplied = os.environ if environment is None else environment
+    if watcher is None:
+        watcher_value = supplied.get("TT_METAL_WATCHER")
+        if watcher_value is None:
+            effective_watcher = DEFAULT_NUMERICAL_EXECUTION_POLICY.watcher
+        else:
+            effective_watcher = WatcherPolicy(
+                enabled=_watcher_value_is_enabled(watcher_value), value=watcher_value
+            )
+    elif type(watcher) is bool:
+        effective_watcher = WatcherPolicy(enabled=watcher, value="1" if watcher else None)
+    else:
+        raise TypeError("watcher override must be True, False, or None")
+
+    if timeout_s is None:
+        effective_timeout = DEFAULT_NUMERICAL_EXECUTION_POLICY.external_timeout_s
+    elif type(timeout_s) is int and timeout_s >= 0:
+        effective_timeout = timeout_s or None
+    else:
+        raise ValueError("timeout must be a non-negative integer")
+    return NumericalExecutionPolicy(
+        watcher=effective_watcher,
+        external_timeout_s=effective_timeout,
+    )
+
+
+@contextmanager
+def watcher_environment(policy: NumericalExecutionPolicy) -> Iterator[None]:
+    """Apply a stage's Watcher value and restore the caller environment exactly."""
+    previous = os.environ.get("TT_METAL_WATCHER")
+    if policy.watcher.value is None:
+        os.environ.pop("TT_METAL_WATCHER", None)
+    else:
+        os.environ["TT_METAL_WATCHER"] = policy.watcher.value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TT_METAL_WATCHER", None)
+        else:
+            os.environ["TT_METAL_WATCHER"] = previous
 
 
 @dataclass(frozen=True)
@@ -1467,6 +1594,16 @@ def output_count(stage: Stage) -> int:
     return 1 if stage.kind in {"real", "precision_convert", "precision_convert_matmul"} else 2
 
 
+def _with_execution_policy(
+    record: dict[str, Any], policy: NumericalExecutionPolicy
+) -> dict[str, Any]:
+    """Attach both the flat and grouped policy forms to a normal-stage record."""
+    policy_record = policy.as_record()
+    record.update(policy_record)
+    record["execution_policy"] = policy_record
+    return record
+
+
 def construction_probe_record(probe_or_name: ConstructionProbe | str) -> dict[str, Any]:
     """Serialize a probe's host configuration without making a device call."""
     probe = (
@@ -1848,40 +1985,81 @@ def _build_only_input_values(stage: Stage) -> list[np.ndarray]:
     return [np.zeros((stage.batch, TILE, TILE), dtype=np.float32) for _ in range(input_count)]
 
 
-def run_stage(ttnn: Any, device: Any, stage: Stage) -> dict[str, Any]:
-    program, inputs, outputs, expected = _prepare(ttnn, device, stage)
-    try:
-        started = time.perf_counter()
-        ttnn.generic_op([*inputs, *outputs], program)
-        ttnn.synchronize_device(device)
-        elapsed = time.perf_counter() - started
-        real = _download(ttnn, outputs[0])[:, 0]
-        imag = (
-            np.zeros_like(real) if output_count(stage) == 1 else _download(ttnn, outputs[1])[:, 0]
-        )
-        actual = real + 1j * imag
-        finite = bool(np.isfinite(actual).all())
-        error = float(np.linalg.norm(actual - expected) / max(np.linalg.norm(expected), 1e-12))
-        tolerance = NUMERICAL_TOLERANCE
-        passed = finite and error <= tolerance
-        return {
-            "stage": stage.number,
-            "name": stage.name,
-            "status": "pass" if passed else "fail",
-            "batch": stage.batch,
-            "cores": stage.cores,
+def run_stage(
+    ttnn: Any,
+    device: Any,
+    stage: Stage,
+    *,
+    execution_policy: NumericalExecutionPolicy | None = None,
+) -> dict[str, Any]:
+    policy = (
+        resolve_numerical_execution_policy()
+        if execution_policy is None
+        else execution_policy
+    )
+    with watcher_environment(policy):
+        program, inputs, outputs, expected = _prepare(ttnn, device, stage)
+        try:
+            started = time.perf_counter()
+            ttnn.generic_op([*inputs, *outputs], program)
+            ttnn.synchronize_device(device)
+            elapsed = time.perf_counter() - started
+            real = _download(ttnn, outputs[0])[:, 0]
+            imag = (
+                np.zeros_like(real)
+                if output_count(stage) == 1
+                else _download(ttnn, outputs[1])[:, 0]
+            )
+            actual = real + 1j * imag
+            finite = bool(np.isfinite(actual).all())
+            error = float(np.linalg.norm(actual - expected) / max(np.linalg.norm(expected), 1e-12))
+            tolerance = NUMERICAL_TOLERANCE
+            passed = finite and error <= tolerance
+            return _with_execution_policy(
+                {
+                    "stage": stage.number,
+                    "name": stage.name,
+                    "status": "pass" if passed else "fail",
+                    "batch": stage.batch,
+                    "cores": stage.cores,
+                    "tile_shape": [TILE, TILE],
+                    "elapsed_s": elapsed,
+                    "numerical_error": error,
+                    "tolerance": tolerance,
+                    "finite": finite,
+                },
+                policy,
+            )
+        finally:
+            for tensor in [*inputs, *outputs]:
+                try:
+                    ttnn.deallocate(tensor)
+                except Exception:  # noqa: BLE001, S110 - diagnostics must attempt all cleanup
+                    pass
+
+
+def _stage_failure_record(
+    stage_number: int | None,
+    *,
+    policy: NumericalExecutionPolicy,
+    error: object,
+) -> dict[str, Any]:
+    stage = STAGES.get(stage_number) if stage_number is not None else None
+    return _with_execution_policy(
+        {
+            "stage": stage_number,
+            "name": stage.name if stage is not None else None,
+            "status": "fail",
+            "batch": stage.batch if stage is not None else None,
+            "cores": stage.cores if stage is not None else None,
             "tile_shape": [TILE, TILE],
-            "elapsed_s": elapsed,
-            "numerical_error": error,
-            "tolerance": tolerance,
-            "finite": finite,
-        }
-    finally:
-        for tensor in [*inputs, *outputs]:
-            try:
-                ttnn.deallocate(tensor)
-            except Exception:  # noqa: BLE001, S110 - diagnostics must attempt all cleanup
-                pass
+            "elapsed_s": None,
+            "numerical_error": None,
+            "finite": False,
+            "error": error,
+        },
+        policy,
+    )
 
 
 def _build_only_record(
@@ -2115,12 +2293,50 @@ def _emit_json(record: object, *, stream: Any = None) -> None:
     target.flush()
 
 
-def main() -> int:
+def _non_negative_timeout_seconds(value: str) -> int:
+    try:
+        seconds = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("timeout must be a non-negative integer") from exc
+    if seconds < 0:
+        raise argparse.ArgumentTypeError("timeout must be a non-negative integer")
+    return seconds
+
+
+def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--stage", type=int)
     selection.add_argument("--construction-probe", choices=tuple(CONSTRUCTION_PROBES))
     parser.add_argument("--device-id", type=int, default=0)
+    watcher = parser.add_mutually_exclusive_group()
+    watcher.add_argument(
+        "--watcher",
+        dest="watcher",
+        action="store_true",
+        help="explicitly enable TT_METAL_WATCHER for an ordinary numerical stage",
+    )
+    watcher.add_argument(
+        "--no-watcher",
+        dest="watcher",
+        action="store_false",
+        help="explicitly remove the default Watcher setting for an ordinary numerical stage",
+    )
+    parser.set_defaults(watcher=None)
+    timeout = parser.add_mutually_exclusive_group()
+    timeout.add_argument(
+        "--timeout",
+        dest="timeout_s",
+        type=_non_negative_timeout_seconds,
+        help="external timeout in seconds for an ordinary numerical stage (0 disables it)",
+    )
+    timeout.add_argument(
+        "--no-timeout",
+        dest="timeout_s",
+        action="store_const",
+        const=0,
+        help="explicitly remove the default external timeout for an ordinary numerical stage",
+    )
     parser.add_argument(
         "--dispatch-construction-probe",
         action="store_true",
@@ -2136,6 +2352,11 @@ def main() -> int:
         type=Path,
         help="caller-provided persistent per-run directory for TT_METAL_CACHE",
     )
+    return parser
+
+
+def main() -> int:
+    parser = _argument_parser()
     args = parser.parse_args()
 
     if args.build_only_jit_probe:
@@ -2182,28 +2403,33 @@ def main() -> int:
         _emit_json(result)
         return 0 if result["status"] in {"host-configured", "dispatched"} else 1
 
+    policy = resolve_numerical_execution_policy(
+        watcher=args.watcher,
+        timeout_s=args.timeout_s,
+    )
     try:
         stage = stage_for(args.stage)
-        import ttnn
+        # TTNN may read this variable during import, so apply the policy before
+        # importing it as well as while the ordinary stage is executing.
+        with watcher_environment(policy):
+            import ttnn
 
-        device = ttnn.open_device(device_id=args.device_id)
-        try:
-            result = run_stage(ttnn, device, stage)
-        finally:
-            ttnn.close_device(device)
+            device = ttnn.open_device(device_id=args.device_id)
+            try:
+                result = run_stage(
+                    ttnn,
+                    device,
+                    stage,
+                    execution_policy=policy,
+                )
+            finally:
+                ttnn.close_device(device)
     except Exception as exc:  # noqa: BLE001 - emit a machine-readable failure record
-        result = {
-            "stage": args.stage,
-            "name": STAGES[args.stage].name if args.stage in STAGES else None,
-            "status": "fail",
-            "batch": STAGES[args.stage].batch if args.stage in STAGES else None,
-            "cores": STAGES[args.stage].cores if args.stage in STAGES else None,
-            "tile_shape": [TILE, TILE],
-            "elapsed_s": None,
-            "numerical_error": None,
-            "finite": False,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
+        result = _stage_failure_record(
+            args.stage,
+            policy=policy,
+            error=f"{type(exc).__name__}: {exc}",
+        )
     _emit_json(result)
     return 0 if result["status"] == "pass" else 1
 
