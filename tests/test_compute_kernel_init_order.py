@@ -101,9 +101,6 @@ INIT_COMMON_ORDERING_EXCLUSIONS = {
     "enodia/tt/bench/kernels/bringup_ns_one_compute.cpp": (
         "Legacy Stage 5 diagnostic keeps its binary helpers after matmul."
     ),
-    "enodia/tt/bench/kernels/newton_schulz_compute.cpp": (
-        "Legacy scaffold keeps its binary helpers after matmul."
-    ),
 }
 
 # Keep additions to the exception list deliberate rather than allowing a new
@@ -127,7 +124,6 @@ _EXPECTED_INIT_COMMON_ORDERING_EXCLUSIONS = frozenset(
         "enodia/tt/bench/kernels/bringup_ns_four_plus_four_compute.cpp",
         "enodia/tt/bench/kernels/bringup_ns_four_plus_four_distinct_output_compute.cpp",
         "enodia/tt/bench/kernels/bringup_ns_one_compute.cpp",
-        "enodia/tt/bench/kernels/newton_schulz_compute.cpp",
     }
 )
 

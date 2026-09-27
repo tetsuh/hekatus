@@ -12,7 +12,7 @@ import sys
 import pytest
 
 from enodia.tt.bench import run_matmul
-from enodia.tt.bench.shapes import MatmulShape
+from enodia.tt.bench.shapes import MatmulShape, total_flops
 
 
 class _StubTensor:
@@ -170,6 +170,84 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     assert result["status"] == "ok"
     assert len(result["seconds_per_iteration_samples"]) == 2
     assert result["seconds_per_iteration"] == min(result["seconds_per_iteration_samples"])
+
+
+def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 2), (2, 1))
+        output_memory = "dram"
+
+        def __init__(self):
+            self.launches = 0
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, *, variant):
+            assert variant == "bf16-fp32state"
+            assert matrices is not None
+            return cls()
+
+        def launch(self):
+            self.launches += 1
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: object(),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    ttnn = _StubTtnn()
+    record = run_matmul.run_custom_newton_schulz(
+        ttnn,
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        iters=2,
+        repeats=2,
+    )
+
+    assert record["status"] == "ok"
+    assert record["kind"] == "custom_newton_schulz"
+    assert record["variant"] == "bf16-fp32state"
+    assert record["output_memory"] == "dram"
+    assert len(record["seconds_per_launch_samples"]) == 4
+    assert record["seconds_per_launch_p50"] <= record["seconds_per_launch_p99"]
+    assert record["seconds_per_launch_p99"] <= record["seconds_per_launch_p99_9"]
+    assert record["flops_per_iteration"] == total_flops(shape) * 16
+    assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
+
+
+def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
+    shape = _shape(4)
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16",
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert record["kind"] == "custom_newton_schulz"
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):

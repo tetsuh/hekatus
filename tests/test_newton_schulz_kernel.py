@@ -6,7 +6,9 @@ import ast
 import importlib.util
 import os
 import unittest
+from itertools import pairwise
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -65,10 +67,45 @@ class ReferenceTests(unittest.TestCase):
             COMPLEX_MATMULS_PER_INVERSE,
         )
 
-    def test_kernel_variants_only_claim_implemented_behaviors(self):
-        self.assertEqual(set(newton_schulz_kernel._VARIANTS), {"fused", "packed_fused"})
-        self.assertFalse(newton_schulz_kernel._VARIANTS["fused"])
-        self.assertTrue(newton_schulz_kernel._VARIANTS["packed_fused"])
+    def test_kernel_variants_only_claim_the_two_approved_state_behaviors(self):
+        self.assertEqual(set(newton_schulz_kernel._VARIANTS), {"bf16", "bf16-fp32state"})
+        self.assertFalse(newton_schulz_kernel._VARIANTS["bf16"])
+        self.assertTrue(newton_schulz_kernel._VARIANTS["bf16-fp32state"])
+
+    def test_fp32_state_selects_fp32_state_and_output_descriptors(self):
+        ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+        bf16_defs = newton_schulz_kernel._cb_definitions(ttnn, ttnn.bfloat16)
+        fp32_defs = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32)
+
+        self.assertEqual(newton_schulz_kernel._state_dtype(ttnn, "bf16"), "bf16")
+        self.assertEqual(newton_schulz_kernel._state_dtype(ttnn, "bf16-fp32state"), "fp32")
+        self.assertEqual(newton_schulz_kernel._output_memory_name("bf16"), "l1")
+        self.assertEqual(newton_schulz_kernel._output_memory_name("bf16-fp32state"), "dram")
+        self.assertEqual(bf16_defs[newton_schulz_kernel.CB_OUTPUT_REAL], ("bf16", 2))
+        self.assertEqual(bf16_defs[newton_schulz_kernel.CB_OUTPUT_IMAG], ("bf16", 2))
+        self.assertEqual(fp32_defs[newton_schulz_kernel.CB_OUTPUT_REAL], ("fp32", 2))
+        self.assertEqual(fp32_defs[newton_schulz_kernel.CB_OUTPUT_IMAG], ("fp32", 2))
+        for index in (
+            newton_schulz_kernel.CB_X0_REAL,
+            newton_schulz_kernel.CB_STATE_REAL,
+            newton_schulz_kernel.CB_S_REAL,
+            newton_schulz_kernel.CB_NEG_X_IMAG,
+        ):
+            self.assertEqual(fp32_defs[index][0], "fp32")
+
+    def test_balanced_ranges_cover_batch_without_padding_or_gaps(self):
+        ranges = newton_schulz_kernel._balanced_ranges(8192, 120)
+
+        self.assertEqual(len(ranges), 120)
+        self.assertEqual(ranges[0], (0, 69))
+        self.assertEqual(ranges[-1], (8124, 68))
+        self.assertEqual(sum(count for _, count in ranges), 8192)
+        self.assertEqual({count for _, count in ranges}, {68, 69})
+        for previous, current in pairwise(ranges):
+            self.assertEqual(previous[0] + previous[1], current[0])
+
+    def test_small_batches_use_only_the_cores_that_have_work(self):
+        self.assertEqual(newton_schulz_kernel._balanced_ranges(3, 120), [(0, 1), (1, 1), (2, 1)])
 
     def test_fixed_count_and_compile_argument_layout_match_the_host_driver(self):
         compute_source = (
@@ -93,12 +130,33 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
         )
-        self.assertEqual(compute_source.count("matmul_one();"), 4)
+        self.assertEqual(compute_source.count("matmul_block(left_real, right_real"), 1)
+        self.assertIn("matmul_block(left_imag_for_real, right_imag", compute_source)
+        self.assertIn("matmul_block(left_real, right_imag", compute_source)
+        self.assertIn("matmul_block(left_imag_for_imag, right_real", compute_source)
+        self.assertIn("cb_negative_x_imag", compute_source)
+        self.assertIn("reconfig_data_format(cb_zero, cb_zero, cb_product_imag, x_imag)", compute_source)
+        self.assertIn("sub_tiles(cb_zero, x_imag", compute_source)
+        self.assertNotIn("negative_tile", compute_source)
+        self.assertIn("negate_state_imag(x_imag);", compute_source)
+        self.assertEqual(compute_source.count("cb_wait_front(cb_r_real, 1)"), 1)
+        self.assertIn("bool resident_left", compute_source)
+        self.assertIn("bool consume_right", compute_source)
+        self.assertIn("bool consume_left", compute_source)
+        self.assertIn("consume_right", compute_source)
+        self.assertNotIn("cb_pop_front(cb_identity", compute_source)
+        self.assertNotIn("cb_pop_front(cb_zero", compute_source)
+        self.assertIn("cb_product_imag,\n                true,\n                false,\n                false);", compute_source)
+        self.assertIn("cb_s_imag,\n                output_real,\n                output_imag,\n                false,\n                true,\n                true);", compute_source)
         self.assertNotIn("break;", compute_source)
+        self.assertIn("get_compile_time_arg_val(0)", compute_source)
         self.assertIn("get_compile_time_arg_val(1)", compute_source)
-        self.assertNotIn("get_compile_time_arg_val(2)", compute_source)
+        self.assertIn("state_fp32", compute_source)
+        self.assertIn("get_arg_val<std::uint32_t>(1)", compute_source)
         self.assertIn("TensorAccessorArgs<1>()", reader_source)
-        self.assertNotIn("TensorAccessorArgs<2>()", reader_source)
+        self.assertIn("r_negative_imag_address", reader_source)
+        self.assertNotIn("copy_tile", reader_source)
+        self.assertNotIn("route_", reader_source)
 
     def test_packed_odd_batch_round_trips_and_isolates_blocks(self):
         matrices = np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16)
@@ -161,11 +219,11 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
                 None, None, np.zeros((1, 16, 15), dtype=np.complex64)
             )
-        with self.assertRaisesRegex(ValueError, "only L=16 and L=32"):
+        with self.assertRaisesRegex(ValueError, "only supports L=32"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
-                None, None, np.zeros((1, 8, 8), dtype=np.complex64)
+                None, None, np.zeros((1, 16, 16), dtype=np.complex64)
             )
-        with self.assertRaisesRegex(ValueError, "tile packing is only defined for L=16"):
+        with self.assertRaisesRegex(ValueError, "unknown kernel variant"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
                 None, None, np.zeros((1, 32, 32), dtype=np.complex64), variant="packed_fused"
             )
@@ -197,18 +255,18 @@ class ReferenceTests(unittest.TestCase):
 
 @unittest.skipUnless(DEVICE_TEST and HAS_TTNN, "requires the pinned TT container and a board")
 class DeviceEquivalenceTests(unittest.TestCase):
-    def test_batch_8192_matches_numpy_at_l16_and_l32(self):
+    def test_batch_8192_matches_numpy_at_l32_with_fp32_state(self):
         import ttnn
 
         device = ttnn.open_device(device_id=0)
         try:
-            for size in (16, 32):
-                with self.subTest(size=size):
-                    matrices = random_hpd_batch(8192, size, seed=63 + size)
-                    expected = newton_schulz_reference(matrices)
-                    actual = run_newton_schulz_kernel(ttnn, device, matrices)
-                    relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
-                    self.assertLessEqual(relative_error, 1e-2)
+            matrices = random_hpd_batch(8192, 32, seed=95)
+            expected = newton_schulz_reference(matrices)
+            actual = run_newton_schulz_kernel(
+                ttnn, device, matrices, variant="bf16-fp32state"
+            )
+            relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+            self.assertLessEqual(relative_error, 1e-2)
         finally:
             ttnn.close_device(device)
 

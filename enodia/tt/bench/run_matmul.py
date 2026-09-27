@@ -1,32 +1,8 @@
-"""Run the shape catalogue on the accelerator and record what it achieved.
+"""Run stock and hand-written shape-catalogue operations on the accelerator.
 
-Runs inside the toolchain container, so it imports nothing from the
-reference implementation — only the standard library and the modules beside
-it, which are standard-library-only by design.
-
-**Accounting matches execution.** A complex operation costs four real
-matmuls, and this runs four. Counting four and timing one would report four
-times the achieved throughput, silently, in the direction that flatters.
-
-**What it measures.** A block of iterations is timed with a single
-synchronization at the end, so per-iteration cost is not swamped by
-synchronization on the small shapes. The block is repeated, the best is
-reported, and every repeat is kept beside it: the best keeps scheduler noise
-out of the throughput figure, and the spread of the rest is what says whether
-that figure is stable enough to quote.
-Each result is released as it is produced, both to keep the larger shapes
-inside memory and because reusing buffers is what a real implementation
-does.
-
-**Failures are results.** A shape that will not fit in L1 fails here, and
-that failure is recorded rather than aborting the run. Where the boundary
-falls is the answer to the question design.md §2 calls paramount — whether
-the data fits on-chip — so it is data, not an error.
-
-**Efficiency is optional.** Without an explicit peak, only achieved FLOPS
-are reported. An efficiency quoted against the wrong peak is worse than no
-efficiency, so the peak and the note describing it are recorded next to
-anything derived from them.
+The stock path imports only the shape catalogue.  The custom Newton-Schulz
+path is selected for the first throughput payload and is kept beside the
+stock row in the same result file.
 """
 
 from __future__ import annotations
@@ -45,14 +21,13 @@ if __package__ in (None, ""):  # invoked as a plain script inside the container
 
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
+CUSTOM_KIND = "custom_newton_schulz"
+STOCK_KIND = "ttnn.matmul"
+_CUSTOM_TARGET = ("newton_schulz", 32, 32, 32, 8192)
+
 
 def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_config):
-    """Allocate a device tensor, tolerating differences in the creation API.
-
-    Values do not affect matmul timing on this architecture — there is no
-    sparsity shortcut to hit — so any of these is acceptable, and the one
-    that worked is recorded with the result.
-    """
+    """Allocate a device tensor, tolerating differences in the creation API."""
     attempts = []
     for name in ("rand", "ones", "zeros"):
         factory = getattr(ttnn, name, None)
@@ -62,7 +37,7 @@ def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_con
             tensor = factory(
                 shape, dtype=dtype, layout=layout, device=device, memory_config=memory_config
             )
-        except Exception as exc:  # noqa: BLE001 - the API surface is what is under test
+        except Exception as exc:  # noqa: BLE001 - the API surface is under test
             attempts.append(f"{name}: {type(exc).__name__}: {exc}")
             continue
         return tensor, name
@@ -70,10 +45,34 @@ def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_con
 
 
 def _execute_once(ttnn, a, b, real_matmuls: int) -> None:
-    """One logical operation: every real matmul the accounting charges for."""
+    """One logical stock operation: execute every charged real matmul."""
     for _ in range(real_matmuls):
         out = ttnn.matmul(a, b)
         ttnn.deallocate(out)
+
+
+def _percentile(samples: list[float], quantile: float) -> float:
+    """Linear-interpolated percentile without adding a numerical dependency."""
+    if not samples:
+        raise ValueError("at least one timing sample is required")
+    ordered = sorted(samples)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    fraction = position - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+
+def _timing_fields(samples: list[float]) -> dict:
+    return {
+        "seconds_per_launch_samples": samples,
+        "seconds_per_launch_p50": _percentile(samples, 0.50),
+        "seconds_per_launch_p99": _percentile(samples, 0.99),
+        "seconds_per_launch_p99_9": _percentile(samples, 0.999),
+        "launches_measured": len(samples),
+    }
 
 
 def with_efficiency(record: dict, peak_tflops: float | None) -> dict:
@@ -93,7 +92,7 @@ def run_shape(
     iters: int,
     repeats: int,
 ) -> dict:
-    """Execute one shape and return its record, including any failure."""
+    """Execute one stock shape and return its record, including failures."""
     tensors = []
     try:
         a, factory = _make_tensor(
@@ -105,8 +104,8 @@ def run_shape(
         )
         tensors.append(b)
 
-        # Warm up: the first execution pays for program compilation and cache
-        # population, which is real but is not what a steady-state frame costs.
+        # The first execution pays for program compilation and cache
+        # population, which is not the steady-state row being quoted.
         _execute_once(ttnn, a, b, shape.real_matmuls)
         ttnn.synchronize_device(device)
 
@@ -119,8 +118,9 @@ def run_shape(
             samples.append((time.perf_counter() - start) / iters)
 
         flops = total_flops(shape)
-        return {
+        record = {
             "status": "ok",
+            "kind": STOCK_KIND,
             "seconds_per_iteration": min(samples),
             "seconds_per_iteration_samples": samples,
             "achieved_tflops": flops / min(samples) / 1e12,
@@ -128,8 +128,12 @@ def run_shape(
             "real_matmuls_per_iteration": shape.real_matmuls,
             "tensor_factory": factory,
         }
+        # A stock block is synchronized once after its `iters` launches; the
+        # retained sample is therefore the measured per-launch block average.
+        record.update(_timing_fields(samples))
+        return record
     except Exception as exc:  # noqa: BLE001 - a shape that cannot run is a result
-        return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+        return {"status": "failed", "kind": STOCK_KIND, "error": f"{type(exc).__name__}: {exc}"}
     finally:
         for tensor in tensors:
             try:
@@ -138,10 +142,113 @@ def run_shape(
                 pass
 
 
+def _is_custom_target(shape: MatmulShape) -> bool:
+    return (
+        shape.family,
+        shape.m,
+        shape.k,
+        shape.n,
+        shape.batch,
+    ) == _CUSTOM_TARGET
+
+
+def run_custom_newton_schulz(
+    ttnn,
+    device,
+    shape: MatmulShape,
+    *,
+    dtype_name: str,
+    memory_name: str,
+    variant: str,
+    iters: int,
+    repeats: int,
+) -> dict:
+    """Run one prepared fixed-count custom inverse and retain launch samples."""
+    if not _is_custom_target(shape):
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": "the first custom row is only defined for L=32 batch=8192",
+        }
+    if dtype_name != "bfloat16":
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": "custom rows require bfloat16 R inputs",
+        }
+    if variant not in {"bf16", "bf16-fp32state"}:
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": f"unknown custom variant {variant!r}",
+        }
+    if memory_name != "l1":
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": "custom input/compute memory must be l1",
+        }
+
+    from enodia.tt.bench.newton_schulz_kernel import (
+        COMPLEX_MATMULS_PER_INVERSE,
+        NewtonSchulzKernel,
+        benchmark_matrices,
+    )
+
+    kernel = None
+    try:
+        matrices = benchmark_matrices(shape.batch, shape.m, seed=6300)
+        kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, variant=variant)
+        kernel.launch()
+        ttnn.synchronize_device(device)
+
+        # A timed block is one program launch plus one synchronization.  This
+        # keeps each retained sample a true per-launch duration and avoids
+        # adding hidden synchronizations inside a multi-launch block.
+        launch_samples: list[float] = []
+        for _ in range(repeats):
+            for _ in range(iters):
+                launch_start = time.perf_counter()
+                kernel.launch()
+                ttnn.synchronize_device(device)
+                launch_samples.append(time.perf_counter() - launch_start)
+
+        block_samples = launch_samples
+        best = min(block_samples)
+        flops = total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
+        record = {
+            "status": "ok",
+            "kind": CUSTOM_KIND,
+            "variant": variant,
+            "output_memory": kernel.output_memory,
+            "seconds_per_iteration": best,
+            "seconds_per_iteration_samples": block_samples,
+            "achieved_tflops": flops / best / 1e12,
+            "flops_per_iteration": flops,
+            "complex_matmuls_per_iteration": COMPLEX_MATMULS_PER_INVERSE,
+            "real_matmuls_per_iteration": shape.real_matmuls * COMPLEX_MATMULS_PER_INVERSE,
+            "core_work_ranges": [list(pair) for pair in kernel.work_ranges],
+        }
+        record.update(_timing_fields(launch_samples))
+        return record
+    except Exception as exc:  # noqa: BLE001 - a device failure is a result
+        return {"status": "failed", "kind": CUSTOM_KIND, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        if kernel is not None:
+            kernel.close()
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dtype", action="append", default=None, help="repeatable")
     parser.add_argument("--memory", action="append", default=None, choices=["dram", "l1"])
+    parser.add_argument("--kind", action="append", choices=[STOCK_KIND, CUSTOM_KIND], default=None)
+    parser.add_argument(
+        "--custom-variant",
+        choices=["bf16", "bf16-fp32state"],
+        default="bf16",
+        help="state precision for custom_newton_schulz rows",
+    )
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--only", default=None, help="substring filter on the shape name")
@@ -154,7 +261,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    """Reject controls that would produce nonsense, before any device is opened."""
+    """Reject controls that would produce nonsense before opening a device."""
     if args.iters < 1:
         parser.error(f"--iters must be at least 1, got {args.iters}")
     if args.repeats < 1:
@@ -166,12 +273,19 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
 
 
 def _format_line(shape: MatmulShape, dtype_name: str, memory_name: str, record: dict) -> str:
-    line = f"{shape.name:38s} {dtype_name:9s} {memory_name:4s} "
+    kind = record.get("kind", STOCK_KIND)
+    line = f"{shape.name:38s} {kind:24s} {dtype_name:9s} {memory_name:4s} "
     if record["status"] != "ok":
         return line + f"failed: {record['error'][:60]}"
     line += f"{record['achieved_tflops']:8.2f} TFLOPS"
     if "efficiency" in record:
         line += f"  {record['efficiency'] * 100:5.1f}%"
+    if "seconds_per_launch_p99_9" in record:
+        line += (
+            f"  P50={record['seconds_per_launch_p50']:.6g}s"
+            f" P99={record['seconds_per_launch_p99']:.6g}s"
+            f" P99.9={record['seconds_per_launch_p99_9']:.6g}s"
+        )
     return line
 
 
@@ -196,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"no shape matches {args.only!r}", file=sys.stderr)
         return 2
 
-    environment = {"python": platform.python_version(), "host": platform.node()}
+    environment = {"python": platform.python_version()}
     if args.env_json and args.env_json.exists():
         environment.update(json.loads(args.env_json.read_text()))
 
@@ -206,28 +320,49 @@ def main(argv: list[str] | None = None) -> int:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
                 for memory_name in memories:
-                    record = {
-                        "shape": asdict(shape),
-                        "representative": shape.representative,
-                        "dtype": dtype_name,
-                        "memory": memory_name,
-                        "iterations": args.iters,
-                        "repeats": args.repeats,
-                    }
-                    record.update(
-                        run_shape(
-                            ttnn,
-                            device,
-                            shape,
-                            dtype=dtype,
-                            memory_config=memory_map[memory_name],
-                            iters=args.iters,
-                            repeats=args.repeats,
-                        )
-                    )
-                    with_efficiency(record, args.peak_tflops)
-                    print(_format_line(shape, dtype_name, memory_name, record), flush=True)
-                    results.append(record)
+                    kinds = args.kind or [STOCK_KIND]
+                    if (
+                        args.kind is None
+                        and _is_custom_target(shape)
+                        and dtype_name == "bfloat16"
+                        and memory_name == "l1"
+                    ):
+                        kinds = [STOCK_KIND, CUSTOM_KIND]
+                    for kind in kinds:
+                        record = {
+                            "shape": asdict(shape),
+                            "representative": shape.representative,
+                            "dtype": dtype_name,
+                            "memory": memory_name,
+                            "iterations": args.iters,
+                            "repeats": args.repeats,
+                            "kind": kind,
+                        }
+                        if kind == STOCK_KIND:
+                            measured = run_shape(
+                                ttnn,
+                                device,
+                                shape,
+                                dtype=dtype,
+                                memory_config=memory_map[memory_name],
+                                iters=args.iters,
+                                repeats=args.repeats,
+                            )
+                        else:
+                            measured = run_custom_newton_schulz(
+                                ttnn,
+                                device,
+                                shape,
+                                dtype_name=dtype_name,
+                                memory_name=memory_name,
+                                variant=args.custom_variant,
+                                iters=args.iters,
+                                repeats=args.repeats,
+                            )
+                        record.update(measured)
+                        with_efficiency(record, args.peak_tflops)
+                        print(_format_line(shape, dtype_name, memory_name, record), flush=True)
+                        results.append(record)
     finally:
         ttnn.close_device(device)
 
