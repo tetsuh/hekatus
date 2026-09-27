@@ -115,6 +115,44 @@ STAGE_68_DIAGNOSTIC_OUTPUT_CBS = (12, 13)
 STAGE_69_CB_FORMATS = STAGE_68_CB_FORMATS
 STAGE_69_CB_PAGE_SIZES = STAGE_68_CB_PAGE_SIZES
 STAGE_69_DIAGNOSTIC_OUTPUT_CBS = STAGE_68_DIAGNOSTIC_OUTPUT_CBS
+# Stage 70 keeps Stage 69's BF16 first-residual boundary and removes the full
+# binary initializer from its compute source.
+STAGE_70_CB_FORMATS = STAGE_69_CB_FORMATS
+STAGE_70_CB_PAGE_SIZES = STAGE_69_CB_PAGE_SIZES
+STAGE_70_DIAGNOSTIC_OUTPUT_CBS = STAGE_69_DIAGNOSTIC_OUTPUT_CBS
+# Stage 71 widens both S outputs and both diagnostic drains to Float32.  CB6
+# was already Float32; CB10/11 and their paired diagnostic CB12/13 change.
+STAGE_71_FLOAT32_CBS = (
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    22,
+    23,
+    24,
+)
+STAGE_71_CB_FORMATS = tuple(
+    "float32" if index in STAGE_71_FLOAT32_CBS else "bfloat16" for index in range(25)
+)
+STAGE_71_CB_PAGE_SIZES = tuple(
+    TILE_BYTES_FLOAT32 if index in STAGE_71_FLOAT32_CBS else TILE_BYTES_BFLOAT16
+    for index in range(25)
+)
+STAGE_71_DIAGNOSTIC_OUTPUT_CBS = STAGE_69_DIAGNOSTIC_OUTPUT_CBS
 STAGE_61_ACTIVE_CB_INDICES = tuple(
     index for index in range(25) if index in STAGE_61_FLOAT32_CBS or index in (0, 17, 18)
 )
@@ -857,6 +895,42 @@ STAGES = {
         "bfloat16",
         STAGE_69_CB_FORMATS,
         STAGE_69_CB_PAGE_SIZES,
+    ),
+    70: Stage(
+        70,
+        "complex_newton_schulz_first_residual_bfloat16_output_reconfig",
+        1,
+        1,
+        "bringup_ns_first_residual_reconfig_compute.cpp",
+        "bringup_ns_first_residual_reader.cpp",
+        "bringup_ns_first_residual_writer.cpp",
+        "newton_first_residual",
+        1,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "bfloat16",
+        STAGE_70_CB_FORMATS,
+        STAGE_70_CB_PAGE_SIZES,
+    ),
+    71: Stage(
+        71,
+        "complex_newton_schulz_first_residual_float32_boundary",
+        1,
+        1,
+        "bringup_ns_first_residual_float32_boundary_compute.cpp",
+        "bringup_ns_first_residual_float32_boundary_reader.cpp",
+        "bringup_ns_first_residual_float32_boundary_writer.cpp",
+        "newton_first_residual",
+        1,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "float32",
+        STAGE_71_CB_FORMATS,
+        STAGE_71_CB_PAGE_SIZES,
     ),
 }
 

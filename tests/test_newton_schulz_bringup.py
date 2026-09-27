@@ -49,6 +49,8 @@ class BringupHostTests(unittest.TestCase):
                 67,
                 68,
                 69,
+                70,
+                71,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -131,6 +133,8 @@ class BringupHostTests(unittest.TestCase):
                 67,
                 68,
                 69,
+                70,
+                71,
             ):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
@@ -800,6 +804,153 @@ class BringupHostTests(unittest.TestCase):
         self.assertIn("reconfig_data_format_srca", stage62_compute)
         self.assertIn("pack_reconfig_data_format", stage62_compute)
         self.assertNotIn("WAYPOINT(\"", control_compute)
+
+    def test_first_residual_reconfig_variant_uses_explicit_short_binary_path(self):
+        control = bringup.STAGES[69]
+        stage = bringup.STAGES[70]
+        for field in (
+            "batch",
+            "cores",
+            "reader_source",
+            "writer_source",
+            "kind",
+            "iterations",
+            "fp32_dest_acc_en",
+            "input_seed",
+            "input_count",
+            "input_dtypes",
+            "output_dtype",
+            "cb_formats",
+            "cb_page_sizes",
+        ):
+            self.assertEqual(getattr(stage, field), getattr(control, field), field)
+        self.assertNotEqual(stage.compute_source, control.compute_source)
+        self.assertEqual(len(set(bringup.source_paths(stage))), 3)
+        self.assertEqual(bringup.STAGE_70_DIAGNOSTIC_OUTPUT_CBS, (12, 13))
+        self.assertEqual(bringup.output_count(stage), 2)
+
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        self.assertNotIn("binary_op_init_common", compute)
+        self.assertEqual(
+            compute.count("reconfig_data_format(") - compute.count("pack_reconfig_data_format("), 2
+        )
+        self.assertEqual(compute.count("pack_reconfig_data_format("), 2)
+        self.assertEqual(compute.count("sub_tiles_init("), 1)
+        self.assertEqual(compute.count("add_tiles_init("), 1)
+        for operation in (
+            "reconfig_data_format(current_srca, left, current_srcb, right);",
+            "pack_reconfig_data_format(output);",
+        ):
+            self.assertIn(operation, compute)
+        for transition in (
+            "subtract_one<cb_x_bfloat16, cb_r, cb_product_rr, cb_product_ii, cb_rx_real>();",
+            "add_one<cb_product_rr, cb_product_ii, cb_product_ri, cb_product_ir, cb_rx_imag>();",
+            "subtract_one<cb_product_ri, cb_product_ir, cb_identity, cb_rx_real, cb_s_bfloat16_real>();",
+            "subtract_one<cb_identity, cb_rx_real, cb_zero, cb_rx_imag, cb_s_bfloat16_imag>();",
+        ):
+            self.assertIn(transition, compute)
+        self.assertLess(
+            compute.index("reconfig_data_format(current_srca, left, current_srcb, right);"),
+            compute.index("sub_tiles_init(left, right);"),
+        )
+        self.assertLess(
+            compute.index("pack_reconfig_data_format(output);"),
+            compute.index("sub_tiles_init(left, right);"),
+        )
+        self.assertIn("cb_s_bfloat16_real = 10", compute)
+        self.assertIn("cb_s_bfloat16_imag = 11", compute)
+        kernel = compute[compute.index("void kernel_main()") :]
+        operation_order = (
+            "complex_matmul_products();",
+            "subtract_one<cb_x_bfloat16, cb_r, cb_product_rr, cb_product_ii, cb_rx_real>();",
+            "add_one<cb_product_rr, cb_product_ii, cb_product_ri, cb_product_ir, cb_rx_imag>();",
+            "subtract_one<cb_product_ri, cb_product_ir, cb_identity, cb_rx_real, cb_s_bfloat16_real>();",
+            "subtract_one<cb_identity, cb_rx_real, cb_zero, cb_rx_imag, cb_s_bfloat16_imag>();",
+        )
+        positions = [kernel.index(operation) for operation in operation_order]
+        self.assertEqual(positions, sorted(positions))
+
+        inputs = bringup._inputs(stage)
+        for left, right in zip(inputs, bringup._inputs(control)):
+            np.testing.assert_array_equal(left, right)
+        r = inputs[0] + 1j * inputs[2]
+        expected = inputs[4].astype(np.complex64) - np.matmul(r, bringup._initial_value(r))
+        np.testing.assert_allclose(bringup.expected_output(stage, inputs), expected)
+        np.testing.assert_array_equal(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(control, bringup._inputs(control)),
+        )
+
+    def test_first_residual_float32_boundary_keeps_common_init_and_matching_io(self):
+        control = bringup.STAGES[69]
+        stage = bringup.STAGES[71]
+        self.assertEqual(
+            (stage.batch, stage.cores, stage.iterations, stage.input_count), (1, 1, 1, 6)
+        )
+        self.assertEqual(stage.kind, control.kind)
+        self.assertEqual(stage.input_seed, control.input_seed)
+        self.assertEqual(stage.input_dtypes, control.input_dtypes)
+        self.assertEqual(stage.output_dtype, "float32")
+        self.assertTrue(stage.fp32_dest_acc_en)
+        self.assertEqual(bringup.STAGE_71_DIAGNOSTIC_OUTPUT_CBS, (12, 13))
+        self.assertEqual(
+            [index for index in range(25) if stage.cb_formats[index] != control.cb_formats[index]],
+            [10, 11, 12, 13],
+        )
+        for index in (0, 1):
+            self.assertEqual(stage.cb_formats[index], control.cb_formats[index], index)
+            self.assertEqual(stage.cb_page_sizes[index], control.cb_page_sizes[index], index)
+        for index in (6, 10, 11, 12, 13):
+            self.assertEqual(stage.cb_formats[index], "float32", index)
+            self.assertEqual(stage.cb_page_sizes[index], bringup.TILE_BYTES_FLOAT32, index)
+
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        control_compute = (bringup.KERNEL_DIR / bringup.STAGES[68].compute_source).read_text()
+        expected_compute = control_compute.replace(
+            "cb_s_bfloat16_real", "cb_s_float32_real"
+        ).replace("cb_s_bfloat16_imag", "cb_s_float32_imag")
+        self.assertEqual(compute, expected_compute)
+        self.assertEqual(compute.count("binary_op_init_common("), 2)
+        self.assertNotIn("reconfig_data_format", compute)
+        self.assertIn("cb_s_float32_real = 10", compute)
+        self.assertIn("cb_s_float32_imag = 11", compute)
+        self.assertIn(
+            "subtract_one<cb_identity, cb_rx_real, cb_s_float32_real>();", compute
+        )
+        self.assertIn("subtract_one<cb_zero, cb_rx_imag, cb_s_float32_imag>();", compute)
+
+        reader = (bringup.KERNEL_DIR / stage.reader_source).read_text()
+        writer = (bringup.KERNEL_DIR / stage.writer_source).read_text()
+        self.assertIn("copy_float32_tile", reader)
+        self.assertNotIn("copy_bfloat16_tile", reader)
+        self.assertIn("(32 * 32 * 4) / sizeof(std::uint32_t)", reader)
+        self.assertIn("cb_s_float32_real = 10", reader)
+        self.assertIn("cb_s_float32_imag = 11", reader)
+        self.assertIn("cb_diagnostic_real = 12", reader)
+        self.assertIn("cb_diagnostic_imag = 13", reader)
+        self.assertEqual(writer.count("noc_async_write_page"), 2)
+        self.assertIn("cb_diagnostic_real = 12", writer)
+        self.assertIn("cb_diagnostic_imag = 13", writer)
+
+        inputs = bringup._inputs(stage)
+        for left, right in zip(inputs, bringup._inputs(control)):
+            np.testing.assert_array_equal(left, right)
+        r = inputs[0] + 1j * inputs[2]
+        expected = inputs[4].astype(np.complex64) - np.matmul(r, bringup._initial_value(r))
+        np.testing.assert_allclose(bringup.expected_output(stage, inputs), expected)
+        np.testing.assert_array_equal(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(control, bringup._inputs(control)),
+        )
+
+    def test_readme_records_the_stage61_stage68_first_residual_boundary(self):
+        readme = Path("enodia/tt/bench/kernels/bringup_diagnostics_README.md").read_text()
+        self.assertIn("## Stage 61 and Stage 68 first-residual boundary comparison", readme)
+        self.assertIn("`subtract_one<cb_identity, cb_rx_real, cb_s_real>()`", readme)
+        self.assertIn("CB19 / Float32", readme)
+        self.assertIn("CB10 / BF16", readme)
+        self.assertIn("Stage 61's descriptor CB10 is BF16 but is not the S-real output", readme)
+        self.assertIn("CB10 → CB12 and CB11 → CB13 as BF16", readme)
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
         stage = bringup.STAGES[63]

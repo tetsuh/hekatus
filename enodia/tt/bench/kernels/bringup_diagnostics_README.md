@@ -32,6 +32,8 @@
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 - **Stage 68:** ran once on board on 2026-09-27 as the approved minimum first-residual probe and timed out with status/exit 137 without a numerical JSON result. The Watcher record and required single-reset recovery are documented below. The stop point localizes the approved diagnostic to the first residual path, including BF16 `S` production and drain, but is liveness evidence only; it does not establish a numerical pass or the deferred Stage-62 reconfiguration root cause.
 - **Stage 69:** is a waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. Its board result and recovery are documented below; no numerical JSON result was produced.
+- **Stage 70:** is the host-only Variant A after Stage 69. It keeps the Stage-69 first-residual boundary and reader/writer, removes the full binary initializer, and explicitly reconfigures unpack operands and pack outputs before each short binary operation. No board run was performed.
+- **Stage 71:** is the host-only Variant B after Stage 69. It keeps the full binary initializer, widens CB10/CB11 and the paired CB12/CB13 diagnostic drain to Float32, and keeps the existing Float32 CB6/CB8/CB9 boundary. No board run was performed.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
@@ -303,3 +305,49 @@ The Watcher evidence file contained 24,654 lines and 1,664,175 bytes, with SHA-2
 The final worker core `(0,0)`, virtual `(1,2)`, reported status `CWFW,CWFW,UABD,MWDD,K`, `rmsg D1G|BNT`, and `smsg GGGG`, with `cb[1](rcv 8!=ack 4)`, `cb[6](rcv 1!=ack 0)`, `cb[7](rcv 1!=ack 0)`, and `cb[8](rcv 1!=ack 0)`. No Watcher assert, NoC-sanitize, CB-sanitize, or hardware-fault message was observed. This is liveness/stop-point evidence only, not a numerical pass or a definitive compute root cause. In the approved scope, the timeout localizes the diagnostic to the first residual path, including BF16 `S` production and drain; it does not establish the deferred Stage-62 reconfiguration root cause.
 
 Recovery used exactly one reset, targeted only `/dev/tenstorrent/0`, and exited 0; this is cumulative reset #12 after the preceding recovery's #11. A fresh Stage 1 health probe on device 0 passed with relative error `0.004564372822642326` and elapsed `0.33350358500001676 s`. Final checks again found no running containers and no device users.
+
+## Stage 61 and Stage 68 first-residual boundary comparison
+
+The first residual boundary differs in the format of the S-real output, not in
+which binary operation initializes it. Both sources call `binary_op_init_common`
+and then `sub_tiles_init` for the first residual subtraction.
+
+| Stage | First S-real source | Init calls | CB6 format | CB8 format | Actual S-real output CB/format | Stage 68 BF16 diagnostic drain |
+|---|---|---|---|---|---|---|
+| Stage 61 | `subtract_one<cb_identity, cb_rx_real, cb_s_real>()` | `binary_op_init_common`, then `sub_tiles_init` | Float32 | Float32 | CB19 / Float32 | — |
+| Stage 68 | `subtract_one<cb_identity, cb_rx_real, cb_s_bfloat16_real>()` | `binary_op_init_common`, then `sub_tiles_init` | Float32 | Float32 | CB10 / BF16 | CB10 → CB12 and CB11 → CB13 as BF16 |
+
+Stage 61's descriptor CB10 is BF16 but is not the S-real output at this
+boundary. The source difference is the output-format transition from Stage 61's
+Float32 S-real CB19 to Stage 68's BF16 S-real CB10, not a claim that Stage 61's
+unused CB10 is used. Stage 68 drains CB10 and CB11 to diagnostic CB12 and CB13
+with BF16 copies.
+
+## Stage 70 and Stage 71 host-only variants
+
+Stages 70 and 71 are isolated host-registered diagnostics. Each keeps L=32,
+batch 1, one core, one tile, one fixed first-residual group, Float32 destination
+accumulation, the Stage 69 input descriptors, and the same residual oracle. No
+board execution is part of either variant.
+
+| Stage | Variant | Compute boundary | S output CBs and formats | Diagnostic CBs and formats | Reader/writer consequence |
+|---|---|---|---|---|---|
+| Stage 70 | A | No `binary_op_init_common`; explicit unpack and pack reconfiguration before every `sub_tiles_init`/`add_tiles_init` | CB10/CB11 BF16 | CB12/CB13 BF16 | Reuses the Stage 69 BF16 reader and writer |
+| Stage 71 | B | Keeps `binary_op_init_common` and the Stage 69 operation order | CB10/CB11 Float32; CB6 remains Float32 | CB12/CB13 Float32 | Uses Float32 copy and output paths; it never copies Float32 bytes with a BF16 routine |
+
+Variant A uses the `reconfig_data_format(old_srca, new_srca, old_srcb,
+new_srcb)` overload for the unpack-side current-to-new transitions and the
+forced `pack_reconfig_data_format(new_cb)` overload for each output. The
+transitions are expressed in the compute source's SrcA/SrcB order:
+
+| Binary operation | Current SrcA/SrcB | New SrcA/SrcB | New pack output |
+|---|---|---|---|
+| RX-real subtract | CB1 / CB0 | CB2 / CB3 | CB8 Float32 |
+| RX-imag add | CB2 / CB3 | CB4 / CB5 | CB9 Float32 |
+| First S-real subtract | CB4 / CB5 | CB6 / CB8 | CB10 BF16 |
+| First S-imag subtract | CB6 / CB8 | CB7 / CB9 | CB11 BF16 |
+
+The Stage 71 paired format change is intentional: because its reader drains
+both S outputs, CB10 and CB11 are Float32, and the diagnostic destinations CB12
+and CB13 plus the writer output tensors are Float32 as well. Input CB0/CB1
+remain BF16 in both variants.
