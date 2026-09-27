@@ -34,7 +34,7 @@
 - **Stage 69:** is a waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. Its board result and recovery are documented below; no numerical JSON result was produced.
 - **Stage 70:** is Variant A after Stage 69. It keeps the Stage-69 first-residual boundary and reader/writer, removes the full binary initializer, and explicitly reconfigures unpack operands and pack outputs before each short binary operation. Variant A passed on board; its result and recovery/cleanup are documented below.
 - **Stage 71:** is the host-only Variant B after Stage 69. It keeps the full binary initializer, widens CB10/CB11 and the paired CB12/CB13 diagnostic drain to Float32, and keeps the existing Float32 CB6/CB8/CB9 boundary. No board run was performed.
-- **Stage 72:** is the host-only reconfigured copy of Stage 62. It keeps Stage 62's four BF16/four Float32 state split, descriptors, reader, writer, inputs, and Float32 output oracle while removing all mid-kernel full binary initialization. Its boundary ledger and two audited conversion fixes are recorded below. No board result is claimed yet.
+- **Stage 72:** is the reconfigured copy of Stage 62. It keeps Stage 62's four BF16/four Float32 state split, descriptors, reader, writer, inputs, and Float32 output oracle while removing all mid-kernel full binary initialization. Its boundary ledger and two audited conversion fixes are recorded below. The board run completed normally but failed the `1e-2` numerical tolerance; its result and recovery are recorded below.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
@@ -379,9 +379,36 @@ both S outputs, CB10 and CB11 are Float32, and the diagnostic destinations CB12
 and CB13 plus the writer output tensors are Float32 as well. Input CB0/CB1
 remain BF16 in both variants.
 
+## Stage 72 board result and recovery
+
+On 2026-09-27, Stage 72 ran exactly once in a fresh container/process with
+device 0 only, `TT_METAL_WATCHER=1`, and an external 60-second cap. It completed
+normally in `0.510057986000902 s`; this was not a timeout. The process returned:
+
+```json
+{"stage":72,"status":"fail","finite":true,"numerical_error":0.7506909370422363,"tolerance":0.01,"batch":1,"cores":1,"tile_shape":[32,32],"elapsed_s":0.510057986000902}
+```
+
+The `1e-2` acceptance criterion was not met, so this is not a numerical pass.
+Variant A's isolated result above does not make the full Stage 72 hybrid pass,
+and this run does not prove the remaining numerical cause.
+
+The Watcher artifact contained 556 lines and 36,720 bytes, with SHA-256
+`f375396a9d29110e3e783d0579e8ade040cb928a31c6a94dcb507eded521728f`. No assert,
+sanitize, or hardware-fault result was reported in the process log; this is not
+root-cause evidence.
+
+Because the numerical result was anomalous, exactly one reset targeted device 0
+and exited 0. This is cumulative reset #14, after Stage 70's documented #13.
+A fresh Stage 1 health probe passed with `numerical_error`
+`0.004564372822642326`, elapsed `0.301262000000861 s`, and tolerance `0.01`.
+The health log SHA-256 is
+`0d5ff070136dc7452e67a7d34dba277e153bbb117d104a6431063e75a392e8d9`.
+Final cleanup found no running containers and no device users.
+
 ## Stage 72 reconfiguration boundary ledger
 
-Stage 72 is a host-only, isolated corrected copy of Stage 62. It retains L=32,
+Stage 72 is an isolated corrected copy of Stage 62. It retains L=32,
 batch 1, one core, one tile, eight iterations, FP32 destination accumulation,
 all Stage-62 CB descriptors, the Stage-62 reader and shared writer, and the
 Stage-62 Float32 CB23/CB24 output oracle. In this table, `SrcA` and `SrcB` are
@@ -418,5 +445,5 @@ The iteration-4 copy explicitly reconfigures unpack SrcA before each BF16
 `copy_tile_init`/`copy_tile`, and explicitly repacks to Float32 CB14/CB15.
 At the conversion boundary it preserves the SrcA transition to X CB17 and
 also explicitly changes SrcB from the preceding state-imag source CB5 to R
-CB0. These are the two audited fixes included in Stage 72. No board run has
-been performed for this stage yet.
+CB0. These are the two audited fixes included in Stage 72. The board result and
+recovery are documented above.
