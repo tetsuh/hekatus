@@ -31,6 +31,7 @@
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 - **Stage 68:** ran once on board on 2026-09-27 as the approved minimum first-residual probe and timed out with status/exit 137 without a numerical JSON result. The Watcher record and required single-reset recovery are documented below. The stop point localizes the approved diagnostic to the first residual path, including BF16 `S` production and drain, but is liveness evidence only; it does not establish a numerical pass or the deferred Stage-62 reconfiguration root cause.
+- **Stage 69:** is a host-only, waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. No board execution is part of this stage.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
@@ -258,6 +259,28 @@ The next probe is intentionally narrower than the full hybrid:
 5. Use a fresh process, an external 60-second cap, and Watcher logging.
 
 A timeout would localize the failure to the first residual path, including the FP32-to-BF16 binary output. A pass would justify a one-iteration extension that adds CB12 and the second matmul, with the missing unpack/pack transitions tested explicitly before any full hybrid run. Stage 68 now contains this isolated implementation and its host-only coverage; no board execution was performed in this session.
+
+## Stage 69 host-only waypoint map
+
+Stage 69's compute source is `bringup_ns_first_residual_waypoint_compute.cpp`. The source
+sequence is unchanged from Stage 68; the markers below are the only added device-side
+operations. Each marker is four characters and is distinct from the built-in Watcher
+waypoints. The marker is posted immediately before the named operation.
+
+| Marker | Boundary |
+|---|---|
+| `M69I` | `matmul_block_init` |
+| `M69R`, `M69X` | `matmul_one` waits for `cb_r`, `cb_x_bfloat16` |
+| `M69M` | `matmul_block` |
+| `M69P`, `M69B` | matmul `pack_tile`, `cb_push_back` |
+| `S69L`, `S69R` | `subtract_one` left and right waits |
+| `S69I`, `S69T` | subtract binary and tile-operation initialization |
+| `S69P`, `S69B` | subtract `pack_tile`, `cb_push_back` |
+| `A69L`, `A69R` | `add_one` left and right waits |
+| `A69I`, `A69T` | add binary and tile-operation initialization |
+| `A69P`, `A69B` | add `pack_tile`, `cb_push_back` |
+
+No board execution was performed for Stage 69.
 
 ## Stage 68 board probe and recovery
 

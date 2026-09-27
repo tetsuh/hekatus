@@ -1,5 +1,6 @@
 import ast
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class BringupHostTests(unittest.TestCase):
                 66,
                 67,
                 68,
+                69,
             ),
         )
         production = [bringup.STAGES[number] for number in range(1, 7)]
@@ -128,6 +130,7 @@ class BringupHostTests(unittest.TestCase):
                 66,
                 67,
                 68,
+                69,
             ):
                 self.assertFalse(stage.fp32_dest_acc_en)
         source = Path("tools/newton_schulz_bringup.py").read_text()
@@ -689,6 +692,114 @@ class BringupHostTests(unittest.TestCase):
             bringup.expected_output(stage, inputs),
             bringup.expected_output(stage, bringup._inputs(stage)),
         )
+
+    def test_first_residual_waypoint_probe_reuses_stage68_host_shape(self):
+        control = bringup.STAGES[68]
+        stage = bringup.STAGES[69]
+        for field in (
+            "batch",
+            "cores",
+            "reader_source",
+            "writer_source",
+            "kind",
+            "iterations",
+            "fp32_dest_acc_en",
+            "input_seed",
+            "input_count",
+            "input_dtypes",
+            "output_dtype",
+            "cb_formats",
+            "cb_page_sizes",
+        ):
+            self.assertEqual(getattr(stage, field), getattr(control, field), field)
+        self.assertNotEqual(stage.compute_source, control.compute_source)
+        self.assertEqual(bringup.output_count(stage), bringup.output_count(control))
+        self.assertEqual(
+            bringup.STAGE_69_DIAGNOSTIC_OUTPUT_CBS,
+            bringup.STAGE_68_DIAGNOSTIC_OUTPUT_CBS,
+        )
+        self.assertEqual(stage.cb_formats, bringup.STAGE_62_CB_FORMATS)
+        self.assertEqual(stage.cb_page_sizes, bringup.STAGE_62_CB_PAGE_SIZES)
+
+        inputs = bringup._inputs(stage)
+        control_inputs = bringup._inputs(control)
+        for left, right in zip(inputs, control_inputs):
+            np.testing.assert_array_equal(left, right)
+        np.testing.assert_array_equal(
+            bringup.expected_output(stage, inputs),
+            bringup.expected_output(control, control_inputs),
+        )
+
+    def test_first_residual_waypoint_probe_marks_compute_boundaries(self):
+        stage = bringup.STAGES[69]
+        compute = (bringup.KERNEL_DIR / stage.compute_source).read_text()
+        control_compute = (bringup.KERNEL_DIR / bringup.STAGES[68].compute_source).read_text()
+        stage62_compute = (bringup.KERNEL_DIR / bringup.STAGES[62].compute_source).read_text()
+
+        self.assertIn('#include "api/debug/waypoint.h"', compute)
+        markers = re.findall(r'^\s*WAYPOINT\("([^"]+)"\);\s*$', compute, flags=re.MULTILINE)
+        self.assertEqual(len(markers), 18)
+        self.assertEqual(len(markers), len(set(markers)))
+        self.assertTrue(all(0 < len(marker) <= 4 for marker in markers))
+        self.assertTrue(all(marker not in {"CWFW", "UABD", "MWDD", "K"} for marker in markers))
+
+        operations = (
+            ("M69R", "cb_wait_front(cb_r, 1);"),
+            ("M69X", "cb_wait_front(cb_x_bfloat16, 1);"),
+            ("M69M", "matmul_block(cb_r, cb_x_bfloat16, 0, 0, 0, false, 1, 1, 1);"),
+            ("M69P", "pack_tile(0, cb_product);"),
+            ("M69B", "cb_push_back(cb_product, 1);"),
+            ("S69L", "cb_wait_front(left, 1);"),
+            ("S69R", "cb_wait_front(right, 1);"),
+            ("S69I", "binary_op_init_common(left, right, output);"),
+            ("S69T", "sub_tiles_init(left, right);"),
+            ("S69P", "pack_tile(0, output);"),
+            ("S69B", "cb_push_back(output, 1);"),
+            ("A69L", "cb_wait_front(left, 1);"),
+            ("A69R", "cb_wait_front(right, 1);"),
+            ("A69I", "binary_op_init_common(left, right, output);"),
+            ("A69T", "add_tiles_init(left, right);"),
+            ("A69P", "pack_tile(0, output);"),
+            ("A69B", "cb_push_back(output, 1);"),
+            ("M69I", "matmul_block_init(cb_r, cb_x_bfloat16, false, 1, 1, 1);"),
+        )
+        for marker, operation in operations:
+            self.assertRegex(
+                compute,
+                rf'WAYPOINT\("{marker}"\);\n\s*{re.escape(operation)}',
+            )
+
+        for sequence in (
+            ("M69R", "M69X", "M69M", "M69P", "M69B"),
+            ("S69L", "S69R", "S69I", "S69T", "S69P", "S69B"),
+            ("A69L", "A69R", "A69I", "A69T", "A69P", "A69B"),
+        ):
+            positions = [compute.index(f'WAYPOINT("{marker}")') for marker in sequence]
+            self.assertEqual(positions, sorted(positions))
+        kernel = compute[compute.index("void kernel_main()") :]
+        self.assertLess(kernel.index('WAYPOINT("M69I")'), kernel.index("complex_matmul_products();"))
+        self.assertLess(
+            kernel.index("complex_matmul_products();"),
+            kernel.index("subtract_one<cb_product_rr, cb_product_ii, cb_rx_real>();"),
+        )
+        self.assertLess(
+            kernel.index("subtract_one<cb_product_rr, cb_product_ii, cb_rx_real>();"),
+            kernel.index("add_one<cb_product_ri, cb_product_ir, cb_rx_imag>();"),
+        )
+        self.assertLess(
+            kernel.index("add_one<cb_product_ri, cb_product_ir, cb_rx_imag>();"),
+            kernel.index("subtract_one<cb_identity, cb_rx_real, cb_s_bfloat16_real>();"),
+        )
+        self.assertLess(
+            kernel.index("subtract_one<cb_identity, cb_rx_real, cb_s_bfloat16_real>();"),
+            kernel.index("subtract_one<cb_zero, cb_rx_imag, cb_s_bfloat16_imag>();"),
+        )
+
+        self.assertNotIn("reconfig_data_format", compute)
+        self.assertNotIn("copy_tile_init", compute)
+        self.assertIn("reconfig_data_format_srca", stage62_compute)
+        self.assertIn("pack_reconfig_data_format", stage62_compute)
+        self.assertNotIn("WAYPOINT(\"", control_compute)
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
         stage = bringup.STAGES[63]

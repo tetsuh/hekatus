@@ -111,6 +111,10 @@ STAGE_67_CB_PAGE_SIZES = tuple(
 STAGE_68_CB_FORMATS = STAGE_62_CB_FORMATS
 STAGE_68_CB_PAGE_SIZES = STAGE_62_CB_PAGE_SIZES
 STAGE_68_DIAGNOSTIC_OUTPUT_CBS = (12, 13)
+# Stage 69 is a host-identical waypoint-instrumented variant of Stage 68.
+STAGE_69_CB_FORMATS = STAGE_68_CB_FORMATS
+STAGE_69_CB_PAGE_SIZES = STAGE_68_CB_PAGE_SIZES
+STAGE_69_DIAGNOSTIC_OUTPUT_CBS = STAGE_68_DIAGNOSTIC_OUTPUT_CBS
 STAGE_61_ACTIVE_CB_INDICES = tuple(
     index for index in range(25) if index in STAGE_61_FLOAT32_CBS or index in (0, 17, 18)
 )
@@ -835,6 +839,24 @@ STAGES = {
         "bfloat16",
         STAGE_68_CB_FORMATS,
         STAGE_68_CB_PAGE_SIZES,
+    ),
+    69: Stage(
+        69,
+        "complex_newton_schulz_first_residual_bfloat16_output_waypoint",
+        1,
+        1,
+        "bringup_ns_first_residual_waypoint_compute.cpp",
+        "bringup_ns_first_residual_reader.cpp",
+        "bringup_ns_first_residual_writer.cpp",
+        "newton_first_residual",
+        1,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "bfloat16",
+        STAGE_69_CB_FORMATS,
+        STAGE_69_CB_PAGE_SIZES,
     ),
 }
 
