@@ -2,6 +2,34 @@
 
 `tools/newton_schulz_bringup.py` is the authoritative stage and configuration mapping. The `bringup_*.cpp` files are isolated diagnostics, not production kernels.
 
+## Rules
+
+This is the standalone contract for ordinary numerical bring-up. The Stage
+1–72 sections below remain the chronological experiment record.
+
+- **Output CB identity and format:** Output CBs are separated when switching
+  output identity or format; the diagnostics established that rule.
+- **Data-format boundaries:** Initialization/reconfiguration is performed
+  before every data-format boundary: use short operation init plus explicit
+  unpack-side `reconfig_data_format` and pack-side
+  `pack_reconfig_data_format`. Full common initialization is not used
+  mid-kernel.
+- **Initialization order:** After the first matmul-family call, no
+  `*_init_common` may occur in a normal compute kernel; use short init plus
+  explicit reconfiguration instead. The static test has a small explicit
+  exclusion list for legacy diagnostic failure reproductions; new
+  production/diagnostic sources must not be added to it casually.
+- **Precision evidence:** The all-Float32-state Stage 61 passed at relative
+  error `0.0040098457`. Stage 70's isolated BF16 first-residual Variant A
+  passed at `0.0014451430179178715`, but it is not full-algorithm evidence.
+  Stage 72's four-BF16/four-Float32 hybrid completed but failed at
+  `0.7506909370422363` against `0.01`. The hybrid is not accepted, and the
+  remaining numerical cause is unresolved.
+- **First execution safety:** Every new numerical stage starts with
+  `TT_METAL_WATCHER=1` and an external 60-second cap unless an explicit
+  opt-out is recorded. This agrees with the ordinary numerical-stage harness
+  policy; construction and build-only paths retain their separate controls.
+
 ## Stage guide
 
 - **Stages 1–5:** passed on board.
