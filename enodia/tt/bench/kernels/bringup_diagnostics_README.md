@@ -32,7 +32,7 @@
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 - **Stage 68:** ran once on board on 2026-09-27 as the approved minimum first-residual probe and timed out with status/exit 137 without a numerical JSON result. The Watcher record and required single-reset recovery are documented below. The stop point localizes the approved diagnostic to the first residual path, including BF16 `S` production and drain, but is liveness evidence only; it does not establish a numerical pass or the deferred Stage-62 reconfiguration root cause.
 - **Stage 69:** is a waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. Its board result and recovery are documented below; no numerical JSON result was produced.
-- **Stage 70:** is the host-only Variant A after Stage 69. It keeps the Stage-69 first-residual boundary and reader/writer, removes the full binary initializer, and explicitly reconfigures unpack operands and pack outputs before each short binary operation. No board run was performed.
+- **Stage 70:** is Variant A after Stage 69. It keeps the Stage-69 first-residual boundary and reader/writer, removes the full binary initializer, and explicitly reconfigures unpack operands and pack outputs before each short binary operation. Variant A passed on board; its result and recovery/cleanup are documented below.
 - **Stage 71:** is the host-only Variant B after Stage 69. It keeps the full binary initializer, widens CB10/CB11 and the paired CB12/CB13 diagnostic drain to Float32, and keeps the existing Float32 CB6/CB8/CB9 boundary. No board run was performed.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
@@ -323,17 +323,43 @@ Float32 S-real CB19 to Stage 68's BF16 S-real CB10, not a claim that Stage 61's
 unused CB10 is used. Stage 68 drains CB10 and CB11 to diagnostic CB12 and CB13
 with BF16 copies.
 
-## Stage 70 and Stage 71 host-only variants
+## Stage 70 and Stage 71 variants
 
 Stages 70 and 71 are isolated host-registered diagnostics. Each keeps L=32,
 batch 1, one core, one tile, one fixed first-residual group, Float32 destination
-accumulation, the Stage 69 input descriptors, and the same residual oracle. No
-board execution is part of either variant.
+accumulation, the Stage 69 input descriptors, and the same residual oracle. Stage
+70 Variant A was run on board after host-only validation; Stage 71 Variant B
+remains host-only and was not run.
 
 | Stage | Variant | Compute boundary | S output CBs and formats | Diagnostic CBs and formats | Reader/writer consequence |
 |---|---|---|---|---|---|
 | Stage 70 | A | No `binary_op_init_common`; explicit unpack and pack reconfiguration before every `sub_tiles_init`/`add_tiles_init` | CB10/CB11 BF16 | CB12/CB13 BF16 | Reuses the Stage 69 BF16 reader and writer |
 | Stage 71 | B | Keeps `binary_op_init_common` and the Stage 69 operation order | CB10/CB11 Float32; CB6 remains Float32 | CB12/CB13 Float32 | Uses Float32 copy and output paths; it never copies Float32 bytes with a BF16 routine |
+
+## Stage 70 board result and recovery/cleanup
+
+On 2026-09-27, Variant A ran exactly once in a fresh process/container with the
+pinned repository image, `--device-id 0`, only `/dev/tenstorrent/0` exposed, and
+an external 60-second timeout. Watcher was enabled with `TT_METAL_WATCHER=1`,
+`TT_METAL_WATCHER_DUMP_ALL=1`, and `TT_METAL_WATCHER_NOINLINE=1`. The process
+exited normally with status 0 and returned:
+
+```json
+{"stage":70,"status":"pass","finite":true,"numerical_error":0.0014451430179178715,"tolerance":0.01,"elapsed_s":0.3694984969988582}
+```
+
+Variant A passed, so Variant B was not run: Stage 71 was not run. Exactly one
+board variant execution was used. This result is only the first-residual
+diagnostic and numerical acceptance for its output; it does not claim that the
+full Newton-Schulz algorithm passed.
+
+The Watcher log contained 556 lines and 36,720 bytes, with SHA-256
+`a8714ca745947852f7ebd9af7cac809a7ed9c422e6fba032d57bad4602988203`. Final
+Dump #2 completed at `2.044 s`, and the device detached cleanly at `2.840 s`.
+No Watcher assert, sanitize, hardware-fault, or error message was observed.
+Final cleanup found no running containers and no device users. No reset or
+Stage-1 recovery probe was necessary after normal closure; the cumulative reset
+count remains #13 from the Stage 69 recovery.
 
 Variant A uses the `reconfig_data_format(old_srca, new_srca, old_srcb,
 new_srcb)` overload for the unpack-side current-to-new transitions and the
