@@ -225,7 +225,11 @@ when a need appears — no staged plan):
   is never committed to this repository. Reporting never discloses the
   prohibited text: after a valid list is parsed, every reporter message is
   masked; contents hits report the file and an occurrence count, and a
-  violating path remains locatable.
+  violating path remains locatable. The scan model is the working tree's
+  tracked entries and their contents, not index blobs: CI checks the checkout
+  it runs, and this avoids changing #70's working-tree semantics to inspect
+  staged data. A tracked entry that cannot be read, or an enumeration failure,
+  fails the guard rather than producing a clean result.
 
   The guard covers tracked file contents and paths on same-repository pull
   requests and pushes to `main`. It does not cover issue or pull-request

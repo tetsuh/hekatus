@@ -169,6 +169,12 @@ jobs:
           fail=0
           scan_dir=$(mktemp -d)
           trap 'rm -rf "$scan_dir"' EXIT
+          tracked_file="$scan_dir/tracked"
+          if ! git ls-files -z >"$tracked_file" 2>/dev/null; then
+            report "" "keyword guard: unable to enumerate tracked files"
+            exit 1
+          fi
+
           while IFS= read -r -d '' f; do
             safe=$(mask_path "$f")
             for w in "${words[@]}"; do
@@ -214,7 +220,7 @@ jobs:
                 fail=1
               fi
             done
-          done < <(git ls-files -z)
+          done <"$tracked_file"
 
           if [ "$fail" -eq 0 ]; then
             report_plain "keyword guard: clean"
