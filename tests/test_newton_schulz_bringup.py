@@ -8,6 +8,40 @@ import numpy as np
 from tools import newton_schulz_bringup as bringup
 
 
+def _function_body(source: str, function_name: str) -> str:
+    match = re.search(
+        rf"\bvoid {re.escape(function_name)}\s*\([^)]*\)\s*\{{", source
+    )
+    if match is None:
+        raise AssertionError(f"missing {function_name} helper")
+    opening = match.end() - 1
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1 : index]
+    raise AssertionError(f"unterminated {function_name} helper")
+
+
+def _assert_reconfigurations_precede_short_init(
+    source: str, function_name: str, short_init: str
+) -> None:
+    body = _function_body(source, function_name)
+    init_positions = [match.start() for match in re.finditer(re.escape(short_init), body)]
+    if len(init_positions) != 1:
+        raise AssertionError(f"{function_name} must contain one {short_init}")
+    init_position = init_positions[0]
+    for call in ("reconfig_data_format(current_srca", "pack_reconfig_data_format(output);"):
+        positions = [match.start() for match in re.finditer(re.escape(call), body)]
+        if not positions:
+            raise AssertionError(f"{function_name} is missing {call}")
+        if any(position >= init_position for position in positions):
+            raise AssertionError(f"{function_name} calls {call} after {short_init}")
+
+
 class BringupHostTests(unittest.TestCase):
     def test_stages_add_one_named_behavior_at_a_time(self):
         self.assertEqual(
@@ -982,10 +1016,11 @@ class BringupHostTests(unittest.TestCase):
             compute,
         )
         self.assertIn("pack_reconfig_data_format(output);", compute)
-        for short_init in ("sub_tiles_init(left, right);", "add_tiles_init(left, right);"):
-            init = compute.index(short_init)
-            self.assertLess(compute[:init].rfind("reconfig_data_format(current_srca"), init)
-            self.assertLess(compute[:init].rfind("pack_reconfig_data_format(output);"), init)
+        for function_name, short_init in (
+            ("subtract_one", "sub_tiles_init(left, right);"),
+            ("add_one", "add_tiles_init(left, right);"),
+        ):
+            _assert_reconfigurations_precede_short_init(compute, function_name, short_init)
         self.assertIn("complex_matmul_products(cb_x_bfloat16, cb_s_bfloat16_operand);", compute)
         self.assertIn("complex_matmul_products(cb_x_float32, cb_s_float32_operand);", compute)
 
@@ -1087,6 +1122,30 @@ class BringupHostTests(unittest.TestCase):
         self.assertIn("reconfigures unpack SrcA before each BF16", readme)
         self.assertIn("two audited fixes included in Stage 72", readme)
         self.assertIn("The board result and\nrecovery are documented above.", readme)
+        self.assertIn("after Stage 69's documented #13", readme)
+        self.assertIn("Stage 70\nclosed normally and required no reset.", readme)
+
+    def test_four_plus_four_reconfig_assertion_rejects_missing_or_late_helper_call(self):
+        broken_sources = (
+            """
+void add_one() {
+    pack_reconfig_data_format(output);
+    add_tiles_init(left, right);
+}
+""",
+            """
+void add_one() {
+    reconfig_data_format(current_srca, left, current_srcb, right);
+    add_tiles_init(left, right);
+    pack_reconfig_data_format(output);
+}
+""",
+        )
+        for broken in broken_sources:
+            with self.assertRaisesRegex(AssertionError, "add_one"):
+                _assert_reconfigurations_precede_short_init(
+                    broken, "add_one", "add_tiles_init(left, right);"
+                )
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
         stage = bringup.STAGES[63]

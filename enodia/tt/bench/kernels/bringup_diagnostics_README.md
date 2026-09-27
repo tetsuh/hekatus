@@ -427,8 +427,8 @@ sanitize, or hardware-fault result was reported in the process log; this is not
 root-cause evidence.
 
 Because the numerical result was anomalous, exactly one reset targeted device 0
-and exited 0. This is cumulative reset #14, after Stage 70's documented #13.
-A fresh Stage 1 health probe passed with `numerical_error`
+and exited 0. This is cumulative reset #14, after Stage 69's documented #13. Stage 70
+closed normally and required no reset. A fresh Stage 1 health probe passed with `numerical_error`
 `0.004564372822642326`, elapsed `0.301262000000861 s`, and tolerance `0.01`.
 The health log SHA-256 is
 `0d5ff070136dc7452e67a7d34dba277e153bbb117d104a6431063e75a392e8d9`.
