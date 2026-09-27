@@ -139,6 +139,17 @@ def test_a_clean_sweep_harness_is_recorded_as_clean(monkeypatch):
     assert identity["harness_dirty"] is False
 
 
+def test_a_host_environment_does_not_record_the_runtime_machine_name(monkeypatch):
+    import platform
+
+    sentinel = "test-only-runtime-host-name-sentinel"
+    monkeypatch.setattr(platform, "node", lambda: sentinel)
+
+    environment = decimation_sweep.environment()
+
+    assert sentinel not in environment.values()
+
+
 def test_a_modified_sweep_harness_is_recorded_as_dirty(monkeypatch):
     monkeypatch.setattr(decimation_sweep, "_git", _fake_sweep_git(" M enodia/spec/frontend/__init__.py"))
 

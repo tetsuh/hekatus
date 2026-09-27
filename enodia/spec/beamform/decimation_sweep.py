@@ -18,10 +18,11 @@ peak level relative to the golden's and the checkpoint errors of
 `golden_compare` beside them.
 
 **The result is a measurement record** (ADR-0005): `--record PATH` writes
-the figures as data under `docs/measurements/`, with the environment that
-produced them — host, CPU, kernel, Python, NumPy, SciPy, the harness
-revision and whether the tree was dirty — and the provenance of the profile
-they were taken on. A figure quoted in design.md names that record.
+the figures as data under `docs/measurements/`, with the reproducibility
+information that produced them — platform, machine architecture, CPU,
+Python, NumPy, SciPy, the harness revision and whether the tree was dirty —
+and the provenance of the profile they were taken on. A figure quoted in
+design.md names that record.
 """
 
 from __future__ import annotations
@@ -175,7 +176,7 @@ def _git(*args: str) -> str:
 
 def environment() -> dict:
     """The environment block ADR-0005 asks for, for a host-side measurement:
-    no board, so the host, its kernel and the numeric stack stand in."""
+    no board, so the platform, architecture and numeric stack stand in."""
     import numpy
     import scipy
 
@@ -183,7 +184,6 @@ def environment() -> dict:
     harness_status = _git("status", "--porcelain")
     return {
         "captured_at": _dt.datetime.now(_dt.UTC).isoformat(),
-        "host": platform.node(),
         "platform": platform.platform(),
         "machine": platform.machine(),
         "cpu": platform.processor() or "unknown",
