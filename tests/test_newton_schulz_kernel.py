@@ -130,6 +130,16 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
         )
+        complex_start = compute_source.index("void complex_matmul")
+        complex_end = compute_source.index("void subtract_one", complex_start)
+        complex_source = compute_source[complex_start:complex_end]
+        self.assertEqual(complex_source.count("tile_regs_acquire();"), 1)
+        self.assertEqual(complex_source.count("tile_regs_commit();"), 1)
+        self.assertEqual(complex_source.count("tile_regs_release();"), 1)
+        self.assertIn("matmul_block(left_real, right_real, 0, 0, 0", complex_source)
+        self.assertIn("matmul_block(left_real, right_imag, 0, 0, 1", complex_source)
+        self.assertIn("pack_tile(0, output_real)", complex_source)
+        self.assertIn("pack_tile(1, output_imag)", complex_source)
         self.assertEqual(compute_source.count("matmul_block(left_real, right_real"), 1)
         self.assertIn("matmul_block(left_imag_for_real, right_imag", compute_source)
         self.assertIn("matmul_block(left_real, right_imag", compute_source)

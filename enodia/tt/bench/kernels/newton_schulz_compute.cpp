@@ -48,7 +48,6 @@ void complex_matmul(
     // through the compute-owned negated-X CB below.
     matmul_block_init(left_real, right_real, false, 1, 1, 1);
 
-    pack_reconfig_data_format(output_real);
     if (!resident_left) {
         cb_wait_front(left_real, 1);
         cb_wait_front(left_imag_for_real, 1);
@@ -57,19 +56,26 @@ void complex_matmul(
     cb_wait_front(right_real, 1);
     cb_wait_front(right_imag, 1);
     cb_reserve_back(output_real, 1);
+    cb_reserve_back(output_imag, 1);
+
+    // Order 2: keep both complex halves in DST simultaneously.  matmul_block
+    // is DST += C, so the first two calls accumulate dst0 (real) and the next
+    // two accumulate dst1 (imag), with one math acquire/commit and one pack
+    // wait/release for the pair.
     tile_regs_acquire();
     matmul_block(left_real, right_real, 0, 0, 0, false, 1, 1, 1);
     matmul_block(left_imag_for_real, right_imag, 0, 0, 0, false, 1, 1, 1);
+    matmul_block(left_real, right_imag, 0, 0, 1, false, 1, 1, 1);
+    matmul_block(left_imag_for_imag, right_real, 0, 0, 1, false, 1, 1, 1);
     tile_regs_commit();
-    pack_one(output_real);
-
+    tile_regs_wait();
+    pack_reconfig_data_format(output_real);
+    pack_tile(0, output_real);
     pack_reconfig_data_format(output_imag);
-    cb_reserve_back(output_imag, 1);
-    tile_regs_acquire();
-    matmul_block(left_real, right_imag, 0, 0, 0, false, 1, 1, 1);
-    matmul_block(left_imag_for_imag, right_real, 0, 0, 0, false, 1, 1, 1);
-    tile_regs_commit();
-    pack_one(output_imag);
+    pack_tile(1, output_imag);
+    tile_regs_release();
+    cb_push_back(output_real, 1);
+    cb_push_back(output_imag, 1);
 
     if (consume_left) {
         cb_pop_front(left_real, 1);
