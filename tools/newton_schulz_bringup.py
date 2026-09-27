@@ -1900,21 +1900,19 @@ def _prepare_stage_program(
     device_inputs: list[Any] = []
     outputs: list[Any] = []
     try:
-        device_inputs = [
-            _device_tensor(ttnn, value, device, dtype_name)
-            for value, dtype_name in zip(input_values, input_dtypes)
-        ]
+        for value, dtype_name in zip(input_values, input_dtypes):
+            device_inputs.append(_device_tensor(ttnn, value, device, dtype_name))
         output_shape = ttnn.Shape((stage.batch, 1, TILE, TILE))
-        outputs = [
-            ttnn.allocate_tensor_on_device(
-                output_shape,
-                getattr(ttnn, stage.output_dtype),
-                ttnn.TILE_LAYOUT,
-                device,
-                ttnn.L1_MEMORY_CONFIG,
+        for _ in range(output_count(stage)):
+            outputs.append(
+                ttnn.allocate_tensor_on_device(
+                    output_shape,
+                    getattr(ttnn, stage.output_dtype),
+                    ttnn.TILE_LAYOUT,
+                    device,
+                    ttnn.L1_MEMORY_CONFIG,
+                )
             )
-            for _ in range(output_count(stage))
-        ]
 
         reader_compile_args: list[int] = []
         for tensor in device_inputs:

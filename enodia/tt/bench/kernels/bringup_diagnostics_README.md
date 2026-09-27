@@ -16,9 +16,11 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   mid-kernel.
 - **Initialization order:** After the first matmul-family call, no
   `*_init_common` may occur in a normal compute kernel; use short init plus
-  explicit reconfiguration instead. The static test has a small explicit
-  exclusion list for legacy diagnostic failure reproductions; new
-  production/diagnostic sources must not be added to it casually.
+  explicit reconfiguration instead. The static test applies this rule to
+  every new source and every source not in its explicit exclusion list. The
+  exclusions cover historical diagnostic snapshots, including the passing
+  Stage 61 snapshot, not only failed reproductions. New production/diagnostic
+  sources must not be added to it casually.
 - **Precision evidence:** The all-Float32-state Stage 61 passed at relative
   error `0.0040098457`. Stage 70's isolated BF16 first-residual Variant A
   passed at `0.0014451430179178715`, but it is not full-algorithm evidence.

@@ -242,3 +242,88 @@ def test_json_emitter_flushes_a_single_machine_readable_record():
     stream = io.StringIO()
     bringup._emit_json({"stage": 62, "success": False}, stream=stream)
     assert stream.getvalue() == '{"stage": 62, "success": false}\n'
+
+
+def test_prepare_stage_program_cleans_partial_input_allocations(monkeypatch):
+    stage = bringup.STAGES[62]
+    input_values = [
+        bringup.np.zeros((stage.batch, bringup.TILE, bringup.TILE), dtype=bringup.np.float32)
+        for _ in range(stage.input_count)
+    ]
+    allocated = []
+    deallocated = []
+
+    def fake_device_tensor(ttnn, value, device, dtype_name):
+        index = len(allocated)
+        if index == 1:
+            raise RuntimeError("input allocation failed")
+        tensor = f"input-{index}"
+        allocated.append(tensor)
+        return tensor
+
+    class _FakeRuntime:
+        def deallocate(self, tensor):
+            deallocated.append(tensor)
+
+    monkeypatch.setattr(
+        bringup,
+        "_core_coordinates",
+        lambda ttnn, device, count: ([(0, 0)], "core-ranges"),
+    )
+    monkeypatch.setattr(bringup, "_device_tensor", fake_device_tensor)
+
+    with pytest.raises(RuntimeError, match="input allocation failed"):
+        bringup._prepare_stage_program(_FakeRuntime(), object(), stage, input_values)
+
+    assert allocated == ["input-0"]
+    assert deallocated == ["input-0"]
+
+
+def test_prepare_stage_program_cleans_partial_output_allocations(monkeypatch):
+    stage = bringup.STAGES[62]
+    input_values = [
+        bringup.np.zeros((stage.batch, bringup.TILE, bringup.TILE), dtype=bringup.np.float32)
+        for _ in range(stage.input_count)
+    ]
+    input_allocations = []
+
+    def fake_device_tensor(ttnn, value, device, dtype_name):
+        tensor = f"input-{len(input_allocations)}"
+        input_allocations.append(tensor)
+        return tensor
+
+    class _FakeRuntime:
+        TILE_LAYOUT = object()
+        L1_MEMORY_CONFIG = object()
+        float32 = object()
+        Shape = staticmethod(lambda shape: shape)
+
+        def __init__(self):
+            self.output_allocations = []
+            self.deallocated = []
+
+        def allocate_tensor_on_device(self, *args):
+            index = len(self.output_allocations)
+            if index == 1:
+                raise RuntimeError("output allocation failed")
+            tensor = f"output-{index}"
+            self.output_allocations.append(tensor)
+            return tensor
+
+        def deallocate(self, tensor):
+            self.deallocated.append(tensor)
+
+    runtime = _FakeRuntime()
+    monkeypatch.setattr(
+        bringup,
+        "_core_coordinates",
+        lambda ttnn, device, count: ([(0, 0)], "core-ranges"),
+    )
+    monkeypatch.setattr(bringup, "_device_tensor", fake_device_tensor)
+
+    with pytest.raises(RuntimeError, match="output allocation failed"):
+        bringup._prepare_stage_program(runtime, object(), stage, input_values)
+
+    assert input_allocations == [f"input-{index}" for index in range(stage.input_count)]
+    assert runtime.output_allocations == ["output-0"]
+    assert runtime.deallocated == [*input_allocations, "output-0"]
