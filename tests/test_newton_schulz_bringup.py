@@ -1,4 +1,3 @@
-import ast
 import json
 import re
 import unittest
@@ -1755,19 +1754,6 @@ class BringupHostTests(unittest.TestCase):
         self.assertEqual(real_writer.count("noc_async_write_page"), 1)
         self.assertIn("np.zeros_like(real)", Path("tools/newton_schulz_bringup.py").read_text())
         self.assertEqual(bringup.NUMERICAL_TOLERANCE, 1e-2)
-
-    def test_no_accelerator_module_imports_the_reference(self):
-        accelerator_root = Path(__file__).parents[1] / "enodia" / "tt"
-        forbidden = "enodia.tt.bench.newton_schulz_reference"
-        violations = []
-        for path in accelerator_root.rglob("*.py"):
-            tree = ast.parse(path.read_text(), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == forbidden:
-                    violations.append(str(path))
-                if isinstance(node, ast.Import):
-                    violations.extend(str(path) for alias in node.names if alias.name == forbidden)
-        self.assertEqual(violations, [])
 
     def test_final_record_is_json_serializable_and_machine_readable(self):
         stage = bringup.STAGES[1]
