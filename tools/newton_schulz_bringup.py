@@ -153,6 +153,10 @@ STAGE_71_CB_PAGE_SIZES = tuple(
     for index in range(25)
 )
 STAGE_71_DIAGNOSTIC_OUTPUT_CBS = STAGE_69_DIAGNOSTIC_OUTPUT_CBS
+# Stage 72 keeps every Stage-62 descriptor and host/dataflow source except its
+# isolated reconfigured compute source.
+STAGE_72_CB_FORMATS = STAGE_62_CB_FORMATS
+STAGE_72_CB_PAGE_SIZES = STAGE_62_CB_PAGE_SIZES
 STAGE_61_ACTIVE_CB_INDICES = tuple(
     index for index in range(25) if index in STAGE_61_FLOAT32_CBS or index in (0, 17, 18)
 )
@@ -931,6 +935,24 @@ STAGES = {
         "float32",
         STAGE_71_CB_FORMATS,
         STAGE_71_CB_PAGE_SIZES,
+    ),
+    72: Stage(
+        72,
+        "complex_newton_schulz_four_bfloat16_four_float32_state_reconfig",
+        1,
+        1,
+        "bringup_ns_four_plus_four_reconfig_compute.cpp",
+        "bringup_ns_four_plus_four_reader.cpp",
+        "bringup_writer.cpp",
+        "newton_schulz",
+        8,
+        True,
+        6306,
+        6,
+        ("bfloat16", "bfloat16", "bfloat16", "bfloat16", "float32", "float32"),
+        "float32",
+        STAGE_72_CB_FORMATS,
+        STAGE_72_CB_PAGE_SIZES,
     ),
 }
 

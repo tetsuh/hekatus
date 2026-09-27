@@ -34,6 +34,7 @@
 - **Stage 69:** is a waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. Its board result and recovery are documented below; no numerical JSON result was produced.
 - **Stage 70:** is Variant A after Stage 69. It keeps the Stage-69 first-residual boundary and reader/writer, removes the full binary initializer, and explicitly reconfigures unpack operands and pack outputs before each short binary operation. Variant A passed on board; its result and recovery/cleanup are documented below.
 - **Stage 71:** is the host-only Variant B after Stage 69. It keeps the full binary initializer, widens CB10/CB11 and the paired CB12/CB13 diagnostic drain to Float32, and keeps the existing Float32 CB6/CB8/CB9 boundary. No board run was performed.
+- **Stage 72:** is the host-only reconfigured copy of Stage 62. It keeps Stage 62's four BF16/four Float32 state split, descriptors, reader, writer, inputs, and Float32 output oracle while removing all mid-kernel full binary initialization. Its boundary ledger and two audited conversion fixes are recorded below. No board result is claimed yet.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
@@ -377,3 +378,45 @@ The Stage 71 paired format change is intentional: because its reader drains
 both S outputs, CB10 and CB11 are Float32, and the diagnostic destinations CB12
 and CB13 plus the writer output tensors are Float32 as well. Input CB0/CB1
 remain BF16 in both variants.
+
+## Stage 72 reconfiguration boundary ledger
+
+Stage 72 is a host-only, isolated corrected copy of Stage 62. It retains L=32,
+batch 1, one core, one tile, eight iterations, FP32 destination accumulation,
+all Stage-62 CB descriptors, the Stage-62 reader and shared writer, and the
+Stage-62 Float32 CB23/CB24 output oracle. In this table, `SrcA` and `SrcB` are
+the compute-engine identities; with
+`compute_kernel_hw_startup<SrcOrder::Reverse>(CB0, CB1, CB16)`, matmul `in0`
+is SrcB and `in1` is SrcA.
+
+| Boundary purpose | Current SrcA | New SrcA | Current SrcB | New SrcB | Pack old | Pack new |
+|---|---:|---:|---:|---:|---:|---:|
+| Startup / first matmul | — | CB1 BF16 | — | CB0 BF16 | — | CB16 FP32 |
+| RX-real subtract | CB1 BF16 | CB2 FP32 | CB0 BF16 | CB3 FP32 | CB16 FP32 | CB8 FP32 |
+| RX-imag add | CB2 FP32 | CB4 FP32 | CB3 FP32 | CB5 FP32 | CB8 FP32 | CB9 FP32 |
+| S-real subtract, BF16 phase | CB4 FP32 | CB6 FP32 | CB5 FP32 | CB8 FP32 | CB9 FP32 | CB10 BF16 |
+| S-imag subtract, BF16 phase | CB6 FP32 | CB7 FP32 | CB8 FP32 | CB9 FP32 | CB10 BF16 | CB11 BF16 |
+| BF16 second matmul | CB7 FP32 | CB12 BF16 | CB9 FP32 | CB1 BF16 | CB11 BF16 | CB16 FP32 |
+| BF16 state-real output | CB12 BF16 | CB2 FP32 | CB1 BF16 | CB3 FP32 | CB16 FP32 | CB20 BF16 |
+| BF16 state-imag output | CB2 FP32 | CB4 FP32 | CB3 FP32 | CB5 FP32 | CB20 BF16 | CB21 BF16 |
+| Restore next BF16 first matmul | CB4 FP32 | CB1 BF16 | CB5 FP32 | CB0 BF16 | CB21 BF16 | CB16 FP32 |
+| Iteration-4 state-real copy | CB4 FP32 | CB20 BF16 | CB5 FP32 | CB5 FP32 | CB21 BF16 | CB14 FP32 |
+| Iteration-4 state-imag copy | CB20 BF16 | CB21 BF16 | CB5 FP32 | CB5 FP32 | CB14 FP32 | CB15 FP32 |
+| Conversion-boundary first Float32 matmul | CB21 BF16 | CB17 FP32 | CB5 FP32 | CB0 BF16 | CB15 FP32 | CB16 FP32 |
+| RX-real subtract, Float32 phase | CB17 FP32 | CB2 FP32 | CB0 BF16 | CB3 FP32 | CB16 FP32 | CB8 FP32 |
+| RX-imag add, Float32 phase | CB2 FP32 | CB4 FP32 | CB3 FP32 | CB5 FP32 | CB8 FP32 | CB9 FP32 |
+| S-real subtract, Float32 phase | CB4 FP32 | CB6 FP32 | CB5 FP32 | CB8 FP32 | CB9 FP32 | CB18 FP32 |
+| S-imag subtract, Float32 phase | CB6 FP32 | CB7 FP32 | CB8 FP32 | CB9 FP32 | CB18 FP32 | CB19 FP32 |
+| Float32 second matmul | CB7 FP32 | CB22 FP32 | CB9 FP32 | CB17 FP32 | CB19 FP32 | CB16 FP32 |
+| Float32 state-real intermediate/output | CB22 FP32 | CB2 FP32 | CB17 FP32 | CB3 FP32 | CB16 FP32 | CB14 or CB23 FP32 |
+| Float32 state-imag intermediate/output | CB2 FP32 | CB4 FP32 | CB3 FP32 | CB5 FP32 | CB14 or CB23 FP32 | CB15 or CB24 FP32 |
+| Restore next Float32 first matmul | CB4 FP32 | CB17 FP32 | CB5 FP32 | CB0 BF16 | CB15 FP32 | CB16 FP32 |
+
+The first four rows in each phase are the RX and S binary boundaries; the
+second-matmul and state/output rows continue the same current-state ledger.
+The iteration-4 copy explicitly reconfigures unpack SrcA before each BF16
+`copy_tile_init`/`copy_tile`, and explicitly repacks to Float32 CB14/CB15.
+At the conversion boundary it preserves the SrcA transition to X CB17 and
+also explicitly changes SrcB from the preceding state-imag source CB5 to R
+CB0. These are the two audited fixes included in Stage 72. No board run has
+been performed for this stage yet.
