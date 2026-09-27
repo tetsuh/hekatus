@@ -31,7 +31,7 @@
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 - **Stage 68:** ran once on board on 2026-09-27 as the approved minimum first-residual probe and timed out with status/exit 137 without a numerical JSON result. The Watcher record and required single-reset recovery are documented below. The stop point localizes the approved diagnostic to the first residual path, including BF16 `S` production and drain, but is liveness evidence only; it does not establish a numerical pass or the deferred Stage-62 reconfiguration root cause.
-- **Stage 69:** is a host-only, waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. No board execution is part of this stage.
+- **Stage 69:** is a waypoint-instrumented copy of Stage 68. It reuses Stage 68's reader, writer, host shape, CB layout, BF16 outputs, and oracle; only the compute source adds custom Watcher markers. Its board result and recovery are documented below; no numerical JSON result was produced.
 
 ## Construction-time bisection (zero-work dispatch implemented; board probes completed)
 
@@ -280,7 +280,19 @@ waypoints. The marker is posted immediately before the named operation.
 | `A69I`, `A69T` | add binary and tile-operation initialization |
 | `A69P`, `A69B` | add `pack_tile`, `cb_push_back` |
 
-No board execution was performed for Stage 69.
+The map above was recorded before the board probe; Stage 69's board result and recovery are documented below.
+
+## Stage 69 board probe and recovery
+
+On 2026-09-27, Stage 69 ran exactly once in one fresh process/container with the pinned repository image, `--device-id 0`, only `/dev/tenstorrent/0` exposed, and an external 60-second timeout. Watcher was enabled with `TT_METAL_WATCHER=1`, `TT_METAL_WATCHER_DUMP_ALL=1`, and `TT_METAL_WATCHER_NOINLINE=1`. The run timed out with status/exit 137 and produced no Stage-69 numerical JSON result. The residual container was stopped; final cleanup found no running containers and no device users.
+
+The Watcher evidence file contained 21,330 lines and 1,440,366 bytes, with SHA-256 `dcd23d34cf020359cead474f6de5082a2ec2a7901b8d8c9dfed58946abd6ebe6`. The final record was Dump #77, completed at `79.523 s`. The kernel map was id 5 = `bringup_ns_first_residual_reader.cpp` (NCRISC), id 6 = `bringup_ns_first_residual_writer.cpp` (BRISC), and id 7 = `bringup_ns_first_residual_waypoint_compute.cpp` (TRISC0/TRISC1/TRISC2).
+
+On the final worker core `(0,0)`, virtual `(1,2)`, the status in BRISC, NCRISC, TRISC0, TRISC1, TRISC2 order was `CWFW,CWFW,S69R,S69I,S69I`, with `rmsg D1G|BNT`, `smsg GGGG`, and counters `cb[1](rcv 8!=ack 4)`, `cb[6](rcv 1!=ack 0)`, `cb[7](rcv 1!=ack 0)`, and `cb[8](rcv 1!=ack 0)`. No Watcher assert, NoC-sanitize, CB-sanitize, or hardware-fault message was observed.
+
+Using the host-only marker table above, BRISC and NCRISC remained at `CWFW`. TRISC0 last reached `S69R`, immediately before the `subtract_one` right-input `cb_wait_front`, the first residual's CB8/RX-real wait. TRISC1 and TRISC2 last reached `S69I`, immediately before `binary_op_init_common` for that first subtract, whose inputs are CB6 identity and CB8 RX-real and whose output is CB10 BF16. WAYPOINT reports the last marker reached: `S69I` is therefore an init-boundary stop-point, not proof of an instruction inside the initializer. The run directly narrows the compute stop-point to the first residual subtraction boundary; it does not prove the deferred reconfiguration root cause or numerical success.
+
+Recovery used exactly one reset targeted only `/dev/tenstorrent/0`, and the reset exited 0; this is cumulative reset #13 after Stage 68's documented #12. A fresh Stage 1 health probe on device 0 passed with relative error `0.004564372822642326` and elapsed `0.29091544399943814 s`. Final no-container and no-device-user checks passed.
 
 ## Stage 68 board probe and recovery
 
