@@ -1087,7 +1087,7 @@ class BringupHostTests(unittest.TestCase):
         self.assertIn("CB5 FP32 | CB0 BF16", readme)
         self.assertIn("reconfigures unpack SrcA before each BF16", readme)
         self.assertIn("two audited fixes included in Stage 72", readme)
-        self.assertIn("No board run has\nbeen performed for this stage yet.", readme)
+        self.assertIn("The board result and\nrecovery are documented above.", readme)
 
     def test_bfloat16_to_float32_conversion_is_isolated_and_quantized(self):
         stage = bringup.STAGES[63]
