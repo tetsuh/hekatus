@@ -343,6 +343,25 @@ def test_git_ls_files_failure_is_not_clean(tmp_path):
     _assert_no_configured_terms(output, [word])
 
 
+@pytest.mark.parametrize("control_bytes", ["::", "%0A", "%0D", ",", "="])
+def test_command_control_bytes_in_tracked_paths_stay_inert(tmp_path, control_bytes):
+    word = "needle"
+    path = f"docs/{word}{control_bytes}report.txt"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={path: "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert len(output.splitlines()) == 1
+    assert "::" not in output
+    assert output.count("prohibited word in path") == 1
+    assert "(1 occurrence(s))" in output
+    _assert_no_configured_terms(output, [word])
+
+
 def test_reserved_error_word_falls_back_to_fully_masked_plain_text(tmp_path):
     word = "error"
     completed = _run_scan(
