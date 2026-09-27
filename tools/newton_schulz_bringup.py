@@ -2244,6 +2244,7 @@ def run_build_only_jit_probe(
         )
         cache_path = _resolved_cache_directory(effective_environment["TT_METAL_CACHE"])
         _ensure_cache_directory(cache_path)
+        pre_manifest = cache_artifact_manifest(cache_path, stage_number)
     except BuildOnlyProbeConfigurationError as exc:
         return _build_only_error_record(
             stage_number,
@@ -2270,7 +2271,6 @@ def run_build_only_jit_probe(
             finally:
                 ttnn.close_device(device)
         except Exception as exc:  # noqa: BLE001 - preserve a flushed JSON failure record
-            pre_manifest = cache_artifact_manifest(cache_path, stage_number)
             post_manifest = cache_artifact_manifest(cache_path, stage_number)
             stage = stage_for(stage_number)
             return _build_only_record(

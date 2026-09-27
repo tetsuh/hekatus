@@ -157,6 +157,75 @@ def test_cache_manifest_explicitly_records_missing_stage_artifacts(tmp_path):
     }
 
 
+def test_build_only_failure_keeps_pre_manifest_before_dispatch_when_close_fails(
+    monkeypatch, tmp_path
+):
+    stage = bringup.STAGES[62]
+    cache_directory = tmp_path / "jit-cache"
+    artifact = cache_directory / "compiled" / f"compiled-{stage.compute_source}.bin"
+    payload = b"dispatch-created-artifact"
+
+    class _CloseFailingRuntime(_FakeRuntime):
+        def __init__(self):
+            super().__init__()
+            self.opened_device_ids = []
+            self.closed_devices = []
+
+        def open_device(self, device_id):
+            self.opened_device_ids.append(device_id)
+            return object()
+
+        def generic_op(self, tensors, program):
+            super().generic_op(tensors, program)
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_bytes(payload)
+
+        def close_device(self, device):
+            self.closed_devices.append(device)
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(
+        bringup,
+        "_prepare_stage_program",
+        lambda ttnn, device, selected, input_values: ("full-work-program", ["input"], ["output"]),
+    )
+    runtime = _CloseFailingRuntime()
+    result = bringup.run_build_only_jit_probe(
+        stage.number,
+        cache_directory=cache_directory,
+        device_id=3,
+        environment=_valid_environment(cache_directory),
+        ttnn_module=runtime,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "fail"
+    assert result["error"]["code"] == "runtime_unavailable"
+    assert runtime.opened_device_ids == [3]
+    assert len(runtime.generic_calls) == 1
+    assert len(runtime.closed_devices) == 1
+
+    pre = result["cache_artifacts"]["pre"]
+    post = result["cache_artifacts"]["post"]
+    assert pre["compute"] == {
+        "source": stage.compute_source,
+        "status": "no_matching_artifacts",
+        "artifacts": [],
+    }
+    assert post["compute"] == {
+        "source": stage.compute_source,
+        "status": "matched",
+        "artifacts": [
+            {
+                "relative_path": artifact.relative_to(cache_directory).as_posix(),
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        ],
+    }
+    assert post["reader"]["artifacts"] == []
+
+
 def test_build_only_preflight_failure_is_machine_readable_without_runtime_import(tmp_path):
     result = bringup.run_build_only_jit_probe(
         62,
