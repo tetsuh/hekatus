@@ -72,6 +72,33 @@ class ReferenceTests(unittest.TestCase):
         self.assertFalse(newton_schulz_kernel._VARIANTS["bf16"])
         self.assertTrue(newton_schulz_kernel._VARIANTS["bf16-fp32state"])
 
+    def test_math_fidelity_names_map_to_pinned_enum_and_default_is_hifi4(self):
+        ttnn = SimpleNamespace(
+            MathFidelity=SimpleNamespace(
+                LoFi="lofi",
+                HiFi2="hifi2",
+                HiFi3="hifi3",
+                HiFi4="hifi4",
+            )
+        )
+        for name in ("LoFi", "HiFi2", "HiFi3", "HiFi4"):
+            self.assertEqual(
+                newton_schulz_kernel._math_fidelity_value(ttnn, name),
+                getattr(ttnn.MathFidelity, name),
+            )
+        with self.assertRaisesRegex(ValueError, "choose from"):
+            newton_schulz_kernel._math_fidelity_value(ttnn, "invalid")
+
+        source = Path(
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "newton_schulz_kernel.py"
+        ).read_text()
+        self.assertIn('math_fidelity: str = "HiFi4"', source)
+        self.assertIn("math_fidelity=math_fidelity_value", source)
+
     def test_fp32_state_selects_fp32_state_and_output_descriptors(self):
         ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
         bf16_defs = newton_schulz_kernel._cb_definitions(ttnn, ttnn.bfloat16)
@@ -133,13 +160,24 @@ class ReferenceTests(unittest.TestCase):
         complex_start = compute_source.index("void complex_matmul")
         complex_end = compute_source.index("void subtract_one", complex_start)
         complex_source = compute_source[complex_start:complex_end]
-        self.assertEqual(complex_source.count("tile_regs_acquire();"), 1)
-        self.assertEqual(complex_source.count("tile_regs_commit();"), 1)
-        self.assertEqual(complex_source.count("tile_regs_release();"), 1)
+        self.assertEqual(complex_source.count("tile_regs_acquire();"), 2)
+        self.assertEqual(complex_source.count("tile_regs_commit();"), 2)
+        self.assertEqual(complex_source.count("tile_regs_release();"), 0)
+        self.assertEqual(complex_source.count("cb_reserve_back(output_real, 1);"), 1)
+        self.assertEqual(complex_source.count("cb_reserve_back(output_imag, 1);"), 1)
+        self.assertLess(
+            complex_source.index("cb_reserve_back(output_real, 1);"),
+            complex_source.index("pack_one(output_real)"),
+        )
+        self.assertLess(
+            complex_source.index("pack_one(output_real)"),
+            complex_source.index("cb_reserve_back(output_imag, 1);"),
+        )
         self.assertIn("matmul_block(left_real, right_real, 0, 0, 0", complex_source)
-        self.assertIn("matmul_block(left_real, right_imag, 0, 0, 1", complex_source)
-        self.assertIn("pack_tile(0, output_real)", complex_source)
-        self.assertIn("pack_tile(1, output_imag)", complex_source)
+        self.assertIn("matmul_block(left_real, right_imag, 0, 0, 0", complex_source)
+        self.assertIn("pack_one(output_real)", complex_source)
+        self.assertIn("pack_one(output_imag)", complex_source)
+        self.assertNotIn("dst1", complex_source)
         self.assertEqual(compute_source.count("matmul_block(left_real, right_real"), 1)
         self.assertIn("matmul_block(left_imag_for_real, right_imag", compute_source)
         self.assertIn("matmul_block(left_real, right_imag", compute_source)

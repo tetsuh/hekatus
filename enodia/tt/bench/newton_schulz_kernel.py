@@ -17,6 +17,7 @@ import numpy as np
 
 NEWTON_SCHULZ_ITERATIONS = 8
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
+MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 _TILE = 32
@@ -137,6 +138,16 @@ def _runtime_args(ttnn, coordinates, values: list[int], ranges):
     return args
 
 
+def _math_fidelity_value(ttnn, math_fidelity: str):
+    """Map a public fidelity name to the pinned TTNN enum."""
+    if math_fidelity not in MATH_FIDELITY_CHOICES:
+        raise ValueError(
+            f"unknown math fidelity {math_fidelity!r}; "
+            f"choose from {MATH_FIDELITY_CHOICES}"
+        )
+    return getattr(ttnn.MathFidelity, math_fidelity)
+
+
 def _state_dtype(ttnn, variant: str):
     """Return the state/output dtype selected by a throughput variant."""
     return ttnn.float32 if variant == "bf16-fp32state" else ttnn.bfloat16
@@ -191,6 +202,7 @@ class NewtonSchulzKernel:
     batch: int
     size: int
     variant: str
+    math_fidelity: str
     output_memory: str
     tile_count: int
     inputs: list[Any]
@@ -207,6 +219,7 @@ class NewtonSchulzKernel:
         matrices: np.ndarray,
         *,
         variant: str = "bf16",
+        math_fidelity: str = "HiFi4",
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         if iterations != NEWTON_SCHULZ_ITERATIONS:
@@ -225,6 +238,7 @@ class NewtonSchulzKernel:
             raise ValueError("batch must be positive")
         if size != _TILE:
             raise ValueError(f"the throughput kernel only supports L={_TILE}, got {size}")
+        math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
 
         coordinates, core_ranges, work_ranges = _core_grid(ttnn, device, batch)
         tile_count = batch
@@ -341,6 +355,7 @@ class NewtonSchulzKernel:
                 compile_time_args=[iterations, int(state_fp32)],
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
+                    math_fidelity=math_fidelity_value,
                     dst_full_sync_en=True,
                     fp32_dest_acc_en=True,
                 ),
@@ -353,6 +368,7 @@ class NewtonSchulzKernel:
             batch=batch,
             size=size,
             variant=variant,
+            math_fidelity=math_fidelity,
             output_memory=output_memory,
             tile_count=tile_count,
             inputs=inputs,
@@ -385,9 +401,16 @@ def run_newton_schulz_kernel(
     matrices: np.ndarray,
     *,
     variant: str = "bf16",
+    math_fidelity: str = "HiFi4",
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
-    kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, variant=variant)
+    kernel = NewtonSchulzKernel.prepare(
+        ttnn,
+        device,
+        matrices,
+        variant=variant,
+        math_fidelity=math_fidelity,
+    )
     try:
         kernel.launch()
         ttnn.synchronize_device(device)

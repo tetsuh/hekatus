@@ -54,6 +54,43 @@ from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 CUSTOM_KIND = "custom_newton_schulz"
 STOCK_KIND = "ttnn.matmul"
 _CUSTOM_TARGET = ("newton_schulz", 32, 32, 32, 8192)
+CUSTOM_MATH_FIDELITIES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
+STOCK_FIDELITY_SOURCE = (
+    "tt-metal ttnn/operations/matmul/device/matmul_device_operation.cpp "
+    "create_matmul_attributes source mapping; no board observation"
+)
+
+
+def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
+    """Return source-derived stock fidelity metadata without claiming hardware evidence."""
+    if dtype_name == "bfloat16":
+        if program_spec is None:
+            return {
+                "math_fidelity": "HiFi2",
+                "math_fidelity_source": (
+                    f"{STOCK_FIDELITY_SOURCE}; BF16 default has no program_config/user_grid, "
+                    "so increase_fidelity selects HiFi2"
+                ),
+            }
+        return {
+            "math_fidelity": "LoFi",
+            "math_fidelity_source": (
+                f"{STOCK_FIDELITY_SOURCE}; BF16 explicit program_config disables "
+                "increase_fidelity and selects LoFi"
+            ),
+        }
+    if dtype_name == "float32":
+        return {
+            "math_fidelity": "HiFi4",
+            "math_fidelity_source": (
+                f"{STOCK_FIDELITY_SOURCE}; FP32 non-Wormhole override selects HiFi4 "
+                "(architecture-specific source mapping)"
+            ),
+        }
+    return {
+        "math_fidelity": "unknown",
+        "math_fidelity_source": f"{STOCK_FIDELITY_SOURCE}; dtype mapping not modeled",
+    }
 
 
 def _make_tensor(ttnn, shape: tuple[int, ...], dtype, layout, device, memory_config):
@@ -426,6 +463,7 @@ def run_custom_newton_schulz(
     variant: str,
     iters: int,
     repeats: int,
+    math_fidelity: str = "HiFi4",
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
     if not _is_custom_target(shape):
@@ -446,6 +484,12 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "error": f"unknown custom variant {variant!r}",
         }
+    if math_fidelity not in CUSTOM_MATH_FIDELITIES:
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": f"unknown math fidelity {math_fidelity!r}",
+        }
     if memory_name != "l1":
         return {
             "status": "failed",
@@ -462,7 +506,13 @@ def run_custom_newton_schulz(
     kernel = None
     try:
         matrices = benchmark_matrices(shape.batch, shape.m, seed=6300)
-        kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, variant=variant)
+        kernel = NewtonSchulzKernel.prepare(
+            ttnn,
+            device,
+            matrices,
+            variant=variant,
+            math_fidelity=math_fidelity,
+        )
         kernel.launch()
         ttnn.synchronize_device(device)
 
@@ -483,6 +533,7 @@ def run_custom_newton_schulz(
             "status": "ok",
             "kind": CUSTOM_KIND,
             "variant": variant,
+            "math_fidelity": math_fidelity,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
             "seconds_per_iteration_samples": launch_samples,
@@ -511,6 +562,13 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["bf16", "bf16-fp32state"],
         default="bf16",
         help="state precision for custom_newton_schulz rows",
+    )
+    parser.add_argument(
+        "--custom-math-fidelity",
+        action="append",
+        choices=list(CUSTOM_MATH_FIDELITIES),
+        default=None,
+        help="repeatable custom math fidelity; default is HiFi4",
     )
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
@@ -672,14 +730,15 @@ def main(argv: list[str] | None = None) -> int:
 
     device = ttnn.open_device(device_id=args.device_id)
     results = []
+    run_stock = args.kind is None or STOCK_KIND in args.kind
+    run_custom = args.kind is None or CUSTOM_KIND in args.kind
+    custom_fidelities = args.custom_math_fidelity or ["HiFi4"]
     try:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
                 for program_spec, memory_name, base_memory_name in _row_specs(
                     shape, memories, args.config_mode, args.config_kind, dtype_name
                 ):
-                    if args.kind is not None and STOCK_KIND not in args.kind:
-                        continue
                     config_record = (
                         {"name": "default", "kind": "default"}
                         if program_spec is None
@@ -688,91 +747,96 @@ def main(argv: list[str] | None = None) -> int:
                     execution = (
                         shape if program_spec is None else executed_shape(shape, program_spec)
                     )
-                    record = {
-                        "shape": asdict(shape),
-                        "execution_shape": asdict(execution),
-                        "representative": shape.representative,
-                        "dtype": dtype_name,
-                        "memory": memory_name,
-                        "memory_placement": {"plan": memory_name},
-                        "program_config": config_record,
-                        "iterations": args.iters,
-                        "repeats": args.repeats,
-                        "kind": STOCK_KIND,
-                    }
-                    record.update(
-                        run_shape(
-                            ttnn,
-                            device,
-                            shape,
-                            dtype=dtype,
-                            memory_config=memory_map[base_memory_name],
-                            memory_name=memory_name,
-                            program_spec=program_spec,
-                            iters=args.iters,
-                            repeats=args.repeats,
-                        )
-                    )
-                    with_efficiency(record, args.peak_tflops)
-                    print(
-                        _format_line(
-                            shape,
-                            dtype_name,
-                            memory_name,
-                            config_record["name"],
-                            record,
-                        ),
-                        flush=True,
-                    )
-                    results.append(record)
-
-                    if (
-                        (args.kind is None or CUSTOM_KIND in args.kind)
-                        and program_spec is None
-                        and _is_custom_target(shape)
-                        and dtype_name == "bfloat16"
-                        and memory_name == "l1"
-                    ):
-                        custom_record = {
+                    if run_stock:
+                        record = {
                             "shape": asdict(shape),
-                            "execution_shape": asdict(shape),
+                            "execution_shape": asdict(execution),
                             "representative": shape.representative,
                             "dtype": dtype_name,
                             "memory": memory_name,
-                            "memory_placement": {"input_and_compute": "l1"},
-                            "program_config": {
-                                "name": CUSTOM_KIND,
-                                "kind": CUSTOM_KIND,
-                                "variant": args.custom_variant,
-                            },
+                            "memory_placement": {"plan": memory_name},
+                            "program_config": config_record,
                             "iterations": args.iters,
                             "repeats": args.repeats,
-                            "kind": CUSTOM_KIND,
+                            "kind": STOCK_KIND,
+                            **_stock_math_fidelity(dtype_name, program_spec),
                         }
-                        custom_record.update(
-                            run_custom_newton_schulz(
+                        record.update(
+                            run_shape(
                                 ttnn,
                                 device,
                                 shape,
-                                dtype_name=dtype_name,
+                                dtype=dtype,
+                                memory_config=memory_map[base_memory_name],
                                 memory_name=memory_name,
-                                variant=args.custom_variant,
+                                program_spec=program_spec,
                                 iters=args.iters,
                                 repeats=args.repeats,
                             )
                         )
-                        with_efficiency(custom_record, args.peak_tflops)
+                        with_efficiency(record, args.peak_tflops)
                         print(
                             _format_line(
                                 shape,
                                 dtype_name,
                                 memory_name,
-                                CUSTOM_KIND,
-                                custom_record,
+                                config_record["name"],
+                                record,
                             ),
                             flush=True,
                         )
-                        results.append(custom_record)
+                        results.append(record)
+
+                    if (
+                        run_custom
+                        and program_spec is None
+                        and _is_custom_target(shape)
+                        and dtype_name == "bfloat16"
+                        and memory_name == "l1"
+                    ):
+                        for math_fidelity in custom_fidelities:
+                            custom_record = {
+                                "shape": asdict(shape),
+                                "execution_shape": asdict(shape),
+                                "representative": shape.representative,
+                                "dtype": dtype_name,
+                                "memory": memory_name,
+                                "memory_placement": {"input_and_compute": "l1"},
+                                "program_config": {
+                                    "name": CUSTOM_KIND,
+                                    "kind": CUSTOM_KIND,
+                                    "variant": args.custom_variant,
+                                    "math_fidelity": math_fidelity,
+                                },
+                                "iterations": args.iters,
+                                "repeats": args.repeats,
+                                "kind": CUSTOM_KIND,
+                            }
+                            custom_record.update(
+                                run_custom_newton_schulz(
+                                    ttnn,
+                                    device,
+                                    shape,
+                                    dtype_name=dtype_name,
+                                    memory_name=memory_name,
+                                    variant=args.custom_variant,
+                                    math_fidelity=math_fidelity,
+                                    iters=args.iters,
+                                    repeats=args.repeats,
+                                )
+                            )
+                            with_efficiency(custom_record, args.peak_tflops)
+                            print(
+                                _format_line(
+                                    shape,
+                                    dtype_name,
+                                    memory_name,
+                                    f"{CUSTOM_KIND}:{math_fidelity}",
+                                    custom_record,
+                                ),
+                                flush=True,
+                            )
+                            results.append(custom_record)
     finally:
         ttnn.close_device(device)
 
@@ -782,6 +846,7 @@ def main(argv: list[str] | None = None) -> int:
         "selection": {
             "shape_filters": args.only or [],
             "program_config_kind_filters": args.config_kind or [],
+            "custom_math_fidelity": custom_fidelities,
         },
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,

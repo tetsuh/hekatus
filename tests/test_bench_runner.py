@@ -134,6 +134,10 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
 
     assert args.only == ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"]
     assert args.config_kind == ["batched_dram_sharded"]
+    fidelity_args = run_matmul._build_parser().parse_args(
+        ["--custom-math-fidelity", "LoFi", "--custom-math-fidelity", "HiFi3"]
+    )
+    assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -177,6 +181,60 @@ def test_config_kind_filter_enumerates_exactly_four_default_dtype_rows():
     assert all(program_spec.kind == "batched_dram_sharded" for _, _, program_spec, *_ in rows)
     assert all(memory_name == "batch_sharded_dram" for _, _, _, memory_name, _ in rows)
     assert all(base_memory_name == "dram" for _, _, _, _, base_memory_name in rows)
+
+
+def test_stock_fidelity_metadata_matches_source_mapping():
+    default_bf16 = run_matmul._stock_math_fidelity("bfloat16", None)
+    explicit_bf16 = run_matmul._stock_math_fidelity("bfloat16", object())
+    default_fp32 = run_matmul._stock_math_fidelity("float32", None)
+
+    assert default_bf16["math_fidelity"] == "HiFi2"
+    assert explicit_bf16["math_fidelity"] == "LoFi"
+    assert default_fp32["math_fidelity"] == "HiFi4"
+    assert "increase_fidelity" in default_bf16["math_fidelity_source"]
+    assert "program_config" in explicit_bf16["math_fidelity_source"]
+    assert "source mapping" in default_fp32["math_fidelity_source"]
+
+
+def test_custom_rows_repeat_for_requested_fidelities(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs["math_fidelity"])
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "fidelity.json"
+    assert run_matmul.main(
+        [
+            "--only", "newton_schulz_L32_b8192",
+            "--dtype", "bfloat16",
+            "--memory", "l1",
+            "--kind", "custom_newton_schulz",
+            "--custom-math-fidelity", "LoFi",
+            "--custom-math-fidelity", "HiFi4",
+            "--out", str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert calls == ["LoFi", "HiFi4"]
+    assert [row["math_fidelity"] for row in payload["results"]] == ["LoFi", "HiFi4"]
 
 
 def test_row_specs_applies_dtype_specific_catalogue_filtering():
@@ -374,6 +432,7 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
     assert payload["selection"] == {
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
+        "custom_math_fidelity": ["HiFi4"],
     }
     assert len(payload["results"]) == 4
     assert all(
@@ -423,6 +482,8 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     ]
     for result in payload["results"]:
         assert result["status"] == "ok"
+        assert result["math_fidelity"] in {"HiFi2", "LoFi"}
+        assert result["math_fidelity_source"]
         assert result["memory_placement"] == {
             name: {"buffer": "dram", "layout": "interleaved"}
             for name in ("input_a", "input_b", "output")
@@ -513,8 +574,9 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
         output_memory = "dram"
 
         @classmethod
-        def prepare(cls, ttnn, device, matrices, *, variant):
+        def prepare(cls, ttnn, device, matrices, *, variant, math_fidelity):
             assert variant == "bf16-fp32state"
+            assert math_fidelity == "HiFi4"
             assert matrices is not None
             return cls()
 

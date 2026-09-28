@@ -56,26 +56,24 @@ void complex_matmul(
     cb_wait_front(right_real, 1);
     cb_wait_front(right_imag, 1);
     cb_reserve_back(output_real, 1);
-    cb_reserve_back(output_imag, 1);
 
-    // Order 2: keep both complex halves in DST simultaneously.  matmul_block
-    // is DST += C, so the first two calls accumulate dst0 (real) and the next
-    // two accumulate dst1 (imag), with one math acquire/commit and one pack
-    // wait/release for the pair.
+    // Order 1: each complex half owns one DEST section.  matmul_block is
+    // DST += C, so the two terms for one half share dst0, then the second
+    // half starts a separate acquire/commit/pack/release section.
     tile_regs_acquire();
     matmul_block(left_real, right_real, 0, 0, 0, false, 1, 1, 1);
     matmul_block(left_imag_for_real, right_imag, 0, 0, 0, false, 1, 1, 1);
-    matmul_block(left_real, right_imag, 0, 0, 1, false, 1, 1, 1);
-    matmul_block(left_imag_for_imag, right_real, 0, 0, 1, false, 1, 1, 1);
     tile_regs_commit();
-    tile_regs_wait();
     pack_reconfig_data_format(output_real);
-    pack_tile(0, output_real);
+    pack_one(output_real);
+
+    cb_reserve_back(output_imag, 1);
+    tile_regs_acquire();
+    matmul_block(left_real, right_imag, 0, 0, 0, false, 1, 1, 1);
+    matmul_block(left_imag_for_imag, right_real, 0, 0, 0, false, 1, 1, 1);
+    tile_regs_commit();
     pack_reconfig_data_format(output_imag);
-    pack_tile(1, output_imag);
-    tile_regs_release();
-    cb_push_back(output_real, 1);
-    cb_push_back(output_imag, 1);
+    pack_one(output_imag);
 
     if (consume_left) {
         cb_pop_front(left_real, 1);
