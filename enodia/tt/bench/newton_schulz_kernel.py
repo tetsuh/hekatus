@@ -43,6 +43,28 @@ CB_PRODUCT_IMAG = 12
 CB_NEG_X_IMAG = 13
 CB_OUTPUT_REAL = 15
 CB_OUTPUT_IMAG = 16
+CB_PROFILE_READER = 17
+CB_PROFILE_COMPUTE = 18
+CB_PROFILE_WRITER = 19
+PROFILE_MEASUREMENT_CORE = 0
+PROFILE_PAGES_PER_CORE = 3
+PROFILE_MAGIC = 0x5052464C
+PROFILE_READY_OFFSET = 31
+PROFILE_SLOT_STRIDE = 32
+PROFILE_TOTAL_OFFSET = 0
+PROFILE_R_WAIT_OFFSET = 1
+PROFILE_X_WAIT_OFFSET = 2
+PROFILE_COMPLEX_REAL_OFFSET = 3
+PROFILE_COMPLEX_IMAG_OFFSET = 4
+PROFILE_S_BINARY_OFFSET = 5
+PROFILE_PACK_PUSH_OFFSET = 6
+PROFILE_STATE_HANDOFF_OFFSET = 7
+PROFILE_SAMPLE_COUNT_OFFSET = 8
+PROFILE_READER_READ_OFFSET = 1
+PROFILE_READER_CONSTANT_OFFSET = 2
+PROFILE_READER_COUNT_OFFSET = 3
+PROFILE_WRITER_WRITE_OFFSET = 1
+PROFILE_WRITER_COUNT_OFFSET = 2
 
 
 def _initial_value(matrices: np.ndarray) -> np.ndarray:
@@ -114,6 +136,12 @@ def _download_float32(ttnn, tensor) -> np.ndarray:
     return converted.to_numpy()
 
 
+def _download_uint32(ttnn, tensor) -> np.ndarray:
+    host = ttnn.from_device(tensor)
+    row_major = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
+    return row_major.to_numpy()
+
+
 def _core_grid(ttnn, device, batch: int):
     grid = device.compute_with_storage_grid_size()
     total_cores = grid.x * grid.y
@@ -158,9 +186,15 @@ def _output_memory_name(variant: str) -> str:
     return "dram" if variant == "bf16-fp32state" else "l1"
 
 
-def _cb_definitions(ttnn, state_dtype) -> dict[int, tuple[Any, int]]:
+def _cb_page_size(ttnn, data_format) -> int:
+    """Return one 32x32 page in bytes, including uint32 profile tiles."""
+    uint32 = getattr(ttnn, "uint32", None)
+    return _TILE_BYTES_FLOAT32 if data_format == ttnn.float32 or data_format == uint32 else _TILE_BYTES_BFLOAT16
+
+
+def _cb_definitions(ttnn, state_dtype, *, profile: bool = False) -> dict[int, tuple[Any, int]]:
     """Describe the CB formats shared by both state-precision variants."""
-    return {
+    definitions = {
         CB_R_REAL: (ttnn.bfloat16, 2),
         CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
         CB_R_IMAG: (ttnn.bfloat16, 2),
@@ -181,6 +215,15 @@ def _cb_definitions(ttnn, state_dtype) -> dict[int, tuple[Any, int]]:
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
+    if profile:
+        definitions.update(
+            {
+                CB_PROFILE_READER: (ttnn.uint32, 1),
+                CB_PROFILE_COMPUTE: (ttnn.uint32, 1),
+                CB_PROFILE_WRITER: (ttnn.uint32, 1),
+            }
+        )
+    return definitions
 
 
 def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np.ndarray:
@@ -205,6 +248,7 @@ class NewtonSchulzKernel:
     math_fidelity: str
     output_memory: str
     profile: bool
+    profile_output: Any | None
     tile_count: int
     inputs: list[Any]
     outputs: list[Any]
@@ -291,13 +335,22 @@ class NewtonSchulzKernel:
             )
             for _ in range(2)
         ]
+        profile_output = None
+        if profile:
+            profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, _TILE, _TILE))
+            profile_output = ttnn.allocate_tensor_on_device(
+                profile_shape,
+                ttnn.uint32,
+                ttnn.TILE_LAYOUT,
+                device,
+                ttnn.DRAM_MEMORY_CONFIG,
+            )
+            outputs.append(profile_output)
 
-        cb_definitions = _cb_definitions(ttnn, state_dtype)
+        cb_definitions = _cb_definitions(ttnn, state_dtype, profile=profile)
         cbs = []
         for index, (data_format, page_count) in cb_definitions.items():
-            page_size = (
-                _TILE_BYTES_FLOAT32 if data_format == ttnn.float32 else _TILE_BYTES_BFLOAT16
-            )
+            page_size = _cb_page_size(ttnn, data_format)
             descriptor = ttnn.CBFormatDescriptor(
                 buffer_index=index,
                 data_format=data_format,
@@ -325,17 +378,32 @@ class NewtonSchulzKernel:
             [tensor.buffer_address() for tensor in inputs],
             work_ranges,
         )
-        writer_args = _runtime_args(
-            ttnn,
-            coordinates,
-            [tensor.buffer_address() for tensor in outputs],
-            work_ranges,
-        )
+        if profile:
+            writer_args = ttnn.RuntimeArgs()
+            output_addresses = [tensor.buffer_address() for tensor in outputs[:2]]
+            profile_address = outputs[2].buffer_address()
+            for (x, y), (start, count) in zip(coordinates, work_ranges, strict=True):
+                writer_args[x][y] = [
+                    *output_addresses,
+                    profile_address,
+                    PROFILE_MEASUREMENT_CORE,
+                    start,
+                    count,
+                ]
+        else:
+            writer_args = _runtime_args(
+                ttnn,
+                coordinates,
+                [tensor.buffer_address() for tensor in outputs],
+                work_ranges,
+            )
         compute_args = _runtime_args(ttnn, coordinates, [], work_ranges)
 
         kernels = [
             ttnn.KernelDescriptor(
-                kernel_source=str((_KERNEL_DIR / "newton_schulz_reader.cpp").resolve()),
+                kernel_source=str(
+                    (_KERNEL_DIR / ("newton_schulz_reader_profile.cpp" if profile else "newton_schulz_reader.cpp")).resolve()
+                ),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
                 compile_time_args=reader_compile_args,
@@ -343,7 +411,9 @@ class NewtonSchulzKernel:
                 config=ttnn.ReaderConfigDescriptor(),
             ),
             ttnn.KernelDescriptor(
-                kernel_source=str((_KERNEL_DIR / "newton_schulz_writer.cpp").resolve()),
+                kernel_source=str(
+                    (_KERNEL_DIR / ("newton_schulz_writer_profile.cpp" if profile else "newton_schulz_writer.cpp")).resolve()
+                ),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
                 compile_time_args=writer_compile_args,
@@ -373,6 +443,7 @@ class NewtonSchulzKernel:
             math_fidelity=math_fidelity,
             output_memory=output_memory,
             profile=profile,
+            profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
             outputs=outputs,
@@ -389,6 +460,113 @@ class NewtonSchulzKernel:
         real = _download_float32(self.ttnn, self.outputs[0])
         imag = _download_float32(self.ttnn, self.outputs[1])
         return real[: self.batch, 0] + 1j * imag[: self.batch, 0]
+
+    def profile_records(self) -> list[dict]:
+        """Decode the three 32x32 uint32 L1-counter pages for core 0.
+
+        The reader, compute, and writer kernels each publish one page through
+        an L1 CB; the writer copies the triplet to the DRAM profile tensor.
+        Compute counters sample only the first tile and first Newton-Schulz
+        iteration. Other active cores execute normal work but neither publish
+        nor wait on profile pages.
+        """
+        if self.profile_output is None:
+            return []
+        pages = _download_uint32(self.ttnn, self.profile_output).reshape(
+            PROFILE_PAGES_PER_CORE, -1
+        )
+        reader, compute, writer = pages
+        if any(
+            int(page[PROFILE_READY_OFFSET]) != PROFILE_MAGIC
+            for page in (reader, compute, writer)
+        ):
+            raise RuntimeError("incomplete profile pages for core 0")
+
+        core_index = PROFILE_MEASUREMENT_CORE
+        records: list[dict] = []
+        reader_total = int(reader[PROFILE_TOTAL_OFFSET])
+        records.append(
+            {
+                "core_index": core_index,
+                "measurement_core": PROFILE_MEASUREMENT_CORE,
+                "risc": "NCRISC",
+                "total_cycles": reader_total,
+                "sample_count": int(reader[PROFILE_READER_COUNT_OFFSET]),
+                "sections": [
+                    {
+                        "name": "reader_read_and_wait",
+                        "cycles": int(reader[PROFILE_READER_READ_OFFSET]),
+                        "percent_of_total": 100.0
+                        * int(reader[PROFILE_READER_READ_OFFSET])
+                        / reader_total
+                        if reader_total
+                        else 0.0,
+                    },
+                    {
+                        "name": "reader_constant_read",
+                        "cycles": int(reader[PROFILE_READER_CONSTANT_OFFSET]),
+                        "percent_of_total": 100.0
+                        * int(reader[PROFILE_READER_CONSTANT_OFFSET])
+                        / reader_total
+                        if reader_total
+                        else 0.0,
+                    },
+                ],
+            }
+        )
+        compute_sections = [
+            ("r_cb_wait", PROFILE_R_WAIT_OFFSET),
+            ("x_cb_wait", PROFILE_X_WAIT_OFFSET),
+            ("complex_real", PROFILE_COMPLEX_REAL_OFFSET),
+            ("complex_imag", PROFILE_COMPLEX_IMAG_OFFSET),
+            ("s_binary", PROFILE_S_BINARY_OFFSET),
+            ("pack_push", PROFILE_PACK_PUSH_OFFSET),
+            ("state_handoff", PROFILE_STATE_HANDOFF_OFFSET),
+        ]
+        for risc_index, risc in enumerate(("TRISC0", "TRISC1", "TRISC2")):
+            slot = compute[
+                risc_index * PROFILE_SLOT_STRIDE : (risc_index + 1) * PROFILE_SLOT_STRIDE
+            ]
+            total = int(slot[PROFILE_TOTAL_OFFSET])
+            records.append(
+                {
+                    "core_index": core_index,
+                    "measurement_core": PROFILE_MEASUREMENT_CORE,
+                    "risc": risc,
+                    "total_cycles": total,
+                    "sample_count": int(slot[PROFILE_SAMPLE_COUNT_OFFSET]),
+                    "sections": [
+                        {
+                            "name": name,
+                            "cycles": int(slot[offset]),
+                            "percent_of_total": 100.0 * int(slot[offset]) / total if total else 0.0,
+                        }
+                        for name, offset in compute_sections
+                    ],
+                }
+            )
+        writer_total = int(writer[PROFILE_TOTAL_OFFSET])
+        records.append(
+            {
+                "core_index": core_index,
+                "measurement_core": PROFILE_MEASUREMENT_CORE,
+                "risc": "BRISC",
+                "total_cycles": writer_total,
+                "sample_count": int(writer[PROFILE_WRITER_COUNT_OFFSET]),
+                "sections": [
+                    {
+                        "name": "writer_writes",
+                        "cycles": int(writer[PROFILE_WRITER_WRITE_OFFSET]),
+                        "percent_of_total": 100.0
+                        * int(writer[PROFILE_WRITER_WRITE_OFFSET])
+                        / writer_total
+                        if writer_total
+                        else 0.0,
+                    }
+                ],
+            }
+        )
+        return records
 
     def close(self) -> None:
         for tensor in [*self.inputs, *self.outputs]:

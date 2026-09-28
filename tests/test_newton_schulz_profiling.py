@@ -1,5 +1,15 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+import numpy as np
+
+from enodia.tt.bench.newton_schulz_kernel import (
+    PROFILE_MAGIC,
+    PROFILE_PAGES_PER_CORE,
+    PROFILE_READY_OFFSET,
+    PROFILE_SLOT_STRIDE,
+    NewtonSchulzKernel,
+)
 from enodia.tt.bench.profiling import parse_device_profile_csv
 
 ROOT = Path(__file__).parents[1]
@@ -33,6 +43,119 @@ def test_profile_flag_defaults_off_in_host_parser():
 
     assert run_matmul._build_parser().parse_args([]).profile is False
     assert run_matmul._build_parser().parse_args(["--profile"]).profile is True
+
+
+def test_cycle_counter_profile_uses_l1_transport_and_timestamps():
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    reader = (KERNEL_DIR / "newton_schulz_reader_profile.cpp").read_text()
+    writer = (KERNEL_DIR / "newton_schulz_writer_profile.cpp").read_text()
+
+    assert "get_timestamp_32b()" in compute
+    assert "get_timestamp_32b()" in reader
+    assert "get_timestamp_32b()" in writer
+    assert "cb_profile_compute" in compute
+    assert "tt_l1_ptr" in compute
+    assert "cb_profile_reader" in reader
+    assert "cb_profile_writer" in writer
+    assert "TT_METAL_DEVICE_PROFILER" not in compute + reader + writer
+    assert "start_tile == 0" in compute
+    assert "start_tile == 0" in reader
+    assert "start_tile == 0" in writer
+    assert "if (!measure_core)" in writer
+    assert "if (measure_core)" in reader
+    assert "if (start_tile == 0)" in compute
+    assert "TensorAccessorArgs<0>()" in writer
+    assert "get_arg_val<std::uint32_t>(2)" in writer
+    assert "get_arg_val<std::uint32_t>(3)" in writer
+    assert "get_arg_val<std::uint32_t>(4)" in writer
+    assert "get_arg_val<std::uint32_t>(5)" in writer
+    assert "compute_profile[profile_ready_offset] = 0" in writer
+    assert "void clear_profile_ready" in compute
+    assert "clear_profile_ready(start_tile)" in compute
+    slot_source = compute[compute.index("void write_profile_counters"):]
+    assert "COMPILE_FOR_TRISC == 0" in slot_source
+    assert "COMPILE_FOR_TRISC == 1" in slot_source
+    assert "COMPILE_FOR_TRISC == 2" in slot_source
+    assert "profile[profile_ready_offset] = profile_magic" in slot_source
+    assert "profile[profile_slot_stride + profile_ready_offset] = profile_magic" in slot_source
+    assert "profile[2 * profile_slot_stride + profile_ready_offset] = profile_magic" in slot_source
+    assert "while (profile[profile_ready_offset] != profile_magic" in slot_source
+    assert "cb_push_back(cb_profile_compute, 1)" in slot_source
+    slot0 = slot_source.split("COMPILE_FOR_TRISC == 0", 1)[1].split("COMPILE_FOR_TRISC == 1", 1)[0]
+    slot1 = slot_source.split("COMPILE_FOR_TRISC == 1", 1)[1].split("COMPILE_FOR_TRISC == 2", 1)[0]
+    slot2 = slot_source.split("COMPILE_FOR_TRISC == 2", 1)[1]
+    assert "profile_slot_stride +" not in slot0
+    assert "profile_slot_stride +" in slot1
+    assert "profile[profile_total_offset]" not in slot2
+    assert "cb_push_back(cb_profile_compute, 1)" not in slot0 + slot1
+
+
+
+def test_profile_false_has_no_profile_cbs_or_tracy_environment():
+    from enodia.tt.bench import newton_schulz_kernel, run_matmul
+
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32", uint32="u32")
+    normal = newton_schulz_kernel._cb_definitions(ttnn, ttnn.bfloat16)
+    profiled = newton_schulz_kernel._cb_definitions(ttnn, ttnn.bfloat16, profile=True)
+    assert not set(normal).intersection(
+        {
+            newton_schulz_kernel.CB_PROFILE_READER,
+            newton_schulz_kernel.CB_PROFILE_COMPUTE,
+            newton_schulz_kernel.CB_PROFILE_WRITER,
+        }
+    )
+    assert set(profiled).issuperset(
+        {
+            newton_schulz_kernel.CB_PROFILE_READER,
+            newton_schulz_kernel.CB_PROFILE_COMPUTE,
+            newton_schulz_kernel.CB_PROFILE_WRITER,
+        }
+    )
+    assert newton_schulz_kernel._cb_page_size(ttnn, ttnn.uint32) == 32 * 32 * 4
+    runner_source = Path(run_matmul.__file__).read_text()
+    assert "TT_METAL_DEVICE_PROFILER" not in runner_source
+    assert "profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, _TILE, _TILE))" in Path(
+        newton_schulz_kernel.__file__
+    ).read_text()
+
+
+def test_cycle_counter_profile_records_decode_l1_pages(monkeypatch):
+    raw = np.zeros((PROFILE_PAGES_PER_CORE, 32 * 32), dtype=np.uint32)
+    raw[:, PROFILE_READY_OFFSET] = PROFILE_MAGIC
+    raw[0, 0:4] = [120, 80, 40, 2]
+    raw[1, PROFILE_SLOT_STRIDE + 0] = 300
+    raw[1, PROFILE_SLOT_STRIDE + 3] = 100
+    raw[1, PROFILE_SLOT_STRIDE + 4] = 120
+    raw[1, PROFILE_SLOT_STRIDE + 5] = 40
+    raw[1, PROFILE_SLOT_STRIDE + 7] = 40
+    raw[1, 2 * PROFILE_SLOT_STRIDE + 0] = 60
+    raw[1, 2 * PROFILE_SLOT_STRIDE + 6] = 60
+    raw[2, 0:3] = [75, 75, 2]
+
+    kernel = object.__new__(NewtonSchulzKernel)
+    kernel.ttnn = None
+    kernel.profile_output = object()
+    kernel.work_ranges = [(0, 1)]
+    monkeypatch.setattr(
+        "enodia.tt.bench.newton_schulz_kernel._download_uint32",
+        lambda _ttnn, _tensor: raw,
+    )
+
+    records = kernel.profile_records()
+
+    assert {record["risc"] for record in records} == {"NCRISC", "TRISC0", "TRISC1", "TRISC2", "BRISC"}
+    assert {record["measurement_core"] for record in records} == {0}
+    assert len(records) == 5
+    compute = next(record for record in records if record["risc"] == "TRISC1")
+    assert compute["total_cycles"] == 300
+    assert {section["name"] for section in compute["sections"]} >= {
+        "complex_real",
+        "complex_imag",
+        "s_binary",
+        "state_handoff",
+    }
+    writer = next(record for record in records if record["risc"] == "BRISC")
+    assert writer["sections"][0]["name"] == "writer_writes"
 
 
 def test_profile_csv_parser_returns_per_risc_cycles_and_percentages(tmp_path: Path):

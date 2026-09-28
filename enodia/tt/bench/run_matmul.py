@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import platform
 import sys
 import time
@@ -549,7 +548,12 @@ def run_custom_newton_schulz(
         }
         record.update(_timing_fields(launch_samples))
         if profile:
-            record["profile_mode"] = "TT_METAL_DEVICE_PROFILER"
+            record["profile_mode"] = "l1_cycle_counters"
+            record["measurement_core"] = 0
+            record["profile_clock"] = "get_timestamp_32b_lower_32_wall_clock"
+            record["profile_sampling"] = "first_tile_first_iteration_on_core_0"
+            record["profile_aggregation"] = "core_0_reader_compute_writer_triplet"
+            record["profile_records"] = kernel.profile_records()
         return record
     except Exception as exc:  # noqa: BLE001 - a device failure is a result
         return {"status": "failed", "kind": CUSTOM_KIND, "error": f"{type(exc).__name__}: {exc}"}
@@ -604,7 +608,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--profile",
         action="store_true",
-        help="enable TT_METAL_DEVICE_PROFILER and sampled kernel zones",
+        help="enable L1 cycle-counter profiling",
     )
     parser.add_argument(
         "--profile-csv",
@@ -724,9 +728,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     _validate(parser, args)
-
-    if args.profile:
-        os.environ["TT_METAL_DEVICE_PROFILER"] = "1"
 
     import ttnn  # imported after validation, so bad arguments need no accelerator
 
@@ -874,7 +875,13 @@ def main(argv: list[str] | None = None) -> int:
         "results": results,
     }
     if args.profile:
-        payload["profiling"] = {"mode": "TT_METAL_DEVICE_PROFILER"}
+        payload["profiling"] = {
+            "mode": "l1_cycle_counters",
+            "measurement_core": 0,
+            "clock": "get_timestamp_32b_lower_32_wall_clock",
+            "sampling": "first_tile_first_iteration_on_core_0",
+            "aggregation": "core_0_reader_compute_writer_triplet",
+        }
     if args.profile_csv is not None:
         try:
             payload["device_profile"] = parse_device_profile_csv(args.profile_csv)
