@@ -29,8 +29,10 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   remaining numerical cause is unresolved.
 - **First execution safety:** Every new numerical stage starts with
   `TT_METAL_WATCHER=1` and an external 60-second cap unless an explicit
-  opt-out is recorded. This agrees with the ordinary numerical-stage harness
-  policy; construction and build-only paths retain their separate controls.
+  opt-out is recorded. The runner starts the numerical child in a new session
+  before opening a device, and expiry terminates its whole process group with a
+  timeout failure record. No shell wrapper is used. Construction and build-only
+  paths retain their separate controls.
 
 ## Stage guide
 
