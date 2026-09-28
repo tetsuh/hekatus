@@ -189,6 +189,67 @@ def test_default_direct_stage_supervises_before_fake_device_open(monkeypatch, ca
     assert isinstance(events[0][1], list)
     assert child.communicate_timeouts == [60]
     assert "--_numerical-child" in events[0][1]
+    token_index = events[0][1].index("--_numerical-child-token") + 1
+    token = events[0][1][token_index]
+    assert token
+    assert events[0][2]["env"][bringup.NUMERICAL_CHILD_TOKEN_ENV] == token
+
+
+def test_direct_numerical_child_without_parent_token_is_rejected_before_device_open(
+    monkeypatch, capsys
+):
+    events = []
+
+    class FakeTTNN:
+        def open_device(self, **kwargs):
+            events.append(("open", kwargs))
+            raise AssertionError("rejected child mode must not open a device")
+
+    monkeypatch.delenv("HEKATUS_NUMERICAL_CHILD_TOKEN", raising=False)
+    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["newton_schulz_bringup.py", "--_numerical-child", "--stage", "1"],
+    )
+
+    assert bringup.main() != 0
+    record = json.loads(capsys.readouterr().out)
+    assert record["status"] == "fail"
+    assert record["error"]["code"] == "child_handshake_failed"
+    assert events == []
+
+
+def test_direct_numerical_child_with_mismatched_parent_token_is_rejected_before_device_open(
+    monkeypatch, capsys
+):
+    events = []
+
+    class FakeTTNN:
+        def open_device(self, **kwargs):
+            events.append(("open", kwargs))
+            raise AssertionError("rejected child mode must not open a device")
+
+    monkeypatch.setenv("HEKATUS_NUMERICAL_CHILD_TOKEN", "parent-token")
+    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "newton_schulz_bringup.py",
+            "--_numerical-child",
+            "--_numerical-child-token",
+            "different-token",
+            "--stage",
+            "1",
+        ],
+    )
+
+    assert bringup.main() != 0
+    record = json.loads(capsys.readouterr().out)
+    assert record["status"] == "fail"
+    assert record["error"]["code"] == "child_handshake_failed"
+    assert events == []
 
 
 def test_timeout_terminates_the_child_process_group_and_records_failure(monkeypatch, capsys):

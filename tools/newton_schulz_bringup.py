@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import secrets
 import signal
 import subprocess
 import sys
@@ -219,6 +220,7 @@ BUILD_ONLY_REQUIRED_ENV = (
     "TT_METAL_KERNELS_EARLY_RETURN",
 )
 BUILD_ONLY_REQUIRED_VALUE = "1"
+NUMERICAL_CHILD_TOKEN_ENV = "HEKATUS_NUMERICAL_CHILD_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -2066,11 +2068,30 @@ def _stage_failure_record(
 SUPERVISOR_TERMINATION_GRACE_SECONDS = 1.0
 
 
-def _numerical_child_command(args: argparse.Namespace) -> list[str]:
+def _numerical_child_handshake_error(args: argparse.Namespace) -> str | None:
+    if not args._numerical_child:
+        return None
+    if (
+        args.stage is None
+        or args.construction_probe is not None
+        or args.dispatch_construction_probe
+        or args.build_only_jit_probe
+    ):
+        return "numerical child mode requires an ordinary numerical stage"
+    expected = os.environ.get(NUMERICAL_CHILD_TOKEN_ENV)
+    supplied = args._numerical_child_token
+    if not expected or not supplied or not secrets.compare_digest(supplied, expected):
+        return "numerical child handshake token is missing or invalid"
+    return None
+
+
+def _numerical_child_command(args: argparse.Namespace, token: str) -> list[str]:
     command = [
         sys.executable,
         str(Path(__file__).resolve()),
         "--_numerical-child",
+        "--_numerical-child-token",
+        token,
         "--stage",
         str(args.stage),
         "--device-id",
@@ -2147,10 +2168,12 @@ def run_supervised_numerical_stage(
     policy: NumericalExecutionPolicy,
 ) -> dict[str, Any]:
     """Run one numerical stage in a fresh session and enforce its cap."""
-    command = _numerical_child_command(args)
+    token = secrets.token_hex(32)
+    command = _numerical_child_command(args, token)
     try:
         with watcher_environment(policy):
             environment = os.environ.copy()
+            environment[NUMERICAL_CHILD_TOKEN_ENV] = token
             process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
@@ -2472,6 +2495,7 @@ def _argument_parser() -> argparse.ArgumentParser:
     selection.add_argument("--construction-probe", choices=tuple(CONSTRUCTION_PROBES))
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--_numerical-child", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--_numerical-child-token", help=argparse.SUPPRESS)
     watcher = parser.add_mutually_exclusive_group()
     watcher.add_argument(
         "--watcher",
@@ -2521,6 +2545,23 @@ def _argument_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = _argument_parser()
     args = parser.parse_args()
+
+    if args._numerical_child_token is not None and not args._numerical_child:
+        parser.error("--_numerical-child-token requires --_numerical-child")
+    if args._numerical_child:
+        child_policy = resolve_numerical_execution_policy(
+            watcher=args.watcher,
+            timeout_s=args.timeout_s,
+        )
+        handshake_error = _numerical_child_handshake_error(args)
+        if handshake_error is not None:
+            result = _stage_failure_record(
+                args.stage,
+                policy=child_policy,
+                error={"code": "child_handshake_failed", "message": handshake_error},
+            )
+            _emit_json(result)
+            return 1
 
     if args.build_only_jit_probe:
         if args.construction_probe is not None or args.dispatch_construction_probe:
