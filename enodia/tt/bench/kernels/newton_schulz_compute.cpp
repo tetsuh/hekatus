@@ -4,6 +4,7 @@
 #include "api/compute/eltwise_binary.h"
 #include "api/compute/matmul.h"
 #include "api/compute/reconfig_data_format.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 namespace {
 constexpr std::uint32_t cb_r_real = 0;
@@ -30,6 +31,107 @@ void pack_one(std::uint32_t output) {
     cb_push_back(output, 1);
 }
 
+void pack_one_profiled(std::uint32_t output) {
+    DeviceZoneScopedN("NS-COMPUTE-PACK-PUSH");
+    pack_one(output);
+}
+
+void wait_complex_inputs(
+    std::uint32_t left_real,
+    std::uint32_t left_imag_for_real,
+    std::uint32_t left_imag_for_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    bool resident_left) {
+    if (!resident_left) {
+        cb_wait_front(left_real, 1);
+        cb_wait_front(left_imag_for_real, 1);
+        cb_wait_front(left_imag_for_imag, 1);
+    }
+    cb_wait_front(right_real, 1);
+    cb_wait_front(right_imag, 1);
+}
+
+void wait_complex_inputs_profiled(
+    std::uint32_t left_real,
+    std::uint32_t left_imag_for_real,
+    std::uint32_t left_imag_for_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    bool resident_left) {
+    DeviceZoneScopedN("NS-COMPUTE-X-CB-WAIT");
+    wait_complex_inputs(
+        left_real,
+        left_imag_for_real,
+        left_imag_for_imag,
+        right_real,
+        right_imag,
+        resident_left);
+}
+
+void complex_real_impl(
+    std::uint32_t left_real,
+    std::uint32_t left_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    std::uint32_t output,
+    bool profile_pack) {
+    cb_reserve_back(output, 1);
+    tile_regs_acquire();
+    matmul_block(left_real, right_real, 0, 0, 0, false, 1, 1, 1);
+    matmul_block(left_imag, right_imag, 0, 0, 0, false, 1, 1, 1);
+    tile_regs_commit();
+    if (profile_pack) {
+        pack_reconfig_data_format(output);
+        pack_one_profiled(output);
+    } else {
+        pack_reconfig_data_format(output);
+        pack_one(output);
+    }
+}
+
+void complex_real_profiled(
+    std::uint32_t left_real,
+    std::uint32_t left_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    std::uint32_t output) {
+    DeviceZoneScopedN("NS-COMPUTE-COMPLEX-REAL");
+    complex_real_impl(left_real, left_imag, right_real, right_imag, output, true);
+}
+
+void complex_imag_impl(
+    std::uint32_t left_real,
+    std::uint32_t left_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    std::uint32_t output,
+    bool profile_pack) {
+    cb_reserve_back(output, 1);
+    tile_regs_acquire();
+    matmul_block(left_real, right_imag, 0, 0, 0, false, 1, 1, 1);
+    matmul_block(left_imag, right_real, 0, 0, 0, false, 1, 1, 1);
+    tile_regs_commit();
+    if (profile_pack) {
+        pack_reconfig_data_format(output);
+        pack_one_profiled(output);
+    } else {
+        pack_reconfig_data_format(output);
+        pack_one(output);
+    }
+}
+
+void complex_imag_profiled(
+    std::uint32_t left_real,
+    std::uint32_t left_imag,
+    std::uint32_t right_real,
+    std::uint32_t right_imag,
+    std::uint32_t output) {
+    DeviceZoneScopedN("NS-COMPUTE-COMPLEX-IMAG");
+    complex_imag_impl(left_real, left_imag, right_real, right_imag, output, true);
+}
+
+template <bool profile_sample>
 void complex_matmul(
     std::uint32_t left_real,
     std::uint32_t left_imag_for_real,
@@ -40,40 +142,60 @@ void complex_matmul(
     std::uint32_t output_imag,
     bool resident_left,
     bool consume_left,
-    bool consume_right) {
+    bool consume_right,
+    bool sample) {
     // With SrcOrder::Reverse the second CB is SrcA and the first CB is SrcB.
-    // Each half keeps both signed terms in one acquired DEST tile.  The two
-    // left-imaginary CBs are intentionally separate: R supplies -R_im for
-    // the real half and +R_im for the imaginary half; X uses the same pattern
-    // through the compute-owned negated-X CB below.
+    // Each half keeps both signed terms in one acquired DEST tile.  Order 1
+    // deliberately uses one DEST section per half; this fidelity sweep must
+    // not mix the later two-DEST experiment into its timings.
     matmul_block_init(left_real, right_real, false, 1, 1, 1);
-
-    if (!resident_left) {
-        cb_wait_front(left_real, 1);
-        cb_wait_front(left_imag_for_real, 1);
-        cb_wait_front(left_imag_for_imag, 1);
+    if constexpr (profile_sample) {
+        if (sample) {
+            wait_complex_inputs_profiled(
+                left_real,
+                left_imag_for_real,
+                left_imag_for_imag,
+                right_real,
+                right_imag,
+                resident_left);
+        } else {
+            wait_complex_inputs(
+                left_real,
+                left_imag_for_real,
+                left_imag_for_imag,
+                right_real,
+                right_imag,
+                resident_left);
+        }
+    } else {
+        wait_complex_inputs(
+            left_real,
+            left_imag_for_real,
+            left_imag_for_imag,
+            right_real,
+            right_imag,
+            resident_left);
     }
-    cb_wait_front(right_real, 1);
-    cb_wait_front(right_imag, 1);
-    cb_reserve_back(output_real, 1);
 
-    // Order 1: each complex half owns one DEST section.  matmul_block is
-    // DST += C, so the two terms for one half share dst0, then the second
-    // half starts a separate acquire/commit/pack/release section.
-    tile_regs_acquire();
-    matmul_block(left_real, right_real, 0, 0, 0, false, 1, 1, 1);
-    matmul_block(left_imag_for_real, right_imag, 0, 0, 0, false, 1, 1, 1);
-    tile_regs_commit();
-    pack_reconfig_data_format(output_real);
-    pack_one(output_real);
+    if constexpr (profile_sample) {
+        if (sample) {
+            complex_real_profiled(left_real, left_imag_for_real, right_real, right_imag, output_real);
+        } else {
+            complex_real_impl(left_real, left_imag_for_real, right_real, right_imag, output_real, false);
+        }
+    } else {
+        complex_real_impl(left_real, left_imag_for_real, right_real, right_imag, output_real, false);
+    }
 
-    cb_reserve_back(output_imag, 1);
-    tile_regs_acquire();
-    matmul_block(left_real, right_imag, 0, 0, 0, false, 1, 1, 1);
-    matmul_block(left_imag_for_imag, right_real, 0, 0, 0, false, 1, 1, 1);
-    tile_regs_commit();
-    pack_reconfig_data_format(output_imag);
-    pack_one(output_imag);
+    if constexpr (profile_sample) {
+        if (sample) {
+            complex_imag_profiled(left_real, left_imag_for_imag, right_real, right_imag, output_imag);
+        } else {
+            complex_imag_impl(left_real, left_imag_for_imag, right_real, right_imag, output_imag, false);
+        }
+    } else {
+        complex_imag_impl(left_real, left_imag_for_imag, right_real, right_imag, output_imag, false);
+    }
 
     if (consume_left) {
         cb_pop_front(left_real, 1);
@@ -88,14 +210,15 @@ void complex_matmul(
     }
 }
 
-void subtract_one(
+void subtract_one_impl(
     std::uint32_t current_srca,
     std::uint32_t current_srcb,
     std::uint32_t left,
     std::uint32_t right,
     std::uint32_t output,
     bool consume_left,
-    bool consume_right) {
+    bool consume_right,
+    bool profile_pack) {
     cb_wait_front(left, 1);
     cb_wait_front(right, 1);
     cb_reserve_back(output, 1);
@@ -105,7 +228,11 @@ void subtract_one(
     tile_regs_acquire();
     sub_tiles(left, right, 0, 0, 0);
     tile_regs_commit();
-    pack_one(output);
+    if (profile_pack) {
+        pack_one_profiled(output);
+    } else {
+        pack_one(output);
+    }
     if (consume_left) {
         cb_pop_front(left, 1);
     }
@@ -114,26 +241,70 @@ void subtract_one(
     }
 }
 
-void negate_state_imag(std::uint32_t x_imag) {
+void subtract_one(
+    std::uint32_t current_srca,
+    std::uint32_t current_srcb,
+    std::uint32_t left,
+    std::uint32_t right,
+    std::uint32_t output,
+    bool consume_left,
+    bool consume_right) {
+    subtract_one_impl(current_srca, current_srcb, left, right, output, consume_left, consume_right, false);
+}
+
+void subtract_one_profiled(
+    std::uint32_t current_srca,
+    std::uint32_t current_srcb,
+    std::uint32_t left,
+    std::uint32_t right,
+    std::uint32_t output,
+    bool consume_left,
+    bool consume_right) {
+    DeviceZoneScopedN("NS-COMPUTE-S-BINARY");
+    subtract_one_impl(current_srca, current_srcb, left, right, output, consume_left, consume_right, true);
+}
+
+void negate_state_imag_impl(std::uint32_t x_imag, bool profile_pack) {
     cb_wait_front(x_imag, 1);
     cb_wait_front(cb_zero, 1);
     cb_reserve_back(cb_negative_x_imag, 1);
-    // Keep the sign conversion on the known binary/reconfiguration path.  The
-    // zero and X tiles are both retained: zero is the per-core constant and X
-    // must remain available for the following X*S product.
     reconfig_data_format(cb_zero, cb_zero, cb_product_imag, x_imag);
     pack_reconfig_data_format(cb_negative_x_imag);
     sub_tiles_init(cb_zero, x_imag);
     tile_regs_acquire();
     sub_tiles(cb_zero, x_imag, 0, 0, 0);
     tile_regs_commit();
-    pack_one(cb_negative_x_imag);
+    if (profile_pack) {
+        pack_one_profiled(cb_negative_x_imag);
+    } else {
+        pack_one(cb_negative_x_imag);
+    }
 }
 
 void residual_format_transition_to_matmul(std::uint32_t x_real, std::uint32_t x_imag) {
-    // Negation leaves zero/x_imag as the active SrcA/SrcB pair.  The next
-    // matmul consumes BF16 S/X operands and writes FP32 DEST products.
     reconfig_data_format(cb_zero, cb_s_real, x_imag, x_real);
+}
+
+void state_handoff(std::uint32_t x_real, std::uint32_t x_imag) {
+    negate_state_imag_impl(x_imag, false);
+    residual_format_transition_to_matmul(x_real, x_imag);
+}
+
+void state_handoff_profiled(std::uint32_t x_real, std::uint32_t x_imag) {
+    DeviceZoneScopedN("NS-COMPUTE-STATE-HANDOFF");
+    negate_state_imag_impl(x_imag, true);
+    residual_format_transition_to_matmul(x_real, x_imag);
+}
+
+void wait_r_inputs() {
+    cb_wait_front(cb_r_real, 1);
+    cb_wait_front(cb_r_negative_imag, 1);
+    cb_wait_front(cb_r_imag, 1);
+}
+
+void wait_r_inputs_profiled() {
+    DeviceZoneScopedN("NS-COMPUTE-R-CB-WAIT");
+    wait_r_inputs();
 }
 
 void stream_initial_or_state(
@@ -153,93 +324,115 @@ void stream_initial_or_state(
 void kernel_main() {
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
+    constexpr bool profile_sample = get_compile_time_arg_val(2) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
 
+    DeviceZoneScopedN("NS-COMPUTE-TOTAL");
     compute_kernel_hw_startup<SrcOrder::Reverse>(cb_r_real, cb_x0_real, cb_product_real);
     matmul_block_init(cb_r_real, cb_x0_real, false, 1, 1, 1);
 
     (void)start_tile;
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
-        // R is resident for this matrix: wait once, reuse its three pages for
-        // all eight iterations, and pop them only after the final update.
-        cb_wait_front(cb_r_real, 1);
-        cb_wait_front(cb_r_negative_imag, 1);
-        cb_wait_front(cb_r_imag, 1);
+        if constexpr (profile_sample) {
+            if (tile == 0) {
+                wait_r_inputs_profiled();
+            } else {
+                wait_r_inputs();
+            }
+        } else {
+            wait_r_inputs();
+        }
         for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
             std::uint32_t x_real;
             std::uint32_t x_imag;
             stream_initial_or_state(iteration, x_real, x_imag);
+            const bool sample = profile_sample && tile == 0 && iteration == 0;
 
             if constexpr (state_fp32) {
                 if (iteration != 0) {
-                    // The preceding X*S leaves SrcA=S_real and SrcB=X_imag.
-                    // Restore the mixed BF16-R / FP32-X matmul formats before
-                    // the next iteration; BF16 state needs no transition.
                     reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_real);
                 }
             }
 
-            // T = R * X.  The host supplies -R_im, so the real accumulation is
-            // R_re*X_re + (-R_im)*X_im and the imaginary accumulation uses +R_im.
-            // X is retained here because the following product also consumes X.
-            complex_matmul(
-                cb_r_real,
-                cb_r_negative_imag,
-                cb_r_imag,
-                x_real,
-                x_imag,
-                cb_product_real,
-                cb_product_imag,
-                true,
-                false,
-                false);
+            if constexpr (profile_sample) {
+                complex_matmul<true>(
+                    cb_r_real,
+                    cb_r_negative_imag,
+                    cb_r_imag,
+                    x_real,
+                    x_imag,
+                    cb_product_real,
+                    cb_product_imag,
+                    true,
+                    false,
+                    false,
+                    sample);
+            } else {
+                complex_matmul<false>(
+                    cb_r_real,
+                    cb_r_negative_imag,
+                    cb_r_imag,
+                    x_real,
+                    x_imag,
+                    cb_product_real,
+                    cb_product_imag,
+                    true,
+                    false,
+                    false,
+                    false);
+            }
 
-            // S = 2I - T.  Its BF16 outputs are the operands of X*S.
-            // The final R*X term leaves x_real/r_imag as the active
-            // SrcA/SrcB pair under SrcOrder::Reverse.
-            subtract_one(
-                x_real,
-                cb_r_imag,
-                cb_identity,
-                cb_product_real,
-                cb_s_real,
-                false,
-                true);
-            subtract_one(
-                cb_identity,
-                cb_product_real,
-                cb_zero,
-                cb_product_imag,
-                cb_s_imag,
-                false,
-                true);
+            if constexpr (profile_sample) {
+                if (sample) {
+                    subtract_one_profiled(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
+                    subtract_one_profiled(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
+                    state_handoff_profiled(x_real, x_imag);
+                } else {
+                    subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
+                    subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
+                    state_handoff(x_real, x_imag);
+                }
+            } else {
+                subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
+                subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
+                state_handoff(x_real, x_imag);
+            }
 
-            // X*S needs -X_im for its real half and +X_im for its imaginary
-            // half.  Generate the sign-only operand in a compute-owned CB;
-            // no extra reader stream or product-combination CB is required.
-            negate_state_imag(x_imag);
-            residual_format_transition_to_matmul(x_real, x_imag);
             const std::uint32_t output_real =
                 iteration + 1 == iterations ? cb_output_real : cb_state_real;
             const std::uint32_t output_imag =
                 iteration + 1 == iterations ? cb_output_imag : cb_state_imag;
-            complex_matmul(
-                x_real,
-                cb_negative_x_imag,
-                x_imag,
-                cb_s_real,
-                cb_s_imag,
-                output_real,
-                output_imag,
-                false,
-                true,
-                true);
+            if constexpr (profile_sample) {
+                complex_matmul<true>(
+                    x_real,
+                    cb_negative_x_imag,
+                    x_imag,
+                    cb_s_real,
+                    cb_s_imag,
+                    output_real,
+                    output_imag,
+                    false,
+                    true,
+                    true,
+                    sample);
+            } else {
+                complex_matmul<false>(
+                    x_real,
+                    cb_negative_x_imag,
+                    x_imag,
+                    cb_s_real,
+                    cb_s_imag,
+                    output_real,
+                    output_imag,
+                    false,
+                    true,
+                    true,
+                    false);
+            }
         }
 
-        // R is resident for all eight iterations of this matrix and is only
-        // released after the final X*S product has been published.
         cb_pop_front(cb_r_real, 1);
         cb_pop_front(cb_r_negative_imag, 1);
         cb_pop_front(cb_r_imag, 1);

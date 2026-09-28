@@ -157,36 +157,26 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
         )
-        complex_start = compute_source.index("void complex_matmul")
-        complex_end = compute_source.index("void subtract_one", complex_start)
+        complex_start = compute_source.index("void complex_real_impl")
+        complex_end = compute_source.index("template <bool profile_sample>", complex_start)
         complex_source = compute_source[complex_start:complex_end]
         self.assertEqual(complex_source.count("tile_regs_acquire();"), 2)
         self.assertEqual(complex_source.count("tile_regs_commit();"), 2)
         self.assertEqual(complex_source.count("tile_regs_release();"), 0)
-        self.assertEqual(complex_source.count("cb_reserve_back(output_real, 1);"), 1)
-        self.assertEqual(complex_source.count("cb_reserve_back(output_imag, 1);"), 1)
-        self.assertLess(
-            complex_source.index("cb_reserve_back(output_real, 1);"),
-            complex_source.index("pack_one(output_real)"),
-        )
-        self.assertLess(
-            complex_source.index("pack_one(output_real)"),
-            complex_source.index("cb_reserve_back(output_imag, 1);"),
-        )
+        self.assertEqual(complex_source.count("cb_reserve_back(output, 1);"), 2)
+        self.assertEqual(complex_source.count("pack_one(output)"), 2)
         self.assertIn("matmul_block(left_real, right_real, 0, 0, 0", complex_source)
         self.assertIn("matmul_block(left_real, right_imag, 0, 0, 0", complex_source)
-        self.assertIn("pack_one(output_real)", complex_source)
-        self.assertIn("pack_one(output_imag)", complex_source)
         self.assertNotIn("dst1", complex_source)
         self.assertEqual(compute_source.count("matmul_block(left_real, right_real"), 1)
-        self.assertIn("matmul_block(left_imag_for_real, right_imag", compute_source)
+        self.assertIn("matmul_block(left_imag, right_imag", compute_source)
         self.assertIn("matmul_block(left_real, right_imag", compute_source)
-        self.assertIn("matmul_block(left_imag_for_imag, right_real", compute_source)
+        self.assertIn("matmul_block(left_imag, right_real", compute_source)
         self.assertIn("cb_negative_x_imag", compute_source)
         self.assertIn("reconfig_data_format(cb_zero, cb_zero, cb_product_imag, x_imag)", compute_source)
         self.assertIn("sub_tiles(cb_zero, x_imag", compute_source)
         self.assertNotIn("negative_tile", compute_source)
-        self.assertIn("negate_state_imag(x_imag);", compute_source)
+        self.assertIn("negate_state_imag_impl(x_imag", compute_source)
         self.assertEqual(compute_source.count("cb_wait_front(cb_r_real, 1)"), 1)
         self.assertIn("bool resident_left", compute_source)
         self.assertIn("bool consume_right", compute_source)
@@ -194,11 +184,19 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("consume_right", compute_source)
         self.assertNotIn("cb_pop_front(cb_identity", compute_source)
         self.assertNotIn("cb_pop_front(cb_zero", compute_source)
-        self.assertIn("cb_product_imag,\n                true,\n                false,\n                false);", compute_source)
-        self.assertIn("cb_s_imag,\n                output_real,\n                output_imag,\n                false,\n                true,\n                true);", compute_source)
+        self.assertIn("complex_matmul<true>", compute_source)
+        self.assertIn("complex_matmul<false>", compute_source)
         self.assertNotIn("break;", compute_source)
         self.assertIn("get_compile_time_arg_val(0)", compute_source)
         self.assertIn("get_compile_time_arg_val(1)", compute_source)
+        self.assertIn("get_compile_time_arg_val(2)", compute_source)
+        self.assertIn("profile: bool = False", Path(
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "newton_schulz_kernel.py"
+        ).read_text())
         self.assertIn("state_fp32", compute_source)
         self.assertIn("get_arg_val<std::uint32_t>(1)", compute_source)
         self.assertIn("TensorAccessorArgs<1>()", reader_source)

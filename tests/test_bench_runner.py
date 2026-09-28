@@ -472,6 +472,7 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
 
     payload = json.loads(output.read_text())
     assert "host" not in payload["environment"]
+    assert "profiling" not in payload
     assert len(payload["results"]) == 5
     assert [result["program_config"]["kind"] for result in payload["results"]] == [
         "default",
@@ -574,9 +575,10 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
         output_memory = "dram"
 
         @classmethod
-        def prepare(cls, ttnn, device, matrices, *, variant, math_fidelity):
+        def prepare(cls, ttnn, device, matrices, *, variant, math_fidelity, profile):
             assert variant == "bf16-fp32state"
             assert math_fidelity == "HiFi4"
+            assert profile is False
             assert matrices is not None
             return cls()
 

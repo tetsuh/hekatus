@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import platform
 import sys
 import time
@@ -49,6 +50,7 @@ from enodia.tt.bench.configs import (
     configuration_catalogue,
     executed_shape,
 )
+from enodia.tt.bench.profiling import parse_device_profile_csv
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 CUSTOM_KIND = "custom_newton_schulz"
@@ -464,6 +466,7 @@ def run_custom_newton_schulz(
     iters: int,
     repeats: int,
     math_fidelity: str = "HiFi4",
+    profile: bool = False,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
     if not _is_custom_target(shape):
@@ -512,6 +515,7 @@ def run_custom_newton_schulz(
             matrices,
             variant=variant,
             math_fidelity=math_fidelity,
+            profile=profile,
         )
         kernel.launch()
         ttnn.synchronize_device(device)
@@ -544,6 +548,8 @@ def run_custom_newton_schulz(
             "core_work_ranges": [list(pair) for pair in kernel.work_ranges],
         }
         record.update(_timing_fields(launch_samples))
+        if profile:
+            record["profile_mode"] = "TT_METAL_DEVICE_PROFILER"
         return record
     except Exception as exc:  # noqa: BLE001 - a device failure is a result
         return {"status": "failed", "kind": CUSTOM_KIND, "error": f"{type(exc).__name__}: {exc}"}
@@ -595,6 +601,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--peak-tflops", type=float, default=None)
     parser.add_argument("--peak-note", default=None, help="what that peak refers to")
     parser.add_argument("--env-json", type=Path, default=None, help="environment to embed")
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="enable TT_METAL_DEVICE_PROFILER and sampled kernel zones",
+    )
+    parser.add_argument(
+        "--profile-csv",
+        type=Path,
+        default=None,
+        help="parse a TT-Metal profile_log_device.csv into the result payload",
+    )
     return parser
 
 
@@ -707,6 +724,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     _validate(parser, args)
+
+    if args.profile:
+        os.environ["TT_METAL_DEVICE_PROFILER"] = "1"
 
     import ttnn  # imported after validation, so bad arguments need no accelerator
 
@@ -821,6 +841,7 @@ def main(argv: list[str] | None = None) -> int:
                                     memory_name=memory_name,
                                     variant=args.custom_variant,
                                     math_fidelity=math_fidelity,
+                                    profile=args.profile,
                                     iters=args.iters,
                                     repeats=args.repeats,
                                 )
@@ -852,6 +873,14 @@ def main(argv: list[str] | None = None) -> int:
         "peak_note": args.peak_note,
         "results": results,
     }
+    if args.profile:
+        payload["profiling"] = {"mode": "TT_METAL_DEVICE_PROFILER"}
+    if args.profile_csv is not None:
+        try:
+            payload["device_profile"] = parse_device_profile_csv(args.profile_csv)
+        except Exception as exc:  # noqa: BLE001 - profile parsing is diagnostic data
+            payload["device_profile_error"] = f"{type(exc).__name__}: {exc}"
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=2) + "\n")
     print(f"\nwrote {args.out}")

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <cstdint>
 #include "api/dataflow/dataflow_api.h"
+#include "tools/profiler/kernel_profiler.hpp"
 
 namespace {
 constexpr std::uint32_t cb_r_real = 0;
@@ -56,20 +57,26 @@ void kernel_main() {
 
     // Identity and zero are immutable per-core inputs.  They remain at the
     // front of their queues for every matrix and every residual operation.
-    read_tile(cb_identity, 0, identity);
-    read_tile(cb_zero, 0, zero);
+    {
+        DeviceZoneScopedN("NS-READER-CONSTANT-READ");
+        read_tile(cb_identity, 0, identity);
+        read_tile(cb_zero, 0, zero);
+    }
 
-    for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-        const std::uint32_t tile = start_tile + offset;
-        read_tile(cb_r_real, tile, r_real);
-        read_tile(cb_r_negative_imag, tile, r_negative_imag);
-        read_tile(cb_r_imag, tile, r_imag);
-        read_tile(cb_x0_real, tile, x0_real);
-        read_tile(cb_x0_imag, tile, x0_imag);
+    {
+        DeviceZoneScopedN("NS-READER-READ-AND-WAIT");
+        for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
+            const std::uint32_t tile = start_tile + offset;
+            read_tile(cb_r_real, tile, r_real);
+            read_tile(cb_r_negative_imag, tile, r_negative_imag);
+            read_tile(cb_r_imag, tile, r_imag);
+            read_tile(cb_x0_real, tile, x0_real);
+            read_tile(cb_x0_imag, tile, x0_imag);
 
-        // The compute kernel holds the three R pages until all fixed
-        // iterations for this matrix are complete.  The reader only streams
-        // external inputs; it never routes products or state.
+            // The compute kernel holds the three R pages until all fixed
+            // iterations for this matrix are complete.  The reader only
+            // streams external inputs; it never routes products or state.
+        }
     }
     (void)iterations;
 }

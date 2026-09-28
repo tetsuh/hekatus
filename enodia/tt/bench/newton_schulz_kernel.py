@@ -204,6 +204,7 @@ class NewtonSchulzKernel:
     variant: str
     math_fidelity: str
     output_memory: str
+    profile: bool
     tile_count: int
     inputs: list[Any]
     outputs: list[Any]
@@ -220,6 +221,7 @@ class NewtonSchulzKernel:
         *,
         variant: str = "bf16",
         math_fidelity: str = "HiFi4",
+        profile: bool = False,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         if iterations != NEWTON_SCHULZ_ITERATIONS:
@@ -352,7 +354,7 @@ class NewtonSchulzKernel:
                 kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32)],
+                compile_time_args=[iterations, int(state_fp32), int(profile)],
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
@@ -370,6 +372,7 @@ class NewtonSchulzKernel:
             variant=variant,
             math_fidelity=math_fidelity,
             output_memory=output_memory,
+            profile=profile,
             tile_count=tile_count,
             inputs=inputs,
             outputs=outputs,
@@ -402,6 +405,7 @@ def run_newton_schulz_kernel(
     *,
     variant: str = "bf16",
     math_fidelity: str = "HiFi4",
+    profile: bool = False,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -410,6 +414,7 @@ def run_newton_schulz_kernel(
         matrices,
         variant=variant,
         math_fidelity=math_fidelity,
+        profile=profile,
     )
     try:
         kernel.launch()
