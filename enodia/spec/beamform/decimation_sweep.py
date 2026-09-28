@@ -28,7 +28,6 @@ design.md names that record.
 from __future__ import annotations
 
 import datetime as _dt
-import json
 import platform
 import subprocess
 import sys
@@ -46,6 +45,8 @@ from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import RFEventRecord
 from enodia.spec.sequence import TxEvent
 from enodia.spec.sim import PointScatterer
+from enodia.strict_json import dumps as strict_json_dumps
+from enodia.strict_json import normalize_json
 
 DECIMATIONS: tuple[int, ...] = (8, 4)
 WIDTH_LEVELS_DB: tuple[float, ...] = (-6.0, -20.0, -40.0)
@@ -197,22 +198,9 @@ def environment() -> dict:
     }
 
 
-def json_safe(obj):
-    """Recursively turn a result into strict JSON: non-finite floats become
-    null (a silent reference, an empty region or a crossing that never
-    happens is NaN in the report), NumPy scalars become Python scalars,
-    tuples become lists. `json.dumps(..., allow_nan=False)` then cannot emit
-    the non-standard `NaN` / `Infinity` tokens."""
-    if isinstance(obj, dict):
-        return {str(k): json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [json_safe(v) for v in obj]
-    if isinstance(obj, (np.floating, float)):
-        f = float(obj)
-        return f if np.isfinite(f) else None
-    if isinstance(obj, (np.integer, np.bool_)):
-        return obj.item()
-    return obj
+# Kept as the public name used by the measurement tests and report builder;
+# normalization itself is shared by every JSON writer.
+json_safe = normalize_json
 
 
 def measurement_record(result: SweepResult, profile: ProbeProfile) -> dict:
@@ -311,7 +299,7 @@ def main() -> None:
             raise SystemExit(f"--record must point beneath the current directory {root}, got {out}")
         out.parent.mkdir(parents=True, exist_ok=True)
         record = measurement_record(result, profile)
-        out.write_text(json.dumps(record, indent=2, allow_nan=False) + "\n")
+        out.write_text(strict_json_dumps(record, indent=2) + "\n")
         print(f"record: {out.relative_to(root)}")
 
 

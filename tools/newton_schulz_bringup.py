@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import json
 import math
 import multiprocessing
 import os
@@ -31,7 +30,12 @@ from pathlib import Path
 from queue import Empty
 from typing import Any
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import numpy as np
+
+from enodia.strict_json import dumps as strict_json_dumps
 
 TILE = 32
 NUMERICAL_TOLERANCE = 1e-2
@@ -2494,7 +2498,7 @@ def run_build_only_jit_probe(
 
 def _emit_json(record: object, *, stream: Any = None) -> None:
     target = sys.stdout if stream is None else stream
-    target.write(json.dumps(record, sort_keys=True) + "\n")
+    target.write(strict_json_dumps(record, sort_keys=True) + "\n")
     target.flush()
 
 
