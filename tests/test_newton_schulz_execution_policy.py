@@ -1,11 +1,11 @@
 import json
 import os
-import signal
-import subprocess
 import sys
+from queue import Empty
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from tools import newton_schulz_bringup as bringup
 
@@ -121,60 +121,115 @@ def test_success_and_failure_records_carry_the_same_policy(monkeypatch):
     assert failure["numerical_error"] is None
 
 
-def test_main_failure_record_carries_the_effective_policy_without_opening_hardware(
-    monkeypatch, capsys
-):
-    def fail_open(**kwargs):
-        assert os.environ["TT_METAL_WATCHER"] == "1"
-        raise RuntimeError("fake runtime unavailable")
+class _FakeQueue:
+    def __init__(self):
+        self.values = []
+        self.closed = False
+        self.thread_joined = False
 
-    child = _FakeChildProcess(record={"stage": 1, "status": "fail"})
-    monkeypatch.setattr(bringup.subprocess, "Popen", lambda command, **kwargs: child)
-    monkeypatch.setitem(sys.modules, "ttnn", SimpleNamespace(open_device=fail_open))
-    monkeypatch.setattr(sys, "argv", ["newton_schulz_bringup.py", "--stage", "1", "--device-id", "0"])
-    monkeypatch.delenv("TT_METAL_WATCHER", raising=False)
+    def put(self, value):
+        self.values.append(value)
 
-    assert bringup.main() == 1
-    record = json.loads(capsys.readouterr().out)
-    assert record["status"] == "fail"
-    assert record["watcher"] == {"enabled": True, "value": "1"}
-    assert record["external_timeout_s"] == 60
-    assert record["external_timeout_command"] == ["timeout", "60s"]
-    assert "TT_METAL_WATCHER" not in os.environ
+    def get_nowait(self):
+        if not self.values:
+            raise Empty
+        return self.values.pop(0)
+
+    def close(self):
+        self.closed = True
+
+    def join_thread(self):
+        self.thread_joined = True
 
 
-class _FakeChildProcess:
-    def __init__(self, *, record=None, timeout=False):
+class _FakeProcess:
+    def __init__(self, *, record=None, alive=False, terminate_stops=True):
         self.pid = 4321
-        self.returncode = 0
-        self.record = record or {"status": "pass"}
-        self.timeout = timeout
-        self.communicate_timeouts = []
+        self.record = record
+        self.alive = alive
+        self.terminate_stops = terminate_stops
+        self.queue = None
+        self.join_calls = []
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.started = False
+        self.closed = False
 
-    def communicate(self, timeout=None):
-        self.communicate_timeouts.append(timeout)
-        if self.timeout:
-            self.timeout = False
-            raise subprocess.TimeoutExpired(["newton_schulz_bringup.py"], timeout)
-        return json.dumps(self.record), ""
+    def start(self):
+        self.started = True
+        if self.record is not None:
+            self.queue.put(self.record)
 
-    def wait(self, timeout=None):
-        return self.returncode
+    def join(self, timeout=None):
+        self.join_calls.append(timeout)
+        if timeout is None or self.terminate_calls and self.terminate_stops:
+            self.alive = False
+
+    def is_alive(self):
+        return self.alive
+
+    def terminate(self):
+        self.terminate_calls += 1
+        if self.terminate_stops:
+            self.alive = False
+
+    def kill(self):
+        self.kill_calls += 1
+        self.alive = False
+
+    def close(self):
+        self.closed = True
 
 
-def test_default_direct_stage_supervises_before_fake_device_open(monkeypatch, capsys):
-    events = []
-    child = _FakeChildProcess(record={"stage": 1, "status": "pass"})
+class _FakeContext:
+    def __init__(self, *, record=None, alive=False, terminate_stops=True):
+        self.queue = _FakeQueue()
+        self.process = _FakeProcess(
+            record=record, alive=alive, terminate_stops=terminate_stops
+        )
+        self.target = None
+        self.args = None
 
-    def fake_popen(command, **kwargs):
-        events.append(("spawn", command, kwargs))
-        return child
+    def Queue(self):
+        return self.queue
+
+    def Process(self, target, args):
+        self.target = target
+        self.args = args
+        self.process.queue = self.queue
+        return self.process
+
+
+def _install_fake_process_context(monkeypatch, context):
+    methods = []
+
+    def get_context(method):
+        methods.append(method)
+        return context
+
+    monkeypatch.setattr(
+        bringup,
+        "multiprocessing",
+        SimpleNamespace(get_context=get_context),
+        raising=False,
+    )
+    return methods
+
+
+def test_removed_child_flag_is_rejected_as_unknown():
+    parser = bringup._argument_parser()
+    with pytest.raises(SystemExit) as raised:
+        parser.parse_args(["--stage", "1", "--_numerical-child"])
+    assert raised.value.code == 2
+
+
+def test_direct_numerical_invocation_uses_spawn_supervisor_before_runtime(monkeypatch, capsys):
+    context = _FakeContext(record={"stage": 1, "status": "pass"})
+    methods = _install_fake_process_context(monkeypatch, context)
 
     def fail_open(**kwargs):
-        events.append(("open", kwargs))
         raise AssertionError("the parent must not open a device")
 
-    monkeypatch.setattr(bringup.subprocess, "Popen", fake_popen)
     monkeypatch.setitem(sys.modules, "ttnn", SimpleNamespace(open_device=fail_open))
     monkeypatch.setattr(sys, "argv", ["newton_schulz_bringup.py", "--stage", "1"])
     monkeypatch.delenv("TT_METAL_WATCHER", raising=False)
@@ -182,123 +237,76 @@ def test_default_direct_stage_supervises_before_fake_device_open(monkeypatch, ca
     assert bringup.main() == 0
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "pass"
-    assert events[0][0] == "spawn"
-    assert not any(event[0] == "open" for event in events)
-    assert events[0][2]["start_new_session"] is True
-    assert events[0][2]["shell"] is False
-    assert isinstance(events[0][1], list)
-    assert child.communicate_timeouts == [60]
-    assert "--_numerical-child" in events[0][1]
-    token_index = events[0][1].index("--_numerical-child-token") + 1
-    token = events[0][1][token_index]
-    assert token
-    assert events[0][2]["env"][bringup.NUMERICAL_CHILD_TOKEN_ENV] == token
+    assert methods == ["spawn"]
+    assert context.process.started is True
+    assert context.process.join_calls == [60]
+    assert context.target is bringup._numerical_stage_process_entry
+    assert context.args[:3] == (1, 0, bringup.DEFAULT_NUMERICAL_EXECUTION_POLICY)
+    assert context.queue.closed is True
+    assert context.queue.thread_joined is True
+    assert context.process.closed is True
+    assert "TT_METAL_WATCHER" not in os.environ
 
 
-def test_direct_numerical_child_without_parent_token_is_rejected_before_device_open(
-    monkeypatch, capsys
-):
-    events = []
-
-    class FakeTTNN:
-        def open_device(self, **kwargs):
-            events.append(("open", kwargs))
-            raise AssertionError("rejected child mode must not open a device")
-
-    monkeypatch.delenv("HEKATUS_NUMERICAL_CHILD_TOKEN", raising=False)
-    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["newton_schulz_bringup.py", "--_numerical-child", "--stage", "1"],
-    )
-
-    assert bringup.main() != 0
-    record = json.loads(capsys.readouterr().out)
-    assert record["status"] == "fail"
-    assert record["error"]["code"] == "child_handshake_failed"
-    assert events == []
-
-
-def test_direct_numerical_child_with_mismatched_parent_token_is_rejected_before_device_open(
-    monkeypatch, capsys
-):
-    events = []
-
-    class FakeTTNN:
-        def open_device(self, **kwargs):
-            events.append(("open", kwargs))
-            raise AssertionError("rejected child mode must not open a device")
-
-    monkeypatch.setenv("HEKATUS_NUMERICAL_CHILD_TOKEN", "parent-token")
-    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
+def test_supervisor_passes_effective_safety_policy_to_child_and_record(monkeypatch, capsys):
+    context = _FakeContext(record={"stage": 1, "status": "pass"})
+    _install_fake_process_context(monkeypatch, context)
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "newton_schulz_bringup.py",
-            "--_numerical-child",
-            "--_numerical-child-token",
-            "different-token",
             "--stage",
             "1",
+            "--no-watcher",
+            "--timeout",
+            "17",
         ],
     )
 
-    assert bringup.main() != 0
+    assert bringup.main() == 0
     record = json.loads(capsys.readouterr().out)
-    assert record["status"] == "fail"
-    assert record["error"]["code"] == "child_handshake_failed"
-    assert events == []
+    policy = context.args[2]
+    assert policy.watcher == bringup.WatcherPolicy(enabled=False, value=None)
+    assert policy.external_timeout_s == 17
+    assert context.process.join_calls == [17]
+    assert record["watcher"] == {"enabled": False, "value": None}
+    assert record["external_timeout_s"] == 17
+    assert record["execution_policy"] == {
+        "watcher": {"enabled": False, "value": None},
+        "external_timeout_s": 17,
+        "external_timeout_command": ["timeout", "17s"],
+        "external_timeout_enforced_by": "caller",
+    }
 
 
-def test_timeout_terminates_the_child_process_group_and_records_failure(monkeypatch, capsys):
-    child = _FakeChildProcess(timeout=True)
-    killed = []
-
-    monkeypatch.setattr(bringup.subprocess, "Popen", lambda command, **kwargs: child)
-    monkeypatch.setattr(
-        bringup.os,
-        "killpg",
-        lambda process_group_id, signum: killed.append((process_group_id, signum)),
-    )
-    monkeypatch.setattr(sys, "argv", ["newton_schulz_bringup.py", "--stage", "1", "--timeout", "1"])
+def test_timeout_terminates_then_kills_remaining_process_and_records_failure(monkeypatch, capsys):
+    context = _FakeContext(alive=True, terminate_stops=False)
+    _install_fake_process_context(monkeypatch, context)
+    monkeypatch.setattr(sys, "argv", ["newton_schulz_bringup.py", "--stage", "1"])
 
     assert bringup.main() == 1
     record = json.loads(capsys.readouterr().out)
+    process = context.process
     assert record["status"] == "fail"
     assert record["error"]["code"] == "timeout"
-    assert record["error"]["details"]["timeout_s"] == 1
-    assert record["error"]["details"]["process_group_id"] == child.pid
-    assert record["external_timeout_s"] == 1
+    assert record["error"]["details"]["timeout_s"] == 60
+    assert record["error"]["details"]["process_id"] == process.pid
+    assert record["external_timeout_s"] == 60
     assert record["timeout"] is True
-    assert record["process_group_terminated"] is True
-    assert (child.pid, signal.SIGTERM) in killed
-    assert (child.pid, signal.SIGKILL) in killed
-    assert child.communicate_timeouts == [1, None]
+    assert record["process_terminated"] is True
+    assert record["process_killed"] is True
+    assert process.join_calls == [60, 1, None]
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert context.queue.closed is True
+    assert context.queue.thread_joined is True
+    assert process.closed is True
 
 
-def test_explicit_no_timeout_uses_fake_device_without_supervisor(monkeypatch, capsys):
-    events = []
-
-    class FakeTTNN:
-        def open_device(self, **kwargs):
-            events.append(("open", kwargs))
-            return object()
-
-        def close_device(self, device):
-            events.append(("close", device))
-
-    def fake_run_stage(ttnn, device, stage, *, execution_policy):
-        events.append(("dispatch", stage.number, execution_policy.external_timeout_s))
-        return {"stage": stage.number, "status": "pass"}
-
-    def fail_popen(*args, **kwargs):
-        raise AssertionError("explicit no-timeout must not spawn a supervisor")
-
-    monkeypatch.setattr(bringup.subprocess, "Popen", fail_popen)
-    monkeypatch.setattr(bringup, "run_stage", fake_run_stage)
-    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
+def test_explicit_no_timeout_keeps_spawn_supervisor_and_records_no_cap(monkeypatch, capsys):
+    context = _FakeContext(record={"stage": 1, "status": "pass"})
+    methods = _install_fake_process_context(monkeypatch, context)
     monkeypatch.setattr(
         sys, "argv", ["newton_schulz_bringup.py", "--stage", "1", "--no-timeout"]
     )
@@ -306,9 +314,36 @@ def test_explicit_no_timeout_uses_fake_device_without_supervisor(monkeypatch, ca
     assert bringup.main() == 0
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "pass"
-    assert events[0][0] == "open"
-    assert events[1] == ("dispatch", 1, None)
-    assert events[2][0] == "close"
+    assert methods == ["spawn"]
+    assert context.process.join_calls == [None]
+    assert record["external_timeout_s"] is None
+    assert record["external_timeout_command"] is None
+    assert record["external_timeout_enforced_by"] is None
+    assert record["execution_policy"]["external_timeout_s"] is None
+    assert context.process.terminate_calls == 0
+    assert context.process.kill_calls == 0
+    assert context.process.closed is True
+
+
+def test_child_exception_is_transferred_as_a_failed_record(monkeypatch):
+    queue = _FakeQueue()
+
+    class FakeTTNN:
+        def open_device(self, **kwargs):
+            raise RuntimeError("dispatch unavailable")
+
+    monkeypatch.setitem(sys.modules, "ttnn", FakeTTNN())
+    bringup._numerical_stage_process_entry(
+        1,
+        0,
+        bringup.DEFAULT_NUMERICAL_EXECUTION_POLICY,
+        queue,
+    )
+
+    record = queue.get_nowait()
+    assert record["status"] == "fail"
+    assert record["error"]["code"] == "child_exception"
+    assert record["watcher"] == {"enabled": True, "value": "1"}
 
 
 def test_construction_and_build_only_records_keep_their_existing_controls(tmp_path, monkeypatch):

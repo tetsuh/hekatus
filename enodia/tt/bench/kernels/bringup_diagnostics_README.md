@@ -32,10 +32,14 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   remaining numerical cause is unresolved.
 - **First execution safety:** Every new numerical stage starts with
   `TT_METAL_WATCHER=1` and an external 60-second cap unless an explicit
-  opt-out is recorded. The runner starts the numerical child in a new session
-  before opening a device, and expiry terminates its whole process group with a
-  timeout failure record. No shell wrapper is used. Construction and build-only
-  paths retain their separate controls.
+  opt-out is recorded. The parent starts a module-level picklable function with
+  Python `multiprocessing` `spawn` before opening a device. It joins for 60
+  seconds; expiry calls `terminate()` and then `kill()` if the process remains
+  alive, with a timeout failure record. `--no-timeout` (or `--timeout 0`) is
+  the only unbounded form and keeps the same process and result-record path.
+  No child CLI flag, token environment variable, or handshake exists. No shell
+  wrapper is used.
+  Construction and build-only paths retain their separate controls.
 
 ## Stage guide
 

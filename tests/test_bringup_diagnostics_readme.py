@@ -36,6 +36,11 @@ def test_bringup_readme_rules_contract_is_standalone_and_complete():
         "remaining numerical cause is unresolved",
         "Every new numerical stage starts with `TT_METAL_WATCHER=1` and an external 60-second cap",
         "unless an explicit opt-out is recorded",
+        "module-level picklable function",
+        "Python `multiprocessing` `spawn`",
+        "expiry calls `terminate()` and then `kill()` if the process remains alive",
+        "`--no-timeout` (or `--timeout 0`) is the only unbounded form and keeps the same process and result-record path",
+        "No child CLI flag, token environment variable, or handshake exists",
     )
     missing = [statement for statement in required_statements if statement not in rules]
     assert not missing, f"README Rules section is missing: {missing}"

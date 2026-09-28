@@ -6,9 +6,10 @@ boundary check.  This script is diagnostic-only; it does not reset hardware.
 
 Ordinary numerical stages use :data:`DEFAULT_NUMERICAL_EXECUTION_POLICY` on
 their first execution: Watcher is enabled with ``TT_METAL_WATCHER=1`` and a
-parent supervisor starts the numerical child in a new session before any
-device is opened.  The parent enforces the default 60-second cap and ends the
-child's process group on expiry.  ``elapsed_s`` is only an in-process
+parent supervisor starts a module-level function through the ``spawn``
+multiprocessing context before any device is opened.  The parent enforces the
+default 60-second cap with ``join`` and escalates from ``terminate`` to
+``kill`` on expiry.  ``elapsed_s`` is only an in-process
 measurement and never stands in for that cap.  Construction and build-only
 paths have separate, existing controls.
 """
@@ -19,16 +20,15 @@ import argparse
 import hashlib
 import json
 import math
+import multiprocessing
 import os
-import secrets
-import signal
-import subprocess
 import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty
 from typing import Any
 
 import numpy as np
@@ -220,7 +220,6 @@ BUILD_ONLY_REQUIRED_ENV = (
     "TT_METAL_KERNELS_EARLY_RETURN",
 )
 BUILD_ONLY_REQUIRED_VALUE = "1"
-NUMERICAL_CHILD_TOKEN_ENV = "HEKATUS_NUMERICAL_CHILD_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -1504,10 +1503,10 @@ def _sha256(path: Path) -> str:
 
 
 def _cache_artifacts_for_source(cache_directory: Path, source_name: str) -> list[dict[str, object]]:
-    token = Path(source_name).stem.lower()
+    source_stem = Path(source_name).stem.lower()
     artifacts: list[dict[str, object]] = []
     for path in cache_directory.rglob("*"):
-        if not path.is_file() or token not in path.relative_to(cache_directory).as_posix().lower():
+        if not path.is_file() or source_stem not in path.relative_to(cache_directory).as_posix().lower():
             continue
         relative = path.relative_to(cache_directory).as_posix()
         artifacts.append(
@@ -2068,83 +2067,103 @@ def _stage_failure_record(
 SUPERVISOR_TERMINATION_GRACE_SECONDS = 1.0
 
 
-def _numerical_child_handshake_error(args: argparse.Namespace) -> str | None:
-    if not args._numerical_child:
-        return None
-    if (
-        args.stage is None
-        or args.construction_probe is not None
-        or args.dispatch_construction_probe
-        or args.build_only_jit_probe
-    ):
-        return "numerical child mode requires an ordinary numerical stage"
-    expected = os.environ.get(NUMERICAL_CHILD_TOKEN_ENV)
-    supplied = args._numerical_child_token
-    if not expected or not supplied or not secrets.compare_digest(supplied, expected):
-        return "numerical child handshake token is missing or invalid"
-    return None
+def _supervisor_context() -> Any:
+    return multiprocessing.get_context("spawn")
 
 
-def _numerical_child_command(args: argparse.Namespace, token: str) -> list[str]:
-    command = [
-        sys.executable,
-        str(Path(__file__).resolve()),
-        "--_numerical-child",
-        "--_numerical-child-token",
-        token,
-        "--stage",
-        str(args.stage),
-        "--device-id",
-        str(args.device_id),
-    ]
-    if args.watcher is True:
-        command.append("--watcher")
-    elif args.watcher is False:
-        command.append("--no-watcher")
-    if args.timeout_s is not None:
-        if args.timeout_s == 0:
-            command.append("--no-timeout")
-        else:
-            command.extend(("--timeout", str(args.timeout_s)))
-    return command
-
-
-def _terminate_process_group(
-    process: Any,
-    *,
-    kill_group: Callable[[int, int], None] | None = None,
-) -> bool:
-    """End a supervised process group, escalating after a short grace period."""
-    terminate_group = os.killpg if kill_group is None else kill_group
-    terminated = False
-    try:
-        terminate_group(process.pid, signal.SIGTERM)
-        terminated = True
-    except ProcessLookupError:
-        return False
-
-    try:
-        process.wait(timeout=SUPERVISOR_TERMINATION_GRACE_SECONDS)
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        terminate_group(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    return terminated
-
-
-def _json_record_from_output(output: str | bytes) -> dict[str, Any] | None:
-    if isinstance(output, bytes):
-        output = output.decode("utf-8", errors="replace")
-    for line in reversed(output.splitlines()):
-        try:
-            record = json.loads(line)
-        except json.JSONDecodeError:
+def _close_result_queue(result_queue: Any) -> None:
+    for method_name in ("close", "join_thread"):
+        method = getattr(result_queue, method_name, None)
+        if method is None:
             continue
-        if isinstance(record, dict):
-            return record
-    return None
+        try:
+            method()
+        except Exception:  # noqa: BLE001, S110 - cleanup must attempt every step
+            pass
+
+
+def _close_process(process: Any) -> None:
+    method = getattr(process, "close", None)
+    if method is None:
+        return
+    try:
+        method()
+    except Exception:  # noqa: BLE001, S110 - cleanup follows the join attempt
+        pass
+
+
+def _result_from_queue(result_queue: Any) -> dict[str, Any] | None:
+    try:
+        record = result_queue.get_nowait()
+    except (Empty, EOFError, OSError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _terminate_supervised_process(process: Any) -> tuple[bool, bool]:
+    terminated = False
+    killed = False
+    try:
+        process.terminate()
+        terminated = True
+    except Exception:  # noqa: BLE001, S110 - timeout handling keeps its failure record
+        pass
+    try:
+        process.join(SUPERVISOR_TERMINATION_GRACE_SECONDS)
+    except Exception:  # noqa: BLE001, S110 - escalation must still be attempted
+        pass
+    try:
+        still_alive = bool(process.is_alive())
+    except Exception:  # noqa: BLE001 - an uncertain state requires escalation
+        still_alive = True
+    if still_alive:
+        try:
+            process.kill()
+            killed = True
+        except Exception:  # noqa: BLE001, S110 - timeout handling keeps its failure record
+            pass
+        try:
+            process.join()
+        except Exception:  # noqa: BLE001, S110 - cleanup follows escalation
+            pass
+    return terminated, killed
+
+
+def _numerical_stage_process_entry(
+    stage_number: int,
+    device_id: int,
+    policy: NumericalExecutionPolicy,
+    result_queue: Any,
+) -> None:
+    try:
+        stage = stage_for(stage_number)
+        with watcher_environment(policy):
+            import ttnn
+
+            device = ttnn.open_device(device_id=device_id)
+            try:
+                result = run_stage(
+                    ttnn,
+                    device,
+                    stage,
+                    execution_policy=policy,
+                )
+            finally:
+                ttnn.close_device(device)
+    except BaseException as exc:  # noqa: BLE001 - return child failures through the queue
+        result = _stage_failure_record(
+            stage_number,
+            policy=policy,
+            error={
+                "code": "child_exception",
+                "message": f"{type(exc).__name__}: {exc}",
+            },
+        )
+        result["error_code"] = "child_exception"
+    try:
+        result_queue.put(result)
+    except BaseException:  # noqa: BLE001, S110 - the parent records a missing result if needed
+        pass
 
 
 def _supervisor_failure_record(
@@ -2167,84 +2186,85 @@ def run_supervised_numerical_stage(
     args: argparse.Namespace,
     policy: NumericalExecutionPolicy,
 ) -> dict[str, Any]:
-    """Run one numerical stage in a fresh session and enforce its cap."""
-    token = secrets.token_hex(32)
-    command = _numerical_child_command(args, token)
+    """Run one numerical stage in a spawned process and enforce its cap."""
+    result_queue = None
+    process = None
+    started = False
     try:
+        context = _supervisor_context()
+        result_queue = context.Queue()
+        process = context.Process(
+            target=_numerical_stage_process_entry,
+            args=(args.stage, args.device_id, policy, result_queue),
+        )
         with watcher_environment(policy):
-            environment = os.environ.copy()
-            environment[NUMERICAL_CHILD_TOKEN_ENV] = token
-            process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                shell=False,
-                start_new_session=True,
-                env=environment,
+            process.start()
+        started = True
+        process.join(policy.external_timeout_s)
+        if policy.external_timeout_s is not None and process.is_alive():
+            terminated, killed = _terminate_supervised_process(process)
+            record = _supervisor_failure_record(
+                args.stage,
+                policy=policy,
+                code="timeout",
+                message="numerical stage exceeded its execution cap",
+                details={
+                    "timeout_s": policy.external_timeout_s,
+                    "process_id": process.pid,
+                },
             )
-    except Exception as exc:  # noqa: BLE001 - preserve a flushed failure record
-        return _supervisor_failure_record(
-            args.stage,
-            policy=policy,
-            code="supervisor_start_failed",
-            message=f"{type(exc).__name__}: {exc}",
-        )
+            record.update(
+                {
+                    "timeout": True,
+                    "process_terminated": terminated,
+                    "process_killed": killed,
+                    "child_exit_code": getattr(process, "exitcode", None),
+                }
+            )
+            return record
+        if process.is_alive():
+            return _supervisor_failure_record(
+                args.stage,
+                policy=policy,
+                code="supervisor_wait_failed",
+                message="spawned process remained alive after an uncapped join",
+                details={"process_id": process.pid},
+            )
 
-    try:
-        stdout, _stderr = process.communicate(timeout=policy.external_timeout_s)
-    except subprocess.TimeoutExpired:
-        terminated = _terminate_process_group(process)
-        try:
-            process.communicate()
-        except Exception:  # noqa: BLE001, S110 - timeout record takes precedence
-            pass
-        record = _supervisor_failure_record(
-            args.stage,
-            policy=policy,
-            code="timeout",
-            message="numerical stage exceeded its execution cap",
-            details={
-                "timeout_s": policy.external_timeout_s,
-                "process_group_id": process.pid,
-            },
-        )
-        record.update(
-            {
-                "timeout": True,
-                "process_group_terminated": terminated,
-                "child_exit_code": process.returncode,
-            }
-        )
-        return record
+        record = _result_from_queue(result_queue)
+        if record is None:
+            return _supervisor_failure_record(
+                args.stage,
+                policy=policy,
+                code="child_record_missing",
+                message="numerical child did not return a JSON record",
+                details={"child_exit_code": getattr(process, "exitcode", None)},
+            )
+        exit_code = getattr(process, "exitcode", None)
+        if exit_code not in (None, 0) and record.get("status") == "pass":
+            return _supervisor_failure_record(
+                args.stage,
+                policy=policy,
+                code="child_exit_failed",
+                message="numerical child exited unsuccessfully after reporting pass",
+                details={"child_exit_code": exit_code},
+            )
+        return _with_execution_policy(record, policy)
     except Exception as exc:  # noqa: BLE001 - preserve a flushed failure record
+        code = "supervisor_wait_failed" if started else "supervisor_start_failed"
+        details = {"process_id": getattr(process, "pid", None)} if process is not None else None
         return _supervisor_failure_record(
             args.stage,
             policy=policy,
-            code="supervisor_wait_failed",
+            code=code,
             message=f"{type(exc).__name__}: {exc}",
-            details={"process_group_id": process.pid},
+            details=details,
         )
-
-    record = _json_record_from_output(stdout)
-    if record is None:
-        return _supervisor_failure_record(
-            args.stage,
-            policy=policy,
-            code="child_record_missing",
-            message="numerical child did not emit a JSON record",
-            details={"child_exit_code": process.returncode},
-        )
-    if process.returncode != 0 and record.get("status") == "pass":
-        return _supervisor_failure_record(
-            args.stage,
-            policy=policy,
-            code="child_exit_failed",
-            message="numerical child exited unsuccessfully after reporting pass",
-            details={"child_exit_code": process.returncode},
-        )
-    return _with_execution_policy(record, policy)
+    finally:
+        if process is not None:
+            _close_process(process)
+        if result_queue is not None:
+            _close_result_queue(result_queue)
 
 
 def _build_only_record(
@@ -2494,8 +2514,6 @@ def _argument_parser() -> argparse.ArgumentParser:
     selection.add_argument("--stage", type=int)
     selection.add_argument("--construction-probe", choices=tuple(CONSTRUCTION_PROBES))
     parser.add_argument("--device-id", type=int, default=0)
-    parser.add_argument("--_numerical-child", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--_numerical-child-token", help=argparse.SUPPRESS)
     watcher = parser.add_mutually_exclusive_group()
     watcher.add_argument(
         "--watcher",
@@ -2546,23 +2564,6 @@ def main() -> int:
     parser = _argument_parser()
     args = parser.parse_args()
 
-    if args._numerical_child_token is not None and not args._numerical_child:
-        parser.error("--_numerical-child-token requires --_numerical-child")
-    if args._numerical_child:
-        child_policy = resolve_numerical_execution_policy(
-            watcher=args.watcher,
-            timeout_s=args.timeout_s,
-        )
-        handshake_error = _numerical_child_handshake_error(args)
-        if handshake_error is not None:
-            result = _stage_failure_record(
-                args.stage,
-                policy=child_policy,
-                error={"code": "child_handshake_failed", "message": handshake_error},
-            )
-            _emit_json(result)
-            return 1
-
     if args.build_only_jit_probe:
         if args.construction_probe is not None or args.dispatch_construction_probe:
             result = _build_only_error_record(
@@ -2612,25 +2613,8 @@ def main() -> int:
         timeout_s=args.timeout_s,
     )
     try:
-        stage = stage_for(args.stage)
-        if policy.external_timeout_s is not None and not args._numerical_child:
-            result = run_supervised_numerical_stage(args, policy)
-        else:
-            # TTNN may read this variable during import, so apply the policy before
-            # importing it as well as while the ordinary stage is executing.
-            with watcher_environment(policy):
-                import ttnn
-
-                device = ttnn.open_device(device_id=args.device_id)
-                try:
-                    result = run_stage(
-                        ttnn,
-                        device,
-                        stage,
-                        execution_policy=policy,
-                    )
-                finally:
-                    ttnn.close_device(device)
+        stage_for(args.stage)
+        result = run_supervised_numerical_stage(args, policy)
     except Exception as exc:  # noqa: BLE001 - emit a flushed failure record
         result = _stage_failure_record(
             args.stage,
