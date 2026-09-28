@@ -14,8 +14,10 @@ def test_bringup_readme_rules_contract_is_standalone_and_complete():
 
     assert rules_start < record_start
     required_statements = (
-        "Output CBs are separated when switching output identity or format",
-        "the diagnostics established that rule",
+        "Keep output CBs separated when switching output identity or format as a conservative practice",
+        "Stages 60 and 66 show this is sufficient in their diagnostics, but they do not establish it is necessary",
+        "Stage 65 is confounded because CB16 has two consumers",
+        "does not isolate the CB-reuse hypothesis",
         "Initialization/reconfiguration is performed before every data-format boundary",
         "short operation init plus explicit unpack-side `reconfig_data_format`",
         "pack-side `pack_reconfig_data_format`",
@@ -41,3 +43,6 @@ def test_bringup_readme_rules_contract_is_standalone_and_complete():
     record = readme[record_start:]
     assert "## Stage 72 board result and recovery" in record
     assert "0.7506909370422363" in record
+    stage_65 = next(line for line in record.splitlines() if line.startswith("- **Stage 65:**"))
+    assert "CB16 has two consumers" in stage_65
+    assert "does not isolate the CB-reuse hypothesis" in stage_65
