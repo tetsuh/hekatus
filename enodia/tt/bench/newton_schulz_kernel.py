@@ -476,11 +476,10 @@ class NewtonSchulzKernel:
             PROFILE_PAGES_PER_CORE, -1
         )
         reader, compute, writer = pages
-        if any(
-            int(page[PROFILE_READY_OFFSET]) != PROFILE_MAGIC
+        page_ready = tuple(
+            int(page[PROFILE_READY_OFFSET]) == PROFILE_MAGIC
             for page in (reader, compute, writer)
-        ):
-            raise RuntimeError("incomplete profile pages for core 0")
+        )
 
         core_index = PROFILE_MEASUREMENT_CORE
         records: list[dict] = []
@@ -490,6 +489,7 @@ class NewtonSchulzKernel:
                 "core_index": core_index,
                 "measurement_core": PROFILE_MEASUREMENT_CORE,
                 "risc": "NCRISC",
+                "profile_page_ready": page_ready[0],
                 "total_cycles": reader_total,
                 "sample_count": int(reader[PROFILE_READER_COUNT_OFFSET]),
                 "sections": [
@@ -533,6 +533,7 @@ class NewtonSchulzKernel:
                     "core_index": core_index,
                     "measurement_core": PROFILE_MEASUREMENT_CORE,
                     "risc": risc,
+                    "profile_page_ready": page_ready[1],
                     "total_cycles": total,
                     "sample_count": int(slot[PROFILE_SAMPLE_COUNT_OFFSET]),
                     "sections": [
@@ -551,6 +552,7 @@ class NewtonSchulzKernel:
                 "core_index": core_index,
                 "measurement_core": PROFILE_MEASUREMENT_CORE,
                 "risc": "BRISC",
+                "profile_page_ready": page_ready[2],
                 "total_cycles": writer_total,
                 "sample_count": int(writer[PROFILE_WRITER_COUNT_OFFSET]),
                 "sections": [

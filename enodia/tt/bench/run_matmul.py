@@ -553,7 +553,11 @@ def run_custom_newton_schulz(
             record["profile_clock"] = "get_timestamp_32b_lower_32_wall_clock"
             record["profile_sampling"] = "first_tile_first_iteration_on_core_0"
             record["profile_aggregation"] = "core_0_reader_compute_writer_triplet"
-            record["profile_records"] = kernel.profile_records()
+            profile_records = kernel.profile_records()
+            record["profile_records"] = profile_records
+            record["profile_transport_complete"] = all(
+                entry["profile_page_ready"] for entry in profile_records
+            )
         return record
     except Exception as exc:  # noqa: BLE001 - a device failure is a result
         return {"status": "failed", "kind": CUSTOM_KIND, "error": f"{type(exc).__name__}: {exc}"}

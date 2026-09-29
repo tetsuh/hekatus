@@ -156,6 +156,28 @@ def test_cycle_counter_profile_records_decode_l1_pages(monkeypatch):
     }
     writer = next(record for record in records if record["risc"] == "BRISC")
     assert writer["sections"][0]["name"] == "writer_writes"
+    assert all(record["profile_page_ready"] for record in records)
+
+
+def test_profile_records_keep_counter_values_when_ready_markers_are_missing(monkeypatch):
+    raw = np.zeros((PROFILE_PAGES_PER_CORE, 32 * 32), dtype=np.uint32)
+    raw[0, 0:4] = [120, 80, 40, 2]
+    raw[1, PROFILE_SLOT_STRIDE : PROFILE_SLOT_STRIDE + 9] = [300, 20, 30, 100, 120, 40, 0, 40, 1]
+    raw[2, 0:3] = [75, 75, 2]
+
+    kernel = object.__new__(NewtonSchulzKernel)
+    kernel.ttnn = None
+    kernel.profile_output = object()
+    kernel.work_ranges = [(0, 1)]
+    monkeypatch.setattr(
+        "enodia.tt.bench.newton_schulz_kernel._download_uint32",
+        lambda _ttnn, _tensor: raw,
+    )
+
+    records = kernel.profile_records()
+
+    assert not any(record["profile_page_ready"] for record in records)
+    assert next(record for record in records if record["risc"] == "TRISC1")["total_cycles"] == 300
 
 
 def test_profile_csv_parser_returns_per_risc_cycles_and_percentages(tmp_path: Path):
