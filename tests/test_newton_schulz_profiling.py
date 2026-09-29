@@ -114,9 +114,10 @@ def test_profile_false_has_no_profile_cbs_or_tracy_environment():
     assert newton_schulz_kernel._cb_page_size(ttnn, ttnn.uint32) == 32 * 32 * 4
     runner_source = Path(run_matmul.__file__).read_text()
     assert "TT_METAL_DEVICE_PROFILER" not in runner_source
-    assert "profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, _TILE, _TILE))" in Path(
+    assert "profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, 1, PROFILE_PAGE_WORDS))" in Path(
         newton_schulz_kernel.__file__
     ).read_text()
+    assert "ttnn.ROW_MAJOR_LAYOUT" in Path(newton_schulz_kernel.__file__).read_text()
 
 
 def test_cycle_counter_profile_records_decode_l1_pages(monkeypatch):

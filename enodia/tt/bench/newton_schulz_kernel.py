@@ -48,6 +48,7 @@ CB_PROFILE_COMPUTE = 18
 CB_PROFILE_WRITER = 19
 PROFILE_MEASUREMENT_CORE = 0
 PROFILE_PAGES_PER_CORE = 3
+PROFILE_PAGE_WORDS = _TILE * _TILE
 PROFILE_MAGIC = 0x5052464C
 PROFILE_READY_OFFSET = 31
 PROFILE_SLOT_STRIDE = 32
@@ -337,11 +338,14 @@ class NewtonSchulzKernel:
         ]
         profile_output = None
         if profile:
-            profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, _TILE, _TILE))
+            # The profile CB pages are raw uint32 words, not tile-face data.
+            # Use one row-major 4096-byte page per tensor page so the NOC
+            # writer and host decoder see the same word offsets.
+            profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, 1, PROFILE_PAGE_WORDS))
             profile_output = ttnn.allocate_tensor_on_device(
                 profile_shape,
                 ttnn.uint32,
-                ttnn.TILE_LAYOUT,
+                ttnn.ROW_MAJOR_LAYOUT,
                 device,
                 ttnn.DRAM_MEMORY_CONFIG,
             )
