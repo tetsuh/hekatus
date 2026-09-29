@@ -1,0 +1,295 @@
+{
+  "supersedes": "2026-09-28-p150a-newton-schulz-profile-breakdown-blocked.json",
+  "status": "blocked",
+  "environment": {
+    "captured_at": "2026-09-29T14:15:31.371373+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "7c5b91dd9dd90bfabe741ac469e2bc0d529a529f",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "board_inventory": 2,
+    "running_containers": 0
+  },
+  "device": {
+    "device_id": 0,
+    "device_nodes": [
+      "/dev/tenstorrent/0"
+    ],
+    "compute_cores_used": 110,
+    "input_and_compute_memory": "l1",
+    "selected_custom_variant": "bf16-fp32state",
+    "kernel_structure": "order1-single-dest"
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "batch": 8192,
+    "matrix_size": 32,
+    "cores": "all available compute/storage cores",
+    "measurement_core": 0,
+    "external_timeout_s": 60,
+    "watcher": true,
+    "method": "L1 cycle counters via get_timestamp_32b lower 32-bit wall clock",
+    "profile_output_layout_in_run": "TILE_LAYOUT",
+    "launches_measured": 1,
+    "elapsed_s": 0.0011720220000484005,
+    "diagnostic_achieved_tflops": 29.31663259442319
+  },
+  "attempts": [
+    {
+      "ordinal": 1,
+      "harness_commit": "d09953c91646319bc61dd22f48d78f4d69fdb3a5",
+      "status": "completed_but_host_rejected_profile",
+      "error": "RuntimeError: incomplete profile pages for core 0",
+      "reset_performed": false
+    },
+    {
+      "ordinal": 2,
+      "harness_commit": "7c5b91dd9dd90bfabe741ac469e2bc0d529a529f",
+      "status": "completed_but_profile_layout_invalid",
+      "profile_transport_complete": false,
+      "reset_performed": false,
+      "diagnostic_profile_records": [
+        {
+          "core_index": 0,
+          "measurement_core": 0,
+          "risc": "NCRISC",
+          "profile_page_ready": false,
+          "total_cycles": 894530,
+          "sample_count": 75,
+          "sections": [
+            {
+              "name": "reader_read_and_wait",
+              "cycles": 887947,
+              "percent_of_total": 99.26408281443886
+            },
+            {
+              "name": "reader_constant_read",
+              "cycles": 6583,
+              "percent_of_total": 0.7359171855611326
+            }
+          ]
+        },
+        {
+          "core_index": 0,
+          "measurement_core": 0,
+          "risc": "TRISC0",
+          "profile_page_ready": false,
+          "total_cycles": 20523,
+          "sample_count": 1,
+          "sections": [
+            {
+              "name": "r_cb_wait",
+              "cycles": 16712,
+              "percent_of_total": 81.43059006967792
+            },
+            {
+              "name": "x_cb_wait",
+              "cycles": 3811,
+              "percent_of_total": 18.569409930322077
+            },
+            {
+              "name": "complex_real",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "complex_imag",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "s_binary",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "pack_push",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "state_handoff",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            }
+          ]
+        },
+        {
+          "core_index": 0,
+          "measurement_core": 0,
+          "risc": "TRISC1",
+          "profile_page_ready": false,
+          "total_cycles": 0,
+          "sample_count": 0,
+          "sections": [
+            {
+              "name": "r_cb_wait",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "x_cb_wait",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "complex_real",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "complex_imag",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "s_binary",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "pack_push",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "state_handoff",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            }
+          ]
+        },
+        {
+          "core_index": 0,
+          "measurement_core": 0,
+          "risc": "TRISC2",
+          "profile_page_ready": false,
+          "total_cycles": 21266,
+          "sample_count": 1,
+          "sections": [
+            {
+              "name": "r_cb_wait",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "x_cb_wait",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "complex_real",
+              "cycles": 202,
+              "percent_of_total": 0.9498730367723126
+            },
+            {
+              "name": "complex_imag",
+              "cycles": 201,
+              "percent_of_total": 0.9451706950061131
+            },
+            {
+              "name": "s_binary",
+              "cycles": 20654,
+              "percent_of_total": 97.12216683908586
+            },
+            {
+              "name": "pack_push",
+              "cycles": 0,
+              "percent_of_total": 0.0
+            },
+            {
+              "name": "state_handoff",
+              "cycles": 209,
+              "percent_of_total": 0.9827894291357095
+            }
+          ]
+        },
+        {
+          "core_index": 0,
+          "measurement_core": 0,
+          "risc": "BRISC",
+          "profile_page_ready": false,
+          "total_cycles": 912146,
+          "sample_count": 75,
+          "sections": [
+            {
+              "name": "writer_writes",
+              "cycles": 912146,
+              "percent_of_total": 100.0
+            }
+          ]
+        }
+      ],
+      "diagnostic_note": "The host decoded a tiled destination as raw uint32 pages; the values are retained for diagnosis only and are not measurement evidence."
+    }
+  ],
+  "host_fix": {
+    "commit": "fb3d86a",
+    "change": "Use one row-major 4096-byte page per profile page so raw uint32 offsets survive the NOC copy.",
+    "hardware_retest": "not_run; the permitted retry was exhausted"
+  },
+  "missing_evidence": [
+    "authoritative NCRISC, TRISC0, TRISC1, TRISC2, and BRISC cycle totals",
+    "authoritative per-section cycle percentages",
+    "a defensible bottleneck conclusion"
+  ],
+  "reset_performed": false,
+  "conclusion": "No bottleneck claim is made. The B-method runtime reached device completion, but the first host transport fix exposed a tiled-output layout error; the corrected row-major host path is committed for a later run."
+}
