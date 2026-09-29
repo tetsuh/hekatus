@@ -120,6 +120,44 @@ def test_profile_false_has_no_profile_cbs_or_tracy_environment():
     assert "ttnn.ROW_MAJOR_LAYOUT" in Path(newton_schulz_kernel.__file__).read_text()
 
 
+def test_row_major_profile_pages_restore_risc_slots(monkeypatch):
+    raw = np.zeros((PROFILE_PAGES_PER_CORE, 1, 1, 32 * 32), dtype=np.uint32)
+    pages = raw.reshape(PROFILE_PAGES_PER_CORE, -1)
+    pages[0, 0:4] = [100, 70, 30, 4]
+    pages[0, PROFILE_READY_OFFSET] = PROFILE_MAGIC
+    pages[1, 0] = 10
+    pages[1, PROFILE_SLOT_STRIDE + 0] = 20
+    pages[1, PROFILE_SLOT_STRIDE + 3] = 7
+    pages[1, 2 * PROFILE_SLOT_STRIDE + 0] = 30
+    pages[1, 2 * PROFILE_SLOT_STRIDE + 6] = 11
+    pages[1, PROFILE_READY_OFFSET] = PROFILE_MAGIC
+    pages[1, PROFILE_SLOT_STRIDE + PROFILE_READY_OFFSET] = PROFILE_MAGIC
+    pages[1, 2 * PROFILE_SLOT_STRIDE + PROFILE_READY_OFFSET] = PROFILE_MAGIC
+    pages[2, 0:3] = [40, 40, 4]
+    pages[2, PROFILE_READY_OFFSET] = PROFILE_MAGIC
+
+    kernel = object.__new__(NewtonSchulzKernel)
+    kernel.ttnn = None
+    kernel.profile_output = object()
+    kernel.work_ranges = [(0, 1)]
+    monkeypatch.setattr(
+        "enodia.tt.bench.newton_schulz_kernel._download_uint32",
+        lambda _ttnn, _tensor: raw,
+    )
+
+    records = kernel.profile_records()
+    by_risc = {record["risc"]: record for record in records}
+
+    assert {risc: by_risc[risc]["total_cycles"] for risc in ("TRISC0", "TRISC1", "TRISC2")} == {
+        "TRISC0": 10,
+        "TRISC1": 20,
+        "TRISC2": 30,
+    }
+    assert by_risc["TRISC1"]["sections"][2]["cycles"] == 7
+    assert by_risc["TRISC2"]["sections"][5]["cycles"] == 11
+    assert all(record["profile_page_ready"] for record in records)
+
+
 def test_cycle_counter_profile_records_decode_l1_pages(monkeypatch):
     raw = np.zeros((PROFILE_PAGES_PER_CORE, 32 * 32), dtype=np.uint32)
     raw[:, PROFILE_READY_OFFSET] = PROFILE_MAGIC
