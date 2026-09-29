@@ -50,8 +50,11 @@ PROFILE_MEASUREMENT_CORE = 0
 PROFILE_PAGES_PER_CORE = 3
 PROFILE_PAGE_WORDS = _TILE * _TILE
 PROFILE_MAGIC = 0x5052464C
+PROFILE_UINT32_MASK = 0xFFFFFFFF
 PROFILE_READY_OFFSET = 31
-PROFILE_SLOT_STRIDE = 32
+PROFILE_WARMUP_READY_OFFSET = 63
+PROFILE_SLOT_STRIDE = 64
+PROFILE_WARMUP_BASE = 32
 PROFILE_TOTAL_OFFSET = 0
 PROFILE_R_WAIT_OFFSET = 1
 PROFILE_X_WAIT_OFFSET = 2
@@ -60,12 +63,17 @@ PROFILE_COMPLEX_IMAG_OFFSET = 4
 PROFILE_S_BINARY_OFFSET = 5
 PROFILE_PACK_PUSH_OFFSET = 6
 PROFILE_STATE_HANDOFF_OFFSET = 7
-PROFILE_SAMPLE_COUNT_OFFSET = 8
-PROFILE_READER_READ_OFFSET = 1
-PROFILE_READER_CONSTANT_OFFSET = 2
-PROFILE_READER_COUNT_OFFSET = 3
-PROFILE_WRITER_WRITE_OFFSET = 1
-PROFILE_WRITER_COUNT_OFFSET = 2
+PROFILE_SECTION_SUM_OFFSET = 8
+PROFILE_RESIDUAL_OFFSET = 9
+PROFILE_EVENT_COUNT_OFFSET = 10
+PROFILE_WARMUP_EVENT_COUNT_OFFSET = 11
+PROFILE_SAMPLE_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
+PROFILE_READER_CB_WAIT_OFFSET = 1
+PROFILE_READER_NOC_READ_OFFSET = 2
+PROFILE_READER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
+PROFILE_WRITER_CB_WAIT_OFFSET = 1
+PROFILE_WRITER_NOC_WRITE_OFFSET = 2
+PROFILE_WRITER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
 
 
 def _initial_value(matrices: np.ndarray) -> np.ndarray:
@@ -225,6 +233,81 @@ def _cb_definitions(ttnn, state_dtype, *, profile: bool = False) -> dict[int, tu
             }
         )
     return definitions
+
+
+def _decode_counter_page(
+    page: np.ndarray,
+    section_specs: tuple[tuple[str, int], ...],
+    *,
+    profile_page_ready: bool,
+) -> dict:
+    """Decode all-scope and first-sample counter scopes with exact checks."""
+    all_total = int(page[PROFILE_TOTAL_OFFSET])
+    warmup_total = int(page[PROFILE_WARMUP_BASE + PROFILE_TOTAL_OFFSET])
+    all_sections = [
+        {
+            "name": name,
+            "cycles": int(page[offset]),
+            "percent_of_total": 100.0 * int(page[offset]) / all_total if all_total else 0.0,
+            "warmup_cycles": int(page[PROFILE_WARMUP_BASE + offset]),
+            "warmup_percent_of_total": (
+                100.0 * int(page[PROFILE_WARMUP_BASE + offset]) / warmup_total
+                if warmup_total
+                else 0.0
+            ),
+        }
+        for name, offset in section_specs
+    ]
+    warmup_sections = [
+        {
+            "name": entry["name"],
+            "cycles": entry["warmup_cycles"],
+            "percent_of_total": entry["warmup_percent_of_total"],
+        }
+        for entry in all_sections
+    ]
+    all_section_sum = sum(entry["cycles"] for entry in all_sections)
+    warmup_section_sum = sum(entry["cycles"] for entry in warmup_sections)
+    all_residual = (all_total - all_section_sum) & PROFILE_UINT32_MASK
+    warmup_residual = (warmup_total - warmup_section_sum) & PROFILE_UINT32_MASK
+    recorded_all_sum = int(page[PROFILE_SECTION_SUM_OFFSET])
+    recorded_warmup_sum = int(page[PROFILE_WARMUP_BASE + PROFILE_SECTION_SUM_OFFSET])
+    recorded_all_residual = int(page[PROFILE_RESIDUAL_OFFSET])
+    recorded_warmup_residual = int(page[PROFILE_WARMUP_BASE + PROFILE_RESIDUAL_OFFSET])
+    all_record_valid = (
+        recorded_all_sum == all_section_sum & PROFILE_UINT32_MASK
+        and recorded_all_residual == all_residual
+    )
+    warmup_record_valid = (
+        recorded_warmup_sum == warmup_section_sum & PROFILE_UINT32_MASK
+        and recorded_warmup_residual == warmup_residual
+    )
+    all_exact = all_total == all_section_sum
+    warmup_exact = warmup_total == warmup_section_sum
+    return {
+        "profile_page_ready": profile_page_ready,
+        "total_cycles": all_total,
+        "warmup_total_cycles": warmup_total,
+        "event_count": int(page[PROFILE_EVENT_COUNT_OFFSET]),
+        "warmup_event_count": int(page[PROFILE_WARMUP_BASE + PROFILE_WARMUP_EVENT_COUNT_OFFSET]),
+        "sample_count": int(page[PROFILE_WARMUP_BASE + PROFILE_WARMUP_EVENT_COUNT_OFFSET]),
+        "sections": all_sections,
+        "warmup_sections": warmup_sections,
+        "section_sum_cycles": all_section_sum,
+        "warmup_section_sum_cycles": warmup_section_sum,
+        "recorded_section_sum_cycles": recorded_all_sum,
+        "recorded_warmup_section_sum_cycles": recorded_warmup_sum,
+        "residual_cycles": all_residual,
+        "warmup_residual_cycles": warmup_residual,
+        "recorded_residual_cycles": recorded_all_residual,
+        "recorded_warmup_residual_cycles": recorded_warmup_residual,
+        "consistency_exact": all_exact,
+        "warmup_consistency_exact": warmup_exact,
+        "consistency_record_valid": all_record_valid,
+        "warmup_consistency_record_valid": warmup_record_valid,
+        "consistency_pass": all_exact and all_record_valid,
+        "warmup_consistency_pass": warmup_exact and warmup_record_valid,
+    }
 
 
 def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np.ndarray:
@@ -466,59 +549,39 @@ class NewtonSchulzKernel:
         return real[: self.batch, 0] + 1j * imag[: self.batch, 0]
 
     def profile_records(self) -> list[dict]:
-        """Decode the three 32x32 uint32 L1-counter pages for core 0.
-
-        The reader, compute, and writer kernels each publish one page through
-        an L1 CB; the writer copies the triplet to the DRAM profile tensor.
-        Compute counters sample only the first tile and first Newton-Schulz
-        iteration. Other active cores execute normal work but neither publish
-        nor wait on profile pages.
-        """
+        """Decode core-0 row-major uint32 pages and exact scope checks."""
         if self.profile_output is None:
             return []
         pages = _download_uint32(self.ttnn, self.profile_output).reshape(
             PROFILE_PAGES_PER_CORE, -1
         )
         reader, compute, writer = pages
-        page_ready = tuple(
-            int(page[PROFILE_READY_OFFSET]) == PROFILE_MAGIC
-            for page in (reader, compute, writer)
+        reader_ready = (
+            int(reader[PROFILE_READY_OFFSET]) == PROFILE_MAGIC
+            and int(reader[PROFILE_WARMUP_READY_OFFSET]) == PROFILE_MAGIC
         )
-
+        compute_ready = all(
+            int(compute[base + ready]) == PROFILE_MAGIC
+            for base in (0, PROFILE_SLOT_STRIDE, 2 * PROFILE_SLOT_STRIDE)
+            for ready in (PROFILE_READY_OFFSET, PROFILE_WARMUP_READY_OFFSET)
+        )
+        writer_ready = (
+            int(writer[PROFILE_READY_OFFSET]) == PROFILE_MAGIC
+            and int(writer[PROFILE_WARMUP_READY_OFFSET]) == PROFILE_MAGIC
+        )
         core_index = PROFILE_MEASUREMENT_CORE
         records: list[dict] = []
-        reader_total = int(reader[PROFILE_TOTAL_OFFSET])
-        records.append(
-            {
-                "core_index": core_index,
-                "measurement_core": PROFILE_MEASUREMENT_CORE,
-                "risc": "NCRISC",
-                "profile_page_ready": page_ready[0],
-                "total_cycles": reader_total,
-                "sample_count": int(reader[PROFILE_READER_COUNT_OFFSET]),
-                "sections": [
-                    {
-                        "name": "reader_read_and_wait",
-                        "cycles": int(reader[PROFILE_READER_READ_OFFSET]),
-                        "percent_of_total": 100.0
-                        * int(reader[PROFILE_READER_READ_OFFSET])
-                        / reader_total
-                        if reader_total
-                        else 0.0,
-                    },
-                    {
-                        "name": "reader_constant_read",
-                        "cycles": int(reader[PROFILE_READER_CONSTANT_OFFSET]),
-                        "percent_of_total": 100.0
-                        * int(reader[PROFILE_READER_CONSTANT_OFFSET])
-                        / reader_total
-                        if reader_total
-                        else 0.0,
-                    },
-                ],
-            }
+        common = {"core_index": core_index, "measurement_core": core_index}
+        reader_record = _decode_counter_page(
+            reader,
+            (("reader_cb_empty_wait", PROFILE_READER_CB_WAIT_OFFSET),
+             ("reader_noc_read_and_barrier", PROFILE_READER_NOC_READ_OFFSET)),
+            profile_page_ready=reader_ready,
         )
-        compute_sections = [
+        reader_record.update(common)
+        reader_record["risc"] = "NCRISC"
+        records.append(reader_record)
+        compute_sections = (
             ("r_cb_wait", PROFILE_R_WAIT_OFFSET),
             ("x_cb_wait", PROFILE_X_WAIT_OFFSET),
             ("complex_real", PROFILE_COMPLEX_REAL_OFFSET),
@@ -526,52 +589,26 @@ class NewtonSchulzKernel:
             ("s_binary", PROFILE_S_BINARY_OFFSET),
             ("pack_push", PROFILE_PACK_PUSH_OFFSET),
             ("state_handoff", PROFILE_STATE_HANDOFF_OFFSET),
-        ]
-        for risc_index, risc in enumerate(("TRISC0", "TRISC1", "TRISC2")):
-            slot = compute[
-                risc_index * PROFILE_SLOT_STRIDE : (risc_index + 1) * PROFILE_SLOT_STRIDE
-            ]
-            total = int(slot[PROFILE_TOTAL_OFFSET])
-            records.append(
-                {
-                    "core_index": core_index,
-                    "measurement_core": PROFILE_MEASUREMENT_CORE,
-                    "risc": risc,
-                    "profile_page_ready": page_ready[1],
-                    "total_cycles": total,
-                    "sample_count": int(slot[PROFILE_SAMPLE_COUNT_OFFSET]),
-                    "sections": [
-                        {
-                            "name": name,
-                            "cycles": int(slot[offset]),
-                            "percent_of_total": 100.0 * int(slot[offset]) / total if total else 0.0,
-                        }
-                        for name, offset in compute_sections
-                    ],
-                }
-            )
-        writer_total = int(writer[PROFILE_TOTAL_OFFSET])
-        records.append(
-            {
-                "core_index": core_index,
-                "measurement_core": PROFILE_MEASUREMENT_CORE,
-                "risc": "BRISC",
-                "profile_page_ready": page_ready[2],
-                "total_cycles": writer_total,
-                "sample_count": int(writer[PROFILE_WRITER_COUNT_OFFSET]),
-                "sections": [
-                    {
-                        "name": "writer_writes",
-                        "cycles": int(writer[PROFILE_WRITER_WRITE_OFFSET]),
-                        "percent_of_total": 100.0
-                        * int(writer[PROFILE_WRITER_WRITE_OFFSET])
-                        / writer_total
-                        if writer_total
-                        else 0.0,
-                    }
-                ],
-            }
         )
+        for risc_index, risc in enumerate(("TRISC0", "TRISC1", "TRISC2")):
+            base = risc_index * PROFILE_SLOT_STRIDE
+            record = _decode_counter_page(
+                compute[base : base + PROFILE_SLOT_STRIDE],
+                compute_sections,
+                profile_page_ready=compute_ready,
+            )
+            record.update(common)
+            record["risc"] = risc
+            records.append(record)
+        writer_record = _decode_counter_page(
+            writer,
+            (("writer_cb_wait_front", PROFILE_WRITER_CB_WAIT_OFFSET),
+             ("writer_noc_write_and_barrier", PROFILE_WRITER_NOC_WRITE_OFFSET)),
+            profile_page_ready=writer_ready,
+        )
+        writer_record.update(common)
+        writer_record["risc"] = "BRISC"
+        records.append(writer_record)
         return records
 
     def close(self) -> None:

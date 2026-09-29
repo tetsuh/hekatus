@@ -27,7 +27,9 @@ constexpr std::uint32_t cb_output_imag = 16;
 constexpr std::uint32_t cb_profile_compute = 18;
 constexpr std::uint32_t profile_magic = 0x5052464C;
 constexpr std::uint32_t profile_ready_offset = 31;
-constexpr std::uint32_t profile_slot_stride = 32;
+constexpr std::uint32_t profile_warmup_ready_offset = 63;
+constexpr std::uint32_t profile_slot_stride = 64;
+constexpr std::uint32_t profile_warmup_base = 32;
 constexpr std::uint32_t profile_total_offset = 0;
 constexpr std::uint32_t profile_r_wait_offset = 1;
 constexpr std::uint32_t profile_x_wait_offset = 2;
@@ -36,14 +38,22 @@ constexpr std::uint32_t profile_complex_imag_offset = 4;
 constexpr std::uint32_t profile_s_binary_offset = 5;
 constexpr std::uint32_t profile_pack_push_offset = 6;
 constexpr std::uint32_t profile_state_handoff_offset = 7;
-constexpr std::uint32_t profile_sample_count_offset = 8;
+constexpr std::uint32_t profile_section_sum_offset = 8;
+constexpr std::uint32_t profile_residual_offset = 9;
+constexpr std::uint32_t profile_event_count_offset = 10;
+constexpr std::uint32_t profile_warmup_event_count_offset = 11;
 
-// Counters use the lower 32-bit wall-clock API.  Only the first tile and
-// first iteration are sampled; the three slots classify aggregate sections as
-// unpack/wait, math, and pack stages rather than claiming independent RISC
-// execution.  Timestamp reads and the single L1 page write add profile-only
-// overhead and are absent from the normal compile-time path.
+// Counters use the lower 32-bit wall-clock API. All sections accumulate over
+// the assigned tiles and eight iterations; the warmup fields retain the first
+// tile/iteration separately. Timestamp reads, CB pushes/pops, and setup that
+// is outside a named section remain visible as an explicit residual.
 struct ProfileCounters {
+    std::uint32_t total_start = 0;
+    std::uint32_t total_end = 0;
+    std::uint32_t warmup_start = 0;
+    std::uint32_t warmup_end = 0;
+    std::uint32_t event_count = 0;
+    std::uint32_t warmup_event_count = 0;
     std::uint32_t r_wait = 0;
     std::uint32_t x_wait = 0;
     std::uint32_t complex_real = 0;
@@ -51,8 +61,21 @@ struct ProfileCounters {
     std::uint32_t s_binary = 0;
     std::uint32_t pack_push = 0;
     std::uint32_t state_handoff = 0;
-    std::uint32_t sample_count = 0;
+    std::uint32_t warmup_r_wait = 0;
+    std::uint32_t warmup_x_wait = 0;
+    std::uint32_t warmup_complex_real = 0;
+    std::uint32_t warmup_complex_imag = 0;
+    std::uint32_t warmup_s_binary = 0;
+    std::uint32_t warmup_pack_push = 0;
+    std::uint32_t warmup_state_handoff = 0;
 };
+
+void add_profile_cycles(std::uint32_t& total, std::uint32_t& warmup, std::uint32_t cycles, bool is_warmup) {
+    total += cycles;
+    if (is_warmup) {
+        warmup += cycles;
+    }
+}
 struct EmptyProfileCounters {};
 
 void pack_one(std::uint32_t output) {
@@ -62,11 +85,15 @@ void pack_one(std::uint32_t output) {
     cb_push_back(output, 1);
 }
 
-void pack_one_profiled(std::uint32_t output, ProfileCounters& counters) {
+void pack_one_profiled(std::uint32_t output, ProfileCounters& counters, bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-PACK-PUSH");
     const std::uint32_t start = get_timestamp_32b();
     pack_one(output);
-    counters.pack_push += get_timestamp_32b() - start;
+    add_profile_cycles(
+        counters.pack_push,
+        counters.warmup_pack_push,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 void wait_complex_inputs(
@@ -92,7 +119,8 @@ void wait_complex_inputs_profiled(
     std::uint32_t right_real,
     std::uint32_t right_imag,
     bool resident_left,
-    ProfileCounters& counters) {
+    ProfileCounters& counters,
+    bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-X-CB-WAIT");
     const std::uint32_t start = get_timestamp_32b();
     wait_complex_inputs(
@@ -102,7 +130,11 @@ void wait_complex_inputs_profiled(
         right_real,
         right_imag,
         resident_left);
-    counters.x_wait += get_timestamp_32b() - start;
+    add_profile_cycles(
+        counters.x_wait,
+        counters.warmup_x_wait,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 void complex_real_impl(
@@ -112,7 +144,8 @@ void complex_real_impl(
     std::uint32_t right_imag,
     std::uint32_t output,
     bool profile_pack,
-    ProfileCounters* counters = nullptr) {
+    ProfileCounters* counters = nullptr,
+    bool warmup = false) {
     cb_reserve_back(output, 1);
     tile_regs_acquire();
     matmul_block(left_real, right_real, 0, 0, 0, false, 1, 1, 1);
@@ -120,7 +153,7 @@ void complex_real_impl(
     tile_regs_commit();
     pack_reconfig_data_format(output);
     if (profile_pack) {
-        pack_one_profiled(output, *counters);
+        pack_one_profiled(output, *counters, warmup);
     } else {
         pack_one(output);
     }
@@ -132,11 +165,16 @@ void complex_real_profiled(
     std::uint32_t right_real,
     std::uint32_t right_imag,
     std::uint32_t output,
-    ProfileCounters& counters) {
+    ProfileCounters& counters,
+    bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-COMPLEX-REAL");
     const std::uint32_t start = get_timestamp_32b();
-    complex_real_impl(left_real, left_imag, right_real, right_imag, output, true, &counters);
-    counters.complex_real += get_timestamp_32b() - start;
+    complex_real_impl(left_real, left_imag, right_real, right_imag, output, true, &counters, warmup);
+    add_profile_cycles(
+        counters.complex_real,
+        counters.warmup_complex_real,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 void complex_imag_impl(
@@ -146,7 +184,8 @@ void complex_imag_impl(
     std::uint32_t right_imag,
     std::uint32_t output,
     bool profile_pack,
-    ProfileCounters* counters = nullptr) {
+    ProfileCounters* counters = nullptr,
+    bool warmup = false) {
     cb_reserve_back(output, 1);
     tile_regs_acquire();
     matmul_block(left_real, right_imag, 0, 0, 0, false, 1, 1, 1);
@@ -154,7 +193,7 @@ void complex_imag_impl(
     tile_regs_commit();
     pack_reconfig_data_format(output);
     if (profile_pack) {
-        pack_one_profiled(output, *counters);
+        pack_one_profiled(output, *counters, warmup);
     } else {
         pack_one(output);
     }
@@ -166,11 +205,16 @@ void complex_imag_profiled(
     std::uint32_t right_real,
     std::uint32_t right_imag,
     std::uint32_t output,
-    ProfileCounters& counters) {
+    ProfileCounters& counters,
+    bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-COMPLEX-IMAG");
     const std::uint32_t start = get_timestamp_32b();
-    complex_imag_impl(left_real, left_imag, right_real, right_imag, output, true, &counters);
-    counters.complex_imag += get_timestamp_32b() - start;
+    complex_imag_impl(left_real, left_imag, right_real, right_imag, output, true, &counters, warmup);
+    add_profile_cycles(
+        counters.complex_imag,
+        counters.warmup_complex_imag,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 template <bool profile_sample>
@@ -185,7 +229,8 @@ void complex_matmul(
     bool resident_left,
     bool consume_left,
     bool consume_right,
-    bool sample,
+    bool profile_enabled,
+    bool warmup = false,
     ProfileCounters* counters = nullptr) {
     // With SrcOrder::Reverse the second CB is SrcA and the first CB is SrcB.
     // Each half keeps both signed terms in one acquired DEST tile.  Order 1
@@ -193,7 +238,7 @@ void complex_matmul(
     // not mix the later two-DEST experiment into its timings.
     matmul_block_init(left_real, right_real, false, 1, 1, 1);
     if constexpr (profile_sample) {
-        if (sample) {
+        if (profile_enabled) {
             wait_complex_inputs_profiled(
                 left_real,
                 left_imag_for_real,
@@ -201,7 +246,8 @@ void complex_matmul(
                 right_real,
                 right_imag,
                 resident_left,
-                *counters);
+                *counters,
+                warmup);
         } else {
             wait_complex_inputs(
                 left_real,
@@ -222,14 +268,15 @@ void complex_matmul(
     }
 
     if constexpr (profile_sample) {
-        if (sample) {
+        if (profile_enabled) {
             complex_real_profiled(
                 left_real,
                 left_imag_for_real,
                 right_real,
                 right_imag,
                 output_real,
-                *counters);
+                *counters,
+                warmup);
         } else {
             complex_real_impl(left_real, left_imag_for_real, right_real, right_imag, output_real, false);
         }
@@ -238,14 +285,15 @@ void complex_matmul(
     }
 
     if constexpr (profile_sample) {
-        if (sample) {
+        if (profile_enabled) {
             complex_imag_profiled(
                 left_real,
                 left_imag_for_imag,
                 right_real,
                 right_imag,
                 output_imag,
-                *counters);
+                *counters,
+                warmup);
         } else {
             complex_imag_impl(left_real, left_imag_for_imag, right_real, right_imag, output_imag, false);
         }
@@ -275,7 +323,8 @@ void subtract_one_impl(
     bool consume_left,
     bool consume_right,
     bool profile_pack,
-    ProfileCounters* counters = nullptr) {
+    ProfileCounters* counters = nullptr,
+    bool warmup = false) {
     cb_wait_front(left, 1);
     cb_wait_front(right, 1);
     cb_reserve_back(output, 1);
@@ -286,7 +335,7 @@ void subtract_one_impl(
     sub_tiles(left, right, 0, 0, 0);
     tile_regs_commit();
     if (profile_pack) {
-        pack_one_profiled(output, *counters);
+        pack_one_profiled(output, *counters, warmup);
     } else {
         pack_one(output);
     }
@@ -317,7 +366,8 @@ void subtract_one_profiled(
     std::uint32_t output,
     bool consume_left,
     bool consume_right,
-    ProfileCounters& counters) {
+    ProfileCounters& counters,
+    bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-S-BINARY");
     const std::uint32_t start = get_timestamp_32b();
     subtract_one_impl(
@@ -329,14 +379,20 @@ void subtract_one_profiled(
         consume_left,
         consume_right,
         true,
-        &counters);
-    counters.s_binary += get_timestamp_32b() - start;
+        &counters,
+        warmup);
+    add_profile_cycles(
+        counters.s_binary,
+        counters.warmup_s_binary,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 void negate_state_imag_impl(
     std::uint32_t x_imag,
     bool profile_pack,
-    ProfileCounters* counters = nullptr) {
+    ProfileCounters* counters = nullptr,
+    bool warmup = false) {
     cb_wait_front(x_imag, 1);
     cb_wait_front(cb_zero, 1);
     cb_reserve_back(cb_negative_x_imag, 1);
@@ -347,7 +403,7 @@ void negate_state_imag_impl(
     sub_tiles(cb_zero, x_imag, 0, 0, 0);
     tile_regs_commit();
     if (profile_pack) {
-        pack_one_profiled(cb_negative_x_imag, *counters);
+        pack_one_profiled(cb_negative_x_imag, *counters, warmup);
     } else {
         pack_one(cb_negative_x_imag);
     }
@@ -365,12 +421,17 @@ void state_handoff(std::uint32_t x_real, std::uint32_t x_imag) {
 void state_handoff_profiled(
     std::uint32_t x_real,
     std::uint32_t x_imag,
-    ProfileCounters& counters) {
+    ProfileCounters& counters,
+    bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-STATE-HANDOFF");
     const std::uint32_t start = get_timestamp_32b();
-    negate_state_imag_impl(x_imag, true, &counters);
+    negate_state_imag_impl(x_imag, true, &counters, warmup);
     residual_format_transition_to_matmul(x_real, x_imag);
-    counters.state_handoff += get_timestamp_32b() - start;
+    add_profile_cycles(
+        counters.state_handoff,
+        counters.warmup_state_handoff,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 void wait_r_inputs() {
@@ -379,11 +440,15 @@ void wait_r_inputs() {
     cb_wait_front(cb_r_imag, 1);
 }
 
-void wait_r_inputs_profiled(ProfileCounters& counters) {
+void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-R-CB-WAIT");
     const std::uint32_t start = get_timestamp_32b();
     wait_r_inputs();
-    counters.r_wait += get_timestamp_32b() - start;
+    add_profile_cycles(
+        counters.r_wait,
+        counters.warmup_r_wait,
+        get_timestamp_32b() - start,
+        warmup);
 }
 
 // The compute page is one 32x32 uint32 L1 tile: three 32-word stage slots,
@@ -398,41 +463,145 @@ void clear_profile_ready(std::uint32_t start_tile) {
         get_tile_address(cb_profile_compute, 0));
 #if defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 0
     profile[profile_ready_offset] = 0;
+    profile[profile_warmup_ready_offset] = 0;
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 1
     profile[profile_slot_stride + profile_ready_offset] = 0;
+    profile[profile_slot_stride + profile_warmup_ready_offset] = 0;
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 2
     profile[2 * profile_slot_stride + profile_ready_offset] = 0;
+    profile[2 * profile_slot_stride + profile_warmup_ready_offset] = 0;
 #endif
+}
+
+void write_profile_slot(
+    volatile tt_l1_ptr std::uint32_t* profile,
+    std::uint32_t base,
+    std::uint32_t total,
+    std::uint32_t warmup_total,
+    std::uint32_t event_count,
+    std::uint32_t warmup_event_count,
+    std::uint32_t r_wait,
+    std::uint32_t x_wait,
+    std::uint32_t complex_real,
+    std::uint32_t complex_imag,
+    std::uint32_t s_binary,
+    std::uint32_t pack_push,
+    std::uint32_t state_handoff,
+    std::uint32_t warmup_r_wait,
+    std::uint32_t warmup_x_wait,
+    std::uint32_t warmup_complex_real,
+    std::uint32_t warmup_complex_imag,
+    std::uint32_t warmup_s_binary,
+    std::uint32_t warmup_pack_push,
+    std::uint32_t warmup_state_handoff) {
+    const std::uint32_t section_sum =
+        r_wait + x_wait + complex_real + complex_imag + s_binary + pack_push + state_handoff;
+    const std::uint32_t warmup_section_sum = warmup_r_wait + warmup_x_wait + warmup_complex_real +
+                                               warmup_complex_imag + warmup_s_binary + warmup_pack_push +
+                                               warmup_state_handoff;
+    const std::uint32_t warmup_base = base + profile_warmup_base;
+    profile[base + profile_total_offset] = total;
+    profile[warmup_base + profile_total_offset] = warmup_total;
+    profile[base + profile_r_wait_offset] = r_wait;
+    profile[base + profile_x_wait_offset] = x_wait;
+    profile[base + profile_complex_real_offset] = complex_real;
+    profile[base + profile_complex_imag_offset] = complex_imag;
+    profile[base + profile_s_binary_offset] = s_binary;
+    profile[base + profile_pack_push_offset] = pack_push;
+    profile[base + profile_state_handoff_offset] = state_handoff;
+    profile[warmup_base + profile_r_wait_offset] = warmup_r_wait;
+    profile[warmup_base + profile_x_wait_offset] = warmup_x_wait;
+    profile[warmup_base + profile_complex_real_offset] = warmup_complex_real;
+    profile[warmup_base + profile_complex_imag_offset] = warmup_complex_imag;
+    profile[warmup_base + profile_s_binary_offset] = warmup_s_binary;
+    profile[warmup_base + profile_pack_push_offset] = warmup_pack_push;
+    profile[warmup_base + profile_state_handoff_offset] = warmup_state_handoff;
+    profile[base + profile_section_sum_offset] = section_sum;
+    profile[warmup_base + profile_section_sum_offset] = warmup_section_sum;
+    profile[base + profile_residual_offset] = total - section_sum;
+    profile[warmup_base + profile_residual_offset] = warmup_total - warmup_section_sum;
+    profile[base + profile_event_count_offset] = event_count;
+    profile[warmup_base + profile_warmup_event_count_offset] = warmup_event_count;
+    profile[base + profile_ready_offset] = profile_magic;
+    profile[warmup_base + profile_ready_offset] = profile_magic;
 }
 
 void write_profile_counters(ProfileCounters& counters) {
     volatile tt_l1_ptr std::uint32_t* profile = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_tile_address(cb_profile_compute, 0));
+    const std::uint32_t total = counters.total_end - counters.total_start;
+    const std::uint32_t warmup_total = counters.warmup_end - counters.warmup_start;
 #if defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 0
-    const std::uint32_t wait_total = counters.r_wait + counters.x_wait;
-    profile[profile_total_offset] = wait_total;
-    profile[profile_r_wait_offset] = counters.r_wait;
-    profile[profile_x_wait_offset] = counters.x_wait;
-    profile[profile_sample_count_offset] = counters.sample_count;
-    profile[profile_ready_offset] = profile_magic;
+    write_profile_slot(
+        profile,
+        0,
+        total,
+        warmup_total,
+        counters.event_count,
+        counters.warmup_event_count,
+        counters.r_wait,
+        counters.x_wait,
+        0,
+        0,
+        0,
+        0,
+        0,
+        counters.warmup_r_wait,
+        counters.warmup_x_wait,
+        0,
+        0,
+        0,
+        0,
+        0);
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 1
-    const std::uint32_t math_total =
-        counters.complex_real + counters.complex_imag + counters.s_binary + counters.state_handoff;
-    profile[profile_slot_stride + profile_total_offset] = math_total;
-    profile[profile_slot_stride + profile_complex_real_offset] = counters.complex_real;
-    profile[profile_slot_stride + profile_complex_imag_offset] = counters.complex_imag;
-    profile[profile_slot_stride + profile_s_binary_offset] = counters.s_binary;
-    profile[profile_slot_stride + profile_state_handoff_offset] = counters.state_handoff;
-    profile[profile_slot_stride + profile_sample_count_offset] = counters.sample_count;
-    profile[profile_slot_stride + profile_ready_offset] = profile_magic;
+    write_profile_slot(
+        profile,
+        profile_slot_stride,
+        total,
+        warmup_total,
+        counters.event_count,
+        counters.warmup_event_count,
+        0,
+        0,
+        counters.complex_real,
+        counters.complex_imag,
+        counters.s_binary,
+        0,
+        counters.state_handoff,
+        0,
+        0,
+        counters.warmup_complex_real,
+        counters.warmup_complex_imag,
+        counters.warmup_s_binary,
+        0,
+        counters.warmup_state_handoff);
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 2
     cb_reserve_back(cb_profile_compute, 1);
-    profile[2 * profile_slot_stride + profile_total_offset] = counters.pack_push;
-    profile[2 * profile_slot_stride + profile_pack_push_offset] = counters.pack_push;
-    profile[2 * profile_slot_stride + profile_sample_count_offset] = counters.sample_count;
-    profile[2 * profile_slot_stride + profile_ready_offset] = profile_magic;
+    write_profile_slot(
+        profile,
+        2 * profile_slot_stride,
+        total,
+        warmup_total,
+        counters.event_count,
+        counters.warmup_event_count,
+        0,
+        0,
+        0,
+        0,
+        0,
+        counters.pack_push,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        counters.warmup_pack_push,
+        0);
     while (profile[profile_ready_offset] != profile_magic ||
-           profile[profile_slot_stride + profile_ready_offset] != profile_magic) {
+           profile[profile_warmup_ready_offset] != profile_magic ||
+           profile[profile_slot_stride + profile_ready_offset] != profile_magic ||
+           profile[profile_slot_stride + profile_warmup_ready_offset] != profile_magic) {
     }
     cb_push_back(cb_profile_compute, 1);
 #endif
@@ -467,12 +636,16 @@ void kernel_main() {
     matmul_block_init(cb_r_real, cb_x0_real, false, 1, 1, 1);
     if constexpr (profile_sample) {
         clear_profile_ready(start_tile);
+        if (start_tile == 0) {
+            counters.total_start = get_timestamp_32b();
+            counters.warmup_start = counters.total_start;
+        }
     }
 
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if constexpr (profile_sample) {
-            if (start_tile == 0 && tile == 0) {
-                wait_r_inputs_profiled(counters);
+            if (start_tile == 0) {
+                wait_r_inputs_profiled(counters, tile == 0);
             } else {
                 wait_r_inputs();
             }
@@ -483,10 +656,14 @@ void kernel_main() {
             std::uint32_t x_real;
             std::uint32_t x_imag;
             stream_initial_or_state(iteration, x_real, x_imag);
-            const bool sample = profile_sample && start_tile == 0 && tile == 0 && iteration == 0;
+            const bool profile_core = profile_sample && start_tile == 0;
+            const bool warmup = profile_core && tile == 0 && iteration == 0;
             if constexpr (profile_sample) {
-                if (sample) {
-                    counters.sample_count = 1;
+                if (profile_core) {
+                    ++counters.event_count;
+                }
+                if (warmup) {
+                    ++counters.warmup_event_count;
                 }
             }
 
@@ -508,7 +685,8 @@ void kernel_main() {
                     true,
                     false,
                     false,
-                    sample,
+                    profile_core,
+                    warmup,
                     &counters);
             } else {
                 complex_matmul<false>(
@@ -526,7 +704,7 @@ void kernel_main() {
             }
 
             if constexpr (profile_sample) {
-                if (sample) {
+                if (profile_core) {
                     subtract_one_profiled(
                         x_real,
                         cb_r_imag,
@@ -535,7 +713,8 @@ void kernel_main() {
                         cb_s_real,
                         false,
                         true,
-                        counters);
+                        counters,
+                        warmup);
                     subtract_one_profiled(
                         cb_identity,
                         cb_product_real,
@@ -544,8 +723,9 @@ void kernel_main() {
                         cb_s_imag,
                         false,
                         true,
-                        counters);
-                    state_handoff_profiled(x_real, x_imag, counters);
+                        counters,
+                        warmup);
+                    state_handoff_profiled(x_real, x_imag, counters, warmup);
                 } else {
                     subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
                     subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
@@ -573,7 +753,8 @@ void kernel_main() {
                     false,
                     true,
                     true,
-                    sample,
+                    profile_core,
+                    warmup,
                     &counters);
             } else {
                 complex_matmul<false>(
@@ -587,7 +768,13 @@ void kernel_main() {
                     false,
                     true,
                     true,
+                    false,
                     false);
+            }
+            if constexpr (profile_sample) {
+                if (warmup) {
+                    counters.warmup_end = get_timestamp_32b();
+                }
             }
         }
 
@@ -599,6 +786,7 @@ void kernel_main() {
     // all other cores retain the normal math/output path without profile CB IO.
     if constexpr (profile_sample) {
         if (start_tile == 0) {
+            counters.total_end = get_timestamp_32b();
             write_profile_counters(counters);
         }
     }

@@ -13,11 +13,36 @@ constexpr std::uint32_t cb_zero = 6;
 constexpr std::uint32_t cb_profile_reader = 17;
 constexpr std::uint32_t profile_magic = 0x5052464C;
 constexpr std::uint32_t profile_total_offset = 0;
-constexpr std::uint32_t profile_read_offset = 1;
-constexpr std::uint32_t profile_constant_offset = 2;
-constexpr std::uint32_t profile_count_offset = 3;
+constexpr std::uint32_t profile_cb_wait_offset = 1;
+constexpr std::uint32_t profile_noc_read_offset = 2;
+constexpr std::uint32_t profile_section_sum_offset = 8;
+constexpr std::uint32_t profile_residual_offset = 9;
+constexpr std::uint32_t profile_event_count_offset = 10;
+constexpr std::uint32_t profile_warmup_event_count_offset = 11;
+constexpr std::uint32_t profile_warmup_base = 32;
 constexpr std::uint32_t profile_ready_offset = 31;
+constexpr std::uint32_t profile_warmup_ready_offset = 63;
 constexpr std::uint32_t profile_words = 32 * 32;
+
+struct ProfileCounters {
+    std::uint32_t total_start = 0;
+    std::uint32_t total_end = 0;
+    std::uint32_t warmup_start = 0;
+    std::uint32_t warmup_end = 0;
+    std::uint32_t event_count = 0;
+    std::uint32_t warmup_event_count = 0;
+    std::uint32_t cb_wait = 0;
+    std::uint32_t noc_read = 0;
+    std::uint32_t warmup_cb_wait = 0;
+    std::uint32_t warmup_noc_read = 0;
+};
+
+void add_profile_cycles(std::uint32_t& total, std::uint32_t& warmup, std::uint32_t cycles, bool is_warmup) {
+    total += cycles;
+    if (is_warmup) {
+        warmup += cycles;
+    }
+}
 
 template <typename Accessor>
 void read_tile(std::uint32_t cb, std::uint32_t tile_id, const Accessor& accessor) {
@@ -27,18 +52,61 @@ void read_tile(std::uint32_t cb, std::uint32_t tile_id, const Accessor& accessor
     cb_push_back(cb, 1);
 }
 
-void write_profile(std::uint32_t read_cycles, std::uint32_t constant_cycles, std::uint32_t count) {
+template <typename Accessor>
+void read_tile_profiled(
+    std::uint32_t cb,
+    std::uint32_t tile_id,
+    const Accessor& accessor,
+    ProfileCounters& counters,
+    bool warmup) {
+    const std::uint32_t wait_start = get_timestamp_32b();
+    cb_reserve_back(cb, 1);
+    add_profile_cycles(
+        counters.cb_wait,
+        counters.warmup_cb_wait,
+        get_timestamp_32b() - wait_start,
+        warmup);
+
+    const std::uint32_t read_start = get_timestamp_32b();
+    noc_async_read_page(tile_id, accessor, get_write_ptr(cb));
+    noc_async_read_barrier();
+    add_profile_cycles(
+        counters.noc_read,
+        counters.warmup_noc_read,
+        get_timestamp_32b() - read_start,
+        warmup);
+    cb_push_back(cb, 1);
+    ++counters.event_count;
+    if (warmup) {
+        ++counters.warmup_event_count;
+    }
+}
+
+void write_profile(ProfileCounters& counters) {
     cb_reserve_back(cb_profile_reader, 1);
     volatile tt_l1_ptr std::uint32_t* profile =
         reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(get_write_ptr(cb_profile_reader));
     for (std::uint32_t index = 0; index < profile_words; ++index) {
         profile[index] = 0;
     }
-    profile[profile_total_offset] = read_cycles + constant_cycles;
-    profile[profile_read_offset] = read_cycles;
-    profile[profile_constant_offset] = constant_cycles;
-    profile[profile_count_offset] = count;
+    const std::uint32_t total = counters.total_end - counters.total_start;
+    const std::uint32_t warmup_total = counters.warmup_end - counters.warmup_start;
+    const std::uint32_t section_sum = counters.cb_wait + counters.noc_read;
+    const std::uint32_t warmup_section_sum = counters.warmup_cb_wait + counters.warmup_noc_read;
+    profile[profile_total_offset] = total;
+    profile[profile_cb_wait_offset] = counters.cb_wait;
+    profile[profile_noc_read_offset] = counters.noc_read;
+    profile[profile_section_sum_offset] = section_sum;
+    profile[profile_residual_offset] = total - section_sum;
+    profile[profile_event_count_offset] = counters.event_count;
+    profile[profile_warmup_base + profile_total_offset] = warmup_total;
+    profile[profile_warmup_base + profile_cb_wait_offset] = counters.warmup_cb_wait;
+    profile[profile_warmup_base + profile_noc_read_offset] = counters.warmup_noc_read;
+    profile[profile_warmup_base + profile_section_sum_offset] = warmup_section_sum;
+    profile[profile_warmup_base + profile_residual_offset] = warmup_total - warmup_section_sum;
+    profile[profile_warmup_base + profile_warmup_event_count_offset] = counters.warmup_event_count;
     profile[profile_ready_offset] = profile_magic;
+    profile[profile_warmup_ready_offset] = profile_magic;
     cb_push_back(cb_profile_reader, 1);
 }
 }  // namespace
@@ -76,32 +144,38 @@ void kernel_main() {
     const auto identity = TensorAccessor(identity_args, identity_address);
     const auto zero = TensorAccessor(zero_args, zero_address);
 
-    // Only core 0 owns the three-page profile transport; other cores stream
-    // their assigned tiles without sampling or touching the profile CB.
     const bool measure_core = start_tile == 0;
-    std::uint32_t constant_cycles = 0;
-    if (measure_core) {
-        const std::uint32_t constant_start = get_timestamp_32b();
+    if (!measure_core) {
         read_tile(cb_identity, 0, identity);
         read_tile(cb_zero, 0, zero);
-        constant_cycles = get_timestamp_32b() - constant_start;
-    } else {
-        read_tile(cb_identity, 0, identity);
-        read_tile(cb_zero, 0, zero);
+        for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
+            const std::uint32_t tile = start_tile + offset;
+            read_tile(cb_r_real, tile, r_real);
+            read_tile(cb_r_negative_imag, tile, r_negative_imag);
+            read_tile(cb_r_imag, tile, r_imag);
+            read_tile(cb_x0_real, tile, x0_real);
+            read_tile(cb_x0_imag, tile, x0_imag);
+        }
+        return;
     }
 
-    std::uint32_t read_cycles = 0;
-    const std::uint32_t read_start = measure_core ? get_timestamp_32b() : 0;
+    ProfileCounters counters;
+    counters.total_start = get_timestamp_32b();
+    counters.warmup_start = counters.total_start;
+    read_tile_profiled(cb_identity, 0, identity, counters, true);
+    read_tile_profiled(cb_zero, 0, zero, counters, true);
     for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
         const std::uint32_t tile = start_tile + offset;
-        read_tile(cb_r_real, tile, r_real);
-        read_tile(cb_r_negative_imag, tile, r_negative_imag);
-        read_tile(cb_r_imag, tile, r_imag);
-        read_tile(cb_x0_real, tile, x0_real);
-        read_tile(cb_x0_imag, tile, x0_imag);
+        const bool warmup = offset == 0;
+        read_tile_profiled(cb_r_real, tile, r_real, counters, warmup);
+        read_tile_profiled(cb_r_negative_imag, tile, r_negative_imag, counters, warmup);
+        read_tile_profiled(cb_r_imag, tile, r_imag, counters, warmup);
+        read_tile_profiled(cb_x0_real, tile, x0_real, counters, warmup);
+        read_tile_profiled(cb_x0_imag, tile, x0_imag, counters, warmup);
+        if (warmup) {
+            counters.warmup_end = get_timestamp_32b();
+        }
     }
-    if (measure_core) {
-        read_cycles = get_timestamp_32b() - read_start;
-        write_profile(read_cycles, constant_cycles, tile_count);
-    }
+    counters.total_end = get_timestamp_32b();
+    write_profile(counters);
 }

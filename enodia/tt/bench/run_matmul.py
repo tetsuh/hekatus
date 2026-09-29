@@ -551,8 +551,8 @@ def run_custom_newton_schulz(
             record["profile_mode"] = "l1_cycle_counters"
             record["measurement_core"] = 0
             record["profile_clock"] = "get_timestamp_32b_lower_32_wall_clock"
-            record["profile_sampling"] = "first_tile_first_iteration_on_core_0"
-            record["profile_aggregation"] = "core_0_reader_compute_writer_triplet"
+            record["profile_sampling"] = "all_tiles_all_iterations_with_core_0_first_tile_iteration_warmup"
+            record["profile_aggregation"] = "core_0_per_risc_reader_compute_writer_pages"
             profile_records = kernel.profile_records()
             record["profile_records"] = profile_records
             record["profile_transport_complete"] = all(
@@ -883,8 +883,8 @@ def main(argv: list[str] | None = None) -> int:
             "mode": "l1_cycle_counters",
             "measurement_core": 0,
             "clock": "get_timestamp_32b_lower_32_wall_clock",
-            "sampling": "first_tile_first_iteration_on_core_0",
-            "aggregation": "core_0_reader_compute_writer_triplet",
+            "sampling": "all_tiles_all_iterations_with_core_0_first_tile_iteration_warmup",
+            "aggregation": "core_0_per_risc_reader_compute_writer_pages",
         }
     if args.profile_csv is not None:
         try:
