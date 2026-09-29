@@ -14,6 +14,44 @@ from numbers import Integral, Real
 from typing import Any
 
 _SCALAR_SEQUENCE_TYPES = (str, bytes, bytearray)
+_NO_NUMPY_CONVERSION = object()
+
+
+def _try_numpy_conversions(value: Any, *method_names: str) -> Any:
+    """Return the first changed result from the named NumPy conversions."""
+    for method_name in method_names:
+        converter = getattr(value, method_name, None)
+        if not callable(converter):
+            continue
+        try:
+            converted = converter()
+        except (TypeError, ValueError):
+            continue
+        if converted is not value and type(converted) is not type(value):
+            return converted
+    return _NO_NUMPY_CONVERSION
+
+
+def _normalize_numpy(value: Any) -> Any:
+    """Normalize NumPy values without importing NumPy."""
+    ndim = getattr(value, "ndim", None)
+    if ndim is not None and ndim > 0:
+        converted = _try_numpy_conversions(value, "tolist")
+        if converted is not _NO_NUMPY_CONVERSION:
+            return normalize_json(converted)
+
+    dtype = getattr(value, "dtype", None)
+    if getattr(dtype, "kind", None) == "f" and getattr(dtype, "itemsize", 0) > 8:
+        # Avoid math.isfinite: it narrows through float and mistakes a finite
+        # value outside Python float's range for infinity.
+        if math.isnan(value) or value == math.inf or value == -math.inf:
+            return None
+        return str(value)
+
+    converted = _try_numpy_conversions(value, "item", "tolist")
+    if converted is not _NO_NUMPY_CONVERSION:
+        return normalize_json(converted)
+    return value
 
 
 def normalize_json(value: Any) -> Any:
@@ -30,61 +68,8 @@ def normalize_json(value: Any) -> Any:
         return {str(key): normalize_json(item) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, _SCALAR_SEQUENCE_TYPES):
         return [normalize_json(item) for item in value]
-
-    is_numpy = type(value).__module__.split(".", 1)[0] == "numpy"
-    if is_numpy:
-        # NumPy arrays are not registered as collections.abc.Sequence.  A
-        # non-zero-dimensional array must be converted to nested lists before
-        # considering its scalar conversion, otherwise a one-element array
-        # would lose its shape.
-        ndim = getattr(value, "ndim", None)
-        if ndim is not None and ndim > 0:
-            tolist = getattr(value, "tolist", None)
-            if callable(tolist):
-                try:
-                    converted = tolist()
-                except (TypeError, ValueError):
-                    pass
-                else:
-                    if converted is not value and type(converted) is not type(value):
-                        return normalize_json(converted)
-
-        # NumPy's extended float scalar has no lossless Python scalar
-        # equivalent.  Keep finite values as decimal strings and reserve null
-        # for genuinely non-finite values.
-        dtype = getattr(value, "dtype", None)
-        if getattr(dtype, "kind", None) == "f" and getattr(dtype, "itemsize", 0) > 8:
-            # Avoid math.isfinite: it narrows through float and mistakes a
-            # finite value outside Python float's range for infinity.
-            if math.isnan(value) or value == math.inf or value == -math.inf:
-                return None
-            return str(value)
-
-        # NumPy bool_, ordinary numeric scalars, and zero-dimensional arrays do
-        # not all register as the standard numeric ABCs.  Their item
-        # conversion keeps this module usable without importing NumPy.
-        item = getattr(value, "item", None)
-        if callable(item):
-            try:
-                converted = item()
-            except (TypeError, ValueError):
-                pass
-            else:
-                if converted is not value and type(converted) is not type(value):
-                    return normalize_json(converted)
-
-        # A zero-dimensional array may fall back to tolist when item is not
-        # available; non-zero-dimensional arrays were handled above.
-        tolist = getattr(value, "tolist", None)
-        if callable(tolist):
-            try:
-                converted = tolist()
-            except (TypeError, ValueError):
-                pass
-            else:
-                if converted is not value and type(converted) is not type(value):
-                    return normalize_json(converted)
-
+    if type(value).__module__.split(".", 1)[0] == "numpy":
+        return _normalize_numpy(value)
     if isinstance(value, bool):
         return value
     if isinstance(value, Integral):

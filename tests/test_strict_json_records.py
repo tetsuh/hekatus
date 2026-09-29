@@ -69,10 +69,13 @@ def test_shared_normalizer_reduces_zero_dimensional_numpy_array_to_a_scalar():
     assert _strict_load(dumps({"value": np.array(2.5)})) == {"value": 2.5}
 
 
+@pytest.mark.skipif(
+    np.finfo(np.longdouble).max <= np.finfo(np.float64).max,
+    reason="NumPy longdouble has no wider range than float64 on this platform",
+)
 def test_shared_normalizer_preserves_finite_numpy_extended_precision_as_decimal_strings():
     from enodia.strict_json import dumps
 
-    assert np.finfo(np.longdouble).max > np.finfo(np.float64).max
     value = {
         "in_range": np.longdouble("1.234567890123456789"),
         "out_of_range": np.longdouble("1e400"),
