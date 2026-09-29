@@ -7,8 +7,11 @@
 This is the standalone contract for ordinary numerical bring-up. The Stage
 1–72 sections below remain the chronological experiment record.
 
-- **Output CB identity and format:** Output CBs are separated when switching
-  output identity or format; the diagnostics established that rule.
+- **Output CB identity and format:** Keep output CBs separated when switching
+  output identity or format as a conservative practice. Stages 60 and 66 show
+  this is sufficient in their diagnostics, but they do not establish it is
+  necessary. Stage 65 is confounded because CB16 has two consumers, so it does
+  not isolate the CB-reuse hypothesis.
 - **Data-format boundaries:** Initialization/reconfiguration is performed
   before every data-format boundary: use short operation init plus explicit
   unpack-side `reconfig_data_format` and pack-side
@@ -16,9 +19,11 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   mid-kernel.
 - **Initialization order:** After the first matmul-family call, no
   `*_init_common` may occur in a normal compute kernel; use short init plus
-  explicit reconfiguration instead. The static test has a small explicit
-  exclusion list for legacy diagnostic failure reproductions; new
-  production/diagnostic sources must not be added to it casually.
+  explicit reconfiguration instead. The static test applies this rule to
+  every new source and every source not in its explicit exclusion list. The
+  exclusions cover historical diagnostic snapshots, including the passing
+  Stage 61 snapshot, not only failed reproductions. New production/diagnostic
+  sources must not be added to it casually.
 - **Precision evidence:** The all-Float32-state Stage 61 passed at relative
   error `0.0040098457`. Stage 70's isolated BF16 first-residual Variant A
   passed at `0.0014451430179178715`, but it is not full-algorithm evidence.
@@ -27,8 +32,14 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   remaining numerical cause is unresolved.
 - **First execution safety:** Every new numerical stage starts with
   `TT_METAL_WATCHER=1` and an external 60-second cap unless an explicit
-  opt-out is recorded. This agrees with the ordinary numerical-stage harness
-  policy; construction and build-only paths retain their separate controls.
+  opt-out is recorded. The parent starts a module-level picklable function with
+  Python `multiprocessing` `spawn` before opening a device. It joins for 60
+  seconds; expiry calls `terminate()` and then `kill()` if the process remains
+  alive, with a timeout failure record. `--no-timeout` (or `--timeout 0`) is
+  the only unbounded form and keeps the same process and result-record path.
+  No child CLI flag, token environment variable, or handshake exists. No shell
+  wrapper is used.
+  Construction and build-only paths retain their separate controls.
 
 ## Stage guide
 
@@ -53,9 +64,9 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
 - **Stage 63 (initial attempt):** board JIT compilation failed before execution with undeclared compute-kernel APIs (`cb_wait_front`, `cb_reserve_back`, tile-register synchronization, `pack_tile`, `cb_push_back`, and `cb_pop_front`), and the host process exited 139. No conversion result was produced, so this is not a runtime conversion failure. The compute source was missing the common compute API include. No reset was required, no container or device-0 user remained, and the post-run stage-1 health probe passed at relative error `0.00456437`; the cumulative reset count remains 8.
 - **Stage 63 (corrected source rerun):** JIT compilation succeeded and the kernel closed normally in `0.255 s`, but it produced finite output with relative error `0.9999989867`, failing the `1e-2` threshold. This does not establish a BF16-to-Float32 conversion pass. No reset was required, no container or device-0 user remained, and the cumulative reset count remains 8.
 - **Stage 64:** passed on board at relative error `0.0` in `0.302777 s`; it repeats the isolated BF16 tile to Float32 tile copy/repack with `compute_kernel_hw_startup<SrcOrder::Reverse>` before any copy operation. It keeps BF16 input CB 20, distinct Float32 output CB 23, the same deterministic input and widened-output oracle, and no matmul, Newton, or binary arithmetic. Stage 63 used the same conversion path without hardware startup and produced near-zero output (relative error `0.9999989867`), so startup is required for this isolated route. The run closed normally, left no container or device-0 user, and required no reset; cumulative resets remain 8.
-- **Stage 65:** completed normally in `0.318909 s` with finite output but failed the `1e-2` threshold at relative error `1.40931547`. It reuses Float32 output CB 16 for the post-conversion matmul, matching the warm-up's output CB.
+- **Stage 65:** completed normally in `0.318909 s` with finite output but failed the `1e-2` threshold at relative error `1.40931547`. It reuses Float32 output CB 16 for the post-conversion matmul, matching the warm-up's output CB. The result is confounded because CB16 has two consumers, so it does not isolate the CB-reuse hypothesis.
 - **Stage 66:** passed at relative error `0.0003233934` in `0.331232 s`; it writes the post-conversion matmul to distinct Float32 output CB 19.
-- **Stages 65–66:** these paired L=32, batch-1, one-core diagnostics isolate conversion followed by using the Float32 state as the next matmul's right/SrcA operand, without Newton or binary arithmetic. Both queue a BF16 `R` tile twice, perform a BF16×BF16 warm-up into Float32 CB 16, drain that warm-up result, signal the writer only after the drain, convert a separate BF16 state from CB 20 to Float32 CB 14, route it through Float32 CB 17, and then perform `R @ X`. The warm-up is a diagnostic control for prior output-CB use, not a Newton step. Inputs and operation order are identical; only the post-conversion output CB differs, with no extra packer reconfiguration. The same-output case failed numerically while the distinct-output case passed, supporting the CB-separation hypothesis for this minimal route. This does not identify the cause of stage 62's timeout, since its full Newton dataflow has additional transitions. Both runs closed normally, left no container or device-0 user, and required no reset; cumulative resets were 8 at that point.
+- **Stages 65–66:** these paired L=32, batch-1, one-core diagnostics isolate conversion followed by using the Float32 state as the next matmul's right/SrcA operand, without Newton or binary arithmetic. Both queue a BF16 `R` tile twice, perform a BF16×BF16 warm-up into Float32 CB 16, drain that warm-up result, signal the writer only after the drain, convert a separate BF16 state from CB 20 to Float32 CB 14, route it through Float32 CB 17, and then perform `R @ X`. The warm-up is a diagnostic control for prior output-CB use, not a Newton step. Inputs and operation order are identical; only the post-conversion output CB differs, with no extra packer reconfiguration. Stage 65 is confounded because CB16 has two consumers, so its failed result does not isolate the CB-reuse hypothesis. Stage 66's distinct-output case passed, supporting output-CB separation as a sufficient conservative practice, but not establishing it as necessary. This does not identify the cause of stage 62's timeout, since its full Newton dataflow has additional transitions. Both runs closed normally, left no container or device-0 user, and required no reset; cumulative resets were 8 at that point.
 
 - **Stage 67:** mirrors stage 62's L=32, batch-1, eight-iteration four-BF16/four-Float32 Newton-Schulz path and changes only the Float32-phase `X @ S` product output from CB 16 to a dedicated Float32 CB 13; the first group remains on CB 16. It timed out after 60 seconds with exit 137 and no numerical result. The log ends at device initialization/dispatch telemetry with no stage-specific JIT compilation or result output, matching the stopping point in the original stage-62 timeout log; thus it does not establish whether the changed CB routing executed or explain stage 62's timeout. The residual container was stopped; no device-0 user was present. Reset #9 followed the forced termination without normal device close. The post-reset stage-1 health probe passed at relative error `0.00456437`, with no remaining container or device-0 user; cumulative resets are now 9.
 - **Stage 68:** ran once on board on 2026-09-27 as the approved minimum first-residual probe and timed out with status/exit 137 without a numerical JSON result. The Watcher record and required single-reset recovery are documented below. The stop point localizes the approved diagnostic to the first residual path, including BF16 `S` production and drain, but is liveness evidence only; it does not establish a numerical pass or the deferred Stage-62 reconfiguration root cause.
@@ -427,8 +438,8 @@ sanitize, or hardware-fault result was reported in the process log; this is not
 root-cause evidence.
 
 Because the numerical result was anomalous, exactly one reset targeted device 0
-and exited 0. This is cumulative reset #14, after Stage 70's documented #13.
-A fresh Stage 1 health probe passed with `numerical_error`
+and exited 0. This is cumulative reset #14, after Stage 69's documented #13. Stage 70
+closed normally and required no reset. A fresh Stage 1 health probe passed with `numerical_error`
 `0.004564372822642326`, elapsed `0.301262000000861 s`, and tolerance `0.01`.
 The health log SHA-256 is
 `0d5ff070136dc7452e67a7d34dba277e153bbb117d104a6431063e75a392e8d9`.

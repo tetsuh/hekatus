@@ -46,6 +46,12 @@ class _OrderingViolation:
     later_init_common: _CallSite
 
 
+@dataclass(frozen=True)
+class _SourceRange:
+    opening: int
+    closing: int
+
+
 # These are historical diagnostics and the legacy scaffold.  Their full binary
 # helpers intentionally remain after a matmul helper body; the exclusions keep
 # this source rule focused while requiring every exception to stay observable.
@@ -204,6 +210,30 @@ def _matching_close_parenthesis(source: str, opening: int) -> int | None:
     return None
 
 
+def _matching_close_brace(source: str, opening: int) -> int | None:
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "{":
+            depth += 1
+        elif source[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _function_range(source: str, name: str) -> _SourceRange | None:
+    pattern = re.compile(rf"\b{re.escape(name)}\s*\([^)]*\)\s*\{{")
+    match = pattern.search(source)
+    if match is None:
+        return None
+    opening = match.end() - 1
+    closing = _matching_close_brace(source, opening)
+    if closing is None:
+        return None
+    return _SourceRange(opening, closing)
+
+
 def _is_definition(source: str, closing_parenthesis: int) -> bool:
     suffix = source[closing_parenthesis + 1 : closing_parenthesis + 256]
     return _DEFINITION_SUFFIX.match(suffix) is not None
@@ -237,11 +267,32 @@ def _ordering_violations(source: str) -> tuple[_OrderingViolation, ...]:
     if not matmul_calls:
         return ()
     first_matmul = min(matmul_calls, key=lambda call: call.offset)
-    init_common_calls = _call_sites(masked, _INIT_COMMON_PATTERN)
+    init_common_calls = tuple(_call_sites(masked, _INIT_COMMON_PATTERN))
+    kernel_main = _function_range(masked, "kernel_main")
+    kernel_matmul_calls = tuple(
+        call
+        for call in matmul_calls
+        if kernel_main is not None
+        and kernel_main.opening < call.offset < kernel_main.closing
+    )
+    first_kernel_matmul = (
+        min(kernel_matmul_calls, key=lambda call: call.offset)
+        if kernel_matmul_calls
+        else None
+    )
+
+    def is_before_kernel_matmul(call: _CallSite) -> bool:
+        return (
+            kernel_main is not None
+            and first_kernel_matmul is not None
+            and kernel_main.opening < call.offset < kernel_main.closing
+            and call.offset < first_kernel_matmul.offset
+        )
+
     return tuple(
         _OrderingViolation(first_matmul, init_common)
         for init_common in init_common_calls
-        if init_common.offset > first_matmul.offset
+        if not is_before_kernel_matmul(init_common)
     )
 
 
@@ -305,6 +356,33 @@ void kernel_main() {
     assert violations[0].first_matmul.name == "matmul_block"
     assert violations[0].later_init_common.name == "binary_op_init_common"
     with pytest.raises(AssertionError, match=r"synthetic_compute\.cpp:\d+:"):
+        _assert_source_is_clean(source)
+
+
+def test_helper_defined_before_matmul_is_checked_in_runtime_order(tmp_path):
+    source = tmp_path / "synthetic_helper_order.cpp"
+    source.write_text(
+        """
+void binary_op_helper() {
+    binary_op_init_common(left, right, output);
+}
+void matmul_one() {
+    matmul_block(left, right, 0, 0, 0, false, 1, 1, 1);
+}
+void kernel_main() {
+    binary_op_init_common(left, right, output);
+    matmul_one();
+    binary_op_helper();
+}
+""",
+        encoding="utf-8",
+    )
+
+    violations = _ordering_violations(source.read_text(encoding="utf-8"))
+    assert len(violations) == 1
+    assert violations[0].first_matmul.name == "matmul_block"
+    assert violations[0].later_init_common.name == "binary_op_init_common"
+    with pytest.raises(AssertionError, match=r"synthetic_helper_order\.cpp:\d+:"):
         _assert_source_is_clean(source)
 
 

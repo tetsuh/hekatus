@@ -157,6 +157,75 @@ def test_cache_manifest_explicitly_records_missing_stage_artifacts(tmp_path):
     }
 
 
+def test_build_only_failure_keeps_pre_manifest_before_dispatch_when_close_fails(
+    monkeypatch, tmp_path
+):
+    stage = bringup.STAGES[62]
+    cache_directory = tmp_path / "jit-cache"
+    artifact = cache_directory / "compiled" / f"compiled-{stage.compute_source}.bin"
+    payload = b"dispatch-created-artifact"
+
+    class _CloseFailingRuntime(_FakeRuntime):
+        def __init__(self):
+            super().__init__()
+            self.opened_device_ids = []
+            self.closed_devices = []
+
+        def open_device(self, device_id):
+            self.opened_device_ids.append(device_id)
+            return object()
+
+        def generic_op(self, tensors, program):
+            super().generic_op(tensors, program)
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_bytes(payload)
+
+        def close_device(self, device):
+            self.closed_devices.append(device)
+            raise RuntimeError("close failed")
+
+    monkeypatch.setattr(
+        bringup,
+        "_prepare_stage_program",
+        lambda ttnn, device, selected, input_values: ("full-work-program", ["input"], ["output"]),
+    )
+    runtime = _CloseFailingRuntime()
+    result = bringup.run_build_only_jit_probe(
+        stage.number,
+        cache_directory=cache_directory,
+        device_id=3,
+        environment=_valid_environment(cache_directory),
+        ttnn_module=runtime,
+    )
+
+    assert result["success"] is False
+    assert result["status"] == "fail"
+    assert result["error"]["code"] == "runtime_unavailable"
+    assert runtime.opened_device_ids == [3]
+    assert len(runtime.generic_calls) == 1
+    assert len(runtime.closed_devices) == 1
+
+    pre = result["cache_artifacts"]["pre"]
+    post = result["cache_artifacts"]["post"]
+    assert pre["compute"] == {
+        "source": stage.compute_source,
+        "status": "no_matching_artifacts",
+        "artifacts": [],
+    }
+    assert post["compute"] == {
+        "source": stage.compute_source,
+        "status": "matched",
+        "artifacts": [
+            {
+                "relative_path": artifact.relative_to(cache_directory).as_posix(),
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        ],
+    }
+    assert post["reader"]["artifacts"] == []
+
+
 def test_build_only_preflight_failure_is_machine_readable_without_runtime_import(tmp_path):
     result = bringup.run_build_only_jit_probe(
         62,
@@ -173,3 +242,88 @@ def test_json_emitter_flushes_a_single_machine_readable_record():
     stream = io.StringIO()
     bringup._emit_json({"stage": 62, "success": False}, stream=stream)
     assert stream.getvalue() == '{"stage": 62, "success": false}\n'
+
+
+def test_prepare_stage_program_cleans_partial_input_allocations(monkeypatch):
+    stage = bringup.STAGES[62]
+    input_values = [
+        bringup.np.zeros((stage.batch, bringup.TILE, bringup.TILE), dtype=bringup.np.float32)
+        for _ in range(stage.input_count)
+    ]
+    allocated = []
+    deallocated = []
+
+    def fake_device_tensor(ttnn, value, device, dtype_name):
+        index = len(allocated)
+        if index == 1:
+            raise RuntimeError("input allocation failed")
+        tensor = f"input-{index}"
+        allocated.append(tensor)
+        return tensor
+
+    class _FakeRuntime:
+        def deallocate(self, tensor):
+            deallocated.append(tensor)
+
+    monkeypatch.setattr(
+        bringup,
+        "_core_coordinates",
+        lambda ttnn, device, count: ([(0, 0)], "core-ranges"),
+    )
+    monkeypatch.setattr(bringup, "_device_tensor", fake_device_tensor)
+
+    with pytest.raises(RuntimeError, match="input allocation failed"):
+        bringup._prepare_stage_program(_FakeRuntime(), object(), stage, input_values)
+
+    assert allocated == ["input-0"]
+    assert deallocated == ["input-0"]
+
+
+def test_prepare_stage_program_cleans_partial_output_allocations(monkeypatch):
+    stage = bringup.STAGES[62]
+    input_values = [
+        bringup.np.zeros((stage.batch, bringup.TILE, bringup.TILE), dtype=bringup.np.float32)
+        for _ in range(stage.input_count)
+    ]
+    input_allocations = []
+
+    def fake_device_tensor(ttnn, value, device, dtype_name):
+        tensor = f"input-{len(input_allocations)}"
+        input_allocations.append(tensor)
+        return tensor
+
+    class _FakeRuntime:
+        TILE_LAYOUT = object()
+        L1_MEMORY_CONFIG = object()
+        float32 = object()
+        Shape = staticmethod(lambda shape: shape)
+
+        def __init__(self):
+            self.output_allocations = []
+            self.deallocated = []
+
+        def allocate_tensor_on_device(self, *args):
+            index = len(self.output_allocations)
+            if index == 1:
+                raise RuntimeError("output allocation failed")
+            tensor = f"output-{index}"
+            self.output_allocations.append(tensor)
+            return tensor
+
+        def deallocate(self, tensor):
+            self.deallocated.append(tensor)
+
+    runtime = _FakeRuntime()
+    monkeypatch.setattr(
+        bringup,
+        "_core_coordinates",
+        lambda ttnn, device, count: ([(0, 0)], "core-ranges"),
+    )
+    monkeypatch.setattr(bringup, "_device_tensor", fake_device_tensor)
+
+    with pytest.raises(RuntimeError, match="output allocation failed"):
+        bringup._prepare_stage_program(runtime, object(), stage, input_values)
+
+    assert input_allocations == [f"input-{index}" for index in range(stage.input_count)]
+    assert runtime.output_allocations == ["output-0"]
+    assert runtime.deallocated == [*input_allocations, "output-0"]

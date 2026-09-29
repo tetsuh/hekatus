@@ -343,6 +343,77 @@ def test_git_ls_files_failure_is_not_clean(tmp_path):
     _assert_no_configured_terms(output, [word])
 
 
+@pytest.mark.parametrize("control_bytes", ["::", "%0A", "%0D", ",", "=", "\r", "\n"])
+def test_command_control_bytes_in_tracked_paths_stay_inert(tmp_path, control_bytes):
+    word = "needle"
+    path = f"docs/{word}{control_bytes}report.txt"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={path: "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert len(output.splitlines()) == 1
+    assert "::" not in output
+    assert output.count("prohibited word in path") == 1
+    assert "(1 occurrence(s))" in output
+    _assert_no_configured_terms(output, [word])
+
+
+@pytest.mark.parametrize("control_bytes", ["::", "%0A", "%0D", ",", "=", "\r", "\n"])
+def test_command_control_bytes_in_annotated_contents_diagnostics_stay_inert(
+    tmp_path, control_bytes
+):
+    word = "needle"
+    path = f"docs/report{control_bytes}.txt"
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={path: f"safe {word}\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert len(output.splitlines()) == 1
+    assert "::" not in output
+    assert ": prohibited word in contents (1 occurrence(s))" in output
+    assert "prohibited word in contents of" not in output
+    assert "prohibited word in path" not in output
+    assert "(1 occurrence(s))" in output
+    _assert_no_configured_terms(output, [word])
+
+
+@pytest.mark.parametrize(
+    ("word", "expected_reports"),
+    [
+        ("foo::bar", 1),
+        ("foo%0Abar", 1),
+        ("foo%0Dbar", 1),
+        # Commas delimit the configured list, so this path produces one
+        # finding for each parsed term while retaining the unsafe separator.
+        ("foo,bar", 2),
+        ("foo=bar", 1),
+    ],
+)
+def test_configured_terms_spanning_command_control_paths_stay_inert(
+    tmp_path, word, expected_reports
+):
+    completed = _run_scan(
+        tmp_path,
+        words=word,
+        tracked={f"docs/{word}.txt": "safe\n"},
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode != 0
+    assert len(output.splitlines()) == expected_reports
+    assert "::" not in output
+    assert output.count("prohibited word in path") == expected_reports
+    _assert_no_configured_terms(output, [word])
+
+
 def test_reserved_error_word_falls_back_to_fully_masked_plain_text(tmp_path):
     word = "error"
     completed = _run_scan(

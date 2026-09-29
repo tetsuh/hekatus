@@ -98,6 +98,37 @@ jobs:
             mask_text "$1"
           }
 
+          sanitize_diagnostic() {
+            local text="$1"
+            # GitHub decodes percent-encoded newlines and carriage returns in
+            # workflow commands. Replace those bytes, plus command delimiters,
+            # with spaces after masking so attacker-controlled paths remain a
+            # single inert line without introducing a new configured term.
+            text="${text//$'\r'/ }"
+            text="${text//$'\n'/ }"
+            text="${text//%/ }"
+            text="${text//::/  }"
+            printf '%s' "$text"
+          }
+
+          annotation_path_is_safe() {
+            local path="$1"
+            # A path is a workflow-command property only when it cannot add a
+            # property, terminate the property list, or encode a new line.
+            case "$path" in
+              *[,=%$'\r'$'\n']*|*::*|*=*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
+          diagnostic_is_safe() {
+            local text="$1"
+            case "$text" in
+              *[,=%$'\r'$'\n']*|*::*) return 1 ;;
+              *) return 0 ;;
+            esac
+          }
+
           skeleton_is_safe() {
             local skeleton="$1" w
             for w in "${words[@]}"; do
@@ -122,27 +153,44 @@ jobs:
           }
 
           report() {
-            local annotation_path="$1" message="$2" human masked masked_path masked_message skeleton candidate
+            local annotation_path="$1" message="$2" human masked_raw masked masked_path masked_message skeleton candidate human_is_safe
             if [ -n "$annotation_path" ]; then
               human="$annotation_path: $message"
             else
               human="$message"
             fi
-            # Check the complete annotation command family before emitting
-            # either its annotated or unannotated form. This retains the
-            # existing fail-closed behavior for the reserved `file` token.
+            # Mask every human-readable component before applying the
+            # rendering safety transformation, preserving the #69 discipline.
+            masked_raw=$(mask_text "$human")
+            masked=$(sanitize_diagnostic "$masked_raw")
             skeleton='::error file=::'
-            masked=$(mask_text "$human")
+
+            # Check both the original and masked diagnostics. Masking can
+            # remove a control byte when a configured term spans it, so the
+            # original text must also force the inert plain rendering.
+            if diagnostic_is_safe "$human" &&
+              diagnostic_is_safe "$annotation_path" &&
+              diagnostic_is_safe "$masked_raw"; then
+              human_is_safe=1
+            else
+              human_is_safe=0
+            fi
             if [ -n "$annotation_path" ]; then
               masked_path=$(mask_text "$annotation_path")
               masked_message=$(mask_text "$message")
+              if ! annotation_path_is_safe "$masked_path"; then
+                printf '%s\n' "$masked"
+                return
+              fi
+              masked_path=$(sanitize_diagnostic "$masked_path")
+              masked_message=$(sanitize_diagnostic "$masked_message")
             fi
 
             # Only the workflow-command skeleton bypasses masking. Assemble
             # the exact rendered command before checking it, so a configured
             # term cannot cross from the skeleton into a masked component (or
             # between any other rendered boundaries).
-            if ! skeleton_is_safe "$skeleton"; then
+            if [ "$human_is_safe" -eq 0 ] || ! skeleton_is_safe "$skeleton"; then
               printf '%s\n' "$masked"
             elif [ -n "$annotation_path" ]; then
               candidate=$(printf '::error file=%s::%s' "$masked_path" "$masked_message")
@@ -162,8 +210,10 @@ jobs:
           }
 
           report_plain() {
-            mask_text "$1"
-            printf '\n'
+            local masked
+            masked=$(mask_text "$1")
+            masked=$(sanitize_diagnostic "$masked")
+            printf '%s\n' "$masked"
           }
 
           fail=0
