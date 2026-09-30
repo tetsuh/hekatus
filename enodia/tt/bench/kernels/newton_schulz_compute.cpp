@@ -316,9 +316,10 @@ void complex_matmul(
     }
 }
 
-// Build S directly in DEST: start both halves at BF16 2I, then accumulate the
-// signed BF16 R terms against X.  The output CB is the only pack boundary for
-// S; RX never makes a product CB round trip in the fused path.
+// Build S directly in DEST: start S_re at BF16 2I and S_im at FP32 zero,
+// then accumulate the signed BF16 R terms against X.  The output CB is the
+// only pack boundary for S; RX never makes a product CB round trip in the
+// fused path.
 void fused_s_matmul(
     std::uint32_t negative_r_real,
     std::uint32_t negative_r_imag,
@@ -326,6 +327,7 @@ void fused_s_matmul(
     std::uint32_t x_real,
     std::uint32_t x_imag) {
     cb_wait_front(cb_identity, 1);
+    cb_wait_front(cb_zero, 1);
     cb_wait_front(x_real, 1);
     cb_wait_front(x_imag, 1);
     cb_reserve_back(cb_s_real, 1);
@@ -336,7 +338,10 @@ void fused_s_matmul(
     copy_tile_init(cb_identity);
     tile_regs_acquire();
     copy_tile(cb_identity, 0, 0);
-    copy_tile(cb_identity, 0, 1);
+    // S_im has no identity term.  This short transition changes SrcA from the
+    // BF16 identity CB to the FP32 zero CB without a full binary initializer.
+    copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
+    copy_tile(cb_zero, 0, 1);
     reconfig_data_format(x_real, negative_r_real);
     matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
 
