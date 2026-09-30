@@ -466,6 +466,8 @@ def run_custom_newton_schulz(
     repeats: int,
     math_fidelity: str = "HiFi4",
     profile: bool = False,
+    fuse_s: bool = False,
+    batch_reads: bool = False,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
     if not _is_custom_target(shape):
@@ -515,6 +517,8 @@ def run_custom_newton_schulz(
             variant=variant,
             math_fidelity=math_fidelity,
             profile=profile,
+            fuse_s=fuse_s,
+            batch_reads=batch_reads,
         )
         kernel.launch()
         ttnn.synchronize_device(device)
@@ -537,6 +541,8 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "variant": variant,
             "math_fidelity": math_fidelity,
+            "fuse_s": fuse_s,
+            "batch_reads": batch_reads,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
             "seconds_per_iteration_samples": launch_samples,
@@ -625,6 +631,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--profile",
         action="store_true",
         help="enable L1 cycle-counter profiling",
+    )
+    parser.add_argument(
+        "--fuse-s",
+        action="store_true",
+        help="fuse S = 2I - R @ X into BF16/FP32 DEST accumulation",
+    )
+    parser.add_argument(
+        "--batch-reads",
+        action="store_true",
+        help="group each matrix's reader NoC reads behind one barrier",
     )
     parser.add_argument(
         "--profile-csv",
@@ -844,6 +860,8 @@ def main(argv: list[str] | None = None) -> int:
                                     "kind": CUSTOM_KIND,
                                     "variant": args.custom_variant,
                                     "math_fidelity": math_fidelity,
+                                    "fuse_s": args.fuse_s,
+                                    "batch_reads": args.batch_reads,
                                 },
                                 "iterations": args.iters,
                                 "repeats": args.repeats,
@@ -859,6 +877,8 @@ def main(argv: list[str] | None = None) -> int:
                                     variant=args.custom_variant,
                                     math_fidelity=math_fidelity,
                                     profile=args.profile,
+                                    fuse_s=args.fuse_s,
+                                    batch_reads=args.batch_reads,
                                     iters=args.iters,
                                     repeats=args.repeats,
                                 )
@@ -885,6 +905,8 @@ def main(argv: list[str] | None = None) -> int:
             "shape_filters": args.only or [],
             "program_config_kind_filters": args.config_kind or [],
             "custom_math_fidelity": custom_fidelities,
+            "fuse_s": args.fuse_s,
+            "batch_reads": args.batch_reads,
         },
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,

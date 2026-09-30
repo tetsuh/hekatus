@@ -41,6 +41,7 @@ CB_S_IMAG = 10
 CB_PRODUCT_REAL = 11
 CB_PRODUCT_IMAG = 12
 CB_NEG_X_IMAG = 13
+CB_R_NEG_REAL = 14
 CB_OUTPUT_REAL = 15
 CB_OUTPUT_IMAG = 16
 CB_PROFILE_READER = 17
@@ -201,7 +202,13 @@ def _cb_page_size(ttnn, data_format) -> int:
     return _TILE_BYTES_FLOAT32 if data_format == ttnn.float32 or data_format == uint32 else _TILE_BYTES_BFLOAT16
 
 
-def _cb_definitions(ttnn, state_dtype, *, profile: bool = False) -> dict[int, tuple[Any, int]]:
+def _cb_definitions(
+    ttnn,
+    state_dtype,
+    *,
+    profile: bool = False,
+    fuse_s: bool = False,
+) -> dict[int, tuple[Any, int]]:
     """Describe the CB formats shared by both state-precision variants."""
     definitions = {
         CB_R_REAL: (ttnn.bfloat16, 2),
@@ -209,7 +216,9 @@ def _cb_definitions(ttnn, state_dtype, *, profile: bool = False) -> dict[int, tu
         CB_R_IMAG: (ttnn.bfloat16, 2),
         CB_X0_REAL: (state_dtype, 2),
         CB_X0_IMAG: (state_dtype, 2),
-        CB_IDENTITY: (ttnn.float32, 1),
+        # Fused S starts each DEST tile from host-prepared BF16 2I.  The
+        # baseline keeps its original FP32 binary-operation identity.
+        CB_IDENTITY: (ttnn.bfloat16 if fuse_s else ttnn.float32, 1),
         CB_ZERO: (ttnn.float32, 1),
         CB_STATE_REAL: (state_dtype, 2),
         CB_STATE_IMAG: (state_dtype, 2),
@@ -218,9 +227,8 @@ def _cb_definitions(ttnn, state_dtype, *, profile: bool = False) -> dict[int, tu
         CB_PRODUCT_REAL: (ttnn.float32, 1),
         CB_PRODUCT_IMAG: (ttnn.float32, 1),
         CB_NEG_X_IMAG: (state_dtype, 1),
-        # Keep the descriptor vector contiguous; this index is reserved
-        # for later variants and is not referenced by this one.
-        14: (ttnn.bfloat16, 1),
+        # CB14 is a second resident R input only for fused S.
+        CB_R_NEG_REAL: (ttnn.bfloat16, 2 if fuse_s else 1),
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
@@ -352,6 +360,8 @@ class NewtonSchulzKernel:
     math_fidelity: str
     output_memory: str
     profile: bool
+    fuse_s: bool
+    batch_reads: bool
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -370,6 +380,8 @@ class NewtonSchulzKernel:
         variant: str = "bf16",
         math_fidelity: str = "HiFi4",
         profile: bool = False,
+        fuse_s: bool = False,
+        batch_reads: bool = False,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         if iterations != NEWTON_SCHULZ_ITERATIONS:
@@ -396,29 +408,38 @@ class NewtonSchulzKernel:
         r_real_values = _pack_matrices(matrices.real, packed=False, tile_count=tile_count)
         r_imag_values = _pack_matrices(matrices.imag, packed=False, tile_count=tile_count)
         r_negative_imag_values = -r_imag_values
+        r_negative_real_values = -r_real_values
         x_real_values = _pack_matrices(x0.real, packed=False, tile_count=tile_count)
         x_imag_values = _pack_matrices(x0.imag, packed=False, tile_count=tile_count)
         identity_values = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
         zero_values = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
 
-        input_values = (
+        input_values = [
             r_real_values,
             r_negative_imag_values,
             r_imag_values,
-            x_real_values,
-            x_imag_values,
-            identity_values,
-            zero_values,
+        ]
+        if fuse_s:
+            input_values.append(r_negative_real_values)
+        input_values.extend(
+            [
+                x_real_values,
+                x_imag_values,
+                identity_values,
+                zero_values,
+            ]
         )
         state_dtype = _state_dtype(ttnn, variant)
-        input_dtypes = (
-            ttnn.bfloat16,
-            ttnn.bfloat16,
-            ttnn.bfloat16,
-            state_dtype,
-            state_dtype,
-            ttnn.float32,
-            ttnn.float32,
+        input_dtypes = [ttnn.bfloat16, ttnn.bfloat16, ttnn.bfloat16]
+        if fuse_s:
+            input_dtypes.append(ttnn.bfloat16)
+        input_dtypes.extend(
+            [
+                state_dtype,
+                state_dtype,
+                ttnn.bfloat16 if fuse_s else ttnn.float32,
+                ttnn.float32,
+            ]
         )
         inputs = [
             _device_tensor(ttnn, values, device, dtype=dtype)
@@ -454,7 +475,12 @@ class NewtonSchulzKernel:
             )
             outputs.append(profile_output)
 
-        cb_definitions = _cb_definitions(ttnn, state_dtype, profile=profile)
+        cb_definitions = _cb_definitions(
+            ttnn,
+            state_dtype,
+            profile=profile,
+            fuse_s=fuse_s,
+        )
         cbs = []
         for index, (data_format, page_count) in cb_definitions.items():
             page_size = _cb_page_size(ttnn, data_format)
@@ -473,6 +499,8 @@ class NewtonSchulzKernel:
             )
 
         reader_compile_args = [iterations]
+        if profile or fuse_s or batch_reads:
+            reader_compile_args.extend([int(fuse_s), int(batch_reads)])
         for tensor in inputs:
             reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
         writer_compile_args: list[int] = []
@@ -505,12 +533,19 @@ class NewtonSchulzKernel:
                 work_ranges,
             )
         compute_args = _runtime_args(ttnn, coordinates, [], work_ranges)
+        reader_source = (
+            _KERNEL_DIR / "newton_schulz_reader_profile.cpp"
+            if profile
+            else (
+                _KERNEL_DIR / "newton_schulz_reader_optimized.cpp"
+                if fuse_s or batch_reads
+                else _KERNEL_DIR / "newton_schulz_reader.cpp"
+            )
+        )
 
         kernels = [
             ttnn.KernelDescriptor(
-                kernel_source=str(
-                    (_KERNEL_DIR / ("newton_schulz_reader_profile.cpp" if profile else "newton_schulz_reader.cpp")).resolve()
-                ),
+                kernel_source=str(reader_source.resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
                 compile_time_args=reader_compile_args,
@@ -531,7 +566,7 @@ class NewtonSchulzKernel:
                 kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32), int(profile)],
+                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s)],
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
@@ -550,6 +585,8 @@ class NewtonSchulzKernel:
             math_fidelity=math_fidelity,
             output_memory=output_memory,
             profile=profile,
+            fuse_s=fuse_s,
+            batch_reads=batch_reads,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -647,6 +684,8 @@ def run_newton_schulz_kernel(
     variant: str = "bf16",
     math_fidelity: str = "HiFi4",
     profile: bool = False,
+    fuse_s: bool = False,
+    batch_reads: bool = False,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -656,6 +695,8 @@ def run_newton_schulz_kernel(
         variant=variant,
         math_fidelity=math_fidelity,
         profile=profile,
+        fuse_s=fuse_s,
+        batch_reads=batch_reads,
     )
     try:
         kernel.launch()

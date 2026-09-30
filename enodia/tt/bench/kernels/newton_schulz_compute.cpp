@@ -5,6 +5,7 @@
 #include "api/compute/eltwise_binary.h"
 #include "api/compute/matmul.h"
 #include "api/compute/reconfig_data_format.h"
+#include "api/compute/tile_move_copy.h"
 #include "tools/profiler/kernel_profiler.hpp"
 
 namespace {
@@ -22,6 +23,7 @@ constexpr std::uint32_t cb_s_imag = 10;
 constexpr std::uint32_t cb_product_real = 11;
 constexpr std::uint32_t cb_product_imag = 12;
 constexpr std::uint32_t cb_negative_x_imag = 13;
+constexpr std::uint32_t cb_r_negative_real = 14;
 constexpr std::uint32_t cb_output_real = 15;
 constexpr std::uint32_t cb_output_imag = 16;
 constexpr std::uint32_t cb_profile_compute = 18;
@@ -314,6 +316,47 @@ void complex_matmul(
     }
 }
 
+// Build S directly in DEST: start both halves at BF16 2I, then accumulate the
+// signed BF16 R terms against X.  The output CB is the only pack boundary for
+// S; RX never makes a product CB round trip in the fused path.
+void fused_s_matmul(
+    std::uint32_t negative_r_real,
+    std::uint32_t negative_r_imag,
+    std::uint32_t positive_r_imag,
+    std::uint32_t x_real,
+    std::uint32_t x_imag) {
+    cb_wait_front(cb_identity, 1);
+    cb_wait_front(x_real, 1);
+    cb_wait_front(x_imag, 1);
+    cb_reserve_back(cb_s_real, 1);
+    cb_reserve_back(cb_s_imag, 1);
+
+    // copy_tile_init changes only SrcA.  Reconfigure both operands before the
+    // short matmul init so BF16 X and mixed BF16 R/FP32 X use their CB formats.
+    copy_tile_init(cb_identity);
+    tile_regs_acquire();
+    copy_tile(cb_identity, 0, 0);
+    copy_tile(cb_identity, 0, 1);
+    reconfig_data_format(x_real, negative_r_real);
+    matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
+
+    // S_re = 2I + (-R_re)X_re + (+R_im)X_im.
+    matmul_block(negative_r_real, x_real, 0, 0, 0, false, 1, 1, 1);
+    matmul_block(positive_r_imag, x_imag, 0, 0, 0, false, 1, 1, 1);
+    // S_im = (-R_re)X_im + (-R_im)X_re.
+    matmul_block(negative_r_real, x_imag, 0, 0, 1, false, 1, 1, 1);
+    matmul_block(negative_r_imag, x_real, 0, 0, 1, false, 1, 1, 1);
+    tile_regs_commit();
+    tile_regs_wait();
+    pack_reconfig_data_format(cb_s_real);
+    pack_tile(0, cb_s_real);
+    pack_reconfig_data_format(cb_s_imag);
+    pack_tile(1, cb_s_imag);
+    tile_regs_release();
+    cb_push_back(cb_s_real, 1);
+    cb_push_back(cb_s_imag, 1);
+}
+
 void subtract_one_impl(
     std::uint32_t current_srca,
     std::uint32_t current_srcb,
@@ -390,13 +433,15 @@ void subtract_one_profiled(
 
 void negate_state_imag_impl(
     std::uint32_t x_imag,
+    std::uint32_t current_srca,
+    std::uint32_t current_srcb,
     bool profile_pack,
     ProfileCounters* counters = nullptr,
     bool warmup = false) {
     cb_wait_front(x_imag, 1);
     cb_wait_front(cb_zero, 1);
     cb_reserve_back(cb_negative_x_imag, 1);
-    reconfig_data_format(cb_zero, cb_zero, cb_product_imag, x_imag);
+    reconfig_data_format(current_srca, cb_zero, current_srcb, x_imag);
     pack_reconfig_data_format(cb_negative_x_imag);
     sub_tiles_init(cb_zero, x_imag);
     tile_regs_acquire();
@@ -413,19 +458,25 @@ void residual_format_transition_to_matmul(std::uint32_t x_real, std::uint32_t x_
     reconfig_data_format(cb_zero, cb_s_real, x_imag, x_real);
 }
 
-void state_handoff(std::uint32_t x_real, std::uint32_t x_imag) {
-    negate_state_imag_impl(x_imag, false);
+void state_handoff(
+    std::uint32_t x_real,
+    std::uint32_t x_imag,
+    std::uint32_t current_srca,
+    std::uint32_t current_srcb) {
+    negate_state_imag_impl(x_imag, current_srca, current_srcb, false);
     residual_format_transition_to_matmul(x_real, x_imag);
 }
 
 void state_handoff_profiled(
     std::uint32_t x_real,
     std::uint32_t x_imag,
+    std::uint32_t current_srca,
+    std::uint32_t current_srcb,
     ProfileCounters& counters,
     bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-STATE-HANDOFF");
     const std::uint32_t start = get_timestamp_32b();
-    negate_state_imag_impl(x_imag, true, &counters, warmup);
+    negate_state_imag_impl(x_imag, current_srca, current_srcb, true, &counters, warmup);
     residual_format_transition_to_matmul(x_real, x_imag);
     add_profile_cycles(
         counters.state_handoff,
@@ -434,16 +485,19 @@ void state_handoff_profiled(
         warmup);
 }
 
-void wait_r_inputs() {
+void wait_r_inputs(bool fuse_s) {
     cb_wait_front(cb_r_real, 1);
     cb_wait_front(cb_r_negative_imag, 1);
     cb_wait_front(cb_r_imag, 1);
+    if (fuse_s) {
+        cb_wait_front(cb_r_negative_real, 1);
+    }
 }
 
-void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup) {
+void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup, bool fuse_s) {
     DeviceZoneScopedN("NS-COMPUTE-R-CB-WAIT");
     const std::uint32_t start = get_timestamp_32b();
-    wait_r_inputs();
+    wait_r_inputs(fuse_s);
     add_profile_cycles(
         counters.r_wait,
         counters.warmup_r_wait,
@@ -625,6 +679,7 @@ void kernel_main() {
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
     constexpr bool profile_sample = get_compile_time_arg_val(2) != 0;
+    constexpr bool fuse_s = get_compile_time_arg_val(3) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
@@ -645,12 +700,12 @@ void kernel_main() {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if constexpr (profile_sample) {
             if (start_tile == 0) {
-                wait_r_inputs_profiled(counters, tile == 0);
+                wait_r_inputs_profiled(counters, tile == 0, fuse_s);
             } else {
-                wait_r_inputs();
+                wait_r_inputs(fuse_s);
             }
         } else {
-            wait_r_inputs();
+            wait_r_inputs(fuse_s);
         }
         for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
             std::uint32_t x_real;
@@ -673,7 +728,14 @@ void kernel_main() {
                 }
             }
 
-            if constexpr (profile_sample) {
+            if constexpr (fuse_s) {
+                fused_s_matmul(
+                    cb_r_negative_real,
+                    cb_r_negative_imag,
+                    cb_r_imag,
+                    x_real,
+                    x_imag);
+            } else if constexpr (profile_sample) {
                 complex_matmul<true>(
                     cb_r_real,
                     cb_r_negative_imag,
@@ -703,38 +765,54 @@ void kernel_main() {
                     false);
             }
 
+            // The last fused term leaves SrcA=X and SrcB=-R_im.  The
+            // baseline binary path leaves SrcA=zero and SrcB=product_imag.
+            const std::uint32_t handoff_srca = fuse_s ? x_real : cb_zero;
+            const std::uint32_t handoff_srcb = fuse_s ? cb_r_negative_imag : cb_product_imag;
             if constexpr (profile_sample) {
                 if (profile_core) {
-                    subtract_one_profiled(
+                    if constexpr (!fuse_s) {
+                        subtract_one_profiled(
+                            x_real,
+                            cb_r_imag,
+                            cb_identity,
+                            cb_product_real,
+                            cb_s_real,
+                            false,
+                            true,
+                            counters,
+                            warmup);
+                        subtract_one_profiled(
+                            cb_identity,
+                            cb_product_real,
+                            cb_zero,
+                            cb_product_imag,
+                            cb_s_imag,
+                            false,
+                            true,
+                            counters,
+                            warmup);
+                    }
+                    state_handoff_profiled(
                         x_real,
-                        cb_r_imag,
-                        cb_identity,
-                        cb_product_real,
-                        cb_s_real,
-                        false,
-                        true,
+                        x_imag,
+                        handoff_srca,
+                        handoff_srcb,
                         counters,
                         warmup);
-                    subtract_one_profiled(
-                        cb_identity,
-                        cb_product_real,
-                        cb_zero,
-                        cb_product_imag,
-                        cb_s_imag,
-                        false,
-                        true,
-                        counters,
-                        warmup);
-                    state_handoff_profiled(x_real, x_imag, counters, warmup);
                 } else {
-                    subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
-                    subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
-                    state_handoff(x_real, x_imag);
+                    if constexpr (!fuse_s) {
+                        subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
+                        subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
+                    }
+                    state_handoff(x_real, x_imag, handoff_srca, handoff_srcb);
                 }
             } else {
-                subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
-                subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
-                state_handoff(x_real, x_imag);
+                if constexpr (!fuse_s) {
+                    subtract_one(x_real, cb_r_imag, cb_identity, cb_product_real, cb_s_real, false, true);
+                    subtract_one(cb_identity, cb_product_real, cb_zero, cb_product_imag, cb_s_imag, false, true);
+                }
+                state_handoff(x_real, x_imag, handoff_srca, handoff_srcb);
             }
 
             const std::uint32_t output_real =
@@ -781,6 +859,9 @@ void kernel_main() {
         cb_pop_front(cb_r_real, 1);
         cb_pop_front(cb_r_negative_imag, 1);
         cb_pop_front(cb_r_imag, 1);
+        if constexpr (fuse_s) {
+            cb_pop_front(cb_r_negative_real, 1);
+        }
     }
     // Only the core whose range starts at tile 0 publishes the compute page;
     // all other cores retain the normal math/output path without profile CB IO.

@@ -138,6 +138,12 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
         ["--custom-math-fidelity", "LoFi", "--custom-math-fidelity", "HiFi3"]
     )
     assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
+    default_flags = run_matmul._build_parser().parse_args([])
+    assert default_flags.fuse_s is False
+    assert default_flags.batch_reads is False
+    enabled_flags = run_matmul._build_parser().parse_args(["--fuse-s", "--batch-reads"])
+    assert enabled_flags.fuse_s is True
+    assert enabled_flags.batch_reads is True
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -235,6 +241,59 @@ def test_custom_rows_repeat_for_requested_fidelities(monkeypatch, tmp_path):
     payload = json.loads(output.read_text())
     assert calls == ["LoFi", "HiFi4"]
     assert [row["math_fidelity"] for row in payload["results"]] == ["LoFi", "HiFi4"]
+
+
+def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fuse_s": kwargs["fuse_s"],
+            "batch_reads": kwargs["batch_reads"],
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "flags.json"
+    assert run_matmul.main(
+        [
+            "--only",
+            "newton_schulz_L32_b8192",
+            "--dtype",
+            "bfloat16",
+            "--memory",
+            "l1",
+            "--kind",
+            "custom_newton_schulz",
+            "--fuse-s",
+            "--batch-reads",
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert len(calls) == 1
+    assert calls[0]["fuse_s"] is True
+    assert calls[0]["batch_reads"] is True
+    assert payload["selection"]["fuse_s"] is True
+    assert payload["selection"]["batch_reads"] is True
+    assert payload["results"][0]["program_config"]["fuse_s"] is True
+    assert payload["results"][0]["program_config"]["batch_reads"] is True
 
 
 def test_row_specs_applies_dtype_specific_catalogue_filtering():
@@ -433,6 +492,8 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
         "custom_math_fidelity": ["HiFi4"],
+        "fuse_s": False,
+        "batch_reads": False,
     }
     assert len(payload["results"]) == 4
     assert all(
@@ -575,10 +636,23 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
         output_memory = "dram"
 
         @classmethod
-        def prepare(cls, ttnn, device, matrices, *, variant, math_fidelity, profile):
+        def prepare(
+            cls,
+            ttnn,
+            device,
+            matrices,
+            *,
+            variant,
+            math_fidelity,
+            profile,
+            fuse_s,
+            batch_reads,
+        ):
             assert variant == "bf16-fp32state"
             assert math_fidelity == "HiFi4"
             assert profile is False
+            assert fuse_s is False
+            assert batch_reads is False
             assert matrices is not None
             return cls()
 
@@ -621,6 +695,8 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert record["status"] == "ok"
     assert record["kind"] == "custom_newton_schulz"
     assert record["variant"] == "bf16-fp32state"
+    assert record["fuse_s"] is False
+    assert record["batch_reads"] is False
     assert record["output_memory"] == "dram"
     assert len(record["seconds_per_launch_samples"]) == 4
     assert record["seconds_per_launch_p50"] <= record["seconds_per_launch_p99"]

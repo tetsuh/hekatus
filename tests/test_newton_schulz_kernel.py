@@ -173,7 +173,7 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("matmul_block(left_real, right_imag", compute_source)
         self.assertIn("matmul_block(left_imag, right_real", compute_source)
         self.assertIn("cb_negative_x_imag", compute_source)
-        self.assertIn("reconfig_data_format(cb_zero, cb_zero, cb_product_imag, x_imag)", compute_source)
+        self.assertIn("reconfig_data_format(current_srca, cb_zero, current_srcb, x_imag)", compute_source)
         self.assertIn("sub_tiles(cb_zero, x_imag", compute_source)
         self.assertNotIn("negative_tile", compute_source)
         self.assertIn("negate_state_imag_impl(x_imag", compute_source)
@@ -190,19 +190,62 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("get_compile_time_arg_val(0)", compute_source)
         self.assertIn("get_compile_time_arg_val(1)", compute_source)
         self.assertIn("get_compile_time_arg_val(2)", compute_source)
-        self.assertIn("profile: bool = False", Path(
+        kernel_source = Path(
             Path(__file__).parents[1]
             / "enodia"
             / "tt"
             / "bench"
             / "newton_schulz_kernel.py"
-        ).read_text())
+        ).read_text()
+        self.assertIn("profile: bool = False", kernel_source)
+        self.assertIn("fuse_s: bool = False", kernel_source)
+        self.assertIn("batch_reads: bool = False", kernel_source)
         self.assertIn("state_fp32", compute_source)
         self.assertIn("get_arg_val<std::uint32_t>(1)", compute_source)
         self.assertIn("TensorAccessorArgs<1>()", reader_source)
         self.assertIn("r_negative_imag_address", reader_source)
         self.assertNotIn("copy_tile", reader_source)
         self.assertNotIn("route_", reader_source)
+
+    def test_fused_s_host_descriptors_prepare_signed_r_inputs_and_reader_dispatch(self):
+        ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+        fused = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32, fuse_s=True)
+        baseline = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32)
+        self.assertEqual(fused[newton_schulz_kernel.CB_IDENTITY], ("bf16", 1))
+        self.assertEqual(fused[newton_schulz_kernel.CB_R_NEG_REAL], ("bf16", 2))
+        self.assertEqual(baseline[newton_schulz_kernel.CB_IDENTITY], ("fp32", 1))
+        self.assertEqual(baseline[newton_schulz_kernel.CB_R_NEG_REAL], ("bf16", 1))
+        optimized_reader = (
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "kernels"
+            / "newton_schulz_reader_optimized.cpp"
+        ).read_text()
+        self.assertIn("constexpr bool fuse_s", optimized_reader)
+        self.assertIn("constexpr bool batch_reads", optimized_reader)
+        self.assertIn("cb_reserve_back(cb_x0_imag, 1)", optimized_reader)
+        self.assertIn("noc_async_read_barrier();", optimized_reader)
+
+        compute_source = (
+            Path(__file__).parents[1]
+            / "enodia"
+            / "tt"
+            / "bench"
+            / "kernels"
+            / "newton_schulz_compute.cpp"
+        ).read_text()
+        fused_start = compute_source.index("void fused_s_matmul")
+        fused_end = compute_source.index("void subtract_one_impl", fused_start)
+        fused_source = compute_source[fused_start:fused_end]
+        self.assertIn("copy_tile_init(cb_identity)", fused_source)
+        self.assertIn("reconfig_data_format(x_real, negative_r_real)", fused_source)
+        self.assertNotIn("cb_product_real", fused_source)
+        self.assertIn("matmul_block(positive_r_imag, x_imag, 0, 0, 0", fused_source)
+        self.assertIn("matmul_block(negative_r_imag, x_real, 0, 0, 1", fused_source)
+        self.assertNotIn("init_common", compute_source)
+        self.assertIn("cb_pop_front(cb_r_negative_real, 1)", compute_source)
 
     def test_packed_odd_batch_round_trips_and_isolates_blocks(self):
         matrices = np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16)
