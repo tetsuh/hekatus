@@ -333,9 +333,14 @@ void fused_s_matmul(
     cb_reserve_back(cb_s_real, 1);
     cb_reserve_back(cb_s_imag, 1);
 
-    // copy_tile_init changes only SrcA.  Reconfigure both operands before the
-    // short matmul init so BF16 X and mixed BF16 R/FP32 X use their CB formats.
+    // copy_tile_init changes only the copy operation, not SrcA's data format.
+    // Select the BF16 identity format before loading it; this is essential when
+    // X/state is FP32.  The BF16-state path safely treats x_real as the same
+    // format even when the preceding operation left SrcA on S_real.
+    reconfig_data_format_srca(x_real, cb_identity);
     copy_tile_init(cb_identity);
+    // Reconfigure both operands before the short matmul init so BF16 X and
+    // mixed BF16 R/FP32 X use their CB formats.
     tile_regs_acquire();
     copy_tile(cb_identity, 0, 0);
     // S_im has no identity term.  This short transition changes SrcA from the

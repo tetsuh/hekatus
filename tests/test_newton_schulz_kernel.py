@@ -239,7 +239,12 @@ class ReferenceTests(unittest.TestCase):
         fused_start = compute_source.index("void fused_s_matmul")
         fused_end = compute_source.index("void subtract_one_impl", fused_start)
         fused_source = compute_source[fused_start:fused_end]
+        self.assertIn("reconfig_data_format_srca(x_real, cb_identity)", fused_source)
         self.assertIn("copy_tile_init(cb_identity)", fused_source)
+        self.assertLess(
+            fused_source.index("reconfig_data_format_srca(x_real, cb_identity)"),
+            fused_source.index("copy_tile_init(cb_identity)"),
+        )
         self.assertIn("cb_wait_front(cb_zero, 1)", fused_source)
         self.assertIn("copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero)", fused_source)
         self.assertIn("copy_tile(cb_zero, 0, 1)", fused_source)
