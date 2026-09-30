@@ -196,6 +196,9 @@ def test_row_major_profile_pages_restore_risc_slots_and_scopes(monkeypatch):
     assert by_risc["TRISC1"]["sections"][2]["cycles"] == 7
     assert by_risc["TRISC2"]["sections"][5]["cycles"] == 11
     assert by_risc["TRISC1"]["warmup_total_cycles"] == 4
+    assert by_risc["TRISC0"]["sections"][-1]["name"] == "unclassified_overhead"
+    assert by_risc["TRISC0"]["coverage_section_sum_cycles"] == 10
+    assert by_risc["TRISC0"]["named_sections_cover_total"] is False
     assert by_risc["TRISC1"]["consistency_pass"]
     assert by_risc["TRISC1"]["warmup_consistency_pass"]
     assert by_risc["NCRISC"]["consistency_pass"]

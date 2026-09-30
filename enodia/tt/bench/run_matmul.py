@@ -558,6 +558,18 @@ def run_custom_newton_schulz(
             record["profile_transport_complete"] = all(
                 entry["profile_page_ready"] for entry in profile_records
             )
+            record["profile_consistency"] = {
+                "all_scopes_pass": all(entry["consistency_pass"] for entry in profile_records),
+                "warmup_scopes_pass": all(
+                    entry["warmup_consistency_pass"] for entry in profile_records
+                ),
+                "named_sections_cover_total": all(
+                    entry["named_sections_cover_total"] for entry in profile_records
+                ),
+                "warmup_named_sections_cover_total": all(
+                    entry["warmup_named_sections_cover_total"] for entry in profile_records
+                ),
+            }
         return record
     except Exception as exc:  # noqa: BLE001 - a device failure is a result
         return {"status": "failed", "kind": CUSTOM_KIND, "error": f"{type(exc).__name__}: {exc}"}

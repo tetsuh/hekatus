@@ -244,7 +244,7 @@ def _decode_counter_page(
     """Decode all-scope and first-sample counter scopes with exact checks."""
     all_total = int(page[PROFILE_TOTAL_OFFSET])
     warmup_total = int(page[PROFILE_WARMUP_BASE + PROFILE_TOTAL_OFFSET])
-    all_sections = [
+    named_sections = [
         {
             "name": name,
             "cycles": int(page[offset]),
@@ -258,6 +258,22 @@ def _decode_counter_page(
         }
         for name, offset in section_specs
     ]
+    named_section_sum = sum(entry["cycles"] for entry in named_sections)
+    warmup_named_section_sum = sum(entry["warmup_cycles"] for entry in named_sections)
+    all_residual = (all_total - named_section_sum) & PROFILE_UINT32_MASK
+    warmup_residual = (warmup_total - warmup_named_section_sum) & PROFILE_UINT32_MASK
+    all_sections = [
+        *named_sections,
+        {
+            "name": "unclassified_overhead",
+            "cycles": all_residual,
+            "percent_of_total": 100.0 * all_residual / all_total if all_total else 0.0,
+            "warmup_cycles": warmup_residual,
+            "warmup_percent_of_total": (
+                100.0 * warmup_residual / warmup_total if warmup_total else 0.0
+            ),
+        },
+    ]
     warmup_sections = [
         {
             "name": entry["name"],
@@ -268,20 +284,20 @@ def _decode_counter_page(
     ]
     all_section_sum = sum(entry["cycles"] for entry in all_sections)
     warmup_section_sum = sum(entry["cycles"] for entry in warmup_sections)
-    all_residual = (all_total - all_section_sum) & PROFILE_UINT32_MASK
-    warmup_residual = (warmup_total - warmup_section_sum) & PROFILE_UINT32_MASK
     recorded_all_sum = int(page[PROFILE_SECTION_SUM_OFFSET])
     recorded_warmup_sum = int(page[PROFILE_WARMUP_BASE + PROFILE_SECTION_SUM_OFFSET])
     recorded_all_residual = int(page[PROFILE_RESIDUAL_OFFSET])
     recorded_warmup_residual = int(page[PROFILE_WARMUP_BASE + PROFILE_RESIDUAL_OFFSET])
     all_record_valid = (
-        recorded_all_sum == all_section_sum & PROFILE_UINT32_MASK
+        recorded_all_sum == named_section_sum & PROFILE_UINT32_MASK
         and recorded_all_residual == all_residual
     )
     warmup_record_valid = (
-        recorded_warmup_sum == warmup_section_sum & PROFILE_UINT32_MASK
+        recorded_warmup_sum == warmup_named_section_sum & PROFILE_UINT32_MASK
         and recorded_warmup_residual == warmup_residual
     )
+    named_sections_cover_total = all_total == named_section_sum
+    warmup_named_sections_cover_total = warmup_total == warmup_named_section_sum
     all_exact = all_total == all_section_sum
     warmup_exact = warmup_total == warmup_section_sum
     return {
@@ -293,14 +309,18 @@ def _decode_counter_page(
         "sample_count": int(page[PROFILE_WARMUP_BASE + PROFILE_WARMUP_EVENT_COUNT_OFFSET]),
         "sections": all_sections,
         "warmup_sections": warmup_sections,
-        "section_sum_cycles": all_section_sum,
-        "warmup_section_sum_cycles": warmup_section_sum,
+        "section_sum_cycles": named_section_sum,
+        "coverage_section_sum_cycles": all_section_sum,
+        "warmup_section_sum_cycles": warmup_named_section_sum,
+        "warmup_coverage_section_sum_cycles": warmup_section_sum,
         "recorded_section_sum_cycles": recorded_all_sum,
         "recorded_warmup_section_sum_cycles": recorded_warmup_sum,
         "residual_cycles": all_residual,
         "warmup_residual_cycles": warmup_residual,
         "recorded_residual_cycles": recorded_all_residual,
         "recorded_warmup_residual_cycles": recorded_warmup_residual,
+        "named_sections_cover_total": named_sections_cover_total,
+        "warmup_named_sections_cover_total": warmup_named_sections_cover_total,
         "consistency_exact": all_exact,
         "warmup_consistency_exact": warmup_exact,
         "consistency_record_valid": all_record_valid,
