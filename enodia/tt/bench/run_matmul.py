@@ -43,6 +43,7 @@ from pathlib import Path
 if __package__ in (None, ""):  # invoked as a plain script inside the container
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
+from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench.configs import (
     P150_DRAM_BANKS,
     ProgramConfigSpec,
@@ -592,7 +593,7 @@ def main(argv: list[str] | None = None) -> int:
         "results": results,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(payload, indent=2) + "\n")
+    args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
     print(f"\nwrote {args.out}")
     return 0
 
