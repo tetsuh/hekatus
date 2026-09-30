@@ -675,10 +675,10 @@ void stream_initial_or_state(
 }
 }  // namespace
 
-void kernel_main() {
+template <bool profile_sample>
+void kernel_main_impl() {
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
-    constexpr bool profile_sample = get_compile_time_arg_val(2) != 0;
     constexpr bool fuse_s = get_compile_time_arg_val(3) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
@@ -870,5 +870,14 @@ void kernel_main() {
             counters.total_end = get_timestamp_32b();
             write_profile_counters(counters);
         }
+    }
+}
+
+void kernel_main() {
+    constexpr bool profile_sample = get_compile_time_arg_val(2) != 0;
+    if constexpr (profile_sample) {
+        kernel_main_impl<true>();
+    } else {
+        kernel_main_impl<false>();
     }
 }
