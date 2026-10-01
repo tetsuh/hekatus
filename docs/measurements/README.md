@@ -51,6 +51,8 @@ trace beside it under the same stem.
 | `2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json` | Supersedes the unpack diagnostic; same-device HiFi3 FP32-state `fuse_s` comparison of matrix blocks 1, 2, and 4 against the best stock row, with batch-4 and batch-8192 correctness and explicit L1/DEST accounting. |
 | `2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block8-preflight-blocked.json` | Block-8 host preflight: DEST-slot accounting passes, but the FP32-state/fused-S L1 footprint is 1,721,088 bytes versus the 1,572,864-byte budget, so no device run was attempted. |
 | `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block8-blocked.json` | Block-8 DRAM-input runtime diagnostic: batch-4 correctness passed, but batch-8192 timed out with no output after the allowed recovery reset; the requested comparison was not measured. |
+| `2026-10-01-p150a-stage1-health-container-cleanup.json` | One post-reset Stage 1 recovery probe through the named-container wrapper; it passed with relative error 0.00456437 and records the owner-performed reset increment. |
+| `2026-10-01-p150a-stage1-health-container-cleanup-power.csv` | Power trace for the one Stage 1 recovery probe above. |
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
