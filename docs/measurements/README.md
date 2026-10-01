@@ -57,6 +57,8 @@ trace beside it under the same stem.
 | `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block-catalog-1000-power.csv` | Power trace for the same-run input-memory/block catalogue above. |
 | `2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json` | Supersedes the input-memory catalogue; records block-4 L1 correctness, the same-run stock/block-1/block-4 1,000-launch comparison, and successful reproduction of the `7472bb1` kernel configuration. |
 | `2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000-power.csv` | Power trace for the block-4 L1 and historical-kernel comparison above. |
+| `2026-10-01-p150a-newton-schulz-l32-b8192-x0-bf16-blocked.json` | Blocked x0-BF16 experiment: block-8 batch-4 passed, but batch-8192 produced non-finite output, so block-4 correctness and throughput comparison were not run. |
+| `2026-10-01-p150a-newton-schulz-l32-b8192-x0-bf16-blocked-power.csv` | Power trace for the blocked x0-BF16 batch-8192 probe. |
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
