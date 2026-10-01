@@ -3,8 +3,9 @@
 The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
 The throughput variants use 32x32 tiles and a fixed eight-iteration inverse.
-The first variant keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while
-using FP32 for X, S, products, state, and outputs.
+L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
+keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
+products, state, and outputs.
 """
 
 from __future__ import annotations
@@ -249,10 +250,21 @@ def _input_memory_config(ttnn, input_memory: str, *, name: str = "input_memory")
     return ttnn.L1_MEMORY_CONFIG if input_memory == "l1" else ttnn.DRAM_MEMORY_CONFIG
 
 
+def _physical_tile_count(batch: int, size: int) -> int:
+    """Return the number of 32x32 tiles needed for a logical matrix batch."""
+    if batch < 1:
+        raise ValueError(f"batch must be positive, got {batch}")
+    if size not in (16, _TILE):
+        raise ValueError(f"logical matrix size must be 16 or {_TILE}, got {size}")
+    return (batch + 1) // 2 if size == 16 else batch
+
+
 def _pack_matrices(matrices: np.ndarray, *, packed: bool, tile_count: int) -> np.ndarray:
-    """Pad or (for legacy host helpers) diagonal-pack matrices into tiles."""
+    """Pad or diagonal-pack logical matrices into the 32x32 kernel tiles."""
     batch, size, _ = matrices.shape
     if packed:
+        if size * 2 != _TILE:
+            raise ValueError(f"diagonal packing requires logical size 16, got {size}")
         packed_matrices = np.zeros((tile_count, 1, _TILE, _TILE), dtype=np.float32)
         for source in range(batch):
             corner = 0 if source % 2 == 0 else size
@@ -285,26 +297,27 @@ def _reader_input_values(
     *,
     fuse_s: bool,
     tile_count: int,
+    packed: bool = False,
 ) -> list[np.ndarray]:
     """Build reader tensors in the exact runtime/accessor argument order."""
-    r_imag_values = _pack_matrices(matrices.imag, packed=False, tile_count=tile_count)
+    r_imag_values = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)
     r_negative_imag_values = -r_imag_values
     if fuse_s:
         r_inputs = [
             r_negative_imag_values,
             r_imag_values,
-            -_pack_matrices(matrices.real, packed=False, tile_count=tile_count),
+            -_pack_matrices(matrices.real, packed=packed, tile_count=tile_count),
         ]
     else:
         r_inputs = [
-            _pack_matrices(matrices.real, packed=False, tile_count=tile_count),
+            _pack_matrices(matrices.real, packed=packed, tile_count=tile_count),
             r_negative_imag_values,
             r_imag_values,
         ]
     r_inputs.extend(
         [
-            _pack_matrices(x0.real, packed=False, tile_count=tile_count),
-            _pack_matrices(x0.imag, packed=False, tile_count=tile_count),
+            _pack_matrices(x0.real, packed=packed, tile_count=tile_count),
+            _pack_matrices(x0.imag, packed=packed, tile_count=tile_count),
         ]
     )
     return r_inputs
@@ -774,8 +787,8 @@ def _decode_counter_page(
 
 def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np.ndarray:
     """Return deterministic non-zero inputs for a throughput run."""
-    if batch < 1 or size != _TILE:
-        raise ValueError(f"benchmark inputs require a positive batch and size {_TILE}")
+    if batch < 1 or size not in (16, _TILE):
+        raise ValueError(f"benchmark inputs require a positive batch and size 16 or {_TILE}")
     rng = np.random.default_rng(seed)
     real = rng.standard_normal((batch, size, size), dtype=np.float32)
     imag = rng.standard_normal((batch, size, size), dtype=np.float32)
@@ -790,6 +803,7 @@ class NewtonSchulzKernel:
     device: Any
     batch: int
     size: int
+    packed: bool
     variant: str
     math_fidelity: str
     input_memory: str
@@ -851,17 +865,20 @@ class NewtonSchulzKernel:
         batch, size, _ = matrices.shape
         if batch < 1:
             raise ValueError("batch must be positive")
-        if size != _TILE:
-            raise ValueError(f"the throughput kernel only supports L={_TILE}, got {size}")
+        if size not in (16, _TILE):
+            raise ValueError(f"the throughput kernel only supports L=16 or L={_TILE}, got {size}")
+        packed = size == 16
+        tile_count = _physical_tile_count(batch, size)
         math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
 
         coordinates, core_ranges, work_ranges = _core_grid(
-            ttnn, device, batch, matrix_block
+            ttnn, device, tile_count, matrix_block
         )
-        tile_count = batch
+        # Normalize each logical matrix before pair packing; a packed norm would
+        # couple the two independent 16x16 matrices.
         x0 = _initial_value(matrices)
         input_values = _reader_input_values(
-            matrices, x0, fuse_s=fuse_s, tile_count=tile_count
+            matrices, x0, fuse_s=fuse_s, tile_count=tile_count, packed=packed
         )
         identity_values = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
         zero_values = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
@@ -876,7 +893,7 @@ class NewtonSchulzKernel:
         )
         tensor_l1_bytes = _tensor_l1_bytes(
             ttnn,
-            batch=batch,
+            batch=tile_count,
             core_count=len(work_ranges),
             state_dtype=state_dtype,
             fuse_s=fuse_s,
@@ -1038,6 +1055,7 @@ class NewtonSchulzKernel:
             device=device,
             batch=batch,
             size=size,
+            packed=packed,
             variant=variant,
             math_fidelity=math_fidelity,
             input_memory=input_memory,
@@ -1062,9 +1080,19 @@ class NewtonSchulzKernel:
         self.ttnn.generic_op([*self.inputs, *self.outputs], self.program)
 
     def result(self) -> np.ndarray:
-        real = _download_float32(self.ttnn, self.outputs[0])
-        imag = _download_float32(self.ttnn, self.outputs[1])
-        return real[: self.batch, 0] + 1j * imag[: self.batch, 0]
+        real = _unpack_matrices(
+            _download_float32(self.ttnn, self.outputs[0]),
+            batch=self.batch,
+            size=self.size,
+            packed=self.packed,
+        )
+        imag = _unpack_matrices(
+            _download_float32(self.ttnn, self.outputs[1]),
+            batch=self.batch,
+            size=self.size,
+            packed=self.packed,
+        )
+        return real + 1j * imag
 
     def profile_records(self) -> list[dict]:
         """Decode core-0 row-major uint32 pages and exact scope checks."""

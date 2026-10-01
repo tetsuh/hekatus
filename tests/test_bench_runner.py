@@ -735,6 +735,64 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
 
 
+def test_custom_l16_dispatch_keeps_logical_flop_denominator(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 40),)
+        output_memory = "dram"
+        seen_matrices = None
+        seen_kwargs = None
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, **kwargs):
+            cls.seen_matrices = matrices
+            cls.seen_kwargs = kwargs
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: SimpleNamespace(shape=(batch, size, size)),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L16_b8192",
+        batch=8192,
+        m=16,
+        k=16,
+        n=16,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        matrix_block=4,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "ok"
+    assert _FakeKernel.seen_matrices.shape == (8192, 16, 16)
+    assert _FakeKernel.seen_kwargs["matrix_block"] == 4
+    assert record["matrix_block"] == 4
+    assert record["physical_tile_count"] == 4096
+    assert record["packing"] == "diagonal_pairs_32x32"
+    assert record["flops_per_iteration"] == total_flops(shape) * 16
+
+
 def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
     shape = _shape(4)
     record = run_matmul.run_custom_newton_schulz(

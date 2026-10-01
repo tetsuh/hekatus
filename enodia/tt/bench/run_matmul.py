@@ -60,7 +60,12 @@ from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 CUSTOM_KIND = "custom_newton_schulz"
 STOCK_KIND = "ttnn.matmul"
-_CUSTOM_TARGET = ("newton_schulz", 32, 32, 32, 8192)
+_CUSTOM_TARGETS = frozenset(
+    {
+        ("newton_schulz", 16, 16, 16, 8192),
+        ("newton_schulz", 32, 32, 32, 8192),
+    }
+)
 CUSTOM_MATH_FIDELITIES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 STOCK_FIDELITY_SOURCE = (
     "tt-metal ttnn/operations/matmul/device/matmul_device_operation.cpp "
@@ -457,7 +462,7 @@ def _is_custom_target(shape: MatmulShape) -> bool:
         shape.k,
         shape.n,
         shape.batch,
-    ) == _CUSTOM_TARGET
+    ) in _CUSTOM_TARGETS
 
 
 def run_custom_newton_schulz(
@@ -492,7 +497,7 @@ def run_custom_newton_schulz(
         return {
             "status": "failed",
             "kind": CUSTOM_KIND,
-            "error": "the first custom row is only defined for L=32 batch=8192",
+            "error": "custom rows are only defined for L=16 or L=32 batch=8192",
         }
     if dtype_name != "bfloat16":
         return {
@@ -507,6 +512,7 @@ def run_custom_newton_schulz(
             "error": f"unknown custom variant {variant!r}",
         }
     from enodia.tt.bench.newton_schulz_kernel import (
+        _physical_tile_count,
         _state_dtype,
         _validate_l1_preflight,
         _validate_matrix_block,
@@ -531,7 +537,7 @@ def run_custom_newton_schulz(
     try:
         l1_preflight_bytes = _validate_l1_preflight(
             ttnn,
-            batch=shape.batch,
+            batch=_physical_tile_count(shape.batch, shape.m),
             core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
             state_dtype=_state_dtype(ttnn, variant),
             profile=profile,
@@ -597,6 +603,10 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
+            "physical_tile_count": getattr(
+                kernel, "tile_count", _physical_tile_count(shape.batch, shape.m)
+            ),
+            "packing": "diagonal_pairs_32x32" if shape.m == 16 else "native_32x32",
             "input_memory": input_memory,
             "r_memory": r_memory,
             "x0_memory": x0_memory,

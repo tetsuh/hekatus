@@ -1443,7 +1443,11 @@ off-diagonals; R, X0, 2I, and every Newton-Schulz state remain block diagonal.
 The host normalizes each 16x16 X0 before packing and unpacks the two output
 quadrants.  The L=16 useful-work denominator remains its catalogue definition;
 padded block-diagonal tile work is not added to `shapes.total_flops`.  The
-board-free source regression is `tests/test_l16_tile_audit.py`.
+implementation records the physical tile count and `diagonal_pairs_32x32`
+packing mode in custom-run metadata; the L=32 path remains `native_32x32`.
+Board-free packing, state-isolation, and logical-FLOP tests live in
+`tests/test_newton_schulz_kernel.py` and `tests/test_bench_runner.py`; the
+source regression is `tests/test_l16_tile_audit.py`.
 
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises

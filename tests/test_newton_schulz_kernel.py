@@ -280,6 +280,34 @@ class ReferenceTests(unittest.TestCase):
         )
         np.testing.assert_array_equal(unpacked, matrices)
 
+    def test_packed_l16_newton_schulz_matches_independent_reference(self):
+        matrices = random_hpd_batch(3, 16, seed=17)
+        x0 = newton_schulz_kernel._initial_value(matrices)
+        packed_r = newton_schulz_kernel._pack_matrices(
+            matrices.real, packed=True, tile_count=2
+        )[:, 0]
+        packed_r = packed_r + 1j * newton_schulz_kernel._pack_matrices(
+            matrices.imag, packed=True, tile_count=2
+        )[:, 0]
+        packed_x = newton_schulz_kernel._pack_matrices(
+            x0.real, packed=True, tile_count=2
+        )[:, 0]
+        packed_x = packed_x + 1j * newton_schulz_kernel._pack_matrices(
+            x0.imag, packed=True, tile_count=2
+        )[:, 0]
+        identity = 2.0 * np.eye(32, dtype=np.complex64)
+
+        for _ in range(NEWTON_SCHULZ_ITERATIONS):
+            packed_x = packed_x @ (identity - packed_r @ packed_x)
+
+        actual = newton_schulz_kernel._unpack_matrices(
+            packed_x.real[:, None], batch=3, size=16, packed=True
+        ) + 1j * newton_schulz_kernel._unpack_matrices(
+            packed_x.imag[:, None], batch=3, size=16, packed=True
+        )
+        expected = newton_schulz_reference(matrices)
+        np.testing.assert_allclose(actual, expected, rtol=3e-5, atol=3e-6)
+
     def test_packed_odd_batch_matmul_matches_independent_products(self):
         left = (np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16) % 5)
         right = (np.arange(3 * 16 * 16, dtype=np.float32).reshape(3, 16, 16) % 7)
@@ -305,6 +333,26 @@ class ReferenceTests(unittest.TestCase):
             matrices,
         )
 
+    def test_l16_uses_paired_32x32_reader_tiles_and_keeps_l32_tile_count(self):
+        matrices = newton_schulz_kernel.benchmark_matrices(3, 16)
+        x0 = newton_schulz_kernel._initial_value(matrices)
+
+        assert newton_schulz_kernel._physical_tile_count(3, 16) == 2
+        assert newton_schulz_kernel._physical_tile_count(3, 32) == 3
+        assert matrices.shape == (3, 16, 16)
+        values = newton_schulz_kernel._reader_input_values(
+            matrices,
+            x0,
+            fuse_s=True,
+            tile_count=2,
+            packed=True,
+        )
+        assert len(values) == 5
+        assert all(value.shape == (2, 1, 32, 32) for value in values)
+        for value in values:
+            np.testing.assert_array_equal(value[0, 0, :16, 16:], 0.0)
+            np.testing.assert_array_equal(value[0, 0, 16:, :16], 0.0)
+
     def test_prepare_rejects_unimplemented_shapes_variants_and_iteration_counts(self):
         matrices = np.zeros((1, 16, 16), dtype=np.complex64)
 
@@ -324,9 +372,9 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
                 None, None, np.zeros((1, 16, 15), dtype=np.complex64)
             )
-        with self.assertRaisesRegex(ValueError, "only supports L=32"):
+        with self.assertRaisesRegex(ValueError, "only supports L=16 or L=32"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
-                None, None, np.zeros((1, 16, 16), dtype=np.complex64)
+                None, None, np.zeros((1, 8, 8), dtype=np.complex64)
             )
         with self.assertRaisesRegex(ValueError, "unknown kernel variant"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
