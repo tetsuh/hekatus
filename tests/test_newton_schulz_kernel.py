@@ -211,6 +211,8 @@ class ReferenceTests(unittest.TestCase):
         ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
         fused = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32, fuse_s=True)
         baseline = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32)
+        self.assertNotIn(newton_schulz_kernel.CB_R_REAL, fused)
+        self.assertIn(newton_schulz_kernel.CB_R_REAL, baseline)
         self.assertEqual(fused[newton_schulz_kernel.CB_IDENTITY], ("bf16", 1))
         self.assertEqual(fused[newton_schulz_kernel.CB_R_NEG_REAL], ("bf16", 2))
         self.assertEqual(baseline[newton_schulz_kernel.CB_IDENTITY], ("fp32", 1))
@@ -227,6 +229,12 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("constexpr bool batch_reads", optimized_reader)
         self.assertIn("cb_reserve_back(cb_x0_imag, 1)", optimized_reader)
         self.assertIn("noc_async_read_barrier();", optimized_reader)
+        self.assertIn("r_negative_imag_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
+        self.assertIn("r_real_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
+        self.assertIn(
+            "(fuse_s ? 4 : first_input_args.next_compile_time_args_offset())",
+            optimized_reader,
+        )
 
         compute_source = (
             Path(__file__).parents[1]

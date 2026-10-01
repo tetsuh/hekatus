@@ -36,8 +36,9 @@ _L1_STATIC_BASE_BYTES = 111_360
 _L1_TOTAL_BUDGET_BYTES = 1_572_864
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 
-# CB indices are shared by the three kernels.  The first seven are reader
-# inputs; the remaining queues are compute-owned intermediates and outputs.
+# CB indices are shared by the three kernels.  CB_R_REAL remains index 0 for
+# the non-fused ABI, but fused S leaves that slot unused because it consumes
+# only signed R components.  The remaining indices are never renumbered.
 CB_R_REAL = 0
 CB_R_NEG_IMAG = 1
 CB_R_IMAG = 2
@@ -247,6 +248,50 @@ def _unpack_matrices(values: np.ndarray, *, batch: int, size: int, packed: bool)
     return unpacked
 
 
+def _reader_input_values(
+    matrices: np.ndarray,
+    x0: np.ndarray,
+    *,
+    fuse_s: bool,
+    tile_count: int,
+) -> list[np.ndarray]:
+    """Build reader tensors in the exact runtime/accessor argument order."""
+    r_imag_values = _pack_matrices(matrices.imag, packed=False, tile_count=tile_count)
+    r_negative_imag_values = -r_imag_values
+    if fuse_s:
+        r_inputs = [
+            r_negative_imag_values,
+            r_imag_values,
+            -_pack_matrices(matrices.real, packed=False, tile_count=tile_count),
+        ]
+    else:
+        r_inputs = [
+            _pack_matrices(matrices.real, packed=False, tile_count=tile_count),
+            r_negative_imag_values,
+            r_imag_values,
+        ]
+    r_inputs.extend(
+        [
+            _pack_matrices(x0.real, packed=False, tile_count=tile_count),
+            _pack_matrices(x0.imag, packed=False, tile_count=tile_count),
+        ]
+    )
+    return r_inputs
+
+
+def _reader_input_dtypes(ttnn, state_dtype, *, fuse_s: bool) -> list[Any]:
+    """Return dtypes matching ``_reader_input_values`` and its constants."""
+    return [
+        ttnn.bfloat16,
+        ttnn.bfloat16,
+        ttnn.bfloat16,
+        state_dtype,
+        state_dtype,
+        ttnn.bfloat16 if fuse_s else ttnn.float32,
+        ttnn.float32,
+    ]
+
+
 def _device_tensor(
     ttnn,
     values: np.ndarray,
@@ -336,7 +381,6 @@ def _cb_definitions(
     """Describe the CB formats shared by both state-precision variants."""
     _validate_matrix_block(matrix_block)
     definitions = {
-        CB_R_REAL: (ttnn.bfloat16, 2),
         CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
         CB_R_IMAG: (ttnn.bfloat16, 2),
         CB_X0_REAL: (state_dtype, 2),
@@ -357,6 +401,12 @@ def _cb_definitions(
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
+    if not fuse_s:
+        # Preserve the baseline descriptor and its ABI index exactly.  Fused S
+        # has no positive R-real reader input, so CB index 0 is intentionally
+        # absent rather than renumbering any shared CB.
+        definitions[CB_R_REAL] = (ttnn.bfloat16, 2)
+        definitions = {CB_R_REAL: definitions.pop(CB_R_REAL), **definitions}
     # Identity/zero and profile pages are resident singletons.  Every queue
     # carrying a matrix, intermediate, or output is widened for one block.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
@@ -433,7 +483,9 @@ def _tensor_l1_bytes(
     input_bytes = 0
     resident_bytes = 0
     if input_memory == "l1":
-        r_inputs = 4 if fuse_s else 3
+        # Both modes stream three matrix inputs.  Fused S uses signed
+        # (-R_re, +R_im, -R_im) pages; the positive R-real tensor is omitted.
+        r_inputs = 3
         input_bytes = r_inputs * _cb_page_size(ttnn, ttnn.bfloat16)
         input_bytes += 2 * _cb_page_size(ttnn, state_dtype)
         resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
@@ -736,30 +788,12 @@ class NewtonSchulzKernel:
         )
         tile_count = batch
         x0 = _initial_value(matrices)
-        r_real_values = _pack_matrices(matrices.real, packed=False, tile_count=tile_count)
-        r_imag_values = _pack_matrices(matrices.imag, packed=False, tile_count=tile_count)
-        r_negative_imag_values = -r_imag_values
-        r_negative_real_values = -r_real_values
-        x_real_values = _pack_matrices(x0.real, packed=False, tile_count=tile_count)
-        x_imag_values = _pack_matrices(x0.imag, packed=False, tile_count=tile_count)
+        input_values = _reader_input_values(
+            matrices, x0, fuse_s=fuse_s, tile_count=tile_count
+        )
         identity_values = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
         zero_values = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
-
-        input_values = [
-            r_real_values,
-            r_negative_imag_values,
-            r_imag_values,
-        ]
-        if fuse_s:
-            input_values.append(r_negative_real_values)
-        input_values.extend(
-            [
-                x_real_values,
-                x_imag_values,
-                identity_values,
-                zero_values,
-            ]
-        )
+        input_values.extend([identity_values, zero_values])
         state_dtype = _state_dtype(ttnn, variant)
         cb_definitions = _cb_definitions(
             ttnn,
@@ -783,17 +817,7 @@ class NewtonSchulzKernel:
             tensor_bytes=tensor_l1_bytes,
             matrix_block=matrix_block,
         )
-        input_dtypes = [ttnn.bfloat16, ttnn.bfloat16, ttnn.bfloat16]
-        if fuse_s:
-            input_dtypes.append(ttnn.bfloat16)
-        input_dtypes.extend(
-            [
-                state_dtype,
-                state_dtype,
-                ttnn.bfloat16 if fuse_s else ttnn.float32,
-                ttnn.float32,
-            ]
-        )
+        input_dtypes = _reader_input_dtypes(ttnn, state_dtype, fuse_s=fuse_s)
         inputs = [
             _device_tensor(
                 ttnn,
@@ -804,7 +828,7 @@ class NewtonSchulzKernel:
             )
             for values, dtype in zip(input_values, input_dtypes, strict=True)
         ]
-        output_shape = ttnn.Shape(r_real_values.shape)
+        output_shape = ttnn.Shape((tile_count, 1, _TILE, _TILE))
         output_memory = _output_memory_name(variant)
         output_memory_config = (
             ttnn.DRAM_MEMORY_CONFIG if output_memory == "dram" else ttnn.L1_MEMORY_CONFIG

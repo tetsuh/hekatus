@@ -29,7 +29,6 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
 
     expected_queue_pages = 2 if matrix_block == 1 else matrix_block
     matrix_queue_indices = (
-        newton_schulz_kernel.CB_R_REAL,
         newton_schulz_kernel.CB_R_NEG_IMAG,
         newton_schulz_kernel.CB_R_IMAG,
         newton_schulz_kernel.CB_X0_REAL,
@@ -41,8 +40,8 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         newton_schulz_kernel.CB_OUTPUT_REAL,
         newton_schulz_kernel.CB_OUTPUT_IMAG,
     )
+    assert newton_schulz_kernel.CB_R_REAL not in definitions
     if matrix_block == 1:
-        assert definitions[newton_schulz_kernel.CB_R_REAL][1] == expected_queue_pages
         assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == expected_queue_pages
     else:
         assert all(definitions[index][1] == expected_queue_pages for index in matrix_queue_indices)
@@ -56,6 +55,60 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
     # Constants remain resident singletons rather than consuming block slots.
     assert definitions[newton_schulz_kernel.CB_IDENTITY][1] == 1
     assert definitions[newton_schulz_kernel.CB_ZERO][1] == 1
+
+
+def test_fused_reader_input_values_omit_positive_r_real_and_keep_signed_order():
+    matrices = np.zeros((1, 32, 32), dtype=np.complex64)
+    matrices[0].real.fill(3.0)
+    matrices[0].imag.fill(5.0)
+    x0 = np.zeros_like(matrices)
+    fused = newton_schulz_kernel._reader_input_values(
+        matrices, x0, fuse_s=True, tile_count=1
+    )
+    baseline = newton_schulz_kernel._reader_input_values(
+        matrices, x0, fuse_s=False, tile_count=1
+    )
+
+    assert len(fused) == len(baseline) == 5
+    assert newton_schulz_kernel._reader_input_dtypes(
+        _ttnn(), "fp32", fuse_s=True
+    ) == ["bf16", "bf16", "bf16", "fp32", "fp32", "bf16", "fp32"]
+    assert newton_schulz_kernel._reader_input_dtypes(
+        _ttnn(), "fp32", fuse_s=False
+    ) == ["bf16", "bf16", "bf16", "fp32", "fp32", "fp32", "fp32"]
+    np.testing.assert_array_equal(fused[0], -baseline[2])
+    np.testing.assert_array_equal(fused[1], baseline[2])
+    np.testing.assert_array_equal(fused[2], baseline[0] * -1)
+    np.testing.assert_array_equal(baseline[0], matrices.real[None, ...])
+    np.testing.assert_array_equal(fused[3:], baseline[3:])
+
+
+def test_nonfused_cb_and_tensor_ledgers_keep_positive_r_real():
+    ttnn = _ttnn()
+    fused = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=8
+    )
+    baseline = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=False, matrix_block=8
+    )
+    assert newton_schulz_kernel.CB_R_REAL not in fused
+    assert baseline[newton_schulz_kernel.CB_R_REAL] == ("bf16", 8)
+    assert baseline[newton_schulz_kernel.CB_R_NEG_REAL] == ("bf16", 8)
+    assert newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+    ) == newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=False,
+        output_memory="dram",
+    )
 
 
 def test_matrix_block_default_is_baseline_and_invalid_values_fail_host_side():
@@ -104,8 +157,8 @@ def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block)
     definitions = newton_schulz_kernel._cb_definitions(
         ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
     )
-    expected_cb_bytes = {1: 92160, 2: 104448, 4: 194560, 8: 440320}
-    expected_total_bytes = {1: 203520, 2: 215808, 4: 305920, 8: 551680}
+    expected_cb_bytes = {1: 88064, 2: 100352, 4: 186368, 8: 423936}
+    expected_total_bytes = {1: 199424, 2: 211712, 4: 297728, 8: 535296}
 
     expected_state_pages = {1: 2, 2: 2, 4: 4, 8: 16}
     assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == expected_state_pages[matrix_block]
@@ -135,7 +188,7 @@ def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block)
 
 def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inputs():
     ttnn = _ttnn()
-    expected_total_bytes = {1: 1438464, 2: 1450752, 4: 1540864}
+    expected_total_bytes = {1: 1280768, 2: 1293056, 4: 1379072}
     for matrix_block, expected_total in expected_total_bytes.items():
         total = newton_schulz_kernel._validate_l1_preflight(
             ttnn,
@@ -161,7 +214,7 @@ def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inpu
             matrix_block=8,
             variant="bf16-fp32state",
         )
-    assert "L1 budget over by 213760 bytes" in str(excinfo.value)
+    assert "L1 budget over by 43776 bytes" in str(excinfo.value)
 
 
 def test_current_descriptors_match_7472_historical_catalogue_for_blocks_1_2_4():
@@ -172,13 +225,15 @@ def test_current_descriptors_match_7472_historical_catalogue_for_blocks_1_2_4():
     assert implementation["matrix_block_choices"] == [1, 2, 4]
 
     ttnn = _ttnn()
+    removed_r_real_bytes = {1: 4096, 2: 4096, 4: 8192}
     for matrix_block in (1, 2, 4):
         definitions = newton_schulz_kernel._cb_definitions(
             ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
         )
-        assert newton_schulz_kernel._cb_l1_bytes(ttnn, definitions) == historical_l1[
-            str(matrix_block)
-        ]["cb_bytes"]
+        assert newton_schulz_kernel._cb_l1_bytes(ttnn, definitions) == (
+            historical_l1[str(matrix_block)]["cb_bytes"]
+            - removed_r_real_bytes[matrix_block]
+        )
 
     current = newton_schulz_kernel._cb_definitions(
         ttnn, "fp32", fuse_s=True, matrix_block=8
@@ -208,16 +263,17 @@ def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
 
     message = str(excinfo.value)
     assert "matrix_block=8 L1 preflight failed" in message
-    assert "total CB bytes=440320" in message
+    assert "total CB bytes=423936" in message
     assert "static prefix=111360 bytes" in message
-    assert "tensor bytes=1234944" in message
-    assert "total=1786624 bytes" in message
+    assert "tensor bytes=1081344" in message
+    assert "total=1616640 bytes" in message
     assert "budget=1572864 bytes" in message
-    assert "L1 budget over by 213760 bytes" in message
+    assert "L1 budget over by 43776 bytes" in message
     assert "largest CBs:" in message
     assert "CB_STATE_REAL=65536 bytes (cb_state_real)" in message
     assert "CBs in over-budget total:" in message
     assert "CB_X0_REAL=32768 bytes (cb_x0_real)" in message
+    assert "CB_R_REAL" not in message
     assert "CB_PRODUCT_REAL=4096 bytes (cb_product_real)" in message
 
 
@@ -293,7 +349,7 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
         output_memory="dram",
         input_memory="dram",
     )
-    assert l1_tensor_bytes == 1_234_944
+    assert l1_tensor_bytes == 1_081_344
     assert dram_tensor_bytes == 0
     definitions = newton_schulz_kernel._cb_definitions(
         ttnn, "fp32", fuse_s=True, matrix_block=8
@@ -313,7 +369,7 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
         newton_schulz_kernel._L1_STATIC_BASE_BYTES
         + newton_schulz_kernel._cb_l1_bytes(ttnn, definitions)
     )
-    assert total == 551_680
+    assert total == 535_296
     with pytest.raises(ValueError, match="input_memory"):
         newton_schulz_kernel.NewtonSchulzKernel.prepare(
             None,
@@ -356,6 +412,49 @@ def _cb_ledger(source: str) -> Counter:
 
 def _cb_operation_ledger(source: str) -> Counter:
     return Counter(_CB_OPERATION.findall(_without_comments(source)))
+
+
+def _operation_guards(source: str, pattern: str) -> list[bool]:
+    """Report whether each matching operation is inside ``!fuse_s``."""
+    source = _without_comments(source)
+    guards = []
+    conditions = []
+    index = 0
+    while index < len(source):
+        if source.startswith(pattern, index):
+            guards.append(any("!fuse_s" in condition for condition in conditions))
+        if source[index] == "{":
+            prefix = source[max(0, index - 120) : index]
+            match = re.search(r"if constexpr \(([^)]*)\)\s*$", prefix)
+            conditions.append(match.group(1) if match else "")
+        elif source[index] == "}" and conditions:
+            conditions.pop()
+        index += 1
+    return guards
+
+
+def test_fused_reader_and_compute_ledgers_never_touch_positive_r_real():
+    optimized_reader = (KERNEL_DIR / "newton_schulz_reader_optimized.cpp").read_text()
+    profile_reader = (KERNEL_DIR / "newton_schulz_reader_profile.cpp").read_text()
+    for reader in (optimized_reader, profile_reader):
+        for operation in (
+            "cb_reserve_back(cb_r_real",
+            "cb_push_back(cb_r_real",
+            "cb_wait_front(cb_r_real",
+            "cb_pop_front(cb_r_real",
+            "read_one(cb_r_real",
+        ):
+            assert all(_operation_guards(reader, operation)), operation
+        assert all(_operation_guards(reader, "noc_async_read_page(tile_id, r_real"))
+        assert all(_operation_guards(reader, "noc_async_read_page(tile, r_real"))
+
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    for function_name in ("void wait_r_inputs(", "void wait_r_inputs_block("):
+        function = _function_source(compute, function_name)
+        assert all(_operation_guards(function, "cb_wait_front(cb_r_real"))
+    for function_name in ("void kernel_main_impl(", "void process_matrix_block("):
+        function = _function_source(compute, function_name)
+        assert all(_operation_guards(function, "cb_pop_front(cb_r_real"))
 
 
 def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:

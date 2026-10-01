@@ -752,7 +752,7 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
 
     assert record["status"] == "failed"
     assert "L1 preflight failed" in record["error"]
-    assert "total CB bytes=440320" in record["error"]
+    assert "total CB bytes=423936" in record["error"]
     assert "CB_STATE_REAL=65536 bytes" in record["error"]
 
 
@@ -772,7 +772,7 @@ def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
         variant="bf16-fp32state",
     )
 
-    assert total == 1_540_864
+    assert total == 1_379_072
     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 

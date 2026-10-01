@@ -793,11 +793,14 @@ void state_handoff_profiled(
         warmup);
 }
 
-void wait_r_inputs_block(bool fuse_s, std::uint32_t block_count) {
-    cb_wait_front(cb_r_real, block_count);
+template <bool fuse_s>
+void wait_r_inputs_block(std::uint32_t block_count) {
+    if constexpr (!fuse_s) {
+        cb_wait_front(cb_r_real, block_count);
+    }
     cb_wait_front(cb_r_negative_imag, block_count);
     cb_wait_front(cb_r_imag, block_count);
-    if (fuse_s) {
+    if constexpr (fuse_s) {
         cb_wait_front(cb_r_negative_real, block_count);
     }
 }
@@ -811,7 +814,7 @@ void stream_initial_or_state(
 
 template <std::uint32_t iterations, bool state_fp32, bool fuse_s, bool one_dest_half>
 void process_matrix_block(std::uint32_t block_count) {
-    wait_r_inputs_block(fuse_s, block_count);
+    wait_r_inputs_block<fuse_s>(block_count);
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
         std::uint32_t x_real;
         std::uint32_t x_imag;
@@ -819,7 +822,11 @@ void process_matrix_block(std::uint32_t block_count) {
 
         if constexpr (state_fp32) {
             if (iteration != 0) {
-                reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_real);
+                if constexpr (fuse_s) {
+                    reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_negative_real);
+                } else {
+                    reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_real);
+                }
             }
         }
 
@@ -886,7 +893,9 @@ void process_matrix_block(std::uint32_t block_count) {
             true,
             true);
     }
-    cb_pop_front(cb_r_real, block_count);
+    if constexpr (!fuse_s) {
+        cb_pop_front(cb_r_real, block_count);
+    }
     cb_pop_front(cb_r_negative_imag, block_count);
     cb_pop_front(cb_r_imag, block_count);
     if constexpr (fuse_s) {
@@ -894,19 +903,23 @@ void process_matrix_block(std::uint32_t block_count) {
     }
 }
 
-void wait_r_inputs(bool fuse_s) {
-    cb_wait_front(cb_r_real, 1);
+template <bool fuse_s>
+void wait_r_inputs() {
+    if constexpr (!fuse_s) {
+        cb_wait_front(cb_r_real, 1);
+    }
     cb_wait_front(cb_r_negative_imag, 1);
     cb_wait_front(cb_r_imag, 1);
-    if (fuse_s) {
+    if constexpr (fuse_s) {
         cb_wait_front(cb_r_negative_real, 1);
     }
 }
 
-void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup, bool fuse_s) {
+template <bool fuse_s>
+void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup) {
     DeviceZoneScopedN("NS-COMPUTE-R-CB-WAIT");
     const std::uint32_t start = get_timestamp_32b();
-    wait_r_inputs(fuse_s);
+    wait_r_inputs<fuse_s>();
     add_profile_cycles(
         counters.r_wait,
         counters.warmup_r_wait,
@@ -1097,8 +1110,14 @@ void kernel_main_impl() {
     CounterState counters{};
 
     DeviceZoneScopedN("NS-COMPUTE-TOTAL");
-    compute_kernel_hw_startup<SrcOrder::Reverse>(cb_r_real, cb_x0_real, cb_product_real);
-    matmul_block_init(cb_r_real, cb_x0_real, false, 1, 1, 1);
+    if constexpr (fuse_s) {
+        compute_kernel_hw_startup<SrcOrder::Reverse>(
+            cb_r_negative_real, cb_x0_real, cb_product_real);
+        matmul_block_init(cb_r_negative_real, cb_x0_real, false, 1, 1, 1);
+    } else {
+        compute_kernel_hw_startup<SrcOrder::Reverse>(cb_r_real, cb_x0_real, cb_product_real);
+        matmul_block_init(cb_r_real, cb_x0_real, false, 1, 1, 1);
+    }
     if constexpr (profile_sample) {
         clear_profile_ready(start_tile);
         if (start_tile == 0) {
@@ -1111,12 +1130,12 @@ void kernel_main_impl() {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if constexpr (profile_sample) {
             if (start_tile == 0) {
-                wait_r_inputs_profiled(counters, tile == 0, fuse_s);
+                wait_r_inputs_profiled<fuse_s>(counters, tile == 0);
             } else {
-                wait_r_inputs(fuse_s);
+                wait_r_inputs<fuse_s>();
             }
         } else {
-            wait_r_inputs(fuse_s);
+            wait_r_inputs<fuse_s>();
         }
         for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
             std::uint32_t x_real;
@@ -1135,7 +1154,11 @@ void kernel_main_impl() {
 
             if constexpr (state_fp32) {
                 if (iteration != 0) {
-                    reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_real);
+                    if constexpr (fuse_s) {
+                        reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_negative_real);
+                    } else {
+                        reconfig_data_format(cb_s_real, x_real, x_imag, cb_r_real);
+                    }
                 }
             }
 
@@ -1267,7 +1290,9 @@ void kernel_main_impl() {
             }
         }
 
-        cb_pop_front(cb_r_real, 1);
+        if constexpr (!fuse_s) {
+            cb_pop_front(cb_r_real, 1);
+        }
         cb_pop_front(cb_r_negative_imag, 1);
         cb_pop_front(cb_r_imag, 1);
         if constexpr (fuse_s) {
