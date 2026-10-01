@@ -24,6 +24,25 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Newton-Schulz reference correction
+
+Six landed Issue #63 JSON records retain the historical correctness wording
+`enodia/spec Newton-Schulz`:
+
+- `2026-09-27-p150a-newton-schulz-l32-b8192-catalog-1000.json`
+- `2026-09-27-p150a-newton-schulz-l32-b8192-order2-catalog-1000.json`
+- `2026-09-27-p150a-newton-schulz-l32-b8192-stock-catalogue-merge.json`
+- `2026-09-27-p150a-newton-schulz-l32-b8192.json`
+- `2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`
+- `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block-catalog-1000.json`
+
+The actual oracle for those comparisons is the independent NumPy
+fixed-iteration reference in
+`enodia/tt/bench/newton_schulz_reference.py`, not `enodia/spec`. The
+numerical comparisons remain valid; this note corrects the reference name
+without rewriting any landed JSON record. Future records and documentation
+must use the independent NumPy reference name.
+
 | File | What it is |
 |---|---|
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
