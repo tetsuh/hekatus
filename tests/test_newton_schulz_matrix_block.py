@@ -57,6 +57,35 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
     assert definitions[newton_schulz_kernel.CB_ZERO][1] == 1
 
 
+def test_x0_dtype_validation_and_fused_fp32state_descriptor_selection():
+    ttnn = _ttnn()
+    assert newton_schulz_kernel.X0_DTYPE_CHOICES == ("bf16", "fp32")
+    for choice in newton_schulz_kernel.X0_DTYPE_CHOICES:
+        newton_schulz_kernel._validate_x0_dtype(choice)
+    with pytest.raises(ValueError, match="x0_dtype"):
+        newton_schulz_kernel._validate_x0_dtype("fp16")
+
+    default = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=8
+    )
+    bf16_x0 = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=8, x0_dtype="bf16"
+    )
+    assert default[newton_schulz_kernel.CB_X0_REAL] == ("fp32", 8)
+    assert default[newton_schulz_kernel.CB_X0_IMAG] == ("fp32", 8)
+    assert bf16_x0[newton_schulz_kernel.CB_X0_REAL] == ("bf16", 8)
+    assert bf16_x0[newton_schulz_kernel.CB_X0_IMAG] == ("bf16", 8)
+    assert bf16_x0[newton_schulz_kernel.CB_STATE_REAL][0] == "fp32"
+    assert bf16_x0[newton_schulz_kernel.CB_OUTPUT_REAL][0] == "fp32"
+    assert newton_schulz_kernel._reader_input_dtypes(
+        ttnn, "fp32", fuse_s=True, x0_dtype="bf16"
+    ) == ["bf16", "bf16", "bf16", "bf16", "bf16", "bf16", "fp32"]
+    # The non-fused ABI keeps its existing state-sized X0 inputs.
+    assert newton_schulz_kernel._reader_input_dtypes(
+        ttnn, "fp32", fuse_s=False, x0_dtype="bf16"
+    )[3:5] == ["fp32", "fp32"]
+
+
 def test_fused_reader_input_values_omit_positive_r_real_and_keep_signed_order():
     matrices = np.zeros((1, 32, 32), dtype=np.complex64)
     matrices[0].real.fill(3.0)
@@ -184,6 +213,37 @@ def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block)
         newton_schulz_kernel._L1_STATIC_BASE_BYTES
         + expected_cb_bytes[matrix_block]
     )
+
+
+def test_bf16_x0_block8_l1_preflight_passes_with_exact_accounting():
+    ttnn = _ttnn()
+    definitions = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=8, x0_dtype="bf16"
+    )
+    tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        input_memory="l1",
+        x0_dtype="bf16",
+    )
+    assert newton_schulz_kernel._cb_l1_bytes(ttnn, definitions) == 391168
+    assert tensor_bytes == 774144
+    assert newton_schulz_kernel._validate_l1_preflight(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        input_memory="l1",
+        matrix_block=8,
+        variant="bf16-fp32state",
+        x0_dtype="bf16",
+    ) == 1_276_672
 
 
 def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inputs():
@@ -655,6 +715,29 @@ def test_state_capacity_follows_reserve_pop_order_and_rejects_under_capacity(
             newton_schulz_kernel.CB_STATE_REAL,
             required_state_pages,
         )
+
+
+def test_x0_conversion_ledger_covers_single_and_block_paths():
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    for function_name, count in (
+        ("void convert_x0_to_state()", "1"),
+        ("void convert_x0_to_state_block(std::uint32_t block_count)", "block_count"),
+    ):
+        function = _function_source(compute, function_name)
+        for cb in ("cb_x0_real", "cb_x0_imag"):
+            assert f"cb_wait_front({cb}, {count})" in function
+            assert f"cb_pop_front({cb}, {count})" in function
+        for cb in ("cb_state_real", "cb_state_imag"):
+            assert f"cb_reserve_back({cb}, {count})" in function
+            assert f"cb_push_back({cb}, {count})" in function
+        assert "copy_tile_init(cb_x0_real)" in function
+        assert "copy_tile_init(cb_x0_imag)" in function
+        assert "pack_reconfig_data_format(cb_s_imag, cb_state_real)" in function
+        assert "pack_reconfig_data_format(cb_state_real, cb_state_imag)" in function
+    assert "constexpr bool x0_bf16 = get_compile_time_arg_val(5) != 0;" in compute
+    assert "convert_x0_to_state();" in compute
+    assert "convert_x0_to_state_block(block_count);" in compute
+    assert "init_common" not in compute
 
 
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():

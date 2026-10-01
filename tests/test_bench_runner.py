@@ -143,9 +143,13 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     default_flags = run_matmul._build_parser().parse_args([])
     assert default_flags.fuse_s is False
     assert default_flags.batch_reads is False
-    enabled_flags = run_matmul._build_parser().parse_args(["--fuse-s", "--batch-reads"])
+    assert default_flags.x0_dtype == "fp32"
+    enabled_flags = run_matmul._build_parser().parse_args(
+        ["--fuse-s", "--batch-reads", "--x0-dtype", "bf16"]
+    )
     assert enabled_flags.fuse_s is True
     assert enabled_flags.batch_reads is True
+    assert enabled_flags.x0_dtype == "bf16"
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -283,6 +287,8 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
             "custom_newton_schulz",
             "--fuse-s",
             "--batch-reads",
+            "--x0-dtype",
+            "bf16",
             "--out",
             str(output),
         ]
@@ -292,8 +298,11 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     assert len(calls) == 1
     assert calls[0]["fuse_s"] is True
     assert calls[0]["batch_reads"] is True
+    assert calls[0]["x0_dtype"] == "bf16"
+    assert payload["selection"]["x0_dtype"] == "bf16"
     assert payload["selection"]["fuse_s"] is True
     assert payload["selection"]["batch_reads"] is True
+    assert payload["results"][0]["program_config"]["x0_dtype"] == "bf16"
     assert payload["results"][0]["program_config"]["fuse_s"] is True
     assert payload["results"][0]["program_config"]["batch_reads"] is True
 
@@ -494,6 +503,7 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
         "custom_math_fidelity": ["HiFi4"],
+        "x0_dtype": "fp32",
         "fuse_s": False,
         "batch_reads": False,
     }
@@ -705,6 +715,62 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert record["seconds_per_launch_p99"] <= record["seconds_per_launch_p99_9"]
     assert record["flops_per_iteration"] == total_flops(shape) * 16
     assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
+
+
+def test_custom_bf16_x0_dispatch_records_exact_l1_preflight(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 8),)
+        output_memory = "dram"
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, **kwargs):
+            assert kwargs["variant"] == "bf16-fp32state"
+            assert kwargs["fuse_s"] is True
+            assert kwargs["matrix_block"] == 8
+            assert kwargs["x0_dtype"] == "bf16"
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: object(),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=8,
+        x0_dtype="bf16",
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "ok"
+    assert record["x0_dtype"] == "bf16"
+    assert record["l1_preflight_bytes"] == 1_276_672
 
 
 def test_custom_row_rejects_non_target_shapes_without_opening_kernel():

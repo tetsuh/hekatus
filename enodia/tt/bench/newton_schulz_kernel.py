@@ -4,7 +4,9 @@ The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
 The throughput variants use 32x32 tiles and a fixed eight-iteration inverse.
 The first variant keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while
-using FP32 for X, S, products, state, and outputs.
+using FP32 for X, S, products, state, and outputs.  Fused FP32-state
+runs may keep the initial X0 input in BF16 and convert it into the FP32
+state queues before the first state handoff.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
 INPUT_MEMORY_CHOICES = ("l1", "dram")
+X0_DTYPE_CHOICES = ("bf16", "fp32")
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
@@ -212,6 +215,27 @@ def _validate_input_memory(input_memory: str) -> None:
         )
 
 
+def _validate_x0_dtype(x0_dtype: str) -> None:
+    """Reject unsupported X0 storage formats before any device work."""
+    if x0_dtype not in X0_DTYPE_CHOICES:
+        raise ValueError(
+            f"x0_dtype must be one of {X0_DTYPE_CHOICES}, got {x0_dtype!r}"
+        )
+
+
+def _x0_data_dtype(ttnn, state_dtype, *, fuse_s: bool, x0_dtype: str):
+    """Resolve the X0 CB/input format without changing the non-fused ABI.
+
+    The public BF16 X0 option is the memory-saving path for fused S with the
+    FP32-state variant.  The BF16-state and non-fused paths retain their
+    existing state-sized X0 inputs even when the option is present.
+    """
+    _validate_x0_dtype(x0_dtype)
+    if fuse_s and state_dtype == ttnn.float32 and x0_dtype == "bf16":
+        return ttnn.bfloat16
+    return state_dtype
+
+
 def _input_memory_config(ttnn, input_memory: str):
     """Return the interleaved device memory config for all reader inputs."""
     _validate_input_memory(input_memory)
@@ -279,14 +303,19 @@ def _reader_input_values(
     return r_inputs
 
 
-def _reader_input_dtypes(ttnn, state_dtype, *, fuse_s: bool) -> list[Any]:
+def _reader_input_dtypes(
+    ttnn, state_dtype, *, fuse_s: bool, x0_dtype: str = "fp32"
+) -> list[Any]:
     """Return dtypes matching ``_reader_input_values`` and its constants."""
+    x0_data_dtype = _x0_data_dtype(
+        ttnn, state_dtype, fuse_s=fuse_s, x0_dtype=x0_dtype
+    )
     return [
         ttnn.bfloat16,
         ttnn.bfloat16,
         ttnn.bfloat16,
-        state_dtype,
-        state_dtype,
+        x0_data_dtype,
+        x0_data_dtype,
         ttnn.bfloat16 if fuse_s else ttnn.float32,
         ttnn.float32,
     ]
@@ -377,14 +406,20 @@ def _cb_definitions(
     profile: bool = False,
     fuse_s: bool = False,
     matrix_block: int = 1,
+    x0_dtype: str = "fp32",
 ) -> dict[int, tuple[Any, int]]:
     """Describe the CB formats shared by both state-precision variants."""
     _validate_matrix_block(matrix_block)
+    x0_data_dtype = _x0_data_dtype(
+        ttnn, state_dtype, fuse_s=fuse_s, x0_dtype=x0_dtype
+    )
     definitions = {
         CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
         CB_R_IMAG: (ttnn.bfloat16, 2),
-        CB_X0_REAL: (state_dtype, 2),
-        CB_X0_IMAG: (state_dtype, 2),
+        # Fused FP32-state may keep only the initial X0 pages in BF16;
+        # state/output/intermediate queues remain state_dtype below.
+        CB_X0_REAL: (x0_data_dtype, 2),
+        CB_X0_IMAG: (x0_data_dtype, 2),
         # Fused S starts each DEST tile from host-prepared BF16 2I.  The
         # baseline keeps its original FP32 binary-operation identity.
         CB_IDENTITY: (ttnn.bfloat16 if fuse_s else ttnn.float32, 1),
@@ -470,15 +505,20 @@ def _tensor_l1_bytes(
     fuse_s: bool,
     output_memory: str,
     input_memory: str = "l1",
+    x0_dtype: str = "fp32",
 ) -> int:
     """Estimate the per-core tensor footprint outside static CB storage.
 
     Reader inputs and the identity/zero constants are device tensors.  They
     consume L1 only for the L1 placement; interleaved DRAM inputs are fetched
     into the same static CBs and therefore contribute no tensor bytes here.
-    Outputs retain their existing placement and accounting.
+    Outputs retain their existing placement and accounting.  Only fused
+    FP32-state BF16-X0 runs change the two X0 tensor page sizes.
     """
     _validate_input_memory(input_memory)
+    x0_data_dtype = _x0_data_dtype(
+        ttnn, state_dtype, fuse_s=fuse_s, x0_dtype=x0_dtype
+    )
     tiles_per_core = (batch + core_count - 1) // core_count
     input_bytes = 0
     resident_bytes = 0
@@ -487,7 +527,7 @@ def _tensor_l1_bytes(
         # (-R_re, +R_im, -R_im) pages; the positive R-real tensor is omitted.
         r_inputs = 3
         input_bytes = r_inputs * _cb_page_size(ttnn, ttnn.bfloat16)
-        input_bytes += 2 * _cb_page_size(ttnn, state_dtype)
+        input_bytes += 2 * _cb_page_size(ttnn, x0_data_dtype)
         resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
     output_bytes = 0
     if output_memory == "l1":
@@ -583,9 +623,11 @@ def _validate_l1_preflight(
     input_memory: str = "l1",
     matrix_block: int = 1,
     variant: str | None = None,
+    x0_dtype: str = "fp32",
 ) -> int:
     """Validate L1 usage without touching a device or allocating tensors."""
     _validate_input_memory(input_memory)
+    _validate_x0_dtype(x0_dtype)
     _validate_matrix_block(matrix_block, variant=variant)
     definitions = _cb_definitions(
         ttnn,
@@ -593,6 +635,7 @@ def _validate_l1_preflight(
         profile=profile,
         fuse_s=fuse_s,
         matrix_block=matrix_block,
+        x0_dtype=x0_dtype,
     )
     tensor_bytes = _tensor_l1_bytes(
         ttnn,
@@ -602,6 +645,7 @@ def _validate_l1_preflight(
         fuse_s=fuse_s,
         output_memory=output_memory,
         input_memory=input_memory,
+        x0_dtype=x0_dtype,
     )
     return _validate_l1_budget(
         ttnn,
@@ -725,6 +769,7 @@ class NewtonSchulzKernel:
     batch: int
     size: int
     variant: str
+    x0_dtype: str
     math_fidelity: str
     input_memory: str
     output_memory: str
@@ -748,6 +793,7 @@ class NewtonSchulzKernel:
         matrices: np.ndarray,
         *,
         variant: str = "bf16",
+        x0_dtype: str = "fp32",
         math_fidelity: str = "HiFi4",
         profile: bool = False,
         fuse_s: bool = False,
@@ -759,6 +805,7 @@ class NewtonSchulzKernel:
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         _validate_input_memory(input_memory)
+        _validate_x0_dtype(x0_dtype)
         if iterations != NEWTON_SCHULZ_ITERATIONS:
             raise ValueError(
                 f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
@@ -801,6 +848,7 @@ class NewtonSchulzKernel:
             profile=profile,
             fuse_s=fuse_s,
             matrix_block=matrix_block,
+            x0_dtype=x0_dtype,
         )
         tensor_l1_bytes = _tensor_l1_bytes(
             ttnn,
@@ -810,6 +858,7 @@ class NewtonSchulzKernel:
             fuse_s=fuse_s,
             output_memory=_output_memory_name(variant),
             input_memory=input_memory,
+            x0_dtype=x0_dtype,
         )
         _validate_l1_budget(
             ttnn,
@@ -817,7 +866,9 @@ class NewtonSchulzKernel:
             tensor_bytes=tensor_l1_bytes,
             matrix_block=matrix_block,
         )
-        input_dtypes = _reader_input_dtypes(ttnn, state_dtype, fuse_s=fuse_s)
+        input_dtypes = _reader_input_dtypes(
+            ttnn, state_dtype, fuse_s=fuse_s, x0_dtype=x0_dtype
+        )
         inputs = [
             _device_tensor(
                 ttnn,
@@ -943,7 +994,14 @@ class NewtonSchulzKernel:
                 kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block],
+                compile_time_args=[
+                    iterations,
+                    int(state_fp32),
+                    int(profile),
+                    int(fuse_s),
+                    matrix_block,
+                    int(fuse_s and state_fp32 and x0_dtype == "bf16"),
+                ],
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
@@ -959,6 +1017,7 @@ class NewtonSchulzKernel:
             batch=batch,
             size=size,
             variant=variant,
+            x0_dtype=x0_dtype,
             math_fidelity=math_fidelity,
             input_memory=input_memory,
             output_memory=output_memory,
@@ -1061,6 +1120,7 @@ def run_newton_schulz_kernel(
     matrices: np.ndarray,
     *,
     variant: str = "bf16",
+    x0_dtype: str = "fp32",
     math_fidelity: str = "HiFi4",
     profile: bool = False,
     fuse_s: bool = False,
@@ -1074,6 +1134,7 @@ def run_newton_schulz_kernel(
         device,
         matrices,
         variant=variant,
+        x0_dtype=x0_dtype,
         math_fidelity=math_fidelity,
         profile=profile,
         fuse_s=fuse_s,
