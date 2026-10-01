@@ -1,0 +1,76 @@
+{
+  "status": "blocked",
+  "supersedes": "2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block8-preflight-blocked.json",
+  "environment": {
+    "captured_at": "2026-10-01T12:20:43.506642+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "8eb51bc5f7b9826d748e28c401927a24677c764c",
+    "harness_dirty": false,
+    "board": {
+      "board_type": "p150a",
+      "device_id": 0,
+      "dram_status": true
+    }
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "batch_reads": false,
+    "matrix_block": 8,
+    "input_memory": "dram",
+    "output_memory": "dram",
+    "l1_preflight": {
+      "status": "pass",
+      "total_bytes": 486144,
+      "budget_bytes": 1572864,
+      "tensor_bytes": 0
+    },
+    "correctness_batch4": {
+      "status": "pass",
+      "relative_error": 0.006196938455104828,
+      "tolerance": 0.01,
+      "watcher": true,
+      "external_timeout_s": 60
+    },
+    "correctness_batch8192": {
+      "status": "timeout_or_abnormal",
+      "relative_error": null,
+      "watcher": false,
+      "external_timeout_s": 60,
+      "exit_status": 137
+    },
+    "reset_count": 1,
+    "post_reset_health": {
+      "status": "pass",
+      "relative_error": 0.004666686989367008
+    },
+    "retry_after_fix": {
+      "status": "timeout_or_abnormal",
+      "exit_status": 137,
+      "reset_performed": false
+    }
+  },
+  "failure": {
+    "type": "runtime_liveness_or_timeout",
+    "message": "Block-8 DRAM-input batch-8192 produced no numerical output within the 60-second limit; a retry after the state-CB fix also ended with status 137.",
+    "reset_limit_exhausted": true,
+    "additional_reset_performed": false,
+    "hardware_comparison_rows_not_measured": [
+      "stock_best",
+      "block4_l1",
+      "block4_dram",
+      "block8_dram",
+      "block1_dram"
+    ]
+  },
+  "missing_evidence": [
+    "batch-8192 block8 DRAM-input correctness",
+    "same-run stock/block throughput comparison"
+  ],
+  "note": "The requested comparison stops here because recovery reset allowance was exhausted and the subsequent health attempt also terminated abnormally."
+}
