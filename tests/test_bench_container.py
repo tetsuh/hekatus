@@ -452,6 +452,7 @@ def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     docker_args = args_log.read_text().splitlines()
     name = docker_args[docker_args.index("--name") + 1]
     assert re.fullmatch(r"hekatus-bench-[0-9]+-[0-9]+", name)
+    assert docker_args[docker_args.index("--device") + 1] == "/dev/tenstorrent/0"
     assert docker_args[docker_args.index("--entrypoint") + 1] == "/bin/bash"
 
 

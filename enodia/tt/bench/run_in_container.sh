@@ -37,6 +37,7 @@ if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
+DEVICE_NODE="${HEKATUS_TT_DEVICE_NODE:-/dev/tenstorrent/0}"
 WATCHER_ENV=()
 if [[ -n "${TT_METAL_WATCHER:-}" ]]; then
   WATCHER_ENV=(-e "TT_METAL_WATCHER=${TT_METAL_WATCHER}")
@@ -118,7 +119,7 @@ SAMPLER_PID=$!
 if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
-    --device /dev/tenstorrent \
+    --device "${DEVICE_NODE}" \
     -v /dev/hugepages-1G:/dev/hugepages-1G \
     -v "${REPO_ROOT}:/work" \
     -v "${OUT_DIR}:/out" \
@@ -134,7 +135,7 @@ if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
 else
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
-    --device /dev/tenstorrent \
+    --device "${DEVICE_NODE}" \
     -v /dev/hugepages-1G:/dev/hugepages-1G \
     -v "${REPO_ROOT}:/work" \
     -v "${OUT_DIR}:/out" \
