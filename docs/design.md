@@ -1408,12 +1408,16 @@ and the unchanged block-1/2/4 CB ledgers.
 
 #### L=16 native-tile audit (#63)
 
-The board-free audit uses the configured `/home/hayate/git/tt-metal`
-checkout at `901dd9ce93816ffd1fd185b801fc727065e9ae07`.  The runner's fixed
-0.75.0 image remains the digest in
-`enodia/tt/bench/run_in_container.sh:18`:
+The board-free audit used the tt-metal source at commit
+`901dd9ce93816ffd1fd185b801fc727065e9ae07`.  The runner's fixed 0.75.0
+image remains the digest in `enodia/tt/bench/run_in_container.sh:18`:
 `sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621`.
-No board, container, or device command was used for this audit.
+The image contains no source-revision metadata, so exact equality with
+`901dd9c` cannot be established from the image alone.  Its installed
+`llk_math_matmul.h` nevertheless contains the same
+`"16x16 by 16x16 matmul is not supported"` assertion and the same statement
+that there is no dedicated 16x16 math path.  The image inspection used no
+board device or device command.
 
 The host API does represent the requested geometry.  In
 `tt_metal/api/tt-metalium/program_descriptors.hpp:46-65`,

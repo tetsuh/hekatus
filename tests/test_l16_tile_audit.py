@@ -7,20 +7,14 @@ from pathlib import Path
 
 import pytest
 
-_DEFAULT_TT_METAL_ROOT = Path("/home/hayate/git/tt-metal")
-
 
 def _tt_metal_root() -> Path:
     configured = os.environ.get("HEKATUS_TT_METAL_ROOT")
-    candidates = [Path(configured)] if configured else []
-    candidates.append(_DEFAULT_TT_METAL_ROOT)
-    for candidate in candidates:
+    if configured:
+        candidate = Path(configured)
         if (candidate / ".git").exists() and (candidate / "tt_metal").is_dir():
             return candidate
-    pytest.skip(
-        "the configured tt-metal checkout is unavailable; set HEKATUS_TT_METAL_ROOT "
-        "for the source audit"
-    )
+    pytest.skip("set HEKATUS_TT_METAL_ROOT to a tt-metal source checkout for this audit")
 
 
 def _source(root: Path, relative: str) -> str:
@@ -58,6 +52,13 @@ def test_blackhole_standard_matmul_apis_do_not_accept_native_16x16():
     assert "MATH((matmul_block_math_dynamic_throttle(" in api
     assert "16x16 inputs not supported" in blackhole_matmul
     assert '"16x16 by 16x16 matmul is not supported"' in blackhole_matmul
+
+
+def test_audit_has_no_machine_local_checkout_dependency():
+    design = Path("docs/design.md").read_text()
+    assert "901dd9ce93816ffd1fd185b801fc727065e9ae07" in design
+    assert "image contains no source-revision metadata" in design
+    assert "same" in design and "16x16 by 16x16 matmul is not supported" in design
 
 
 def test_audit_conclusion_requires_the_32x32_diagonal_fallback():
