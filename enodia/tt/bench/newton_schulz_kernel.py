@@ -21,6 +21,7 @@ MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
+INPUT_MEMORY_CHOICES = ("l1", "dram")
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
@@ -186,11 +187,9 @@ def _validate_matrix_block(
         raise ValueError(f"unknown kernel variant {variant!r}")
     if variant == "bf16-fp32state" and not fp32_dest_acc_en:
         raise ValueError("bf16-fp32state requires fp32_dest_acc_en")
-    # Blocks 1/2/4 keep the existing two-half complex path.  Block 8 is
-    # accounted as one half at a time: one DEST tile per matrix, so eight is
-    # the upper limit of the FP32/full-sync configuration.  This host-side
-    # accounting does not claim that the existing device kernel implements
-    # block-8 execution.
+    # Blocks 1/2/4 use two DEST tiles per matrix (one for each complex half).
+    # Block 8 is executed one half at a time: one DEST tile per matrix, so
+    # eight is the upper limit of the FP32/full-sync configuration.
     dest_slots_per_matrix = 1 if matrix_block == 8 else 2
     required_slots = dest_slots_per_matrix * matrix_block
     available_slots = _dest_slot_limit(
@@ -202,6 +201,20 @@ def _validate_matrix_block(
             f"matrix_block={matrix_block} requires {required_slots} DEST slots, "
             f"but the selected DEST configuration provides {available_slots}"
         )
+
+
+def _validate_input_memory(input_memory: str) -> None:
+    """Reject input placement values before any device work can begin."""
+    if input_memory not in INPUT_MEMORY_CHOICES:
+        raise ValueError(
+            f"input_memory must be one of {INPUT_MEMORY_CHOICES}, got {input_memory!r}"
+        )
+
+
+def _input_memory_config(ttnn, input_memory: str):
+    """Return the interleaved device memory config for all reader inputs."""
+    _validate_input_memory(input_memory)
+    return ttnn.L1_MEMORY_CONFIG if input_memory == "l1" else ttnn.DRAM_MEMORY_CONFIG
 
 
 def _pack_matrices(matrices: np.ndarray, *, packed: bool, tile_count: int) -> np.ndarray:
@@ -234,10 +247,19 @@ def _unpack_matrices(values: np.ndarray, *, batch: int, size: int, packed: bool)
     return unpacked
 
 
-def _device_tensor(ttnn, values: np.ndarray, device, *, dtype):
+def _device_tensor(
+    ttnn,
+    values: np.ndarray,
+    device,
+    *,
+    dtype,
+    input_memory: str = "l1",
+):
+    """Move one reader input to the selected interleaved memory."""
+    memory_config = _input_memory_config(ttnn, input_memory)
     host = ttnn.Tensor(np.ascontiguousarray(values), dtype)
     tiled = ttnn.to_layout(host, ttnn.TILE_LAYOUT)
-    return ttnn.to_device(tiled, device, memory_config=ttnn.L1_MEMORY_CONFIG)
+    return ttnn.to_device(tiled, device, memory_config=memory_config)
 
 
 def _download_float32(ttnn, tensor) -> np.ndarray:
@@ -386,13 +408,24 @@ def _tensor_l1_bytes(
     state_dtype,
     fuse_s: bool,
     output_memory: str,
+    input_memory: str = "l1",
 ) -> int:
-    """Estimate the largest per-core tensor footprint before CB allocation."""
+    """Estimate the per-core tensor footprint outside static CB storage.
+
+    Reader inputs and the identity/zero constants are device tensors.  They
+    consume L1 only for the L1 placement; interleaved DRAM inputs are fetched
+    into the same static CBs and therefore contribute no tensor bytes here.
+    Outputs retain their existing placement and accounting.
+    """
+    _validate_input_memory(input_memory)
     tiles_per_core = (batch + core_count - 1) // core_count
-    r_inputs = 4 if fuse_s else 3
-    input_bytes = r_inputs * _cb_page_size(ttnn, ttnn.bfloat16)
-    input_bytes += 2 * _cb_page_size(ttnn, state_dtype)
-    resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
+    input_bytes = 0
+    resident_bytes = 0
+    if input_memory == "l1":
+        r_inputs = 4 if fuse_s else 3
+        input_bytes = r_inputs * _cb_page_size(ttnn, ttnn.bfloat16)
+        input_bytes += 2 * _cb_page_size(ttnn, state_dtype)
+        resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
@@ -484,10 +517,12 @@ def _validate_l1_preflight(
     profile: bool = False,
     fuse_s: bool = False,
     output_memory: str = "l1",
+    input_memory: str = "l1",
     matrix_block: int = 1,
     variant: str | None = None,
 ) -> int:
     """Validate L1 usage without touching a device or allocating tensors."""
+    _validate_input_memory(input_memory)
     _validate_matrix_block(matrix_block, variant=variant)
     definitions = _cb_definitions(
         ttnn,
@@ -503,6 +538,7 @@ def _validate_l1_preflight(
         state_dtype=state_dtype,
         fuse_s=fuse_s,
         output_memory=output_memory,
+        input_memory=input_memory,
     )
     return _validate_l1_budget(
         ttnn,
@@ -627,6 +663,7 @@ class NewtonSchulzKernel:
     size: int
     variant: str
     math_fidelity: str
+    input_memory: str
     output_memory: str
     profile: bool
     fuse_s: bool
@@ -653,10 +690,12 @@ class NewtonSchulzKernel:
         fuse_s: bool = False,
         batch_reads: bool = False,
         matrix_block: int = 1,
+        input_memory: str = "l1",
         fp32_dest_acc_en: bool = True,
         dst_full_sync_en: bool = True,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
+        _validate_input_memory(input_memory)
         if iterations != NEWTON_SCHULZ_ITERATIONS:
             raise ValueError(
                 f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
@@ -725,6 +764,7 @@ class NewtonSchulzKernel:
             state_dtype=state_dtype,
             fuse_s=fuse_s,
             output_memory=_output_memory_name(variant),
+            input_memory=input_memory,
         )
         _validate_l1_budget(
             ttnn,
@@ -744,7 +784,13 @@ class NewtonSchulzKernel:
             ]
         )
         inputs = [
-            _device_tensor(ttnn, values, device, dtype=dtype)
+            _device_tensor(
+                ttnn,
+                values,
+                device,
+                dtype=dtype,
+                input_memory=input_memory,
+            )
             for values, dtype in zip(input_values, input_dtypes, strict=True)
         ]
         output_shape = ttnn.Shape(r_real_values.shape)
@@ -879,6 +925,7 @@ class NewtonSchulzKernel:
             size=size,
             variant=variant,
             math_fidelity=math_fidelity,
+            input_memory=input_memory,
             output_memory=output_memory,
             profile=profile,
             fuse_s=fuse_s,
@@ -984,6 +1031,7 @@ def run_newton_schulz_kernel(
     fuse_s: bool = False,
     batch_reads: bool = False,
     matrix_block: int = 1,
+    input_memory: str = "l1",
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -996,6 +1044,7 @@ def run_newton_schulz_kernel(
         fuse_s=fuse_s,
         batch_reads=batch_reads,
         matrix_block=matrix_block,
+        input_memory=input_memory,
     )
     try:
         kernel.launch()

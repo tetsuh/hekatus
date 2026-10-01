@@ -336,6 +336,7 @@ void wait_complex_inputs_block(
     cb_wait_front(right_imag, block_count);
 }
 
+template <bool one_dest_half>
 void complex_matmul_block(
     std::uint32_t left_real,
     std::uint32_t left_imag_for_real,
@@ -348,12 +349,8 @@ void complex_matmul_block(
     bool resident_left,
     bool consume_left,
     bool consume_right) {
-    // Reserve both complex outputs and use one DEST section for the complete
-    // matrix block.  Real tiles occupy [0, block_count); imaginary tiles use
-    // the second half so every matrix keeps independent accumulation state.
     cb_reserve_back(output_real, block_count);
     cb_reserve_back(output_imag, block_count);
-    matmul_block_init(left_real, right_real, false, 1, 1, 1);
     wait_complex_inputs_block(
         left_real,
         left_imag_for_real,
@@ -362,25 +359,76 @@ void complex_matmul_block(
         right_imag,
         block_count,
         resident_left);
-    tile_regs_acquire();
+
     const std::uint32_t block_left_real = left_real;
     const std::uint32_t block_right_real = right_real;
     const std::uint32_t block_left_imag = left_imag_for_real;
     const std::uint32_t block_right_imag = right_imag;
     const std::uint32_t block_left_imag_for_imag = left_imag_for_imag;
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        matmul_block(block_left_real, block_right_real, index, index, index, false, 1, 1, 1);
-        matmul_block(block_left_imag, block_right_imag, index, index, index, false, 1, 1, 1);
-        matmul_block(block_left_real, block_right_imag, index, index, block_count + index, false, 1, 1, 1);
-        matmul_block(block_left_imag_for_imag, block_right_real, index, index, block_count + index, false, 1, 1, 1);
+    if constexpr (one_dest_half) {
+        // Block 8 has only eight FP32/full-sync DEST tiles.  Accumulate and
+        // pack the real and imaginary halves in separate DEST passes, using
+        // one tile per matrix in each pass.
+        matmul_block_init(left_real, right_real, false, 1, 1, 1);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            matmul_block(block_left_real, block_right_real, index, index, index, false, 1, 1, 1);
+            matmul_block(block_left_imag, block_right_imag, index, index, index, false, 1, 1, 1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(output_real);
+        pack_tile_block(0, output_real, block_count);
+        tile_regs_release();
+
+        matmul_block_init(left_real, right_real, false, 1, 1, 1);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            matmul_block(block_left_real, block_right_imag, index, index, index, false, 1, 1, 1);
+            matmul_block(block_left_imag_for_imag, block_right_real, index, index, index, false, 1, 1, 1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(output_imag);
+        pack_tile_block(0, output_imag, block_count);
+        tile_regs_release();
+    } else {
+        // Blocks 1/2/4 retain the fast two-half path: real tiles occupy
+        // [0, block_count), imaginary tiles occupy the second half.
+        matmul_block_init(left_real, right_real, false, 1, 1, 1);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            matmul_block(block_left_real, block_right_real, index, index, index, false, 1, 1, 1);
+            matmul_block(block_left_imag, block_right_imag, index, index, index, false, 1, 1, 1);
+            matmul_block(
+                block_left_real,
+                block_right_imag,
+                index,
+                index,
+                block_count + index,
+                false,
+                1,
+                1,
+                1);
+            matmul_block(
+                block_left_imag_for_imag,
+                block_right_real,
+                index,
+                index,
+                block_count + index,
+                false,
+                1,
+                1,
+                1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(output_real);
+        pack_tile_block(0, output_real, block_count);
+        pack_reconfig_data_format(output_imag);
+        pack_tile_block(block_count, output_imag, block_count);
+        tile_regs_release();
     }
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_reconfig_data_format(output_real);
-    pack_tile_block(0, output_real, block_count);
-    pack_reconfig_data_format(output_imag);
-    pack_tile_block(block_count, output_imag, block_count);
-    tile_regs_release();
     cb_push_back(output_real, block_count);
     cb_push_back(output_imag, block_count);
 
@@ -397,6 +445,7 @@ void complex_matmul_block(
     }
 }
 
+template <bool one_dest_half>
 void fused_s_matmul_block(
     std::uint32_t negative_r_real,
     std::uint32_t negative_r_imag,
@@ -414,34 +463,77 @@ void fused_s_matmul_block(
     cb_reserve_back(cb_s_real, block_count);
     cb_reserve_back(cb_s_imag, block_count);
 
-    reconfig_data_format_srca(x_real, cb_identity);
-    copy_tile_init(cb_identity);
-    tile_regs_acquire();
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_identity, 0, index);
+    if constexpr (one_dest_half) {
+        // Block 8 cannot hold real and imaginary S tiles simultaneously.
+        // Build, pack, and release each half before acquiring the next one.
+        reconfig_data_format_srca(x_real, cb_identity);
+        copy_tile_init(cb_identity);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            copy_tile(cb_identity, 0, index);
+        }
+        reconfig_data_format(x_real, negative_r_real);
+        matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            // S_re = 2I + (-R_re)X_re + (+R_im)X_im.
+            matmul_block(negative_r_real, x_real, index, index, index, false, 1, 1, 1);
+            matmul_block(positive_r_imag, x_imag, index, index, index, false, 1, 1, 1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_real);
+        pack_tile_block(0, cb_s_real, block_count);
+        tile_regs_release();
+
+        reconfig_data_format_srca(x_real, cb_zero);
+        copy_tile_init(cb_zero);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            copy_tile(cb_zero, 0, index);
+        }
+        reconfig_data_format(x_real, negative_r_real);
+        matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            // S_im = (-R_re)X_im + (-R_im)X_re.
+            matmul_block(negative_r_real, x_imag, index, index, index, false, 1, 1, 1);
+            matmul_block(negative_r_imag, x_real, index, index, index, false, 1, 1, 1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_imag);
+        pack_tile_block(0, cb_s_imag, block_count);
+        tile_regs_release();
+    } else {
+        // Blocks 1/2/4 retain the two-half fused path.
+        reconfig_data_format_srca(x_real, cb_identity);
+        copy_tile_init(cb_identity);
+        tile_regs_acquire();
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            copy_tile(cb_identity, 0, index);
+        }
+        copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            copy_tile(cb_zero, 0, block_count + index);
+        }
+        reconfig_data_format(x_real, negative_r_real);
+        matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            const std::uint32_t imag_slot = block_count + index;
+            // S_re = 2I + (-R_re)X_re + (+R_im)X_im.
+            matmul_block(negative_r_real, x_real, index, index, index, false, 1, 1, 1);
+            matmul_block(positive_r_imag, x_imag, index, index, index, false, 1, 1, 1);
+            // S_im = (-R_re)X_im + (-R_im)X_re.
+            matmul_block(negative_r_real, x_imag, index, index, imag_slot, false, 1, 1, 1);
+            matmul_block(negative_r_imag, x_real, index, index, imag_slot, false, 1, 1, 1);
+        }
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_real);
+        pack_tile_block(0, cb_s_real, block_count);
+        pack_reconfig_data_format(cb_s_imag);
+        pack_tile_block(block_count, cb_s_imag, block_count);
+        tile_regs_release();
     }
-    copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_zero, 0, block_count + index);
-    }
-    reconfig_data_format(x_real, negative_r_real);
-    matmul_block_init(negative_r_real, x_real, false, 1, 1, 1);
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        const std::uint32_t imag_slot = block_count + index;
-        // S_re = 2I + (-R_re)X_re + (+R_im)X_im.
-        matmul_block(negative_r_real, x_real, index, index, index, false, 1, 1, 1);
-        matmul_block(positive_r_imag, x_imag, index, index, index, false, 1, 1, 1);
-        // S_im = (-R_re)X_im + (-R_im)X_re.
-        matmul_block(negative_r_real, x_imag, index, index, imag_slot, false, 1, 1, 1);
-        matmul_block(negative_r_imag, x_real, index, index, imag_slot, false, 1, 1, 1);
-    }
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_reconfig_data_format(cb_s_real);
-    pack_tile_block(0, cb_s_real, block_count);
-    pack_reconfig_data_format(cb_s_imag);
-    pack_tile_block(block_count, cb_s_imag, block_count);
-    tile_regs_release();
     cb_push_back(cb_s_real, block_count);
     cb_push_back(cb_s_imag, block_count);
 }
@@ -699,7 +791,7 @@ void stream_initial_or_state(
     std::uint32_t& x_real,
     std::uint32_t& x_imag);
 
-template <std::uint32_t iterations, bool state_fp32, bool fuse_s>
+template <std::uint32_t iterations, bool state_fp32, bool fuse_s, bool one_dest_half>
 void process_matrix_block(std::uint32_t block_count) {
     wait_r_inputs_block(fuse_s, block_count);
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
@@ -714,7 +806,7 @@ void process_matrix_block(std::uint32_t block_count) {
         }
 
         if constexpr (fuse_s) {
-            fused_s_matmul_block(
+            fused_s_matmul_block<one_dest_half>(
                 cb_r_negative_real,
                 cb_r_negative_imag,
                 cb_r_imag,
@@ -722,7 +814,7 @@ void process_matrix_block(std::uint32_t block_count) {
                 x_imag,
                 block_count);
         } else {
-            complex_matmul_block(
+            complex_matmul_block<one_dest_half>(
                 cb_r_real,
                 cb_r_negative_imag,
                 cb_r_imag,
@@ -763,7 +855,7 @@ void process_matrix_block(std::uint32_t block_count) {
             iteration + 1 == iterations ? cb_output_real : cb_state_real;
         const std::uint32_t output_imag =
             iteration + 1 == iterations ? cb_output_imag : cb_state_imag;
-        complex_matmul_block(
+        complex_matmul_block<one_dest_half>(
             x_real,
             cb_negative_x_imag,
             x_imag,
@@ -1168,7 +1260,7 @@ void kernel_main_impl() {
         for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
             const std::uint32_t block_count =
                 (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-            process_matrix_block<iterations, state_fp32, fuse_s>(block_count);
+            process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>(block_count);
             if constexpr (profile_sample) {
                 if (start_tile == 0) {
                     counters.event_count += iterations;

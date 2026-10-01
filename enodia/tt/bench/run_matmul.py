@@ -50,7 +50,11 @@ from enodia.tt.bench.configs import (
     configuration_catalogue,
     executed_shape,
 )
-from enodia.tt.bench.newton_schulz_kernel import MATRIX_BLOCK_CHOICES
+from enodia.tt.bench.newton_schulz_kernel import (
+    INPUT_MEMORY_CHOICES,
+    MATRIX_BLOCK_CHOICES,
+    _validate_input_memory,
+)
 from enodia.tt.bench.profiling import parse_device_profile_csv
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
@@ -471,8 +475,13 @@ def run_custom_newton_schulz(
     fuse_s: bool = False,
     batch_reads: bool = False,
     matrix_block: int = 1,
+    input_memory: str = "l1",
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
+    try:
+        _validate_input_memory(input_memory)
+    except ValueError as exc:
+        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
     if not _is_custom_target(shape):
         return {
             "status": "failed",
@@ -523,6 +532,7 @@ def run_custom_newton_schulz(
                 profile=profile,
                 fuse_s=fuse_s,
                 output_memory="dram" if variant == "bf16-fp32state" else "l1",
+                input_memory=input_memory,
                 matrix_block=matrix_block,
                 variant=variant,
             )
@@ -545,6 +555,8 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
         }
+        if input_memory != "l1":
+            prepare_kwargs["input_memory"] = input_memory
         # Keep the baseline dispatch signature intact for callers that provide
         # a legacy host stub; non-default blocks must be explicit.
         if matrix_block != 1:
@@ -574,6 +586,7 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
+            "input_memory": input_memory,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
             "seconds_per_iteration_samples": launch_samples,
@@ -619,6 +632,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dtype", action="append", default=None, help="repeatable")
     parser.add_argument("--memory", action="append", default=None, choices=["dram", "l1"])
+    parser.add_argument(
+        "--input-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default="l1",
+        help="interleaved placement for custom-kernel reader inputs",
+    )
     parser.add_argument("--kind", action="append", choices=[STOCK_KIND, CUSTOM_KIND], default=None)
     parser.add_argument(
         "--custom-variant",
@@ -845,6 +864,7 @@ def main(argv: list[str] | None = None) -> int:
                             "representative": shape.representative,
                             "dtype": dtype_name,
                             "memory": memory_name,
+                            "input_memory": base_memory_name,
                             "memory_placement": {"plan": memory_name},
                             "program_config": config_record,
                             "iterations": args.iters,
@@ -892,7 +912,11 @@ def main(argv: list[str] | None = None) -> int:
                                 "representative": shape.representative,
                                 "dtype": dtype_name,
                                 "memory": memory_name,
-                                "memory_placement": {"input_and_compute": "l1"},
+                                "input_memory": args.input_memory,
+                                "memory_placement": {
+                                    "input": args.input_memory,
+                                    "compute": "l1",
+                                },
                                 "program_config": {
                                     "name": CUSTOM_KIND,
                                     "kind": CUSTOM_KIND,
@@ -901,6 +925,7 @@ def main(argv: list[str] | None = None) -> int:
                                     "fuse_s": args.fuse_s,
                                     "batch_reads": args.batch_reads,
                                     "matrix_block": args.matrix_block,
+                                    "input_memory": args.input_memory,
                                 },
                                 "iterations": args.iters,
                                 "repeats": args.repeats,
@@ -919,6 +944,7 @@ def main(argv: list[str] | None = None) -> int:
                                     fuse_s=args.fuse_s,
                                     batch_reads=args.batch_reads,
                                     matrix_block=args.matrix_block,
+                                    input_memory=args.input_memory,
                                     iters=args.iters,
                                     repeats=args.repeats,
                                 )
