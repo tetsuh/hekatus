@@ -1445,7 +1445,10 @@ quadrants.  The L=16 useful-work denominator remains its catalogue definition;
 padded block-diagonal tile work is not added to `shapes.total_flops`.  The
 implementation records the physical tile count and `diagonal_pairs_32x32`
 packing mode in custom-run metadata; the L=32 path remains `native_32x32`.
-Board-free packing, state-isolation, and logical-FLOP tests live in
+For the board-side catalogue, host output labels the three comparison rows
+`stock_best`, `custom_block1`, and `custom_block4`; each custom row is selected
+with its corresponding `--matrix-block` value.  Board-free packing,
+state-isolation, and logical-FLOP tests live in
 `tests/test_newton_schulz_kernel.py` and `tests/test_bench_runner.py`; the
 source regression is `tests/test_l16_tile_audit.py`.
 

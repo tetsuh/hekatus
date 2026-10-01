@@ -58,6 +58,15 @@ def test_catalogue_pins_the_exact_workload_inventory():
     assert actual == expected
 
 
+def test_l16_denominator_excludes_32x32_pair_padding():
+    shape = next(shape for shape in default_catalogue() if shape.name == "newton_schulz_L16_b8192")
+    logical_inverse_flops = total_flops(shape) * 16
+    padded_pair_flops = shape.batch // 2 * 4 * 2 * 32**3 * 16
+
+    assert logical_inverse_flops == 8192 * 4 * 2 * 16**3 * 16
+    assert logical_inverse_flops < padded_pair_flops
+
+
 def test_catalogue_pins_representative_flop_accounting():
     by_name = {s.name: s for s in default_catalogue()}
 

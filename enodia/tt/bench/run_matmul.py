@@ -603,6 +603,7 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
+            "row": f"custom_block{matrix_block}",
             "physical_tile_count": getattr(
                 kernel, "tile_count", _physical_tile_count(shape.batch, shape.m)
             ),
@@ -909,6 +910,11 @@ def main(argv: list[str] | None = None) -> int:
                             "iterations": args.iters,
                             "repeats": args.repeats,
                             "kind": STOCK_KIND,
+                            "row": (
+                                "stock_best"
+                                if program_spec is None and _is_custom_target(shape)
+                                else config_record["name"]
+                            ),
                             **_stock_math_fidelity(dtype_name, program_spec),
                         }
                         record.update(
@@ -975,6 +981,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "iterations": args.iters,
                                 "repeats": args.repeats,
                                 "kind": CUSTOM_KIND,
+                                "row": f"custom_block{args.matrix_block}",
                             }
                             custom_record.update(
                                 run_custom_newton_schulz(

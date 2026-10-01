@@ -532,6 +532,80 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
     )
 
 
+def test_l16_catalogue_rows_name_stock_best_and_custom_blocks(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(
+        run_matmul,
+        "run_shape",
+        lambda *args, **kwargs: {
+            "status": "ok",
+            "kind": "ttnn.matmul",
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_iteration_samples": [1.0],
+        },
+    )
+
+    stock_output = tmp_path / "l16-stock.json"
+    assert run_matmul.main(
+        [
+            "--only",
+            "newton_schulz_L16_b8192",
+            "--dtype",
+            "bfloat16",
+            "--memory",
+            "l1",
+            "--kind",
+            "ttnn.matmul",
+            "--config-mode",
+            "default-only",
+            "--out",
+            str(stock_output),
+        ]
+    ) == 0
+    stock_rows = json.loads(stock_output.read_text())["results"]
+    assert [row["row"] for row in stock_rows] == ["stock_best"]
+
+    def fake_custom(*args, **kwargs):
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    for matrix_block in (1, 4):
+        output = tmp_path / f"l16-custom-{matrix_block}.json"
+        assert run_matmul.main(
+            [
+                "--only",
+                "newton_schulz_L16_b8192",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "l1",
+                "--kind",
+                "custom_newton_schulz",
+                "--matrix-block",
+                str(matrix_block),
+                "--out",
+                str(output),
+            ]
+        ) == 0
+        row = json.loads(output.read_text())["results"][0]
+        assert row["row"] == f"custom_block{matrix_block}"
+        assert row["program_config"]["matrix_block"] == matrix_block
+
+
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
     """The host-only runner seam produces the same JSON shape as a device run."""
     ttnn = _StubTtnn()
