@@ -469,6 +469,30 @@ def test_wrapper_runs_device_pytest_only_in_the_pinned_container(tmp_path):
     ]
 
 
+def test_wrapper_rejects_an_unpinned_image_for_device_pytest(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [str(copied_wrapper), "--pytest", "-m", "tt_device"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "HEKATUS_TT_IMAGE": "tt-metal:latest",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 2
+    assert "digest-pinned" in completed.stderr
+
+
 def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"

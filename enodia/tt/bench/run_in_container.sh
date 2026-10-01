@@ -74,6 +74,11 @@ case "${IMAGE}" in
     ;;
 esac
 
+if [[ "${TEST_MODE}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
+  echo "--pytest requires a digest-pinned HEKATUS_TT_IMAGE" >&2
+  exit 2
+fi
+
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
 POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
