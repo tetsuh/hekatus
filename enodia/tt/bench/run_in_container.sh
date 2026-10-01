@@ -28,6 +28,16 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
+# The default runs the benchmark.  A board-side Python probe can opt in with
+# HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
+RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
+CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-60}"
+if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be a positive integer" >&2
+  exit 2
+fi
+CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
+
 # Resolve a tag to the digest it currently points at, so the recorded
 # environment names one immutable toolchain rather than a moving one.
 IMAGE_PINNED=0
@@ -57,16 +67,19 @@ PINNED_FLAG=()
 
 python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
-# Own the children from before either is launched. Installing the traps after
-# a launch leaves a window in which a signal kills the wrapper and orphans the
-# child it had just started; the same window exists between a launch and the
-# assignment that records its PID. `${!:-}` closes the second one: it names the
-# most recently started background job, which is exactly the child whose
-# variable has not been assigned yet, and it is empty before any launch.
-# The EXIT trap is disarmed after normal reaping, so it cannot act on a stale
-# PID later.
+# Own the children and the daemon-side container from before either is
+# launched. Killing only the Docker client is insufficient: Docker can keep
+# the board-side container running after an outer `timeout` or SSH disconnect.
+# Installing the traps after a launch leaves a window in which a signal kills
+# the wrapper and orphans the child it had just started; `${!:-}` closes the
+# second one. It names the most recently started background job, exactly the
+# child whose variable has not been assigned yet, and is empty before launch.
+stop_container() {
+  docker kill --signal KILL "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+}
 cleanup_children() {
   local pid
+  stop_container
   for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
       kill "${pid}" 2>/dev/null || true
@@ -96,19 +109,35 @@ SAMPLER_PID=$!
 
 # Runner arguments are passed as separate arguments, never interpolated into
 # a shell string: the wrapper must not turn a benchmark option into a command.
-docker run --rm \
-  --device /dev/tenstorrent \
-  -v /dev/hugepages-1G:/dev/hugepages-1G \
-  -v "${REPO_ROOT}:/work" \
-  -v "${OUT_DIR}:/out" \
-  -w /work \
-  -e PYTHONPATH=/work \
-  --entrypoint /bin/bash \
-  "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
-  enodia/tt/bench/run_matmul.py \
-  "/out/$(basename "${RESULTS}")" \
-  "/out/$(basename "${ENV_JSON}")" \
-  "$@" &
+# `timeout` is inside the wrapper, so losing an SSH session cannot leave the
+# Docker client or the board-side container unbounded.
+if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
+  timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
+    docker run --rm --name "${CONTAINER_NAME}" \
+    --device /dev/tenstorrent \
+    -v /dev/hugepages-1G:/dev/hugepages-1G \
+    -v "${REPO_ROOT}:/work" \
+    -v "${OUT_DIR}:/out" \
+    -w /work \
+    -e PYTHONPATH=/work \
+    --entrypoint /bin/bash \
+    "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
+    "${RUNNER}" \
+    "/out/$(basename "${RESULTS}")" \
+    "/out/$(basename "${ENV_JSON}")" \
+    "$@" &
+else
+  timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
+    docker run --rm --name "${CONTAINER_NAME}" \
+    --device /dev/tenstorrent \
+    -v /dev/hugepages-1G:/dev/hugepages-1G \
+    -v "${REPO_ROOT}:/work" \
+    -v "${OUT_DIR}:/out" \
+    -w /work \
+    -e PYTHONPATH=/work \
+    --entrypoint python3 \
+    "${IMAGE}" "${RUNNER}" "$@" &
+fi
 DOCKER_PID=$!
 
 # A sampler that exits before Docker finishes means the run has no complete
@@ -142,6 +171,11 @@ trap - EXIT INT TERM HUP
 # able to tell a broken run from a broken measurement of a working one.
 
 if [[ "${DOCKER_STATUS}" -ne 0 ]]; then
+  # A timeout normally invokes the EXIT trap only after this wait returns, but
+  # explicitly kill once more for status 124.  This is idempotent after --rm
+  # and covers Docker clients that do not propagate TERM to the named
+  # container.
+  stop_container
   exit "${DOCKER_STATUS}"
 fi
 if [[ "${SAMPLER_STATUS}" != intentional ]]; then

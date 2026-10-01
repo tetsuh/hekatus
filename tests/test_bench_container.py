@@ -47,6 +47,10 @@ esac
     (bindir / "docker").write_text(
         """#!/bin/sh
 set -eu
+if [ "${1:-}" = kill ]; then
+  printf '%s\\n' "$@" > "${DOCKER_CONTROL_ARGS:-/dev/null}"
+  exit 0
+fi
 printf '%s\\n' "$@" > "$DOCKER_ARGS"
 sleep "${DOCKER_DELAY:-0}"
 exit "${DOCKER_EXIT:-0}"
@@ -130,15 +134,18 @@ def test_wrapper_reaps_docker_when_interrupted(tmp_path):
     bindir = _fake_tools(tmp_path)
     child_pid_file = tmp_path / "docker-child-pid"
     args_log = tmp_path / "docker-args"
+    control_log = tmp_path / "docker-control-args"
     docker = bindir / "docker"
     docker.write_text(
         f"""#!{sys.executable}
 import os
 import sys
 import time
-from contextlib import suppress
 from pathlib import Path
 
+if sys.argv[1:2] == ["kill"]:
+    Path(os.environ["DOCKER_CONTROL_ARGS"]).write_text("\\n".join(sys.argv[1:]) + "\\n")
+    raise SystemExit(0)
 Path(os.environ["DOCKER_ARGS"]).write_text("\\n".join(sys.argv[1:]) + "\\n")
 Path(os.environ["DOCKER_CHILD_PID"]).write_text(str(os.getpid()))
 time.sleep(float(os.environ.get("DOCKER_DELAY", "0")))
@@ -159,6 +166,7 @@ raise SystemExit(int(os.environ.get("DOCKER_EXIT", "0")))
             **os.environ,
             "PATH": f"{bindir}:{os.environ['PATH']}",
             "DOCKER_ARGS": str(args_log),
+            "DOCKER_CONTROL_ARGS": str(control_log),
             "DOCKER_CHILD_PID": str(child_pid_file),
             "DOCKER_DELAY": "30",
         },
@@ -181,6 +189,9 @@ raise SystemExit(int(os.environ.get("DOCKER_EXIT", "0")))
         assert process.returncode != 0, stdout + stderr
         with pytest.raises(ProcessLookupError):
             os.kill(docker_pid, 0)
+        control_args = control_log.read_text().splitlines()
+        assert control_args[0] == "kill"
+        assert "--signal" in control_args
     finally:
         if process.poll() is None:
             process.kill()
@@ -256,8 +267,13 @@ while True:
     # while the sampler is the only child that has made itself known.
     (bindir / "docker").write_text(
         f"""#!{sys.executable}
+import sys
 import time
+from pathlib import Path
 
+if sys.argv[1:2] == ["kill"]:
+    Path({str(tmp_path / "docker-control-args")!r}).write_text("\\n".join(sys.argv[1:]) + "\\n")
+    raise SystemExit(0)
 while True:
     time.sleep(0.05)
 """
@@ -337,9 +353,12 @@ while True:
     (bindir / "docker").write_text(
         f"""#!{sys.executable}
 import os
+import sys
 import time
 from pathlib import Path
 
+if sys.argv[1:2] == ["kill"]:
+    raise SystemExit(0)
 Path({str(docker_pid_file)!r}).write_text(str(os.getpid()))
 while True:
     time.sleep(0.05)
@@ -411,6 +430,92 @@ while True:
         for pid in pids:
             with suppress(ProcessLookupError):
                 os.kill(pid, 9)
+
+
+def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_wrapper.parents[3],
+        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "DOCKER_ARGS": str(args_log)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    name = docker_args[docker_args.index("--name") + 1]
+    assert re.fullmatch(r"hekatus-bench-[0-9]+-[0-9]+", name)
+    assert docker_args[docker_args.index("--entrypoint") + 1] == "/bin/bash"
+
+
+def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    control_log = tmp_path / "docker-control-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "DOCKER_CONTROL_ARGS": str(control_log),
+            "DOCKER_DELAY": "30",
+            "HEKATUS_TT_CONTAINER_TIMEOUT_S": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 124, completed.stderr
+    control_args = control_log.read_text().splitlines()
+    assert control_args[0] == "kill"
+    assert "--signal" in control_args
+
+
+def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--stage", "1", "--no-watcher"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_bringup.py",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    assert "--entrypoint" in docker_args
+    assert docker_args[docker_args.index("--entrypoint") + 1] == "python3"
+    assert docker_args[-4:] == [
+        "tools/newton_schulz_bringup.py",
+        "--stage",
+        "1",
+        "--no-watcher",
+    ]
 
 
 def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):
