@@ -78,8 +78,11 @@ void kernel_main() {
     const std::uint32_t profile_index = get_arg_val<std::uint32_t>(3);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(4);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(5);
+    constexpr std::uint32_t matrix_block = get_compile_time_arg_val(0);
 
-    constexpr auto real_args = TensorAccessorArgs<0>();
+    // The unblocked writer historically used TensorAccessorArgs<0>(); the
+    // matrix-block compile argument occupies slot zero now.
+    constexpr auto real_args = TensorAccessorArgs<1>();
     constexpr auto imag_args = TensorAccessorArgs<real_args.next_compile_time_args_offset()>();
     constexpr auto profile_args = TensorAccessorArgs<imag_args.next_compile_time_args_offset()>();
     const auto real = TensorAccessor(real_args, real_address);
@@ -92,12 +95,13 @@ void kernel_main() {
         counters.total_start = get_timestamp_32b();
         counters.warmup_start = counters.total_start;
     }
-    for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-        const std::uint32_t tile = start_tile + offset;
+    for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
+        const std::uint32_t block_count =
+            (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
         const bool warmup = measure_core && offset == 0;
         const std::uint32_t wait_start = measure_core ? get_timestamp_32b() : 0;
-        cb_wait_front(cb_output_real, 1);
-        cb_wait_front(cb_output_imag, 1);
+        cb_wait_front(cb_output_real, block_count);
+        cb_wait_front(cb_output_imag, block_count);
         if (measure_core) {
             add_profile_cycles(
                 counters.cb_wait,
@@ -107,9 +111,15 @@ void kernel_main() {
         }
 
         const std::uint32_t write_start = measure_core ? get_timestamp_32b() : 0;
-        noc_async_write_page(tile, real, get_read_ptr(cb_output_real));
-        noc_async_write_barrier();
-        noc_async_write_page(tile, imag, get_read_ptr(cb_output_imag));
+        for (std::uint32_t index = 0; index < block_count; ++index) {
+            const std::uint32_t tile = start_tile + offset + index;
+            const std::uint32_t real_ptr =
+                get_read_ptr(cb_output_real) + index * get_tile_size(cb_output_real);
+            const std::uint32_t imag_ptr =
+                get_read_ptr(cb_output_imag) + index * get_tile_size(cb_output_imag);
+            noc_async_write_page(tile, real, real_ptr);
+            noc_async_write_page(tile, imag, imag_ptr);
+        }
         noc_async_write_barrier();
         if (measure_core) {
             add_profile_cycles(
@@ -117,13 +127,13 @@ void kernel_main() {
                 counters.warmup_noc_write,
                 get_timestamp_32b() - write_start,
                 warmup);
-            ++counters.event_count;
+            counters.event_count += block_count;
             if (warmup) {
-                ++counters.warmup_event_count;
+                counters.warmup_event_count += block_count;
             }
         }
-        cb_pop_front(cb_output_real, 1);
-        cb_pop_front(cb_output_imag, 1);
+        cb_pop_front(cb_output_real, block_count);
+        cb_pop_front(cb_output_imag, block_count);
         if (measure_core && warmup) {
             counters.warmup_end = get_timestamp_32b();
         }

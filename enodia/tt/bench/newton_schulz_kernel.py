@@ -20,9 +20,15 @@ COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
+MATRIX_BLOCK_CHOICES = (1, 2, 4)
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
+# The board exposes 16 32x32 DEST tiles.  FP32 accumulation halves the tile
+# count, and half-sync mode halves it once more.  Keep these limits explicit so
+# an invalid matrix block fails before any tensor allocation or launch.
+_DEST_TILES = 16
+_L1_CB_BUDGET_BYTES = 1_300_000
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 
 # CB indices are shared by the three kernels.  The first seven are reader
@@ -101,6 +107,61 @@ def _balanced_ranges(batch: int, core_count: int) -> list[tuple[int, int]]:
         ranges.append((start, count))
         start += count
     return ranges
+
+
+def _matrix_block_ranges(start: int, count: int, matrix_block: int) -> list[tuple[int, int]]:
+    """Return ``(start, count)`` groups, including a final partial group."""
+    _validate_matrix_block(matrix_block)
+    if start < 0:
+        raise ValueError(f"start must be non-negative, got {start}")
+    if count < 1:
+        raise ValueError(f"count must be positive, got {count}")
+    return [
+        (group_start, min(matrix_block, start + count - group_start))
+        for group_start in range(start, start + count, matrix_block)
+    ]
+
+
+def _dest_slot_limit(*, fp32_dest_acc_en: bool, dst_full_sync_en: bool) -> int:
+    """Return the hardware DEST tile count for a compute configuration."""
+    tiles = _DEST_TILES // (2 if fp32_dest_acc_en else 1)
+    if not dst_full_sync_en:
+        tiles //= 2
+    return tiles
+
+
+def _validate_matrix_block(
+    matrix_block: int,
+    *,
+    fp32_dest_acc_en: bool = True,
+    dst_full_sync_en: bool = True,
+    variant: str | None = None,
+) -> None:
+    """Validate block, variant, and the two-output complex DEST footprint."""
+    if (
+        isinstance(matrix_block, bool)
+        or not isinstance(matrix_block, int)
+        or matrix_block not in MATRIX_BLOCK_CHOICES
+    ):
+        raise ValueError(
+            f"matrix_block must be one of {MATRIX_BLOCK_CHOICES}, got {matrix_block!r}"
+        )
+    if variant is not None and variant not in _SUPPORTED_VARIANTS:
+        raise ValueError(f"unknown kernel variant {variant!r}")
+    if variant == "bf16-fp32state" and not fp32_dest_acc_en:
+        raise ValueError("bf16-fp32state requires fp32_dest_acc_en")
+    # Complex products, fused S, state handoff, and final output all reserve
+    # two independent DEST tiles per matrix (real and imaginary).
+    required_slots = 2 * matrix_block
+    available_slots = _dest_slot_limit(
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+    )
+    if required_slots > available_slots:
+        raise ValueError(
+            f"matrix_block={matrix_block} requires {required_slots} DEST slots, "
+            f"but the selected DEST configuration provides {available_slots}"
+        )
 
 
 def _pack_matrices(matrices: np.ndarray, *, packed: bool, tile_count: int) -> np.ndarray:
@@ -208,8 +269,10 @@ def _cb_definitions(
     *,
     profile: bool = False,
     fuse_s: bool = False,
+    matrix_block: int = 1,
 ) -> dict[int, tuple[Any, int]]:
     """Describe the CB formats shared by both state-precision variants."""
+    _validate_matrix_block(matrix_block)
     definitions = {
         CB_R_REAL: (ttnn.bfloat16, 2),
         CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
@@ -232,6 +295,13 @@ def _cb_definitions(
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
+    # Identity/zero and profile pages are resident singletons.  Every queue
+    # carrying a matrix, intermediate, or output is widened for one block.
+    resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
+    definitions = {
+        index: (data_format, page_count if index in resident else page_count * matrix_block)
+        for index, (data_format, page_count) in definitions.items()
+    }
     if profile:
         definitions.update(
             {
@@ -241,6 +311,25 @@ def _cb_definitions(
             }
         )
     return definitions
+
+
+def _cb_l1_bytes(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
+    """Return the per-core circular-buffer footprint in bytes."""
+    return sum(
+        _cb_page_size(ttnn, data_format) * page_count
+        for data_format, page_count in definitions.values()
+    )
+
+
+def _validate_l1_budget(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
+    """Reject a block whose CB descriptors exceed the conservative p150 budget."""
+    usage = _cb_l1_bytes(ttnn, definitions)
+    if usage > _L1_CB_BUDGET_BYTES:
+        raise ValueError(
+            f"matrix_block CBs need {usage} bytes per core, above the "
+            f"{_L1_CB_BUDGET_BYTES}-byte L1 budget"
+        )
+    return usage
 
 
 def _decode_counter_page(
@@ -362,6 +451,7 @@ class NewtonSchulzKernel:
     profile: bool
     fuse_s: bool
     batch_reads: bool
+    matrix_block: int
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -382,6 +472,9 @@ class NewtonSchulzKernel:
         profile: bool = False,
         fuse_s: bool = False,
         batch_reads: bool = False,
+        matrix_block: int = 1,
+        fp32_dest_acc_en: bool = True,
+        dst_full_sync_en: bool = True,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         if iterations != NEWTON_SCHULZ_ITERATIONS:
@@ -390,6 +483,12 @@ class NewtonSchulzKernel:
             )
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
+        _validate_matrix_block(
+            matrix_block,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
+            variant=variant,
+        )
         state_fp32 = variant == "bf16-fp32state"
 
         matrices = np.asarray(matrices, dtype=np.complex64)
@@ -430,6 +529,14 @@ class NewtonSchulzKernel:
             ]
         )
         state_dtype = _state_dtype(ttnn, variant)
+        cb_definitions = _cb_definitions(
+            ttnn,
+            state_dtype,
+            profile=profile,
+            fuse_s=fuse_s,
+            matrix_block=matrix_block,
+        )
+        _validate_l1_budget(ttnn, cb_definitions)
         input_dtypes = [ttnn.bfloat16, ttnn.bfloat16, ttnn.bfloat16]
         if fuse_s:
             input_dtypes.append(ttnn.bfloat16)
@@ -475,12 +582,6 @@ class NewtonSchulzKernel:
             )
             outputs.append(profile_output)
 
-        cb_definitions = _cb_definitions(
-            ttnn,
-            state_dtype,
-            profile=profile,
-            fuse_s=fuse_s,
-        )
         cbs = []
         for index, (data_format, page_count) in cb_definitions.items():
             page_size = _cb_page_size(ttnn, data_format)
@@ -499,11 +600,11 @@ class NewtonSchulzKernel:
             )
 
         reader_compile_args = [iterations]
-        if profile or fuse_s or batch_reads:
-            reader_compile_args.extend([int(fuse_s), int(batch_reads)])
+        if profile or fuse_s or batch_reads or matrix_block > 1:
+            reader_compile_args.extend([int(fuse_s), int(batch_reads), matrix_block])
         for tensor in inputs:
             reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
-        writer_compile_args: list[int] = []
+        writer_compile_args: list[int] = [matrix_block]
         for tensor in outputs:
             writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
 
@@ -538,7 +639,7 @@ class NewtonSchulzKernel:
             if profile
             else (
                 _KERNEL_DIR / "newton_schulz_reader_optimized.cpp"
-                if fuse_s or batch_reads
+                if fuse_s or batch_reads or matrix_block > 1
                 else _KERNEL_DIR / "newton_schulz_reader.cpp"
             )
         )
@@ -566,12 +667,12 @@ class NewtonSchulzKernel:
                 kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s)],
+                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block],
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
-                    dst_full_sync_en=True,
-                    fp32_dest_acc_en=True,
+                    dst_full_sync_en=dst_full_sync_en,
+                    fp32_dest_acc_en=fp32_dest_acc_en,
                 ),
             ),
         ]
@@ -587,6 +688,7 @@ class NewtonSchulzKernel:
             profile=profile,
             fuse_s=fuse_s,
             batch_reads=batch_reads,
+            matrix_block=matrix_block,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -686,6 +788,7 @@ def run_newton_schulz_kernel(
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
+    matrix_block: int = 1,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -697,6 +800,7 @@ def run_newton_schulz_kernel(
         profile=profile,
         fuse_s=fuse_s,
         batch_reads=batch_reads,
+        matrix_block=matrix_block,
     )
     try:
         kernel.launch()

@@ -468,6 +468,7 @@ def run_custom_newton_schulz(
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
+    matrix_block: int = 1,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
     if not _is_custom_target(shape):
@@ -488,6 +489,12 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "error": f"unknown custom variant {variant!r}",
         }
+    from enodia.tt.bench.newton_schulz_kernel import _validate_matrix_block
+
+    try:
+        _validate_matrix_block(matrix_block, variant=variant)
+    except ValueError as exc:
+        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
     if math_fidelity not in CUSTOM_MATH_FIDELITIES:
         return {
             "status": "failed",
@@ -510,16 +517,18 @@ def run_custom_newton_schulz(
     kernel = None
     try:
         matrices = benchmark_matrices(shape.batch, shape.m, seed=6300)
-        kernel = NewtonSchulzKernel.prepare(
-            ttnn,
-            device,
-            matrices,
-            variant=variant,
-            math_fidelity=math_fidelity,
-            profile=profile,
-            fuse_s=fuse_s,
-            batch_reads=batch_reads,
-        )
+        prepare_kwargs = {
+            "variant": variant,
+            "math_fidelity": math_fidelity,
+            "profile": profile,
+            "fuse_s": fuse_s,
+            "batch_reads": batch_reads,
+        }
+        # Keep the baseline dispatch signature intact for callers that provide
+        # a legacy host stub; non-default blocks must be explicit.
+        if matrix_block != 1:
+            prepare_kwargs["matrix_block"] = matrix_block
+        kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, **prepare_kwargs)
         kernel.launch()
         ttnn.synchronize_device(device)
 
@@ -543,6 +552,7 @@ def run_custom_newton_schulz(
             "math_fidelity": math_fidelity,
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
+            "matrix_block": matrix_block,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
             "seconds_per_iteration_samples": launch_samples,
@@ -641,6 +651,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--batch-reads",
         action="store_true",
         help="group each matrix's reader NoC reads behind one barrier",
+    )
+    parser.add_argument(
+        "--matrix-block",
+        type=int,
+        choices=(1, 2, 4),
+        default=1,
+        help="number of independent matrices processed per compute block",
     )
     parser.add_argument(
         "--profile-csv",
@@ -862,6 +879,7 @@ def main(argv: list[str] | None = None) -> int:
                                     "math_fidelity": math_fidelity,
                                     "fuse_s": args.fuse_s,
                                     "batch_reads": args.batch_reads,
+                                    "matrix_block": args.matrix_block,
                                 },
                                 "iterations": args.iters,
                                 "repeats": args.repeats,
@@ -879,6 +897,7 @@ def main(argv: list[str] | None = None) -> int:
                                     profile=args.profile,
                                     fuse_s=args.fuse_s,
                                     batch_reads=args.batch_reads,
+                                    matrix_block=args.matrix_block,
                                     iters=args.iters,
                                     repeats=args.repeats,
                                 )

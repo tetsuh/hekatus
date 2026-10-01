@@ -70,12 +70,84 @@ void read_matrix(std::uint32_t tile_id, const Accessor &r_real,
     read_one(cb_x0_imag, tile_id, x0_imag);
   }
 }
+
+template <bool fuse_s, bool batch_reads, typename Accessor>
+void read_matrix_block(
+    std::uint32_t tile_id,
+    std::uint32_t block_count,
+    const Accessor &r_real,
+    const Accessor &r_negative_imag,
+    const Accessor &r_imag,
+    const Accessor &x0_real,
+    const Accessor &x0_imag,
+    const Accessor &r_negative_real) {
+  cb_reserve_back(cb_r_real, block_count);
+  cb_reserve_back(cb_r_negative_imag, block_count);
+  cb_reserve_back(cb_r_imag, block_count);
+  if constexpr (fuse_s) {
+    cb_reserve_back(cb_r_negative_real, block_count);
+  }
+  cb_reserve_back(cb_x0_real, block_count);
+  cb_reserve_back(cb_x0_imag, block_count);
+
+  for (std::uint32_t index = 0; index < block_count; ++index) {
+    const std::uint32_t tile = tile_id + index;
+    const std::uint32_t r_real_ptr = get_write_ptr(cb_r_real) + index * get_tile_size(cb_r_real);
+    const std::uint32_t r_negative_imag_ptr =
+        get_write_ptr(cb_r_negative_imag) + index * get_tile_size(cb_r_negative_imag);
+    const std::uint32_t r_imag_ptr = get_write_ptr(cb_r_imag) + index * get_tile_size(cb_r_imag);
+    const std::uint32_t x0_real_ptr = get_write_ptr(cb_x0_real) + index * get_tile_size(cb_x0_real);
+    const std::uint32_t x0_imag_ptr = get_write_ptr(cb_x0_imag) + index * get_tile_size(cb_x0_imag);
+    if constexpr (batch_reads) {
+      noc_async_read_page(tile, r_real, r_real_ptr);
+      noc_async_read_page(tile, r_negative_imag, r_negative_imag_ptr);
+      noc_async_read_page(tile, r_imag, r_imag_ptr);
+      if constexpr (fuse_s) {
+        const std::uint32_t r_negative_real_ptr =
+            get_write_ptr(cb_r_negative_real) + index * get_tile_size(cb_r_negative_real);
+        noc_async_read_page(tile, r_negative_real, r_negative_real_ptr);
+      }
+      noc_async_read_page(tile, x0_real, x0_real_ptr);
+      noc_async_read_page(tile, x0_imag, x0_imag_ptr);
+    } else {
+      noc_async_read_page(tile, r_real, r_real_ptr);
+      noc_async_read_barrier();
+      noc_async_read_page(tile, r_negative_imag, r_negative_imag_ptr);
+      noc_async_read_barrier();
+      noc_async_read_page(tile, r_imag, r_imag_ptr);
+      noc_async_read_barrier();
+      if constexpr (fuse_s) {
+        const std::uint32_t r_negative_real_ptr =
+            get_write_ptr(cb_r_negative_real) + index * get_tile_size(cb_r_negative_real);
+        noc_async_read_page(tile, r_negative_real, r_negative_real_ptr);
+        noc_async_read_barrier();
+      }
+      noc_async_read_page(tile, x0_real, x0_real_ptr);
+      noc_async_read_barrier();
+      noc_async_read_page(tile, x0_imag, x0_imag_ptr);
+      noc_async_read_barrier();
+    }
+  }
+  if constexpr (batch_reads) {
+    noc_async_read_barrier();
+  }
+
+  cb_push_back(cb_r_real, block_count);
+  cb_push_back(cb_r_negative_imag, block_count);
+  cb_push_back(cb_r_imag, block_count);
+  if constexpr (fuse_s) {
+    cb_push_back(cb_r_negative_real, block_count);
+  }
+  cb_push_back(cb_x0_real, block_count);
+  cb_push_back(cb_x0_imag, block_count);
+}
 } // namespace
 
 void kernel_main() {
   constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
   constexpr bool fuse_s = get_compile_time_arg_val(1) != 0;
   constexpr bool batch_reads = get_compile_time_arg_val(2) != 0;
+  constexpr std::uint32_t matrix_block = get_compile_time_arg_val(3);
   (void)iterations;
 
   const std::uint32_t r_real_address = get_arg_val<std::uint32_t>(0);
@@ -105,7 +177,7 @@ void kernel_main() {
     tile_count = get_arg_val<std::uint32_t>(8);
   }
 
-  constexpr auto r_real_args = TensorAccessorArgs<3>();
+  constexpr auto r_real_args = TensorAccessorArgs<4>();
   constexpr auto r_negative_imag_args =
       TensorAccessorArgs<r_real_args.next_compile_time_args_offset()>();
   constexpr auto r_imag_args = TensorAccessorArgs<
@@ -136,21 +208,43 @@ void kernel_main() {
   // order, regardless of whether its reads share a barrier.
   read_one(cb_identity, 0, identity);
   read_one(cb_zero, 0, zero);
-  if constexpr (fuse_s) {
+  if constexpr (matrix_block == 1) {
+    if constexpr (fuse_s) {
+      const auto r_negative_real =
+          TensorAccessor(r_negative_real_args, r_negative_real_address);
+      for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
+        read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
+                                         r_negative_imag, r_imag, x0_real,
+                                         x0_imag, r_negative_real);
+      }
+    } else {
+      // The final accessor is unused in this specialization; passing an
+      // existing accessor keeps the read order and template shape identical.
+      for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
+        read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
+                                         r_negative_imag, r_imag, x0_real,
+                                         x0_imag, r_real);
+      }
+    }
+  } else if constexpr (fuse_s) {
     const auto r_negative_real =
         TensorAccessor(r_negative_real_args, r_negative_real_address);
-    for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-      read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
-                                       r_negative_imag, r_imag, x0_real,
-                                       x0_imag, r_negative_real);
+    for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
+      const std::uint32_t block_count =
+          (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
+      read_matrix_block<fuse_s, batch_reads>(start_tile + offset, block_count, r_real,
+                                              r_negative_imag, r_imag, x0_real,
+                                              x0_imag, r_negative_real);
     }
   } else {
     // The final accessor is unused in this specialization; passing an
     // existing accessor keeps the read order and template shape identical.
-    for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-      read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
-                                       r_negative_imag, r_imag, x0_real,
-                                       x0_imag, r_real);
+    for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
+      const std::uint32_t block_count =
+          (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
+      read_matrix_block<fuse_s, batch_reads>(start_tile + offset, block_count, r_real,
+                                              r_negative_imag, r_imag, x0_real,
+                                              x0_imag, r_real);
     }
   }
 }
