@@ -27,8 +27,6 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         newton_schulz_kernel.CB_R_IMAG,
         newton_schulz_kernel.CB_X0_REAL,
         newton_schulz_kernel.CB_X0_IMAG,
-        newton_schulz_kernel.CB_STATE_REAL,
-        newton_schulz_kernel.CB_STATE_IMAG,
         newton_schulz_kernel.CB_S_REAL,
         newton_schulz_kernel.CB_S_IMAG,
         newton_schulz_kernel.CB_NEG_X_IMAG,
@@ -41,6 +39,9 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == expected_queue_pages
     else:
         assert all(definitions[index][1] == expected_queue_pages for index in matrix_queue_indices)
+    state_queue_pages = 2 * matrix_block if matrix_block == 8 else expected_queue_pages
+    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == state_queue_pages
+    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == state_queue_pages
     # Fused S never routes products; keep their descriptors to one page for
     # compile-time CB identity without reserving unused block pages.
     assert definitions[newton_schulz_kernel.CB_PRODUCT_REAL][1] == 1
@@ -138,14 +139,14 @@ def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
 
     message = str(excinfo.value)
     assert "matrix_block=8 L1 preflight failed" in message
-    assert "total CB bytes=374784" in message
+    assert "total CB bytes=440320" in message
     assert "static prefix=111360 bytes" in message
     assert "tensor bytes=1234944" in message
-    assert "total=1721088 bytes" in message
+    assert "total=1786624 bytes" in message
     assert "budget=1572864 bytes" in message
-    assert "L1 budget over by 148224 bytes" in message
+    assert "L1 budget over by 213760 bytes" in message
     assert "largest CBs:" in message
-    assert "CB_X0_REAL=32768 bytes (cb_x0_real)" in message
+    assert "CB_STATE_REAL=65536 bytes (cb_state_real)" in message
     assert "CBs in over-budget total:" in message
     assert "CB_X0_REAL=32768 bytes (cb_x0_real)" in message
     assert "CB_PRODUCT_REAL=4096 bytes (cb_product_real)" in message
@@ -243,6 +244,7 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
         newton_schulz_kernel._L1_STATIC_BASE_BYTES
         + newton_schulz_kernel._cb_l1_bytes(ttnn, definitions)
     )
+    assert total == 551_680
     with pytest.raises(ValueError, match="input_memory"):
         newton_schulz_kernel.NewtonSchulzKernel.prepare(
             None,
@@ -262,6 +264,10 @@ def test_block8_compute_uses_one_dest_half_for_products_s_and_output():
     assert complex_source.count("tile_regs_commit();") == 3
     assert "pack_tile_block(0, output_real, block_count);" in complex_source
     assert "pack_tile_block(0, output_imag, block_count);" in complex_source
+    two_dest_source = complex_source[complex_source.index("    } else {") :]
+    assert two_dest_source.index("cb_pop_front(left_real, block_count)") < two_dest_source.index(
+        "cb_reserve_back(output_real, block_count)"
+    )
     assert "complex_matmul_block<one_dest_half>" in compute
     assert "fused_s_matmul_block<one_dest_half>" in compute
     assert "process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>" in compute

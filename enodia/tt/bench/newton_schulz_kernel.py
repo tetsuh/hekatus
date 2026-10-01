@@ -360,6 +360,11 @@ def _cb_definitions(
     # Identity/zero and profile pages are resident singletons.  Every queue
     # carrying a matrix, intermediate, or output is widened for one block.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
+    # Block 8 packs real and imaginary outputs in separate DEST passes.  Its
+    # state pages must therefore retain the input block while reserving the
+    # next output block; smaller blocks release their state input before that
+    # reservation in the compute kernel.
+    state_queue_pages = 2 * matrix_block if matrix_block == 8 else matrix_block
     definitions = {
         index: (
             data_format,
@@ -368,7 +373,12 @@ def _cb_definitions(
             else (
                 page_count
                 if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}
-                else max(page_count, matrix_block)
+                else max(
+                    page_count,
+                    state_queue_pages
+                    if index in {CB_STATE_REAL, CB_STATE_IMAG}
+                    else matrix_block,
+                )
             ),
         )
         for index, (data_format, page_count) in definitions.items()

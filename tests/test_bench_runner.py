@@ -750,8 +750,8 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
 
     assert record["status"] == "failed"
     assert "L1 preflight failed" in record["error"]
-    assert "total CB bytes=374784" in record["error"]
-    assert "CB_X0_REAL=32768 bytes" in record["error"]
+    assert "total CB bytes=440320" in record["error"]
+    assert "CB_STATE_REAL=65536 bytes" in record["error"]
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):

@@ -349,8 +349,6 @@ void complex_matmul_block(
     bool resident_left,
     bool consume_left,
     bool consume_right) {
-    cb_reserve_back(output_real, block_count);
-    cb_reserve_back(output_imag, block_count);
     wait_complex_inputs_block(
         left_real,
         left_imag_for_real,
@@ -366,9 +364,14 @@ void complex_matmul_block(
     const std::uint32_t block_right_imag = right_imag;
     const std::uint32_t block_left_imag_for_imag = left_imag_for_imag;
     if constexpr (one_dest_half) {
-        // Block 8 has only eight FP32/full-sync DEST tiles.  Accumulate and
-        // pack the real and imaginary halves in separate DEST passes, using
-        // one tile per matrix in each pass.
+        // Block 8 has only eight FP32/full-sync DEST tiles.  Its state CBs
+        // retain two block windows so the next iteration can reserve output
+        // while the current state remains available for both DEST passes.
+        cb_reserve_back(output_real, block_count);
+        cb_reserve_back(output_imag, block_count);
+
+        // Accumulate and pack the real and imaginary halves in separate DEST
+        // passes, using one tile per matrix in each pass.
         matmul_block_init(left_real, right_real, false, 1, 1, 1);
         tile_regs_acquire();
         for (std::uint32_t index = 0; index < block_count; ++index) {
@@ -393,8 +396,8 @@ void complex_matmul_block(
         pack_tile_block(0, output_imag, block_count);
         tile_regs_release();
     } else {
-        // Blocks 1/2/4 retain the fast two-half path: real tiles occupy
-        // [0, block_count), imaginary tiles occupy the second half.
+        // Blocks 2/4 retain the fast two-half path.  Delay output reservation
+        // until after the DEST pass because state CBs are also its inputs.
         matmul_block_init(left_real, right_real, false, 1, 1, 1);
         tile_regs_acquire();
         for (std::uint32_t index = 0; index < block_count; ++index) {
@@ -423,20 +426,33 @@ void complex_matmul_block(
         }
         tile_regs_commit();
         tile_regs_wait();
+        if (consume_left) {
+            // All input reads have completed, so releasing the input slots
+            // before reserve_back breaks the state-input/output cycle.
+            cb_pop_front(left_real, block_count);
+            cb_pop_front(left_imag_for_real, block_count);
+            if (left_imag_for_imag != left_imag_for_real) {
+                cb_pop_front(left_imag_for_imag, block_count);
+            }
+        }
+        cb_reserve_back(output_real, block_count);
+        cb_reserve_back(output_imag, block_count);
         pack_reconfig_data_format(output_real);
         pack_tile_block(0, output_real, block_count);
         pack_reconfig_data_format(output_imag);
         pack_tile_block(block_count, output_imag, block_count);
         tile_regs_release();
+        cb_push_back(output_real, block_count);
+        cb_push_back(output_imag, block_count);
     }
-    cb_push_back(output_real, block_count);
-    cb_push_back(output_imag, block_count);
 
-    if (consume_left) {
-        cb_pop_front(left_real, block_count);
-        cb_pop_front(left_imag_for_real, block_count);
-        if (left_imag_for_imag != left_imag_for_real) {
-            cb_pop_front(left_imag_for_imag, block_count);
+    if constexpr (one_dest_half) {
+        if (consume_left) {
+            cb_pop_front(left_real, block_count);
+            cb_pop_front(left_imag_for_real, block_count);
+            if (left_imag_for_imag != left_imag_for_real) {
+                cb_pop_front(left_imag_for_imag, block_count);
+            }
         }
     }
     if (consume_right) {
