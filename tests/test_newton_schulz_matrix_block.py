@@ -78,6 +78,7 @@ def test_reader_writer_stream_groups_and_pop_bulk():
     compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
 
     assert "read_matrix_block" in reader
+    assert '#include "api/compute/pack.h"' in compute
     assert "cb_reserve_back(cb_r_real, block_count)" in reader
     assert "cb_push_back(cb_r_real, block_count)" in reader
     assert "offset += matrix_block" in reader
