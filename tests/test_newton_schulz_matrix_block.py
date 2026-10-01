@@ -84,10 +84,17 @@ def test_cb_l1_accounting_includes_batch_tensors_for_the_block4_target():
     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
-def test_matrix_block_ranges_keep_a_final_partial_group_and_core_ranges_keep_remainder():
+def test_matrix_block_ranges_keep_a_final_partial_group_and_align_core_ranges():
     assert newton_schulz_kernel._matrix_block_ranges(4, 6, 4) == [(4, 4), (8, 2)]
     ranges = newton_schulz_kernel._balanced_ranges(5, 2)
     assert ranges == [(0, 3), (3, 2)]
+    assert newton_schulz_kernel._balanced_ranges(5, 2, 4) == [(0, 4), (4, 1)]
+
+    aligned = newton_schulz_kernel._balanced_ranges(8192, 110, 4)
+    assert {count for _, count in aligned} == {72, 76}
+    assert all(start % 4 == 0 for start, _ in aligned)
+    assert all(count % 4 == 0 for _, count in aligned)
+    assert sum(count for _, count in aligned) == 8192
 
 
 def test_reader_writer_stream_groups_and_pop_bulk():

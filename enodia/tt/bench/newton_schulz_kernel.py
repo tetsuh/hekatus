@@ -96,20 +96,28 @@ def _initial_value(matrices: np.ndarray) -> np.ndarray:
     return np.swapaxes(matrices.conj(), -1, -2) / denominator
 
 
-def _balanced_ranges(batch: int, core_count: int) -> list[tuple[int, int]]:
-    """Split ``batch`` contiguous tiles across active cores with a remainder."""
+def _balanced_ranges(
+    batch: int, core_count: int, matrix_block: int = 1
+) -> list[tuple[int, int]]:
+    """Split contiguous tiles into core ranges aligned to matrix blocks."""
     if batch < 1:
         raise ValueError(f"batch must be positive, got {batch}")
     if core_count < 1:
         raise ValueError(f"core_count must be positive, got {core_count}")
-    active_cores = min(batch, core_count)
-    base, remainder = divmod(batch, active_cores)
+    _validate_matrix_block(matrix_block)
+
+    full_groups, partial = divmod(batch, matrix_block)
+    group_count = full_groups + int(partial != 0)
+    active_cores = min(group_count, core_count)
+    base, remainder = divmod(group_count, active_cores)
     ranges: list[tuple[int, int]] = []
-    start = 0
+    group_start = 0
     for index in range(active_cores):
-        count = base + int(index < remainder)
-        ranges.append((start, count))
-        start += count
+        groups = base + int(index < remainder)
+        start = group_start * matrix_block
+        end = min((group_start + groups) * matrix_block, batch)
+        ranges.append((start, end - start))
+        group_start += groups
     return ranges
 
 
@@ -217,10 +225,10 @@ def _download_uint32(ttnn, tensor) -> np.ndarray:
     return row_major.to_numpy()
 
 
-def _core_grid(ttnn, device, batch: int):
+def _core_grid(ttnn, device, batch: int, matrix_block: int = 1):
     grid = device.compute_with_storage_grid_size()
     total_cores = grid.x * grid.y
-    ranges = _balanced_ranges(batch, total_cores)
+    ranges = _balanced_ranges(batch, total_cores, matrix_block)
     coordinates = [
         (index % grid.x, index // grid.x)
         for index in range(len(ranges))
@@ -542,7 +550,9 @@ class NewtonSchulzKernel:
             raise ValueError(f"the throughput kernel only supports L={_TILE}, got {size}")
         math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
 
-        coordinates, core_ranges, work_ranges = _core_grid(ttnn, device, batch)
+        coordinates, core_ranges, work_ranges = _core_grid(
+            ttnn, device, batch, matrix_block
+        )
         tile_count = batch
         x0 = _initial_value(matrices)
         r_real_values = _pack_matrices(matrices.real, packed=False, tile_count=tile_count)
