@@ -84,7 +84,7 @@ def test_reader_writer_stream_groups_and_pop_bulk():
     assert "offset += matrix_block" in reader
     assert "cb_wait_front(cb_output_real, block_count)" in writer
     assert "cb_pop_front(cb_output_real, block_count)" in writer
-    assert "pack_block(0, output_real, block_count)" in compute
+    assert "pack_tile_block(0, output_real, block_count)" in compute
     assert "cb_push_back(output_real, block_count)" in compute
     assert "cb_pop_front(left_real, block_count)" in compute
     assert "fused_s_matmul_block" in compute

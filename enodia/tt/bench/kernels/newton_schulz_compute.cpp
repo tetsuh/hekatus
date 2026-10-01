@@ -377,9 +377,9 @@ void complex_matmul_block(
     tile_regs_commit();
     tile_regs_wait();
     pack_reconfig_data_format(output_real);
-    pack_block(0, output_real, block_count);
+    pack_tile_block(0, output_real, block_count);
     pack_reconfig_data_format(output_imag);
-    pack_block(block_count, output_imag, block_count);
+    pack_tile_block(block_count, output_imag, block_count);
     tile_regs_release();
     cb_push_back(output_real, block_count);
     cb_push_back(output_imag, block_count);
@@ -438,9 +438,9 @@ void fused_s_matmul_block(
     tile_regs_commit();
     tile_regs_wait();
     pack_reconfig_data_format(cb_s_real);
-    pack_block(0, cb_s_real, block_count);
+    pack_tile_block(0, cb_s_real, block_count);
     pack_reconfig_data_format(cb_s_imag);
-    pack_block(block_count, cb_s_imag, block_count);
+    pack_tile_block(block_count, cb_s_imag, block_count);
     tile_regs_release();
     cb_push_back(cb_s_real, block_count);
     cb_push_back(cb_s_imag, block_count);
@@ -471,7 +471,7 @@ void subtract_block(
     }
     tile_regs_commit();
     tile_regs_wait();
-    pack_block(0, output, block_count);
+    pack_tile_block(0, output, block_count);
     tile_regs_release();
     cb_push_back(output, block_count);
     if (consume_right) {
@@ -499,7 +499,7 @@ void negate_state_imag_block(
     }
     tile_regs_commit();
     tile_regs_wait();
-    pack_block(0, cb_negative_x_imag, block_count);
+    pack_tile_block(0, cb_negative_x_imag, block_count);
     tile_regs_release();
     cb_push_back(cb_negative_x_imag, block_count);
 }
