@@ -1406,6 +1406,45 @@ configuration passes host preflight.  The green regression tests in
 `tests/test_newton_schulz_matrix_block.py` pin these values, block alignment,
 and the unchanged block-1/2/4 CB ledgers.
 
+#### L=16 native-tile audit (#63)
+
+The board-free audit uses the configured `/home/hayate/git/tt-metal`
+checkout at `901dd9ce93816ffd1fd185b801fc727065e9ae07`.  The runner's fixed
+0.75.0 image remains the digest in
+`enodia/tt/bench/run_in_container.sh:18`:
+`sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621`.
+No board, container, or device command was used for this audit.
+
+The host API does represent the requested geometry.  In
+`tt_metal/api/tt-metalium/program_descriptors.hpp:46-65`,
+`TileDescriptor` has a height/width constructor and `CBFormatDescriptor` has
+an optional `TileDescriptor`.  `tt_metal/impl/data_format/tile.cpp:19-24`
+lists `{16, 16}` with a `{16, 16}` face, and
+`ttnn/cpp/ttnn-nanobind/program_descriptors.cpp:248-291,325-339` exposes both
+the custom descriptor constructor and the CB tile field to Python.  Thus a
+host descriptor and CB metadata object can be shaped 16x16.  `ttnn/core/tensor/
+tensor.cpp:89-94` also identifies customized tile shapes as a supported
+matmul/CCL host concern, rather than rejecting the shape at tensor creation.
+
+That host acceptance does not extend to the native Blackhole matmul path.
+The standard `matmul_tiles` and `matmul_block` entry points in
+`tt_metal/hw/inc/api/compute/matmul.h:132-139,221-246` dispatch to the LLK
+matmul implementation.  Its source,
+`tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_matmul.h:39-51`, explicitly
+asserts `"16x16 by 16x16 matmul is not supported"` and says there is no
+16x16 math path; the default 32x32 path is incorrect for fewer than four
+faces.  Therefore native 16x16 `TileDescriptor`/CB metadata is accepted by
+the host API, but native 16x16 `matmul_tiles`/`matmul_block` is not supported
+in the audited fixed source.
+
+**Design choice:** implement L=16 with exact pair packing into 32x32 tiles.
+Each pair of matrices occupies diagonal 16x16 quadrants and has zero
+off-diagonals; R, X0, 2I, and every Newton-Schulz state remain block diagonal.
+The host normalizes each 16x16 X0 before packing and unpacks the two output
+quadrants.  The L=16 useful-work denominator remains its catalogue definition;
+padded block-diagonal tile work is not added to `shapes.total_flops`.  The
+board-free source regression is `tests/test_l16_tile_audit.py`.
+
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises
 sustained throughput, but a single frame still traverses its critical
