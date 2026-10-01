@@ -21,11 +21,11 @@ void read_one(std::uint32_t cb, std::uint32_t tile_id,
   cb_push_back(cb, 1);
 }
 
-template <bool fuse_s, bool batch_reads, typename Accessor>
-void read_matrix(std::uint32_t tile_id, const Accessor &r_real,
-                 const Accessor &r_negative_imag, const Accessor &r_imag,
-                 const Accessor &x0_real, const Accessor &x0_imag,
-                 const Accessor &r_negative_real) {
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
+void read_matrix(std::uint32_t tile_id, const RAccessor &r_real,
+                 const RAccessor &r_negative_imag, const RAccessor &r_imag,
+                 const X0Accessor &x0_real, const X0Accessor &x0_imag,
+                 const RAccessor &r_negative_real) {
   if constexpr (batch_reads) {
     // Reserve every destination before issuing any DMA.  This prevents a
     // later reservation from overtaking an earlier read while the compute
@@ -79,16 +79,16 @@ void read_matrix(std::uint32_t tile_id, const Accessor &r_real,
   }
 }
 
-template <bool fuse_s, bool batch_reads, typename Accessor>
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
 void read_matrix_block(
     std::uint32_t tile_id,
     std::uint32_t block_count,
-    const Accessor &r_real,
-    const Accessor &r_negative_imag,
-    const Accessor &r_imag,
-    const Accessor &x0_real,
-    const Accessor &x0_imag,
-    const Accessor &r_negative_real) {
+    const RAccessor &r_real,
+    const RAccessor &r_negative_imag,
+    const RAccessor &r_imag,
+    const X0Accessor &x0_real,
+    const X0Accessor &x0_imag,
+    const RAccessor &r_negative_real) {
   if constexpr (!fuse_s) {
     cb_reserve_back(cb_r_real, block_count);
   }

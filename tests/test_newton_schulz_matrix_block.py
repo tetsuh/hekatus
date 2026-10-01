@@ -292,6 +292,64 @@ def test_matrix_block_ranges_keep_a_final_partial_group_and_align_core_ranges():
     assert sum(count for _, count in aligned) == 8192
 
 
+@pytest.mark.parametrize(
+    ("memory_kwargs", "expected"),
+    (
+        pytest.param(
+            {"input_memory": "l1"},
+            ["l1"] * 7,
+            id="all-inputs-l1",
+        ),
+        pytest.param(
+            {"input_memory": "dram"},
+            ["dram"] * 7,
+            id="all-inputs-dram",
+        ),
+        pytest.param(
+            {"input_memory": "l1", "r_memory": "l1", "x0_memory": "dram"},
+            ["l1"] * 3 + ["dram"] * 2 + ["l1"] * 2,
+            id="r-l1-x0-dram",
+        ),
+    ),
+)
+def test_reader_compile_dispatch_supports_each_input_placement(memory_kwargs, expected):
+    assert newton_schulz_kernel._reader_input_memories(**memory_kwargs) == expected
+
+    reader_functions = {
+        "newton_schulz_reader_optimized.cpp": (
+            "void read_matrix(",
+            "void read_matrix_block(",
+        ),
+        "newton_schulz_reader_profile.cpp": (
+            "void read_matrix(",
+            "void read_matrix_profiled(",
+            "void read_matrix_block(",
+            "void read_matrix_block_profiled(",
+        ),
+    }
+    for reader_name, functions in reader_functions.items():
+        source = (KERNEL_DIR / reader_name).read_text()
+        for function_name in functions:
+            function_start = source.index(function_name)
+            template_start = source.rfind("template", 0, function_start)
+            opening = source.index("{", function_start)
+            declaration = re.sub(
+                r"\s+", " ", source[template_start:opening]
+            )
+            assert re.search(
+                r"typename RAccessor, typename X0Accessor", declaration
+            )
+            signature = source[function_start:opening]
+            for parameter in ("r_real", "r_negative_imag", "r_imag", "r_negative_real"):
+                assert re.search(
+                    rf"const RAccessor\s*&\s*{parameter}", signature
+                )
+            for parameter in ("x0_real", "x0_imag"):
+                assert re.search(
+                    rf"const X0Accessor\s*&\s*{parameter}", signature
+                )
+
+
 def test_per_input_memory_keeps_reader_order_and_compatibility_shorthand():
     assert newton_schulz_kernel._reader_input_memories() == ["l1"] * 7
     assert newton_schulz_kernel._reader_input_memories(input_memory="dram") == [

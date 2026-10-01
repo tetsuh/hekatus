@@ -83,15 +83,15 @@ void read_tile_profiled(
     }
 }
 
-template <bool fuse_s, bool batch_reads, typename Accessor>
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
 void read_matrix(
     std::uint32_t tile_id,
-    const Accessor& r_real,
-    const Accessor& r_negative_imag,
-    const Accessor& r_imag,
-    const Accessor& x0_real,
-    const Accessor& x0_imag,
-    const Accessor& r_negative_real) {
+    const RAccessor& r_real,
+    const RAccessor& r_negative_imag,
+    const RAccessor& r_imag,
+    const X0Accessor& x0_real,
+    const X0Accessor& x0_imag,
+    const RAccessor& r_negative_real) {
     if constexpr (batch_reads) {
         if constexpr (!fuse_s) {
             cb_reserve_back(cb_r_real, 1);
@@ -138,15 +138,15 @@ void read_matrix(
     }
 }
 
-template <bool fuse_s, typename Accessor>
+template <bool fuse_s, typename RAccessor, typename X0Accessor>
 void read_matrix_profiled(
     std::uint32_t tile_id,
-    const Accessor& r_real,
-    const Accessor& r_negative_imag,
-    const Accessor& r_imag,
-    const Accessor& x0_real,
-    const Accessor& x0_imag,
-    const Accessor& r_negative_real,
+    const RAccessor& r_real,
+    const RAccessor& r_negative_imag,
+    const RAccessor& r_imag,
+    const X0Accessor& x0_real,
+    const X0Accessor& x0_imag,
+    const RAccessor& r_negative_real,
     ProfileCounters& counters,
     bool warmup) {
     const std::uint32_t wait_start = get_timestamp_32b();
@@ -200,16 +200,16 @@ void read_matrix_profiled(
     }
 }
 
-template <bool fuse_s, bool batch_reads, typename Accessor>
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
 void read_matrix_block(
     std::uint32_t tile_id,
     std::uint32_t block_count,
-    const Accessor& r_real,
-    const Accessor& r_negative_imag,
-    const Accessor& r_imag,
-    const Accessor& x0_real,
-    const Accessor& x0_imag,
-    const Accessor& r_negative_real) {
+    const RAccessor& r_real,
+    const RAccessor& r_negative_imag,
+    const RAccessor& r_imag,
+    const X0Accessor& x0_real,
+    const X0Accessor& x0_imag,
+    const RAccessor& r_negative_real) {
     if constexpr (!fuse_s) {
         cb_reserve_back(cb_r_real, block_count);
     }
@@ -283,16 +283,16 @@ void read_matrix_block(
     cb_push_back(cb_x0_imag, block_count);
 }
 
-template <bool fuse_s, bool batch_reads, typename Accessor>
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
 void read_matrix_block_profiled(
     std::uint32_t tile_id,
     std::uint32_t block_count,
-    const Accessor& r_real,
-    const Accessor& r_negative_imag,
-    const Accessor& r_imag,
-    const Accessor& x0_real,
-    const Accessor& x0_imag,
-    const Accessor& r_negative_real,
+    const RAccessor& r_real,
+    const RAccessor& r_negative_imag,
+    const RAccessor& r_imag,
+    const X0Accessor& x0_real,
+    const X0Accessor& x0_imag,
+    const RAccessor& r_negative_real,
     ProfileCounters& counters,
     bool warmup) {
     const std::uint32_t wait_start = get_timestamp_32b();
