@@ -432,6 +432,43 @@ while True:
                 os.kill(pid, 9)
 
 
+def test_wrapper_runs_device_pytest_only_in_the_pinned_container(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [
+            str(copied_wrapper),
+            "--pytest",
+            "-m",
+            "tt_device",
+            "tests/test_newton_schulz_kernel.py",
+        ],
+        cwd=copied_wrapper.parents[3],
+        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "DOCKER_ARGS": str(args_log)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    assert docker_args[docker_args.index("--entrypoint") + 1] == "python3"
+    assert "HEKATUS_TT_DEVICE_TEST=1" in docker_args
+    assert "HEKATUS_TT_PINNED_CONTAINER=1" in docker_args
+    assert docker_args[-5:] == [
+        "-m",
+        "pytest",
+        "-m",
+        "tt_device",
+        "tests/test_newton_schulz_kernel.py",
+    ]
+
+
 def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -454,6 +491,10 @@ def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     assert re.fullmatch(r"hekatus-bench-[0-9]+-[0-9]+", name)
     assert docker_args[docker_args.index("--device") + 1] == "/dev/tenstorrent/0"
     assert docker_args[docker_args.index("--entrypoint") + 1] == "/bin/bash"
+    assert "--power-trace" in docker_args
+    power_trace = docker_args[docker_args.index("--power-trace") + 1]
+    assert power_trace.startswith("/out/power-")
+    assert power_trace.endswith(".csv")
 
 
 def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):

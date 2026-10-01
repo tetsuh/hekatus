@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from enodia.tt.bench import newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
@@ -24,7 +25,10 @@ from enodia.tt.bench.newton_schulz_reference import (
 )
 from enodia.tt.bench.shapes import newton_schulz_shapes, total_flops
 
-DEVICE_TEST = os.environ.get("HEKATUS_TT_DEVICE_TEST") == "1"
+DEVICE_TEST = (
+    os.environ.get("HEKATUS_TT_DEVICE_TEST") == "1"
+    and os.environ.get("HEKATUS_TT_PINNED_CONTAINER") == "1"
+)
 HAS_TTNN = importlib.util.find_spec("ttnn") is not None
 
 
@@ -406,9 +410,13 @@ class ReferenceTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
 
-@unittest.skipUnless(DEVICE_TEST and HAS_TTNN, "requires the pinned TT container and a board")
+@pytest.mark.tt_device
+@unittest.skipUnless(
+    DEVICE_TEST and HAS_TTNN,
+    "requires run_in_container.sh --pytest in the pinned toolchain with a board",
+)
 class DeviceEquivalenceTests(unittest.TestCase):
-    def test_batch_8192_matches_numpy_at_l32_with_fp32_state(self):
+    def test_batch_8192_matches_numpy_at_l32_block4_fused_hifi3_fp32_state(self):
         import ttnn
 
         device = ttnn.open_device(device_id=0)
@@ -416,7 +424,42 @@ class DeviceEquivalenceTests(unittest.TestCase):
             matrices = random_hpd_batch(8192, 32, seed=95)
             expected = newton_schulz_reference(matrices)
             actual = run_newton_schulz_kernel(
-                ttnn, device, matrices, variant="bf16-fp32state"
+                ttnn,
+                device,
+                matrices,
+                variant="bf16-fp32state",
+                math_fidelity="HiFi3",
+                fuse_s=True,
+                matrix_block=4,
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
+            )
+            relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+            self.assertLessEqual(relative_error, 1e-2)
+        finally:
+            ttnn.close_device(device)
+
+    def test_batch_8192_matches_numpy_at_l16_diagonal_pairs_block4_fused_hifi3_fp32_state(
+        self,
+    ):
+        import ttnn
+
+        device = ttnn.open_device(device_id=0)
+        try:
+            matrices = random_hpd_batch(8192, 16, seed=95)
+            expected = newton_schulz_reference(matrices)
+            actual = run_newton_schulz_kernel(
+                ttnn,
+                device,
+                matrices,
+                variant="bf16-fp32state",
+                math_fidelity="HiFi3",
+                fuse_s=True,
+                matrix_block=4,
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
             )
             relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
             self.assertLessEqual(relative_error, 1e-2)

@@ -1176,7 +1176,10 @@ as-is.
 **The Newton-Schulz initial value is fixed as part of the specification**
 (e.g. `X₀ = Rᴴ/(‖R‖₁‖R‖∞)`). Convergence and the required iteration count
 depend on it, and determinism demands a fixed default. Whether 8 iterations
-suffice at κ≈100 is settled offline, initial value included.
+suffice at κ≈100 is settled offline, initial value included. Accelerator
+correctness uses the independent NumPy fixed-iteration oracle in
+`enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
+reference.
 
 ### Precision split (to be measured)
 

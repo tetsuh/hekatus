@@ -43,6 +43,19 @@ numerical comparisons remain valid; this note corrects the reference name
 without rewriting any landed JSON record. Future records and documentation
 must use the independent NumPy reference name.
 
+The board-side acceptance catalogue is one named-container invocation:
+
+```text
+./enodia/tt/bench/run_in_container.sh -- --acceptance-catalogue
+```
+
+It records both L=32 and L=16 batch-8192 rows, 1,000 launches per row by
+default, and passes the sibling `tt-smi` power/clock trace into the JSON
+provenance. Device correctness tests use the same pinned context through
+`run_in_container.sh --pytest`; host pytest deliberately skips the `tt_device`
+marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
+`HEKATUS_TT_PINNED_CONTAINER=1`.
+
 | File | What it is |
 |---|---|
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |

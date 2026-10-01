@@ -71,6 +71,14 @@ STOCK_FIDELITY_SOURCE = (
     "tt-metal ttnn/operations/matmul/device/matmul_device_operation.cpp "
     "create_matmul_attributes source mapping; no board observation"
 )
+ACCEPTANCE_CATALOGUE_SHAPES = (
+    "newton_schulz_L32_b8192",
+    "newton_schulz_L16_b8192",
+)
+ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS = (1, 4)
+ACCEPTANCE_CATALOGUE_FIDELITIES = ("HiFi3", "HiFi4")
+ACCEPTANCE_CATALOGUE_LAUNCHES = 1000
+POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 
 
 def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
@@ -483,6 +491,7 @@ def run_custom_newton_schulz(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
+    row_name: str | None = None,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
     explicit_r_memory = r_memory is not None
@@ -603,7 +612,7 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
-            "row": f"custom_block{matrix_block}",
+            "row": row_name or f"custom_block{matrix_block}",
             "physical_tile_count": getattr(
                 kernel, "tile_count", _physical_tile_count(shape.batch, shape.m)
             ),
@@ -711,6 +720,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--out", type=Path, default=Path("bench-results.json"))
+    parser.add_argument(
+        "--power-trace",
+        type=Path,
+        default=None,
+        help="companion tt-smi CSV; its schema is recorded in the measurement metadata",
+    )
+    parser.add_argument(
+        "--acceptance-catalogue",
+        action="store_true",
+        help=(
+            "run the single-run Issue #63 L16/L32 catalogue: stock_best plus "
+            "block 1/4, fuse_s false/true, and HiFi3/HiFi4 custom rows"
+        ),
+    )
+    parser.add_argument(
+        "--launches-per-row",
+        type=int,
+        default=ACCEPTANCE_CATALOGUE_LAUNCHES,
+        help="timed launches per row for --acceptance-catalogue (default: 1000)",
+    )
     parser.add_argument("--peak-tflops", type=float, default=None)
     parser.add_argument("--peak-note", default=None, help="what that peak refers to")
     parser.add_argument("--env-json", type=Path, default=None, help="environment to embed")
@@ -755,6 +784,12 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         math.isfinite(args.peak_tflops) and args.peak_tflops > 0
     ):
         parser.error(f"--peak-tflops must be positive and finite, got {args.peak_tflops}")
+    if args.launches_per_row < 1:
+        parser.error(
+            f"--launches-per-row must be at least 1, got {args.launches_per_row}"
+        )
+    if args.acceptance_catalogue:
+        return
 
     shapes = _select_shapes(default_catalogue(), args.only)
     if not shapes:
@@ -850,6 +885,171 @@ def _format_line(
     return line
 
 
+def _record_path(path: Path | None) -> str | None:
+    """Store companion paths as sibling filenames, not container mount paths."""
+    return None if path is None else path.name
+
+
+def _acceptance_row_name(matrix_block: int, fuse_s: bool, math_fidelity: str) -> str:
+    return (
+        f"custom_block{matrix_block}_fuse_s_{str(fuse_s).lower()}_"
+        f"{math_fidelity}"
+    )
+
+
+def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
+    """Describe the fixed Issue #63 acceptance catalogue in the result record."""
+    power_trace = _record_path(args.power_trace)
+    return {
+        "catalogue": "issue_63_newton_schulz_l16_l32_b8192",
+        "shape_names": list(ACCEPTANCE_CATALOGUE_SHAPES),
+        "same_device_run": True,
+        "launches_per_row": args.launches_per_row,
+        "stock_best_row": "stock_best",
+        "custom_rows": {
+            "matrix_blocks": list(ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS),
+            "fuse_s": [False, True],
+            "math_fidelities": list(ACCEPTANCE_CATALOGUE_FIDELITIES),
+            "variant": "bf16-fp32state",
+            "dtype": "bfloat16",
+            "input_memory": "l1",
+            "r_memory": "l1",
+            "x0_memory": "l1",
+            "output_memory": "dram",
+        },
+        "power_trace": power_trace,
+        "power_clock_provenance": {
+            "trace": power_trace,
+            "columns": list(POWER_TRACE_COLUMNS),
+            "power_column": "power_w",
+            "clock_column": "aiclk_mhz",
+            "temperature_column": "asic_temp_c",
+            "sampling_source": "tt-smi snapshot",
+        },
+        "environment_provenance": {
+            "source": "--env-json",
+            "record_field": "environment",
+            "adr": "ADR-0005",
+        },
+    }
+
+
+def _run_acceptance_catalogue(
+    ttnn,
+    device,
+    *,
+    args: argparse.Namespace,
+    memory_map: dict[str, object],
+) -> list[dict]:
+    """Run the board-free-dispatchable, single-device acceptance row plan."""
+    shapes_by_name = {shape.name: shape for shape in default_catalogue()}
+    shapes = [shapes_by_name[name] for name in ACCEPTANCE_CATALOGUE_SHAPES]
+    results: list[dict] = []
+    launches = args.launches_per_row
+
+    for shape in shapes:
+        stock_record = {
+            "shape": asdict(shape),
+            "execution_shape": asdict(shape),
+            "representative": shape.representative,
+            "dtype": "bfloat16",
+            "memory": "l1",
+            "input_memory": "l1",
+            "memory_placement": {name: {"buffer": "l1", "layout": "interleaved"}
+                                 for name in ("input_a", "input_b", "output")},
+            "program_config": {"name": "default", "kind": "default"},
+            "iterations": 1,
+            "repeats": launches,
+            "launches_requested_per_row": launches,
+            "kind": STOCK_KIND,
+            "row": "stock_best",
+            **_stock_math_fidelity("bfloat16", None),
+        }
+        stock_record.update(
+            run_shape(
+                ttnn,
+                device,
+                shape,
+                dtype=ttnn.bfloat16,
+                memory_config=memory_map["l1"],
+                memory_name="l1",
+                iters=1,
+                repeats=launches,
+            )
+        )
+        with_efficiency(stock_record, args.peak_tflops)
+        print(
+            _format_line(shape, "bfloat16", "l1", "stock_best", stock_record),
+            flush=True,
+        )
+        results.append(stock_record)
+
+        for matrix_block in ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS:
+            for fuse_s in (False, True):
+                for math_fidelity in ACCEPTANCE_CATALOGUE_FIDELITIES:
+                    row_name = _acceptance_row_name(matrix_block, fuse_s, math_fidelity)
+                    custom_record = {
+                        "shape": asdict(shape),
+                        "execution_shape": asdict(shape),
+                        "representative": shape.representative,
+                        "dtype": "bfloat16",
+                        "memory": "l1",
+                        "input_memory": "l1",
+                        "r_memory": "l1",
+                        "x0_memory": "l1",
+                        "memory_placement": {
+                            "input": "l1",
+                            "r": "l1",
+                            "x0": "l1",
+                            "compute": "l1",
+                        },
+                        "program_config": {
+                            "name": CUSTOM_KIND,
+                            "kind": CUSTOM_KIND,
+                            "variant": "bf16-fp32state",
+                            "math_fidelity": math_fidelity,
+                            "fuse_s": fuse_s,
+                            "batch_reads": False,
+                            "matrix_block": matrix_block,
+                            "input_memory": "l1",
+                            "r_memory": "l1",
+                            "x0_memory": "l1",
+                        },
+                        "iterations": 1,
+                        "repeats": launches,
+                        "launches_requested_per_row": launches,
+                        "kind": CUSTOM_KIND,
+                        "row": row_name,
+                    }
+                    custom_record.update(
+                        run_custom_newton_schulz(
+                            ttnn,
+                            device,
+                            shape,
+                            dtype_name="bfloat16",
+                            memory_name="l1",
+                            variant="bf16-fp32state",
+                            math_fidelity=math_fidelity,
+                            fuse_s=fuse_s,
+                            batch_reads=False,
+                            matrix_block=matrix_block,
+                            input_memory="l1",
+                            r_memory="l1",
+                            x0_memory="l1",
+                            row_name=row_name,
+                            iters=1,
+                            repeats=launches,
+                        )
+                    )
+                    with_efficiency(custom_record, args.peak_tflops)
+                    print(
+                        _format_line(shape, "bfloat16", "l1", row_name, custom_record),
+                        flush=True,
+                    )
+                    results.append(custom_record)
+    return results
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -879,6 +1079,41 @@ def main(argv: list[str] | None = None) -> int:
         environment.update(json.loads(args.env_json.read_text()))
 
     device = ttnn.open_device(device_id=args.device_id)
+    if args.acceptance_catalogue:
+        try:
+            results = _run_acceptance_catalogue(
+                ttnn,
+                device,
+                args=args,
+                memory_map=memory_map,
+            )
+        finally:
+            ttnn.close_device(device)
+        payload = {
+            "environment": environment,
+            "configuration_mode": "acceptance-catalogue",
+            "selection": {
+                "shape_filters": list(ACCEPTANCE_CATALOGUE_SHAPES),
+                "program_config_kind_filters": [],
+                "custom_math_fidelity": list(ACCEPTANCE_CATALOGUE_FIDELITIES),
+                "input_memory": "l1",
+                "r_memory": "l1",
+                "x0_memory": "l1",
+                "fuse_s": [False, True],
+                "batch_reads": False,
+                "matrix_blocks": list(ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS),
+                "launches_per_row": args.launches_per_row,
+            },
+            "peak_tflops": args.peak_tflops,
+            "peak_note": args.peak_note,
+            "measurement": _acceptance_measurement_metadata(args),
+            "results": results,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+        return 0
+
     results = []
     run_stock = args.kind is None or STOCK_KIND in args.kind
     run_custom = args.kind is None or CUSTOM_KIND in args.kind
@@ -1035,6 +1270,19 @@ def main(argv: list[str] | None = None) -> int:
         "peak_note": args.peak_note,
         "results": results,
     }
+    if args.power_trace is not None:
+        power_trace = _record_path(args.power_trace)
+        payload["measurement"] = {
+            "power_trace": power_trace,
+            "power_clock_provenance": {
+                "trace": power_trace,
+                "columns": list(POWER_TRACE_COLUMNS),
+                "power_column": "power_w",
+                "clock_column": "aiclk_mhz",
+                "temperature_column": "asic_temp_c",
+                "sampling_source": "tt-smi snapshot",
+            },
+        }
     if args.profile:
         payload["profiling"] = {
             "mode": "l1_cycle_counters",

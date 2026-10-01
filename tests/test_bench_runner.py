@@ -606,6 +606,123 @@ def test_l16_catalogue_rows_name_stock_best_and_custom_blocks(monkeypatch, tmp_p
         assert row["program_config"]["matrix_block"] == matrix_block
 
 
+def test_acceptance_catalogue_dispatches_both_shapes_and_all_required_rows(
+    monkeypatch, tmp_path
+):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.float32 = "fp32"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    stock_calls = []
+    custom_calls = []
+
+    def fake_stock(*args, **kwargs):
+        stock_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "ttnn.matmul",
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_iteration_samples": [1.0] * kwargs["repeats"],
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    def fake_custom(*args, **kwargs):
+        shape = args[2]
+        custom_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fuse_s": kwargs["fuse_s"],
+            "matrix_block": kwargs["matrix_block"],
+            "row": kwargs["row_name"],
+            "flops_per_iteration": total_flops(shape) * 16,
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_launch_samples": [1.0] * kwargs["repeats"],
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    monkeypatch.setattr(run_matmul, "run_shape", fake_stock)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    environment = tmp_path / "environment.json"
+    environment.write_text(json.dumps({"image": "sha256:pinned", "board": "p150a"}))
+    power_trace = tmp_path / "power.csv"
+    output = tmp_path / "acceptance.json"
+
+    assert run_matmul.main(
+        [
+            "--acceptance-catalogue",
+            "--env-json",
+            str(environment),
+            "--power-trace",
+            str(power_trace),
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert payload["configuration_mode"] == "acceptance-catalogue"
+    assert payload["environment"] == {
+        "python": payload["environment"]["python"],
+        "image": "sha256:pinned",
+        "board": "p150a",
+    }
+    measurement = payload["measurement"]
+    assert measurement["shape_names"] == [
+        "newton_schulz_L32_b8192",
+        "newton_schulz_L16_b8192",
+    ]
+    assert measurement["launches_per_row"] == 1000
+    assert measurement["stock_best_row"] == "stock_best"
+    assert measurement["power_trace"] == "power.csv"
+    assert measurement["power_clock_provenance"]["columns"] == [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c",
+    ]
+    assert len(stock_calls) == 2
+    assert all(call["iters"] == 1 and call["repeats"] == 1000 for call in stock_calls)
+    assert len(custom_calls) == 16
+    assert all(call["iters"] == 1 and call["repeats"] == 1000 for call in custom_calls)
+    assert all(call["variant"] == "bf16-fp32state" for call in custom_calls)
+    assert all(call["input_memory"] == call["r_memory"] == call["x0_memory"] == "l1"
+               for call in custom_calls)
+    custom_rows = [row for row in payload["results"] if row["kind"] == "custom_newton_schulz"]
+    assert len(custom_rows) == 16
+    assert {
+        (row["shape"]["name"], row["matrix_block"], row["fuse_s"], row["math_fidelity"])
+        for row in custom_rows
+    } == {
+        (shape, block, fuse_s, fidelity)
+        for shape in ("newton_schulz_L32_b8192", "newton_schulz_L16_b8192")
+        for block in (1, 4)
+        for fuse_s in (False, True)
+        for fidelity in ("HiFi3", "HiFi4")
+    }
+    assert all(row["launches_requested_per_row"] == 1000 for row in payload["results"])
+    assert all(row["launches_measured"] == 1000 for row in payload["results"])
+    l16 = next(
+        row
+        for row in custom_rows
+        if row["shape"]["name"] == "newton_schulz_L16_b8192"
+        and row["matrix_block"] == 4
+        and row["fuse_s"]
+        and row["math_fidelity"] == "HiFi3"
+    )
+    l16_shape = next(shape for shape in default_catalogue() if shape.name == l16["shape"]["name"])
+    assert l16["flops_per_iteration"] == total_flops(l16_shape) * 16
+
+
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
     """The host-only runner seam produces the same JSON shape as a device run."""
     ttnn = _StubTtnn()

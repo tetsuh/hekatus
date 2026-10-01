@@ -13,18 +13,31 @@
 #   run_in_container.sh OUT_DIR                  # choose where results land
 #   run_in_container.sh -- --iters 5             # arguments for the runner
 #   run_in_container.sh OUT_DIR -- --iters 5
+#   run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py
+#
+# `--pytest` is the only supported device-test entry point. It runs pytest in
+# the digest-pinned image with HEKATUS_TT_DEVICE_TEST=1 and
+# HEKATUS_TT_PINNED_CONTAINER=1; host pytest never opts into those tests.
 set -euo pipefail
 
 IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-# Arguments: an optional output directory, then "--", then runner arguments.
-OUT_DIR="${REPO_ROOT}/out/bench"
-if [[ $# -gt 0 && "$1" != "--" ]]; then
-  OUT_DIR="$1"
+TEST_MODE=0
+if [[ "${1:-}" == "--pytest" ]]; then
+  TEST_MODE=1
   shift
+  PYTEST_ARGS=("$@")
+  OUT_DIR="${HEKATUS_TT_TEST_OUT_DIR:-${REPO_ROOT}/out/bench-tests}"
+else
+  # Arguments: an optional output directory, then "--", then runner arguments.
+  OUT_DIR="${REPO_ROOT}/out/bench"
+  if [[ $# -gt 0 && "$1" != "--" ]]; then
+    OUT_DIR="$1"
+    shift
+  fi
+  [[ "${1:-}" == "--" ]] && shift
 fi
-[[ "${1:-}" == "--" ]] && shift
 
 mkdir -p "${OUT_DIR}"
 
@@ -113,10 +126,39 @@ python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval 2 &
 SAMPLER_PID=$!
 
 # Runner arguments are passed as separate arguments, never interpolated into
-# a shell string: the wrapper must not turn a benchmark option into a command.
+# a shell string. The default runner also receives the sibling power trace
+# path, so its JSON record names the same provenance that the wrapper writes.
+# A custom probe is responsible for its own argument contract.
+RUNNER_ARGS=("$@")
+if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
+  HAS_POWER_TRACE_ARG=0
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${argument}" == "--power-trace" ]]; then
+      HAS_POWER_TRACE_ARG=1
+      break
+    fi
+  done
+  if [[ "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+    RUNNER_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+  fi
+fi
 # `timeout` is inside the wrapper, so losing an SSH session cannot leave the
 # Docker client or the board-side container unbounded.
-if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
+if [[ "${TEST_MODE}" == "1" ]]; then
+  timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
+    docker run --rm --name "${CONTAINER_NAME}" \
+    --device "${DEVICE_NODE}" \
+    -v /dev/hugepages-1G:/dev/hugepages-1G \
+    -v "${REPO_ROOT}:/work" \
+    -v "${OUT_DIR}:/out" \
+    -w /work \
+    -e PYTHONPATH=/work \
+    -e HEKATUS_TT_DEVICE_TEST=1 \
+    -e HEKATUS_TT_PINNED_CONTAINER=1 \
+    "${WATCHER_ENV[@]}" \
+    --entrypoint python3 \
+    "${IMAGE}" -m pytest "${PYTEST_ARGS[@]}" &
+elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
     --device "${DEVICE_NODE}" \
@@ -131,7 +173,7 @@ if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     "${RUNNER}" \
     "/out/$(basename "${RESULTS}")" \
     "/out/$(basename "${ENV_JSON}")" \
-    "$@" &
+    "${RUNNER_ARGS[@]}" &
 else
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
