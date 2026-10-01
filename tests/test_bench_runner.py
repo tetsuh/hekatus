@@ -722,6 +722,38 @@ def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
     assert record["kind"] == "custom_newton_schulz"
 
 
+def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+
+    record = run_matmul.run_custom_newton_schulz(
+        ttnn,
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=8,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert "L1 preflight failed" in record["error"]
+    assert "total CB bytes=374784" in record["error"]
+    assert "CB_X0_REAL=32768 bytes" in record["error"]
+
+
 def test_efficiency_is_omitted_without_a_peak(tmp_path):
     """Quoting an efficiency against an unstated denominator is worse than
     quoting none, so the field simply is not there."""

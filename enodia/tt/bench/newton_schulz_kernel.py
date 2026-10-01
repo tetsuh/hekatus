@@ -20,7 +20,7 @@ COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
-MATRIX_BLOCK_CHOICES = (1, 2, 4)
+MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
@@ -57,6 +57,30 @@ CB_OUTPUT_IMAG = 16
 CB_PROFILE_READER = 17
 CB_PROFILE_COMPUTE = 18
 CB_PROFILE_WRITER = 19
+
+_CB_DIAGNOSTIC_NAMES = {
+    CB_R_REAL: "CB_R_REAL",
+    CB_R_NEG_IMAG: "CB_R_NEG_IMAG",
+    CB_R_IMAG: "CB_R_IMAG",
+    CB_X0_REAL: "CB_X0_REAL",
+    CB_X0_IMAG: "CB_X0_IMAG",
+    CB_IDENTITY: "CB_IDENTITY",
+    CB_ZERO: "CB_ZERO",
+    CB_STATE_REAL: "CB_STATE_REAL",
+    CB_STATE_IMAG: "CB_STATE_IMAG",
+    CB_S_REAL: "CB_S_REAL",
+    CB_S_IMAG: "CB_S_IMAG",
+    CB_PRODUCT_REAL: "CB_PRODUCT_REAL",
+    CB_PRODUCT_IMAG: "CB_PRODUCT_IMAG",
+    CB_NEG_X_IMAG: "CB_NEG_X_IMAG",
+    CB_R_NEG_REAL: "CB_R_NEG_REAL",
+    CB_OUTPUT_REAL: "CB_OUTPUT_REAL",
+    CB_OUTPUT_IMAG: "CB_OUTPUT_IMAG",
+    CB_PROFILE_READER: "CB_PROFILE_READER",
+    CB_PROFILE_COMPUTE: "CB_PROFILE_COMPUTE",
+    CB_PROFILE_WRITER: "CB_PROFILE_WRITER",
+}
+
 PROFILE_MEASUREMENT_CORE = 0
 PROFILE_PAGES_PER_CORE = 3
 PROFILE_PAGE_WORDS = _TILE * _TILE
@@ -149,7 +173,7 @@ def _validate_matrix_block(
     dst_full_sync_en: bool = True,
     variant: str | None = None,
 ) -> None:
-    """Validate block, variant, and the two-output complex DEST footprint."""
+    """Validate block, variant, and the host-modeled DEST footprint."""
     if (
         isinstance(matrix_block, bool)
         or not isinstance(matrix_block, int)
@@ -162,9 +186,13 @@ def _validate_matrix_block(
         raise ValueError(f"unknown kernel variant {variant!r}")
     if variant == "bf16-fp32state" and not fp32_dest_acc_en:
         raise ValueError("bf16-fp32state requires fp32_dest_acc_en")
-    # Complex products, fused S, state handoff, and final output all reserve
-    # two independent DEST tiles per matrix (real and imaginary).
-    required_slots = 2 * matrix_block
+    # Blocks 1/2/4 keep the existing two-half complex path.  Block 8 is
+    # accounted as one half at a time: one DEST tile per matrix, so eight is
+    # the upper limit of the FP32/full-sync configuration.  This host-side
+    # accounting does not claim that the existing device kernel implements
+    # block-8 execution.
+    dest_slots_per_matrix = 1 if matrix_block == 8 else 2
+    required_slots = dest_slots_per_matrix * matrix_block
     available_slots = _dest_slot_limit(
         fp32_dest_acc_en=fp32_dest_acc_en,
         dst_full_sync_en=dst_full_sync_en,
@@ -334,12 +362,20 @@ def _cb_definitions(
     return definitions
 
 
+def _cb_l1_bytes_by_name(
+    ttnn, definitions: dict[int, tuple[Any, int]]
+) -> dict[str, int]:
+    """Return each defined circular buffer's per-core footprint in bytes."""
+    return {
+        _CB_DIAGNOSTIC_NAMES.get(index, f"CB_{index}"): _cb_page_size(ttnn, data_format)
+        * page_count
+        for index, (data_format, page_count) in definitions.items()
+    }
+
+
 def _cb_l1_bytes(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
     """Return the per-core circular-buffer footprint in bytes."""
-    return sum(
-        _cb_page_size(ttnn, data_format) * page_count
-        for data_format, page_count in definitions.values()
-    )
+    return sum(_cb_l1_bytes_by_name(ttnn, definitions).values())
 
 
 def _tensor_l1_bytes(
@@ -363,22 +399,117 @@ def _tensor_l1_bytes(
     return tiles_per_core * (input_bytes + output_bytes) + resident_bytes
 
 
+def _format_cb_bytes(entries: list[tuple[str, int]]) -> str:
+    """Format named CB byte counts, including the matching kernel name."""
+    return ", ".join(
+        f"{name}={byte_count} bytes ({name.lower()})" for name, byte_count in entries
+    )
+
+
+def _l1_budget_breakdown(
+    ttnn,
+    definitions: dict[int, tuple[Any, int]],
+    *,
+    tensor_bytes: int,
+) -> dict[str, Any]:
+    """Return all host-side L1 accounting fields used by the preflight error."""
+    cb_bytes_by_name = _cb_l1_bytes_by_name(ttnn, definitions)
+    cb_entries = sorted(cb_bytes_by_name.items(), key=lambda item: (-item[1], item[0]))
+    cb_bytes = sum(cb_bytes_by_name.values())
+    total_bytes = _L1_STATIC_BASE_BYTES + cb_bytes + tensor_bytes
+    largest_bytes = cb_entries[0][1] if cb_entries else 0
+    largest_cbs = [entry for entry in cb_entries if entry[1] == largest_bytes]
+    cb_budget_overage = max(0, cb_bytes - _L1_CB_BUDGET_BYTES)
+    total_budget_overage = max(0, total_bytes - _L1_TOTAL_BUDGET_BYTES)
+    # No individual-CB limit exists; when the aggregate check fails, retain
+    # every CB contribution so the caller can report which queues make up the
+    # over-budget total rather than inventing a per-CB threshold.
+    over_budget_cbs = (
+        cb_entries if cb_budget_overage or total_budget_overage else []
+    )
+    return {
+        "cb_bytes": cb_bytes,
+        "cb_bytes_by_name": cb_bytes_by_name,
+        "cb_entries": cb_entries,
+        "static_prefix_bytes": _L1_STATIC_BASE_BYTES,
+        "tensor_bytes": tensor_bytes,
+        "total_bytes": total_bytes,
+        "budget_bytes": _L1_TOTAL_BUDGET_BYTES,
+        "largest_cbs": largest_cbs,
+        "over_budget_cbs": over_budget_cbs,
+        "cb_budget_overage": cb_budget_overage,
+        "total_budget_overage": total_budget_overage,
+    }
+
+
 def _validate_l1_budget(
     ttnn,
     definitions: dict[int, tuple[Any, int]],
     *,
     tensor_bytes: int = 0,
+    matrix_block: int | None = None,
 ) -> int:
     """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
-    cb_bytes = _cb_l1_bytes(ttnn, definitions)
-    usage = _L1_STATIC_BASE_BYTES + cb_bytes + tensor_bytes
-    if cb_bytes > _L1_CB_BUDGET_BYTES or usage > _L1_TOTAL_BUDGET_BYTES:
+    breakdown = _l1_budget_breakdown(ttnn, definitions, tensor_bytes=tensor_bytes)
+    if breakdown["cb_budget_overage"] or breakdown["total_budget_overage"]:
+        largest = _format_cb_bytes(breakdown["largest_cbs"])
+        over_budget = _format_cb_bytes(breakdown["over_budget_cbs"]) or "none"
+        prefix = "" if matrix_block is None else f"matrix_block={matrix_block} "
+        overages = []
+        if breakdown["cb_budget_overage"]:
+            overages.append(f"CB budget over by {breakdown['cb_budget_overage']} bytes")
+        if breakdown["total_budget_overage"]:
+            overages.append(f"L1 budget over by {breakdown['total_budget_overage']} bytes")
         raise ValueError(
-            f"matrix_block needs {cb_bytes} CB bytes plus {tensor_bytes} tensor bytes "
-            f"and {_L1_STATIC_BASE_BYTES} static bytes per core, above the "
-            f"{_L1_TOTAL_BUDGET_BYTES}-byte L1 budget"
+            f"{prefix}L1 preflight failed: "
+            f"total CB bytes={breakdown['cb_bytes']}, "
+            f"static prefix={breakdown['static_prefix_bytes']} bytes, "
+            f"tensor bytes={breakdown['tensor_bytes']}, "
+            f"total={breakdown['total_bytes']} bytes, "
+            f"budget={breakdown['budget_bytes']} bytes; "
+            f"{'; '.join(overages)}; "
+            f"largest CBs: {largest}; "
+            f"CBs in over-budget total: {over_budget}; "
+            f"CB breakdown: {_format_cb_bytes(breakdown['cb_entries'])}"
         )
-    return usage
+    return breakdown["total_bytes"]
+
+
+def _validate_l1_preflight(
+    ttnn,
+    *,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    profile: bool = False,
+    fuse_s: bool = False,
+    output_memory: str = "l1",
+    matrix_block: int = 1,
+    variant: str | None = None,
+) -> int:
+    """Validate L1 usage without touching a device or allocating tensors."""
+    _validate_matrix_block(matrix_block, variant=variant)
+    definitions = _cb_definitions(
+        ttnn,
+        state_dtype,
+        profile=profile,
+        fuse_s=fuse_s,
+        matrix_block=matrix_block,
+    )
+    tensor_bytes = _tensor_l1_bytes(
+        ttnn,
+        batch=batch,
+        core_count=core_count,
+        state_dtype=state_dtype,
+        fuse_s=fuse_s,
+        output_memory=output_memory,
+    )
+    return _validate_l1_budget(
+        ttnn,
+        definitions,
+        tensor_bytes=tensor_bytes,
+        matrix_block=matrix_block,
+    )
 
 
 def _decode_counter_page(
@@ -595,7 +726,12 @@ class NewtonSchulzKernel:
             fuse_s=fuse_s,
             output_memory=_output_memory_name(variant),
         )
-        _validate_l1_budget(ttnn, cb_definitions, tensor_bytes=tensor_l1_bytes)
+        _validate_l1_budget(
+            ttnn,
+            cb_definitions,
+            tensor_bytes=tensor_l1_bytes,
+            matrix_block=matrix_block,
+        )
         input_dtypes = [ttnn.bfloat16, ttnn.bfloat16, ttnn.bfloat16]
         if fuse_s:
             input_dtypes.append(ttnn.bfloat16)

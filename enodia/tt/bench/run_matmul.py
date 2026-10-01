@@ -44,11 +44,13 @@ if __package__ in (None, ""):  # invoked as a plain script inside the container
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.tt.bench.configs import (
+    P150_COMPUTE_GRID,
     P150_DRAM_BANKS,
     ProgramConfigSpec,
     configuration_catalogue,
     executed_shape,
 )
+from enodia.tt.bench.newton_schulz_kernel import MATRIX_BLOCK_CHOICES
 from enodia.tt.bench.profiling import parse_device_profile_csv
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
@@ -489,7 +491,11 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "error": f"unknown custom variant {variant!r}",
         }
-    from enodia.tt.bench.newton_schulz_kernel import _validate_matrix_block
+    from enodia.tt.bench.newton_schulz_kernel import (
+        _state_dtype,
+        _validate_l1_preflight,
+        _validate_matrix_block,
+    )
 
     try:
         _validate_matrix_block(matrix_block, variant=variant)
@@ -507,6 +513,21 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "error": "custom input/compute memory must be l1",
         }
+    if matrix_block == 8:
+        try:
+            _validate_l1_preflight(
+                ttnn,
+                batch=shape.batch,
+                core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
+                state_dtype=_state_dtype(ttnn, variant),
+                profile=profile,
+                fuse_s=fuse_s,
+                output_memory="dram" if variant == "bf16-fp32state" else "l1",
+                matrix_block=matrix_block,
+                variant=variant,
+            )
+        except ValueError as exc:
+            return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
 
     from enodia.tt.bench.newton_schulz_kernel import (
         COMPLEX_MATMULS_PER_INVERSE,
@@ -655,7 +676,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--matrix-block",
         type=int,
-        choices=(1, 2, 4),
+        choices=MATRIX_BLOCK_CHOICES,
         default=1,
         help="number of independent matrices processed per compute block",
     )
