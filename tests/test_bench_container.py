@@ -500,6 +500,7 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
             "PATH": f"{bindir}:{os.environ['PATH']}",
             "DOCKER_ARGS": str(args_log),
             "HEKATUS_TT_RUNNER": "tools/newton_schulz_bringup.py",
+            "TT_METAL_WATCHER": "1",
         },
         capture_output=True,
         text=True,
@@ -510,6 +511,8 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
     docker_args = args_log.read_text().splitlines()
     assert "--entrypoint" in docker_args
     assert docker_args[docker_args.index("--entrypoint") + 1] == "python3"
+    watcher_index = docker_args.index("TT_METAL_WATCHER=1")
+    assert docker_args[watcher_index - 1] == "-e"
     assert docker_args[-4:] == [
         "tools/newton_schulz_bringup.py",
         "--stage",

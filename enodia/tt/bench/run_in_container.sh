@@ -37,6 +37,10 @@ if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
+WATCHER_ENV=()
+if [[ -n "${TT_METAL_WATCHER:-}" ]]; then
+  WATCHER_ENV=(-e "TT_METAL_WATCHER=${TT_METAL_WATCHER}")
+fi
 
 # Resolve a tag to the digest it currently points at, so the recorded
 # environment names one immutable toolchain rather than a moving one.
@@ -120,6 +124,7 @@ if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    "${WATCHER_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
     "${RUNNER}" \
@@ -135,6 +140,7 @@ else
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    "${WATCHER_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "$@" &
 fi
