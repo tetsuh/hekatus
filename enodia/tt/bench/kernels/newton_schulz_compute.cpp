@@ -665,78 +665,6 @@ void fused_s_matmul(
     cb_push_back(cb_s_imag, 1);
 }
 
-// X0 may arrive as BF16 while the selected state variant is FP32.  Convert
-// both X0 halves into the resident FP32 state CBs after fused S has consumed
-// them.  The conversion uses the copy short init and explicit source/packer
-// reconfiguration; it never repeats a full binary/matmul common init.
-void convert_x0_to_state() {
-    cb_wait_front(cb_x0_real, 1);
-    cb_wait_front(cb_x0_imag, 1);
-
-    cb_reserve_back(cb_state_real, 1);
-    reconfig_data_format_srca(cb_x0_real);
-    pack_reconfig_data_format(cb_s_imag, cb_state_real);
-    copy_tile_init(cb_x0_real);
-    tile_regs_acquire();
-    copy_tile(cb_x0_real, 0, 0);
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_tile(0, cb_state_real);
-    tile_regs_release();
-    cb_push_back(cb_state_real, 1);
-
-    cb_reserve_back(cb_state_imag, 1);
-    reconfig_data_format_srca(cb_x0_real, cb_x0_imag);
-    pack_reconfig_data_format(cb_state_real, cb_state_imag);
-    copy_tile_init(cb_x0_imag);
-    tile_regs_acquire();
-    copy_tile(cb_x0_imag, 0, 0);
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_tile(0, cb_state_imag);
-    tile_regs_release();
-    cb_push_back(cb_state_imag, 1);
-
-    cb_pop_front(cb_x0_real, 1);
-    cb_pop_front(cb_x0_imag, 1);
-}
-
-void convert_x0_to_state_block(std::uint32_t block_count) {
-    cb_wait_front(cb_x0_real, block_count);
-    cb_wait_front(cb_x0_imag, block_count);
-
-    cb_reserve_back(cb_state_real, block_count);
-    reconfig_data_format_srca(cb_x0_real);
-    pack_reconfig_data_format(cb_s_imag, cb_state_real);
-    copy_tile_init(cb_x0_real);
-    tile_regs_acquire();
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_x0_real, index, index);
-    }
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_tile_block(0, cb_state_real, block_count);
-    tile_regs_release();
-    cb_push_back(cb_state_real, block_count);
-
-    cb_reserve_back(cb_state_imag, block_count);
-    reconfig_data_format_srca(cb_x0_real, cb_x0_imag);
-    pack_reconfig_data_format(cb_state_real, cb_state_imag);
-    copy_tile_init(cb_x0_imag);
-    tile_regs_acquire();
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_x0_imag, index, index);
-    }
-    tile_regs_commit();
-    tile_regs_wait();
-    pack_tile_block(0, cb_state_imag, block_count);
-    tile_regs_release();
-    cb_push_back(cb_state_imag, block_count);
-
-    cb_pop_front(cb_x0_real, block_count);
-    cb_pop_front(cb_x0_imag, block_count);
-}
-
 void subtract_one_impl(
     std::uint32_t current_srca,
     std::uint32_t current_srcb,
@@ -885,7 +813,7 @@ void stream_initial_or_state(
     std::uint32_t& x_imag);
 
 template <std::uint32_t iterations, bool state_fp32, bool fuse_s, bool one_dest_half>
-void process_matrix_block(std::uint32_t block_count, bool x0_bf16) {
+void process_matrix_block(std::uint32_t block_count) {
     wait_r_inputs_block<fuse_s>(block_count);
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
         std::uint32_t x_real;
@@ -943,17 +871,7 @@ void process_matrix_block(std::uint32_t block_count, bool x0_bf16) {
                 true);
         }
 
-        // Fused S consumes the original BF16 X0.  Convert it once into the
-        // FP32 state queues before the first state handoff, then let all
-        // subsequent state/output matmuls use the normal FP32 path.
-        const bool converted_x0 = state_fp32 && fuse_s && x0_bf16 && iteration == 0;
-        const std::uint32_t fused_handoff_srca = converted_x0 ? cb_x0_imag : x_real;
-        if (converted_x0) {
-            convert_x0_to_state_block(block_count);
-            x_real = cb_state_real;
-            x_imag = cb_state_imag;
-        }
-        const std::uint32_t handoff_srca = fuse_s ? fused_handoff_srca : cb_zero;
+        const std::uint32_t handoff_srca = fuse_s ? x_real : cb_zero;
         const std::uint32_t handoff_srcb = fuse_s ? cb_r_negative_imag : cb_product_imag;
         negate_state_imag_block(x_imag, handoff_srca, handoff_srcb, block_count);
         residual_format_transition_to_matmul(x_real, x_imag);
@@ -1185,7 +1103,6 @@ void kernel_main_impl() {
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
     constexpr bool fuse_s = get_compile_time_arg_val(3) != 0;
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(4);
-    constexpr bool x0_bf16 = get_compile_time_arg_val(5) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
@@ -1282,17 +1199,9 @@ void kernel_main_impl() {
                     false);
             }
 
-            // The last fused term leaves SrcA=X and SrcB=-R_im.  When X0
-            // is BF16, convert it before the FP32 state handoff so every
-            // state/output/intermediate CB remains FP32 thereafter.
-            const bool converted_x0 = state_fp32 && fuse_s && x0_bf16 && iteration == 0;
-            const std::uint32_t fused_handoff_srca = converted_x0 ? cb_x0_imag : x_real;
-            if (converted_x0) {
-                convert_x0_to_state();
-                x_real = cb_state_real;
-                x_imag = cb_state_imag;
-            }
-            const std::uint32_t handoff_srca = fuse_s ? fused_handoff_srca : cb_zero;
+            // The last fused term leaves SrcA=X and SrcB=-R_im.  The
+            // baseline binary path leaves SrcA=zero and SrcB=product_imag.
+            const std::uint32_t handoff_srca = fuse_s ? x_real : cb_zero;
             const std::uint32_t handoff_srcb = fuse_s ? cb_r_negative_imag : cb_product_imag;
             if constexpr (profile_sample) {
                 if (profile_core) {
@@ -1394,8 +1303,7 @@ void kernel_main_impl() {
         for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
             const std::uint32_t block_count =
                 (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-            process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>(
-                block_count, x0_bf16);
+            process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>(block_count);
             if constexpr (profile_sample) {
                 if (start_tile == 0) {
                     counters.event_count += iterations;

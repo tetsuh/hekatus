@@ -143,13 +143,26 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     default_flags = run_matmul._build_parser().parse_args([])
     assert default_flags.fuse_s is False
     assert default_flags.batch_reads is False
-    assert default_flags.x0_dtype == "fp32"
+    assert default_flags.input_memory == "l1"
+    assert default_flags.r_memory is None
+    assert default_flags.x0_memory is None
     enabled_flags = run_matmul._build_parser().parse_args(
-        ["--fuse-s", "--batch-reads", "--x0-dtype", "bf16"]
+        [
+            "--fuse-s",
+            "--batch-reads",
+            "--input-memory",
+            "dram",
+            "--r-memory",
+            "l1",
+            "--x0-memory",
+            "dram",
+        ]
     )
     assert enabled_flags.fuse_s is True
     assert enabled_flags.batch_reads is True
-    assert enabled_flags.x0_dtype == "bf16"
+    assert enabled_flags.input_memory == "dram"
+    assert enabled_flags.r_memory == "l1"
+    assert enabled_flags.x0_memory == "dram"
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -287,8 +300,10 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
             "custom_newton_schulz",
             "--fuse-s",
             "--batch-reads",
-            "--x0-dtype",
-            "bf16",
+            "--r-memory",
+            "l1",
+            "--x0-memory",
+            "dram",
             "--out",
             str(output),
         ]
@@ -298,11 +313,12 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     assert len(calls) == 1
     assert calls[0]["fuse_s"] is True
     assert calls[0]["batch_reads"] is True
-    assert calls[0]["x0_dtype"] == "bf16"
-    assert payload["selection"]["x0_dtype"] == "bf16"
-    assert payload["selection"]["fuse_s"] is True
-    assert payload["selection"]["batch_reads"] is True
-    assert payload["results"][0]["program_config"]["x0_dtype"] == "bf16"
+    assert calls[0]["r_memory"] == "l1"
+    assert calls[0]["x0_memory"] == "dram"
+    assert payload["selection"]["r_memory"] == "l1"
+    assert payload["selection"]["x0_memory"] == "dram"
+    assert payload["results"][0]["program_config"]["r_memory"] == "l1"
+    assert payload["results"][0]["program_config"]["x0_memory"] == "dram"
     assert payload["results"][0]["program_config"]["fuse_s"] is True
     assert payload["results"][0]["program_config"]["batch_reads"] is True
 
@@ -503,7 +519,9 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
         "custom_math_fidelity": ["HiFi4"],
-        "x0_dtype": "fp32",
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
         "fuse_s": False,
         "batch_reads": False,
     }
@@ -717,62 +735,6 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
 
 
-def test_custom_bf16_x0_dispatch_records_exact_l1_preflight(monkeypatch):
-    class _FakeKernel:
-        work_ranges = ((0, 8),)
-        output_memory = "dram"
-
-        @classmethod
-        def prepare(cls, ttnn, device, matrices, **kwargs):
-            assert kwargs["variant"] == "bf16-fp32state"
-            assert kwargs["fuse_s"] is True
-            assert kwargs["matrix_block"] == 8
-            assert kwargs["x0_dtype"] == "bf16"
-            return cls()
-
-        def launch(self):
-            return None
-
-        def close(self):
-            return None
-
-    from enodia.tt.bench import newton_schulz_kernel
-
-    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
-    monkeypatch.setattr(
-        newton_schulz_kernel,
-        "benchmark_matrices",
-        lambda batch, size, seed: object(),
-    )
-    shape = MatmulShape(
-        name="newton_schulz_L32_b8192",
-        batch=8192,
-        m=32,
-        k=32,
-        n=32,
-        real_matmuls=4,
-        family="newton_schulz",
-        note="",
-    )
-    record = run_matmul.run_custom_newton_schulz(
-        _StubTtnn(),
-        device=object(),
-        shape=shape,
-        dtype_name="bfloat16",
-        memory_name="l1",
-        variant="bf16-fp32state",
-        fuse_s=True,
-        matrix_block=8,
-        x0_dtype="bf16",
-        iters=1,
-        repeats=1,
-    )
-
-    assert record["status"] == "ok"
-    assert record["x0_dtype"] == "bf16"
-    assert record["l1_preflight_bytes"] == 1_276_672
-
-
 def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
     shape = _shape(4)
     record = run_matmul.run_custom_newton_schulz(
@@ -822,6 +784,64 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
     assert "CB_STATE_REAL=65536 bytes" in record["error"]
 
 
+def test_custom_block8_per_input_placement_dispatches_with_passing_preflight(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 80),)
+        output_memory = "dram"
+        seen_kwargs = None
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, **kwargs):
+            cls.seen_kwargs = kwargs
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: object(),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=8,
+        r_memory="l1",
+        x0_memory="dram",
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "ok"
+    assert record["r_memory"] == "l1"
+    assert record["x0_memory"] == "dram"
+    assert record["l1_preflight_bytes"] == 1_032_960
+    assert _FakeKernel.seen_kwargs["r_memory"] == "l1"
+    assert _FakeKernel.seen_kwargs["x0_memory"] == "dram"
+
+
 def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
     from enodia.tt.bench import newton_schulz_kernel
 
@@ -838,7 +858,7 @@ def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
         variant="bf16-fp32state",
     )
 
-    assert total == 1_379_072
+    assert total == 1_393_408
     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 

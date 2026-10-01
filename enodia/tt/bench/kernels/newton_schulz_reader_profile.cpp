@@ -416,6 +416,9 @@ void write_profile(ProfileCounters& counters) {
 }  // namespace
 
 void kernel_main() {
+    // Runtime addresses follow the host tensor order: R variants, both X0
+    // halves, then resident constants.  TensorAccessor preserves the selected
+    // placement for each address, including DRAM-backed inputs.
     constexpr bool fuse_s = get_compile_time_arg_val(1) != 0;
     constexpr bool batch_reads = get_compile_time_arg_val(2) != 0;
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(3);

@@ -57,35 +57,6 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
     assert definitions[newton_schulz_kernel.CB_ZERO][1] == 1
 
 
-def test_x0_dtype_validation_and_fused_fp32state_descriptor_selection():
-    ttnn = _ttnn()
-    assert newton_schulz_kernel.X0_DTYPE_CHOICES == ("bf16", "fp32")
-    for choice in newton_schulz_kernel.X0_DTYPE_CHOICES:
-        newton_schulz_kernel._validate_x0_dtype(choice)
-    with pytest.raises(ValueError, match="x0_dtype"):
-        newton_schulz_kernel._validate_x0_dtype("fp16")
-
-    default = newton_schulz_kernel._cb_definitions(
-        ttnn, "fp32", fuse_s=True, matrix_block=8
-    )
-    bf16_x0 = newton_schulz_kernel._cb_definitions(
-        ttnn, "fp32", fuse_s=True, matrix_block=8, x0_dtype="bf16"
-    )
-    assert default[newton_schulz_kernel.CB_X0_REAL] == ("fp32", 8)
-    assert default[newton_schulz_kernel.CB_X0_IMAG] == ("fp32", 8)
-    assert bf16_x0[newton_schulz_kernel.CB_X0_REAL] == ("bf16", 8)
-    assert bf16_x0[newton_schulz_kernel.CB_X0_IMAG] == ("bf16", 8)
-    assert bf16_x0[newton_schulz_kernel.CB_STATE_REAL][0] == "fp32"
-    assert bf16_x0[newton_schulz_kernel.CB_OUTPUT_REAL][0] == "fp32"
-    assert newton_schulz_kernel._reader_input_dtypes(
-        ttnn, "fp32", fuse_s=True, x0_dtype="bf16"
-    ) == ["bf16", "bf16", "bf16", "bf16", "bf16", "bf16", "fp32"]
-    # The non-fused ABI keeps its existing state-sized X0 inputs.
-    assert newton_schulz_kernel._reader_input_dtypes(
-        ttnn, "fp32", fuse_s=False, x0_dtype="bf16"
-    )[3:5] == ["fp32", "fp32"]
-
-
 def test_fused_reader_input_values_omit_positive_r_real_and_keep_signed_order():
     matrices = np.zeros((1, 32, 32), dtype=np.complex64)
     matrices[0].real.fill(3.0)
@@ -215,40 +186,9 @@ def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block)
     )
 
 
-def test_bf16_x0_block8_l1_preflight_passes_with_exact_accounting():
-    ttnn = _ttnn()
-    definitions = newton_schulz_kernel._cb_definitions(
-        ttnn, "fp32", fuse_s=True, matrix_block=8, x0_dtype="bf16"
-    )
-    tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
-        ttnn,
-        batch=8192,
-        core_count=110,
-        state_dtype="fp32",
-        fuse_s=True,
-        output_memory="dram",
-        input_memory="l1",
-        x0_dtype="bf16",
-    )
-    assert newton_schulz_kernel._cb_l1_bytes(ttnn, definitions) == 391168
-    assert tensor_bytes == 774144
-    assert newton_schulz_kernel._validate_l1_preflight(
-        ttnn,
-        batch=8192,
-        core_count=110,
-        state_dtype="fp32",
-        fuse_s=True,
-        output_memory="dram",
-        input_memory="l1",
-        matrix_block=8,
-        variant="bf16-fp32state",
-        x0_dtype="bf16",
-    ) == 1_276_672
-
-
 def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inputs():
     ttnn = _ttnn()
-    expected_total_bytes = {1: 1280768, 2: 1293056, 4: 1379072}
+    expected_total_bytes = {1: 1_280_768, 2: 1_307_392, 4: 1_393_408}
     for matrix_block, expected_total in expected_total_bytes.items():
         total = newton_schulz_kernel._validate_l1_preflight(
             ttnn,
@@ -274,7 +214,7 @@ def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inpu
             matrix_block=8,
             variant="bf16-fp32state",
         )
-    assert "L1 budget over by 43776 bytes" in str(excinfo.value)
+    assert "L1 budget over by 115456 bytes" in str(excinfo.value)
 
 
 def test_current_descriptors_match_7472_historical_catalogue_for_blocks_1_2_4():
@@ -314,6 +254,7 @@ def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
         state_dtype="fp32",
         fuse_s=True,
         output_memory="dram",
+        matrix_block=8,
     )
 
     with pytest.raises(ValueError) as excinfo:
@@ -325,10 +266,10 @@ def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
     assert "matrix_block=8 L1 preflight failed" in message
     assert "total CB bytes=423936" in message
     assert "static prefix=111360 bytes" in message
-    assert "tensor bytes=1081344" in message
-    assert "total=1616640 bytes" in message
+    assert "tensor bytes=1153024" in message
+    assert "total=1688320 bytes" in message
     assert "budget=1572864 bytes" in message
-    assert "L1 budget over by 43776 bytes" in message
+    assert "L1 budget over by 115456 bytes" in message
     assert "largest CBs:" in message
     assert "CB_STATE_REAL=65536 bytes (cb_state_real)" in message
     assert "CBs in over-budget total:" in message
@@ -351,7 +292,25 @@ def test_matrix_block_ranges_keep_a_final_partial_group_and_align_core_ranges():
     assert sum(count for _, count in aligned) == 8192
 
 
-def test_input_memory_uses_one_interleaved_placement_for_every_device_input():
+def test_per_input_memory_keeps_reader_order_and_compatibility_shorthand():
+    assert newton_schulz_kernel._reader_input_memories() == ["l1"] * 7
+    assert newton_schulz_kernel._reader_input_memories(input_memory="dram") == [
+        "dram"
+    ] * 7
+    assert newton_schulz_kernel._reader_input_memories(
+        r_memory="l1", x0_memory="dram"
+    ) == ["l1"] * 3 + ["dram"] * 2 + ["l1"] * 2
+    assert newton_schulz_kernel._reader_input_memories(
+        input_memory="dram", x0_memory="l1"
+    ) == ["dram"] * 3 + ["l1"] * 2 + ["dram"] * 2
+
+    optimized_reader = (KERNEL_DIR / "newton_schulz_reader_optimized.cpp").read_text()
+    assert "r_negative_imag_address = get_arg_val<std::uint32_t>(0)" in optimized_reader
+    assert "r_imag_address = get_arg_val<std::uint32_t>(1)" in optimized_reader
+    assert "r_negative_real_address = get_arg_val<std::uint32_t>(2)" in optimized_reader
+    assert "x0_real_address = get_arg_val<std::uint32_t>(3)" in optimized_reader
+    assert "x0_imag_address = get_arg_val<std::uint32_t>(4)" in optimized_reader
+
     class _Tensor:
         pass
 
@@ -378,7 +337,7 @@ def test_input_memory_uses_one_interleaved_placement_for_every_device_input():
     ttnn = _Ttnn()
     values = np.zeros((1, 1, 32, 32), dtype=np.float32)
     assert newton_schulz_kernel._device_tensor(
-        ttnn, values, object(), dtype="bf16"
+        ttnn, values, object(), dtype="bf16", input_memory="l1"
     ).memory_config == "l1"
     assert newton_schulz_kernel._device_tensor(
         ttnn, values, object(), dtype="bf16", input_memory="dram"
@@ -387,6 +346,10 @@ def test_input_memory_uses_one_interleaved_placement_for_every_device_input():
         newton_schulz_kernel._device_tensor(
             ttnn, values, object(), dtype="bf16", input_memory="sram"
         )
+    with pytest.raises(ValueError, match="r_memory"):
+        newton_schulz_kernel._reader_input_memories(r_memory="sram")
+    with pytest.raises(ValueError, match="x0_memory"):
+        newton_schulz_kernel._reader_input_memories(x0_memory="sram")
 
 
 def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
@@ -411,6 +374,28 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
     )
     assert l1_tensor_bytes == 1_081_344
     assert dram_tensor_bytes == 0
+    assert newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        r_memory="l1",
+        x0_memory="dram",
+        matrix_block=8,
+    ) == 497_664
+    assert newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        r_memory="dram",
+        x0_memory="l1",
+        matrix_block=8,
+    ) == 661_504
     definitions = newton_schulz_kernel._cb_definitions(
         ttnn, "fp32", fuse_s=True, matrix_block=8
     )
@@ -717,29 +702,6 @@ def test_state_capacity_follows_reserve_pop_order_and_rejects_under_capacity(
         )
 
 
-def test_x0_conversion_ledger_covers_single_and_block_paths():
-    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
-    for function_name, count in (
-        ("void convert_x0_to_state()", "1"),
-        ("void convert_x0_to_state_block(std::uint32_t block_count)", "block_count"),
-    ):
-        function = _function_source(compute, function_name)
-        for cb in ("cb_x0_real", "cb_x0_imag"):
-            assert f"cb_wait_front({cb}, {count})" in function
-            assert f"cb_pop_front({cb}, {count})" in function
-        for cb in ("cb_state_real", "cb_state_imag"):
-            assert f"cb_reserve_back({cb}, {count})" in function
-            assert f"cb_push_back({cb}, {count})" in function
-        assert "copy_tile_init(cb_x0_real)" in function
-        assert "copy_tile_init(cb_x0_imag)" in function
-        assert "pack_reconfig_data_format(cb_s_imag, cb_state_real)" in function
-        assert "pack_reconfig_data_format(cb_state_real, cb_state_imag)" in function
-    assert "constexpr bool x0_bf16 = get_compile_time_arg_val(5) != 0;" in compute
-    assert "convert_x0_to_state();" in compute
-    assert "convert_x0_to_state_block(block_count);" in compute
-    assert "init_common" not in compute
-
-
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():
     compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
     complex_start = compute.index("template <bool one_dest_half>\nvoid complex_matmul_block")
@@ -801,6 +763,9 @@ def test_cli_exposes_matrix_block_with_baseline_default():
     assert parser.parse_args([]).matrix_block == 1
     assert parser.parse_args([]).input_memory == "l1"
     assert parser.parse_args(["--input-memory", "dram"]).input_memory == "dram"
+    per_tensor = parser.parse_args(["--r-memory", "l1", "--x0-memory", "dram"])
+    assert per_tensor.r_memory == "l1"
+    assert per_tensor.x0_memory == "dram"
     assert parser.parse_args(["--matrix-block", "2"]).matrix_block == 2
     assert parser.parse_args(["--matrix-block", "4"]).matrix_block == 4
     assert parser.parse_args(["--matrix-block", "8"]).matrix_block == 8

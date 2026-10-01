@@ -1334,20 +1334,21 @@ all-block two-window descriptor at 88373f4 made block 4 227,328 CB bytes and
 budget. No historical measurement record is rewritten; host ledger tests keep
 this source and capacity comparison executable.
 
-#### Block-8 BF16-X0 board-free investigation (#63)
+#### Block-8 board-free ledger and per-input placement (#63)
 
-This is a source/ledger review of the blocked configuration
-`matrix_block=8`, `input_memory=l1`, `x0_dtype=bf16`,
-`variant=bf16-fp32state`, `fuse_s=true`, with no board, container, or device
-run.  The prior blocked result remains unchanged in
-`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-x0-bf16-blocked.json`.
-The host baseline before the intentional diagnostics was
-`.venv/bin/pytest -q`: 605 passed, 1 skipped in 210.32 s.
+The historical BF16-X0 probe remains recorded in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-x0-bf16-blocked.json`
+as measurement provenance only.  The production kernel keeps X0 FP32; its
+public placement controls are `r_memory` and `x0_memory`, each `l1` or `dram`.
+The legacy `input_memory` control remains a shorthand for both when an
+explicit per-tensor value is absent.  No board, container, or device run is
+implied by this host-only ledger section.
 
 **Full-block CB ledger.**  The fused reader omits `CB_R_REAL`; its five
 block-8 input queues are `CB_R_NEG_IMAG`, `CB_R_IMAG`, `CB_R_NEG_REAL`,
 `CB_X0_REAL`, and `CB_X0_IMAG`, plus the two resident constants.  The exact
-host descriptors are BF16, 8 pages for each R/X0 queue; BF16, 1 page for
+host descriptors are BF16, 8 pages for each R queue; FP32, 8 pages for each
+X0 queue; BF16, 1 page for
 `CB_IDENTITY`; FP32, 1 page for `CB_ZERO`; FP32, 16 pages for each state
 queue; FP32, 8 pages for `CB_S_REAL`, `CB_S_IMAG`, `CB_NEG_X_IMAG`,
 `CB_OUTPUT_REAL`, and `CB_OUTPUT_IMAG`.  Fused `CB_PRODUCT_REAL` and
@@ -1375,26 +1376,14 @@ same output tile id for real and imaginary pages.  This audit found no
 reader of a page that was not reserved and pushed, no missing pop, and no
 CB-page overrun in the full block path.
 
-**BF16-X0 state boundary.**  `fused_s_matmul_block` applies both S halves
-for every `index` 0--7.  Identity and zero intentionally use source index 0
-because they are one-page resident constants.  The BF16-X0 conversion then
-waits for both X0 queues, reserves both FP32 state queues, calls
-`copy_tile(cb_x0_real, index, index)` and
-`copy_tile(cb_x0_imag, index, index)` for all eight indices, packs eight
-DEST tiles into each state queue, pushes eight, and pops eight X0 pages
-(`newton_schulz_compute.cpp:704-737`).  It is not a single-index conversion,
-and the CB formats are queue-wide rather than per-index.  The source order is
-short source reconfiguration before `copy_tile_init`, pack reconfiguration
-before the copy, and the four-operand `reconfig_data_format` before the
-following short binary/matmul initialization.  There is no mid-kernel
-`init_common`; the source obeys the existing short-init rule.
-
-The source therefore does not prove a stale format for indices 1--7.  A
-remaining boundary candidate is the interaction between BF16 X0, the
-conditional pack/reconfig transitions, and repeated full blocks: the blocked
-batch-4 probe only executes `block_count=4`, while batch 8192 repeatedly
-wraps the eight-page queues and uses DEST slots 4--7.  This requires a
-later device-side probe; the present task deliberately does not run one.
+**FP32-X0 state boundary.**  `fused_s_matmul_block` applies both S halves
+for every `index` 0--7, then uses the FP32 X0 queues as the first state
+operand.  There is no BF16-X0 conversion path in the production kernel.
+Identity and zero intentionally use source index 0 because they are one-page
+resident constants.  The per-input placement split changes only the source
+addresses and accessors; it does not reorder the R variants or either X0
+half.  This requires a later device-side probe for runtime behavior; the
+present task deliberately does not run one.
 
 **DEST ledger.**  Every block-8 S, state, and final-output half uses DEST
 slots exactly 0--7, then packs exactly eight tiles from slot 0.  Real and
@@ -1405,35 +1394,17 @@ outputs use pages 0--7.  No source call uses slot 8, packs more than eight,
 or aliases real and imaginary output CBs.  The static audit found no DEST
 or output-page overrun.
 
-**Host-ledger RED diagnostic and candidate ranking.**  The concrete host
-invariant failure is L1 tensor accounting: `_balanced_ranges(8192, 110, 8)`
-assigns 72 or 80 tiles per core, but `_tensor_l1_bytes` uses
-`ceil(8192 / 110) == 75`.  For BF16 X0 and L1 inputs this reports 774,144
-bytes; the largest aligned core requires 825,344 bytes, making the full
-preflight 1,327,872 rather than the reported 1,276,672.  The latter still
-fits the 1,572,864-byte budget, so this is a real ledger defect but a
-low-likelihood sole explanation for NaN.  It is pinned by the intentional
-RED tests in `tests/test_newton_schulz_block8_red_diagnostics.py`.
-
-Candidates are ranked as follows:
-
-1. **BF16-X0/repeated block-8 format-boundary interaction — medium.** It is
-the only production-path change in the blocked experiment and is consistent
-with BF16-X0 failing only at the full batch, but the source audit finds every
-X0 index converted and no statically stale format or unbalanced CB.
-2. **Per-core L1 accounting underestimation — low to medium.** It is
-reproducible host-side and must be corrected before relying on the preflight,
-but the corrected total remains below the stated budget.
-3. **DEST or CB overrun/alias — low.** All eight slots, pack counts, offsets,
-real/imag queues, reserve/push, wait/pop, and state-window ordering balance in
-source; no RED assertion supports this candidate yet.
-4. **Generic full-block state-window deadlock — low.** The source ordering and
-16-page state descriptors are internally consistent, and the FP32 block-8
-DRAM-input catalogue passes at batch 8192.
-
-The intentional RED diagnostics are not an overall-green claim.  Their
-expected failures are evidence for the host-ledger candidate only; they do
-not establish the device NaN cause.
+**Host-ledger regression and exact accounting.** `_balanced_ranges(8192, 110, 8)`
+assigns 72 or 80 tiles per core.  The ledger now uses that actual maximum of
+80 rather than `ceil(8192 / 110) == 75`.  With FP32 X0 and both input groups
+in L1, tensor bytes are 1,153,024; the full block-8 total is 1,688,320 bytes,
+which is 115,456 bytes over the 1,572,864-byte budget.  With
+`r_memory=l1`, `x0_memory=dram`, `fuse_s=true`, FP32 state, and DRAM output,
+tensor bytes are 497,664 and the full preflight is 1,032,960 bytes, so the
+configuration passes host preflight.  The green regression tests in
+`tests/test_newton_schulz_block8_accounting.py` and
+`tests/test_newton_schulz_matrix_block.py` pin these values, block alignment,
+and the unchanged block-1/2/4 CB ledgers.
 
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises

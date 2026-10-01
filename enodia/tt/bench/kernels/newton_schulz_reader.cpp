@@ -22,6 +22,9 @@ void read_tile(std::uint32_t cb, std::uint32_t tile_id, const Accessor& accessor
 }  // namespace
 
 void kernel_main() {
+    // Runtime addresses follow the host tensor order: R variants, both X0
+    // halves, then resident constants.  Their accessors retain each tensor's
+    // independently selected L1/DRAM placement.
     const std::uint32_t r_real_address = get_arg_val<std::uint32_t>(0);
     const std::uint32_t r_negative_imag_address = get_arg_val<std::uint32_t>(1);
     const std::uint32_t r_imag_address = get_arg_val<std::uint32_t>(2);
