@@ -19,8 +19,12 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         _ttnn(), "fp32", fuse_s=True, matrix_block=matrix_block
     )
 
-    assert definitions[newton_schulz_kernel.CB_R_REAL][1] == 2 * matrix_block
-    assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == 2 * matrix_block
+    expected_queue_pages = 2 if matrix_block == 1 else matrix_block
+    assert definitions[newton_schulz_kernel.CB_R_REAL][1] == expected_queue_pages
+    assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == expected_queue_pages
+    # Fused S never routes products; keep their descriptors to one page for
+    # compile-time CB identity without reserving unused block pages.
+    assert definitions[newton_schulz_kernel.CB_PRODUCT_REAL][1] == 1
     # Constants remain resident singletons rather than consuming block slots.
     assert definitions[newton_schulz_kernel.CB_IDENTITY][1] == 1
     assert definitions[newton_schulz_kernel.CB_ZERO][1] == 1
@@ -53,7 +57,7 @@ def test_dest_limit_uses_fp32_and_sync_mode_not_a_soft_block_cap():
         )
 
 
-def test_cb_l1_accounting_grows_with_block_and_stays_within_supported_budget():
+def test_cb_l1_accounting_includes_batch_tensors_for_the_block4_target():
     ttnn = _ttnn()
     usages = []
     for matrix_block in (1, 2, 4):
@@ -61,9 +65,23 @@ def test_cb_l1_accounting_grows_with_block_and_stays_within_supported_budget():
             ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
         )
         usages.append(newton_schulz_kernel._cb_l1_bytes(ttnn, definitions))
-        assert newton_schulz_kernel._validate_l1_budget(ttnn, definitions) == usages[-1]
+        tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
+            ttnn,
+            batch=8192,
+            core_count=110,
+            state_dtype="fp32",
+            fuse_s=True,
+            output_memory="dram",
+        )
+        total = newton_schulz_kernel._validate_l1_budget(
+            ttnn, definitions, tensor_bytes=tensor_bytes
+        )
+        assert total == (
+            newton_schulz_kernel._L1_STATIC_BASE_BYTES + usages[-1] + tensor_bytes
+        )
     assert usages[0] < usages[1] < usages[2]
     assert usages[-1] <= newton_schulz_kernel._L1_CB_BUDGET_BYTES
+    assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
 def test_matrix_block_ranges_keep_a_final_partial_group_and_core_ranges_keep_remainder():

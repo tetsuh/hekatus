@@ -29,6 +29,10 @@ _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
 # an invalid matrix block fails before any tensor allocation or launch.
 _DEST_TILES = 16
 _L1_CB_BUDGET_BYTES = 1_300_000
+# TT-Metal reserves a fixed static L1 prefix before interleaved tensor buffers.
+# The remaining 1.5 MiB Tensix L1 is the allocator-visible budget.
+_L1_STATIC_BASE_BYTES = 111_360
+_L1_TOTAL_BUDGET_BYTES = 1_572_864
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 
 # CB indices are shared by the three kernels.  The first seven are reader
@@ -299,7 +303,16 @@ def _cb_definitions(
     # carrying a matrix, intermediate, or output is widened for one block.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
     definitions = {
-        index: (data_format, page_count if index in resident else page_count * matrix_block)
+        index: (
+            data_format,
+            page_count
+            if index in resident or matrix_block == 1
+            else (
+                page_count
+                if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}
+                else max(page_count, matrix_block)
+            ),
+        )
         for index, (data_format, page_count) in definitions.items()
     }
     if profile:
@@ -321,13 +334,41 @@ def _cb_l1_bytes(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
     )
 
 
-def _validate_l1_budget(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
-    """Reject a block whose CB descriptors exceed the conservative p150 budget."""
-    usage = _cb_l1_bytes(ttnn, definitions)
-    if usage > _L1_CB_BUDGET_BYTES:
+def _tensor_l1_bytes(
+    ttnn,
+    *,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    fuse_s: bool,
+    output_memory: str,
+) -> int:
+    """Estimate the largest per-core tensor footprint before CB allocation."""
+    tiles_per_core = (batch + core_count - 1) // core_count
+    r_inputs = 4 if fuse_s else 3
+    input_bytes = r_inputs * _cb_page_size(ttnn, ttnn.bfloat16)
+    input_bytes += 2 * _cb_page_size(ttnn, state_dtype)
+    resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
+    output_bytes = 0
+    if output_memory == "l1":
+        output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
+    return tiles_per_core * (input_bytes + output_bytes) + resident_bytes
+
+
+def _validate_l1_budget(
+    ttnn,
+    definitions: dict[int, tuple[Any, int]],
+    *,
+    tensor_bytes: int = 0,
+) -> int:
+    """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
+    cb_bytes = _cb_l1_bytes(ttnn, definitions)
+    usage = _L1_STATIC_BASE_BYTES + cb_bytes + tensor_bytes
+    if cb_bytes > _L1_CB_BUDGET_BYTES or usage > _L1_TOTAL_BUDGET_BYTES:
         raise ValueError(
-            f"matrix_block CBs need {usage} bytes per core, above the "
-            f"{_L1_CB_BUDGET_BYTES}-byte L1 budget"
+            f"matrix_block needs {cb_bytes} CB bytes plus {tensor_bytes} tensor bytes "
+            f"and {_L1_STATIC_BASE_BYTES} static bytes per core, above the "
+            f"{_L1_TOTAL_BUDGET_BYTES}-byte L1 budget"
         )
     return usage
 
@@ -536,7 +577,15 @@ class NewtonSchulzKernel:
             fuse_s=fuse_s,
             matrix_block=matrix_block,
         )
-        _validate_l1_budget(ttnn, cb_definitions)
+        tensor_l1_bytes = _tensor_l1_bytes(
+            ttnn,
+            batch=batch,
+            core_count=len(work_ranges),
+            state_dtype=state_dtype,
+            fuse_s=fuse_s,
+            output_memory=_output_memory_name(variant),
+        )
+        _validate_l1_budget(ttnn, cb_definitions, tensor_bytes=tensor_l1_bytes)
         input_dtypes = [ttnn.bfloat16, ttnn.bfloat16, ttnn.bfloat16]
         if fuse_s:
             input_dtypes.append(ttnn.bfloat16)
