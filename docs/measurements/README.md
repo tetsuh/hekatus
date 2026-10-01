@@ -53,6 +53,8 @@ trace beside it under the same stem.
 | `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block8-blocked.json` | Block-8 DRAM-input runtime diagnostic: batch-4 correctness passed, but batch-8192 timed out with no output after the allowed recovery reset; the requested comparison was not measured. |
 | `2026-10-01-p150a-stage1-health-container-cleanup.json` | One post-reset Stage 1 recovery probe through the named-container wrapper; it passed with relative error 0.00456437 and records the owner-performed reset increment. |
 | `2026-10-01-p150a-stage1-health-container-cleanup-power.csv` | Power trace for the one Stage 1 recovery probe above. |
+| `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block-catalog-1000.json` | Supersedes the blocked block-8 runtime attempt; records block-8 DRAM correctness at batch 4 and 8192 plus the same-run stock, block-1 L1, block-4 L1 rejection, block-4 DRAM, and block-8 DRAM catalogue with 1,000 launch samples where applicable. |
+| `2026-10-01-p150a-newton-schulz-l32-b8192-input-memory-block-catalog-1000-power.csv` | Power trace for the same-run input-memory/block catalogue above. |
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
