@@ -487,8 +487,8 @@ golden comparison of §15 says, not what this paragraph argues.
 
 ### Cost
 
-A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of one card. FIR lowers
-to matmul — the shape Tensix likes.
+A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of theoretical peak. FIR
+lowers to matmul — the shape Tensix likes.
 
 ### What it does to beamforming
 
@@ -1233,7 +1233,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 ### By method (64 recv ch, 30 fps)
 
-| Method | TFLOPS | of one card |
+| Method | TFLOPS | % of theoretical peak |
 |---|---|---|
 | DAS | 0.004 | ~0% |
 | CF / PCF / F-DMAS | 0.015 | ~0% |
@@ -1244,7 +1244,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 ### Target configuration (1D 256 elem / 128 ch recv + post-μBF 2D)
 
-| Mode | Beamformer | TFLOPS | of one card |
+| Mode | Beamformer | TFLOPS | % of theoretical peak |
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
@@ -1252,9 +1252,13 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~30 | 9% |
 | 2D volume | beamspace MV | ~37 | 11% |
 
-**Everything for 1D at once is ~100 TFLOPS: ~30% of theoretical peak, or
-~75% of one card's usable capacity at the 40% assumption. Quote the claim
-with its basis attached.**
+**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
+Using the measured L=32 Newton-Schulz efficiency of 15.6% gives about 52
+TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 100 / 52 ≈ 1.9:
+plan for about 2 cards. This is an extrapolation using the measured
+Newton-Schulz workload efficiency, not a full-system benchmark or an all-mode
+simultaneous benchmark. The L=32 headline is the `block4_all_l1` row in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -1268,17 +1272,19 @@ Round trips are short (39 µs), so 60–100 fps comes out.
 On pixel rate: scanlines ×1.7, fps ×2–3.3, but **depth points less than
 half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
-Beamspace MV remains the tractable planning path. The earlier claim that plain
-MV (L=64) may fit one card is not validated by the Issue #63 anchors: the
-measured L=32 row is 15.6% and packed L=16 is 3.24%, both below the 30%
-one-card planning target. Treat the card counts as draft estimates pending a
-workload-scale mapping.
+Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
+validate the earlier plain MV (L=64) capacity assumption: the measured L=32
+row is 15.6% and packed L=16 is 3.24%, both below the 30% efficiency
+target. The current ~100 TFLOPS 1D all-mode workload maps to about 2 cards by
+the measured L=32 efficiency, as an extrapolation from
+that Newton-Schulz workload rather than a full-system or all-mode benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
-**Two capacity bases appear**: "of one card" percentages are against the
-332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
-efficiency (133 TFLOPS usable per card). Never combine a percentage from
-one basis with a count from the other. **The 40% is a target for hand-written kernels, not a measured figure**:
+**Two capacity bases appear**: "% of theoretical peak" percentages are
+against the 332 TFLOPS theoretical peak, while "cards" counts assume 40%
+effective efficiency (133 TFLOPS usable per card). Never combine a percentage
+from one basis with a count from the other. **The 40% is a target for
+hand-written kernels, not a measured figure**:
 issue #65's ttnn 0.75.0 full sweep measured a best BF16 Newton-Schulz result
 of 3.024% (L=64, batch 1024, default L1) and 58.410% on a large square
 matmul. Explicit stock configs help broad shapes: front-end FIR width 32 in
@@ -1290,7 +1296,7 @@ default where the default L1 row succeeds; DRAM-only large-batch reuse gains
 only 0.128% of peak. The stock denominator is therefore not a missed stock
 configuration. Issue #63's hand-written rows provide bounded recovery evidence:
 L=32 reaches 51.92 TFLOPS (15.6%) and L=16 reaches 10.77 TFLOPS (3.24%), both
-between the historical 3.2% floor and the 30% one-card planning target. The
+between the historical 3.2% floor and the 30% efficiency planning target. The
 original full record contains 284 rows, with 190 `ok` and 94 `failed` entries
 in its `results` array. A targeted record supersedes four failed batch-1024
 L16/L32 `batched_dram_sharded` rows after correcting the DRAM-worker count; its
@@ -1312,29 +1318,38 @@ p4096 rows differ by up to 0.872 percentage points. The records are
 `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`,
 and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
-suffix. The card counts here therefore state what the design aims at, not
-measured support for these Newton-Schulz rows. Scope 5's planning claim is
-explicit: use 15.6% for the L=32 batch-8192 kernel anchor and 3.24% for the
-packed L=16 anchor until a workload-scale mapping is reviewed. The packed L=16
-row is faster in wall-clock than L=32, so the old stock-only dimension ordering
-is not a valid planning premise. The L=32 headline is the `block4_all_l1` row
+suffix. The generic card counts in this table retain the 40% target basis; they
+are separate from the Scope 5 estimate. Scope 5's card-count estimate is
+explicit:
+15.6% of the 332 TFLOPS peak is about 52 TFLOPS per card, so the ~100 TFLOPS
+1D all-mode workload gives 100 / 52 ≈ 1.9 and plans for about 2 cards. This
+is an extrapolation using the measured Newton-Schulz workload efficiency, not
+a full-system benchmark or an all-mode simultaneous benchmark. The L=32
+headline is the `block4_all_l1` row
 in `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
 the current/history context is
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
 The L=16 headline is `custom_block4` in
 `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
-The 4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
-revision carried 1.85e8 there, which did not reconcile.
+Its faster wall-clock result than L=32 is only a cost/operation-volume
+comparison for the diagonal fallback: L=16 uses fewer logical dimensions and
+less work. It is not a beamspace-dimension reduction versus an MV image-quality
+comparison. The 4096-channel row follows the N⁴ law from the 256-channel
+volume row; an earlier revision carried 1.85e8 there, which did not reconcile.
 
-#### Issue #63 Scope 5 evidence draft (owner review)
+#### Issue #63 Scope 5 evidence
 
 The three conclusions are: (1) L=32 recovers 5.7x the same-run stock best but
-reaches only 15.6%, so the 30% one-card target is not established; (2) packed
-L=16 reaches 14.5x stock at 3.24% and is faster in wall-clock than L=32, which
-reverses the stock-only beamspace planning implication; and (3) fixed
-handoff/queue overhead is the leading measured explanation, while math, unpack,
-and reader were not established as causal bottlenecks. These are draft claims
-for owner review, not a causal proof or a workload-scale extrapolation.
+reaches only 15.6%, below the 30% efficiency target; applying that measured
+workload efficiency to the ~100 TFLOPS 1D all-mode estimate gives about 2
+cards, an extrapolation rather than a full-system or all-mode benchmark; (2)
+packed L=16 reaches 14.5x stock at 3.24% and is faster in wall-clock than
+L=32 only as a cost/operation-volume comparison for the diagonal fallback,
+with fewer logical dimensions and less work, not as a beamspace-dimension
+reduction versus an MV image-quality comparison; and (3) fixed handoff/queue
+overhead is the leading measured explanation, while math, unpack, and reader
+were not established as causal bottlenecks. These conclusions are bounded to
+the cited records and do not constitute a causal proof.
 
 The steady cycle-counter record
 `docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
@@ -1778,9 +1793,11 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with one card.** "Everything fits on one card with 70%
-spare" argues better than "we need two." The product recommendation will be
-two cards for failure isolation.
+**The PoC starts with about two cards for the current 1D all-mode planning
+workload**, using the Scope 5 extrapolation from measured L=32
+Newton-Schulz efficiency. This is not a full-system or all-mode benchmark.
+Two cards also provide failure isolation, while inference-only scaling remains
+an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
 via-host transports are interchangeable.
@@ -2155,7 +2172,7 @@ A record, so the same debates are not repeated.
   denominator remains 3.024% (L=64, batch 1024, default L1). Issue #63's
   hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
   3.24% at packed L=16, so the measured result lies between 3.2% and 30%
-  and does not establish the 30% one-card target. The two toolchains agree
+  and does not establish the 30% efficiency target. The two toolchains agree
   on the decision-driving rows without a universal claim: square BF16 is
   58.687% versus 58.410%, NS L=32 batch 8192 L1 is 3.026% versus 2.992%,
   and small beamspace p4096 defaults differ by up to 0.872 percentage points.
@@ -2166,8 +2183,9 @@ A record, so the same debates are not repeated.
   `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
   and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
   the historical row is in
-  `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40% the
-  card counts assume is the target that gap has to reach
+  `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40%
+  basis used by the generic card counts is the target that gap has to reach;
+  Scope 5's ~2-card 1D estimate instead uses the measured 15.6% efficiency
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
@@ -2183,15 +2201,20 @@ A record, so the same debates are not repeated.
 - group-batch size and boundary artifacts
 - aberration-estimation update rate and smoothing extent
 
-### Issue #63 Scope 5 conclusions (draft for owner review)
+### Issue #63 Scope 5 conclusions
 
 The measured conclusions are deliberately bounded to the batch-8192 records.
 First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
-is materially above stock but below the 30% planning target. Second, packed
-L=16 reaches 10.77 TFLOPS (3.24%, 14.5x stock) and is faster in wall-clock than
-L=32, so the stock-only dimension ordering must not drive beamspace card
-planning. Third, fixed handoff/queue overhead is the leading measured
-explanation; math, unpack, and reader were not established as causal
+is materially above stock but below the 30% efficiency target. Applying the
+measured L=32 workload efficiency to the ~100 TFLOPS 1D all-mode estimate
+therefore gives about 2 cards; this is an extrapolation, not a full-system or
+all-mode benchmark. Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
+stock) and is faster in wall-clock than L=32 only as a cost/operation-volume
+comparison for the diagonal fallback, because it uses fewer logical dimensions
+and less work. It is not a beamspace-dimension reduction versus an MV
+image-quality comparison, so the stock-only dimension ordering must not drive
+beamspace planning. Third, fixed handoff/queue overhead is the leading
+measured explanation; math, unpack, and reader were not established as causal
 bottlenecks. The steady counter record explicitly says no unique bottleneck is
 established because RISC windows overlap and compute retains unclassified
 cycles. The optimization, unpack, and matrix-block records correlate small

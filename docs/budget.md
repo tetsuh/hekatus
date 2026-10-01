@@ -10,20 +10,22 @@ uses.**
 
 | Basis | Value | Used by |
 |---|---|---|
-| Theoretical peak (BF16) | 332 TFLOPS | the "1-card %" columns |
+| Theoretical peak (BF16) | 332 TFLOPS | the "% of theoretical peak" columns |
 | Usable per card (peak × 40% effective) | 133 TFLOPS | the "cards" columns |
 
 A percentage from one table cannot be combined with a card count from
-another without converting: 1-card % × 2.5 gives the share of usable
-capacity.
+another without converting: peak % × 2.5 gives the share of usable capacity.
 
 > **The 40% is a target for hand-written kernels, not an expectation of the
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak, and Issue #63's measured hand-written rows below land between 3.2%
 > and 30%. The earlier 3.2% figure is retained as historical evidence, with
-> its non-reproduction explained below. The card-count text for these
-> Newton-Schulz shapes is therefore a planning estimate, not a measured
-> one-card claim; Scope 5 is a draft for owner review.
+> its non-reproduction explained below. Scope 5 uses the measured L=32
+> Newton-Schulz efficiency directly for the current card-count estimate:
+> roughly 100 TFLOPS / roughly 52 TFLOPS per card ≈ 1.9, so plan for about 2
+> cards. This is an extrapolation using the measured Newton-Schulz workload
+> efficiency, not a full-system benchmark or an all-mode simultaneous
+> benchmark.
 
 ---
 
@@ -171,7 +173,7 @@ across the iteration, and avoiding per-operation dispatch remain kernel work.
 at 110 W, 1350 MHz, and 73.9 °C; neither the 150 W firmware-reported
 limit nor the 300 W board limit was reached.
 
-## Issue #63 Scope 5 draft — measured kernel boundary (owner review)
+## Issue #63 Scope 5 — measured kernel boundary
 
 The same-shape batch-8192 records change the planning claim. Against the
 332 TFLOPS peak, the L=32 `block4_all_l1` row reached 51.9164 TFLOPS
@@ -190,17 +192,23 @@ of 0.7420 TFLOPS, in
 `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
 Its 0.4019 ms per-iteration median is below the L=32 row's 0.6655 ms in the
 L=32 per-input record: the packed L=16 path is faster in wall-clock despite
-its lower useful-work TFLOPS. The old stock-only planning implication that
-L=32 was the faster dimension is consequently rewritten, rather than merely
-footnoted: use the measured L=16 wall-clock result when sample support permits,
-and do not infer a one-card claim from either batch row.
+its lower useful-work TFLOPS. This is only a cost/operation-volume comparison
+for the diagonal fallback, because L=16 uses fewer logical dimensions and less
+work. It is not a beamspace-dimension reduction versus an MV image-quality
+comparison. The L=16 record is
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`;
+beamspace dimension and image quality remain separate decisions.
 
-The three Issue #63 conclusions are, as a draft for owner review:
+The three Issue #63 conclusions are direct:
 
 1. L=32 recovers substantial throughput over stock, but 15.6% is below the
-   30% one-card planning target; the old one-card wording is not established.
-2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32;
-   beamspace planning must no longer assume the stock dimension ordering.
+   30% efficiency target. Applying that measured workload efficiency to the
+   roughly 100 TFLOPS 1D all-mode estimate gives about 2 cards; this is an
+   extrapolation, not a full-system or all-mode benchmark.
+2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32
+   only as a cost/operation-volume comparison for the diagonal fallback,
+   because it uses fewer logical dimensions and less work. It is not a
+   beamspace-dimension reduction versus an MV image-quality comparison.
 3. The steady cycle-counter and optimization evidence points to fixed
    handoff/queue overhead as the leading measured explanation. Math, unpack,
    and reader were not established as causal bottlenecks: the steady record
@@ -274,7 +282,7 @@ the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 
 ## By method (64 receive channels, 30 fps) — basis: theoretical peak
 
-| Method | TFLOPS | 1-card % |
+| Method | TFLOPS | % of theoretical peak |
 |---|---|---|
 | DAS | 0.004 | ~0% |
 | CF / PCF / F-DMAS | 0.015 | ~0% |
@@ -300,7 +308,7 @@ not reconcile with the law stated above; the conclusion is unchanged.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) — basis: theoretical peak
 
-| Mode | Beamformer | TFLOPS | 1-card % |
+| Mode | Beamformer | TFLOPS | % of theoretical peak |
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
@@ -308,11 +316,12 @@ not reconcile with the law stated above; the conclusion is unchanged.
 | 1D color flow | per-channel wall filter + MV | ~30 | 9% |
 | 2D volume | beamspace MV | ~37 | 11% |
 
-**Everything for 1D running at once is ~100 TFLOPS: about 30% of theoretical
-peak, or about 75% of one card's usable capacity.** The headroom claim is
-"70% of peak remains" — on the usable basis it is roughly 25%, which is what
-lampas has to fit into. State which basis is meant whenever the claim is
-quoted.
+**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
+The measured L=32 Newton-Schulz efficiency is 15.6%, or about 52 TFLOPS per
+card; 100 / 52 ≈ 1.9, so plan for about 2 cards. This is an extrapolation
+using the measured Newton-Schulz workload efficiency, not a full-system
+benchmark or an all-mode simultaneous benchmark. The L=32 headline is in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 ---
 

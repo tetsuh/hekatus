@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
-| B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap and bottleneck explanation remain under review | Track B | measured; residual gap open |
+| B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap remains open | Track B | measured; residual gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
@@ -39,19 +39,25 @@ reuse gains 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64 respectively;
 the largest is only 0.4251 TFLOPS (0.128%). The stock inverse denominator is
 still 3.024% at L=64, batch 1024, default L1, but the Issue #63 hand-written
 rows now measure 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS / 3.24% at
-packed L=16. The measured result is between 3.2% and 30%, so the 30% one-card
-planning claim is not established and the old card-count wording is rewritten,
-not merely caveated.
+packed L=16. The measured result is between 3.2% and 30%, so the 30%
+efficiency target is not established. Applying the measured L=32 workload
+efficiency (15.6%, about 52 TFLOPS per card) to the roughly 100 TFLOPS 1D
+all-mode estimate gives about 2 cards. This is an extrapolation from the
+Newton-Schulz workload, not a full-system or all-mode benchmark.
 
-The three draft conclusions for owner review are: (1) L=32 is 5.7x the same-run
-stock best but remains below the 30% target; (2) packed L=16 is 14.5x stock
-and faster in wall-clock than L=32, so stock-only dimension ordering must not
-drive beamspace planning; and (3) fixed handoff/queue overhead is the leading
-measured explanation, while math, unpack, and reader were not established as
-causal bottlenecks. The steady record explicitly declines a unique bottleneck;
-its RISC windows overlap and compute retains unclassified cycles. The
-optimization, unpack, and matrix-block records correlate the handoff/queue
-interpretation but do not prove causality.
+The three Scope 5 conclusions are: (1) L=32 is 5.7x the same-run stock best
+but remains below the 30% target; (2) packed L=16 is 14.5x stock and faster in
+wall-clock than L=32 only as a cost/operation-volume comparison for the
+diagonal fallback, because it uses fewer logical dimensions and less work;
+this is not a beamspace-dimension reduction versus an MV image-quality
+comparison. The L=16 record is
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`;
+(3) fixed handoff/queue overhead is the leading measured explanation, while
+math, unpack, and reader were not established as causal bottlenecks. The
+steady record explicitly declines a unique bottleneck; its RISC windows
+overlap and compute retains unclassified cycles. The optimization, unpack,
+and matrix-block records correlate the handoff/queue interpretation but do
+not prove causality.
 
 The 0.70.1 default-only comparison is separate, with 59 successes and 9
 failures out of 68. Its 4096-square reference is 58.687% versus 58.410% in
@@ -89,9 +95,11 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   matrix paid for empty tile area. The packed Issue #63 kernel reverses that
   ordering: L=16 `custom_block4` reaches 10.77 TFLOPS (3.24%) and has a
   0.4019 ms per-iteration median, versus L=32's 0.6655 ms in the same-shape
-  batch records. Use L=16 for beamspace planning when sample support permits;
-  do not append the old stock ordering as if it still governed the kernel.
-  The L=16 record is
+  batch records. Use L=16 for beamspace cost planning when sample support
+  permits; this wall-clock result is only the diagonal fallback's
+  cost/operation-volume comparison, not a beamspace-dimension or MV
+  image-quality comparison. Do not append the old stock ordering as if it
+  still governed the kernel. The L=16 record is
   `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`;
   the L=32 records are
   `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`
@@ -101,7 +109,7 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   shape is the same either way — a beamspace covariance of dimension B and a
   subaperture covariance of dimension L give the Newton-Schulz step the same
   matrix to invert
-- Issue #63 bottleneck evidence (draft for owner review). The steady
+- Issue #63 bottleneck evidence. The steady
   cycle-counter record
   `docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
   separates queue waits but establishes no unique causal bottleneck because
