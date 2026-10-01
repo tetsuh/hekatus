@@ -1268,7 +1268,11 @@ Round trips are short (39 µs), so 60–100 fps comes out.
 On pixel rate: scanlines ×1.7, fps ×2–3.3, but **depth points less than
 half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
-Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
+Beamspace MV remains the tractable planning path. The earlier claim that plain
+MV (L=64) may fit one card is not validated by the Issue #63 anchors: the
+measured L=32 row is 15.6% and packed L=16 is 3.24%, both below the 30%
+one-card planning target. Treat the card counts as draft estimates pending a
+workload-scale mapping.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
 **Two capacity bases appear**: "of one card" percentages are against the
@@ -1283,15 +1287,17 @@ and beamspace reaches 2.167% (128 channels) and 2.208% (256 channels) with
 explicit configs. For Newton-Schulz, explicit configs do not beat the best
 default where the default L1 row succeeds; DRAM-only large-batch reuse gains
 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64, but the largest reaches
-only 0.128% of peak. The roughly 13.2x gap to 40% is therefore not a missed
-stock configuration; hand-written kernel recovery remains the MV-inverse
-lever. The original full record contains 284 rows, with 190 `ok` and 94
-`failed` entries in its `results` array. A targeted record supersedes four
-failed batch-1024 L16/L32 `batched_dram_sharded` rows after correcting the
-DRAM-worker count; its `results` array has two BF16 successes and two FP32
-compilation failures. A second targeted record supersedes the two original `ok`
-unbatched `dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels
-after the same correction; its `results` array has two successful replacements.
+only 0.128% of peak. The stock denominator is therefore not a missed stock
+configuration. Issue #63's hand-written rows provide bounded recovery evidence:
+L=32 reaches 51.92 TFLOPS (15.6%) and L=16 reaches 10.77 TFLOPS (3.24%), both
+between the historical 3.2% floor and the 30% one-card planning target. The
+original full record contains 284 rows, with 190 `ok` and 94 `failed` entries
+in its `results` array. A targeted record supersedes four failed batch-1024
+L16/L32 `batched_dram_sharded` rows after correcting the DRAM-worker count; its
+`results` array has two BF16 successes and two FP32 compilation failures. A
+second targeted record supersedes the two original `ok` unbatched
+`dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after the
+same correction; its `results` array has two successful replacements.
 Thus applying each named predecessor once gives `190 - 2 + 2 + 2 = 192`
 successes and `94 - 4 + 2 = 92` failures, with the six predecessor rows
 identified by the two records' `supersedes.rows` arrays. The exact source paths
@@ -1306,9 +1312,46 @@ p4096 rows differ by up to 0.872 percentage points. The records are
 `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`,
 and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
-suffix. The card counts here therefore state what the design aims at. The
-4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
+suffix. The card counts here therefore state what the design aims at, not
+measured support for these Newton-Schulz rows. Scope 5's planning claim is
+explicit: use 15.6% for the L=32 batch-8192 kernel anchor and 3.24% for the
+packed L=16 anchor until a workload-scale mapping is reviewed. The packed L=16
+row is faster in wall-clock than L=32, so the old stock-only dimension ordering
+is not a valid planning premise. The L=32 headline is the `block4_all_l1` row
+in `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
+the current/history context is
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
+The L=16 headline is `custom_block4` in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
+The 4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
 revision carried 1.85e8 there, which did not reconcile.
+
+#### Issue #63 Scope 5 evidence draft (owner review)
+
+The three conclusions are: (1) L=32 recovers 5.7x the same-run stock best but
+reaches only 15.6%, so the 30% one-card target is not established; (2) packed
+L=16 reaches 14.5x stock at 3.24% and is faster in wall-clock than L=32, which
+reverses the stock-only beamspace planning implication; and (3) fixed
+handoff/queue overhead is the leading measured explanation, while math, unpack,
+and reader were not established as causal bottlenecks. These are draft claims
+for owner review, not a causal proof or a workload-scale extrapolation.
+
+The steady cycle-counter record
+`docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
+separates reader and writer waits but says no unique bottleneck is established:
+RISC windows overlap and compute retains unclassified residuals. The
+optimization record
+`docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
+shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
+versus baseline. The unpack diagnostic
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
+records a variant difference but does not establish unpack as causal. The
+matrix-block record
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`
+shows the block-4 gain correlated with fewer fixed queue/handoff turns; it does
+not prove that correlation is the sole cause. The L=64 estimate is host-only
+and is reproduced by `python3 tools/newton_schulz_l64_capacity.py`; no L=64
+production dispatch is implied.
 
 #### Matrix-block circular-buffer ledger (#63)
 
@@ -1325,11 +1368,12 @@ and two block windows for block 8.
 
 The source-derived capacities also explain the historical comparison. The
 catalogue recorded by commit `7472bb1` was measured from harness commit
-`d82296220fe58affba6bc436da1761fff1bada7a`; its descriptor choices stopped at
-block 4 and its fused-S FP32 state CB totals were 92,160 / 104,448 / 194,560
-bytes for blocks 1 / 2 / 4. The current descriptors retain those three totals
-and add block 8 at 440,320 bytes, with state pages 2 / 2 / 4 / 16. The later
-all-block two-window descriptor at 88373f4 made block 4 227,328 CB bytes and
+`d82296220fe58affba6bc436da1761fff1bada7a`; its pre-`R_REAL`-elision fused-S
+FP32 state CB totals were 92,160 / 104,448 / 194,560 bytes for blocks 1 / 2 /
+4. The current source omits positive `R_REAL` in fused S, so its actual totals
+are 88,064 / 100,352 / 186,368 bytes for blocks 1 / 2 / 4 and 423,936 bytes
+for block 8, with state pages 2 / 2 / 4 / 16. The later all-block two-window
+descriptor at 88373f4 is historical: it made block 4 227,328 CB bytes and
 1,573,632 bytes with L1 inputs, which is 768 bytes over the 1,572,864-byte
 budget. No historical measurement record is rewritten; host ledger tests keep
 this source and capacity comparison executable.
@@ -2108,8 +2152,10 @@ A record, so the same debates are not repeated.
   Newton-Schulz, no explicit config beats the best default where default L1
   succeeds; DRAM-only reuse gains 7.7%, 10.0%, and about 35% on the large
   L=16, L=32, and L=64 batches, but tops out at 0.128%. The stock inverse
-  denominator remains 3.024% (L=64, batch 1024, default L1), leaving roughly
-  13.2x to the 40% target for a hand-written kernel. The two toolchains agree
+  denominator remains 3.024% (L=64, batch 1024, default L1). Issue #63's
+  hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
+  3.24% at packed L=16, so the measured result lies between 3.2% and 30%
+  and does not establish the 30% one-card target. The two toolchains agree
   on the decision-driving rows without a universal claim: square BF16 is
   58.687% versus 58.410%, NS L=32 batch 8192 L1 is 3.026% versus 2.992%,
   and small beamspace p4096 defaults differ by up to 0.872 percentage points.
@@ -2136,6 +2182,35 @@ A record, so the same debates are not repeated.
 - core allocation (front end / beamforming / inference)
 - group-batch size and boundary artifacts
 - aberration-estimation update rate and smoothing extent
+
+### Issue #63 Scope 5 conclusions (draft for owner review)
+
+The measured conclusions are deliberately bounded to the batch-8192 records.
+First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
+is materially above stock but below the 30% planning target. Second, packed
+L=16 reaches 10.77 TFLOPS (3.24%, 14.5x stock) and is faster in wall-clock than
+L=32, so the stock-only dimension ordering must not drive beamspace card
+planning. Third, fixed handoff/queue overhead is the leading measured
+explanation; math, unpack, and reader were not established as causal
+bottlenecks. The steady counter record explicitly says no unique bottleneck is
+established because RISC windows overlap and compute retains unclassified
+cycles. The optimization, unpack, and matrix-block records correlate small
+math/unpack changes and a block-4 gain with the handoff/queue interpretation,
+but correlation is not proof.
+
+The exact L=32 headline is the `block4_all_l1` row in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
+its current/history context is
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
+The L=16 headline is the `custom_block4` row in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
+Bottleneck evidence is in
+`docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`,
+`docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`,
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`,
+and `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`.
+The L=64 capacity table is host-only and reproducible with
+`python3 tools/newton_schulz_l64_capacity.py`; it does not add L=64 dispatch.
 
 ### Investigation items
 

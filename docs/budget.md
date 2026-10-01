@@ -19,9 +19,11 @@ capacity.
 
 > **The 40% is a target for hand-written kernels, not an expectation of the
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
-> of peak, so about 13.2x remains to the target. The earlier 3.2% figure is
-> retained as historical evidence, with its non-reproduction explained below.
-> Every card count here describes what the design aims at.
+> of peak, and Issue #63's measured hand-written rows below land between 3.2%
+> and 30%. The earlier 3.2% figure is retained as historical evidence, with
+> its non-reproduction explained below. The card-count text for these
+> Newton-Schulz shapes is therefore a planning estimate, not a measured
+> one-card claim; Scope 5 is a draft for owner review.
 
 ---
 
@@ -115,9 +117,10 @@ on a shape where the default L1 row succeeds. On DRAM-only large-batch rows,
 explicit reuse does beat the DRAM default: by 7.7% for L=16 batch 65536, 10.0%
 for L=32 batch 65536, and about 35% for L=64 batch 8192 and 65536. The largest
 of those gains reaches only 0.4251 TFLOPS (0.128%), so it does not change the
-3.024% best inverse denominator at L=64 batch 1024. Configuration selection
-therefore does not close the roughly 13.2x gap to 40%; hand-written kernel
-recovery remains the lever for the MV inverse.
+3.024% best stock inverse denominator at L=64 batch 1024. Configuration
+selection alone does not close the stock-to-40% gap; the Issue #63 kernel
+recovers to 15.6% at L=32 and 3.24% at packed L=16, leaving the 30% planning
+target open rather than a 13.2x stock-only statement.
 
 The two toolchains agree on the decision-driving default rows without implying
 that every row is identical. The 4096-square BF16 reference is 58.687% in the
@@ -167,6 +170,97 @@ across the iteration, and avoiding per-operation dispatch remain kernel work.
 **Power and clock did not bind in the full sweep.** The 0.75.0 trace peaked
 at 110 W, 1350 MHz, and 73.9 °C; neither the 150 W firmware-reported
 limit nor the 300 W board limit was reached.
+
+## Issue #63 Scope 5 draft — measured kernel boundary (owner review)
+
+The same-shape batch-8192 records change the planning claim. Against the
+332 TFLOPS peak, the L=32 `block4_all_l1` row reached 51.9164 TFLOPS
+(15.6375%, reported here as **51.92 TFLOPS and 15.6%**), or 5.7x the
+same-run stock best of 9.1096 TFLOPS. The 51.92 headline is the row in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
+The requested current/history check
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`
+records 50.0263 TFLOPS for its current reproduction and 50.6196 TFLOPS for
+its historical row; those rows are cited as the repeatability context, not
+as the source of the 51.92 value.
+
+The packed L=16 `custom_block4` row reached 10.7733 TFLOPS (3.2450%,
+reported as **10.77 TFLOPS and 3.24%**), or 14.5x the same-run stock best
+of 0.7420 TFLOPS, in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
+Its 0.4019 ms per-iteration median is below the L=32 row's 0.6655 ms in the
+L=32 per-input record: the packed L=16 path is faster in wall-clock despite
+its lower useful-work TFLOPS. The old stock-only planning implication that
+L=32 was the faster dimension is consequently rewritten, rather than merely
+footnoted: use the measured L=16 wall-clock result when sample support permits,
+and do not infer a one-card claim from either batch row.
+
+The three Issue #63 conclusions are, as a draft for owner review:
+
+1. L=32 recovers substantial throughput over stock, but 15.6% is below the
+   30% one-card planning target; the old one-card wording is not established.
+2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32;
+   beamspace planning must no longer assume the stock dimension ordering.
+3. The steady cycle-counter and optimization evidence points to fixed
+   handoff/queue overhead as the leading measured explanation. Math, unpack,
+   and reader were not established as causal bottlenecks: the steady record
+   explicitly declines a unique bottleneck, and its RISC windows overlap.
+
+The evidence for that third conclusion is bounded. The steady counter record
+`docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
+separates reader and writer waits but retains unclassified compute cycles and
+warns that RISC totals are overlapping. The optimization record
+`docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
+shows `fuse_s` and `batch_reads` changing throughput by only -0.09% and
++0.13% versus baseline; the unpack diagnostic
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
+reports a variant difference but makes no causal unpack claim. The
+matrix-block record
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`
+shows block 4 improving over block 1, which correlates with fewer fixed
+handoffs/queue turns but does not prove causality.
+
+### L=64 board-free capacity estimate (no kernel implementation)
+
+This is a host-only extrapolation from the current fused-S ledger, not L=64
+dispatch support. It models 8,192 logical matrices, 110 active cores, and
+four 32x32 physical tiles per logical matrix. Each logical matrix remains on
+one core: the maximum aligned assignment is 75 matrices (300 physical tiles)
+for `matrix_block=1` and 76 matrices (304 physical tiles) for
+`matrix_block=4`. The current static prefix is 111,360 bytes and the total
+budget is 1,572,864 bytes.
+
+`fuse_s` omits positive `R_REAL`; three BF16 signed R tensors remain. X0 is
+two FP32 tensors. Identity is one resident BF16 page and zero is one resident
+FP32 page when the compatibility `input_memory=l1` placement is used. The
+`bf16-fp32state` variant keeps state and output CB pages in FP32 and allocates
+its output tensors in DRAM, as the current source does. The CB estimate scales
+each active current queue by L64's four physical tiles while retaining one-page
+identity/zero and fused-product descriptors: 309,248 bytes for block 1 and
+702,464 bytes for block 4. The 2x2 L64 matmul has K=2; this estimate streams the
+two K tiles through DEST and does not add a second resident CB window. It says
+nothing about a future kernel's DEST schedule or correctness.
+
+The per-tensor rows make the placement shorthand explicit. `all-L1` places
+R, X0, identity, and zero in L1; `all-DRAM` places all four groups in DRAM;
+the two middle rows keep the constants in L1 and split R/X0 as named. Output
+tensors remain DRAM in every row.
+
+| matrix_block | placement | max logical/core | max physical tiles/core | CB bytes | tensor bytes | static prefix | total | budget | boundary |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | all-L1 | 75 | 300 | 309,248 | 4,306,944 | 111,360 | 4,727,552 | 1,572,864 | does not fit (+3,154,688) |
+| 1 | R-L1/X0-DRAM | 75 | 300 | 309,248 | 1,849,344 | 111,360 | 2,269,952 | 1,572,864 | does not fit (+697,088) |
+| 1 | R-DRAM/X0-L1 | 75 | 300 | 309,248 | 2,463,744 | 111,360 | 2,884,352 | 1,572,864 | does not fit (+1,311,488) |
+| 1 | all-DRAM | 75 | 300 | 309,248 | 0 | 111,360 | 420,608 | 1,572,864 | fits |
+| 4 | all-L1 | 76 | 304 | 702,464 | 4,364,288 | 111,360 | 5,178,112 | 1,572,864 | does not fit (+3,605,248) |
+| 4 | R-L1/X0-DRAM | 76 | 304 | 702,464 | 1,873,920 | 111,360 | 2,687,744 | 1,572,864 | does not fit (+1,114,880) |
+| 4 | R-DRAM/X0-L1 | 76 | 304 | 702,464 | 2,496,512 | 111,360 | 3,310,336 | 1,572,864 | does not fit (+1,737,472) |
+| 4 | all-DRAM | 76 | 304 | 702,464 | 0 | 111,360 | 813,824 | 1,572,864 | fits |
+
+The arithmetic is reproducible without a board with
+`python3 tools/newton_schulz_l64_capacity.py`; the regression is
+`tests/test_newton_schulz_l64_capacity.py`. No L=64 production dispatch is
+added.
 
 ---
 
