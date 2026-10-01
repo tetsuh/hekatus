@@ -756,36 +756,24 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
     assert "CB_STATE_REAL=65536 bytes" in record["error"]
 
 
-def test_custom_block4_l1_preflight_rejects_before_kernel_prepare():
-    shape = MatmulShape(
-        name="newton_schulz_L32_b8192",
-        batch=8192,
-        m=32,
-        k=32,
-        n=32,
-        real_matmuls=4,
-        family="newton_schulz",
-        note="",
-    )
+def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
+    from enodia.tt.bench import newton_schulz_kernel
+
     ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
-
-    record = run_matmul.run_custom_newton_schulz(
+    total = newton_schulz_kernel._validate_l1_preflight(
         ttnn,
-        device=object(),
-        shape=shape,
-        dtype_name="bfloat16",
-        memory_name="l1",
-        variant="bf16-fp32state",
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
         fuse_s=True,
+        output_memory="dram",
+        input_memory="l1",
         matrix_block=4,
-        iters=1,
-        repeats=1,
+        variant="bf16-fp32state",
     )
 
-    assert record["status"] == "failed"
-    assert "matrix_block=4 L1 preflight failed" in record["error"]
-    assert "total CB bytes=227328" in record["error"]
-    assert "L1 budget over by 768 bytes" in record["error"]
+    assert total == 1_540_864
+    assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):

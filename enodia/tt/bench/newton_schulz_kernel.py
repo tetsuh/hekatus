@@ -360,11 +360,12 @@ def _cb_definitions(
     # Identity/zero and profile pages are resident singletons.  Every queue
     # carrying a matrix, intermediate, or output is widened for one block.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
-    # Every matrix block uses ping-pong state storage: retain the current
-    # block while reserving the next one.  The compute branches may release
-    # smaller-block state before reservation, but the descriptor must model
-    # the same two-window capacity for every supported block.
-    state_queue_pages = 2 * matrix_block
+    # The non-one-destination branch pops the current state block before it
+    # reserves the reused state output, so blocks 2 and 4 need one window.
+    # Block 8 reserves output before popping its current state for the two
+    # DEST-half passes and therefore needs two windows.  The matrix_block == 1
+    # path retains its original two-page descriptor via the outer condition.
+    state_queue_pages = 2 * matrix_block if matrix_block == 8 else matrix_block
     definitions = {
         index: (
             data_format,

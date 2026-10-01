@@ -1,3 +1,4 @@
+import json
 import re
 from collections import Counter
 from pathlib import Path
@@ -9,6 +10,10 @@ import pytest
 from enodia.tt.bench import newton_schulz_kernel, run_matmul
 
 KERNEL_DIR = Path(__file__).parents[1] / "enodia/tt/bench/kernels"
+HISTORICAL_MATRIX_BLOCK_RECORD = (
+    Path(__file__).parents[1]
+    / "docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json"
+)
 
 
 def _ttnn():
@@ -41,9 +46,9 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == expected_queue_pages
     else:
         assert all(definitions[index][1] == expected_queue_pages for index in matrix_queue_indices)
-    state_queue_pages = 2 * matrix_block
-    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == state_queue_pages
-    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == state_queue_pages
+    expected_state_pages = {1: 2, 2: 2, 4: 4, 8: 16}
+    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == expected_state_pages[matrix_block]
+    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == expected_state_pages[matrix_block]
     # Fused S never routes products; keep their descriptors to one page for
     # compile-time CB identity without reserving unused block pages.
     assert definitions[newton_schulz_kernel.CB_PRODUCT_REAL][1] == 1
@@ -94,16 +99,17 @@ def test_dest_limit_uses_fp32_and_sync_mode_not_a_soft_block_cap():
 
 
 @pytest.mark.parametrize("matrix_block", [1, 2, 4, 8])
-def test_cb_l1_accounting_uses_two_state_windows_and_dram_inputs_fit(matrix_block):
+def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block):
     ttnn = _ttnn()
     definitions = newton_schulz_kernel._cb_definitions(
         ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
     )
-    expected_cb_bytes = {1: 92160, 2: 120832, 4: 227328, 8: 440320}
-    expected_total_bytes = {1: 203520, 2: 232192, 4: 338688, 8: 551680}
+    expected_cb_bytes = {1: 92160, 2: 104448, 4: 194560, 8: 440320}
+    expected_total_bytes = {1: 203520, 2: 215808, 4: 305920, 8: 551680}
 
-    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == 2 * matrix_block
-    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == 2 * matrix_block
+    expected_state_pages = {1: 2, 2: 2, 4: 4, 8: 16}
+    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == expected_state_pages[matrix_block]
+    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == expected_state_pages[matrix_block]
     assert (
         newton_schulz_kernel._cb_l1_bytes(ttnn, definitions)
         == expected_cb_bytes[matrix_block]
@@ -127,10 +133,10 @@ def test_cb_l1_accounting_uses_two_state_windows_and_dram_inputs_fit(matrix_bloc
     )
 
 
-def test_l1_preflight_rejects_l1_input_when_state_windows_exceed_budget():
+def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inputs():
     ttnn = _ttnn()
-    expected_total_bytes = {1: 1438464, 2: 1467136}
-    for matrix_block in (1, 2):
+    expected_total_bytes = {1: 1438464, 2: 1450752, 4: 1540864}
+    for matrix_block, expected_total in expected_total_bytes.items():
         total = newton_schulz_kernel._validate_l1_preflight(
             ttnn,
             batch=8192,
@@ -141,23 +147,44 @@ def test_l1_preflight_rejects_l1_input_when_state_windows_exceed_budget():
             matrix_block=matrix_block,
             variant="bf16-fp32state",
         )
-        assert total == expected_total_bytes[matrix_block]
+        assert total == expected_total
+        assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
-    for matrix_block, overage in ((4, 768), (8, 213760)):
-        with pytest.raises(
-            ValueError, match=f"matrix_block={matrix_block} L1 preflight failed"
-        ) as excinfo:
-            newton_schulz_kernel._validate_l1_preflight(
-                ttnn,
-                batch=8192,
-                core_count=110,
-                state_dtype="fp32",
-                fuse_s=True,
-                output_memory="dram",
-                matrix_block=matrix_block,
-                variant="bf16-fp32state",
-            )
-        assert f"L1 budget over by {overage} bytes" in str(excinfo.value)
+    with pytest.raises(ValueError, match="matrix_block=8 L1 preflight failed") as excinfo:
+        newton_schulz_kernel._validate_l1_preflight(
+            ttnn,
+            batch=8192,
+            core_count=110,
+            state_dtype="fp32",
+            fuse_s=True,
+            output_memory="dram",
+            matrix_block=8,
+            variant="bf16-fp32state",
+        )
+    assert "L1 budget over by 213760 bytes" in str(excinfo.value)
+
+
+def test_current_descriptors_match_7472_historical_catalogue_for_blocks_1_2_4():
+    historical = json.loads(HISTORICAL_MATRIX_BLOCK_RECORD.read_text())
+    implementation = historical["implementation"]
+    historical_l1 = implementation["l1_accounting"]["by_matrix_block"]
+    assert implementation["commit"] == "d82296220fe58affba6bc436da1761fff1bada7a"
+    assert implementation["matrix_block_choices"] == [1, 2, 4]
+
+    ttnn = _ttnn()
+    for matrix_block in (1, 2, 4):
+        definitions = newton_schulz_kernel._cb_definitions(
+            ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
+        )
+        assert newton_schulz_kernel._cb_l1_bytes(ttnn, definitions) == historical_l1[
+            str(matrix_block)
+        ]["cb_bytes"]
+
+    current = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=8
+    )
+    assert current[newton_schulz_kernel.CB_STATE_REAL][1] == 16
+    assert current[newton_schulz_kernel.CB_STATE_IMAG][1] == 16
 
 
 def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
@@ -313,11 +340,22 @@ def _function_source(source: str, signature: str) -> str:
 _CB_CALL = re.compile(
     r"\b(cb_(?:reserve_back|push_back|pop_front))\(\s*([A-Za-z_][A-Za-z0-9_]*)"
 )
+_CB_OPERATION = re.compile(
+    r"\b(cb_(?:wait_front|reserve_back|push_back|pop_front))\(\s*"
+    r"([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _without_comments(source: str) -> str:
+    return re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
 
 
 def _cb_ledger(source: str) -> Counter:
-    source = re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
-    return Counter(_CB_CALL.findall(source))
+    return Counter(_CB_CALL.findall(_without_comments(source)))
+
+
+def _cb_operation_ledger(source: str) -> Counter:
+    return Counter(_CB_OPERATION.findall(_without_comments(source)))
 
 
 def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:
@@ -329,6 +367,13 @@ def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:
     if one_dest:
         return function[branch_start:else_start] + function[post_start:]
     return function[else_start:post_start] + function[right_start:]
+
+
+def _writer_branch_source(source: str, *, matrix_block: int) -> str:
+    function = _function_source(source, "void kernel_main()")
+    branch_start = function.index("if constexpr (matrix_block == 1) {")
+    else_start = function.index("    } else {", branch_start)
+    return function[branch_start:else_start] if matrix_block == 1 else function[else_start:]
 
 
 @pytest.mark.parametrize(
@@ -390,6 +435,127 @@ def test_matrix_block_branch_ledgers_publish_and_consume_every_page(
     for output, pack_offset in pack_offsets.items():
         push_offset = branch.index(f"cb_push_back({output}, block_count)")
         assert pack_offset < push_offset
+
+
+@pytest.mark.parametrize("matrix_block", [1, 2, 4, 8])
+def test_reader_writer_and_state_helpers_balance_every_cb_page(matrix_block):
+    reader = (KERNEL_DIR / "newton_schulz_reader_optimized.cpp").read_text()
+    writer = (KERNEL_DIR / "newton_schulz_writer.cpp").read_text()
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    input_names = (
+        "cb_r_real",
+        "cb_r_negative_imag",
+        "cb_r_imag",
+        "cb_r_negative_real",
+        "cb_x0_real",
+        "cb_x0_imag",
+    )
+
+    if matrix_block == 1:
+        read_one = _function_source(reader, "void read_one(")
+        assert _cb_ledger(read_one) == Counter(
+            {
+                ("cb_reserve_back", "cb"): 1,
+                ("cb_push_back", "cb"): 1,
+            }
+        )
+        read_matrix = _function_source(reader, "void read_matrix(")
+        assert read_matrix.count("read_one(") == len(input_names)
+        compute_owner = _function_source(compute, "void kernel_main_impl()")
+        state_source_name = "void fused_s_matmul("
+        negate_source_name = "void negate_state_imag_impl("
+        wait_source_name = "void wait_r_inputs("
+    else:
+        read_matrix = _function_source(reader, "void read_matrix_block(")
+        read_ledger = _cb_ledger(read_matrix)
+        for name in input_names:
+            assert read_ledger[("cb_reserve_back", name)] == 1
+            assert read_ledger[("cb_push_back", name)] == 1
+        compute_owner = _function_source(compute, "void process_matrix_block(")
+        state_source_name = "void fused_s_matmul_block("
+        negate_source_name = "void negate_state_imag_block("
+        wait_source_name = "void wait_r_inputs_block("
+
+    owner_ledger = _cb_ledger(compute_owner)
+    for name in input_names[:4]:
+        assert owner_ledger[("cb_pop_front", name)] == 1
+    wait_ledger = _cb_operation_ledger(_function_source(compute, wait_source_name))
+    for name in input_names[:4]:
+        assert wait_ledger[("cb_wait_front", name)] == 1
+
+    writer_branch = _writer_branch_source(writer, matrix_block=matrix_block)
+    writer_ledger = _cb_operation_ledger(writer_branch)
+    for name in ("cb_output_real", "cb_output_imag"):
+        assert writer_ledger[("cb_wait_front", name)] == 1
+        assert writer_ledger[("cb_pop_front", name)] == 1
+
+    state_ledger = _cb_ledger(_function_source(compute, state_source_name))
+    for name in ("cb_s_real", "cb_s_imag"):
+        assert state_ledger[("cb_reserve_back", name)] == 1
+        assert state_ledger[("cb_push_back", name)] == 1
+
+    negate_source = _function_source(compute, negate_source_name)
+    negate_ledger = _cb_ledger(negate_source)
+    assert negate_ledger[("cb_reserve_back", "cb_negative_x_imag")] == 1
+    if matrix_block == 1:
+        assert negate_source.count("pack_one(cb_negative_x_imag)") == 1
+        assert _cb_ledger(_function_source(compute, "void pack_one(")) == Counter(
+            {("cb_push_back", "output"): 1}
+        )
+    else:
+        assert negate_ledger[("cb_push_back", "cb_negative_x_imag")] == 1
+
+
+def _assert_capacity_at_least(definitions, index, required_pages):
+    actual_pages = definitions[index][1]
+    if actual_pages < required_pages:
+        raise ValueError(
+            f"CB {index} has {actual_pages} pages; ledger requires {required_pages}"
+        )
+
+
+@pytest.mark.parametrize(
+    ("matrix_block", "required_state_pages"),
+    ((1, 2), (2, 2), (4, 4), (8, 16)),
+)
+def test_state_capacity_follows_reserve_pop_order_and_rejects_under_capacity(
+    matrix_block, required_state_pages
+):
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    definitions = newton_schulz_kernel._cb_definitions(
+        _ttnn(), "fp32", fuse_s=True, matrix_block=matrix_block
+    )
+    for index in (
+        newton_schulz_kernel.CB_STATE_REAL,
+        newton_schulz_kernel.CB_STATE_IMAG,
+    ):
+        assert definitions[index][1] == required_state_pages
+        _assert_capacity_at_least(definitions, index, required_state_pages)
+
+    if matrix_block == 1:
+        real = _function_source(compute, "void complex_real_impl(")
+        imag = _function_source(compute, "void complex_imag_impl(")
+        assert _cb_ledger(real + imag)[("cb_reserve_back", "output")] == 2
+    else:
+        branch = _complex_block_branch_source(compute, one_dest=matrix_block == 8)
+        pop_offset = branch.index("cb_pop_front(left_real, block_count)")
+        reserve_offset = branch.index("cb_reserve_back(output_real, block_count)")
+        if matrix_block == 8:
+            assert reserve_offset < pop_offset
+        else:
+            assert pop_offset < reserve_offset
+
+    undersized = dict(definitions)
+    undersized[newton_schulz_kernel.CB_STATE_REAL] = (
+        undersized[newton_schulz_kernel.CB_STATE_REAL][0],
+        required_state_pages - 1,
+    )
+    with pytest.raises(ValueError, match="ledger requires"):
+        _assert_capacity_at_least(
+            undersized,
+            newton_schulz_kernel.CB_STATE_REAL,
+            required_state_pages,
+        )
 
 
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():

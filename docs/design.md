@@ -1310,6 +1310,30 @@ suffix. The card counts here therefore state what the design aims at. The
 4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
 revision carried 1.85e8 there, which did not reconcile.
 
+#### Matrix-block circular-buffer ledger (#63)
+
+The matrix-block state capacity is derived from the source ownership order,
+not from a blanket multiplier. In
+`enodia/tt/bench/kernels/newton_schulz_compute.cpp`, the non-one-destination
+branch used by blocks 2 and 4 pops the current state block before reserving the
+reused state output. It therefore needs one state window. The block-8
+one-destination branch reserves the next state output before popping the current
+state while it runs its two DEST-half passes, so it needs two windows. The
+legacy block-1 path retains its two-page state descriptors. The host descriptor
+rule is consequently 2 pages for block 1, one block window for blocks 2 and 4,
+and two block windows for block 8.
+
+The source-derived capacities also explain the historical comparison. The
+catalogue recorded by commit `7472bb1` was measured from harness commit
+`d82296220fe58affba6bc436da1761fff1bada7a`; its descriptor choices stopped at
+block 4 and its fused-S FP32 state CB totals were 92,160 / 104,448 / 194,560
+bytes for blocks 1 / 2 / 4. The current descriptors retain those three totals
+and add block 8 at 440,320 bytes, with state pages 2 / 2 / 4 / 16. The later
+all-block two-window descriptor at 88373f4 made block 4 227,328 CB bytes and
+1,573,632 bytes with L1 inputs, which is 768 bytes over the 1,572,864-byte
+budget. No historical measurement record is rewritten; host ledger tests keep
+this source and capacity comparison executable.
+
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises
 sustained throughput, but a single frame still traverses its critical
