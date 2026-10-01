@@ -395,6 +395,8 @@ void complex_matmul_block(
         pack_reconfig_data_format(output_imag);
         pack_tile_block(0, output_imag, block_count);
         tile_regs_release();
+        cb_push_back(output_real, block_count);
+        cb_push_back(output_imag, block_count);
     } else {
         // Blocks 2/4 retain the fast two-half path.  Delay output reservation
         // until after the DEST pass because state CBs are also its inputs.

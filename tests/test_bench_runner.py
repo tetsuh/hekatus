@@ -44,6 +44,8 @@ class _StubTtnn:
     """Records what the runner asked the toolchain to do."""
 
     TILE_LAYOUT = "tile"
+    bfloat16 = "bf16"
+    float32 = "fp32"
     NOC = SimpleNamespace(NOC_0="noc-0")
     DRAM_MEMORY_CONFIG = "dram"
     L1_MEMORY_CONFIG = "l1"
@@ -752,6 +754,38 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
     assert "L1 preflight failed" in record["error"]
     assert "total CB bytes=440320" in record["error"]
     assert "CB_STATE_REAL=65536 bytes" in record["error"]
+
+
+def test_custom_block4_l1_preflight_rejects_before_kernel_prepare():
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+
+    record = run_matmul.run_custom_newton_schulz(
+        ttnn,
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=4,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert "matrix_block=4 L1 preflight failed" in record["error"]
+    assert "total CB bytes=227328" in record["error"]
+    assert "L1 budget over by 768 bytes" in record["error"]
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):

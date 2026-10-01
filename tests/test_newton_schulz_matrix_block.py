@@ -1,3 +1,5 @@
+import re
+from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -39,7 +41,7 @@ def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
         assert definitions[newton_schulz_kernel.CB_OUTPUT_REAL][1] == expected_queue_pages
     else:
         assert all(definitions[index][1] == expected_queue_pages for index in matrix_queue_indices)
-    state_queue_pages = 2 * matrix_block if matrix_block == 8 else expected_queue_pages
+    state_queue_pages = 2 * matrix_block
     assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == state_queue_pages
     assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == state_queue_pages
     # Fused S never routes products; keep their descriptors to one page for
@@ -91,31 +93,71 @@ def test_dest_limit_uses_fp32_and_sync_mode_not_a_soft_block_cap():
         )
 
 
-def test_cb_l1_accounting_includes_batch_tensors_for_the_block4_target():
+@pytest.mark.parametrize("matrix_block", [1, 2, 4, 8])
+def test_cb_l1_accounting_uses_two_state_windows_and_dram_inputs_fit(matrix_block):
     ttnn = _ttnn()
-    usages = []
-    for matrix_block in (1, 2, 4):
-        definitions = newton_schulz_kernel._cb_definitions(
-            ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
-        )
-        usages.append(newton_schulz_kernel._cb_l1_bytes(ttnn, definitions))
-        tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
+    definitions = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
+    )
+    expected_cb_bytes = {1: 92160, 2: 120832, 4: 227328, 8: 440320}
+    expected_total_bytes = {1: 203520, 2: 232192, 4: 338688, 8: 551680}
+
+    assert definitions[newton_schulz_kernel.CB_STATE_REAL][1] == 2 * matrix_block
+    assert definitions[newton_schulz_kernel.CB_STATE_IMAG][1] == 2 * matrix_block
+    assert (
+        newton_schulz_kernel._cb_l1_bytes(ttnn, definitions)
+        == expected_cb_bytes[matrix_block]
+    )
+
+    total = newton_schulz_kernel._validate_l1_preflight(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        input_memory="dram",
+        matrix_block=matrix_block,
+        variant="bf16-fp32state",
+    )
+    assert total == expected_total_bytes[matrix_block]
+    assert total == (
+        newton_schulz_kernel._L1_STATIC_BASE_BYTES
+        + expected_cb_bytes[matrix_block]
+    )
+
+
+def test_l1_preflight_rejects_l1_input_when_state_windows_exceed_budget():
+    ttnn = _ttnn()
+    expected_total_bytes = {1: 1438464, 2: 1467136}
+    for matrix_block in (1, 2):
+        total = newton_schulz_kernel._validate_l1_preflight(
             ttnn,
             batch=8192,
             core_count=110,
             state_dtype="fp32",
             fuse_s=True,
             output_memory="dram",
+            matrix_block=matrix_block,
+            variant="bf16-fp32state",
         )
-        total = newton_schulz_kernel._validate_l1_budget(
-            ttnn, definitions, tensor_bytes=tensor_bytes
-        )
-        assert total == (
-            newton_schulz_kernel._L1_STATIC_BASE_BYTES + usages[-1] + tensor_bytes
-        )
-    assert usages[0] < usages[1] < usages[2]
-    assert usages[-1] <= newton_schulz_kernel._L1_CB_BUDGET_BYTES
-    assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
+        assert total == expected_total_bytes[matrix_block]
+
+    for matrix_block, overage in ((4, 768), (8, 213760)):
+        with pytest.raises(
+            ValueError, match=f"matrix_block={matrix_block} L1 preflight failed"
+        ) as excinfo:
+            newton_schulz_kernel._validate_l1_preflight(
+                ttnn,
+                batch=8192,
+                core_count=110,
+                state_dtype="fp32",
+                fuse_s=True,
+                output_memory="dram",
+                matrix_block=matrix_block,
+                variant="bf16-fp32state",
+            )
+        assert f"L1 budget over by {overage} bytes" in str(excinfo.value)
 
 
 def test_block8_l1_preflight_rejects_with_full_accounting_and_cb_breakdown():
@@ -252,6 +294,102 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
             np.zeros((1, 32, 32), dtype=np.complex64),
             input_memory="sram",
         )
+
+
+def _function_source(source: str, signature: str) -> str:
+    start = source.index(signature)
+    opening = source.index("{", start)
+    depth = 0
+    for offset in range(opening, len(source)):
+        if source[offset] == "{":
+            depth += 1
+        elif source[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : offset + 1]
+    raise AssertionError(f"unterminated C++ function: {signature}")
+
+
+_CB_CALL = re.compile(
+    r"\b(cb_(?:reserve_back|push_back|pop_front))\(\s*([A-Za-z_][A-Za-z0-9_]*)"
+)
+
+
+def _cb_ledger(source: str) -> Counter:
+    source = re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
+    return Counter(_CB_CALL.findall(source))
+
+
+def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:
+    function = _function_source(source, "void complex_matmul_block(")
+    branch_start = function.index("if constexpr (one_dest_half) {")
+    else_start = function.index("    } else {", branch_start)
+    post_start = function.index("\n    if constexpr (one_dest_half) {", else_start)
+    right_start = function.index("\n    if (consume_right)", post_start)
+    if one_dest:
+        return function[branch_start:else_start] + function[post_start:]
+    return function[else_start:post_start] + function[right_start:]
+
+
+@pytest.mark.parametrize(
+    ("matrix_block", "one_dest"),
+    ((1, False), (2, False), (4, False), (8, True)),
+)
+def test_matrix_block_branch_ledgers_publish_and_consume_every_page(
+    matrix_block, one_dest
+):
+    compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    expected = Counter(
+        {
+            ("cb_reserve_back", "output_real"): 1,
+            ("cb_reserve_back", "output_imag"): 1,
+            ("cb_push_back", "output_real"): 1,
+            ("cb_push_back", "output_imag"): 1,
+            ("cb_pop_front", "left_real"): 1,
+            ("cb_pop_front", "left_imag_for_real"): 1,
+            ("cb_pop_front", "left_imag_for_imag"): 1,
+            ("cb_pop_front", "right_real"): 1,
+            ("cb_pop_front", "right_imag"): 1,
+        }
+    )
+
+    if matrix_block == 1:
+        real = _function_source(compute, "void complex_real_impl(")
+        imag = _function_source(compute, "void complex_imag_impl(")
+        pack = _function_source(compute, "void pack_one(")
+        single = _function_source(compute, "void complex_matmul(")
+        assert _cb_ledger(real + imag) == Counter(
+            {
+                ("cb_reserve_back", "output"): 2,
+            }
+        )
+        assert _cb_ledger(pack) == Counter({("cb_push_back", "output"): 1})
+        assert real.count("pack_one(output)") == 1
+        assert imag.count("pack_one(output)") == 1
+        assert _cb_ledger(single) == Counter(
+            {
+                ("cb_pop_front", "left_real"): 1,
+                ("cb_pop_front", "left_imag_for_real"): 1,
+                ("cb_pop_front", "left_imag_for_imag"): 1,
+                ("cb_pop_front", "right_real"): 1,
+                ("cb_pop_front", "right_imag"): 1,
+            }
+        )
+        return
+
+    branch = _complex_block_branch_source(compute, one_dest=one_dest)
+    assert _cb_ledger(branch) == expected
+    pack_offsets = {
+        "output_real": branch.index("pack_tile_block(0, output_real, block_count)"),
+        "output_imag": branch.index(
+            "pack_tile_block(0, output_imag, block_count)"
+            if one_dest
+            else "pack_tile_block(block_count, output_imag, block_count)"
+        ),
+    }
+    for output, pack_offset in pack_offsets.items():
+        push_offset = branch.index(f"cb_push_back({output}, block_count)")
+        assert pack_offset < push_offset
 
 
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():

@@ -522,22 +522,21 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "error": "custom input/compute memory must be l1",
         }
-    if matrix_block == 8:
-        try:
-            _validate_l1_preflight(
-                ttnn,
-                batch=shape.batch,
-                core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
-                state_dtype=_state_dtype(ttnn, variant),
-                profile=profile,
-                fuse_s=fuse_s,
-                output_memory="dram" if variant == "bf16-fp32state" else "l1",
-                input_memory=input_memory,
-                matrix_block=matrix_block,
-                variant=variant,
-            )
-        except ValueError as exc:
-            return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
+    try:
+        _validate_l1_preflight(
+            ttnn,
+            batch=shape.batch,
+            core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
+            state_dtype=_state_dtype(ttnn, variant),
+            profile=profile,
+            fuse_s=fuse_s,
+            output_memory="dram" if variant == "bf16-fp32state" else "l1",
+            input_memory=input_memory,
+            matrix_block=matrix_block,
+            variant=variant,
+        )
+    except ValueError as exc:
+        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
 
     from enodia.tt.bench.newton_schulz_kernel import (
         COMPLEX_MATMULS_PER_INVERSE,
