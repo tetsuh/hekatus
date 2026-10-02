@@ -547,12 +547,17 @@ class DeviceEquivalenceTests(unittest.TestCase):
                         "status": "pass" if relative_error <= 1e-2 else "fail",
                     }
                 )
-                self.assertLessEqual(relative_error, 1e-2, msg=name)
             print(
                 "FIDELITY_SPLIT_CORRECTNESS "
                 + json.dumps(measurements, sort_keys=True),
                 flush=True,
             )
+            for measurement in measurements:
+                self.assertLessEqual(
+                    measurement["relative_error"],
+                    1e-2,
+                    msg=measurement["name"],
+                )
         finally:
             ttnn.close_device(device)
 
