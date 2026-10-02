@@ -1181,7 +1181,7 @@ correctness uses the independent NumPy fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 
-### Precision split (to be measured)
+### Precision split (measured evidence; selection remains open)
 
 Each iteration passes 16 matmuls, so pure BF16 accumulates error and can
 break quadratic convergence. **The working hypothesis is a hybrid:**
@@ -1190,6 +1190,18 @@ break quadratic convergence. **The working hypothesis is a hybrid:**
 
 FP32 matmul runs at ~1/4 of BF16, so total cost is 1.75×. The reference
 implementation sweeps "N iterations in BF16, then M in FP32."
+
+The first board measurement of the separate opt-in HiFi2→HiFi3 fidelity
+split used L=32, batch 8192, `bf16-fp32state`, fused S, and matrix block 4.
+The independent NumPy fixed-iteration gate passed for the legacy all-HiFi3
+path (relative error 0.006525) and the direct-LLK `0+8` path (0.006525), but
+failed for `4+4` (0.042679) and `6+2` (0.048364) against the 1e-2 limit. Only
+the passing forms were timed: stock best reached 9.113 TFLOPS, legacy HiFi3
+44.759 TFLOPS, and direct-LLK `0+8` 44.355 TFLOPS, with 1,000 launches per
+row in one device run. This is evidence for this shape and state variant,
+not a decision for the broader BF16/TF32/FP32 precision split; that choice
+remains open pending other shapes and state arrangements. Record:
+`docs/measurements/2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000.json`.
 
 ### Beamspace MV
 
