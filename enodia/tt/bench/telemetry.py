@@ -22,6 +22,11 @@ import sys
 import time
 from pathlib import Path
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from enodia.strict_json import dumps as strict_json_dumps
+
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
 
@@ -220,7 +225,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.mode == "capture-env":
         args.out.write_text(
-            json.dumps(capture_environment(args.image, args.image_pinned), indent=2) + "\n"
+            strict_json_dumps(capture_environment(args.image, args.image_pinned), indent=2) + "\n"
         )
         print(f"environment -> {args.out}")
         return
