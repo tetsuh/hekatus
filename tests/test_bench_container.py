@@ -457,10 +457,15 @@ def test_wrapper_runs_device_pytest_only_in_the_pinned_container(tmp_path):
     )
     assert completed.returncode == 0, completed.stderr
     docker_args = args_log.read_text().splitlines()
-    assert docker_args[docker_args.index("--entrypoint") + 1] == "python3"
+    assert docker_args[docker_args.index("--entrypoint") + 1] == "/usr/local/bin/uv"
     assert "HEKATUS_TT_DEVICE_TEST=1" in docker_args
     assert "HEKATUS_TT_PINNED_CONTAINER=1" in docker_args
-    assert docker_args[-5:] == [
+    assert docker_args[-10:] == [
+        "run",
+        "--no-project",
+        "--with",
+        "pytest==8.3.5",
+        "python",
         "-m",
         "pytest",
         "-m",
