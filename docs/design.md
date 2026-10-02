@@ -1280,7 +1280,10 @@ validate the earlier plain MV (L=64) capacity assumption: the measured L=32
 row is 15.6% and packed L=16 is 3.24%, both below the 30% efficiency
 target. The current ~100 TFLOPS 1D all-mode workload maps to about 2 cards by
 the measured L=32 efficiency, as an extrapolation from
-that Newton-Schulz workload rather than a full-system or all-mode benchmark.
+that Newton-Schulz workload rather than a full-system or all-mode benchmark. Because the
+§15 threshold needs HiFi3, whose ceiling is about 33% of peak, about 2 cards
+is close to a floor rather than a step toward one card (`docs/budget.md`,
+"Precision ceiling").
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
 **Two capacity bases appear**: "% of theoretical peak" percentages are
@@ -2208,7 +2211,9 @@ A record, so the same debates are not repeated.
 
 The measured conclusions are deliberately bounded to the batch-8192 records.
 First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
-is materially above stock but below the 30% efficiency target. Applying the
+is materially above stock but below the 30% efficiency target, which at the
+HiFi3 precision the threshold needs is out of practical reach (`docs/budget.md`,
+"Precision ceiling"). Applying the
 measured L=32 workload efficiency to the ~100 TFLOPS 1D all-mode estimate
 therefore gives about 2 cards; this is an extrapolation, not a full-system or
 all-mode benchmark. Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x

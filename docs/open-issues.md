@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
-| B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap remains open | Track B | measured; residual gap open |
+| B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%. At the HiFi3 precision the §15 threshold needs, the matrix engine's ceiling is about 33% of peak, so 30% is out of practical reach (`docs/budget.md`, "Precision ceiling") | Track B | measured; 30% bounded by the HiFi3 ceiling |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
@@ -44,6 +44,11 @@ efficiency target is not established. Applying the measured L=32 workload
 efficiency (15.6%, about 52 TFLOPS per card) to the roughly 100 TFLOPS 1D
 all-mode estimate gives about 2 cards. This is an extrapolation from the
 Newton-Schulz workload, not a full-system or all-mode benchmark.
+About 2 cards is close to a floor: the threshold needs HiFi3, whose ceiling
+is about 111 TFLOPS (about 33% of peak), so 30% would mean running the matrix
+engine at about 90% of that ceiling (`docs/budget.md`, "Precision ceiling").
+Only a configuration that meets the threshold with HiFi2 for part of the
+work could reopen it; that split is unmeasured.
 
 The three Scope 5 conclusions are: (1) L=32 is 5.7x the same-run stock best
 but remains below the 30% target; (2) packed L=16 is 14.5x stock and faster in

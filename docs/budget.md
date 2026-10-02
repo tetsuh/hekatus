@@ -25,7 +25,10 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > roughly 100 TFLOPS / roughly 52 TFLOPS per card ≈ 1.9, so plan for about 2
 > cards. This is an extrapolation using the measured Newton-Schulz workload
 > efficiency, not a full-system benchmark or an all-mode simultaneous
-> benchmark.
+> benchmark. About 2 cards is close to a floor rather than a step toward one
+> card: at the precision the §15 threshold needs, the matrix engine's ceiling
+> is about 33% of peak, so the 30% target is out of practical reach (see
+> "Precision ceiling" below).
 
 ---
 
@@ -121,8 +124,9 @@ for L=32 batch 65536, and about 35% for L=64 batch 8192 and 65536. The largest
 of those gains reaches only 0.4251 TFLOPS (0.128%), so it does not change the
 3.024% best stock inverse denominator at L=64 batch 1024. Configuration
 selection alone does not close the stock-to-40% gap; the Issue #63 kernel
-recovers to 15.6% at L=32 and 3.24% at packed L=16, leaving the 30% planning
-target open rather than a 13.2x stock-only statement.
+recovers to 15.6% at L=32 and 3.24% at packed L=16. What remains to 30% is
+not an open gap of the old stock-only kind: at HiFi3 it is bounded by the
+precision ceiling described below.
 
 The two toolchains agree on the decision-driving default rows without implying
 that every row is identical. The 4096-square BF16 reference is 58.687% in the
@@ -202,9 +206,12 @@ beamspace dimension and image quality remain separate decisions.
 The three Issue #63 conclusions are direct:
 
 1. L=32 recovers substantial throughput over stock, but 15.6% is below the
-   30% efficiency target. Applying that measured workload efficiency to the
-   roughly 100 TFLOPS 1D all-mode estimate gives about 2 cards; this is an
-   extrapolation, not a full-system or all-mode benchmark.
+   30% efficiency target, and at the precision the threshold needs the target
+   is out of practical reach (see "Precision ceiling" below). Applying the
+   measured workload efficiency to the roughly 100 TFLOPS 1D all-mode
+   estimate gives about 2 cards; this is an extrapolation, not a full-system
+   or all-mode benchmark, and it is close to a floor rather than a step on
+   the way to one card.
 2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32
    only as a cost/operation-volume comparison for the diagonal fallback,
    because it uses fewer logical dimensions and less work. It is not a
@@ -227,6 +234,32 @@ matrix-block record
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`
 shows block 4 improving over block 1, which correlates with fewer fixed
 handoffs/queue turns but does not prove causality.
+
+### Precision ceiling
+
+The 332 TFLOPS peak is the LoFi rate: one pass of the matrix engine per tile
+product. Higher math fidelity spends more passes on the same product, so the
+engine's ceiling at a given fidelity is the peak divided by its pass count.
+The §15 stage threshold of 1e-2 at batch 8192 needs HiFi3: in
+`docs/measurements/2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json`
+LoFi measured 0.121 and HiFi2 0.057, both failing, while HiFi3 measured
+0.0076 and HiFi4 0.0072. HiFi3 takes three passes, so its ceiling is about
+332 / 3 ≈ 111 TFLOPS, about 33% of peak.
+
+The 30% target is about 100 TFLOPS, about 90% of that ceiling. No kernel in
+this project has run the matrix engine near 90% of its rate; the best L=32
+row, 51.78 TFLOPS in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000.json`,
+is about 47% of the HiFi3 ceiling. At HiFi3, therefore, the 30% target is out
+of practical reach, and the about-2-card estimate is close to a floor.
+
+The only route by which 30% stays reachable in principle is a configuration
+that meets the threshold with HiFi2 for part of the work: HiFi2's ceiling is
+about 166 TFLOPS, so 30% would be about 60% of it. A board-free source audit
+found that one compute kernel can run some iterations at HiFi2 and the rest
+at HiFi3, by specializing the matmul LLK per operation at compile time.
+Whether such a split meets 1e-2 is not yet measured; it is being examined on a
+separate branch and is not a claim of this document.
 
 ### L=64 board-free capacity estimate (no kernel implementation)
 
