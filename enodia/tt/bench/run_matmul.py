@@ -816,8 +816,12 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(
             f"--launches-per-row must be at least 1, got {args.launches_per_row}"
         )
-    if args.fidelity_split and args.custom_math_fidelity:
-        parser.error("--fidelity-split cannot be combined with --custom-math-fidelity")
+    if args.fidelity_split and args.custom_math_fidelity and any(
+        math_fidelity != "HiFi3" for math_fidelity in args.custom_math_fidelity
+    ):
+        parser.error(
+            "--fidelity-split can only be combined with --custom-math-fidelity HiFi3"
+        )
     if args.acceptance_catalogue:
         if args.fidelity_split:
             parser.error("--fidelity-split cannot be combined with --acceptance-catalogue")
@@ -1149,8 +1153,17 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     run_stock = args.kind is None or STOCK_KIND in args.kind
     run_custom = args.kind is None or CUSTOM_KIND in args.kind
-    custom_splits = args.fidelity_split or [None]
-    custom_fidelities = ["HiFi3"] if args.fidelity_split else (args.custom_math_fidelity or ["HiFi4"])
+    if args.fidelity_split and args.custom_math_fidelity:
+        # Keep the legacy all-HiFi3 row beside each opt-in split in one device
+        # run when the caller requests both forms explicitly.
+        custom_splits = [None, *args.fidelity_split]
+        custom_fidelities = args.custom_math_fidelity
+    elif args.fidelity_split:
+        custom_splits = args.fidelity_split
+        custom_fidelities = ["HiFi3"]
+    else:
+        custom_splits = [None]
+        custom_fidelities = args.custom_math_fidelity or ["HiFi4"]
     try:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():

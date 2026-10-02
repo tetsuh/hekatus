@@ -311,6 +311,53 @@ def test_custom_fidelity_split_rows_use_the_direct_hifi3_suffix(monkeypatch, tmp
     assert payload["results"][0]["row"] == "custom_block1_split_4+4"
 
 
+def test_legacy_hifi3_and_split_rows_share_one_run(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        split = kwargs.get("fidelity_split")
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fidelity_split": None if split is None else f"{split[0]}+{split[1]}",
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "combined-split.json"
+    assert run_matmul.main(
+        [
+            "--only", "newton_schulz_L32_b8192",
+            "--dtype", "bfloat16",
+            "--memory", "l1",
+            "--kind", "custom_newton_schulz",
+            "--custom-math-fidelity", "HiFi3",
+            "--fidelity-split", "0+8",
+            "--out", str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert [call.get("fidelity_split") for call in calls] == [None, (0, 8)]
+    assert [row["row"] for row in payload["results"]] == [
+        "custom_block1",
+        "custom_block1_split_0+8",
+    ]
+    assert [row["fidelity_split"] for row in payload["results"]] == [None, "0+8"]
+
+
 def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     ttnn = _StubTtnn()
     ttnn.bfloat16 = "bf16"
