@@ -20,6 +20,7 @@
     "kind": "board_free_source_audit",
     "question": "Can one compute kernel select math fidelity per operation or iteration?",
     "reference_scope": "Pinned tt-metal release source audit; no board execution",
+    "source_audit_method": "Read the descriptor, JIT, public compute, and Blackhole LLK sources from the pinned-release source audit.",
     "conclusion": "ComputeConfigDescriptor selects one math fidelity per compute KernelDescriptor. The public matmul_block_init and matmul_block APIs do not accept a fidelity argument and both use the compile-time MATH_FIDELITY descriptor. The Blackhole LLK wrappers expose fidelity as a C++ template parameter, so one compute-kernel source can contain matching HiFi2 and HiFi3 LLK specializations and reinitialize the matmul MOP between operations. This is compile-time specialization, not a runtime fidelity switch, and requires a custom direct-LLK path rather than the public matmul_block wrappers.",
     "findings": [
       {
