@@ -162,7 +162,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
     --entrypoint /usr/local/bin/uv \
-    "${IMAGE}" run --no-project --with pytest==8.3.5 python -m pytest "${PYTEST_ARGS[@]}" &
+    "${IMAGE}" run --no-project --with pytest==8.3.5 --with scipy==1.13.1 python -m pytest "${PYTEST_ARGS[@]}" &
 elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
