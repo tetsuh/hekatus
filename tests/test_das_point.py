@@ -1,9 +1,12 @@
 """Acceptance test for MVP-1: point scatterers image at their true positions."""
 
 import numpy as np
+import pytest
 
 from enodia.demo import DEFAULT_SCATTERERS, run_pipeline
 from enodia.spec.probe import linear_5mhz
+
+pytestmark = pytest.mark.slow
 
 
 def test_point_scatterers_image_at_their_true_positions():

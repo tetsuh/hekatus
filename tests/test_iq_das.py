@@ -19,6 +19,9 @@ from enodia.spec.beamform.golden_compare import golden_channel_vectors
 from enodia.spec.beamform.iq_das import das_iq, delayed_channel_vectors
 from enodia.spec.frontend import demodulate_frame
 
+pytestmark = pytest.mark.slow
+
+
 # Tolerances the acceptance is stated with.
 AXIAL_TOLERANCE_M = 25e-6  # one RF sample is 19.25 µm; D=8 moves one peak by that
 LATERAL_TOLERANCE_M = 0.1e-3  # the same scanline

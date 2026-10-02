@@ -14,6 +14,8 @@ import pytest
 from enodia.spec.beamform import decimation_sweep, golden_compare
 from enodia.spec.beamform.golden_compare import StageError, compare
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def sweep(frame):

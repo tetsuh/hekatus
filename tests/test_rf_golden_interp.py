@@ -37,6 +37,9 @@ from enodia.spec.beamform.rf_delay_sweep import (
     residual_pct,
 )
 
+pytestmark = pytest.mark.slow
+
+
 # --- the acceptance limit, and the operator the golden runs ------------------
 
 
