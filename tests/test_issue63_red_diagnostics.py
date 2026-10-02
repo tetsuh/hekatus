@@ -2,7 +2,18 @@
 
 These tests model two review failures rather than production behavior. They are
 skipped unless HEKATUS_RUN_INTENTIONAL_RED=1 so the normal suite remains green.
-The expected failures and commands are recorded in docs/issue-63-red-diagnostics.md.
+The expected failures and command are retained here and in the pull-request evidence.
+
+Captured RED command:
+HEKATUS_RUN_INTENTIONAL_RED=1 .venv/bin/python -m pytest -q -m red_diagnostic tests/test_issue63_red_diagnostics.py
+
+Expected result:
+FAILED tests/test_issue63_red_diagnostics.py::test_red_wrong_diagonal_tile_placement_fails_l0_equivalence
+FAILED tests/test_issue63_red_diagnostics.py::test_red_padded_l16_kernel_flops_diverge_from_logical_shape_flops
+2 failed
+
+Normal host validation excludes these diagnostics:
+.venv/bin/python -m pytest -q -m 'not red_diagnostic'
 """
 
 from __future__ import annotations
