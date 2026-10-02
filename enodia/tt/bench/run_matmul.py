@@ -54,6 +54,7 @@ from enodia.tt.bench.configs import (
 from enodia.tt.bench.newton_schulz_kernel import (
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
+    _normalize_fidelity_split,
     _resolve_input_memories,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
@@ -485,6 +486,7 @@ def run_custom_newton_schulz(
     iters: int,
     repeats: int,
     math_fidelity: str = "HiFi4",
+    fidelity_split: str | tuple[int, int] | list[int] | None = None,
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
@@ -532,6 +534,16 @@ def run_custom_newton_schulz(
         _validate_matrix_block(matrix_block, variant=variant)
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
+    try:
+        fidelity_split = _normalize_fidelity_split(fidelity_split)
+    except ValueError as exc:
+        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
+    if fidelity_split is not None and math_fidelity != "HiFi3":
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": "fidelity split requires math_fidelity=HiFi3",
+        }
     if math_fidelity not in CUSTOM_MATH_FIDELITIES:
         return {
             "status": "failed",
@@ -584,6 +596,8 @@ def run_custom_newton_schulz(
             prepare_kwargs["r_memory"] = r_memory
         if explicit_x0_memory:
             prepare_kwargs["x0_memory"] = x0_memory
+        if fidelity_split is not None:
+            prepare_kwargs["fidelity_split"] = fidelity_split
         # Keep the baseline dispatch signature intact for callers that provide
         # a legacy host stub; non-default blocks must be explicit.
         if matrix_block != 1:
@@ -610,6 +624,9 @@ def run_custom_newton_schulz(
             "kind": CUSTOM_KIND,
             "variant": variant,
             "math_fidelity": math_fidelity,
+            "fidelity_split": (
+                None if fidelity_split is None else f"{fidelity_split[0]}+{fidelity_split[1]}"
+            ),
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
@@ -698,6 +715,16 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=list(CUSTOM_MATH_FIDELITIES),
         default=None,
         help="repeatable custom math fidelity; default is HiFi4",
+    )
+    parser.add_argument(
+        "--fidelity-split",
+        action="append",
+        type=_normalize_fidelity_split,
+        default=None,
+        help=(
+            "repeatable explicit HiFi2+HiFi3 iteration split (for example 4+4 or 6+2); "
+            "0+8 selects the opt-in all-HiFi3 direct-LLK path"
+        ),
     )
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
@@ -789,7 +816,11 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(
             f"--launches-per-row must be at least 1, got {args.launches_per_row}"
         )
+    if args.fidelity_split and args.custom_math_fidelity:
+        parser.error("--fidelity-split cannot be combined with --custom-math-fidelity")
     if args.acceptance_catalogue:
+        if args.fidelity_split:
+            parser.error("--fidelity-split cannot be combined with --acceptance-catalogue")
         return
 
     shapes = _select_shapes(default_catalogue(), args.only)
@@ -1118,7 +1149,8 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     run_stock = args.kind is None or STOCK_KIND in args.kind
     run_custom = args.kind is None or CUSTOM_KIND in args.kind
-    custom_fidelities = args.custom_math_fidelity or ["HiFi4"]
+    custom_splits = args.fidelity_split or [None]
+    custom_fidelities = ["HiFi3"] if args.fidelity_split else (args.custom_math_fidelity or ["HiFi4"])
     try:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():
@@ -1186,87 +1218,106 @@ def main(argv: list[str] | None = None) -> int:
                         and dtype_name == "bfloat16"
                         and memory_name == "l1"
                     ):
-                        for math_fidelity in custom_fidelities:
-                            custom_record = {
-                                "shape": asdict(shape),
-                                "execution_shape": asdict(shape),
-                                "representative": shape.representative,
-                                "dtype": dtype_name,
-                                "memory": memory_name,
-                                "input_memory": input_memory,
-                                "r_memory": r_memory,
-                                "x0_memory": x0_memory,
-                                "memory_placement": {
-                                    "input": input_memory,
-                                    "r": r_memory,
-                                    "x0": x0_memory,
-                                    "compute": "l1",
-                                },
-                                "program_config": {
-                                    "name": CUSTOM_KIND,
+                        for fidelity_split in custom_splits:
+                            for math_fidelity in custom_fidelities:
+                                split_name = (
+                                    None
+                                    if fidelity_split is None
+                                    else f"{fidelity_split[0]}+{fidelity_split[1]}"
+                                )
+                                row_name = (
+                                    f"custom_block{args.matrix_block}"
+                                    if split_name is None
+                                    else f"custom_block{args.matrix_block}_split_{split_name}"
+                                )
+                                custom_record = {
+                                    "shape": asdict(shape),
+                                    "execution_shape": asdict(shape),
+                                    "representative": shape.representative,
+                                    "dtype": dtype_name,
+                                    "memory": memory_name,
+                                    "input_memory": input_memory,
+                                    "r_memory": r_memory,
+                                    "x0_memory": x0_memory,
+                                    "memory_placement": {
+                                        "input": input_memory,
+                                        "r": r_memory,
+                                        "x0": x0_memory,
+                                        "compute": "l1",
+                                    },
+                                    "program_config": {
+                                        "name": CUSTOM_KIND,
+                                        "kind": CUSTOM_KIND,
+                                        "variant": args.custom_variant,
+                                        "math_fidelity": math_fidelity,
+                                        "fidelity_split": split_name,
+                                        "fuse_s": args.fuse_s,
+                                        "batch_reads": args.batch_reads,
+                                        "matrix_block": args.matrix_block,
+                                        "input_memory": input_memory,
+                                        "r_memory": r_memory,
+                                        "x0_memory": x0_memory,
+                                    },
+                                    "iterations": args.iters,
+                                    "repeats": args.repeats,
                                     "kind": CUSTOM_KIND,
+                                    "row": row_name,
+                                    "fidelity_split": split_name,
+                                }
+                                custom_kwargs = {
+                                    "ttnn": ttnn,
+                                    "device": device,
+                                    "shape": shape,
+                                    "dtype_name": dtype_name,
+                                    "memory_name": memory_name,
                                     "variant": args.custom_variant,
                                     "math_fidelity": math_fidelity,
+                                    "profile": args.profile,
                                     "fuse_s": args.fuse_s,
                                     "batch_reads": args.batch_reads,
                                     "matrix_block": args.matrix_block,
                                     "input_memory": input_memory,
                                     "r_memory": r_memory,
                                     "x0_memory": x0_memory,
-                                },
-                                "iterations": args.iters,
-                                "repeats": args.repeats,
-                                "kind": CUSTOM_KIND,
-                                "row": f"custom_block{args.matrix_block}",
-                            }
-                            custom_record.update(
-                                run_custom_newton_schulz(
-                                    ttnn,
-                                    device,
-                                    shape,
-                                    dtype_name=dtype_name,
-                                    memory_name=memory_name,
-                                    variant=args.custom_variant,
-                                    math_fidelity=math_fidelity,
-                                    profile=args.profile,
-                                    fuse_s=args.fuse_s,
-                                    batch_reads=args.batch_reads,
-                                    matrix_block=args.matrix_block,
-                                    input_memory=input_memory,
-                                    r_memory=r_memory,
-                                    x0_memory=x0_memory,
-                                    iters=args.iters,
-                                    repeats=args.repeats,
+                                    "iters": args.iters,
+                                    "repeats": args.repeats,
+                                    "row_name": row_name,
+                                }
+                                if fidelity_split is not None:
+                                    custom_kwargs["fidelity_split"] = fidelity_split
+                                custom_record.update(run_custom_newton_schulz(**custom_kwargs))
+                                with_efficiency(custom_record, args.peak_tflops)
+                                print(
+                                    _format_line(
+                                        shape,
+                                        dtype_name,
+                                        memory_name,
+                                        f"{CUSTOM_KIND}:{split_name or math_fidelity}",
+                                        custom_record,
+                                    ),
+                                    flush=True,
                                 )
-                            )
-                            with_efficiency(custom_record, args.peak_tflops)
-                            print(
-                                _format_line(
-                                    shape,
-                                    dtype_name,
-                                    memory_name,
-                                    f"{CUSTOM_KIND}:{math_fidelity}",
-                                    custom_record,
-                                ),
-                                flush=True,
-                            )
-                            results.append(custom_record)
+                                results.append(custom_record)
     finally:
         ttnn.close_device(device)
+
+    selection = {
+        "shape_filters": args.only or [],
+        "program_config_kind_filters": args.config_kind or [],
+        "custom_math_fidelity": custom_fidelities,
+        "input_memory": input_memory,
+        "r_memory": r_memory,
+        "x0_memory": x0_memory,
+        "fuse_s": args.fuse_s,
+        "batch_reads": args.batch_reads,
+    }
+    if args.fidelity_split:
+        selection["fidelity_split"] = [f"{prefix}+{suffix}" for prefix, suffix in args.fidelity_split]
 
     payload = {
         "environment": environment,
         "configuration_mode": args.config_mode,
-        "selection": {
-            "shape_filters": args.only or [],
-            "program_config_kind_filters": args.config_kind or [],
-            "custom_math_fidelity": custom_fidelities,
-            "input_memory": input_memory,
-            "r_memory": r_memory,
-            "x0_memory": x0_memory,
-            "fuse_s": args.fuse_s,
-            "batch_reads": args.batch_reads,
-        },
+        "selection": selection,
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,
         "results": results,

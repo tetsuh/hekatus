@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import os
+import re
 import unittest
 from itertools import pairwise
 from pathlib import Path
@@ -210,6 +211,35 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("r_negative_imag_address", reader_source)
         self.assertNotIn("copy_tile", reader_source)
         self.assertNotIn("route_", reader_source)
+
+    def test_fidelity_split_accepts_all_hifi3_and_parameterized_hifi2_prefixes(self):
+        normalize = newton_schulz_kernel._normalize_fidelity_split
+
+        self.assertIsNone(normalize(None))
+        self.assertEqual(normalize("0+8"), (0, 8))
+        self.assertEqual(normalize("4+4"), (4, 4))
+        self.assertEqual(normalize((6, 2)), (6, 2))
+        for value in ("4+3", "8+0", "-1+9", "four+four", (1, 1, 6)):
+            with self.assertRaisesRegex(ValueError, "fidelity split"):
+                normalize(value)
+
+    def test_fidelity_split_uses_matching_direct_llk_pairs_and_keeps_default_source(self):
+        root = Path(__file__).parents[1] / "enodia" / "tt" / "bench" / "kernels"
+        default_source = (root / "newton_schulz_compute.cpp").read_text()
+        split_source = (root / "newton_schulz_fidelity_split_compute.cpp").read_text()
+
+        self.assertNotIn("llk_math_matmul_init<", default_source)
+        self.assertIn('#include "newton_schulz_compute.cpp"', split_source)
+        init_fidelities = set(
+            re.findall(r"split_matmul_block_init_impl<MathFidelity::(HiFi[23])>", split_source)
+        )
+        execute_fidelities = set(
+            re.findall(r"split_matmul_block_impl<MathFidelity::(HiFi[23])>", split_source)
+        )
+        self.assertEqual(init_fidelities, {"HiFi2", "HiFi3"})
+        self.assertEqual(execute_fidelities, init_fidelities)
+        self.assertIn("get_compile_time_arg_val(5)", split_source)
+        self.assertNotRegex(split_source, r"matmul_block\([^\n]*MathFidelity")
 
     def test_fused_s_host_descriptors_prepare_signed_r_inputs_and_reader_dispatch(self):
         ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")

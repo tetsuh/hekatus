@@ -140,6 +140,10 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
         ["--custom-math-fidelity", "LoFi", "--custom-math-fidelity", "HiFi3"]
     )
     assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
+    split_args = run_matmul._build_parser().parse_args(
+        ["--fidelity-split", "4+4", "--fidelity-split", "6+2"]
+    )
+    assert split_args.fidelity_split == [(4, 4), (6, 2)]
     default_flags = run_matmul._build_parser().parse_args([])
     assert default_flags.fuse_s is False
     assert default_flags.batch_reads is False
@@ -260,6 +264,51 @@ def test_custom_rows_repeat_for_requested_fidelities(monkeypatch, tmp_path):
     payload = json.loads(output.read_text())
     assert calls == ["LoFi", "HiFi4"]
     assert [row["math_fidelity"] for row in payload["results"]] == ["LoFi", "HiFi4"]
+
+
+def test_custom_fidelity_split_rows_use_the_direct_hifi3_suffix(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fidelity_split": "4+4",
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "split.json"
+    assert run_matmul.main(
+        [
+            "--only", "newton_schulz_L32_b8192",
+            "--dtype", "bfloat16",
+            "--memory", "l1",
+            "--kind", "custom_newton_schulz",
+            "--fidelity-split", "4+4",
+            "--out", str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert len(calls) == 1
+    assert calls[0]["math_fidelity"] == "HiFi3"
+    assert calls[0]["fidelity_split"] == (4, 4)
+    assert payload["selection"]["fidelity_split"] == ["4+4"]
+    assert payload["results"][0]["fidelity_split"] == "4+4"
+    assert payload["results"][0]["row"] == "custom_block1_split_4+4"
 
 
 def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):

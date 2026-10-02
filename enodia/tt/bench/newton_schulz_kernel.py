@@ -19,6 +19,7 @@ import numpy as np
 NEWTON_SCHULZ_ITERATIONS = 8
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
+FIDELITY_SPLIT_ITERATIONS = NEWTON_SCHULZ_ITERATIONS
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
@@ -403,6 +404,54 @@ def _runtime_args(ttnn, coordinates, values: list[int], ranges):
     for (x, y), (start, count) in zip(coordinates, ranges, strict=True):
         args[x][y] = [*values, start, count]
     return args
+
+
+def _normalize_fidelity_split(
+    fidelity_split: str | tuple[int, int] | list[int] | None,
+) -> tuple[int, int] | None:
+    """Validate a HiFi2-prefix/HiFi3-suffix iteration split.
+
+    ``None`` selects the legacy, single-fidelity kernel.  A zero prefix is an
+    explicit all-HiFi3 split; positive prefixes select HiFi2 for the prefix
+    and HiFi3 for the remaining iterations.
+    """
+    if fidelity_split is None:
+        return None
+    if isinstance(fidelity_split, str):
+        parts = fidelity_split.split("+")
+        if len(parts) != 2:
+            raise ValueError(f"fidelity split must have the form N+M, got {fidelity_split!r}")
+        try:
+            fidelity_split = (int(parts[0]), int(parts[1]))
+        except ValueError as exc:
+            raise ValueError(
+                f"fidelity split must have the form N+M, got {fidelity_split!r}"
+            ) from exc
+    elif isinstance(fidelity_split, (tuple, list)) and len(fidelity_split) == 2:
+        fidelity_split = (fidelity_split[0], fidelity_split[1])
+    else:
+        raise ValueError(f"fidelity split must have the form N+M, got {fidelity_split!r}")
+
+    prefix, suffix = fidelity_split
+    if (
+        isinstance(prefix, bool)
+        or isinstance(suffix, bool)
+        or not isinstance(prefix, int)
+        or not isinstance(suffix, int)
+        or prefix < 0
+        or suffix < 1
+        or prefix + suffix != FIDELITY_SPLIT_ITERATIONS
+    ):
+        raise ValueError(
+            "fidelity split must have a non-negative HiFi2 prefix and a positive "
+            f"HiFi3 suffix summing to {FIDELITY_SPLIT_ITERATIONS}, got {fidelity_split!r}"
+        )
+    return prefix, suffix
+
+
+def _fidelity_split_name(fidelity_split: tuple[int, int] | None) -> str | None:
+    """Return the stable ``N+M`` spelling used in result metadata."""
+    return None if fidelity_split is None else f"{fidelity_split[0]}+{fidelity_split[1]}"
 
 
 def _math_fidelity_value(ttnn, math_fidelity: str):
@@ -806,6 +855,7 @@ class NewtonSchulzKernel:
     packed: bool
     variant: str
     math_fidelity: str
+    fidelity_split: tuple[int, int] | None
     input_memory: str
     r_memory: str
     x0_memory: str
@@ -831,6 +881,7 @@ class NewtonSchulzKernel:
         *,
         variant: str = "bf16",
         math_fidelity: str = "HiFi4",
+        fidelity_split: str | tuple[int, int] | list[int] | None = None,
         profile: bool = False,
         fuse_s: bool = False,
         batch_reads: bool = False,
@@ -845,6 +896,12 @@ class NewtonSchulzKernel:
         input_memory, r_memory, x0_memory = _resolve_input_memories(
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
+        fidelity_split = _normalize_fidelity_split(fidelity_split)
+        if fidelity_split is not None and math_fidelity != "HiFi3":
+            raise ValueError(
+                "fidelity split fixes the fidelity pair to HiFi2 then HiFi3; "
+                f"math_fidelity must be HiFi3, got {math_fidelity!r}"
+            )
         if iterations != NEWTON_SCHULZ_ITERATIONS:
             raise ValueError(
                 f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
@@ -869,7 +926,9 @@ class NewtonSchulzKernel:
             raise ValueError(f"the throughput kernel only supports L=16 or L={_TILE}, got {size}")
         packed = size == 16
         tile_count = _physical_tile_count(batch, size)
-        math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
+        math_fidelity_value = _math_fidelity_value(
+            ttnn, "HiFi3" if fidelity_split is not None else math_fidelity
+        )
 
         coordinates, core_ranges, work_ranges = _core_grid(
             ttnn, device, tile_count, matrix_block
@@ -1017,6 +1076,15 @@ class NewtonSchulzKernel:
             )
         )
 
+        compute_compile_args = [iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block]
+        compute_source = _KERNEL_DIR / "newton_schulz_compute.cpp"
+        if fidelity_split is not None:
+            # The legacy source and its five-argument compile-time ABI remain
+            # untouched.  The opt-in source wraps it with direct LLK
+            # HiFi2/HiFi3 specializations and consumes the split boundary.
+            compute_source = _KERNEL_DIR / "newton_schulz_fidelity_split_compute.cpp"
+            compute_compile_args.append(fidelity_split[0])
+
         kernels = [
             ttnn.KernelDescriptor(
                 kernel_source=str(reader_source.resolve()),
@@ -1037,10 +1105,10 @@ class NewtonSchulzKernel:
                 config=ttnn.WriterConfigDescriptor(),
             ),
             ttnn.KernelDescriptor(
-                kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
+                kernel_source=str(compute_source.resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block],
+                compile_time_args=compute_compile_args,
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
@@ -1058,6 +1126,7 @@ class NewtonSchulzKernel:
             packed=packed,
             variant=variant,
             math_fidelity=math_fidelity,
+            fidelity_split=fidelity_split,
             input_memory=input_memory,
             r_memory=r_memory,
             x0_memory=x0_memory,
@@ -1172,6 +1241,7 @@ def run_newton_schulz_kernel(
     *,
     variant: str = "bf16",
     math_fidelity: str = "HiFi4",
+    fidelity_split: str | tuple[int, int] | list[int] | None = None,
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
@@ -1187,6 +1257,7 @@ def run_newton_schulz_kernel(
         matrices,
         variant=variant,
         math_fidelity=math_fidelity,
+        fidelity_split=fidelity_split,
         profile=profile,
         fuse_s=fuse_s,
         batch_reads=batch_reads,
