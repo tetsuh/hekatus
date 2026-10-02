@@ -97,6 +97,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000-power.csv` | Power trace for the successful per-input-memory comparison above. |
 | `2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json` | L=16 diagonal-pair fallback: records batch-4/batch-8192 correctness and the same-run stock catalogue plus custom block-1/block-4 1,000-launch comparison. |
 | `2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000-power.csv` | Power trace for the L=16 diagonal-pair comparison above. |
+| `2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000.json` | Issue #63 acceptance catalogue: both L=16 and L=32 stock/custom rows, fuse_s variants, HiFi3/HiFi4, and 1,000 launches per row, with device correctness-test evidence. |
+| `2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000-power.csv` | Power and clock trace for the combined L=16/L=32 acceptance catalogue. |
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
