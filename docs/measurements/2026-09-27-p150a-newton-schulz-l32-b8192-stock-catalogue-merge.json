@@ -1,0 +1,246 @@
+{
+  "supersedes": "2026-09-27-p150a-newton-schulz-l32-b8192.json",
+  "environment": {
+    "python": "3.12.12",
+    "captured_at": "2026-09-27T06:24:39.171913+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "321fc503b53f5e9b20cbab1c91055323f1347f28",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "device": {
+    "device_id": 0,
+    "device_nodes": ["/dev/tenstorrent/0"],
+    "compute_cores_used": 110,
+    "input_and_compute_memory": "l1",
+    "selected_custom_variant": "bf16-fp32state",
+    "iterations_per_launch": 8
+  },
+  "correctness": {
+    "source_record": "2026-09-27-p150a-newton-schulz-l32-b8192.json",
+    "reference": "enodia/spec Newton-Schulz, same X0, fixed 8 iterations",
+    "condition_number": 100,
+    "tolerance": 0.01,
+    "note": "The stock catalogue merge changed only the benchmark runner/configuration path; kernel correctness evidence is retained in the superseded record."
+  },
+  "peak_tflops": 332.0,
+  "peak_note": "p150a theoretical BF16 peak from design.md section 2",
+  "measurement": {
+    "shape_filter": "newton_schulz_L32_b8192",
+    "configuration_mode": "default-only",
+    "same_device_run": true,
+    "repeats": 5,
+    "iters": 1,
+    "power_trace": "2026-09-27-p150a-newton-schulz-l32-b8192-stock-catalogue-merge-power.csv",
+    "command_args": [
+      "--only",
+      "newton_schulz_L32_b8192",
+      "--dtype",
+      "bfloat16",
+      "--memory",
+      "l1",
+      "--config-mode",
+      "default-only",
+      "--custom-variant",
+      "bf16-fp32state",
+      "--iters",
+      "1",
+      "--repeats",
+      "5"
+    ]
+  },
+  "results": [
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "execution_shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "memory_placement": {
+        "input_a": {
+          "buffer": "l1",
+          "layout": "interleaved"
+        },
+        "input_b": {
+          "buffer": "l1",
+          "layout": "interleaved"
+        },
+        "output": {
+          "buffer": "l1",
+          "layout": "interleaved"
+        }
+      },
+      "program_config": {
+        "name": "default",
+        "kind": "default"
+      },
+      "iterations": 1,
+      "repeats": 5,
+      "kind": "ttnn.matmul",
+      "status": "ok",
+      "seconds_per_iteration": 0.00026533699929132126,
+      "seconds_per_iteration_samples": [
+        0.00027487899933476,
+        0.00026820600032806396,
+        0.00026557000091997907,
+        0.0002724879996094387,
+        0.00026533699929132126
+      ],
+      "achieved_tflops": 8.093419514563118,
+      "flops_per_iteration": 2147483648,
+      "real_matmuls_per_iteration": 4,
+      "tensor_factory": "rand",
+      "seconds_per_launch_samples": [
+        0.00027487899933476,
+        0.00026820600032806396,
+        0.00026557000091997907,
+        0.0002724879996094387,
+        0.00026533699929132126
+      ],
+      "seconds_per_launch_p50": 0.00026820600032806396,
+      "seconds_per_launch_p99": 0.0002747833593457472,
+      "seconds_per_launch_p99_9": 0.00027486943533585874,
+      "launches_measured": 5,
+      "efficiency": 0.024377769622178067
+    },
+    {
+      "shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "execution_shape": {
+        "name": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "m": 32,
+        "k": 32,
+        "n": 32,
+        "real_matmuls": 4,
+        "family": "newton_schulz",
+        "note": "MV inverse step, subaperture L=32"
+      },
+      "representative": true,
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "memory_placement": {
+        "input_and_compute": "l1"
+      },
+      "program_config": {
+        "name": "custom_newton_schulz",
+        "kind": "custom_newton_schulz",
+        "variant": "bf16-fp32state"
+      },
+      "iterations": 1,
+      "repeats": 5,
+      "kind": "custom_newton_schulz",
+      "status": "ok",
+      "variant": "bf16-fp32state",
+      "output_memory": "dram",
+      "seconds_per_iteration": 0.0008375219986191951,
+      "seconds_per_iteration_samples": [
+        0.0008942860004026443,
+        0.0008391610026592389,
+        0.0008379630016861483,
+        0.000837714000226697,
+        0.0008375219986191951
+      ],
+      "seconds_per_launch_samples": [
+        0.0008942860004026443,
+        0.0008391610026592389,
+        0.0008379630016861483,
+        0.000837714000226697,
+        0.0008375219986191951
+      ],
+      "achieved_tflops": 41.02547565872679,
+      "flops_per_iteration": 34359738368,
+      "complex_matmuls_per_iteration": 16,
+      "real_matmuls_per_iteration": 64,
+      "core_work_ranges": [
+        [0, 75], [75, 75], [150, 75], [225, 75], [300, 75], [375, 75], [450, 75], [525, 75], [600, 75], [675, 75], [750, 75], [825, 75], [900, 75], [975, 75], [1050, 75], [1125, 75], [1200, 75], [1275, 75], [1350, 75], [1425, 75], [1500, 75], [1575, 75], [1650, 75], [1725, 75], [1800, 75], [1875, 75], [1950, 75], [2025, 75], [2100, 75], [2175, 75], [2250, 75], [2325, 75], [2400, 75], [2475, 75], [2550, 75], [2625, 75], [2700, 75], [2775, 75], [2850, 75], [2925, 75], [3000, 75], [3075, 75], [3150, 75], [3225, 75], [3300, 75], [3375, 75], [3450, 75], [3525, 75], [3600, 75], [3675, 75], [3750, 75], [3825, 75], [3900, 74], [3974, 74], [4048, 74], [4122, 74], [4196, 74], [4270, 74], [4344, 74], [4418, 74], [4492, 74], [4566, 74], [4640, 74], [4714, 74], [4788, 74], [4862, 74], [4936, 74], [5010, 74], [5084, 74], [5158, 74], [5232, 74], [5306, 74], [5380, 74], [5454, 74], [5528, 74], [5602, 74], [5676, 74], [5750, 74], [5824, 74], [5898, 74], [5972, 74], [6046, 74], [6120, 74], [6194, 74], [6268, 74], [6342, 74], [6416, 74], [6490, 74], [6564, 74], [6638, 74], [6712, 74], [6786, 74], [6860, 74], [6934, 74], [7008, 74], [7082, 74], [7156, 74], [7230, 74], [7304, 74], [7378, 74], [7452, 74], [7526, 74], [7600, 74], [7674, 74], [7748, 74], [7822, 74], [7896, 74], [7970, 74], [8044, 74], [8118, 74]
+      ],
+      "seconds_per_launch_p50": 0.0008379630016861483,
+      "seconds_per_launch_p99": 0.0008920810004929081,
+      "seconds_per_launch_p99_9": 0.0008940655004116706,
+      "launches_measured": 5,
+      "efficiency": 0.12357070981544215
+    }
+  ]
+}

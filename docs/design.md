@@ -487,8 +487,8 @@ golden comparison of §15 says, not what this paragraph argues.
 
 ### Cost
 
-A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of one card. FIR lowers
-to matmul — the shape Tensix likes.
+A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of theoretical peak. FIR
+lowers to matmul — the shape Tensix likes.
 
 ### What it does to beamforming
 
@@ -1176,7 +1176,10 @@ as-is.
 **The Newton-Schulz initial value is fixed as part of the specification**
 (e.g. `X₀ = Rᴴ/(‖R‖₁‖R‖∞)`). Convergence and the required iteration count
 depend on it, and determinism demands a fixed default. Whether 8 iterations
-suffice at κ≈100 is settled offline, initial value included.
+suffice at κ≈100 is settled offline, initial value included. Accelerator
+correctness uses the independent NumPy fixed-iteration oracle in
+`enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
+reference.
 
 ### Precision split (to be measured)
 
@@ -1233,7 +1236,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 ### By method (64 recv ch, 30 fps)
 
-| Method | TFLOPS | of one card |
+| Method | TFLOPS | % of theoretical peak |
 |---|---|---|
 | DAS | 0.004 | ~0% |
 | CF / PCF / F-DMAS | 0.015 | ~0% |
@@ -1244,7 +1247,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 
 ### Target configuration (1D 256 elem / 128 ch recv + post-μBF 2D)
 
-| Mode | Beamformer | TFLOPS | of one card |
+| Mode | Beamformer | TFLOPS | % of theoretical peak |
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
@@ -1252,9 +1255,13 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~30 | 9% |
 | 2D volume | beamspace MV | ~37 | 11% |
 
-**Everything for 1D at once is ~100 TFLOPS: ~30% of theoretical peak, or
-~75% of one card's usable capacity at the 40% assumption. Quote the claim
-with its basis attached.**
+**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
+Using the measured L=32 Newton-Schulz efficiency of 15.6% gives about 52
+TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 100 / 52 ≈ 1.9:
+plan for about 2 cards. This is an extrapolation using the measured
+Newton-Schulz workload efficiency, not a full-system benchmark or an all-mode
+simultaneous benchmark. The L=32 headline is the `block4_all_l1` row in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -1268,13 +1275,19 @@ Round trips are short (39 µs), so 60–100 fps comes out.
 On pixel rate: scanlines ×1.7, fps ×2–3.3, but **depth points less than
 half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
-Beamspace MV fits easily; plain MV (L=64) may fit one card — recompute.
+Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
+validate the earlier plain MV (L=64) capacity assumption: the measured L=32
+row is 15.6% and packed L=16 is 3.24%, both below the 30% efficiency
+target. The current ~100 TFLOPS 1D all-mode workload maps to about 2 cards by
+the measured L=32 efficiency, as an extrapolation from
+that Newton-Schulz workload rather than a full-system or all-mode benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
-**Two capacity bases appear**: "of one card" percentages are against the
-332 TFLOPS theoretical peak, while "cards" counts assume 40% effective
-efficiency (133 TFLOPS usable per card). Never combine a percentage from
-one basis with a count from the other. **The 40% is a target for hand-written kernels, not a measured figure**:
+**Two capacity bases appear**: "% of theoretical peak" percentages are
+against the 332 TFLOPS theoretical peak, while "cards" counts assume 40%
+effective efficiency (133 TFLOPS usable per card). Never combine a percentage
+from one basis with a count from the other. **The 40% is a target for
+hand-written kernels, not a measured figure**:
 issue #65's ttnn 0.75.0 full sweep measured a best BF16 Newton-Schulz result
 of 3.024% (L=64, batch 1024, default L1) and 58.410% on a large square
 matmul. Explicit stock configs help broad shapes: front-end FIR width 32 in
@@ -1283,15 +1296,17 @@ and beamspace reaches 2.167% (128 channels) and 2.208% (256 channels) with
 explicit configs. For Newton-Schulz, explicit configs do not beat the best
 default where the default L1 row succeeds; DRAM-only large-batch reuse gains
 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64, but the largest reaches
-only 0.128% of peak. The roughly 13.2x gap to 40% is therefore not a missed
-stock configuration; hand-written kernel recovery remains the MV-inverse
-lever. The original full record contains 284 rows, with 190 `ok` and 94
-`failed` entries in its `results` array. A targeted record supersedes four
-failed batch-1024 L16/L32 `batched_dram_sharded` rows after correcting the
-DRAM-worker count; its `results` array has two BF16 successes and two FP32
-compilation failures. A second targeted record supersedes the two original `ok`
-unbatched `dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels
-after the same correction; its `results` array has two successful replacements.
+only 0.128% of peak. The stock denominator is therefore not a missed stock
+configuration. Issue #63's hand-written rows provide bounded recovery evidence:
+L=32 reaches 51.92 TFLOPS (15.6%) and L=16 reaches 10.77 TFLOPS (3.24%), both
+between the historical 3.2% floor and the 30% efficiency planning target. The
+original full record contains 284 rows, with 190 `ok` and 94 `failed` entries
+in its `results` array. A targeted record supersedes four failed batch-1024
+L16/L32 `batched_dram_sharded` rows after correcting the DRAM-worker count; its
+`results` array has two BF16 successes and two FP32 compilation failures. A
+second targeted record supersedes the two original `ok` unbatched
+`dram_sharded` rows for beamspace B=16, 256 channels, and 4096 pixels after the
+same correction; its `results` array has two successful replacements.
 Thus applying each named predecessor once gives `190 - 2 + 2 + 2 = 192`
 successes and `94 - 4 + 2 = 92` failures, with the six predecessor rows
 identified by the two records' `supersedes.rows` arrays. The exact source paths
@@ -1306,9 +1321,202 @@ p4096 rows differ by up to 0.872 percentage points. The records are
 `docs/measurements/2026-09-23-p150a-stock-matmul-unbatched-dram-superseding-ttnn-0.75.0.json`,
 and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
-suffix. The card counts here therefore state what the design aims at. The
-4096-channel row follows the N⁴ law from the 256-channel volume row; an earlier
-revision carried 1.85e8 there, which did not reconcile.
+suffix. The generic card counts in this table retain the 40% target basis; they
+are separate from the Scope 5 estimate. Scope 5's card-count estimate is
+explicit:
+15.6% of the 332 TFLOPS peak is about 52 TFLOPS per card, so the ~100 TFLOPS
+1D all-mode workload gives 100 / 52 ≈ 1.9 and plans for about 2 cards. This
+is an extrapolation using the measured Newton-Schulz workload efficiency, not
+a full-system benchmark or an all-mode simultaneous benchmark. The L=32
+headline is the `block4_all_l1` row
+in `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
+the current/history context is
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
+The L=16 headline is `custom_block4` in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
+Its faster wall-clock result than L=32 is only a cost/operation-volume
+comparison for the diagonal fallback: L=16 uses fewer logical dimensions and
+less work. It is not a beamspace-dimension reduction versus an MV image-quality
+comparison. The 4096-channel row follows the N⁴ law from the 256-channel
+volume row; an earlier revision carried 1.85e8 there, which did not reconcile.
+
+#### Issue #63 Scope 5 evidence
+
+The three conclusions are: (1) L=32 recovers 5.7x the same-run stock best but
+reaches only 15.6%, below the 30% efficiency target; applying that measured
+workload efficiency to the ~100 TFLOPS 1D all-mode estimate gives about 2
+cards, an extrapolation rather than a full-system or all-mode benchmark; (2)
+packed L=16 reaches 14.5x stock at 3.24% and is faster in wall-clock than
+L=32 only as a cost/operation-volume comparison for the diagonal fallback,
+with fewer logical dimensions and less work, not as a beamspace-dimension
+reduction versus an MV image-quality comparison; and (3) fixed handoff/queue
+overhead is the leading measured explanation, while math, unpack, and reader
+were not established as causal bottlenecks. These conclusions are bounded to
+the cited records and do not constitute a causal proof.
+
+The steady cycle-counter record
+`docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
+separates reader and writer waits but says no unique bottleneck is established:
+RISC windows overlap and compute retains unclassified residuals. The
+optimization record
+`docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
+shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
+versus baseline. The unpack diagnostic
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
+records a variant difference but does not establish unpack as causal. The
+matrix-block record
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`
+shows the block-4 gain correlated with fewer fixed queue/handoff turns; it does
+not prove that correlation is the sole cause. The L=64 estimate is host-only
+and is reproduced by `python3 tools/newton_schulz_l64_capacity.py`; no L=64
+production dispatch is implied.
+
+#### Matrix-block circular-buffer ledger (#63)
+
+The matrix-block state capacity is derived from the source ownership order,
+not from a blanket multiplier. In
+`enodia/tt/bench/kernels/newton_schulz_compute.cpp`, the non-one-destination
+branch used by blocks 2 and 4 pops the current state block before reserving the
+reused state output. It therefore needs one state window. The block-8
+one-destination branch reserves the next state output before popping the current
+state while it runs its two DEST-half passes, so it needs two windows. The
+legacy block-1 path retains its two-page state descriptors. The host descriptor
+rule is consequently 2 pages for block 1, one block window for blocks 2 and 4,
+and two block windows for block 8.
+
+The source-derived capacities also explain the historical comparison. The
+catalogue recorded by commit `7472bb1` was measured from harness commit
+`d82296220fe58affba6bc436da1761fff1bada7a`; its pre-`R_REAL`-elision fused-S
+FP32 state CB totals were 92,160 / 104,448 / 194,560 bytes for blocks 1 / 2 /
+4. The current source omits positive `R_REAL` in fused S, so its actual totals
+are 88,064 / 100,352 / 186,368 bytes for blocks 1 / 2 / 4 and 423,936 bytes
+for block 8, with state pages 2 / 2 / 4 / 16. The later all-block two-window
+descriptor at 88373f4 is historical: it made block 4 227,328 CB bytes and
+1,573,632 bytes with L1 inputs, which is 768 bytes over the 1,572,864-byte
+budget. No historical measurement record is rewritten; host ledger tests keep
+this source and capacity comparison executable.
+
+#### Block-8 board-free ledger and per-input placement (#63)
+
+The historical BF16-X0 probe remains recorded in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-x0-bf16-blocked.json`
+as measurement provenance only.  The production kernel keeps X0 FP32; its
+public placement controls are `r_memory` and `x0_memory`, each `l1` or `dram`.
+The legacy `input_memory` control remains a shorthand for both when an
+explicit per-tensor value is absent.  No board, container, or device run is
+implied by this host-only ledger section.
+
+**Full-block CB ledger.**  The fused reader omits `CB_R_REAL`; its five
+block-8 input queues are `CB_R_NEG_IMAG`, `CB_R_IMAG`, `CB_R_NEG_REAL`,
+`CB_X0_REAL`, and `CB_X0_IMAG`, plus the two resident constants.  The exact
+host descriptors are BF16, 8 pages for each R queue; FP32, 8 pages for each
+X0 queue; BF16, 1 page for
+`CB_IDENTITY`; FP32, 1 page for `CB_ZERO`; FP32, 16 pages for each state
+queue; FP32, 8 pages for `CB_S_REAL`, `CB_S_IMAG`, `CB_NEG_X_IMAG`,
+`CB_OUTPUT_REAL`, and `CB_OUTPUT_IMAG`.  Fused `CB_PRODUCT_REAL` and
+`CB_PRODUCT_IMAG` remain one-page compile-time descriptors but are not read
+or published by the fused path.  Profile queues 17--19 are one-page
+resident queues only when profiling is enabled; they are not part of the
+blocked run.
+
+The reader reserves eight pages, writes page offsets
+`get_write_ptr(cb) + index * get_tile_size(cb)` for indices 0--7, and pushes
+eight pages for every input queue (reader source lines 92--161).  It reads
+source tile `start_tile + offset + index`; the non-batched path barriers each
+page before publication.  The compute block path waits on all eight input
+pages, and pops each R queue once after the eight iterations.  Constants are
+reserved/pushed once and intentionally remain resident.  `CB_S_REAL` and
+`CB_S_IMAG` are reserved/pushed eight pages per S construction and consumed
+as the right operands; `CB_NEG_X_IMAG` is reserved/pushed eight pages per
+negation and consumed by the next output product.  The block-8 state branch
+reserves the next eight-page state window before popping the current eight
+pages, so the 16-page state descriptors are required.  Final output queues
+are reserved/pushed eight pages and the writer waits, writes, and pops eight
+pages.  Writer offsets are independently
+`get_read_ptr(cb_output_*) + index * get_tile_size(cb_output_*)`, with the
+same output tile id for real and imaginary pages.  This audit found no
+reader of a page that was not reserved and pushed, no missing pop, and no
+CB-page overrun in the full block path.
+
+**FP32-X0 state boundary.**  `fused_s_matmul_block` applies both S halves
+for every `index` 0--7, then uses the FP32 X0 queues as the first state
+operand.  There is no BF16-X0 conversion path in the production kernel.
+Identity and zero intentionally use source index 0 because they are one-page
+resident constants.  The per-input placement split changes only the source
+addresses and accessors; it does not reorder the R variants or either X0
+half.  This requires a later device-side probe for runtime behavior; the
+present task deliberately does not run one.
+
+**DEST ledger.**  Every block-8 S, state, and final-output half uses DEST
+slots exactly 0--7, then packs exactly eight tiles from slot 0.  Real and
+imaginary halves use separate passes and separate CBs.  State output writes
+start at the CB's current reserved write pointer, so the second state window
+is pages 8--15 while the current input window remains pages 0--7; final
+outputs use pages 0--7.  No source call uses slot 8, packs more than eight,
+or aliases real and imaginary output CBs.  The static audit found no DEST
+or output-page overrun.
+
+**Host-ledger regression and exact accounting.** `_balanced_ranges(8192, 110, 8)`
+assigns 72 or 80 tiles per core.  The ledger now uses that actual maximum of
+80 rather than `ceil(8192 / 110) == 75`.  With FP32 X0 and both input groups
+in L1, tensor bytes are 1,153,024; the full block-8 total is 1,688,320 bytes,
+which is 115,456 bytes over the 1,572,864-byte budget.  With
+`r_memory=l1`, `x0_memory=dram`, `fuse_s=true`, FP32 state, and DRAM output,
+tensor bytes are 497,664 and the full preflight is 1,032,960 bytes, so the
+configuration passes host preflight.  The green regression tests in
+`tests/test_newton_schulz_block8_accounting.py` and
+`tests/test_newton_schulz_matrix_block.py` pin these values, block alignment,
+and the unchanged block-1/2/4 CB ledgers.
+
+#### L=16 native-tile audit (#63)
+
+The board-free audit used the tt-metal source at commit
+`901dd9ce93816ffd1fd185b801fc727065e9ae07`.  The runner's fixed 0.75.0
+image remains the digest in `enodia/tt/bench/run_in_container.sh:18`:
+`sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621`.
+The image contains no source-revision metadata, so exact equality with
+`901dd9c` cannot be established from the image alone.  Its installed
+`llk_math_matmul.h` nevertheless contains the same
+`"16x16 by 16x16 matmul is not supported"` assertion and the same statement
+that there is no dedicated 16x16 math path.  The image inspection used no
+board device or device command.
+
+The host API does represent the requested geometry.  In
+`tt_metal/api/tt-metalium/program_descriptors.hpp:46-65`,
+`TileDescriptor` has a height/width constructor and `CBFormatDescriptor` has
+an optional `TileDescriptor`.  `tt_metal/impl/data_format/tile.cpp:19-24`
+lists `{16, 16}` with a `{16, 16}` face, and
+`ttnn/cpp/ttnn-nanobind/program_descriptors.cpp:248-291,325-339` exposes both
+the custom descriptor constructor and the CB tile field to Python.  Thus a
+host descriptor and CB metadata object can be shaped 16x16.  `ttnn/core/tensor/
+tensor.cpp:89-94` also identifies customized tile shapes as a supported
+matmul/CCL host concern, rather than rejecting the shape at tensor creation.
+
+That host acceptance does not extend to the native Blackhole matmul path.
+The standard `matmul_tiles` and `matmul_block` entry points in
+`tt_metal/hw/inc/api/compute/matmul.h:132-139,221-246` dispatch to the LLK
+matmul implementation.  Its source,
+`tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_matmul.h:39-51`, explicitly
+asserts `"16x16 by 16x16 matmul is not supported"` and says there is no
+16x16 math path; the default 32x32 path is incorrect for fewer than four
+faces.  Therefore native 16x16 `TileDescriptor`/CB metadata is accepted by
+the host API, but native 16x16 `matmul_tiles`/`matmul_block` is not supported
+in the audited fixed source.
+
+**Design choice:** implement L=16 with exact pair packing into 32x32 tiles.
+Each pair of matrices occupies diagonal 16x16 quadrants and has zero
+off-diagonals; R, X0, 2I, and every Newton-Schulz state remain block diagonal.
+The host normalizes each 16x16 X0 before packing and unpacks the two output
+quadrants.  The L=16 useful-work denominator remains its catalogue definition;
+padded block-diagonal tile work is not added to `shapes.total_flops`.  The
+implementation records the physical tile count and `diagonal_pairs_32x32`
+packing mode in custom-run metadata; the L=32 path remains `native_32x32`.
+For the board-side catalogue, host output labels the three comparison rows
+`stock_best`, `custom_block1`, and `custom_block4`; each custom row is selected
+with its corresponding `--matrix-block` value.  Board-free packing,
+state-isolation, and logical-FLOP tests live in
+`tests/test_newton_schulz_kernel.py` and `tests/test_bench_runner.py`; the
+source regression is `tests/test_l16_tile_audit.py`.
 
 On the §12 latency table, **throughput and latency obey different rules**:
 pipelining lets stages run concurrently on different frames, which raises
@@ -1588,9 +1796,11 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with one card.** "Everything fits on one card with 70%
-spare" argues better than "we need two." The product recommendation will be
-two cards for failure isolation.
+**The PoC starts with about two cards for the current 1D all-mode planning
+workload**, using the Scope 5 extrapolation from measured L=32
+Newton-Schulz efficiency. This is not a full-system or all-mode benchmark.
+Two cards also provide failure isolation, while inference-only scaling remains
+an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
 via-host transports are interchangeable.
@@ -1962,8 +2172,10 @@ A record, so the same debates are not repeated.
   Newton-Schulz, no explicit config beats the best default where default L1
   succeeds; DRAM-only reuse gains 7.7%, 10.0%, and about 35% on the large
   L=16, L=32, and L=64 batches, but tops out at 0.128%. The stock inverse
-  denominator remains 3.024% (L=64, batch 1024, default L1), leaving roughly
-  13.2x to the 40% target for a hand-written kernel. The two toolchains agree
+  denominator remains 3.024% (L=64, batch 1024, default L1). Issue #63's
+  hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
+  3.24% at packed L=16, so the measured result lies between 3.2% and 30%
+  and does not establish the 30% efficiency target. The two toolchains agree
   on the decision-driving rows without a universal claim: square BF16 is
   58.687% versus 58.410%, NS L=32 batch 8192 L1 is 3.026% versus 2.992%,
   and small beamspace p4096 defaults differ by up to 0.872 percentage points.
@@ -1974,8 +2186,9 @@ A record, so the same debates are not repeated.
   `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`
   and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
   the historical row is in
-  `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40% the
-  card counts assume is the target that gap has to reach
+  `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40%
+  basis used by the generic card counts is the target that gap has to reach;
+  Scope 5's ~2-card 1D estimate instead uses the measured 15.6% efficiency
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
@@ -1990,6 +2203,40 @@ A record, so the same debates are not repeated.
 - core allocation (front end / beamforming / inference)
 - group-batch size and boundary artifacts
 - aberration-estimation update rate and smoothing extent
+
+### Issue #63 Scope 5 conclusions
+
+The measured conclusions are deliberately bounded to the batch-8192 records.
+First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
+is materially above stock but below the 30% efficiency target. Applying the
+measured L=32 workload efficiency to the ~100 TFLOPS 1D all-mode estimate
+therefore gives about 2 cards; this is an extrapolation, not a full-system or
+all-mode benchmark. Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
+stock) and is faster in wall-clock than L=32 only as a cost/operation-volume
+comparison for the diagonal fallback, because it uses fewer logical dimensions
+and less work. It is not a beamspace-dimension reduction versus an MV
+image-quality comparison, so the stock-only dimension ordering must not drive
+beamspace planning. Third, fixed handoff/queue overhead is the leading
+measured explanation; math, unpack, and reader were not established as causal
+bottlenecks. The steady counter record explicitly says no unique bottleneck is
+established because RISC windows overlap and compute retains unclassified
+cycles. The optimization, unpack, and matrix-block records correlate small
+math/unpack changes and a block-4 gain with the handoff/queue interpretation,
+but correlation is not proof.
+
+The exact L=32 headline is the `block4_all_l1` row in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
+its current/history context is
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
+The L=16 headline is the `custom_block4` row in
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
+Bottleneck evidence is in
+`docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`,
+`docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`,
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`,
+and `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`.
+The L=64 capacity table is host-only and reproducible with
+`python3 tools/newton_schulz_l64_capacity.py`; it does not add L=64 dispatch.
 
 ### Investigation items
 

@@ -209,6 +209,29 @@ def test_benchmark_writer_outputs_strict_json_for_nested_non_finite_values(monke
     assert payload["results"][0]["diagnostics"] == {"nan": None, "values": [None]}
 
 
+def test_acceptance_catalogue_writer_outputs_strict_json(monkeypatch, tmp_path):
+    ttnn = SimpleNamespace(
+        bfloat16="bf16",
+        float32="fp32",
+        DRAM_MEMORY_CONFIG="dram",
+        L1_MEMORY_CONFIG="l1",
+        open_device=lambda device_id: object(),
+        close_device=lambda device: None,
+    )
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(
+        run_matmul,
+        "_run_acceptance_catalogue",
+        lambda *args, **kwargs: [{"nan": float("nan"), "nested": [float("inf")]}],
+    )
+    output = tmp_path / "acceptance.json"
+
+    assert run_matmul.main(["--acceptance-catalogue", "--out", str(output)]) == 0
+
+    payload = _strict_load(output.read_text())
+    assert payload["results"] == [{"nan": None, "nested": [None]}]
+
+
 def test_measurement_writer_output_is_strict_json(monkeypatch, tmp_path):
     profile = linear_5mhz()
     result = decimation_sweep.SweepResult(

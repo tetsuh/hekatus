@@ -14,7 +14,7 @@ import pytest
 
 from enodia.tt.bench import run_matmul
 from enodia.tt.bench.configs import configuration_catalogue
-from enodia.tt.bench.shapes import MatmulShape, default_catalogue
+from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 
 class _StubTensor:
@@ -44,6 +44,8 @@ class _StubTtnn:
     """Records what the runner asked the toolchain to do."""
 
     TILE_LAYOUT = "tile"
+    bfloat16 = "bf16"
+    float32 = "fp32"
     NOC = SimpleNamespace(NOC_0="noc-0")
     DRAM_MEMORY_CONFIG = "dram"
     L1_MEMORY_CONFIG = "l1"
@@ -134,6 +136,33 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
 
     assert args.only == ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"]
     assert args.config_kind == ["batched_dram_sharded"]
+    fidelity_args = run_matmul._build_parser().parse_args(
+        ["--custom-math-fidelity", "LoFi", "--custom-math-fidelity", "HiFi3"]
+    )
+    assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
+    default_flags = run_matmul._build_parser().parse_args([])
+    assert default_flags.fuse_s is False
+    assert default_flags.batch_reads is False
+    assert default_flags.input_memory == "l1"
+    assert default_flags.r_memory is None
+    assert default_flags.x0_memory is None
+    enabled_flags = run_matmul._build_parser().parse_args(
+        [
+            "--fuse-s",
+            "--batch-reads",
+            "--input-memory",
+            "dram",
+            "--r-memory",
+            "l1",
+            "--x0-memory",
+            "dram",
+        ]
+    )
+    assert enabled_flags.fuse_s is True
+    assert enabled_flags.batch_reads is True
+    assert enabled_flags.input_memory == "dram"
+    assert enabled_flags.r_memory == "l1"
+    assert enabled_flags.x0_memory == "dram"
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -177,6 +206,121 @@ def test_config_kind_filter_enumerates_exactly_four_default_dtype_rows():
     assert all(program_spec.kind == "batched_dram_sharded" for _, _, program_spec, *_ in rows)
     assert all(memory_name == "batch_sharded_dram" for _, _, _, memory_name, _ in rows)
     assert all(base_memory_name == "dram" for _, _, _, _, base_memory_name in rows)
+
+
+def test_stock_fidelity_metadata_matches_source_mapping():
+    default_bf16 = run_matmul._stock_math_fidelity("bfloat16", None)
+    explicit_bf16 = run_matmul._stock_math_fidelity("bfloat16", object())
+    default_fp32 = run_matmul._stock_math_fidelity("float32", None)
+
+    assert default_bf16["math_fidelity"] == "HiFi2"
+    assert explicit_bf16["math_fidelity"] == "LoFi"
+    assert default_fp32["math_fidelity"] == "HiFi4"
+    assert "increase_fidelity" in default_bf16["math_fidelity_source"]
+    assert "program_config" in explicit_bf16["math_fidelity_source"]
+    assert "source mapping" in default_fp32["math_fidelity_source"]
+
+
+def test_custom_rows_repeat_for_requested_fidelities(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs["math_fidelity"])
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "fidelity.json"
+    assert run_matmul.main(
+        [
+            "--only", "newton_schulz_L32_b8192",
+            "--dtype", "bfloat16",
+            "--memory", "l1",
+            "--kind", "custom_newton_schulz",
+            "--custom-math-fidelity", "LoFi",
+            "--custom-math-fidelity", "HiFi4",
+            "--out", str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert calls == ["LoFi", "HiFi4"]
+    assert [row["math_fidelity"] for row in payload["results"]] == ["LoFi", "HiFi4"]
+
+
+def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fuse_s": kwargs["fuse_s"],
+            "batch_reads": kwargs["batch_reads"],
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "flags.json"
+    assert run_matmul.main(
+        [
+            "--only",
+            "newton_schulz_L32_b8192",
+            "--dtype",
+            "bfloat16",
+            "--memory",
+            "l1",
+            "--kind",
+            "custom_newton_schulz",
+            "--fuse-s",
+            "--batch-reads",
+            "--r-memory",
+            "l1",
+            "--x0-memory",
+            "dram",
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert len(calls) == 1
+    assert calls[0]["fuse_s"] is True
+    assert calls[0]["batch_reads"] is True
+    assert calls[0]["r_memory"] == "l1"
+    assert calls[0]["x0_memory"] == "dram"
+    assert payload["selection"]["r_memory"] == "l1"
+    assert payload["selection"]["x0_memory"] == "dram"
+    assert payload["results"][0]["program_config"]["r_memory"] == "l1"
+    assert payload["results"][0]["program_config"]["x0_memory"] == "dram"
+    assert payload["results"][0]["program_config"]["fuse_s"] is True
+    assert payload["results"][0]["program_config"]["batch_reads"] is True
 
 
 def test_row_specs_applies_dtype_specific_catalogue_filtering():
@@ -374,12 +518,209 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
     assert payload["selection"] == {
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
+        "custom_math_fidelity": ["HiFi4"],
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "fuse_s": False,
+        "batch_reads": False,
     }
     assert len(payload["results"]) == 4
     assert all(
         result["program_config"]["kind"] == "batched_dram_sharded"
         for result in payload["results"]
     )
+
+
+def test_l16_catalogue_rows_name_stock_best_and_custom_blocks(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(
+        run_matmul,
+        "run_shape",
+        lambda *args, **kwargs: {
+            "status": "ok",
+            "kind": "ttnn.matmul",
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_iteration_samples": [1.0],
+        },
+    )
+
+    stock_output = tmp_path / "l16-stock.json"
+    assert run_matmul.main(
+        [
+            "--only",
+            "newton_schulz_L16_b8192",
+            "--dtype",
+            "bfloat16",
+            "--memory",
+            "l1",
+            "--kind",
+            "ttnn.matmul",
+            "--config-mode",
+            "default-only",
+            "--out",
+            str(stock_output),
+        ]
+    ) == 0
+    stock_rows = json.loads(stock_output.read_text())["results"]
+    assert [row["row"] for row in stock_rows] == ["stock_best"]
+
+    def fake_custom(*args, **kwargs):
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    for matrix_block in (1, 4):
+        output = tmp_path / f"l16-custom-{matrix_block}.json"
+        assert run_matmul.main(
+            [
+                "--only",
+                "newton_schulz_L16_b8192",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "l1",
+                "--kind",
+                "custom_newton_schulz",
+                "--matrix-block",
+                str(matrix_block),
+                "--out",
+                str(output),
+            ]
+        ) == 0
+        row = json.loads(output.read_text())["results"][0]
+        assert row["row"] == f"custom_block{matrix_block}"
+        assert row["program_config"]["matrix_block"] == matrix_block
+
+
+def test_acceptance_catalogue_dispatches_both_shapes_and_all_required_rows(
+    monkeypatch, tmp_path
+):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.float32 = "fp32"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    stock_calls = []
+    custom_calls = []
+
+    def fake_stock(*args, **kwargs):
+        stock_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "ttnn.matmul",
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_iteration_samples": [1.0] * kwargs["repeats"],
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    def fake_custom(*args, **kwargs):
+        shape = args[2]
+        custom_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "fuse_s": kwargs["fuse_s"],
+            "matrix_block": kwargs["matrix_block"],
+            "row": kwargs["row_name"],
+            "flops_per_iteration": total_flops(shape) * 16,
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_launch_samples": [1.0] * kwargs["repeats"],
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    monkeypatch.setattr(run_matmul, "run_shape", fake_stock)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    environment = tmp_path / "environment.json"
+    environment.write_text(json.dumps({"image": "sha256:pinned", "board": "p150a"}))
+    power_trace = tmp_path / "power.csv"
+    output = tmp_path / "acceptance.json"
+
+    assert run_matmul.main(
+        [
+            "--acceptance-catalogue",
+            "--env-json",
+            str(environment),
+            "--power-trace",
+            str(power_trace),
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert payload["configuration_mode"] == "acceptance-catalogue"
+    assert payload["environment"] == {
+        "python": payload["environment"]["python"],
+        "image": "sha256:pinned",
+        "board": "p150a",
+    }
+    measurement = payload["measurement"]
+    assert measurement["shape_names"] == [
+        "newton_schulz_L32_b8192",
+        "newton_schulz_L16_b8192",
+    ]
+    assert measurement["launches_per_row"] == 1000
+    assert measurement["stock_best_row"] == "stock_best"
+    assert measurement["power_trace"] == "power.csv"
+    assert measurement["power_clock_provenance"]["columns"] == [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c",
+    ]
+    assert len(stock_calls) == 2
+    assert all(call["iters"] == 1 and call["repeats"] == 1000 for call in stock_calls)
+    assert len(custom_calls) == 16
+    assert all(call["iters"] == 1 and call["repeats"] == 1000 for call in custom_calls)
+    assert all(call["variant"] == "bf16-fp32state" for call in custom_calls)
+    assert all(call["input_memory"] == call["r_memory"] == call["x0_memory"] == "l1"
+               for call in custom_calls)
+    custom_rows = [row for row in payload["results"] if row["kind"] == "custom_newton_schulz"]
+    assert len(custom_rows) == 16
+    assert {
+        (row["shape"]["name"], row["matrix_block"], row["fuse_s"], row["math_fidelity"])
+        for row in custom_rows
+    } == {
+        (shape, block, fuse_s, fidelity)
+        for shape in ("newton_schulz_L32_b8192", "newton_schulz_L16_b8192")
+        for block in (1, 4)
+        for fuse_s in (False, True)
+        for fidelity in ("HiFi3", "HiFi4")
+    }
+    assert all(row["launches_requested_per_row"] == 1000 for row in payload["results"])
+    assert all(row["launches_measured"] == 1000 for row in payload["results"])
+    l16 = next(
+        row
+        for row in custom_rows
+        if row["shape"]["name"] == "newton_schulz_L16_b8192"
+        and row["matrix_block"] == 4
+        and row["fuse_s"]
+        and row["math_fidelity"] == "HiFi3"
+    )
+    l16_shape = next(shape for shape in default_catalogue() if shape.name == l16["shape"]["name"])
+    assert l16["flops_per_iteration"] == total_flops(l16_shape) * 16
 
 
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
@@ -413,6 +754,7 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
 
     payload = json.loads(output.read_text())
     assert "host" not in payload["environment"]
+    assert "profiling" not in payload
     assert len(payload["results"]) == 5
     assert [result["program_config"]["kind"] for result in payload["results"]] == [
         "default",
@@ -423,6 +765,8 @@ def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path)
     ]
     for result in payload["results"]:
         assert result["status"] == "ok"
+        assert result["math_fidelity"] in {"HiFi2", "LoFi"}
+        assert result["math_fidelity_source"]
         assert result["memory_placement"] == {
             name: {"buffer": "dram", "layout": "interleaved"}
             for name in ("input_a", "input_b", "output")
@@ -505,6 +849,266 @@ def test_a_program_config_failure_is_recorded_without_aborting_the_sweep(monkeyp
     assert results[1]["status"] == "failed"
     assert "program config rejected" in results[1]["error"]
     assert results[-1]["status"] == "ok"
+
+
+def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 2), (2, 1))
+        output_memory = "dram"
+
+        @classmethod
+        def prepare(
+            cls,
+            ttnn,
+            device,
+            matrices,
+            *,
+            variant,
+            math_fidelity,
+            profile,
+            fuse_s,
+            batch_reads,
+        ):
+            assert variant == "bf16-fp32state"
+            assert math_fidelity == "HiFi4"
+            assert profile is False
+            assert fuse_s is False
+            assert batch_reads is False
+            assert matrices is not None
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: object(),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    ttnn = _StubTtnn()
+    record = run_matmul.run_custom_newton_schulz(
+        ttnn,
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        iters=2,
+        repeats=2,
+    )
+
+    assert record["status"] == "ok"
+    assert record["kind"] == "custom_newton_schulz"
+    assert record["variant"] == "bf16-fp32state"
+    assert record["fuse_s"] is False
+    assert record["batch_reads"] is False
+    assert record["output_memory"] == "dram"
+    assert len(record["seconds_per_launch_samples"]) == 4
+    assert record["seconds_per_launch_p50"] <= record["seconds_per_launch_p99"]
+    assert record["seconds_per_launch_p99"] <= record["seconds_per_launch_p99_9"]
+    assert record["flops_per_iteration"] == total_flops(shape) * 16
+    assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
+
+
+def test_custom_l16_dispatch_keeps_logical_flop_denominator(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 40),)
+        output_memory = "dram"
+        seen_matrices = None
+        seen_kwargs = None
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, **kwargs):
+            cls.seen_matrices = matrices
+            cls.seen_kwargs = kwargs
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: SimpleNamespace(shape=(batch, size, size)),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L16_b8192",
+        batch=8192,
+        m=16,
+        k=16,
+        n=16,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        matrix_block=4,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "ok"
+    assert _FakeKernel.seen_matrices.shape == (8192, 16, 16)
+    assert _FakeKernel.seen_kwargs["matrix_block"] == 4
+    assert record["matrix_block"] == 4
+    assert record["physical_tile_count"] == 4096
+    assert record["packing"] == "diagonal_pairs_32x32"
+    assert record["flops_per_iteration"] == total_flops(shape) * 16
+
+
+def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
+    shape = _shape(4)
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16",
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert record["kind"] == "custom_newton_schulz"
+
+
+def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+
+    record = run_matmul.run_custom_newton_schulz(
+        ttnn,
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=8,
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "failed"
+    assert "L1 preflight failed" in record["error"]
+    assert "total CB bytes=423936" in record["error"]
+    assert "CB_STATE_REAL=65536 bytes" in record["error"]
+
+
+def test_custom_block8_per_input_placement_dispatches_with_passing_preflight(monkeypatch):
+    class _FakeKernel:
+        work_ranges = ((0, 80),)
+        output_memory = "dram"
+        seen_kwargs = None
+
+        @classmethod
+        def prepare(cls, ttnn, device, matrices, **kwargs):
+            cls.seen_kwargs = kwargs
+            return cls()
+
+        def launch(self):
+            return None
+
+        def close(self):
+            return None
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    monkeypatch.setattr(newton_schulz_kernel, "NewtonSchulzKernel", _FakeKernel)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "benchmark_matrices",
+        lambda batch, size, seed: object(),
+    )
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=4,
+        family="newton_schulz",
+        note="",
+    )
+    record = run_matmul.run_custom_newton_schulz(
+        _StubTtnn(),
+        device=object(),
+        shape=shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="bf16-fp32state",
+        fuse_s=True,
+        matrix_block=8,
+        r_memory="l1",
+        x0_memory="dram",
+        iters=1,
+        repeats=1,
+    )
+
+    assert record["status"] == "ok"
+    assert record["r_memory"] == "l1"
+    assert record["x0_memory"] == "dram"
+    assert record["l1_preflight_bytes"] == 1_032_960
+    assert _FakeKernel.seen_kwargs["r_memory"] == "l1"
+    assert _FakeKernel.seen_kwargs["x0_memory"] == "dram"
+
+
+def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
+    from enodia.tt.bench import newton_schulz_kernel
+
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+    total = newton_schulz_kernel._validate_l1_preflight(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        input_memory="l1",
+        matrix_block=4,
+        variant="bf16-fp32state",
+    )
+
+    assert total == 1_393_408
+    assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
 def test_efficiency_is_omitted_without_a_peak(tmp_path):
