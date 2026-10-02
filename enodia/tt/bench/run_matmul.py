@@ -1111,7 +1111,7 @@ def main(argv: list[str] | None = None) -> int:
             "results": results,
         }
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
         print(f"\nwrote {args.out}")
         return 0
 
