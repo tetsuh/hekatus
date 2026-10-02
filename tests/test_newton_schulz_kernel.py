@@ -391,23 +391,33 @@ class ReferenceTests(unittest.TestCase):
                 None, None, np.zeros((0, 16, 16), dtype=np.complex64)
             )
 
-    def test_accelerator_modules_do_not_import_the_numpy_reference(self):
+    def test_accelerator_modules_do_not_import_reference_or_spec_modules(self):
         accelerator_root = Path(__file__).parents[1] / "enodia" / "tt"
-        forbidden_module = "enodia.tt.bench.newton_schulz_reference"
-        violations = []
+        forbidden_reference = "enodia.tt.bench.newton_schulz_reference"
+        forbidden_spec_prefix = "enodia.spec"
+        reference_violations = []
+        spec_violations = []
         for path in accelerator_root.rglob("*.py"):
             tree = ast.parse(path.read_text(), filename=str(path))
+            relative_path = str(path.relative_to(accelerator_root))
             for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == forbidden_module:
-                    violations.append(str(path.relative_to(accelerator_root)))
+                if isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    if module == forbidden_reference:
+                        reference_violations.append(relative_path)
+                    if module == forbidden_spec_prefix or module.startswith(f"{forbidden_spec_prefix}."):
+                        spec_violations.append(relative_path)
                 elif isinstance(node, ast.Import):
-                    violations.extend(
-                        str(path.relative_to(accelerator_root))
-                        for alias in node.names
-                        if alias.name == forbidden_module
-                    )
+                    for alias in node.names:
+                        if alias.name == forbidden_reference:
+                            reference_violations.append(relative_path)
+                        if alias.name == forbidden_spec_prefix or alias.name.startswith(
+                            f"{forbidden_spec_prefix}."
+                        ):
+                            spec_violations.append(relative_path)
 
-        self.assertEqual(violations, [])
+        self.assertEqual(reference_violations, [])
+        self.assertEqual(spec_violations, [])
 
 
 @pytest.mark.tt_device
