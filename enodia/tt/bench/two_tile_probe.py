@@ -135,6 +135,50 @@ def expected_probe_outputs(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray
     }
 
 
+def two_tile_matrix_block_contract(block_count: int) -> dict[str, Any]:
+    """Expand the production two-tile offsets for one matrix block.
+
+    Each logical matrix owns two consecutive DEST rows.  Keeping this small
+    host contract next to the diagnostic contract lets source tests verify the
+    production loop without requiring a board or a compiler.
+    """
+    if isinstance(block_count, bool) or not isinstance(block_count, int) or block_count < 1:
+        raise ValueError(f"block_count must be a positive integer, got {block_count!r}")
+    return {
+        "matmul_dimensions": {"rt": 2, "ct": 1, "kt": 1},
+        "r_times_x": [
+            [
+                {"in0_offset": 6 * matrix, "in1_offset": 2 * matrix, "dst": 2 * matrix},
+                {"in0_offset": 6 * matrix + 2, "in1_offset": 2 * matrix + 1, "dst": 2 * matrix},
+                {
+                    "in0_offset": 6 * matrix + 4,
+                    "in1_offset": 2 * matrix + 2,
+                    "in1_physical_offset": 0,
+                    "in1_cb": "CB_IDENTITY",
+                    "dst": 2 * matrix,
+                },
+            ]
+            for matrix in range(block_count)
+        ],
+        "x_times_s": [
+            [
+                {"in0_offset": 4 * matrix, "in1_offset": 2 * matrix, "dst": 2 * matrix},
+                {"in0_offset": 4 * matrix + 2, "in1_offset": 2 * matrix + 1, "dst": 2 * matrix},
+            ]
+            for matrix in range(block_count)
+        ],
+        "pack": [
+            {
+                "matrix": matrix,
+                "dest_slots": (2 * matrix, 2 * matrix + 1),
+                "output_page": matrix,
+                "count": block_count,
+            }
+            for matrix in range(block_count)
+        ],
+    }
+
+
 def probe_stage_contract(stage: str) -> dict[str, Any]:
     """Describe one stage's fixed dimensions, queues, and register protocol."""
     stage = normalize_probe_stage(stage)
@@ -194,6 +238,11 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         "matmul_calls": matmul_calls,
         "r_times_x_calls": r_product_calls,
         "x_times_s_calls": x_product_calls,
+        "r_times_x_physical_inputs": [
+            {"cb": "CB_TWO_TILE_S", "offset": 0},
+            {"cb": "CB_TWO_TILE_S", "offset": 1},
+            {"cb": "CB_IDENTITY", "offset": 0},
+        ],
         "matmul_block_init_positions": ["before_tile_regs_acquire"],
         "in0_register": "SrcB",
         "in1_register": "SrcA",

@@ -56,8 +56,11 @@ from enodia.tt.bench.configs import (
 from enodia.tt.bench.newton_schulz_kernel import (
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
+    NEWTON_SCHULZ_ITERATION_CHOICES,
+    NEWTON_SCHULZ_ITERATIONS,
     _normalize_fidelity_split,
     _resolve_input_memories,
+    _validate_iterations,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
@@ -496,6 +499,7 @@ def run_custom_newton_schulz(
     matrix_block: int = 1,
     fp32_dest_acc_en: bool = True,
     dst_full_sync_en: bool = True,
+    iterations: int = NEWTON_SCHULZ_ITERATIONS,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
@@ -505,6 +509,7 @@ def run_custom_newton_schulz(
     explicit_r_memory = r_memory is not None
     explicit_x0_memory = x0_memory is not None
     try:
+        _validate_iterations(iterations)
         input_memory, r_memory, x0_memory = _resolve_input_memories(
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
@@ -588,7 +593,6 @@ def run_custom_newton_schulz(
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
 
     from enodia.tt.bench.newton_schulz_kernel import (
-        COMPLEX_MATMULS_PER_INVERSE,
         NewtonSchulzKernel,
         benchmark_matrices,
     )
@@ -615,6 +619,8 @@ def run_custom_newton_schulz(
         # a legacy host stub; non-default blocks must be explicit.
         if matrix_block != 1:
             prepare_kwargs["matrix_block"] = matrix_block
+        if iterations != NEWTON_SCHULZ_ITERATIONS:
+            prepare_kwargs["iterations"] = iterations
         if two_tile_complex:
             prepare_kwargs["two_tile_complex"] = True
         if not fp32_dest_acc_en:
@@ -637,7 +643,8 @@ def run_custom_newton_schulz(
                 launch_samples.append(time.perf_counter() - launch_start)
 
         best = min(launch_samples)
-        flops = total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
+        complex_matmuls_per_inverse = 2 * iterations
+        flops = total_flops(shape) * complex_matmuls_per_inverse
         record = {
             "status": "ok",
             "kind": CUSTOM_KIND,
@@ -646,6 +653,7 @@ def run_custom_newton_schulz(
             "fidelity_split": (
                 None if fidelity_split is None else f"{fidelity_split[0]}+{fidelity_split[1]}"
             ),
+            "newton_schulz_iterations": iterations,
             "fuse_s": fuse_s,
             "two_tile_complex": two_tile_complex,
             "batch_reads": batch_reads,
@@ -666,11 +674,11 @@ def run_custom_newton_schulz(
             "seconds_per_iteration_samples": launch_samples,
             "achieved_tflops": flops / best / 1e12,
             "flops_per_iteration": flops,
-            "complex_matmuls_per_iteration": COMPLEX_MATMULS_PER_INVERSE,
+            "complex_matmuls_per_iteration": complex_matmuls_per_inverse,
             "complex_product_tiles": 2 if two_tile_complex else 1,
             # Two-tile R*X now uses three K=1 calls; X*S remains two.
             "complex_product_matmul_block_calls_per_product": 3 if two_tile_complex else 4,
-            "real_matmuls_per_iteration": shape.real_matmuls * COMPLEX_MATMULS_PER_INVERSE,
+            "real_matmuls_per_iteration": shape.real_matmuls * complex_matmuls_per_inverse,
             "core_work_ranges": [list(pair) for pair in kernel.work_ranges],
         }
         if two_tile_complex:
@@ -757,6 +765,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--iters", type=int, default=20)
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        choices=NEWTON_SCHULZ_ITERATION_CHOICES,
+        default=NEWTON_SCHULZ_ITERATIONS,
+        help="Newton-Schulz iterations: default 8, or explicit one-step probe",
+    )
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument(
         "--only",
@@ -872,6 +887,10 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     """Reject controls and selections before importing or opening the device."""
     if args.iters < 1:
         parser.error(f"--iters must be at least 1, got {args.iters}")
+    try:
+        _validate_iterations(args.iterations)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.repeats < 1:
         parser.error(f"--repeats must be at least 1, got {args.repeats}")
     if args.peak_tflops is not None and not (
@@ -1080,6 +1099,7 @@ def _run_complex_catalogue_correctness(
     two_tile_complex: bool,
     dst_full_sync_en: bool,
     matrix_block: int,
+    iterations: int = NEWTON_SCHULZ_ITERATIONS,
 ) -> dict:
     from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
 
@@ -1097,6 +1117,7 @@ def _run_complex_catalogue_correctness(
             r_memory="dram",
             x0_memory="dram",
             dst_full_sync_en=dst_full_sync_en,
+            iterations=iterations,
         )
         relative_error = float(
             np.linalg.norm(actual - expected) / np.linalg.norm(expected)
@@ -1176,6 +1197,7 @@ def _run_complex_product_catalogue(
                 two_tile_complex=two_tile_complex,
                 dst_full_sync_en=dst_full_sync_en,
                 matrix_block=matrix_block,
+                iterations=args.iterations,
             )
             row = {
                 "shape": asdict(shape),
@@ -1206,7 +1228,9 @@ def _run_complex_product_catalogue(
                     "input_memory": "dram",
                     "r_memory": "dram",
                     "x0_memory": "dram",
+                    "newton_schulz_iterations": args.iterations,
                 },
+                "newton_schulz_iterations": args.iterations,
                 "iterations": 1,
                 "repeats": launches,
                 "launches_requested_per_row": launches,
@@ -1235,6 +1259,7 @@ def _run_complex_product_catalogue(
                         matrix_block=matrix_block,
                         fp32_dest_acc_en=True,
                         dst_full_sync_en=dst_full_sync_en,
+                        iterations=args.iterations,
                         input_memory="dram",
                         r_memory="dram",
                         x0_memory="dram",
@@ -1335,7 +1360,9 @@ def _run_acceptance_catalogue(
                             "input_memory": "l1",
                             "r_memory": "l1",
                             "x0_memory": "l1",
+                            "newton_schulz_iterations": args.iterations,
                         },
+                        "newton_schulz_iterations": args.iterations,
                         "iterations": 1,
                         "repeats": launches,
                         "launches_requested_per_row": launches,
@@ -1360,6 +1387,7 @@ def _run_acceptance_catalogue(
                             input_memory="l1",
                             r_memory="l1",
                             x0_memory="l1",
+                            iterations=args.iterations,
                             row_name=row_name,
                             iters=1,
                             repeats=launches,
@@ -1626,7 +1654,9 @@ def main(argv: list[str] | None = None) -> int:
                                         "input_memory": input_memory,
                                         "r_memory": r_memory,
                                         "x0_memory": x0_memory,
+                                        "newton_schulz_iterations": args.iterations,
                                     },
+                                    "newton_schulz_iterations": args.iterations,
                                     "iterations": args.iters,
                                     "repeats": args.repeats,
                                     "kind": CUSTOM_KIND,
@@ -1655,6 +1685,8 @@ def main(argv: list[str] | None = None) -> int:
                                     "repeats": args.repeats,
                                     "row_name": row_name,
                                 }
+                                if args.iterations != NEWTON_SCHULZ_ITERATIONS:
+                                    custom_kwargs["iterations"] = args.iterations
                                 if fidelity_split is not None:
                                     custom_kwargs["fidelity_split"] = fidelity_split
                                 custom_record.update(run_custom_newton_schulz(**custom_kwargs))
@@ -1686,6 +1718,8 @@ def main(argv: list[str] | None = None) -> int:
         "fp32_dest_acc_en": args.fp32_dest_acc_en,
         "dst_full_sync_en": args.dst_full_sync_en,
     }
+    if args.iterations != NEWTON_SCHULZ_ITERATIONS:
+        selection["newton_schulz_iterations"] = args.iterations
     if args.fidelity_split:
         selection["fidelity_split"] = [f"{prefix}+{suffix}" for prefix, suffix in args.fidelity_split]
 

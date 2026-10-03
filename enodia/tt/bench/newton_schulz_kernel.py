@@ -2,7 +2,8 @@
 
 The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
-The throughput variants use 32x32 tiles and a fixed eight-iteration inverse.
+The throughput variants use 32x32 tiles and a default eight-iteration inverse;
+the explicit one-iteration mode is reserved for staged correctness probes.
 L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
 keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
 products, state, and outputs.
@@ -17,6 +18,7 @@ from typing import Any
 import numpy as np
 
 NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATION_CHOICES = (1, NEWTON_SCHULZ_ITERATIONS)
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 FIDELITY_SPLIT_ITERATIONS = NEWTON_SCHULZ_ITERATIONS
@@ -122,6 +124,19 @@ PROFILE_READER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
 PROFILE_WRITER_CB_WAIT_OFFSET = 1
 PROFILE_WRITER_NOC_WRITE_OFFSET = 2
 PROFILE_WRITER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
+
+
+def _validate_iterations(iterations: int) -> None:
+    """Allow the default eight-step run and the explicit one-step probe."""
+    if (
+        isinstance(iterations, bool)
+        or not isinstance(iterations, int)
+        or iterations not in NEWTON_SCHULZ_ITERATION_CHOICES
+    ):
+        raise ValueError(
+            "iterations must be one of (1, 8); the kernel is fixed at 8 unless "
+            f"explicitly set to 1, got {iterations!r}"
+        )
 
 
 def _initial_value(matrices: np.ndarray) -> np.ndarray:
@@ -955,7 +970,7 @@ def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np
 
 @dataclass
 class NewtonSchulzKernel:
-    """Prepared tensors and one fixed-count ProgramDescriptor."""
+    """Prepared tensors and one selected-count ProgramDescriptor."""
 
     ttnn: Any
     device: Any
@@ -983,6 +998,7 @@ class NewtonSchulzKernel:
     program: Any
     core_ranges: Any
     work_ranges: tuple[tuple[int, int], ...]
+    iterations: int
 
     @classmethod
     def prepare(
@@ -1015,10 +1031,9 @@ class NewtonSchulzKernel:
                 "fidelity split fixes the fidelity pair to HiFi2 then HiFi3; "
                 f"math_fidelity must be HiFi3, got {math_fidelity!r}"
             )
-        if iterations != NEWTON_SCHULZ_ITERATIONS:
-            raise ValueError(
-                f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
-            )
+        _validate_iterations(iterations)
+        if fidelity_split is not None and iterations != NEWTON_SCHULZ_ITERATIONS:
+            raise ValueError("fidelity split requires the default eight iterations")
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
         _validate_matrix_block(
@@ -1290,6 +1305,7 @@ class NewtonSchulzKernel:
             program=program,
             core_ranges=core_ranges,
             work_ranges=tuple(work_ranges),
+            iterations=iterations,
         )
 
     def launch(self) -> None:
@@ -1400,6 +1416,7 @@ def run_newton_schulz_kernel(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
+    iterations: int = NEWTON_SCHULZ_ITERATIONS,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -1419,6 +1436,7 @@ def run_newton_schulz_kernel(
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,
+        iterations=iterations,
     )
     try:
         kernel.launch()

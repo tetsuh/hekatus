@@ -825,10 +825,10 @@ void build_two_tile_x_block(
     cb_wait_front(x_imag, block_count);
     cb_wait_front(negative_x_imag, block_count);
     cb_reserve_back(cb_two_tile_x, 4 * block_count);
-    // K=2 of the preceding R*X call leaves SrcA on the BF16 identity CB.
-    // Use that actual format as the old operand so the first X/state copy
-    // cannot interpret FP32 state bytes as BF16.
-    reconfig_data_format_srca(cb_identity, x_real);
+    // The previous X·S operation leaves SrcA on the state-format S CB.  Keep
+    // the copy transition explicit without claiming a stale BF16 identity
+    // operand for this production boundary.
+    reconfig_data_format_srca(cb_two_tile_s, x_real);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         tile_regs_acquire();
         copy_tile_init(x_real);
@@ -911,13 +911,19 @@ void two_tile_s_matmul_block(std::uint32_t block_count) {
     cb_reserve_back(cb_s_real, block_count);
     cb_reserve_back(cb_s_imag, block_count);
 
-    reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
+    // Matmul maps in0 to SrcB and in1 to SrcA.  Configure both source
+    // registers explicitly at this operation boundary, then use one matching
+    // rt=2, ct=1, kt=1 init for all matrices in the block.
+    reconfig_data_format_srca(cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_r);
     matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     for (std::uint32_t index = 0; index < block_count; ++index) {
         // The preceding matrix ends with the BF16 identity term.  Restore the
-        // state-format X column before starting this matrix's K terms.
-        reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
+        // state-format S column before starting the next matrix's K terms.
+        if (index != 0) {
+            reconfig_data_format_srca(cb_identity, cb_two_tile_s);
+        }
         // K=0: [−Rr; −Ri] · Xr.
         matmul_block(
             cb_two_tile_r,
@@ -940,10 +946,11 @@ void two_tile_s_matmul_block(std::uint32_t block_count) {
             1,
             2,
             1);
-        // K=2: [2I; 0] · I.  The resident identity is BF16 and exact.
-        // R and I share the same BF16 format, so a data-format transition is
-        // sufficient; this deliberately does not copy anything into DEST.
-        reconfig_data_format(cb_identity, cb_two_tile_r);
+        // K=2: [2I; 0] · I.  The logical X/S-column offset is 2*index+2,
+        // while the BF16 identity is a resident one-page CB at physical
+        // offset 0.  No identity copy or DEST seed is used.
+        reconfig_data_format_srca(cb_identity);
+        reconfig_data_format_srcb(cb_two_tile_r);
         matmul_block(
             cb_two_tile_r,
             cb_identity,
@@ -980,8 +987,8 @@ void two_tile_x_matmul_block(
     cb_wait_front(cb_two_tile_s, 2 * block_count);
     // K=2 of b-prime leaves SrcA=BF16 I and SrcB=BF16 R. Switch each source
     // independently before X*S so both unpackers match their state CBs.
-    reconfig_data_format_srca(cb_identity, cb_two_tile_s);
-    reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);
+    reconfig_data_format_srca(cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_x);
     matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     for (std::uint32_t index = 0; index < block_count; ++index) {
@@ -1035,7 +1042,6 @@ void two_tile_x_matmul_block(
 template <std::uint32_t iterations, bool state_fp32>
 void process_two_tile_matrix_block(std::uint32_t block_count) {
     (void)state_fp32;
-    cb_wait_front(cb_two_tile_r, 6 * block_count);
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
         std::uint32_t x_real;
         std::uint32_t x_imag;
@@ -1357,15 +1363,18 @@ void kernel_main_impl() {
     constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
-    static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
+    static_assert(iterations == 1 || iterations == 8, "the throughput kernel supports one or eight iterations");
     using CounterState = std::conditional_t<profile_sample, ProfileCounters, EmptyProfileCounters>;
     CounterState counters{};
 
     DeviceZoneScopedN("NS-COMPUTE-TOTAL");
     if constexpr (two_tile_complex) {
+        // The first production operation is the same R·X block used by the
+        // diagnostic b-prime stage: R is SrcB, the state-format S/X column
+        // is SrcA, and the output is packed through CB_OUTPUT_REAL.  Startup
+        // is hardware-only; each operation owns its matching block init.
         compute_kernel_hw_startup<SrcOrder::Reverse>(
-            cb_two_tile_r, cb_two_tile_x, cb_s_real);
-        matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);
+            cb_two_tile_r, cb_two_tile_s, cb_output_real);
     } else if constexpr (fuse_s) {
         compute_kernel_hw_startup<SrcOrder::Reverse>(
             cb_r_negative_real, cb_x0_real, cb_product_real);

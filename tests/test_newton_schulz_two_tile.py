@@ -230,7 +230,7 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     split_source = (KERNEL_DIR / "newton_schulz_fidelity_split_compute.cpp").read_text()
     reader = (KERNEL_DIR / "newton_schulz_reader_two_tile.cpp").read_text()
 
-    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);") == 1
+    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);") == 0
     assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);") == 1
     assert source.count("matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);") == 1
     two_tile_start = source.index("void build_two_tile_x_block")
@@ -238,7 +238,7 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     two_tile_source = source[two_tile_start:two_tile_end]
     assert "copy_tile(x_imag, index, 1);" in two_tile_source
     assert "copy_tile(negative_x_imag, index, 2);" in two_tile_source
-    assert "reconfig_data_format_srca(cb_identity, x_real);" in two_tile_source
+    assert "reconfig_data_format_srca(cb_two_tile_s, x_real);" in two_tile_source
     assert "reconfig_data_format_srca(cb_identity, cb_s_real);" in two_tile_source
     assert "void build_two_tile_x_column" in two_tile_source
     assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 3
@@ -250,17 +250,68 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     assert "copy_tile(cb_identity" not in two_tile_source
     assert "pack_reconfig_data_format(cb_s_imag, cb_s_real);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_real, cb_s_imag);" in two_tile_source
-    assert "reconfig_data_format_srca(cb_identity, cb_two_tile_s);" in two_tile_source
-    assert "reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);" in two_tile_source
+    assert "reconfig_data_format_srca(cb_two_tile_s);" in two_tile_source
+    assert "reconfig_data_format_srcb(cb_two_tile_x);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_imag, output_real);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_real, output_imag);" in two_tile_source
-    assert "cb_wait_front(cb_two_tile_r, 6 * block_count);" in two_tile_source
+    assert "cb_wait_front(cb_two_tile_r, two_tile_r_pages * block_count);" in two_tile_source
     assert "cb_pop_front(cb_two_tile_r, 6 * block_count);" in two_tile_source
     assert "pack_tile<true>" in two_tile_source
     assert "constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;" in source
     assert "get_compile_time_arg_val(two_tile_complex ? 6 : 5)" in split_source
     assert "cb_two_tile_r" in reader
     assert "two_tile_r_pages = 6" in reader
+
+
+def test_production_two_tile_block_contract_matches_probe_offsets_and_pack_slots():
+    from enodia.tt.bench.two_tile_probe import two_tile_matrix_block_contract
+
+    source = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
+    contract = two_tile_matrix_block_contract(4)
+    r_start = source.index("void two_tile_s_matmul_block(")
+    x_start = source.index("void two_tile_x_matmul_block(")
+    process_start = source.index("void process_two_tile_matrix_block(")
+    r_source = source[r_start:x_start]
+    x_source = source[x_start:process_start]
+    assert "compute_kernel_hw_startup<SrcOrder::Reverse>(" in source
+    assert "cb_two_tile_r, cb_two_tile_s, cb_output_real" in source
+    assert "matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);" not in source
+    assert "reconfig_data_format(cb_two_tile_s, cb_two_tile_r);" not in r_source
+    assert "reconfig_data_format(cb_identity, cb_two_tile_r);" not in r_source
+    assert r_source.count("matmul_block(\n            cb_two_tile_r,") == 3
+    assert x_source.count("matmul_block(\n            cb_two_tile_x,") == 2
+
+    for call in contract["r_times_x"][0]:
+        if call["in0_offset"] == 0:
+            assert "two_tile_r_pages * index,\n            2 * index,\n            2 * index," in r_source
+        elif call["in0_offset"] == 2:
+            assert "two_tile_r_pages * index + 2,\n            2 * index + 1,\n            2 * index," in r_source
+        else:
+            assert "two_tile_r_pages * index + 4,\n            0,\n            2 * index," in r_source
+    assert "reconfig_data_format_srca(cb_identity);" in r_source
+    assert "reconfig_data_format_srcb(cb_two_tile_r);" in r_source
+    assert "reconfig_data_format_srca(cb_two_tile_s);" in r_source
+    assert "reconfig_data_format_srcb(cb_two_tile_r);" in r_source
+    assert "pack_tile<true>(2 * index, cb_s_real, index);" in r_source
+    assert "pack_tile<true>(2 * index + 1, cb_s_imag, index);" in r_source
+
+    assert "4 * index,\n            2 * index,\n            2 * index," in x_source
+    assert "4 * index + 2,\n            2 * index + 1,\n            2 * index," in x_source
+    assert "pack_tile<true>(2 * index, output_real, index);" in x_source
+    assert "pack_tile<true>(2 * index + 1, output_imag, index);" in x_source
+    queue_order = [
+        r_source.index("cb_wait_front(cb_two_tile_r"),
+        r_source.index("cb_wait_front(cb_two_tile_s"),
+        r_source.index("cb_reserve_back(cb_s_real"),
+        r_source.index("matmul_block_init(cb_two_tile_r"),
+        r_source.index("tile_regs_commit();"),
+        r_source.index("tile_regs_wait();"),
+        r_source.index("cb_push_back(cb_s_real"),
+        r_source.index("tile_regs_release();"),
+    ]
+    assert queue_order == sorted(queue_order)
+    assert "cb_pop_front(cb_two_tile_s, 2 * block_count);" in source
+    assert "cb_pop_front(cb_two_tile_r, 6 * block_count);" in source
 
 
 def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():

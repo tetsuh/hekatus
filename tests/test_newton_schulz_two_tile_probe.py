@@ -140,8 +140,8 @@ def test_probe_compute_source_keeps_two_k_terms_and_stage_boundaries():
     # K=2 leaves the compute sources on BF16 identity/R. c must restore the
     # state-format S/X descriptors independently before its short matmul init.
     c_source = source[source.index("void x_times_s()"):source.index("void pop_input_pages()")]
-    assert "reconfig_data_format_srca(cb_identity, cb_two_tile_s);" in c_source
-    assert "reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);" in c_source
+    assert "reconfig_data_format_srca(cb_two_tile_s);" in c_source
+    assert "reconfig_data_format_srcb(cb_two_tile_x);" in c_source
     assert "reconfig_data_format(cb_two_tile_s, cb_two_tile_x);" not in c_source
     assert "pack_reconfig_data_format(cb_two_tile_s, cb_output_real);" in c_source
     assert "pack_reconfig_data_format(cb_two_tile_s, cb_output_imag);" in c_source
@@ -164,8 +164,8 @@ def test_probe_compute_source_keeps_two_k_terms_and_stage_boundaries():
     assert recycle_order == sorted(recycle_order)
     c_order = [
         c_source.index("cb_wait_front(cb_two_tile_s, 2);"),
-        c_source.index("reconfig_data_format_srca(cb_identity, cb_two_tile_s);"),
-        c_source.index("reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);"),
+        c_source.index("reconfig_data_format_srca(cb_two_tile_s);"),
+        c_source.index("reconfig_data_format_srcb(cb_two_tile_x);"),
         c_source.index("tile_regs_wait();"),
         c_source.index("pack_reconfig_data_format(cb_two_tile_s, cb_output_real);"),
         c_source.index("cb_push_back(cb_output_real, 1);")

@@ -83,7 +83,10 @@ void r_times_x(
         cb_reserve_back(cb_output_imag, 1);
     }
 
-    reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
+    // Matmul maps in0 to SrcB and in1 to SrcA. Configure each source at
+    // the operation boundary before the matching rt=2, ct=1, kt=1 init.
+    reconfig_data_format_srca(cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_r);
     matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     if (run_k0) {
@@ -95,10 +98,12 @@ void r_times_x(
         matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
     }
     if (run_identity) {
-        // k=2: [2I; 0]*I.  Both constants are BF16 and no DEST seed copy is
-        // performed; the third K term is another dst=0 accumulation.
+        // k=2: [2I; 0]*I.  The logical X/S-column offset is 2, but the
+        // resident BF16 identity has physical offset 0 in its one-page CB.
+        // Both constants are BF16 and no DEST seed copy is performed.
         cb_wait_front(cb_identity, 1);
-        reconfig_data_format(cb_identity, cb_two_tile_r);
+        reconfig_data_format_srca(cb_identity);
+        reconfig_data_format_srcb(cb_two_tile_r);
         matmul_block(cb_two_tile_r, cb_identity, 4, 0, 0, false, 1, 2, 1);
     }
     tile_regs_commit();
@@ -133,8 +138,8 @@ void x_times_s() {
     cb_reserve_back(cb_output_imag, 1);
     // b-prime's K=2 call leaves SrcA=BF16 I and SrcB=BF16 R. Configure the
     // c operands independently so S and X/state are unpacked as FP32.
-    reconfig_data_format_srca(cb_identity, cb_two_tile_s);
-    reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);
+    reconfig_data_format_srca(cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_x);
     matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     // k=0: [Xr; Xi]*Sr writes the real and imaginary output rows.
