@@ -10,7 +10,8 @@ constexpr std::uint32_t cb_identity = 5;
 constexpr std::uint32_t cb_zero = 6;
 constexpr std::uint32_t cb_negative_x_imag = 13;
 constexpr std::uint32_t cb_two_tile_r = 20;
-constexpr std::uint32_t two_tile_r_pages = 4;
+// Four signed R pages plus the seed-free K=3 [2I, 0] column.
+constexpr std::uint32_t two_tile_r_pages = 6;
 
 template <typename Accessor>
 void read_page(

@@ -30,11 +30,13 @@ def test_two_tile_r_host_layout_preserves_r_x_order_and_signs():
     )
 
     assert len(values) == 3
-    assert values[0].shape == (1, 4, 32, 32)
+    assert values[0].shape == (1, 6, 32, 32)
     np.testing.assert_array_equal(values[0][0, 0], -3.0)
     np.testing.assert_array_equal(values[0][0, 1], -5.0)
     np.testing.assert_array_equal(values[0][0, 2], 5.0)
     np.testing.assert_array_equal(values[0][0, 3], -3.0)
+    np.testing.assert_array_equal(values[0][0, 4], 2.0 * np.eye(32))
+    np.testing.assert_array_equal(values[0][0, 5], np.zeros((32, 32)))
     np.testing.assert_array_equal(values[1], np.zeros((1, 1, 32, 32), dtype=np.float32))
     np.testing.assert_array_equal(values[2], np.zeros((1, 1, 32, 32), dtype=np.float32))
 
@@ -56,7 +58,7 @@ def test_two_tile_reader_descriptor_uses_state_inputs_and_bfloat16_constants():
     assert newton_schulz_kernel.CB_R_NEG_IMAG not in definitions
     assert newton_schulz_kernel.CB_PRODUCT_REAL not in definitions
     assert newton_schulz_kernel.CB_PRODUCT_IMAG not in definitions
-    assert definitions[newton_schulz_kernel.CB_TWO_TILE_R] == ("bf16", 8)
+    assert definitions[newton_schulz_kernel.CB_TWO_TILE_R] == ("bf16", 12)
     assert definitions[newton_schulz_kernel.CB_TWO_TILE_X] == ("fp32", 8)
     assert definitions[newton_schulz_kernel.CB_TWO_TILE_S] == ("fp32", 4)
     assert definitions[newton_schulz_kernel.CB_IDENTITY] == ("bf16", 1)
@@ -64,13 +66,18 @@ def test_two_tile_reader_descriptor_uses_state_inputs_and_bfloat16_constants():
 
 
 def test_bfloat16_initial_constants_are_bit_exact_and_zero_is_explicit():
-    identity, zero = newton_schulz_kernel._two_tile_initial_values()
+    twice_identity, zero = newton_schulz_kernel._two_tile_initial_values()
+    identity = newton_schulz_kernel._two_tile_unit_identity_values()
 
+    twice_identity_bits = newton_schulz_kernel._bfloat16_bits(twice_identity.ravel())
     identity_bits = newton_schulz_kernel._bfloat16_bits(identity.ravel())
     zero_bits = newton_schulz_kernel._bfloat16_bits(zero.ravel())
-    assert set(identity_bits.tolist()) == {0, 0x4000}
-    assert np.count_nonzero(identity_bits == 0x4000) == 32
+    assert set(twice_identity_bits.tolist()) == {0, 0x4000}
+    assert np.count_nonzero(twice_identity_bits == 0x4000) == 32
+    assert set(identity_bits.tolist()) == {0, 0x3F80}
+    assert np.count_nonzero(identity_bits == 0x3F80) == 32
     assert np.all(zero_bits == 0)
+    assert np.count_nonzero(twice_identity) == 32
     assert np.count_nonzero(identity) == 32
     assert np.count_nonzero(zero) == 0
 
@@ -104,29 +111,29 @@ def test_two_tile_llk_traversal_matches_complex_r_x_and_x_s_products():
     r_imag = np.array([[11.0, 13.0], [17.0, 19.0]])
     x_real = np.array([[23.0, 29.0], [31.0, 37.0]])
     x_imag = np.array([[41.0, 43.0], [47.0, 53.0]])
-    # The two K=1 products consume each operand block by columns: [A00, A10]
-    # then [A01, A11].  This is why each four-page CB block is column-major,
-    # even though each tile itself is row-major.
-    r_pages = [-r_real, -r_imag, r_imag, -r_real]
+    # The three K=1 products consume each operand block by columns:
+    # [A00, A10], [A01, A11], then [A02, A12].  This is why each six-page CB
+    # block is column-major, even though each tile itself is row-major.
+    r_pages = [
+        -r_real,
+        -r_imag,
+        r_imag,
+        -r_real,
+        2.0 * np.eye(2),
+        np.zeros((2, 2)),
+    ]
     x_pages = [x_real, x_imag, -x_imag, x_real]
-    x_column = [x_real, x_imag]
-    s_dest = np.stack((2.0 * np.eye(2), np.zeros((2, 2))))
-    _llk_rt2_kt1_accumulate(
-        r_pages,
-        x_column,
-        in0_start=0,
-        in1_start=0,
-        destination=s_dest,
-        destination_start=0,
-    )
-    _llk_rt2_kt1_accumulate(
-        r_pages,
-        x_column,
-        in0_start=2,
-        in1_start=1,
-        destination=s_dest,
-        destination_start=0,
-    )
+    x_column = [x_real, x_imag, np.eye(2)]
+    s_dest = np.zeros((2, 2, 2))
+    for in0_start, in1_start in ((0, 0), (2, 1), (4, 2)):
+        _llk_rt2_kt1_accumulate(
+            r_pages,
+            x_column,
+            in0_start=in0_start,
+            in1_start=in1_start,
+            destination=s_dest,
+            destination_start=0,
+        )
     expected_s = 2.0 * np.eye(2, dtype=np.float64) - (
         r_real + 1j * r_imag
     ) @ (x_real + 1j * x_imag)
@@ -232,12 +239,13 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     assert "copy_tile(x_imag, index, 1);" in two_tile_source
     assert "copy_tile(negative_x_imag, index, 2);" in two_tile_source
     assert "void build_two_tile_x_column" in two_tile_source
-    assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 2
+    assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 3
     assert two_tile_source.count("matmul_block(\n            cb_two_tile_x,") == 2
     assert "matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);" in two_tile_source
-    assert "4 * index,\n            2 * index,\n            2 * index,\n            false,\n            1,\n            2,\n            1);" in two_tile_source
-    assert "cb_wait_front(cb_zero, 1);" in two_tile_source
-    assert "copy_tile(cb_zero, 0, 2 * index + 1);" in two_tile_source
+    assert "two_tile_r_pages * index,\n            2 * index,\n            2 * index,\n            false,\n            1,\n            2,\n            1);" in two_tile_source
+    assert "two_tile_r_pages * index + 4,\n            0,\n            2 * index,\n            false,\n            1,\n            2,\n            1);" in two_tile_source
+    assert "cb_wait_front(cb_identity, 1);" in two_tile_source
+    assert "copy_tile(cb_identity" not in two_tile_source
     assert "pack_reconfig_data_format(cb_s_imag, cb_s_real);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_real, cb_s_imag);" in two_tile_source
     assert "pack_reconfig_data_format(output_real, output_imag);" in two_tile_source
@@ -245,6 +253,7 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     assert "constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;" in source
     assert "get_compile_time_arg_val(two_tile_complex ? 6 : 5)" in split_source
     assert "cb_two_tile_r" in reader
+    assert "two_tile_r_pages = 6" in reader
 
 
 def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():

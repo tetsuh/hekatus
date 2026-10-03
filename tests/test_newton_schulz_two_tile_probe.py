@@ -47,16 +47,28 @@ def test_probe_has_ordered_minimal_stages_and_expected_products():
     r, x = _matrices()
     pages = probe_input_pages(r[None], x[None])
 
-    assert PROBE_STAGES == ("a", "b", "c")
-    assert pages["in0_r"].shape == (1, 4, 2, 2)
-    assert pages["in1_x_column"].shape == (1, 2, 2, 2)
-    np.testing.assert_array_equal(pages["in0_r"][0, :, 0, 0], [-2.0, -11.0, 11.0, -2.0])
-    np.testing.assert_array_equal(pages["in1_x_column"][0, :, 0, 0], [23.0, 41.0])
+    assert PROBE_STAGES == ("a", "b_prime", "c")
+    assert pages["in0_r"].shape == (1, 6, 2, 2)
+    assert pages["in1_x_column"].shape == (1, 3, 2, 2)
+    np.testing.assert_array_equal(
+        pages["in0_r"][0, :, 0, 0], [-2.0, -11.0, 11.0, -2.0, 2.0, 0.0]
+    )
+    np.testing.assert_array_equal(pages["in1_x_column"][0, :, 0, 0], [23.0, 41.0, 1.0])
 
     expected = expected_probe_outputs(r[None], x[None])
     np.testing.assert_allclose(expected["a"][0], -(r @ x), rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(expected["b"][0], 2.0 * np.eye(2) - r @ x, rtol=1e-6, atol=1e-6)
     np.testing.assert_allclose(expected["c"][0], x @ expected["b"][0], rtol=1e-6, atol=1e-6)
+
+
+def test_probe_stage_aliases_canonicalize_seed_free_boundary():
+    assert probe_stage_contract("b")["stage"] == "b_prime"
+    assert probe_stage_contract("b-prime")["stage"] == "b_prime"
+    assert probe_stage_contract("b_prime")["matmul_calls"] == [
+        {"in0_offset": 0, "in1_offset": 0, "dst": 0},
+        {"in0_offset": 2, "in1_offset": 1, "dst": 0},
+        {"in0_offset": 4, "in1_offset": 2, "dst": 0},
+    ]
 
 
 def test_probe_decomposition_covers_partial_products_and_offsets():
@@ -84,7 +96,14 @@ def test_probe_decomposition_covers_partial_products_and_offsets():
 
 
 def test_probe_contract_records_cb_order_dest_slots_and_sync_sequence():
-    expected_call_counts = {"a1": 1, "a2": 1, "a3": 2, "a": 2, "b": 2, "c": 2}
+    expected_call_counts = {
+        "a1": 1,
+        "a2": 1,
+        "a3": 2,
+        "a": 2,
+        "b_prime": 3,
+        "c": 5,
+    }
     for stage in ALL_PROBE_STAGES:
         contract = probe_stage_contract(stage)
         assert contract["matmul_dimensions"] == {"rt": 2, "ct": 1, "kt": 1}
@@ -111,9 +130,12 @@ def test_probe_compute_source_keeps_two_k_terms_and_stage_boundaries():
     assert "copy_tile(cb_x_real, 0, 3);" in source
     assert "run_k0" in source
     assert "run_k1" in source
+    assert "run_identity" in source
+    assert "r_times_x(false, true, false, false)" in source
     assert "r_times_x(false, false, true, false)" in source
-    assert "r_times_x(false, false, false, true)" in source
-    assert "r_times_x(false, false, true, true)" in source
+    assert "r_times_x(false, true, true, true)" in source
+    assert "matmul_block(cb_two_tile_r, cb_identity, 4, 0, 0, false, 1, 2, 1);" in source
+    assert "seed_dest_slots" not in source
 
     r_start = source.index("void r_times_x(")
     x_start = source.index("void x_times_s()")
@@ -144,6 +166,7 @@ def test_probe_reader_and_writer_expose_explicit_cb_pack_path():
     reader = (KERNEL_DIR / "two_tile_probe_reader.cpp").read_text()
     writer = (KERNEL_DIR / "two_tile_probe_writer.cpp").read_text()
     assert "cb_two_tile_r" in reader
+    assert "two_tile_r_pages = 6" in reader
     assert "cb_x_real" in reader
     assert "cb_x_imag" in reader
     assert "cb_push_back(cb_two_tile_r" in reader

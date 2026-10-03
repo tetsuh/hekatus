@@ -845,8 +845,9 @@ void build_two_tile_x_block(
     }
 }
 
-// Build the column block [Xr; Xi] used as the K=2 right input of R*X.
-// CB_TWO_TILE_S is recycled after this product for [Sr; Si].
+// Build the state-format [Xr; Xi] portion of the K=3 right input of R*X.
+// The BF16 I page is resident in CB_IDENTITY for the third call.  CB_TWO_TILE_S
+// is recycled after this product for [Sr; Si].
 void build_two_tile_x_column(
     std::uint32_t x_real,
     std::uint32_t x_imag,
@@ -893,52 +894,56 @@ void build_two_tile_s_block(std::uint32_t block_count) {
     cb_pop_front(cb_s_imag, block_count);
 }
 
-// Seed the two output DEST tiles for S with BF16-hosted 2I and zero.  The
-// caller owns the DEST acquisition so the copies and the K=2 matmul share one
-// acquired register window.
-void initialize_two_tile_s_dest(std::uint32_t block_count) {
-    cb_wait_front(cb_identity, 1);
-    cb_wait_front(cb_zero, 1);
-    reconfig_data_format_srca(cb_two_tile_x, cb_identity);
-    copy_tile_init(cb_identity);
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_identity, 0, 2 * index);
-    }
-    copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
-    for (std::uint32_t index = 0; index < block_count; ++index) {
-        copy_tile(cb_zero, 0, 2 * index + 1);
-    }
-}
-
+// Build S directly from the seed-free K=3 real block.  The R input contains
+// [−Rr, −Ri, Ri, −Rr, 2I, 0] in column-major output-row order and the X input
+// contains [Xr, Xi] in the state CB plus the resident BF16 I page.  All three
+// terms accumulate into the same two DEST rows; no DEST copy/seed is allowed.
 void two_tile_s_matmul_block(std::uint32_t block_count) {
-    cb_wait_front(cb_two_tile_r, 4 * block_count);
+    constexpr std::uint32_t two_tile_r_pages = 6;
+    cb_wait_front(cb_two_tile_r, two_tile_r_pages * block_count);
     cb_wait_front(cb_two_tile_s, 2 * block_count);
+    cb_wait_front(cb_identity, 1);
     cb_reserve_back(cb_s_real, block_count);
     cb_reserve_back(cb_s_imag, block_count);
 
-    tile_regs_acquire();
-    initialize_two_tile_s_dest(block_count);
     reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
     matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);
+    tile_regs_acquire();
     for (std::uint32_t index = 0; index < block_count; ++index) {
-        // S = 2I - R*X, with A=[[-Rr, Ri], [-Ri, -Rr]] and B=[Xr; Xi].
-        // The physical A pages are [A00, A10, A01, A11], so the two K=1
-        // calls accumulate both terms into the two DEST output rows.
+        // The preceding matrix ends with the BF16 identity term.  Restore the
+        // state-format X column before starting this matrix's K terms.
+        reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
+        // K=0: [−Rr; −Ri] · Xr.
         matmul_block(
             cb_two_tile_r,
             cb_two_tile_s,
-            4 * index,
+            two_tile_r_pages * index,
             2 * index,
             2 * index,
             false,
             1,
             2,
             1);
+        // K=1: [Ri; −Rr] · Xi.
         matmul_block(
             cb_two_tile_r,
             cb_two_tile_s,
-            4 * index + 2,
+            two_tile_r_pages * index + 2,
             2 * index + 1,
+            2 * index,
+            false,
+            1,
+            2,
+            1);
+        // K=2: [2I; 0] · I.  The resident identity is BF16 and exact.
+        // R and I share the same BF16 format, so a data-format transition is
+        // sufficient; this deliberately does not copy anything into DEST.
+        reconfig_data_format(cb_identity, cb_two_tile_r);
+        matmul_block(
+            cb_two_tile_r,
+            cb_identity,
+            two_tile_r_pages * index + 4,
+            0,
             2 * index,
             false,
             1,

@@ -63,25 +63,16 @@ void build_x_block() {
     cb_push_back(cb_two_tile_x, 4);
 }
 
-void seed_dest_slots() {
-    cb_wait_front(cb_identity, 1);
-    cb_wait_front(cb_zero, 1);
-    reconfig_data_format_srca(cb_two_tile_s, cb_identity);
-    copy_tile_init(cb_identity);
-    copy_tile(cb_identity, 0, 0);
-    copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
-    copy_tile(cb_zero, 0, 1);
-}
-
 // Compute [Sr; Si] = [2I; 0] - R*X, or a selected partial product.
-// The R and X CBs are the two operands: in0 is SrcB and in1 is SrcA.
-// Keeping one tile_regs window across both K=1 calls is the a3 contract.
+// The R CB carries the six-page column-major [−Rr, −Ri, Ri, −Rr, 2I, 0]
+// block.  Xr/Xi remain in the state-format CB and the exact BF16 I page stays
+// resident in CB_IDENTITY for the third K term.
 void r_times_x(
-    bool seed_dest,
     bool pack_to_s,
     bool run_k0,
-    bool run_k1) {
-    cb_wait_front(cb_two_tile_r, 4);
+    bool run_k1,
+    bool run_identity) {
+    cb_wait_front(cb_two_tile_r, 6);
     cb_wait_front(cb_x_real, 1);
     cb_wait_front(cb_x_imag, 1);
     build_x_column();
@@ -93,16 +84,20 @@ void r_times_x(
     reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
     matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
-    if (seed_dest) {
-        seed_dest_slots();
-    }
     if (run_k0) {
-        // k=0: (-Rr)*Xr and (-Ri)*Xr.  One rt=2 call writes both rows.
+        // k=0: (−Rr)*Xr and (−Ri)*Xr.  One rt=2 call writes both rows.
         matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 0, false, 1, 2, 1);
     }
     if (run_k1) {
-        // k=1: (+Ri)*Xi and (-Rr)*Xi.  Accumulate into the same two rows.
+        // k=1: (+Ri)*Xi and (−Rr)*Xi.  Accumulate into the same two rows.
         matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
+    }
+    if (run_identity) {
+        // k=2: [2I; 0]*I.  Both constants are BF16 and no DEST seed copy is
+        // performed; the third K term is another dst=0 accumulation.
+        cb_wait_front(cb_identity, 1);
+        reconfig_data_format(cb_identity, cb_two_tile_r);
+        matmul_block(cb_two_tile_r, cb_identity, 4, 0, 0, false, 1, 2, 1);
     }
     tile_regs_commit();
     tile_regs_wait();
@@ -116,6 +111,9 @@ void r_times_x(
         pack_tile(1, cb_two_tile_s);
         cb_push_back(cb_two_tile_s, 2);
     } else {
+        // The K=3 input column is not an output in a/b/a* stages.  Release
+        // it before the next matrix so the two-page CB cannot fill.
+        cb_pop_front(cb_two_tile_s, 2);
         pack_reconfig_data_format(cb_output_real);
         pack_tile(0, cb_output_real);
         pack_reconfig_data_format(cb_output_imag);
@@ -153,7 +151,7 @@ void x_times_s() {
 }
 
 void pop_input_pages() {
-    cb_pop_front(cb_two_tile_r, 4);
+    cb_pop_front(cb_two_tile_r, 6);
     cb_pop_front(cb_x_real, 1);
     cb_pop_front(cb_x_imag, 1);
     cb_pop_front(cb_negative_x_imag, 1);
@@ -161,7 +159,7 @@ void pop_input_pages() {
 }  // namespace
 
 void kernel_main() {
-    // 0=a (legacy alias for a3), 1=a1, 2=a2, 3=a3, 4=b, 5=c.
+    // 0=a, 1=a1, 2=a2, 3=a3, 4=b_prime (b alias), 5=c.
     constexpr std::uint32_t stage = get_compile_time_arg_val(0);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
@@ -170,26 +168,26 @@ void kernel_main() {
     compute_kernel_hw_startup<SrcOrder::Reverse>(cb_two_tile_r, cb_two_tile_s, cb_output_real);
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if (stage == 0) {
-            r_times_x(false, false, true, true);
+            r_times_x(false, true, true, false);
             pop_input_pages();
         } else if (stage == 1) {
-            r_times_x(false, false, true, false);
+            r_times_x(false, true, false, false);
             pop_input_pages();
         } else if (stage == 2) {
-            r_times_x(false, false, false, true);
+            r_times_x(false, false, true, false);
             pop_input_pages();
         } else if (stage == 3) {
-            r_times_x(false, false, true, true);
+            r_times_x(false, true, true, false);
             pop_input_pages();
         } else if (stage == 4) {
-            r_times_x(true, false, true, true);
+            // b_prime: seed-free S=2I-RX, with 2I/0 supplied as K=2.
+            r_times_x(false, true, true, true);
             pop_input_pages();
         } else if (stage == 5) {
             r_times_x(true, true, true, true);
-            cb_pop_front(cb_two_tile_r, 4);
+            cb_pop_front(cb_two_tile_r, 6);
             build_x_block();
             x_times_s();
-            pop_input_pages();
         }
     }
 }

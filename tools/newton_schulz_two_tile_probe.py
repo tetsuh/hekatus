@@ -1,4 +1,4 @@
-"""Run one minimal two-tile a/b/c probe on device 0.
+"""Run one minimal two-tile a/b_prime/c probe on device 0.
 
 The wrapper supplies the pinned container, named-container cleanup, Watcher,
 and power sampling.  This runner owns only one stage, batch four, and one
@@ -28,15 +28,16 @@ from enodia.tt.bench.newton_schulz_kernel import (
     _runtime_args,
 )
 from enodia.tt.bench.two_tile_probe import (
-    ALL_PROBE_STAGES,
+    ALL_PROBE_STAGE_CHOICES,
     expected_probe_outputs,
+    normalize_probe_stage,
     probe_input_pages,
     probe_stage_contract,
 )
 
 TILE = 32
 BATCH = 4
-STAGE_INDEX = {"a": 0, "a1": 1, "a2": 2, "a3": 3, "b": 4, "c": 5}
+STAGE_INDEX = {"a": 0, "a1": 1, "a2": 2, "a3": 3, "b_prime": 4, "c": 5}
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 
 
@@ -63,11 +64,11 @@ def _cb_descriptors(ttnn, core_ranges, state_dtype):
         13: (state_dtype, 1),
         15: (state_dtype, 1),
         16: (state_dtype, 1),
-        20: (ttnn.bfloat16, 4),
+        20: (ttnn.bfloat16, 6),
         21: (state_dtype, 4),
         # Four pages permit one consumed X column and one produced S column
         # to occupy the same CB without changing its descriptor.
-        22: (state_dtype, 4),
+        22: (state_dtype, 2),
     }
     descriptors = []
     for index, (data_format, page_count) in formats.items():
@@ -112,6 +113,7 @@ def _output_tile_errors(actual: np.ndarray, expected: np.ndarray) -> list[dict[s
 
 
 def run_stage(ttnn, device, stage: str) -> dict:
+    stage = normalize_probe_stage(stage)
     r, x = _probe_matrices()
     pages = probe_input_pages(r, x)
     expected = expected_probe_outputs(r, x)[stage]
@@ -123,7 +125,7 @@ def run_stage(ttnn, device, stage: str) -> dict:
         x.real[:, None, :, :].astype(np.float32),
         x.imag[:, None, :, :].astype(np.float32),
         (-x.imag)[:, None, :, :].astype(np.float32),
-        pages["identity"],
+        pages["one_identity"],
         pages["zero"],
     ]
     input_dtypes = [
@@ -246,14 +248,15 @@ def main(argv: list[str] | None = None) -> int:
     import ttnn
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=ALL_PROBE_STAGES, required=True)
+    parser.add_argument("--stage", choices=ALL_PROBE_STAGE_CHOICES, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--env-json", type=Path, default=None)
     args = parser.parse_args(argv)
+    canonical_stage = normalize_probe_stage(args.stage)
 
     device = ttnn.open_device(device_id=0)
     try:
-        stage_result = run_stage(ttnn, device, args.stage)
+        stage_result = run_stage(ttnn, device, canonical_stage)
     finally:
         ttnn.close_device(device)
 
@@ -270,8 +273,8 @@ def main(argv: list[str] | None = None) -> int:
         "environment": environment,
         "configuration_mode": "issue_63_two_tile_minimal_probe",
         "selection": {
-            "stage": args.stage,
-            "stage_index": STAGE_INDEX[args.stage],
+            "stage": canonical_stage,
+            "stage_index": STAGE_INDEX[canonical_stage],
             "batch": BATCH,
             "iterations": 1,
             "matrix_block": 1,
@@ -283,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         "measurement": {
             "kind": "device_two_tile_minimal_probe",
-            "stage": args.stage,
+            "stage": canonical_stage,
             "watcher": os.environ.get("TT_METAL_WATCHER") == "1",
             "container_timeout_s": 60,
             "named_container": True,
@@ -311,12 +314,12 @@ def main(argv: list[str] | None = None) -> int:
                 "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
                 "enodia/tt/bench/two_tile_probe.py",
             ],
-            "contract": probe_stage_contract(args.stage),
-            "in0": "CB_TWO_TILE_R for a/b, CB_TWO_TILE_X for c; matmul maps it to SrcB",
-            "in1": "CB_TWO_TILE_S; matmul maps it to SrcA",
+            "contract": probe_stage_contract(canonical_stage),
+            "in0": "CB_TWO_TILE_R six-page K=3 block for a/b_prime, CB_TWO_TILE_X for c; matmul maps it to SrcB",
+            "in1": "CB_TWO_TILE_S [Xr, Xi] plus resident BF16 CB_IDENTITY [I]; matmul maps both to SrcA",
             "dest_slots": [0, 1],
             "tile_regs_sequence": ["acquire", "commit", "wait", "release"],
-            "cb_wait_reserve_push_pop": probe_stage_contract(args.stage)["cb_counts"],
+            "cb_wait_reserve_push_pop": probe_stage_contract(canonical_stage)["cb_counts"],
         },
         "result": stage_result,
     }

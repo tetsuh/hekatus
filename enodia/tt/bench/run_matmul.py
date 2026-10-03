@@ -668,10 +668,16 @@ def run_custom_newton_schulz(
             "flops_per_iteration": flops,
             "complex_matmuls_per_iteration": COMPLEX_MATMULS_PER_INVERSE,
             "complex_product_tiles": 2 if two_tile_complex else 1,
-            "complex_product_matmul_block_calls_per_product": 2 if two_tile_complex else 4,
+            # Two-tile R*X now uses three K=1 calls; X*S remains two.
+            "complex_product_matmul_block_calls_per_product": 3 if two_tile_complex else 4,
             "real_matmuls_per_iteration": shape.real_matmuls * COMPLEX_MATMULS_PER_INVERSE,
             "core_work_ranges": [list(pair) for pair in kernel.work_ranges],
         }
+        if two_tile_complex:
+            record["complex_product_matmul_block_calls"] = {
+                "r_times_x": 3,
+                "x_times_s": 2,
+            }
         record.update(_timing_fields(launch_samples))
         if profile:
             record["profile_mode"] = "l1_cycle_counters"

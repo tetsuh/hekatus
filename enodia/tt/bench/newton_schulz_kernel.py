@@ -308,20 +308,35 @@ def _bfloat16_bits(values: np.ndarray) -> np.ndarray:
 
 
 def _two_tile_initial_values() -> tuple[np.ndarray, np.ndarray]:
-    """Return the BF16-representable 2I and zero singleton CB payloads."""
+    """Return the baseline BF16-representable 2I and zero singleton payloads."""
     identity = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
     zero = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
     return identity, zero
 
 
+def _two_tile_unit_identity_values() -> np.ndarray:
+    """Return the BF16-exact I page used as the K=2 right input."""
+    return np.eye(_TILE, dtype=np.float32)[None, None]
+
+
 def _two_tile_r_values(
     matrices: np.ndarray, *, packed: bool, tile_count: int
 ) -> np.ndarray:
-    """Build physical column-major pages for ``[[-Rr, Ri], [-Ri, -Rr]]``."""
+    """Build the seed-free K=3 R block in column-major output-row order.
+
+    The three ``rt=2, ct=1, kt=1`` calls consume the columns
+    ``[-Rr, -Ri]``, ``[Ri, -Rr]``, and ``[2I, 0]``.  The constants are part of
+    the BF16 input block rather than copies into DEST, so the R product starts
+    from zero and accumulates all three terms in the same two DEST slots.
+    """
     real = _pack_matrices(matrices.real, packed=packed, tile_count=tile_count)[:, 0]
     imag = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)[:, 0]
-    # The two K=1 calls consume [A00, A10] then [A01, A11].
-    return np.stack((-real, -imag, imag, -real), axis=1)
+    identity = np.broadcast_to(
+        2.0 * np.eye(_TILE, dtype=np.float32), (tile_count, _TILE, _TILE)
+    )
+    zero = np.zeros_like(identity)
+    # The three K=1 calls consume [A00, A10], [A01, A11], and [A02, A12].
+    return np.stack((-real, -imag, imag, -real, identity, zero), axis=1)
 
 
 def _reader_input_values(
@@ -391,7 +406,7 @@ def _reader_input_memories(
     """Return memory placement in the exact host/reader tensor order.
 
     The legacy reader receives three R variants followed by two X0 halves.
-    The two-tile reader receives one four-page R block followed by the two
+    The two-tile reader receives one six-page R/K=3 block followed by the two
     X0 halves. Identity and zero retain the compatibility shorthand placement.
     """
     input_memory, r_memory, x0_memory = _resolve_input_memories(
@@ -564,12 +579,12 @@ def _cb_definitions(
     if two_tile_complex:
         definitions.update(
             {
-                CB_TWO_TILE_R: (ttnn.bfloat16, 4),
+                CB_TWO_TILE_R: (ttnn.bfloat16, 6),
                 CB_TWO_TILE_X: (state_dtype, 4),
                 CB_TWO_TILE_S: (state_dtype, 2),
             }
         )
-        # The host reader supplies one four-page R block; no legacy signed-R
+        # The host reader supplies one six-page R/K=3 block; no legacy signed-R
         # or product queue is allocated in the opt-in descriptor.
         for index in (
             CB_R_NEG_IMAG,
@@ -679,9 +694,10 @@ def _tensor_l1_bytes(
     )
     r_bytes = 0
     if r_memory == "l1":
-        # The two-tile path receives one four-page signed R block. Legacy
-        # fused/non-fused paths retain their three-page input ABI.
-        r_page_count = 4 if two_tile_complex else 3
+        # The two-tile path receives a six-page signed R block: four R pages
+        # followed by the BF16 [2I, 0] K=3 column. Legacy fused/non-fused
+        # paths retain their three-page input ABI.
+        r_page_count = 6 if two_tile_complex else 3
         r_bytes = r_page_count * _cb_page_size(ttnn, ttnn.bfloat16)
     x0_bytes = 0
     if x0_memory == "l1":
@@ -1044,6 +1060,9 @@ class NewtonSchulzKernel:
             two_tile_complex=two_tile_complex,
         )
         identity_values, zero_values = _two_tile_initial_values()
+        if two_tile_complex:
+            # The K=2 right input is I; the R block already carries 2I and 0.
+            identity_values = _two_tile_unit_identity_values()
         input_values.extend([identity_values, zero_values])
         state_dtype = _state_dtype(ttnn, variant)
         cb_definitions = _cb_definitions(

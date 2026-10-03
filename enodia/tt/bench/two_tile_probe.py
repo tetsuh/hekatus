@@ -1,10 +1,10 @@
 """Board-free contracts for the minimal two-tile matmul probes.
 
 The probe keeps the physical two-tile representation explicit: each complex
-32x32 matrix is four real pages in column-major output-row order, while each
-page remains row-major.  The accelerator probe consumes the same pages for
-stages a, b, and c; this module is the independent NumPy oracle and metadata
-surface used by the host tests and board record.
+32x32 matrix is a real page block in column-major output-row order, while
+each page remains row-major.  The accelerator probe consumes the same pages
+for stages a, b_prime, and c; this module is the independent NumPy oracle and
+metadata surface used by the host tests and board record.
 
 The DEST-slot probe is a separate one-call diagnostic.  Its four-page in0
 block starts with the two pages consumed by ``rt=2, ct=1, kt=1`` — ``I`` and
@@ -18,10 +18,27 @@ from typing import Any
 
 import numpy as np
 
-PROBE_STAGES = ("a", "b", "c")
+PROBE_STAGES = ("a", "b_prime", "c")
+PROBE_STAGE_ALIASES = {"b": "b_prime", "b-prime": "b_prime"}
+PROBE_STAGE_CHOICES = (*PROBE_STAGES, *PROBE_STAGE_ALIASES)
 DECOMPOSITION_STAGES = ("a1", "a2", "a3")
 ALL_PROBE_STAGES = (*DECOMPOSITION_STAGES, *PROBE_STAGES)
+ALL_PROBE_STAGE_CHOICES = (*ALL_PROBE_STAGES, *PROBE_STAGE_ALIASES)
 TILE = 32
+
+
+def normalize_probe_stage(stage: str) -> str:
+    """Return the canonical diagnostic stage name.
+
+    ``b`` remains the command-line spelling for compatibility with the prior
+    probe; records use ``b_prime`` so the seed-free boundary is unambiguous.
+    """
+    canonical = PROBE_STAGE_ALIASES.get(stage, stage)
+    if canonical not in ALL_PROBE_STAGES:
+        raise ValueError(
+            f"stage must be one of {ALL_PROBE_STAGE_CHOICES}, got {stage!r}"
+        )
+    return canonical
 
 
 def _as_complex_batch(values: np.ndarray, *, name: str) -> np.ndarray:
@@ -48,17 +65,40 @@ def probe_input_pages(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray]:
     r_imag = _bfloat16_round(r.imag)
     x_real = np.asarray(x.real, dtype=np.float32)
     x_imag = np.asarray(x.imag, dtype=np.float32)
+    identity = np.eye(r.shape[1], dtype=np.float32)
+    twice_identity = 2.0 * identity
+    zero = np.zeros_like(identity)
     return {
-        # [A00, A10, A01, A11] for A=[[-Rr, Ri], [-Ri, -Rr]].
-        "in0_r": np.stack((-r_real, -r_imag, r_imag, -r_real), axis=1),
-        # [B00, B10] for the first K=1 call of R*X.
-        "in1_x_column": np.stack((x_real, x_imag), axis=1),
+        # [A00, A10, A01, A11, A02, A12] for
+        # A=[[-Rr, Ri, 2I], [-Ri, -Rr, 0]].
+        "in0_r": np.stack(
+            (
+                -r_real,
+                -r_imag,
+                r_imag,
+                -r_real,
+                np.broadcast_to(twice_identity, r_real.shape),
+                np.broadcast_to(zero, r_real.shape),
+            ),
+            axis=1,
+        ),
+        # [B00, B10, B20] for the seed-free K=3 R*X calls.  The I page is
+        # resident BF16 input; it is repeated here only for the NumPy contract.
+        "in1_x_column": np.stack(
+            (
+                x_real,
+                x_imag,
+                np.broadcast_to(identity, x_real.shape),
+            ),
+            axis=1,
+        ),
         # [A00, A10, A01, A11] for X=[[Xr, -Xi], [Xi, Xr]].
         "in0_x_block": np.stack((x_real, x_imag, -x_imag, x_real), axis=1),
         # [Sr, Si] is assembled in the compute kernel after stage a/b.
         "in1_s_column": np.empty((r.shape[0], 2, r.shape[1], r.shape[2]), dtype=np.float32),
         "identity": (2.0 * np.eye(r.shape[1], dtype=np.float32))[None, None, ...],
-        "zero": np.zeros((1, 1, r.shape[1], r.shape[2]), dtype=np.float32),
+        "zero": zero[None, None, ...],
+        "one_identity": identity[None, None, ...],
     }
 
 
@@ -86,14 +126,28 @@ def expected_probe_outputs(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray
     partials = expected_probe_partials(r, x)
     rx = -partials["a3"]
     s = 2.0 * np.eye(r.shape[1], dtype=np.complex64)[None, ...] - rx
-    return {"a": partials["a3"], "b": s, "c": x @ s, **partials}
+    return {
+        "a": partials["a3"],
+        "b": s,
+        "b_prime": s,
+        "c": x @ s,
+        **partials,
+    }
 
 
 def probe_stage_contract(stage: str) -> dict[str, Any]:
     """Describe one stage's fixed dimensions, queues, and register protocol."""
-    if stage not in ALL_PROBE_STAGES:
-        raise ValueError(f"stage must be one of {ALL_PROBE_STAGES}, got {stage!r}")
+    stage = normalize_probe_stage(stage)
     uses_x_product = stage == "c"
+    r_calls = [
+        {"in0_offset": 0, "in1_offset": 0, "dst": 0},
+        {"in0_offset": 2, "in1_offset": 1, "dst": 0},
+        {"in0_offset": 4, "in1_offset": 2, "dst": 0},
+    ]
+    x_calls = [
+        {"in0_offset": 0, "in1_offset": 0, "dst": 0},
+        {"in0_offset": 2, "in1_offset": 1, "dst": 0},
+    ]
     decomposition_calls = {
         # rt=2 writes DEST slots dst and dst + 1 in one call.
         "a1": [{"in0_offset": 0, "in1_offset": 0, "dst": 0}],
@@ -110,15 +164,18 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
             "a3": "a1+a2 = −R·X",
         }[stage]
         matmul_calls = decomposition_calls[stage]
-        dest_seed = "none"
+        r_product_calls = matmul_calls
+        x_product_calls = []
     else:
-        operation = {"a": "R·X", "b": "2I−R·X", "c": "X·(2I−R·X)"}[stage]
-        matmul_calls = decomposition_calls["a3"] if stage in ("a", "b", "c") else []
-        dest_seed = "none" if stage == "a" else "[2I, 0]"
-    wait_count = 10 if uses_x_product else (5 if stage == "b" else 3)
+        operation = {"a": "−R·X", "b_prime": "2I−R·X", "c": "X·(2I−R·X)"}[stage]
+        r_product_calls = r_calls if stage in ("b_prime", "c") else r_calls[:2]
+        x_product_calls = x_calls if stage == "c" else []
+        matmul_calls = [*r_product_calls, *x_product_calls]
+    dest_seed = "none"
+    wait_count = 10 if uses_x_product else (7 if stage == "b_prime" else 3)
     reserve_count = 6 if uses_x_product else 3
     push_count = 6 if uses_x_product else 3
-    pop_count = 15 if uses_x_product else 9
+    pop_count = 15 if uses_x_product else (10 if stage == "b_prime" else 9)
     cb_counts = {
         "wait": wait_count,
         "reserve": reserve_count,
@@ -135,12 +192,14 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         "matmul_dimensions": {"rt": 2, "ct": 1, "kt": 1},
         "matmul_call_count": len(matmul_calls),
         "matmul_calls": matmul_calls,
+        "r_times_x_calls": r_product_calls,
+        "x_times_s_calls": x_product_calls,
         "matmul_block_init_positions": ["before_tile_regs_acquire"],
         "in0_register": "SrcB",
         "in1_register": "SrcA",
         "tile_traversal": {
-            "r_pages": ["A00", "A10", "A01", "A11"],
-            "x_column_pages": ["B00", "B10"],
+            "r_pages": ["A00", "A10", "A01", "A11", "A02", "A12"],
+            "x_column_pages": ["B00", "B10", "B20"],
             "x_block_pages": ["A00", "A10", "A01", "A11"],
         },
         "dest_slots": [0, 1],
@@ -148,8 +207,8 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         "pack_indices": [0, 1],
         "tile_regs_sequence": ["acquire", "commit", "wait", "release"],
         "cb_order": {
-            "in0": "CB_TWO_TILE_R" if not uses_x_product else "CB_TWO_TILE_X",
-            "in1": "CB_TWO_TILE_S",
+            "in0": ["CB_TWO_TILE_R", "CB_TWO_TILE_X"] if uses_x_product else "CB_TWO_TILE_R",
+            "in1": ["CB_TWO_TILE_S", "CB_IDENTITY"],
             "outputs": ["CB_OUTPUT_REAL", "CB_OUTPUT_IMAG"],
         },
         "cb_counts": cb_counts,
