@@ -816,6 +816,24 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--complex-product-input-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default="dram",
+        help="input/identity/zero placement for the complex-product catalogue (default: dram)",
+    )
+    parser.add_argument(
+        "--complex-product-r-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=None,
+        help="R placement for the complex-product catalogue (default: input placement)",
+    )
+    parser.add_argument(
+        "--complex-product-x0-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=None,
+        help="X0 placement for the complex-product catalogue (default: input placement)",
+    )
+    parser.add_argument(
         "--complex-product-batch",
         type=int,
         default=8192,
@@ -1090,6 +1108,15 @@ def _complex_catalogue_reference(matrices: np.ndarray) -> np.ndarray:
     return x
 
 
+def _resolve_complex_product_memories(args: argparse.Namespace) -> tuple[str, str, str]:
+    """Resolve the catalogue's dedicated placement controls."""
+    return _resolve_input_memories(
+        args.complex_product_input_memory,
+        r_memory=args.complex_product_r_memory,
+        x0_memory=args.complex_product_x0_memory,
+    )
+
+
 def _run_complex_catalogue_correctness(
     ttnn,
     device,
@@ -1099,6 +1126,9 @@ def _run_complex_catalogue_correctness(
     two_tile_complex: bool,
     dst_full_sync_en: bool,
     matrix_block: int,
+    input_memory: str = "dram",
+    r_memory: str = "dram",
+    x0_memory: str = "dram",
     iterations: int = NEWTON_SCHULZ_ITERATIONS,
 ) -> dict:
     from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
@@ -1113,9 +1143,9 @@ def _run_complex_catalogue_correctness(
             fuse_s=not two_tile_complex,
             two_tile_complex=two_tile_complex,
             matrix_block=matrix_block,
-            input_memory="dram",
-            r_memory="dram",
-            x0_memory="dram",
+            input_memory=input_memory,
+            r_memory=r_memory,
+            x0_memory=x0_memory,
             dst_full_sync_en=dst_full_sync_en,
             iterations=iterations,
         )
@@ -1139,6 +1169,7 @@ def _run_complex_product_catalogue(
     memory_map: dict[str, object],
 ) -> list[dict]:
     """Gate and time current/two-tile products for both DEST sync modes."""
+    input_memory, r_memory, x0_memory = _resolve_complex_product_memories(args)
     shape = next(
         shape for shape in default_catalogue() if shape.name == "newton_schulz_L32_b8192"
     )
@@ -1197,6 +1228,9 @@ def _run_complex_product_catalogue(
                 two_tile_complex=two_tile_complex,
                 dst_full_sync_en=dst_full_sync_en,
                 matrix_block=matrix_block,
+                input_memory=input_memory,
+                r_memory=r_memory,
+                x0_memory=x0_memory,
                 iterations=args.iterations,
             )
             row = {
@@ -1205,13 +1239,13 @@ def _run_complex_product_catalogue(
                 "representative": shape.representative,
                 "dtype": "bfloat16",
                 "memory": "l1",
-                "input_memory": "dram",
-                "r_memory": "dram",
-                "x0_memory": "dram",
+                "input_memory": input_memory,
+                "r_memory": r_memory,
+                "x0_memory": x0_memory,
                 "memory_placement": {
-                    "input": "dram",
-                    "r": "dram",
-                    "x0": "dram",
+                    "input": input_memory,
+                    "r": r_memory,
+                    "x0": x0_memory,
                     "compute": "l1",
                 },
                 "program_config": {
@@ -1225,9 +1259,9 @@ def _run_complex_product_catalogue(
                     "matrix_block": matrix_block,
                     "fp32_dest_acc_en": True,
                     "dst_full_sync_en": dst_full_sync_en,
-                    "input_memory": "dram",
-                    "r_memory": "dram",
-                    "x0_memory": "dram",
+                    "input_memory": input_memory,
+                    "r_memory": r_memory,
+                    "x0_memory": x0_memory,
                     "newton_schulz_iterations": args.iterations,
                 },
                 "newton_schulz_iterations": args.iterations,
@@ -1260,9 +1294,9 @@ def _run_complex_product_catalogue(
                         fp32_dest_acc_en=True,
                         dst_full_sync_en=dst_full_sync_en,
                         iterations=args.iterations,
-                        input_memory="dram",
-                        r_memory="dram",
-                        x0_memory="dram",
+                        input_memory=input_memory,
+                        r_memory=r_memory,
+                        x0_memory=x0_memory,
                         row_name=row_name,
                         iters=1,
                         repeats=launches,
@@ -1432,6 +1466,9 @@ def main(argv: list[str] | None = None) -> int:
 
     device = ttnn.open_device(device_id=args.device_id)
     if args.complex_product_catalogue:
+        complex_input_memory, complex_r_memory, complex_x0_memory = (
+            _resolve_complex_product_memories(args)
+        )
         try:
             results = _run_complex_product_catalogue(
                 ttnn,
@@ -1451,9 +1488,9 @@ def main(argv: list[str] | None = None) -> int:
                 ],
                 "program_config_kind_filters": [],
                 "custom_math_fidelity": ["HiFi3"],
-                "input_memory": "dram",
-                "r_memory": "dram",
-                "x0_memory": "dram",
+                "input_memory": complex_input_memory,
+                "r_memory": complex_r_memory,
+                "x0_memory": complex_x0_memory,
                 "two_tile_complex": [False, True],
                 "fp32_dest_acc_en": True,
                 "dst_full_sync_en": [True, False],
@@ -1472,6 +1509,13 @@ def main(argv: list[str] | None = None) -> int:
                 "correctness_reference": "independent NumPy fixed-eight-step oracle in this runner",
                 "correctness_tolerance": 1e-2,
                 "stock_best_row": "stock_best",
+                "custom_memory_placement": {
+                    "input": complex_input_memory,
+                    "r": complex_r_memory,
+                    "x0": complex_x0_memory,
+                    "compute": "l1",
+                    "output": "dram",
+                },
                 "power_trace": power_trace,
                 "power_clock_provenance": {
                     "trace": power_trace,

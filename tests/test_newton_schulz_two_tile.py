@@ -320,6 +320,10 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
     assert defaults.two_tile_complex is False
     assert defaults.complex_product_batch == 8192
     assert defaults.complex_product_correctness_only is False
+    assert defaults.complex_product_input_memory == "dram"
+    assert defaults.complex_product_r_memory is None
+    assert defaults.complex_product_x0_memory is None
+    assert run_matmul._resolve_complex_product_memories(defaults) == ("dram", "dram", "dram")
     assert defaults.fp32_dest_acc_en is True
     assert defaults.dst_full_sync_en is True
     enabled = parser.parse_args(
@@ -335,7 +339,45 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
             "--complex-product-batch",
             "4",
             "--complex-product-correctness-only",
+            "--complex-product-input-memory",
+            "l1",
+            "--complex-product-r-memory",
+            "l1",
+            "--complex-product-x0-memory",
+            "l1",
         ]
     )
     assert probe.complex_product_batch == 4
     assert probe.complex_product_correctness_only is True
+    assert probe.complex_product_input_memory == "l1"
+    assert probe.complex_product_r_memory == "l1"
+    assert probe.complex_product_x0_memory == "l1"
+
+
+def test_complex_catalogue_correctness_forwards_per_input_memory(monkeypatch):
+    matrices = np.eye(32, dtype=np.complex64)[None, ...]
+    seen = {}
+
+    def fake_run(ttnn, device, actual_matrices, **kwargs):
+        seen.update(kwargs)
+        np.testing.assert_array_equal(actual_matrices, matrices)
+        return matrices.copy()
+
+    monkeypatch.setattr(newton_schulz_kernel, "run_newton_schulz_kernel", fake_run)
+    result = run_matmul._run_complex_catalogue_correctness(
+        object(),
+        object(),
+        matrices,
+        expected=matrices,
+        two_tile_complex=True,
+        dst_full_sync_en=False,
+        matrix_block=2,
+        input_memory="l1",
+        r_memory="l1",
+        x0_memory="l1",
+    )
+
+    assert result["status"] == "pass"
+    assert seen["input_memory"] == seen["r_memory"] == seen["x0_memory"] == "l1"
+    assert seen["two_tile_complex"] is True
+    assert seen["dst_full_sync_en"] is False

@@ -822,6 +822,109 @@ def test_acceptance_catalogue_dispatches_both_shapes_and_all_required_rows(
     assert l16["flops_per_iteration"] == total_flops(l16_shape) * 16
 
 
+def test_complex_product_catalogue_dispatches_custom_memory_placement(
+    monkeypatch, tmp_path
+):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.float32 = "fp32"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    stock_calls = []
+    correctness_calls = []
+    custom_calls = []
+
+    def fake_stock(*args, **kwargs):
+        stock_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "ttnn.matmul",
+            "achieved_tflops": 1.0,
+            "seconds_per_iteration": 1.0,
+            "seconds_per_iteration_samples": [1.0] * kwargs["repeats"],
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    def fake_correctness(*args, **kwargs):
+        correctness_calls.append(kwargs)
+        return {"status": "pass", "relative_error": 0.0, "tolerance": 1e-2}
+
+    def fake_custom(*args, **kwargs):
+        custom_calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "input_memory": kwargs["input_memory"],
+            "r_memory": kwargs["r_memory"],
+            "x0_memory": kwargs["x0_memory"],
+            "output_memory": "dram",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_samples": [1.0] * kwargs["repeats"],
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+            "launches_measured": kwargs["iters"] * kwargs["repeats"],
+        }
+
+    monkeypatch.setattr(run_matmul, "run_shape", fake_stock)
+    monkeypatch.setattr(run_matmul, "_run_complex_catalogue_correctness", fake_correctness)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "complex-product.json"
+
+    assert run_matmul.main(
+        [
+            "--complex-product-catalogue",
+            "--complex-product-batch",
+            "1",
+            "--complex-product-input-memory",
+            "l1",
+            "--complex-product-r-memory",
+            "l1",
+            "--complex-product-x0-memory",
+            "l1",
+            "--launches-per-row",
+            "7",
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert payload["selection"]["input_memory"] == "l1"
+    assert payload["selection"]["r_memory"] == "l1"
+    assert payload["selection"]["x0_memory"] == "l1"
+    assert payload["measurement"]["custom_memory_placement"] == {
+        "input": "l1",
+        "r": "l1",
+        "x0": "l1",
+        "compute": "l1",
+        "output": "dram",
+    }
+    assert len(stock_calls) == 1
+    assert len(correctness_calls) == len(custom_calls) == 4
+    assert all(
+        call["input_memory"] == call["r_memory"] == call["x0_memory"] == "l1"
+        for call in [*correctness_calls, *custom_calls]
+    )
+    custom_rows = [row for row in payload["results"] if row["kind"] == "custom_newton_schulz"]
+    assert {row["row"] for row in custom_rows} == {
+        "one_tile_full_sync_block4",
+        "one_tile_half_sync_block2",
+        "two_tile_full_sync_block4",
+        "two_tile_half_sync_block2",
+    }
+    assert all(
+        row["input_memory"] == row["r_memory"] == row["x0_memory"] == "l1"
+        and row["program_config"]["input_memory"]
+        == row["program_config"]["r_memory"]
+        == row["program_config"]["x0_memory"]
+        == "l1"
+        for row in custom_rows
+    )
+    assert all(row["launches_requested_per_row"] == 7 for row in payload["results"])
+
+
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
     """The host-only runner seam produces the same JSON shape as a device run."""
     ttnn = _StubTtnn()
