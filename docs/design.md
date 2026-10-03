@@ -1203,6 +1203,18 @@ not a decision for the broader BF16/TF32/FP32 precision split; that choice
 remains open pending other shapes and state arrangements. Record:
 `docs/measurements/2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000.json`.
 
+The two-tile diagnostic uses two `ct=1, rt=2, kt=1` calls for each original
+`kt=2` product. The pinned Blackhole source audit establishes that `in0` is
+loaded into SrcB, `in1` into SrcA, the two in0 rows are consumed consecutively,
+and both calls accumulate into the same two row-order DEST slots. Consequently
+R's `[-Rr, -Ri, Ri, -Rr]` pages and X's `[Xr, Xi, -Xi, Xr]` pages are physically
+column-major by output row, while each 32x32 tile remains row-major. The exact
+source paths, revision, and NumPy R*X/X*S simulation are recorded in
+`docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`.
+This board-free result validates the placement contract; it does not claim a
+cause for the prior device mismatch until the board probe separates traversal
+from copy/pack and state-queue behavior.
+
 ### Beamspace MV
 
 Project channel space onto a low-dimensional orthogonal beam basis, then

@@ -75,6 +75,85 @@ def test_bfloat16_initial_constants_are_bit_exact_and_zero_is_explicit():
     assert np.count_nonzero(zero) == 0
 
 
+def _llk_rt2_kt1_accumulate(
+    in0_pages: list[np.ndarray],
+    in1_pages: list[np.ndarray],
+    *,
+    in0_start: int,
+    in1_start: int,
+    destination: np.ndarray,
+    destination_start: int,
+) -> None:
+    """Model the pinned Blackhole ``ct=1, rt=2, kt=1`` traversal.
+
+    ``matmul_block`` maps in0 to SrcB and in1 to SrcA, but the mathematical
+    operands remain ``A=in0`` and ``B=in1``.  With one output column the
+    unpack MOP visits two consecutive in0 pages (the two output rows) and
+    reuses the one in1 page.  The math MOP writes destination slots in row
+    order and accumulates rather than replacing them.
+    """
+    for row in range(2):
+        destination[destination_start + row] += (
+            in0_pages[in0_start + row] @ in1_pages[in1_start]
+        )
+
+
+def test_two_tile_llk_traversal_matches_complex_r_x_and_x_s_products():
+    """Verify both physical page layouts against the pinned LLK traversal."""
+    r_real = np.array([[2.0, 3.0], [5.0, 7.0]])
+    r_imag = np.array([[11.0, 13.0], [17.0, 19.0]])
+    x_real = np.array([[23.0, 29.0], [31.0, 37.0]])
+    x_imag = np.array([[41.0, 43.0], [47.0, 53.0]])
+    # The two K=1 products consume each operand block by columns: [A00, A10]
+    # then [A01, A11].  This is why each four-page CB block is column-major,
+    # even though each tile itself is row-major.
+    r_pages = [-r_real, -r_imag, r_imag, -r_real]
+    x_pages = [x_real, x_imag, -x_imag, x_real]
+    x_column = [x_real, x_imag]
+    s_dest = np.stack((2.0 * np.eye(2), np.zeros((2, 2))))
+    _llk_rt2_kt1_accumulate(
+        r_pages,
+        x_column,
+        in0_start=0,
+        in1_start=0,
+        destination=s_dest,
+        destination_start=0,
+    )
+    _llk_rt2_kt1_accumulate(
+        r_pages,
+        x_column,
+        in0_start=2,
+        in1_start=1,
+        destination=s_dest,
+        destination_start=0,
+    )
+    expected_s = 2.0 * np.eye(2, dtype=np.float64) - (
+        r_real + 1j * r_imag
+    ) @ (x_real + 1j * x_imag)
+    np.testing.assert_allclose(s_dest[0] + 1j * s_dest[1], expected_s)
+
+    s_column = [expected_s.real, expected_s.imag]
+    x_dest = np.zeros((2, 2, 2))
+    _llk_rt2_kt1_accumulate(
+        x_pages,
+        s_column,
+        in0_start=0,
+        in1_start=0,
+        destination=x_dest,
+        destination_start=0,
+    )
+    _llk_rt2_kt1_accumulate(
+        x_pages,
+        s_column,
+        in0_start=2,
+        in1_start=1,
+        destination=x_dest,
+        destination_start=0,
+    )
+    expected_x = (x_real + 1j * x_imag) @ expected_s
+    np.testing.assert_allclose(x_dest[0] + 1j * x_dest[1], expected_x)
+
+
 def test_two_tile_dest_preflight_matches_full_and_half_sync_limits():
     ttnn = _ttnn()
     for matrix_block in (1, 2, 4):

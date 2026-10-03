@@ -157,6 +157,12 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 ## Investigation items
 
 - Tensix dest-register accumulation precision and read-out behavior
+- Two-tile complex Newton-Schulz device mismatch: the pinned LLK source and
+  exact NumPy simulation validate the current column-major CB placement and
+  DEST accumulation contract, but prior board runs still failed the numerical
+  gate; isolate copy/pack and state-queue behavior with the prescribed batch-4
+  and batch-8192 probes. Source record:
+  `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`
 - AFE anti-aliasing characteristics (does the 13 MHz configuration suppress
   everything above 20 MHz?)
 - Actual TGC behavior of the target front end (discontinuities, gain-step
