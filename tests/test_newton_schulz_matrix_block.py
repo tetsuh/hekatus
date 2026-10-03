@@ -94,14 +94,15 @@ def test_nonfused_cb_and_tensor_ledgers_keep_positive_r_real():
     assert newton_schulz_kernel.CB_R_REAL not in fused
     assert baseline[newton_schulz_kernel.CB_R_REAL] == ("bf16", 8)
     assert baseline[newton_schulz_kernel.CB_R_NEG_REAL] == ("bf16", 8)
-    assert newton_schulz_kernel._tensor_l1_bytes(
+    fused_tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
         ttnn,
         batch=8192,
         core_count=110,
         state_dtype="fp32",
         fuse_s=True,
         output_memory="dram",
-    ) == newton_schulz_kernel._tensor_l1_bytes(
+    )
+    baseline_tensor_bytes = newton_schulz_kernel._tensor_l1_bytes(
         ttnn,
         batch=8192,
         core_count=110,
@@ -109,6 +110,7 @@ def test_nonfused_cb_and_tensor_ledgers_keep_positive_r_real():
         fuse_s=False,
         output_memory="dram",
     )
+    assert baseline_tensor_bytes == fused_tensor_bytes + 2_048
 
 
 def test_matrix_block_default_is_baseline_and_invalid_values_fail_host_side():
@@ -408,6 +410,30 @@ def test_per_input_memory_keeps_reader_order_and_compatibility_shorthand():
         newton_schulz_kernel._reader_input_memories(r_memory="sram")
     with pytest.raises(ValueError, match="x0_memory"):
         newton_schulz_kernel._reader_input_memories(x0_memory="sram")
+
+
+def test_nonfused_l1_tensor_accounting_uses_fp32_identity_page():
+    ttnn = _ttnn()
+    fused = newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=True,
+        output_memory="dram",
+        input_memory="l1",
+    )
+    nonfused = newton_schulz_kernel._tensor_l1_bytes(
+        ttnn,
+        batch=8192,
+        core_count=110,
+        state_dtype="fp32",
+        fuse_s=False,
+        output_memory="dram",
+        input_memory="l1",
+    )
+    assert fused == 1_081_344
+    assert nonfused == fused + 2_048
 
 
 def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():

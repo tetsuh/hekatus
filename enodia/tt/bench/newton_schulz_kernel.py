@@ -259,6 +259,14 @@ def _physical_tile_count(batch: int, size: int) -> int:
     return (batch + 1) // 2 if size == 16 else batch
 
 
+def _padded_tile_count(tile_count: int, matrix_block: int) -> int:
+    """Round a physical tile count up to a complete matrix block."""
+    if tile_count < 1:
+        raise ValueError(f"tile_count must be positive, got {tile_count}")
+    _validate_matrix_block(matrix_block)
+    return ((tile_count + matrix_block - 1) // matrix_block) * matrix_block
+
+
 def _pack_matrices(matrices: np.ndarray, *, packed: bool, tile_count: int) -> np.ndarray:
     """Pad or diagonal-pack logical matrices into the 32x32 kernel tiles."""
     batch, size, _ = matrices.shape
@@ -396,6 +404,25 @@ def _core_grid(ttnn, device, batch: int, matrix_block: int = 1):
         ]
     )
     return coordinates, core_ranges, ranges
+
+
+def _validate_core_group_capacities(
+    work_ranges: list[tuple[int, int]], matrix_block: int
+) -> None:
+    """Reject core groups that do not divide every matrix-block CB capacity."""
+    _validate_matrix_block(matrix_block)
+    capacities = [("matrix", matrix_block)]
+    if matrix_block == 8:
+        capacities.append(("state", 2 * matrix_block))
+    for core_index, (start, count) in enumerate(work_ranges):
+        for group_start, group_count in _matrix_block_ranges(start, count, matrix_block):
+            for name, capacity in capacities:
+                if capacity % group_count != 0:
+                    raise ValueError(
+                        f"core group {core_index} at tile {group_start} has "
+                        f"group_count={group_count}, which does not divide "
+                        f"{name} CB capacity={capacity}"
+                    )
 
 
 def _runtime_args(ttnn, coordinates, values: list[int], ranges):
@@ -560,7 +587,8 @@ def _tensor_l1_bytes(
         x0_bytes = 2 * _cb_page_size(ttnn, state_dtype)
     resident_bytes = 0
     if input_memory == "l1":
-        resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
+        identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
+        resident_bytes = _cb_page_size(ttnn, identity_dtype) + _cb_page_size(ttnn, ttnn.float32)
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
@@ -795,6 +823,15 @@ def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np
     return (real + 1j * imag).astype(np.complex64)
 
 
+def _deallocate_tensors(ttnn, tensors: list[Any]) -> None:
+    """Release prepared device tensors without masking the original failure."""
+    for tensor in tensors:
+        try:
+            ttnn.deallocate(tensor)
+        except Exception:  # noqa: BLE001, S110 - cleanup must not hide the result
+            pass
+
+
 @dataclass
 class NewtonSchulzKernel:
     """Prepared tensors and one fixed-count ProgramDescriptor."""
@@ -868,12 +905,14 @@ class NewtonSchulzKernel:
         if size not in (16, _TILE):
             raise ValueError(f"the throughput kernel only supports L=16 or L={_TILE}, got {size}")
         packed = size == 16
-        tile_count = _physical_tile_count(batch, size)
+        physical_tile_count = _physical_tile_count(batch, size)
+        tile_count = _padded_tile_count(physical_tile_count, matrix_block)
         math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
 
         coordinates, core_ranges, work_ranges = _core_grid(
             ttnn, device, tile_count, matrix_block
         )
+        _validate_core_group_capacities(work_ranges, matrix_block)
         # Normalize each logical matrix before pair packing; a packed norm would
         # couple the two independent 16x16 matrices.
         x0 = _initial_value(matrices)
@@ -913,47 +952,57 @@ class NewtonSchulzKernel:
         input_memories = _reader_input_memories(
             input_memory=input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
-        inputs = [
-            _device_tensor(
-                ttnn,
-                values,
-                device,
-                dtype=dtype,
-                input_memory=memory,
-            )
+        allocated: list[Any] = []
+        try:
+            inputs: list[Any] = []
             for values, dtype, memory in zip(
                 input_values, input_dtypes, input_memories, strict=True
+            ):
+                tensor = _device_tensor(
+                    ttnn,
+                    values,
+                    device,
+                    dtype=dtype,
+                    input_memory=memory,
+                )
+                allocated.append(tensor)
+                inputs.append(tensor)
+
+            output_shape = ttnn.Shape((tile_count, 1, _TILE, _TILE))
+            output_memory = _output_memory_name(variant)
+            output_memory_config = (
+                ttnn.DRAM_MEMORY_CONFIG if output_memory == "dram" else ttnn.L1_MEMORY_CONFIG
             )
-        ]
-        output_shape = ttnn.Shape((tile_count, 1, _TILE, _TILE))
-        output_memory = _output_memory_name(variant)
-        output_memory_config = (
-            ttnn.DRAM_MEMORY_CONFIG if output_memory == "dram" else ttnn.L1_MEMORY_CONFIG
-        )
-        outputs = [
-            ttnn.allocate_tensor_on_device(
-                output_shape,
-                state_dtype,
-                ttnn.TILE_LAYOUT,
-                device,
-                output_memory_config,
-            )
-            for _ in range(2)
-        ]
-        profile_output = None
-        if profile:
-            # The profile CB pages are raw uint32 words, not tile-face data.
-            # Use one row-major 4096-byte page per tensor page so the NOC
-            # writer and host decoder see the same word offsets.
-            profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, 1, PROFILE_PAGE_WORDS))
-            profile_output = ttnn.allocate_tensor_on_device(
-                profile_shape,
-                ttnn.uint32,
-                ttnn.ROW_MAJOR_LAYOUT,
-                device,
-                ttnn.DRAM_MEMORY_CONFIG,
-            )
-            outputs.append(profile_output)
+            outputs: list[Any] = []
+            for _ in range(2):
+                tensor = ttnn.allocate_tensor_on_device(
+                    output_shape,
+                    state_dtype,
+                    ttnn.TILE_LAYOUT,
+                    device,
+                    output_memory_config,
+                )
+                allocated.append(tensor)
+                outputs.append(tensor)
+
+            profile_output = None
+            if profile:
+                # The profile CB pages are raw uint32 words, not tile-face data.
+                # Use one row-major 4096-byte page per tensor page so the NOC
+                # writer and host decoder see the same word offsets.
+                profile_shape = ttnn.Shape((PROFILE_PAGES_PER_CORE, 1, 1, PROFILE_PAGE_WORDS))
+                profile_output = ttnn.allocate_tensor_on_device(
+                    profile_shape,
+                    ttnn.uint32,
+                    ttnn.ROW_MAJOR_LAYOUT,
+                    device,
+                    ttnn.DRAM_MEMORY_CONFIG,
+                )
+                allocated.append(profile_output)
+                outputs.append(profile_output)
+        except Exception:
+            _deallocate_tensors(ttnn, allocated)
+            raise
 
         cbs = []
         for index, (data_format, page_count) in cb_definitions.items():
@@ -1158,11 +1207,7 @@ class NewtonSchulzKernel:
         return records
 
     def close(self) -> None:
-        for tensor in [*self.inputs, *self.outputs]:
-            try:
-                self.ttnn.deallocate(tensor)
-            except Exception:  # noqa: BLE001, S110 - cleanup must not hide the result
-                pass
+        _deallocate_tensors(self.ttnn, [*self.inputs, *self.outputs])
 
 
 def run_newton_schulz_kernel(

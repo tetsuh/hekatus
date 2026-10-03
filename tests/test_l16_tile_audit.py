@@ -10,11 +10,12 @@ import pytest
 
 def _tt_metal_root() -> Path:
     configured = os.environ.get("HEKATUS_TT_METAL_ROOT")
-    if configured:
-        candidate = Path(configured)
-        if (candidate / ".git").exists() and (candidate / "tt_metal").is_dir():
-            return candidate
-    pytest.skip("set HEKATUS_TT_METAL_ROOT to a tt-metal source checkout for this audit")
+    if not configured:
+        pytest.skip("set HEKATUS_TT_METAL_ROOT to a tt-metal source checkout for this audit")
+    candidate = Path(configured)
+    if not ((candidate / ".git").exists() and (candidate / "tt_metal").is_dir()):
+        pytest.fail(f"HEKATUS_TT_METAL_ROOT is not a tt-metal checkout: {candidate}")
+    return candidate
 
 
 def _source(root: Path, relative: str) -> str:
@@ -55,7 +56,7 @@ def test_blackhole_standard_matmul_apis_do_not_accept_native_16x16():
 
 
 def test_audit_has_no_machine_local_checkout_dependency():
-    design = Path("docs/design.md").read_text()
+    design = (Path(__file__).parents[1] / "docs" / "design.md").read_text()
     assert "901dd9ce93816ffd1fd185b801fc727065e9ae07" in design
     assert "image contains no source-revision metadata" in design
     assert "same" in design and "16x16 by 16x16 matmul is not supported" in design

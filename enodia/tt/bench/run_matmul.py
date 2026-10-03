@@ -522,6 +522,7 @@ def run_custom_newton_schulz(
             "error": f"unknown custom variant {variant!r}",
         }
     from enodia.tt.bench.newton_schulz_kernel import (
+        _padded_tile_count,
         _physical_tile_count,
         _state_dtype,
         _validate_l1_preflight,
@@ -547,7 +548,9 @@ def run_custom_newton_schulz(
     try:
         l1_preflight_bytes = _validate_l1_preflight(
             ttnn,
-            batch=_physical_tile_count(shape.batch, shape.m),
+            batch=_padded_tile_count(
+                _physical_tile_count(shape.batch, shape.m), matrix_block
+            ),
             core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
             state_dtype=_state_dtype(ttnn, variant),
             profile=profile,
@@ -615,7 +618,9 @@ def run_custom_newton_schulz(
             "matrix_block": matrix_block,
             "row": row_name or f"custom_block{matrix_block}",
             "physical_tile_count": getattr(
-                kernel, "tile_count", _physical_tile_count(shape.batch, shape.m)
+                kernel,
+                "tile_count",
+                _padded_tile_count(_physical_tile_count(shape.batch, shape.m), matrix_block),
             ),
             "packing": "diagonal_pairs_32x32" if shape.m == 16 else "native_32x32",
             "input_memory": input_memory,

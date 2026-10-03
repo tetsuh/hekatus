@@ -44,7 +44,7 @@ mkdir -p "${OUT_DIR}"
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
 RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
-CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-60}"
+CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-900}"
 if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
   echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be a positive integer" >&2
   exit 2

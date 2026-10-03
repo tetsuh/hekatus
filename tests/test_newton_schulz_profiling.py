@@ -77,7 +77,7 @@ def test_cycle_counter_profile_uses_l1_transport_and_timestamps():
     assert "event_count" in compute
     assert "warmup_event_count" in compute
     assert "if (start_tile == 0)" in compute
-    assert "TensorAccessorArgs<0>()" in writer
+    assert "constexpr auto real_args = TensorAccessorArgs<1>()" in writer
     assert "get_arg_val<std::uint32_t>(2)" in writer
     assert "get_arg_val<std::uint32_t>(3)" in writer
     assert "get_arg_val<std::uint32_t>(4)" in writer

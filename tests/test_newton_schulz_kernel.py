@@ -30,6 +30,17 @@ DEVICE_TEST = (
     and os.environ.get("HEKATUS_TT_PINNED_CONTAINER") == "1"
 )
 HAS_TTNN = importlib.util.find_spec("ttnn") is not None
+PARTIAL_BLOCK_CASES = tuple(
+    (batch, matrix_block, size, fuse_s)
+    for batch in range(1, 65)
+    for matrix_block in (1, 2, 4, 8)
+    for size in (16, 32)
+    for fuse_s in (False, True)
+)
+PARTIAL_BLOCK_CASE_IDS = [
+    f"batch{batch}-block{matrix_block}-L{size}-fuse_s_{str(fuse_s).lower()}"
+    for batch, matrix_block, size, fuse_s in PARTIAL_BLOCK_CASES
+]
 
 
 class ReferenceTests(unittest.TestCase):
@@ -418,6 +429,179 @@ class ReferenceTests(unittest.TestCase):
 
         self.assertEqual(reference_violations, [])
         self.assertEqual(spec_violations, [])
+
+
+@pytest.mark.parametrize(
+    ("batch", "matrix_block", "size", "fuse_s"),
+    PARTIAL_BLOCK_CASES,
+    ids=PARTIAL_BLOCK_CASE_IDS,
+)
+def test_partial_block_padding_preserves_capacity_and_logical_unpack(
+    batch, matrix_block, size, fuse_s
+):
+    physical_tile_count = newton_schulz_kernel._physical_tile_count(batch, size)
+    tile_count = newton_schulz_kernel._padded_tile_count(
+        physical_tile_count, matrix_block
+    )
+    assert tile_count >= physical_tile_count
+    assert tile_count % matrix_block == 0
+
+    work_ranges = newton_schulz_kernel._balanced_ranges(tile_count, 110, matrix_block)
+    newton_schulz_kernel._validate_core_group_capacities(work_ranges, matrix_block)
+    capacities = [matrix_block]
+    if matrix_block == 8:
+        capacities.append(2 * matrix_block)
+    for start, count in work_ranges:
+        for _, group_count in newton_schulz_kernel._matrix_block_ranges(
+            start, count, matrix_block
+        ):
+            assert all(capacity % group_count == 0 for capacity in capacities)
+
+    matrices = (
+        np.arange(batch * size * size, dtype=np.float32).reshape(batch, size, size)
+        + 1j
+    ).astype(np.complex64)
+    x0 = np.zeros_like(matrices)
+    reader_values = newton_schulz_kernel._reader_input_values(
+        matrices,
+        x0,
+        fuse_s=fuse_s,
+        tile_count=tile_count,
+        packed=size == 16,
+    )
+    assert len(reader_values) == 5
+    assert all(value.shape[0] == tile_count for value in reader_values)
+    if tile_count > physical_tile_count:
+        for value in reader_values:
+            np.testing.assert_array_equal(value[physical_tile_count:], 0.0)
+
+    real = newton_schulz_kernel._unpack_matrices(
+        newton_schulz_kernel._pack_matrices(
+            matrices.real, packed=size == 16, tile_count=tile_count
+        ),
+        batch=batch,
+        size=size,
+        packed=size == 16,
+    )
+    imag = newton_schulz_kernel._unpack_matrices(
+        newton_schulz_kernel._pack_matrices(
+            matrices.imag, packed=size == 16, tile_count=tile_count
+        ),
+        batch=batch,
+        size=size,
+        packed=size == 16,
+    )
+    result = real + 1j * imag
+    assert result.shape == (batch, size, size)
+    np.testing.assert_array_equal(result, matrices)
+
+
+@pytest.mark.parametrize(
+    ("matrix_block", "group_count"), ((4, 3), (8, 3), (8, 5), (8, 6), (8, 7))
+)
+def test_prepare_capacity_guard_rejects_partial_matrix_block_groups(
+    matrix_block, group_count
+):
+    with pytest.raises(ValueError, match="does not divide"):
+        newton_schulz_kernel._validate_core_group_capacities(
+            [(0, group_count)], matrix_block
+        )
+
+
+def test_prepare_deallocates_inputs_when_a_later_input_allocation_fails(monkeypatch):
+    class _Ttnn:
+        bfloat16 = "bf16"
+        float32 = "fp32"
+        MathFidelity = SimpleNamespace(HiFi4="hifi4")
+
+        def __init__(self):
+            self.deallocated = []
+
+        def deallocate(self, tensor):
+            self.deallocated.append(tensor)
+
+    ttnn = _Ttnn()
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_core_grid",
+        lambda *_args, **_kwargs: ([(0, 0)], object(), [(0, 1)]),
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_cb_definitions",
+        lambda *_args, **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_tensor_l1_bytes",
+        lambda *_args, **_kwargs: 0,
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_validate_l1_budget",
+        lambda *_args, **_kwargs: 0,
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_reader_input_dtypes",
+        lambda *_args, **_kwargs: ["dtype"] * 7,
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_reader_input_memories",
+        lambda **_kwargs: ["l1"] * 7,
+    )
+    created = []
+
+    def fail_on_second_input(*_args, **_kwargs):
+        if created:
+            raise RuntimeError("input allocation failed")
+        created.append("input-0")
+        return created[-1]
+
+    monkeypatch.setattr(newton_schulz_kernel, "_device_tensor", fail_on_second_input)
+    matrices = np.ones((1, 32, 32), dtype=np.complex64)
+    with pytest.raises(RuntimeError, match="input allocation failed"):
+        newton_schulz_kernel.NewtonSchulzKernel.prepare(ttnn, None, matrices)
+    assert ttnn.deallocated == ["input-0"]
+
+
+@pytest.mark.tt_device
+@pytest.mark.skipif(
+    not (DEVICE_TEST and HAS_TTNN),
+    reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
+)
+@pytest.mark.parametrize(
+    ("batch", "matrix_block", "size", "fuse_s"),
+    PARTIAL_BLOCK_CASES,
+    ids=PARTIAL_BLOCK_CASE_IDS,
+)
+def test_device_partial_block_padding_matches_numpy(
+    batch, matrix_block, size, fuse_s
+):
+    import ttnn
+
+    device = ttnn.open_device(device_id=0)
+    try:
+        matrices = random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
+        expected = newton_schulz_reference(matrices)
+        actual = run_newton_schulz_kernel(
+            ttnn,
+            device,
+            matrices,
+            variant="bf16-fp32state",
+            math_fidelity="HiFi3",
+            fuse_s=fuse_s,
+            matrix_block=matrix_block,
+            input_memory="l1",
+            r_memory="l1",
+            x0_memory="l1",
+        )
+        assert actual.shape == (batch, size, size)
+        relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        assert relative_error <= 1e-2
+    finally:
+        ttnn.close_device(device)
 
 
 @pytest.mark.tt_device
