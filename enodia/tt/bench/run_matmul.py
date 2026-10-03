@@ -1,8 +1,8 @@
 """Run the shape catalogue on the accelerator and record what it achieved.
 
 Runs inside the toolchain container, so it imports nothing from the
-reference implementation — only the standard library and the modules beside
-it, which are standard-library-only by design.
+reference implementation. The explicit stock catalogue remains host-reviewable;
+the custom correctness catalogue uses NumPy only for its independent gate.
 
 **Accounting matches execution.** A complex operation costs four real
 matmuls, and this runs four. Counting four and timing one would report four
@@ -39,6 +39,8 @@ import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+import numpy as np
 
 if __package__ in (None, ""):  # invoked as a plain script inside the container
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
@@ -489,8 +491,11 @@ def run_custom_newton_schulz(
     fidelity_split: str | tuple[int, int] | list[int] | None = None,
     profile: bool = False,
     fuse_s: bool = False,
+    two_tile_complex: bool = False,
     batch_reads: bool = False,
     matrix_block: int = 1,
+    fp32_dest_acc_en: bool = True,
+    dst_full_sync_en: bool = True,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
@@ -531,7 +536,12 @@ def run_custom_newton_schulz(
     )
 
     try:
-        _validate_matrix_block(matrix_block, variant=variant)
+        _validate_matrix_block(
+            matrix_block,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
+            variant=variant,
+        )
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
     try:
@@ -570,6 +580,9 @@ def run_custom_newton_schulz(
             x0_memory=x0_memory,
             matrix_block=matrix_block,
             variant=variant,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
+            two_tile_complex=two_tile_complex,
         )
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
@@ -602,6 +615,12 @@ def run_custom_newton_schulz(
         # a legacy host stub; non-default blocks must be explicit.
         if matrix_block != 1:
             prepare_kwargs["matrix_block"] = matrix_block
+        if two_tile_complex:
+            prepare_kwargs["two_tile_complex"] = True
+        if not fp32_dest_acc_en:
+            prepare_kwargs["fp32_dest_acc_en"] = False
+        if not dst_full_sync_en:
+            prepare_kwargs["dst_full_sync_en"] = False
         kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, **prepare_kwargs)
         kernel.launch()
         ttnn.synchronize_device(device)
@@ -628,8 +647,11 @@ def run_custom_newton_schulz(
                 None if fidelity_split is None else f"{fidelity_split[0]}+{fidelity_split[1]}"
             ),
             "fuse_s": fuse_s,
+            "two_tile_complex": two_tile_complex,
             "batch_reads": batch_reads,
             "matrix_block": matrix_block,
+            "fp32_dest_acc_en": fp32_dest_acc_en,
+            "dst_full_sync_en": dst_full_sync_en,
             "row": row_name or f"custom_block{matrix_block}",
             "physical_tile_count": getattr(
                 kernel, "tile_count", _physical_tile_count(shape.batch, shape.m)
@@ -645,6 +667,8 @@ def run_custom_newton_schulz(
             "achieved_tflops": flops / best / 1e12,
             "flops_per_iteration": flops,
             "complex_matmuls_per_iteration": COMPLEX_MATMULS_PER_INVERSE,
+            "complex_product_tiles": 2 if two_tile_complex else 1,
+            "complex_product_matmul_block_calls_per_product": 2 if two_tile_complex else 4,
             "real_matmuls_per_iteration": shape.real_matmuls * COMPLEX_MATMULS_PER_INVERSE,
             "core_work_ranges": [list(pair) for pair in kernel.work_ranges],
         }
@@ -763,6 +787,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--complex-product-catalogue",
+        action="store_true",
+        help=(
+            "gate and compare stock, current one-tile, and opt-in two-tile "
+            "products for full/half DEST sync"
+        ),
+    )
+    parser.add_argument(
         "--launches-per-row",
         type=int,
         default=ACCEPTANCE_CATALOGUE_LAUNCHES,
@@ -780,6 +812,23 @@ def _build_parser() -> argparse.ArgumentParser:
         "--fuse-s",
         action="store_true",
         help="fuse S = 2I - R @ X into BF16/FP32 DEST accumulation",
+    )
+    parser.add_argument(
+        "--two-tile-complex",
+        action="store_true",
+        help="use the opt-in two-tile complex products",
+    )
+    parser.add_argument(
+        "--fp32-dest-acc-en",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="enable FP32 DEST accumulation (default: enabled)",
+    )
+    parser.add_argument(
+        "--dst-full-sync-en",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="enable full DEST synchronization (default: enabled)",
     )
     parser.add_argument(
         "--batch-reads",
@@ -822,9 +871,13 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(
             "--fidelity-split can only be combined with --custom-math-fidelity HiFi3"
         )
-    if args.acceptance_catalogue:
+    if args.acceptance_catalogue or args.complex_product_catalogue:
+        if args.acceptance_catalogue and args.complex_product_catalogue:
+            parser.error("catalogue modes are mutually exclusive")
         if args.fidelity_split:
-            parser.error("--fidelity-split cannot be combined with --acceptance-catalogue")
+            parser.error("--fidelity-split cannot be combined with a catalogue mode")
+        if args.complex_product_catalogue and args.two_tile_complex:
+            parser.error("--complex-product-catalogue selects both product forms")
         return
 
     shapes = _select_shapes(default_catalogue(), args.only)
@@ -952,6 +1005,9 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "r_memory": "l1",
             "x0_memory": "l1",
             "output_memory": "dram",
+            "two_tile_complex": False,
+            "fp32_dest_acc_en": True,
+            "dst_full_sync_en": True,
         },
         "power_trace": power_trace,
         "power_clock_provenance": {
@@ -968,6 +1024,198 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "adr": "ADR-0005",
         },
     }
+
+
+def _complex_catalogue_inputs(batch: int, size: int, *, seed: int) -> np.ndarray:
+    """Create deterministic HPD inputs without importing the reference module."""
+    rng = np.random.default_rng(seed)
+    real = rng.standard_normal((batch, size, size), dtype=np.float32)
+    imag = rng.standard_normal((batch, size, size), dtype=np.float32)
+    factor = (real + 1j * imag).astype(np.complex64)
+    matrices = factor @ factor.conj().swapaxes(-1, -2)
+    matrices += np.eye(size, dtype=np.complex64)[None, ...]
+    return matrices.astype(np.complex64)
+
+
+def _complex_catalogue_reference(matrices: np.ndarray) -> np.ndarray:
+    """Independent fixed-eight-step NumPy oracle for the catalogue gate."""
+    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
+    norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
+    x = matrices.conj().swapaxes(-1, -2) / (norm_1 * norm_inf)[:, None, None]
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    for _ in range(8):
+        x = x @ (2.0 * identity - matrices @ x)
+    return x
+
+
+def _run_complex_catalogue_correctness(
+    ttnn,
+    device,
+    matrices: np.ndarray,
+    *,
+    expected: np.ndarray,
+    two_tile_complex: bool,
+    dst_full_sync_en: bool,
+    matrix_block: int,
+) -> dict:
+    from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
+
+    try:
+        actual = run_newton_schulz_kernel(
+            ttnn,
+            device,
+            matrices,
+            variant="bf16-fp32state",
+            math_fidelity="HiFi3",
+            fuse_s=not two_tile_complex,
+            two_tile_complex=two_tile_complex,
+            matrix_block=matrix_block,
+            input_memory="dram",
+            r_memory="dram",
+            x0_memory="dram",
+            dst_full_sync_en=dst_full_sync_en,
+        )
+        relative_error = float(
+            np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        )
+        return {
+            "relative_error": relative_error,
+            "tolerance": 1e-2,
+            "status": "pass" if relative_error <= 1e-2 else "fail",
+        }
+    except Exception as exc:  # noqa: BLE001 - preserve compile/timeout failures as rows
+        return {"status": "failed", "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _run_complex_product_catalogue(
+    ttnn,
+    device,
+    *,
+    args: argparse.Namespace,
+    memory_map: dict[str, object],
+) -> list[dict]:
+    """Gate and time current/two-tile products for both DEST sync modes."""
+    shape = next(
+        shape for shape in default_catalogue() if shape.name == "newton_schulz_L32_b8192"
+    )
+    launches = args.launches_per_row
+    matrices = _complex_catalogue_inputs(shape.batch, shape.m, seed=95)
+    expected = _complex_catalogue_reference(matrices)
+    results: list[dict] = []
+
+    stock_record = {
+        "shape": asdict(shape),
+        "execution_shape": asdict(shape),
+        "representative": shape.representative,
+        "dtype": "bfloat16",
+        "memory": "l1",
+        "input_memory": "l1",
+        "memory_placement": {name: {"buffer": "l1", "layout": "interleaved"}
+                             for name in ("input_a", "input_b", "output")},
+        "program_config": {"name": "default", "kind": "default"},
+        "iterations": 1,
+        "repeats": launches,
+        "launches_requested_per_row": launches,
+        "kind": STOCK_KIND,
+        "row": "stock_best",
+        **_stock_math_fidelity("bfloat16", None),
+    }
+    stock_record.update(
+        run_shape(
+            ttnn,
+            device,
+            shape,
+            dtype=ttnn.bfloat16,
+            memory_config=memory_map["l1"],
+            memory_name="l1",
+            iters=1,
+            repeats=launches,
+        )
+    )
+    with_efficiency(stock_record, args.peak_tflops)
+    results.append(stock_record)
+
+    for dst_full_sync_en, matrix_block in ((True, 4), (False, 2)):
+        for two_tile_complex in (False, True):
+            label = "two_tile" if two_tile_complex else "one_tile"
+            row_name = f"{label}_{'full' if dst_full_sync_en else 'half'}_sync_block{matrix_block}"
+            correctness = _run_complex_catalogue_correctness(
+                ttnn,
+                device,
+                matrices,
+                expected=expected,
+                two_tile_complex=two_tile_complex,
+                dst_full_sync_en=dst_full_sync_en,
+                matrix_block=matrix_block,
+            )
+            row = {
+                "shape": asdict(shape),
+                "execution_shape": asdict(shape),
+                "representative": shape.representative,
+                "dtype": "bfloat16",
+                "memory": "l1",
+                "input_memory": "dram",
+                "r_memory": "dram",
+                "x0_memory": "dram",
+                "memory_placement": {
+                    "input": "dram",
+                    "r": "dram",
+                    "x0": "dram",
+                    "compute": "l1",
+                },
+                "program_config": {
+                    "name": CUSTOM_KIND,
+                    "kind": CUSTOM_KIND,
+                    "variant": "bf16-fp32state",
+                    "math_fidelity": "HiFi3",
+                    "fuse_s": not two_tile_complex,
+                    "two_tile_complex": two_tile_complex,
+                    "batch_reads": False,
+                    "matrix_block": matrix_block,
+                    "fp32_dest_acc_en": True,
+                    "dst_full_sync_en": dst_full_sync_en,
+                    "input_memory": "dram",
+                    "r_memory": "dram",
+                    "x0_memory": "dram",
+                },
+                "iterations": 1,
+                "repeats": launches,
+                "launches_requested_per_row": launches,
+                "kind": CUSTOM_KIND,
+                "row": row_name,
+                "correctness": correctness,
+            }
+            if correctness["status"] == "pass":
+                row.update(
+                    run_custom_newton_schulz(
+                        ttnn,
+                        device,
+                        shape,
+                        dtype_name="bfloat16",
+                        memory_name="l1",
+                        variant="bf16-fp32state",
+                        math_fidelity="HiFi3",
+                        fuse_s=not two_tile_complex,
+                        two_tile_complex=two_tile_complex,
+                        batch_reads=False,
+                        matrix_block=matrix_block,
+                        fp32_dest_acc_en=True,
+                        dst_full_sync_en=dst_full_sync_en,
+                        input_memory="dram",
+                        r_memory="dram",
+                        x0_memory="dram",
+                        row_name=row_name,
+                        iters=1,
+                        repeats=launches,
+                    )
+                )
+            else:
+                row.update({"status": correctness["status"], "kind": CUSTOM_KIND})
+                if "error" in correctness:
+                    row["error"] = correctness["error"]
+            with_efficiency(row, args.peak_tflops)
+            results.append(row)
+    return results
 
 
 def _run_acceptance_catalogue(
@@ -1045,8 +1293,11 @@ def _run_acceptance_catalogue(
                             "variant": "bf16-fp32state",
                             "math_fidelity": math_fidelity,
                             "fuse_s": fuse_s,
+                            "two_tile_complex": False,
                             "batch_reads": False,
                             "matrix_block": matrix_block,
+                            "fp32_dest_acc_en": True,
+                            "dst_full_sync_en": True,
                             "input_memory": "l1",
                             "r_memory": "l1",
                             "x0_memory": "l1",
@@ -1067,8 +1318,11 @@ def _run_acceptance_catalogue(
                             variant="bf16-fp32state",
                             math_fidelity=math_fidelity,
                             fuse_s=fuse_s,
+                            two_tile_complex=False,
                             batch_reads=False,
                             matrix_block=matrix_block,
+                            fp32_dest_acc_en=True,
+                            dst_full_sync_en=True,
                             input_memory="l1",
                             r_memory="l1",
                             x0_memory="l1",
@@ -1115,6 +1369,62 @@ def main(argv: list[str] | None = None) -> int:
         environment.update(json.loads(args.env_json.read_text()))
 
     device = ttnn.open_device(device_id=args.device_id)
+    if args.complex_product_catalogue:
+        try:
+            results = _run_complex_product_catalogue(
+                ttnn,
+                device,
+                args=args,
+                memory_map=memory_map,
+            )
+        finally:
+            ttnn.close_device(device)
+        power_trace = _record_path(args.power_trace)
+        payload = {
+            "environment": environment,
+            "configuration_mode": "complex-product-catalogue",
+            "selection": {
+                "shape_filters": ["newton_schulz_L32_b8192"],
+                "program_config_kind_filters": [],
+                "custom_math_fidelity": ["HiFi3"],
+                "input_memory": "dram",
+                "r_memory": "dram",
+                "x0_memory": "dram",
+                "two_tile_complex": [False, True],
+                "fp32_dest_acc_en": True,
+                "dst_full_sync_en": [True, False],
+                "matrix_blocks": {"full": 4, "half": 2},
+                "launches_per_row": args.launches_per_row,
+            },
+            "peak_tflops": args.peak_tflops,
+            "peak_note": args.peak_note,
+            "measurement": {
+                "catalogue": "two_tile_complex_batch8192",
+                "same_device_run": True,
+                "correctness_reference": "independent NumPy fixed-eight-step oracle in this runner",
+                "correctness_tolerance": 1e-2,
+                "stock_best_row": "stock_best",
+                "power_trace": power_trace,
+                "power_clock_provenance": {
+                    "trace": power_trace,
+                    "columns": list(POWER_TRACE_COLUMNS),
+                    "power_column": "power_w",
+                    "clock_column": "aiclk_mhz",
+                    "temperature_column": "asic_temp_c",
+                    "sampling_source": "tt-smi snapshot",
+                },
+                "environment_provenance": {
+                    "source": "--env-json",
+                    "record_field": "environment",
+                    "adr": "ADR-0005",
+                },
+            },
+            "results": results,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+        return 0
     if args.acceptance_catalogue:
         try:
             results = _run_acceptance_catalogue(
@@ -1136,6 +1446,9 @@ def main(argv: list[str] | None = None) -> int:
                 "r_memory": "l1",
                 "x0_memory": "l1",
                 "fuse_s": [False, True],
+                "two_tile_complex": False,
+                "fp32_dest_acc_en": True,
+                "dst_full_sync_en": True,
                 "batch_reads": False,
                 "matrix_blocks": list(ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS),
                 "launches_per_row": args.launches_per_row,
@@ -1265,8 +1578,11 @@ def main(argv: list[str] | None = None) -> int:
                                         "math_fidelity": math_fidelity,
                                         "fidelity_split": split_name,
                                         "fuse_s": args.fuse_s,
+                                        "two_tile_complex": args.two_tile_complex,
                                         "batch_reads": args.batch_reads,
                                         "matrix_block": args.matrix_block,
+                                        "fp32_dest_acc_en": args.fp32_dest_acc_en,
+                                        "dst_full_sync_en": args.dst_full_sync_en,
                                         "input_memory": input_memory,
                                         "r_memory": r_memory,
                                         "x0_memory": x0_memory,
@@ -1287,8 +1603,11 @@ def main(argv: list[str] | None = None) -> int:
                                     "math_fidelity": math_fidelity,
                                     "profile": args.profile,
                                     "fuse_s": args.fuse_s,
+                                    "two_tile_complex": args.two_tile_complex,
                                     "batch_reads": args.batch_reads,
                                     "matrix_block": args.matrix_block,
+                                    "fp32_dest_acc_en": args.fp32_dest_acc_en,
+                                    "dst_full_sync_en": args.dst_full_sync_en,
                                     "input_memory": input_memory,
                                     "r_memory": r_memory,
                                     "x0_memory": x0_memory,
@@ -1322,7 +1641,10 @@ def main(argv: list[str] | None = None) -> int:
         "r_memory": r_memory,
         "x0_memory": x0_memory,
         "fuse_s": args.fuse_s,
+        "two_tile_complex": args.two_tile_complex,
         "batch_reads": args.batch_reads,
+        "fp32_dest_acc_en": args.fp32_dest_acc_en,
+        "dst_full_sync_en": args.dst_full_sync_en,
     }
     if args.fidelity_split:
         selection["fidelity_split"] = [f"{prefix}+{suffix}" for prefix, suffix in args.fidelity_split]

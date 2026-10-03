@@ -619,7 +619,10 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "r_memory": "l1",
         "x0_memory": "l1",
         "fuse_s": False,
+        "two_tile_complex": False,
         "batch_reads": False,
+        "fp32_dest_acc_en": True,
+        "dst_full_sync_en": True,
     }
     assert len(payload["results"]) == 4
     assert all(

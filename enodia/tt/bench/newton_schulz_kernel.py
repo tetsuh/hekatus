@@ -61,6 +61,12 @@ CB_OUTPUT_IMAG = 16
 CB_PROFILE_READER = 17
 CB_PROFILE_COMPUTE = 18
 CB_PROFILE_WRITER = 19
+# Opt-in two-tile complex products use private queues above the legacy CB ABI.
+# Keeping these indices out of the existing range leaves the default runtime
+# tensor and CB argument order unchanged.
+CB_TWO_TILE_R = 20
+CB_TWO_TILE_X = 21
+CB_TWO_TILE_S = 22
 
 _CB_DIAGNOSTIC_NAMES = {
     CB_R_REAL: "CB_R_REAL",
@@ -83,6 +89,9 @@ _CB_DIAGNOSTIC_NAMES = {
     CB_PROFILE_READER: "CB_PROFILE_READER",
     CB_PROFILE_COMPUTE: "CB_PROFILE_COMPUTE",
     CB_PROFILE_WRITER: "CB_PROFILE_WRITER",
+    CB_TWO_TILE_R: "CB_TWO_TILE_R",
+    CB_TWO_TILE_X: "CB_TWO_TILE_X",
+    CB_TWO_TILE_S: "CB_TWO_TILE_S",
 }
 
 PROFILE_MEASUREMENT_CORE = 0
@@ -292,6 +301,28 @@ def _unpack_matrices(values: np.ndarray, *, batch: int, size: int, packed: bool)
     return unpacked
 
 
+def _bfloat16_bits(values: np.ndarray) -> np.ndarray:
+    """Return the exact BF16 upper words of finite FP32 host constants."""
+    values = np.asarray(values, dtype=np.float32)
+    return values.view(np.uint32) >> 16
+
+
+def _two_tile_initial_values() -> tuple[np.ndarray, np.ndarray]:
+    """Return the BF16-representable 2I and zero singleton CB payloads."""
+    identity = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
+    zero = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
+    return identity, zero
+
+
+def _two_tile_r_values(
+    matrices: np.ndarray, *, packed: bool, tile_count: int
+) -> np.ndarray:
+    """Build ``[[-Rr, Ri], [-Ri, -Rr]]`` as four host tiles per matrix."""
+    real = _pack_matrices(matrices.real, packed=packed, tile_count=tile_count)[:, 0]
+    imag = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)[:, 0]
+    return np.stack((-real, imag, -imag, -real), axis=1)
+
+
 def _reader_input_values(
     matrices: np.ndarray,
     x0: np.ndarray,
@@ -299,8 +330,16 @@ def _reader_input_values(
     fuse_s: bool,
     tile_count: int,
     packed: bool = False,
+    two_tile_complex: bool = False,
 ) -> list[np.ndarray]:
     """Build reader tensors in the exact runtime/accessor argument order."""
+    if two_tile_complex:
+        return [
+            _two_tile_r_values(matrices, packed=packed, tile_count=tile_count),
+            _pack_matrices(x0.real, packed=packed, tile_count=tile_count),
+            _pack_matrices(x0.imag, packed=packed, tile_count=tile_count),
+        ]
+
     r_imag_values = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)
     r_negative_imag_values = -r_imag_values
     if fuse_s:
@@ -324,8 +363,12 @@ def _reader_input_values(
     return r_inputs
 
 
-def _reader_input_dtypes(ttnn, state_dtype, *, fuse_s: bool) -> list[Any]:
+def _reader_input_dtypes(
+    ttnn, state_dtype, *, fuse_s: bool, two_tile_complex: bool = False
+) -> list[Any]:
     """Return dtypes matching ``_reader_input_values`` and its constants."""
+    if two_tile_complex:
+        return [ttnn.bfloat16, state_dtype, state_dtype, ttnn.bfloat16, ttnn.bfloat16]
     return [
         ttnn.bfloat16,
         ttnn.bfloat16,
@@ -342,15 +385,19 @@ def _reader_input_memories(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
+    two_tile_complex: bool = False,
 ) -> list[str]:
     """Return memory placement in the exact host/reader tensor order.
 
-    The five reader inputs are three R variants followed by the two X0
-    halves.  Identity and zero retain the compatibility shorthand placement.
+    The legacy reader receives three R variants followed by two X0 halves.
+    The two-tile reader receives one four-page R block followed by the two
+    X0 halves. Identity and zero retain the compatibility shorthand placement.
     """
     input_memory, r_memory, x0_memory = _resolve_input_memories(
         input_memory, r_memory=r_memory, x0_memory=x0_memory
     )
+    if two_tile_complex:
+        return [r_memory, x0_memory, x0_memory, input_memory, input_memory]
     return [r_memory] * 3 + [x0_memory] * 2 + [input_memory] * 2
 
 
@@ -487,6 +534,7 @@ def _cb_definitions(
     profile: bool = False,
     fuse_s: bool = False,
     matrix_block: int = 1,
+    two_tile_complex: bool = False,
 ) -> dict[int, tuple[Any, int]]:
     """Describe the CB formats shared by both state-precision variants."""
     _validate_matrix_block(matrix_block)
@@ -495,10 +543,11 @@ def _cb_definitions(
         CB_R_IMAG: (ttnn.bfloat16, 2),
         CB_X0_REAL: (state_dtype, 2),
         CB_X0_IMAG: (state_dtype, 2),
-        # Fused S starts each DEST tile from host-prepared BF16 2I.  The
-        # baseline keeps its original FP32 binary-operation identity.
-        CB_IDENTITY: (ttnn.bfloat16 if fuse_s else ttnn.float32, 1),
-        CB_ZERO: (ttnn.float32, 1),
+        # Fused and two-tile S start each DEST tile from host-prepared BF16
+        # constants. The baseline keeps its original FP32 binary-operation
+        # identity and zero descriptors.
+        CB_IDENTITY: (ttnn.bfloat16 if fuse_s or two_tile_complex else ttnn.float32, 1),
+        CB_ZERO: (ttnn.bfloat16 if two_tile_complex else ttnn.float32, 1),
         CB_STATE_REAL: (state_dtype, 2),
         CB_STATE_IMAG: (state_dtype, 2),
         CB_S_REAL: (state_dtype, 1),
@@ -511,13 +560,32 @@ def _cb_definitions(
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
-    if not fuse_s:
-        # Preserve the baseline descriptor and its ABI index exactly.  Fused S
+    if two_tile_complex:
+        definitions.update(
+            {
+                CB_TWO_TILE_R: (ttnn.bfloat16, 4),
+                CB_TWO_TILE_X: (state_dtype, 4),
+                CB_TWO_TILE_S: (state_dtype, 2),
+            }
+        )
+        # The host reader supplies one four-page R block; no legacy signed-R
+        # or product queue is allocated in the opt-in descriptor.
+        for index in (
+            CB_R_NEG_IMAG,
+            CB_R_IMAG,
+            CB_R_NEG_REAL,
+            CB_R_REAL,
+            CB_PRODUCT_REAL,
+            CB_PRODUCT_IMAG,
+        ):
+            definitions.pop(index, None)
+    if not fuse_s and not two_tile_complex:
+        # Preserve the baseline descriptor and its ABI index exactly. Fused S
         # has no positive R-real reader input, so CB index 0 is intentionally
         # absent rather than renumbering any shared CB.
         definitions[CB_R_REAL] = (ttnn.bfloat16, 2)
         definitions = {CB_R_REAL: definitions.pop(CB_R_REAL), **definitions}
-    # Identity/zero and profile pages are resident singletons.  Every queue
+    # Identity/zero and profile pages are resident singletons. Every queue
     # carrying a matrix, intermediate, or output is widened for one block.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
     # The non-one-destination branch pops the current state block before it
@@ -530,15 +598,23 @@ def _cb_definitions(
         index: (
             data_format,
             page_count
-            if index in resident or matrix_block == 1
+            if index in resident
             else (
-                page_count
-                if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}
-                else max(
-                    page_count,
-                    state_queue_pages
-                    if index in {CB_STATE_REAL, CB_STATE_IMAG}
-                    else matrix_block,
+                page_count * matrix_block
+                if two_tile_complex and index in {CB_TWO_TILE_R, CB_TWO_TILE_X, CB_TWO_TILE_S}
+                else (
+                    page_count
+                    if matrix_block == 1
+                    else (
+                        page_count
+                        if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}
+                        else max(
+                            page_count,
+                            state_queue_pages
+                            if index in {CB_STATE_REAL, CB_STATE_IMAG}
+                            else matrix_block,
+                        )
+                    )
                 )
             ),
         )
@@ -583,6 +659,7 @@ def _tensor_l1_bytes(
     r_memory: str | None = None,
     x0_memory: str | None = None,
     matrix_block: int = 1,
+    two_tile_complex: bool = False,
 ) -> int:
     """Estimate the largest assigned core's tensor footprint.
 
@@ -601,15 +678,20 @@ def _tensor_l1_bytes(
     )
     r_bytes = 0
     if r_memory == "l1":
-        # Fused S uses signed (-R_re, +R_im, -R_im) pages; the positive
-        # R-real tensor is omitted.  The non-fused ABI also has three R pages.
-        r_bytes = 3 * _cb_page_size(ttnn, ttnn.bfloat16)
+        # The two-tile path receives one four-page signed R block. Legacy
+        # fused/non-fused paths retain their three-page input ABI.
+        r_page_count = 4 if two_tile_complex else 3
+        r_bytes = r_page_count * _cb_page_size(ttnn, ttnn.bfloat16)
     x0_bytes = 0
     if x0_memory == "l1":
         x0_bytes = 2 * _cb_page_size(ttnn, state_dtype)
     resident_bytes = 0
     if input_memory == "l1":
-        resident_bytes = _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
+        resident_bytes = (
+            2 * _cb_page_size(ttnn, ttnn.bfloat16)
+            if two_tile_complex
+            else _cb_page_size(ttnn, ttnn.bfloat16) + _cb_page_size(ttnn, ttnn.float32)
+        )
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
@@ -706,18 +788,27 @@ def _validate_l1_preflight(
     x0_memory: str | None = None,
     matrix_block: int = 1,
     variant: str | None = None,
+    fp32_dest_acc_en: bool = True,
+    dst_full_sync_en: bool = True,
+    two_tile_complex: bool = False,
 ) -> int:
     """Validate L1 usage without touching a device or allocating tensors."""
     input_memory, r_memory, x0_memory = _resolve_input_memories(
         input_memory, r_memory=r_memory, x0_memory=x0_memory
     )
-    _validate_matrix_block(matrix_block, variant=variant)
+    _validate_matrix_block(
+        matrix_block,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+        variant=variant,
+    )
     definitions = _cb_definitions(
         ttnn,
         state_dtype,
         profile=profile,
         fuse_s=fuse_s,
         matrix_block=matrix_block,
+        two_tile_complex=two_tile_complex,
     )
     tensor_bytes = _tensor_l1_bytes(
         ttnn,
@@ -730,6 +821,7 @@ def _validate_l1_preflight(
         r_memory=r_memory,
         x0_memory=x0_memory,
         matrix_block=matrix_block,
+        two_tile_complex=two_tile_complex,
     )
     return _validate_l1_budget(
         ttnn,
@@ -862,8 +954,11 @@ class NewtonSchulzKernel:
     output_memory: str
     profile: bool
     fuse_s: bool
+    two_tile_complex: bool
     batch_reads: bool
     matrix_block: int
+    fp32_dest_acc_en: bool
+    dst_full_sync_en: bool
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -884,6 +979,7 @@ class NewtonSchulzKernel:
         fidelity_split: str | tuple[int, int] | list[int] | None = None,
         profile: bool = False,
         fuse_s: bool = False,
+        two_tile_complex: bool = False,
         batch_reads: bool = False,
         matrix_block: int = 1,
         input_memory: str = "l1",
@@ -914,6 +1010,8 @@ class NewtonSchulzKernel:
             dst_full_sync_en=dst_full_sync_en,
             variant=variant,
         )
+        if profile and two_tile_complex:
+            raise ValueError("two_tile_complex does not support profile mode")
         state_fp32 = variant == "bf16-fp32state"
 
         matrices = np.asarray(matrices, dtype=np.complex64)
@@ -937,10 +1035,14 @@ class NewtonSchulzKernel:
         # couple the two independent 16x16 matrices.
         x0 = _initial_value(matrices)
         input_values = _reader_input_values(
-            matrices, x0, fuse_s=fuse_s, tile_count=tile_count, packed=packed
+            matrices,
+            x0,
+            fuse_s=fuse_s,
+            tile_count=tile_count,
+            packed=packed,
+            two_tile_complex=two_tile_complex,
         )
-        identity_values = (2.0 * np.eye(_TILE, dtype=np.float32))[None, None]
-        zero_values = np.zeros((1, 1, _TILE, _TILE), dtype=np.float32)
+        identity_values, zero_values = _two_tile_initial_values()
         input_values.extend([identity_values, zero_values])
         state_dtype = _state_dtype(ttnn, variant)
         cb_definitions = _cb_definitions(
@@ -949,6 +1051,7 @@ class NewtonSchulzKernel:
             profile=profile,
             fuse_s=fuse_s,
             matrix_block=matrix_block,
+            two_tile_complex=two_tile_complex,
         )
         tensor_l1_bytes = _tensor_l1_bytes(
             ttnn,
@@ -961,6 +1064,7 @@ class NewtonSchulzKernel:
             r_memory=r_memory,
             x0_memory=x0_memory,
             matrix_block=matrix_block,
+            two_tile_complex=two_tile_complex,
         )
         _validate_l1_budget(
             ttnn,
@@ -968,9 +1072,17 @@ class NewtonSchulzKernel:
             tensor_bytes=tensor_l1_bytes,
             matrix_block=matrix_block,
         )
-        input_dtypes = _reader_input_dtypes(ttnn, state_dtype, fuse_s=fuse_s)
+        input_dtypes = _reader_input_dtypes(
+            ttnn,
+            state_dtype,
+            fuse_s=fuse_s,
+            two_tile_complex=two_tile_complex,
+        )
         input_memories = _reader_input_memories(
-            input_memory=input_memory, r_memory=r_memory, x0_memory=x0_memory
+            input_memory=input_memory,
+            r_memory=r_memory,
+            x0_memory=x0_memory,
+            two_tile_complex=two_tile_complex,
         )
         inputs = [
             _device_tensor(
@@ -1032,7 +1144,9 @@ class NewtonSchulzKernel:
             )
 
         reader_compile_args = [iterations]
-        if profile or fuse_s or batch_reads or matrix_block > 1:
+        if two_tile_complex:
+            reader_compile_args.extend([int(batch_reads), matrix_block])
+        elif profile or fuse_s or batch_reads or matrix_block > 1:
             reader_compile_args.extend([int(fuse_s), int(batch_reads), matrix_block])
         for tensor in inputs:
             reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
@@ -1067,21 +1181,32 @@ class NewtonSchulzKernel:
             )
         compute_args = _runtime_args(ttnn, coordinates, [], work_ranges)
         reader_source = (
-            _KERNEL_DIR / "newton_schulz_reader_profile.cpp"
-            if profile
+            _KERNEL_DIR / "newton_schulz_reader_two_tile.cpp"
+            if two_tile_complex
             else (
-                _KERNEL_DIR / "newton_schulz_reader_optimized.cpp"
-                if fuse_s or batch_reads or matrix_block > 1
-                else _KERNEL_DIR / "newton_schulz_reader.cpp"
+                _KERNEL_DIR / "newton_schulz_reader_profile.cpp"
+                if profile
+                else (
+                    _KERNEL_DIR / "newton_schulz_reader_optimized.cpp"
+                    if fuse_s or batch_reads or matrix_block > 1
+                    else _KERNEL_DIR / "newton_schulz_reader.cpp"
+                )
             )
         )
 
-        compute_compile_args = [iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block]
+        compute_compile_args = [
+            iterations,
+            int(state_fp32),
+            int(profile),
+            int(fuse_s),
+            matrix_block,
+            int(two_tile_complex),
+        ]
         compute_source = _KERNEL_DIR / "newton_schulz_compute.cpp"
         if fidelity_split is not None:
-            # The legacy source and its five-argument compile-time ABI remain
-            # untouched.  The opt-in source wraps it with direct LLK
-            # HiFi2/HiFi3 specializations and consumes the split boundary.
+            # The legacy operation ABI remains untouched. The opt-in source
+            # wraps it with direct LLK HiFi2/HiFi3 specializations and consumes
+            # the split boundary after the two-tile compile argument.
             compute_source = _KERNEL_DIR / "newton_schulz_fidelity_split_compute.cpp"
             compute_compile_args.append(fidelity_split[0])
 
@@ -1133,8 +1258,11 @@ class NewtonSchulzKernel:
             output_memory=output_memory,
             profile=profile,
             fuse_s=fuse_s,
+            two_tile_complex=two_tile_complex,
             batch_reads=batch_reads,
             matrix_block=matrix_block,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -1244,8 +1372,11 @@ def run_newton_schulz_kernel(
     fidelity_split: str | tuple[int, int] | list[int] | None = None,
     profile: bool = False,
     fuse_s: bool = False,
+    two_tile_complex: bool = False,
     batch_reads: bool = False,
     matrix_block: int = 1,
+    fp32_dest_acc_en: bool = True,
+    dst_full_sync_en: bool = True,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
@@ -1260,8 +1391,11 @@ def run_newton_schulz_kernel(
         fidelity_split=fidelity_split,
         profile=profile,
         fuse_s=fuse_s,
+        two_tile_complex=two_tile_complex,
         batch_reads=batch_reads,
         matrix_block=matrix_block,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,

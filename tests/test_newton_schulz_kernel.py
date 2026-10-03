@@ -561,6 +561,60 @@ class DeviceEquivalenceTests(unittest.TestCase):
         finally:
             ttnn.close_device(device)
 
+    def test_batch_8192_two_tile_complex_products_match_numpy_for_both_sync_modes(self):
+        import ttnn
+
+        device = ttnn.open_device(device_id=0)
+        try:
+            matrices = random_hpd_batch(8192, 32, seed=95)
+            expected = newton_schulz_reference(matrices)
+            cases = (
+                ("two-tile-full-sync-block4", True, 4),
+                ("two-tile-half-sync-block2", False, 2),
+            )
+            measurements = []
+            for name, full_sync, matrix_block in cases:
+                actual = run_newton_schulz_kernel(
+                    ttnn,
+                    device,
+                    matrices,
+                    variant="bf16-fp32state",
+                    math_fidelity="HiFi3",
+                    two_tile_complex=True,
+                    matrix_block=matrix_block,
+                    input_memory="dram",
+                    r_memory="dram",
+                    x0_memory="dram",
+                    dst_full_sync_en=full_sync,
+                )
+                relative_error = float(
+                    np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+                )
+                measurements.append(
+                    {
+                        "name": name,
+                        "two_tile_complex": True,
+                        "dst_full_sync_en": full_sync,
+                        "matrix_block": matrix_block,
+                        "relative_error": relative_error,
+                        "tolerance": 1e-2,
+                        "status": "pass" if relative_error <= 1e-2 else "fail",
+                    }
+                )
+            print(
+                "TWO_TILE_COMPLEX_CORRECTNESS "
+                + json.dumps(measurements, sort_keys=True),
+                flush=True,
+            )
+            for measurement in measurements:
+                self.assertLessEqual(
+                    measurement["relative_error"],
+                    1e-2,
+                    msg=measurement["name"],
+                )
+        finally:
+            ttnn.close_device(device)
+
 
 if __name__ == "__main__":
     unittest.main()

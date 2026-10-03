@@ -805,7 +805,223 @@ void wait_r_inputs_block(std::uint32_t block_count) {
     }
 }
 
-// The block path is selected only for matrix_block > 1.  Keeping it separate
+void stream_initial_or_state(
+    std::uint32_t iteration,
+    std::uint32_t& x_real,
+    std::uint32_t& x_imag);
+
+constexpr std::uint32_t cb_two_tile_r = 20;
+constexpr std::uint32_t cb_two_tile_x = 21;
+constexpr std::uint32_t cb_two_tile_s = 22;
+
+// Build the X-side block [[Xr, -Xi], [Xi, Xr]].  The four pages are kept
+// in one CB so the later X*S product can use a single K=2 matmul block.
+void build_two_tile_x_block(
+    std::uint32_t x_real,
+    std::uint32_t x_imag,
+    std::uint32_t negative_x_imag,
+    std::uint32_t block_count) {
+    cb_wait_front(x_real, block_count);
+    cb_wait_front(x_imag, block_count);
+    cb_wait_front(negative_x_imag, block_count);
+    cb_reserve_back(cb_two_tile_x, 4 * block_count);
+    reconfig_data_format_srca(cb_two_tile_x, x_real);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        tile_regs_acquire();
+        copy_tile_init(x_real);
+        copy_tile(x_real, index, 0);
+        copy_tile_to_dst_init_short_with_dt(x_real, negative_x_imag);
+        copy_tile(negative_x_imag, index, 1);
+        copy_tile_to_dst_init_short_with_dt(negative_x_imag, x_imag);
+        copy_tile(x_imag, index, 2);
+        copy_tile_to_dst_init_short_with_dt(x_imag, x_real);
+        copy_tile(x_real, index, 3);
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_imag, cb_two_tile_x);
+        pack_tile_block(0, cb_two_tile_x, 4);
+        tile_regs_release();
+        cb_push_back(cb_two_tile_x, 4);
+    }
+}
+
+// Build the column block [Xr; Xi] used as the K=2 right input of R*X.
+// CB_TWO_TILE_S is recycled after this product for [Sr; Si].
+void build_two_tile_x_column(
+    std::uint32_t x_real,
+    std::uint32_t x_imag,
+    std::uint32_t block_count) {
+    cb_wait_front(x_real, block_count);
+    cb_wait_front(x_imag, block_count);
+    cb_reserve_back(cb_two_tile_s, 2 * block_count);
+    reconfig_data_format_srca(cb_two_tile_s, x_real);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        tile_regs_acquire();
+        copy_tile_init(x_real);
+        copy_tile(x_real, index, 0);
+        copy_tile_to_dst_init_short_with_dt(x_real, x_imag);
+        copy_tile(x_imag, index, 1);
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_imag, cb_two_tile_s);
+        pack_tile_block(0, cb_two_tile_s, 2);
+        tile_regs_release();
+        cb_push_back(cb_two_tile_s, 2);
+    }
+}
+
+// Copy the two S output halves into the [Sr; Si] input block for X*S.
+void build_two_tile_s_block(std::uint32_t block_count) {
+    cb_wait_front(cb_s_real, block_count);
+    cb_wait_front(cb_s_imag, block_count);
+    cb_reserve_back(cb_two_tile_s, 2 * block_count);
+    reconfig_data_format_srca(cb_two_tile_s, cb_s_real);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        tile_regs_acquire();
+        copy_tile_init(cb_s_real);
+        copy_tile(cb_s_real, index, 0);
+        copy_tile_to_dst_init_short_with_dt(cb_s_real, cb_s_imag);
+        copy_tile(cb_s_imag, index, 1);
+        tile_regs_commit();
+        tile_regs_wait();
+        pack_reconfig_data_format(cb_s_imag, cb_two_tile_s);
+        pack_tile_block(0, cb_two_tile_s, 2);
+        tile_regs_release();
+        cb_push_back(cb_two_tile_s, 2);
+    }
+    cb_pop_front(cb_s_real, block_count);
+    cb_pop_front(cb_s_imag, block_count);
+}
+
+// Seed the two output DEST tiles for S with BF16-hosted 2I and zero.  The
+// caller owns the DEST acquisition so the copies and the K=2 matmul share one
+// acquired register window.
+void initialize_two_tile_s_dest(std::uint32_t block_count) {
+    cb_wait_front(cb_identity, 1);
+    cb_wait_front(cb_zero, 1);
+    reconfig_data_format_srca(cb_two_tile_x, cb_identity);
+    copy_tile_init(cb_identity);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        copy_tile(cb_identity, 0, 2 * index);
+    }
+    copy_tile_to_dst_init_short_with_dt(cb_identity, cb_zero);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        copy_tile(cb_zero, 0, 2 * index + 1);
+    }
+}
+
+void two_tile_s_matmul_block(std::uint32_t block_count) {
+    cb_wait_front(cb_two_tile_r, 4 * block_count);
+    cb_wait_front(cb_two_tile_s, 2 * block_count);
+    cb_reserve_back(cb_s_real, block_count);
+    cb_reserve_back(cb_s_imag, block_count);
+
+    tile_regs_acquire();
+    initialize_two_tile_s_dest(block_count);
+    reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
+    matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 2);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        // S = 2I - R*X, with A=[[-Rr, Ri], [-Ri, -Rr]] and B=[Xr; Xi].
+        matmul_block(
+            cb_two_tile_r,
+            cb_two_tile_s,
+            4 * index,
+            2 * index,
+            2 * index,
+            false,
+            1,
+            2,
+            2);
+    }
+    tile_regs_commit();
+    tile_regs_wait();
+    pack_reconfig_data_format(cb_s_imag, cb_s_real);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        pack_tile<true>(2 * index, cb_s_real, index);
+    }
+    pack_reconfig_data_format(cb_s_real, cb_s_imag);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        pack_tile<true>(2 * index + 1, cb_s_imag, index);
+    }
+    cb_push_back(cb_s_real, block_count);
+    cb_push_back(cb_s_imag, block_count);
+    tile_regs_release();
+}
+
+void two_tile_x_matmul_block(
+    std::uint32_t x_real,
+    std::uint32_t x_imag,
+    std::uint32_t block_count,
+    std::uint32_t output_real,
+    std::uint32_t output_imag) {
+    cb_wait_front(cb_two_tile_x, 4 * block_count);
+    cb_wait_front(cb_two_tile_s, 2 * block_count);
+    reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
+    matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 2);
+    tile_regs_acquire();
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        // X*S uses A=[[Xr, -Xi], [Xi, Xr]] and B=[Sr; Si].
+        matmul_block(
+            cb_two_tile_x,
+            cb_two_tile_s,
+            4 * index,
+            2 * index,
+            2 * index,
+            false,
+            1,
+            2,
+            2);
+    }
+    tile_regs_commit();
+    tile_regs_wait();
+
+    // State inputs may alias state outputs. Release every input page before
+    // reserving the next state/output queue window.
+    cb_pop_front(x_real, block_count);
+    cb_pop_front(x_imag, block_count);
+    cb_pop_front(cb_negative_x_imag, block_count);
+    cb_pop_front(cb_two_tile_x, 4 * block_count);
+    cb_pop_front(cb_two_tile_s, 2 * block_count);
+    cb_reserve_back(output_real, block_count);
+    cb_reserve_back(output_imag, block_count);
+    pack_reconfig_data_format(cb_s_imag, output_real);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        pack_tile<true>(2 * index, output_real, index);
+    }
+    pack_reconfig_data_format(output_real, output_imag);
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        pack_tile<true>(2 * index + 1, output_imag, index);
+    }
+    cb_push_back(output_real, block_count);
+    cb_push_back(output_imag, block_count);
+    tile_regs_release();
+}
+
+template <std::uint32_t iterations, bool state_fp32>
+void process_two_tile_matrix_block(std::uint32_t block_count) {
+    (void)state_fp32;
+    cb_wait_front(cb_two_tile_r, 4 * block_count);
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        std::uint32_t x_real;
+        std::uint32_t x_imag;
+        stream_initial_or_state(iteration, x_real, x_imag);
+        // The existing CB_NEG_X_IMAG path supplies -Xi for the X block.
+        negate_state_imag_block(x_imag, cb_zero, x_imag, block_count);
+        build_two_tile_x_block(x_real, x_imag, cb_negative_x_imag, block_count);
+        build_two_tile_x_column(x_real, x_imag, block_count);
+        two_tile_s_matmul_block(block_count);
+        cb_pop_front(cb_two_tile_s, 2 * block_count);
+        build_two_tile_s_block(block_count);
+        const std::uint32_t output_real =
+            iteration + 1 == iterations ? cb_output_real : cb_state_real;
+        const std::uint32_t output_imag =
+            iteration + 1 == iterations ? cb_output_imag : cb_state_imag;
+        two_tile_x_matmul_block(x_real, x_imag, block_count, output_real, output_imag);
+    }
+    cb_pop_front(cb_two_tile_r, 4 * block_count);
+}
+
+// The block path is selected only for matrix_block > 1. Keeping it separate
 // leaves the original single-matrix path and its profiling scopes untouched.
 void stream_initial_or_state(
     std::uint32_t iteration,
@@ -1103,6 +1319,7 @@ void kernel_main_impl() {
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
     constexpr bool fuse_s = get_compile_time_arg_val(3) != 0;
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(4);
+    constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
@@ -1110,7 +1327,11 @@ void kernel_main_impl() {
     CounterState counters{};
 
     DeviceZoneScopedN("NS-COMPUTE-TOTAL");
-    if constexpr (fuse_s) {
+    if constexpr (two_tile_complex) {
+        compute_kernel_hw_startup<SrcOrder::Reverse>(
+            cb_two_tile_r, cb_two_tile_x, cb_s_real);
+        matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 2);
+    } else if constexpr (fuse_s) {
         compute_kernel_hw_startup<SrcOrder::Reverse>(
             cb_r_negative_real, cb_x0_real, cb_product_real);
         matmul_block_init(cb_r_negative_real, cb_x0_real, false, 1, 1, 1);
@@ -1126,7 +1347,22 @@ void kernel_main_impl() {
         }
     }
 
-    if constexpr (matrix_block == 1) {
+    if constexpr (two_tile_complex) {
+        for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
+            const std::uint32_t block_count =
+                (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
+            process_two_tile_matrix_block<iterations, state_fp32>(block_count);
+            if constexpr (profile_sample) {
+                if (start_tile == 0) {
+                    counters.event_count += iterations;
+                    if (offset == 0) {
+                        counters.warmup_event_count += 1;
+                        counters.warmup_end = get_timestamp_32b();
+                    }
+                }
+            }
+        }
+    } else if constexpr (matrix_block == 1) {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if constexpr (profile_sample) {
             if (start_tile == 0) {

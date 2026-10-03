@@ -71,7 +71,9 @@ void split_matmul_block_init(
     std::uint32_t kt_dim = 1,
     std::uint32_t call_line = __builtin_LINE()) {
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
-    constexpr std::uint32_t split_iteration = get_compile_time_arg_val(5);
+    constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;
+    constexpr std::uint32_t split_iteration =
+        get_compile_time_arg_val(two_tile_complex ? 6 : 5);
     static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
     static_assert(split_iteration <= iterations, "fidelity split exceeds iteration count");
 
