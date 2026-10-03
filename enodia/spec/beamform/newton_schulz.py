@@ -44,6 +44,14 @@ def _validate_iterations(iterations: int) -> int:
     return iterations
 
 
+def _ldexp_complex(array: np.ndarray, exponent: int) -> np.ndarray:
+    """Scale a complex array by an exact power of two without complex overflow."""
+    scaled = np.empty_like(array)
+    scaled.real[...] = np.ldexp(array.real, exponent)
+    scaled.imag[...] = np.ldexp(array.imag, exponent)
+    return scaled
+
+
 def newton_schulz_inverse(
     R: np.ndarray,
     iterations: int,
@@ -84,26 +92,40 @@ def newton_schulz_inverse(
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1] or matrix.shape[0] == 0:
         raise ValueError(f"R must be a non-empty square matrix, got shape {matrix.shape}")
     work_dtype = _complex_dtype(matrix, dtype)
-    matrix = np.asarray(matrix, dtype=work_dtype)
+    with np.errstate(over="ignore", invalid="ignore"):
+        matrix = np.asarray(matrix, dtype=work_dtype)
     if not np.all(np.isfinite(matrix)):
         raise ValueError("R must contain only finite values")
 
     real_dtype = np.empty((), dtype=work_dtype).real.dtype
-    abs_matrix = np.abs(matrix)
+    component_max = np.maximum(
+        np.max(np.abs(matrix.real)),
+        np.max(np.abs(matrix.imag)),
+    )
+    if component_max == 0:
+        raise ValueError("R must not be the zero matrix")
+
+    _, scaling_exponent = np.frexp(component_max)
+    scaled_matrix = _ldexp_complex(matrix, -int(scaling_exponent))
+    abs_matrix = np.abs(scaled_matrix)
     norm_one = np.max(np.sum(abs_matrix, axis=0, dtype=real_dtype))
     norm_inf = np.max(np.sum(abs_matrix, axis=1, dtype=real_dtype))
     if norm_one == 0 or norm_inf == 0:
         raise ValueError("R must not be the zero matrix")
 
     if x0 == X0_R_H_NORMS:
-        initial = matrix.conj().T / (norm_one * norm_inf)
+        initial = scaled_matrix.conj().T / norm_one / norm_inf
     else:
         initial = np.eye(matrix.shape[0], dtype=work_dtype) / norm_inf
 
     identity = np.eye(matrix.shape[0], dtype=work_dtype)
     inverse = np.asarray(initial, dtype=work_dtype)
     for _ in range(iterations):
-        inverse = inverse @ (2.0 * identity - matrix @ inverse)
+        inverse = inverse @ (2.0 * identity - scaled_matrix @ inverse)
+
+    inverse = _ldexp_complex(inverse, -int(scaling_exponent))
+    if not np.all(np.isfinite(inverse)):
+        raise ValueError("R inverse must be finite in the selected precision")
     return inverse
 
 
