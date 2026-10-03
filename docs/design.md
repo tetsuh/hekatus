@@ -1228,6 +1228,15 @@ outputs. Per protocol, no reset was performed and stages b/c were not run; the
 source/host CB report and power trace are in
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`.
 
+The requested stage-a decomposition then stopped at a1, the k=0 call only,
+with the same batch-four, one-iteration, matrix-block-1 geometry. The four
+real output tiles matched their NumPy partial products at 0.000915–0.000946,
+while the four imaginary output tiles failed at 0.996–1.120. Outputs were
+finite; no reset was performed, and a2/a3 (and later b/c) were not run. The
+machine-readable offsets, DEST slots, CB counts, and tile-register sequence
+are recorded in
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json`.
+
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
 were 1350 MHz. The required same-run rerun then used no Watcher, the same

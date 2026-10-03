@@ -162,12 +162,15 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   DEST accumulation contract. The combined batch-4 catalogue returned exact-
   zero two-tile output (relative error 1.0). The minimal diagnostic then
   stopped at stage a: four independent batch-4 `-R·X` products without a DEST
-  seed were finite but failed at relative errors 0.680744–0.710545. Per
-  protocol, no reset was performed after this numerical failure and stages b/c
-  were not run. Records:
+  seed were finite but failed at relative errors 0.680744–0.710545. The
+  requested decomposition rerun then stopped at a1 (k=0 only): all four real
+  output tiles passed at 0.000915–0.000946, but all four imaginary tiles failed
+  at 0.996–1.120. Per protocol, no reset was performed after this numerical
+  failure and a2/a3/b/c were not run. Records:
   `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`,
-  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`,
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json`
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,

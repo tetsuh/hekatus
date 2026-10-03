@@ -81,6 +81,9 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json` | Minimal stage-a probe: batch 4, one iteration, matrix block 1, no DEST seed; all four `-R·X` products failed the 1e-2 NumPy gate, so stages b/c were not run. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked-power.csv` | Power, clock, and temperature trace for the first-failure stage-a probe above. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked-stdout.log` | Watcher-enabled named-container stdout for the first-failure stage-a probe; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json` | Decomposed stage-a1 probe (k=0 only): real output tiles pass while imaginary output tiles fail, so a2/a3 and later stages were not run. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked-power.csv` | Power, clock, and temperature trace for the first-failure a1 probe above. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked-stdout.log` | Watcher-enabled named-container stdout for the a1 probe; the JSON record stores its SHA-256. |
 | `2026-10-03-p150a-stage1-health-after-two-tile-debug-reset.json` | Required post-reset Stage-1 health probe: pass at relative error 0.004564372822642326, with cleanup checks clear. |
 | `2026-10-03-p150a-stage1-health-after-two-tile-debug-reset-power.csv` | Power, clock, and temperature trace for the post-reset health probe above. |
 | `2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000.json` | First device fidelity-split measurement: legacy all-HiFi3 and direct-LLK `0+8` pass the batch-8192 NumPy gate; `4+4` and `6+2` fail, so only the passing forms receive same-run 1,000-launch throughput rows. |
