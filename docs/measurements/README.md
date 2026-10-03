@@ -116,6 +116,9 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json` | Production batch-8192 full-sync block-4 correctness passes with relative error 0.00652210. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass-power.csv` | Power, clock, and temperature trace for the passing batch-8192 full-sync run. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass-watcher.log` | Watcher log for the passing batch-8192 full-sync run; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass.json` | Production batch-8192 half-sync block-2 correctness passes with relative error 0.00652210. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass-power.csv` | Power, clock, and temperature trace for the passing batch-8192 half-sync run. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass-watcher.log` | Watcher log for the passing batch-8192 half-sync run; the JSON record stores its SHA-256. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log` | Watcher-enabled named-container stdout for the blocked b probe. |
