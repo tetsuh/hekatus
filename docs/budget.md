@@ -186,6 +186,15 @@ records 50.0263 TFLOPS for its current reproduction and 50.6196 TFLOPS for
 its historical row; those rows are cited as the repeatability context, not
 as the source of the 51.92 value.
 
+**R-residency attribution disposition:** The compute implementation waits for
+R's circular-buffer pages before the fixed eight-iteration loop and pops them
+only after it; no per-iteration R-reload variant exists in this kernel. The
+records therefore do not isolate R residency from the combined kernel result.
+The 51.92 TFLOPS / 15.6% / 5.7x headline and the roughly two-card
+extrapolation remain combined workload results and do not assign credit to R
+residency. A resident-versus-reload measurement is deferred to a follow-up
+Issue.
+
 The packed L=16 `custom_block4` row reached 10.7733 TFLOPS (3.2450%,
 reported as **10.77 TFLOPS and 3.24%**), or 14.5x the same-run stock best
 of 0.7420 TFLOPS, in

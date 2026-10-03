@@ -1361,7 +1361,19 @@ RISC windows overlap and compute retains unclassified residuals. The
 optimization record
 `docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
 shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
-versus baseline. The unpack diagnostic
+versus baseline.
+
+**R-residency attribution disposition.** For each matrix/block group, the
+compute implementation waits for the R circular-buffer pages before the fixed
+eight-iteration loop and pops them only after that loop. This kernel has no
+variant that reloads R between iterations. The cited Scope 5 records therefore
+do not provide a resident-versus-reload control; the combined acceptance
+catalogue keeps `r_memory=l1` for its custom rows. The 5.7x/15.6% L=32 result,
+the packed L=16 comparison, and the roughly two-card extrapolation remain
+combined workload results and do not depend on assigning credit to R residency.
+A resident-versus-reload control is deferred to a follow-up Issue.
+
+The unpack diagnostic
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
 records a variant difference but does not establish unpack as causal. The
 matrix-block record
