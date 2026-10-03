@@ -251,6 +251,8 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
     parser = run_matmul._build_parser()
     defaults = parser.parse_args([])
     assert defaults.two_tile_complex is False
+    assert defaults.complex_product_batch == 8192
+    assert defaults.complex_product_correctness_only is False
     assert defaults.fp32_dest_acc_en is True
     assert defaults.dst_full_sync_en is True
     enabled = parser.parse_args(
@@ -259,3 +261,14 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
     assert enabled.two_tile_complex is True
     assert enabled.dst_full_sync_en is False
     assert enabled.matrix_block == 2
+
+    probe = parser.parse_args(
+        [
+            "--complex-product-catalogue",
+            "--complex-product-batch",
+            "4",
+            "--complex-product-correctness-only",
+        ]
+    )
+    assert probe.complex_product_batch == 4
+    assert probe.complex_product_correctness_only is True

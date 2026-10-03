@@ -37,7 +37,7 @@ import math
 import platform
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -795,6 +795,17 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--complex-product-batch",
+        type=int,
+        default=8192,
+        help="batch size for --complex-product-catalogue (default: 8192)",
+    )
+    parser.add_argument(
+        "--complex-product-correctness-only",
+        action="store_true",
+        help="run only correctness rows for --complex-product-catalogue",
+    )
+    parser.add_argument(
         "--launches-per-row",
         type=int,
         default=ACCEPTANCE_CATALOGUE_LAUNCHES,
@@ -871,6 +882,12 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         parser.error(
             "--fidelity-split can only be combined with --custom-math-fidelity HiFi3"
         )
+    if args.complex_product_batch < 1:
+        parser.error(
+            f"--complex-product-batch must be positive, got {args.complex_product_batch}"
+        )
+    if args.complex_product_correctness_only and not args.complex_product_catalogue:
+        parser.error("--complex-product-correctness-only requires --complex-product-catalogue")
     if args.acceptance_catalogue or args.complex_product_catalogue:
         if args.acceptance_catalogue and args.complex_product_catalogue:
             parser.error("catalogue modes are mutually exclusive")
@@ -1098,42 +1115,48 @@ def _run_complex_product_catalogue(
     shape = next(
         shape for shape in default_catalogue() if shape.name == "newton_schulz_L32_b8192"
     )
+    shape = replace(
+        shape,
+        name=f"newton_schulz_L32_b{args.complex_product_batch}",
+        batch=args.complex_product_batch,
+    )
     launches = args.launches_per_row
     matrices = _complex_catalogue_inputs(shape.batch, shape.m, seed=95)
     expected = _complex_catalogue_reference(matrices)
     results: list[dict] = []
 
-    stock_record = {
-        "shape": asdict(shape),
-        "execution_shape": asdict(shape),
-        "representative": shape.representative,
-        "dtype": "bfloat16",
-        "memory": "l1",
-        "input_memory": "l1",
-        "memory_placement": {name: {"buffer": "l1", "layout": "interleaved"}
-                             for name in ("input_a", "input_b", "output")},
-        "program_config": {"name": "default", "kind": "default"},
-        "iterations": 1,
-        "repeats": launches,
-        "launches_requested_per_row": launches,
-        "kind": STOCK_KIND,
-        "row": "stock_best",
-        **_stock_math_fidelity("bfloat16", None),
-    }
-    stock_record.update(
-        run_shape(
-            ttnn,
-            device,
-            shape,
-            dtype=ttnn.bfloat16,
-            memory_config=memory_map["l1"],
-            memory_name="l1",
-            iters=1,
-            repeats=launches,
+    if not args.complex_product_correctness_only:
+        stock_record = {
+            "shape": asdict(shape),
+            "execution_shape": asdict(shape),
+            "representative": shape.representative,
+            "dtype": "bfloat16",
+            "memory": "l1",
+            "input_memory": "l1",
+            "memory_placement": {name: {"buffer": "l1", "layout": "interleaved"}
+                                 for name in ("input_a", "input_b", "output")},
+            "program_config": {"name": "default", "kind": "default"},
+            "iterations": 1,
+            "repeats": launches,
+            "launches_requested_per_row": launches,
+            "kind": STOCK_KIND,
+            "row": "stock_best",
+            **_stock_math_fidelity("bfloat16", None),
+        }
+        stock_record.update(
+            run_shape(
+                ttnn,
+                device,
+                shape,
+                dtype=ttnn.bfloat16,
+                memory_config=memory_map["l1"],
+                memory_name="l1",
+                iters=1,
+                repeats=launches,
+            )
         )
-    )
-    with_efficiency(stock_record, args.peak_tflops)
-    results.append(stock_record)
+        with_efficiency(stock_record, args.peak_tflops)
+        results.append(stock_record)
 
     for dst_full_sync_en, matrix_block in ((True, 4), (False, 2)):
         for two_tile_complex in (False, True):
@@ -1184,8 +1207,13 @@ def _run_complex_product_catalogue(
                 "kind": CUSTOM_KIND,
                 "row": row_name,
                 "correctness": correctness,
+                "measurement_mode": (
+                    "correctness-only"
+                    if args.complex_product_correctness_only
+                    else "correctness-and-throughput"
+                ),
             }
-            if correctness["status"] == "pass":
+            if correctness["status"] == "pass" and not args.complex_product_correctness_only:
                 row.update(
                     run_custom_newton_schulz(
                         ttnn,
@@ -1384,7 +1412,9 @@ def main(argv: list[str] | None = None) -> int:
             "environment": environment,
             "configuration_mode": "complex-product-catalogue",
             "selection": {
-                "shape_filters": ["newton_schulz_L32_b8192"],
+                "shape_filters": [
+                    f"newton_schulz_L32_b{args.complex_product_batch}"
+                ],
                 "program_config_kind_filters": [],
                 "custom_math_fidelity": ["HiFi3"],
                 "input_memory": "dram",
@@ -1394,12 +1424,16 @@ def main(argv: list[str] | None = None) -> int:
                 "fp32_dest_acc_en": True,
                 "dst_full_sync_en": [True, False],
                 "matrix_blocks": {"full": 4, "half": 2},
+                "batch": args.complex_product_batch,
+                "correctness_only": args.complex_product_correctness_only,
                 "launches_per_row": args.launches_per_row,
             },
             "peak_tflops": args.peak_tflops,
             "peak_note": args.peak_note,
             "measurement": {
-                "catalogue": "two_tile_complex_batch8192",
+                "catalogue": "two_tile_complex",
+                "batch": args.complex_product_batch,
+                "correctness_only": args.complex_product_correctness_only,
                 "same_device_run": True,
                 "correctness_reference": "independent NumPy fixed-eight-step oracle in this runner",
                 "correctness_tolerance": 1e-2,
