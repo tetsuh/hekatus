@@ -814,8 +814,8 @@ constexpr std::uint32_t cb_two_tile_r = 20;
 constexpr std::uint32_t cb_two_tile_x = 21;
 constexpr std::uint32_t cb_two_tile_s = 22;
 
-// Build the X-side block [[Xr, -Xi], [Xi, Xr]].  The four pages are kept
-// in one CB so the later X*S product can use a single K=2 matmul block.
+// Build the physical column-major pages for [[Xr, -Xi], [Xi, Xr]].
+// The two K=1 calls consume [Xr, Xi] then [-Xi, Xr].
 void build_two_tile_x_block(
     std::uint32_t x_real,
     std::uint32_t x_imag,
@@ -830,11 +830,11 @@ void build_two_tile_x_block(
         tile_regs_acquire();
         copy_tile_init(x_real);
         copy_tile(x_real, index, 0);
-        copy_tile_to_dst_init_short_with_dt(x_real, negative_x_imag);
-        copy_tile(negative_x_imag, index, 1);
-        copy_tile_to_dst_init_short_with_dt(negative_x_imag, x_imag);
-        copy_tile(x_imag, index, 2);
-        copy_tile_to_dst_init_short_with_dt(x_imag, x_real);
+        copy_tile_to_dst_init_short_with_dt(x_real, x_imag);
+        copy_tile(x_imag, index, 1);
+        copy_tile_to_dst_init_short_with_dt(x_imag, negative_x_imag);
+        copy_tile(negative_x_imag, index, 2);
+        copy_tile_to_dst_init_short_with_dt(negative_x_imag, x_real);
         copy_tile(x_real, index, 3);
         tile_regs_commit();
         tile_regs_wait();
@@ -919,9 +919,11 @@ void two_tile_s_matmul_block(std::uint32_t block_count) {
     tile_regs_acquire();
     initialize_two_tile_s_dest(block_count);
     reconfig_data_format(cb_two_tile_s, cb_two_tile_r);
-    matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 2);
+    matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         // S = 2I - R*X, with A=[[-Rr, Ri], [-Ri, -Rr]] and B=[Xr; Xi].
+        // The physical A pages are [A00, A10, A01, A11], so the two K=1
+        // calls accumulate both terms into the two DEST output rows.
         matmul_block(
             cb_two_tile_r,
             cb_two_tile_s,
@@ -931,7 +933,17 @@ void two_tile_s_matmul_block(std::uint32_t block_count) {
             false,
             1,
             2,
-            2);
+            1);
+        matmul_block(
+            cb_two_tile_r,
+            cb_two_tile_s,
+            4 * index + 2,
+            2 * index + 1,
+            2 * index,
+            false,
+            1,
+            2,
+            1);
     }
     tile_regs_commit();
     tile_regs_wait();
@@ -957,7 +969,7 @@ void two_tile_x_matmul_block(
     cb_wait_front(cb_two_tile_x, 4 * block_count);
     cb_wait_front(cb_two_tile_s, 2 * block_count);
     reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
-    matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 2);
+    matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     for (std::uint32_t index = 0; index < block_count; ++index) {
         // X*S uses A=[[Xr, -Xi], [Xi, Xr]] and B=[Sr; Si].
@@ -970,7 +982,17 @@ void two_tile_x_matmul_block(
             false,
             1,
             2,
-            2);
+            1);
+        matmul_block(
+            cb_two_tile_x,
+            cb_two_tile_s,
+            4 * index + 2,
+            2 * index + 1,
+            2 * index,
+            false,
+            1,
+            2,
+            1);
     }
     tile_regs_commit();
     tile_regs_wait();
@@ -1330,7 +1352,7 @@ void kernel_main_impl() {
     if constexpr (two_tile_complex) {
         compute_kernel_hw_startup<SrcOrder::Reverse>(
             cb_two_tile_r, cb_two_tile_x, cb_s_real);
-        matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 2);
+        matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);
     } else if constexpr (fuse_s) {
         compute_kernel_hw_startup<SrcOrder::Reverse>(
             cb_r_negative_real, cb_x0_real, cb_product_real);

@@ -317,10 +317,11 @@ def _two_tile_initial_values() -> tuple[np.ndarray, np.ndarray]:
 def _two_tile_r_values(
     matrices: np.ndarray, *, packed: bool, tile_count: int
 ) -> np.ndarray:
-    """Build ``[[-Rr, Ri], [-Ri, -Rr]]`` as four host tiles per matrix."""
+    """Build physical column-major pages for ``[[-Rr, Ri], [-Ri, -Rr]]``."""
     real = _pack_matrices(matrices.real, packed=packed, tile_count=tile_count)[:, 0]
     imag = _pack_matrices(matrices.imag, packed=packed, tile_count=tile_count)[:, 0]
-    return np.stack((-real, imag, -imag, -real), axis=1)
+    # The two K=1 calls consume [A00, A10] then [A01, A11].
+    return np.stack((-real, -imag, imag, -real), axis=1)
 
 
 def _reader_input_values(

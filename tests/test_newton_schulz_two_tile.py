@@ -32,8 +32,8 @@ def test_two_tile_r_host_layout_preserves_r_x_order_and_signs():
     assert len(values) == 3
     assert values[0].shape == (1, 4, 32, 32)
     np.testing.assert_array_equal(values[0][0, 0], -3.0)
-    np.testing.assert_array_equal(values[0][0, 1], 5.0)
-    np.testing.assert_array_equal(values[0][0, 2], -5.0)
+    np.testing.assert_array_equal(values[0][0, 1], -5.0)
+    np.testing.assert_array_equal(values[0][0, 2], 5.0)
     np.testing.assert_array_equal(values[0][0, 3], -3.0)
     np.testing.assert_array_equal(values[1], np.zeros((1, 1, 32, 32), dtype=np.float32))
     np.testing.assert_array_equal(values[2], np.zeros((1, 1, 32, 32), dtype=np.float32))
@@ -144,19 +144,19 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     split_source = (KERNEL_DIR / "newton_schulz_fidelity_split_compute.cpp").read_text()
     reader = (KERNEL_DIR / "newton_schulz_reader_two_tile.cpp").read_text()
 
-    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 2);") == 1
-    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 2);") == 1
-    assert source.count("matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 2);") == 1
+    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_x, false, 1, 2, 1);") == 1
+    assert source.count("matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);") == 1
+    assert source.count("matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);") == 1
     two_tile_start = source.index("void build_two_tile_x_block")
     two_tile_end = source.index("// The block path is selected", two_tile_start)
     two_tile_source = source[two_tile_start:two_tile_end]
-    assert "copy_tile(negative_x_imag, index, 1);" in two_tile_source
-    assert "copy_tile(x_imag, index, 2);" in two_tile_source
+    assert "copy_tile(x_imag, index, 1);" in two_tile_source
+    assert "copy_tile(negative_x_imag, index, 2);" in two_tile_source
     assert "void build_two_tile_x_column" in two_tile_source
-    assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 1
-    assert two_tile_source.count("matmul_block(\n            cb_two_tile_x,") == 1
-    assert "matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 2);" in two_tile_source
-    assert "4 * index,\n            2 * index,\n            2 * index,\n            false,\n            1,\n            2,\n            2);" in two_tile_source
+    assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 2
+    assert two_tile_source.count("matmul_block(\n            cb_two_tile_x,") == 2
+    assert "matmul_block_init(cb_two_tile_r, cb_two_tile_s, false, 1, 2, 1);" in two_tile_source
+    assert "4 * index,\n            2 * index,\n            2 * index,\n            false,\n            1,\n            2,\n            1);" in two_tile_source
     assert "cb_wait_front(cb_zero, 1);" in two_tile_source
     assert "copy_tile(cb_zero, 0, 2 * index + 1);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_imag, cb_s_real);" in two_tile_source
