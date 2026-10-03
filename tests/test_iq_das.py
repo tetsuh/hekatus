@@ -42,6 +42,7 @@ def _peak(db, z, line_x, s):
     return z[near_z][iz], line_x[near_x][ix], window.max()
 
 
+@pytest.mark.slow
 def test_point_scatterers_land_where_the_golden_puts_them(frame, golden, iq_path):
     """The criteria of tests/test_das_point.py, and additionally within the
     stated tolerance of the golden's own peaks."""
@@ -60,6 +61,7 @@ def test_point_scatterers_land_where_the_golden_puts_them(frame, golden, iq_path
         assert abs(li - lg) <= LEVEL_TOLERANCE_DB
 
 
+@pytest.mark.slow
 def test_the_phase_sign_convention_is_asserted_at_checkpoint_2_not_in_a_comment(frame, iq_path):
     """With e^(−j2πf0·τ) the post-delay channel vectors agree in phase with
     the golden's analytic channel samples to well under a degree, energy-
@@ -89,6 +91,7 @@ def test_the_phase_sign_convention_is_asserted_at_checkpoint_2_not_in_a_comment(
     assert phase_rms(flipped) > 60.0
 
 
+@pytest.mark.slow
 def test_the_demo_iq_path_images_the_scatterers_on_the_shared_grid():
     """`run_pipeline(path="iq")` is the one-command path of #6: a finite
     log-compressed image on the golden's grid, scatterers at their true
@@ -113,6 +116,7 @@ def test_the_demo_iq_path_images_the_scatterers_on_the_shared_grid():
         run_pipeline(profile, DEFAULT_SCATTERERS, path="rf")
 
 
+@pytest.mark.slow
 def test_the_beamformer_refuses_records_decimated_at_another_ratio(frame):
     profile, events, records, _ = frame
     iq4 = demodulate_frame(records[:2], profile, decimation=4)
@@ -120,6 +124,7 @@ def test_the_beamformer_refuses_records_decimated_at_another_ratio(frame):
         das_iq(profile, events[:2], iq4, decimation=8)
 
 
+@pytest.mark.slow
 def test_the_beamformer_rejects_an_integer_dtype(frame):
     profile, events, records, _ = frame
     iq = demodulate_frame(records[:1], profile, decimation=8)
@@ -127,6 +132,7 @@ def test_the_beamformer_rejects_an_integer_dtype(frame):
         das_iq(profile, events[:1], iq, decimation=8, dtype=np.int16)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("dtype", "expected"), [(np.float32, np.complex64), (np.float64, np.complex128)]
 )

@@ -32,3 +32,7 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers"]
+markers = [
+    "slow: simulation-backed tests with high computational cost",
+]
