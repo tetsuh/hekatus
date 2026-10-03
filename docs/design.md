@@ -1220,6 +1220,14 @@ required recovery reset and Stage-1 health probe were performed and no
 batch-8192 run followed. The partial record is
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`.
 
+The minimal a/b/c probe was then run with batch 4, one iteration, and
+`matrix_block=1`. Stage a deliberately omitted the DEST seed and compared
+`-R·X` for all four independent matrices. It failed numerically for every
+matrix (relative errors 0.680744–0.710545, tolerance 1e-2), despite finite
+outputs. Per protocol, no reset was performed and stages b/c were not run; the
+source/host CB report and power trace are in
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`.
+
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
 were 1350 MHz. The required same-run rerun then used no Watcher, the same

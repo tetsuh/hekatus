@@ -159,12 +159,15 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 - Tensix dest-register accumulation precision and read-out behavior
 - Two-tile complex Newton-Schulz device mismatch: the pinned LLK source and
   exact NumPy simulation validate the current column-major CB placement and
-  DEST accumulation contract. The batch-4 probe passes one-tile full/half at
-  0.00527355 but returns exact-zero two-tile output (relative error 1.0); a
-  later temporary diagnostic exited 137, so the required reset, Stage-1
-  health probe, and cleanup were completed and device work stopped. Records:
+  DEST accumulation contract. The combined batch-4 catalogue returned exact-
+  zero two-tile output (relative error 1.0). The minimal diagnostic then
+  stopped at stage a: four independent batch-4 `-R·X` products without a DEST
+  seed were finite but failed at relative errors 0.680744–0.710545. Per
+  protocol, no reset was performed after this numerical failure and stages b/c
+  were not run. Records:
   `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`,
-  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`,
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,
