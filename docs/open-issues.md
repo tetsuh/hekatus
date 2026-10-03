@@ -201,6 +201,9 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-b-pass.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass.json`.
+  Batch-8192 full-sync block 4 then passed at relative error 0.00652210;
+  half-sync block 2 remains to be checked. Record:
+  `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,

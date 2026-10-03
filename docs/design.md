@@ -1277,6 +1277,9 @@ passed with the same relative error, as did `matrix_block=4`. Their records are
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass.json`,
 and
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass.json`.
+The first batch-8192 production run, full-sync block 4, passed with relative
+error 0.00652210. Its record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json`.
 
 A follow-up board-free probe/production audit compared host tensors, CB page
 capacities, TensorAccessor order and strides, DEST-row packing, source-format
