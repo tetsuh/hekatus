@@ -37,12 +37,10 @@ from enodia.spec.beamform.rf_delay_sweep import (
     residual_pct,
 )
 
-pytestmark = pytest.mark.slow
-
-
 # --- the acceptance limit, and the operator the golden runs ------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("carrier", sorted(BENCHMARK_CARRIERS_HZ))
 def test_golden_residual_is_below_declared_floor_at_both_carriers(carrier):
     """The operator `das_rf_golden` runs, scored on the frozen benchmark, sits
@@ -72,6 +70,7 @@ def test_the_acceptance_limit_is_one_tenth_of_the_iq_error_the_golden_measures()
     assert RESIDUAL_LIMIT_PCT["13MHz"] - 7.88 / 10 == pytest.approx(0.003, abs=0.0005)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("carrier", "table", "prose"),
     [("5MHz", 0.000, 0.0003), ("13MHz", 0.099, 0.0992)],
@@ -88,6 +87,7 @@ def test_the_production_residual_quoted_in_the_design_is_pinned(carrier, table, 
 # --- the frozen preliminary figures ------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("name", "carrier", "residual"),
     [
@@ -116,6 +116,7 @@ _RESIDUAL_TABLE = {
 }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("name", sorted(_RESIDUAL_TABLE))
 def test_every_alternative_in_the_residual_table_is_pinned_at_both_carriers(name):
     for carrier, want in zip(("5MHz", "13MHz"), _RESIDUAL_TABLE[name], strict=True):
@@ -123,6 +124,7 @@ def test_every_alternative_in_the_residual_table_is_pinned_at_both_carriers(name
         assert got == pytest.approx(want, abs=0.0005), f"{name}/{carrier}"
 
 
+@pytest.mark.slow
 def test_a_finite_kernel_does_reach_the_13mhz_limit_and_its_length_is_the_point():
     """The rectangular 256-tap sinc is finite and its measured residual,
     0.242 %, is under the 0.791 % acceptance limit. So the design's claim is
@@ -138,6 +140,7 @@ def test_a_finite_kernel_does_reach_the_13mhz_limit_and_its_length_is_the_point(
         assert residual_pct(CANDIDATES[short], record) > RESIDUAL_LIMIT_PCT["13MHz"], short
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("support", "carrier", "bound"),
     [
@@ -160,6 +163,7 @@ def test_the_four_tap_least_squares_bounds_are_pinned_per_support(support, carri
     assert got == pytest.approx(bound, abs=0.0005)
 
 
+@pytest.mark.slow
 def test_no_searched_four_tap_support_comes_within_an_order_of_magnitude_at_13mhz():
     """The claim the design makes, scoped to what was searched: on the
     contiguous support and on the best of the 3060 supports drawn from
@@ -320,6 +324,7 @@ def test_the_upsampling_parameters_are_the_ones_the_design_names():
     assert ZERO_PAD == 256
 
 
+@pytest.mark.slow
 def test_padding_is_what_holds_the_13mhz_residual_under_the_limit():
     """Periodic-sinc interpolation has images one padded length away; with no
     padding they reach the record and the residual is 0.97 %, over the
