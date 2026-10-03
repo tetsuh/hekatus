@@ -176,6 +176,11 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   health probe, so c and batch 8192 remain unrun. See
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json`
   and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json`.
+  The seed-free K=3 b′ replacement passed at maximum relative error 0.0009218,
+  but c produced non-finite output for all four matrices. No reset was needed
+  for that numerical failure, and batch 8192/throughput were not run. Records:
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`,
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,

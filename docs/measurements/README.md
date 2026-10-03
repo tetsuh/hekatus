@@ -87,7 +87,12 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json` | After the DEST-row fix, the batch-4 Watcher a3 probe passes all four matrices and both output tiles below the 1e-2 NumPy gate. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass-power.csv` | Power, clock, and temperature trace for the passing a3 probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass-stdout.log` | Watcher-enabled named-container stdout for the passing a3 probe. |
-| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The next batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json` | Seed-free K=3 stage b′: the BF16 `[2I; 0]` term is a third matmul contribution, and all four batch-4 matrices pass below the 1e-2 NumPy gate without DEST seeding. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass-power.csv` | Power, clock, and temperature trace for the passing b′ probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json` | Stage c then produced non-finite output for all four matrices; this numerical failure stopped the experiment without reset, batch-8192 validation, or throughput. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked-power.csv` | Power, clock, and temperature trace for the blocked c probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked-watcher.log` | Watcher log for the c probe; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log` | Watcher-enabled named-container stdout for the blocked b probe. |
 | `2026-10-03-p150a-stage1-health-after-two-tile-b-reset.json` | Required post-reset Stage-1 health probe after the b abnormal exit: pass at relative error 0.004564372822642326, with cleanup clear. |
