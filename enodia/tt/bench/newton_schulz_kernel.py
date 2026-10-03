@@ -651,6 +651,24 @@ def _cb_definitions(
         )
         for index, (data_format, page_count) in definitions.items()
     }
+    if two_tile_complex:
+        # The two-tile path consumes every matrix queue before reserving its
+        # next state/output window. Keep those descriptors at the exact
+        # matrix-block capacity; the generic path retains its legacy ledgers.
+        matrix_queues = {
+            CB_X0_REAL,
+            CB_X0_IMAG,
+            CB_STATE_REAL,
+            CB_STATE_IMAG,
+            CB_S_REAL,
+            CB_S_IMAG,
+            CB_NEG_X_IMAG,
+            CB_OUTPUT_REAL,
+            CB_OUTPUT_IMAG,
+        }
+        for index in matrix_queues:
+            data_format, _ = definitions[index]
+            definitions[index] = (data_format, matrix_block)
     if profile:
         definitions.update(
             {

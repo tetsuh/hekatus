@@ -1268,6 +1268,21 @@ later eight-iteration/block-2/block-4 and batch-8192 stages were not run. No
 reset was needed. The record is
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`.
 
+A follow-up board-free probe/production audit compared host tensors, CB page
+capacities, TensorAccessor order and strides, DEST-row packing, source-format
+transitions, writer pages, and L=32 host readback. It found one production-only
+mismatch: the generated `-Xi` path supplied stale old SrcA/SrcB CB references
+across startup/X*S boundaries, so a reconfiguration could be skipped; the
+minimal probe avoids that boundary by supplying `-Xi` as a host tensor. The
+production two-tile path now uses independent new-only SrcA/SrcB transitions
+for that operation and names BF16 zero as the actual old SrcA for the following
+X-block copy. Its matrix queues also use exact matrix-block capacities without
+changing the default one-tile ledger. The machine-readable contract and source
+assertions are `two_tile_fidelity_audit()` in
+`enodia/tt/bench/two_tile_probe.py` and
+`tests/test_newton_schulz_two_tile_audit.py`. No hardware rerun was performed;
+the next staged run remains a parent-owned hardware experiment.
+
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
 were 1350 MHz. The required same-run rerun then used no Watcher, the same

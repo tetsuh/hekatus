@@ -614,6 +614,31 @@ void negate_state_imag_block(
     cb_push_back(cb_negative_x_imag, block_count);
 }
 
+// The two-tile path enters this unary operation after either startup or an
+// X*S matmul. Those boundaries leave different source CBs active, so a stale
+// old-operand pair could skip one of the required format changes. New-only
+// SrcA/SrcB transitions make the BF16 zero and state-format X-imag explicit.
+void negate_two_tile_state_imag_block(
+    std::uint32_t x_imag,
+    std::uint32_t block_count) {
+    cb_wait_front(x_imag, block_count);
+    cb_wait_front(cb_zero, 1);
+    cb_reserve_back(cb_negative_x_imag, block_count);
+    reconfig_data_format_srca(cb_zero);
+    reconfig_data_format_srcb(x_imag);
+    pack_reconfig_data_format(cb_negative_x_imag);
+    sub_tiles_init(cb_zero, x_imag);
+    tile_regs_acquire();
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+        sub_tiles(cb_zero, x_imag, 0, index, index);
+    }
+    tile_regs_commit();
+    tile_regs_wait();
+    pack_tile_block(0, cb_negative_x_imag, block_count);
+    tile_regs_release();
+    cb_push_back(cb_negative_x_imag, block_count);
+}
+
 // Build S directly in DEST: start S_re at BF16 2I and S_im at FP32 zero,
 // then accumulate the signed BF16 R terms against X.  The output CB is the
 // only pack boundary for S; RX never makes a product CB round trip in the
@@ -825,10 +850,9 @@ void build_two_tile_x_block(
     cb_wait_front(x_imag, block_count);
     cb_wait_front(negative_x_imag, block_count);
     cb_reserve_back(cb_two_tile_x, 4 * block_count);
-    // The previous X·S operation leaves SrcA on the state-format S CB.  Keep
-    // the copy transition explicit without claiming a stale BF16 identity
-    // operand for this production boundary.
-    reconfig_data_format_srca(cb_two_tile_s, x_real);
+    // The preceding two-tile negation explicitly leaves SrcA on BF16 zero;
+    // use that actual source as the old operand before copying state-format X.
+    reconfig_data_format_srca(cb_zero, x_real);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         tile_regs_acquire();
         copy_tile_init(x_real);
@@ -1046,8 +1070,8 @@ void process_two_tile_matrix_block(std::uint32_t block_count) {
         std::uint32_t x_real;
         std::uint32_t x_imag;
         stream_initial_or_state(iteration, x_real, x_imag);
-        // The existing CB_NEG_X_IMAG path supplies -Xi for the X block.
-        negate_state_imag_block(x_imag, cb_zero, x_imag, block_count);
+        // Build -Xi with source formats explicit at this two-tile boundary.
+        negate_two_tile_state_imag_block(x_imag, block_count);
         build_two_tile_x_block(x_real, x_imag, cb_negative_x_imag, block_count);
         build_two_tile_x_column(x_real, x_imag, block_count);
         two_tile_s_matmul_block(block_count);

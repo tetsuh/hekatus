@@ -179,6 +179,335 @@ def two_tile_matrix_block_contract(block_count: int) -> dict[str, Any]:
     }
 
 
+def two_tile_fidelity_audit() -> dict[str, Any]:
+    """Return the board-free probe/production mapping audit.
+
+    The table is intentionally literal rather than inferred from source text:
+    source tests below assert the names and offsets against this contract.  It
+    covers the batch-4, 32x32, ``bf16-fp32state`` staged case and records the
+    matrix-block capacity rule used by the production descriptors.
+    """
+    page_sizes = {"BF16": 2 * TILE * TILE, "FP32": 4 * TILE * TILE}
+    probe_cb = {
+        "CB_TWO_TILE_R": {
+            "id": 20,
+            "format": "BF16",
+            "page_size_bytes": page_sizes["BF16"],
+            "pages_per_matrix": 6,
+        },
+        "CB_TWO_TILE_X": {
+            "id": 21,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": 4,
+        },
+        "CB_TWO_TILE_S": {
+            "id": 22,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": 2,
+        },
+        "CB_IDENTITY": {
+            "id": 5,
+            "format": "BF16",
+            "page_size_bytes": page_sizes["BF16"],
+            "pages_per_matrix": 1,
+            "resident": True,
+        },
+        "CB_ZERO": {
+            "id": 6,
+            "format": "BF16",
+            "page_size_bytes": page_sizes["BF16"],
+            "pages_per_matrix": 1,
+            "resident": True,
+        },
+        "CB_OUTPUT_REAL": {
+            "id": 15,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": 1,
+        },
+        "CB_OUTPUT_IMAG": {
+            "id": 16,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": 1,
+        },
+    }
+    production_cb = {
+        **probe_cb,
+        "CB_X0_REAL": {
+            "id": 3,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": "matrix_block",
+        },
+        "CB_X0_IMAG": {
+            "id": 4,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": "matrix_block",
+        },
+        "CB_STATE_REAL": {
+            "id": 7,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": "matrix_block",
+        },
+        "CB_STATE_IMAG": {
+            "id": 8,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": "matrix_block",
+        },
+        "CB_NEG_X_IMAG": {
+            "id": 13,
+            "format": "FP32(state)",
+            "page_size_bytes": page_sizes["FP32"],
+            "pages_per_matrix": "matrix_block",
+            "producer": "negate_two_tile_state_imag_block",
+        },
+    }
+    production_capacity = {}
+    for matrix_block in (1, 2, 4, 8):
+        production_capacity[str(matrix_block)] = {
+            name: (
+                matrix_block
+                if name
+                in {
+                    "CB_X0_REAL",
+                    "CB_X0_IMAG",
+                    "CB_STATE_REAL",
+                    "CB_STATE_IMAG",
+                    "CB_NEG_X_IMAG",
+                    "CB_OUTPUT_REAL",
+                    "CB_OUTPUT_IMAG",
+                }
+                else value["pages_per_matrix"]
+            )
+            for name, value in production_cb.items()
+            if name not in {"CB_IDENTITY", "CB_ZERO"}
+        }
+        production_capacity[str(matrix_block)].update(
+            {
+                "CB_TWO_TILE_R": 6 * matrix_block,
+                "CB_TWO_TILE_X": 4 * matrix_block,
+                "CB_TWO_TILE_S": 2 * matrix_block,
+                "CB_IDENTITY": 1,
+                "CB_ZERO": 1,
+            }
+        )
+
+    return {
+        "contract": "issue-63-two-tile-fidelity-split-audit",
+        "version": 1,
+        "scope": {
+            "batch": 4,
+            "size": TILE,
+            "iterations": 1,
+            "variant": "bf16-fp32state",
+            "input_memory": "dram",
+            "output_memory": "dram",
+            "board_execution": "not run",
+        },
+        "source_files": {
+            "probe": [
+                "tools/newton_schulz_two_tile_probe.py",
+                "enodia/tt/bench/kernels/two_tile_probe_reader.cpp",
+                "enodia/tt/bench/kernels/two_tile_probe_compute.cpp",
+                "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
+                "enodia/tt/bench/two_tile_probe.py",
+            ],
+            "production": [
+                "tools/newton_schulz_runner.py",
+                "enodia/tt/bench/newton_schulz_kernel.py",
+                "enodia/tt/bench/kernels/newton_schulz_reader_two_tile.cpp",
+                "enodia/tt/bench/kernels/newton_schulz_compute.cpp",
+                "enodia/tt/bench/kernels/newton_schulz_writer.cpp",
+            ],
+        },
+        "input_tensors": {
+            "probe": {
+                "runtime_tensor_order": ["R", "Xr", "Xi", "-Xi", "I", "0"],
+                "tensors": {
+                    "R": {
+                        "dtype": "BF16",
+                        "shape": ["batch", 6, TILE, TILE],
+                        "page_order": ["-Rr", "-Ri", "+Ri", "-Rr", "+2I", "0"],
+                        "layout": "row-major values within each tile; column-major pages by output row",
+                    },
+                    "Xr": {"dtype": "FP32(state)", "shape": ["batch", 1, TILE, TILE]},
+                    "Xi": {"dtype": "FP32(state)", "shape": ["batch", 1, TILE, TILE]},
+                    "-Xi": {"dtype": "FP32(state)", "shape": ["batch", 1, TILE, TILE]},
+                    "I": {"dtype": "BF16", "shape": [1, 1, TILE, TILE], "resident": True},
+                    "0": {"dtype": "BF16", "shape": [1, 1, TILE, TILE], "resident": True},
+                },
+            },
+            "production": {
+                "runtime_tensor_order": ["R", "X0r", "X0i", "I", "0"],
+                "tensors": {
+                    "R": {
+                        "dtype": "BF16",
+                        "shape": ["tile_count", 6, TILE, TILE],
+                        "page_order": ["-Rr", "-Ri", "+Ri", "-Rr", "+2I", "0"],
+                        "layout": "row-major values within each tile; column-major pages by output row",
+                    },
+                    "X0r": {"dtype": "FP32(state)", "shape": ["tile_count", 1, TILE, TILE]},
+                    "X0i": {"dtype": "FP32(state)", "shape": ["tile_count", 1, TILE, TILE]},
+                    "I": {"dtype": "BF16", "shape": [1, 1, TILE, TILE], "resident": True},
+                    "0": {"dtype": "BF16", "shape": [1, 1, TILE, TILE], "resident": True},
+                    "-Xi": {
+                        "dtype": "FP32(state)",
+                        "shape": ["tile_count", 1, TILE, TILE],
+                        "producer": "negate_two_tile_state_imag_block",
+                    },
+                },
+            },
+            "comparison": {
+                "R": "match after BF16 conversion; same six-page order",
+                "X": "match logically; production computes -Xi in CB13 instead of a host tensor",
+                "constants": "match; I and zero are resident BF16 singleton pages",
+            },
+        },
+        "cb_definitions": {
+            "probe": probe_cb,
+            "production": production_cb,
+            "production_capacity_pages": production_capacity,
+            "page_size_rule": {"BF16": page_sizes["BF16"], "FP32(state)": page_sizes["FP32"]},
+        },
+        "reader": {
+            "probe": {
+                "compile_time_accessor_start": 1,
+                "runtime_args": ["R", "Xr", "Xi", "-Xi", "I", "0", "start_tile", "tile_count"],
+                "accessors": [
+                    {"tensor": "R", "cb": "CB_TWO_TILE_R", "page": "tile * 6 + face"},
+                    {"tensor": "Xr", "cb": "CB_X_REAL", "page": "tile"},
+                    {"tensor": "Xi", "cb": "CB_X_IMAG", "page": "tile"},
+                    {"tensor": "-Xi", "cb": "CB_NEGATIVE_X_IMAG", "page": "tile"},
+                    {"tensor": "I", "cb": "CB_IDENTITY", "page": 0},
+                    {"tensor": "0", "cb": "CB_ZERO", "page": 0},
+                ],
+            },
+            "production": {
+                "compile_time_accessor_start": 3,
+                "compile_time_prefix": ["iterations", "batch_reads", "matrix_block"],
+                "runtime_args": ["R", "X0r", "X0i", "I", "0", "start_tile", "tile_count"],
+                "accessors": [
+                    {"tensor": "R", "cb": "CB_TWO_TILE_R", "page": "tile * 6 + face"},
+                    {"tensor": "X0r", "cb": "CB_X0_REAL", "page": "tile"},
+                    {"tensor": "X0i", "cb": "CB_X0_IMAG", "page": "tile"},
+                    {"tensor": "I", "cb": "CB_IDENTITY", "page": 0},
+                    {"tensor": "0", "cb": "CB_ZERO", "page": 0},
+                ],
+                "block_destination_stride": {
+                    "R": "index * 6 * get_tile_size(CB_TWO_TILE_R)",
+                    "X0r": "index * get_tile_size(CB_X0_REAL)",
+                    "X0i": "index * get_tile_size(CB_X0_IMAG)",
+                },
+            },
+            "mapping": "production runtime/accessor order matches its five-input host order; probe adds host -Xi",
+        },
+        "compute": {
+            "matmul_dimensions": {"ct": 1, "rt": 2, "kt": 1},
+            "probe": {
+                "R_times_X": [
+                    {"in0": "CB_TWO_TILE_R", "in0_offset": 0, "in1": "CB_TWO_TILE_S", "in1_offset": 0, "dst": 0},
+                    {"in0": "CB_TWO_TILE_R", "in0_offset": 2, "in1": "CB_TWO_TILE_S", "in1_offset": 1, "dst": 0},
+                    {"in0": "CB_TWO_TILE_R", "in0_offset": 4, "in1": "CB_IDENTITY", "in1_offset": 0, "dst": 0},
+                ],
+                "X_times_S": [
+                    {"in0": "CB_TWO_TILE_X", "in0_offset": 0, "in1": "CB_TWO_TILE_S", "in1_offset": 0, "dst": 0},
+                    {"in0": "CB_TWO_TILE_X", "in0_offset": 2, "in1": "CB_TWO_TILE_S", "in1_offset": 1, "dst": 0},
+                ],
+            },
+            "production": {
+                "R_times_X": "same offsets per matrix; in0=CB_TWO_TILE_R, in1=CB_TWO_TILE_S, dst=2*index",
+                "X_times_S": "same offsets per matrix; in0=CB_TWO_TILE_X, in1=CB_TWO_TILE_S, dst=2*index",
+                "destination_rows": ["2*index -> real", "2*index+1 -> imaginary"],
+                "pack": {
+                    "S": "pack_tile<true>(2*index, CB_S_REAL, index) and pack_tile<true>(2*index+1, CB_S_IMAG, index)",
+                    "output": "pack_tile<true>(2*index, output_real, index) and pack_tile<true>(2*index+1, output_imag, index)",
+                    "out_of_order_index": "index is within the block-reserved output CB; it is not a DEST index",
+                },
+            },
+            "format_transitions": [
+                {
+                    "boundary": "R*X K0/K1",
+                    "SrcA": "CB_TWO_TILE_S FP32(state)",
+                    "SrcB": "CB_TWO_TILE_R BF16",
+                    "operation_init": "matmul_block_init(CB_TWO_TILE_R, CB_TWO_TILE_S, ct=1, rt=2, kt=1)",
+                },
+                {
+                    "boundary": "R*X K2",
+                    "SrcA": "CB_IDENTITY BF16",
+                    "SrcB": "CB_TWO_TILE_R BF16",
+                    "operation_init": "same short matmul init; independent srca/srcb new-only transitions",
+                },
+                {
+                    "boundary": "X*S",
+                    "SrcA": "CB_TWO_TILE_S FP32(state)",
+                    "SrcB": "CB_TWO_TILE_X FP32(state)",
+                    "operation_init": "matmul_block_init(CB_TWO_TILE_X, CB_TWO_TILE_S, ct=1, rt=2, kt=1)",
+                },
+                {
+                    "boundary": "state -Xi construction",
+                    "SrcA": "CB_ZERO BF16",
+                    "SrcB": "X_i FP32(state)",
+                    "operation_init": "sub_tiles_init; no init_common",
+                },
+            ],
+            "initialization": {"uses_init_common": False, "uses_short_matmul_init": True},
+            "state_output_alias": False,
+        },
+        "writer": {
+            "probe": {
+                "source": "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
+                "input_cbs": ["CB_OUTPUT_REAL", "CB_OUTPUT_IMAG"],
+                "output_tensors": ["real", "imag"],
+                "dtype": "FP32(state)",
+                "page": "tile",
+            },
+            "production": {
+                "source": "enodia/tt/bench/kernels/newton_schulz_writer.cpp",
+                "input_cbs": ["CB_OUTPUT_REAL", "CB_OUTPUT_IMAG"],
+                "output_tensors": ["real", "imag"],
+                "dtype": "FP32(state)",
+                "page": "tile (matrix_block=1) or start_tile+offset+index (blocked)",
+            },
+            "mapping": "one FP32 page per real/imag output tensor; state CBs 7/8 are not writer inputs",
+        },
+        "host_readback": {
+            "probe": {
+                "shape": ["batch", 1, TILE, TILE],
+                "download": "_download_float32(outputs[0/1])[:, 0]",
+                "layout": "one row-major tile per output tensor page",
+            },
+            "production": {
+                "shape": ["tile_count", 1, TILE, TILE],
+                "download": "_download_float32(outputs[0/1])",
+                "interpretation": "_unpack_matrices(values, batch, size, packed); for L=32 this selects values[:batch, 0]",
+                "layout": "same row-major real/imag pages; complex result is real + 1j*imag",
+            },
+            "comparison": "identical for the staged L=32 case; no packed L=16 interpretation is involved",
+        },
+        "findings": [
+            {
+                "id": "stale-two-tile-negation-format-reference",
+                "status": "fixed",
+                "file": "enodia/tt/bench/kernels/newton_schulz_compute.cpp",
+                "finding": "production passed CB_ZERO/X_IMAG as old operands after startup or X*S, although those boundaries leave different SrcA/SrcB CBs active; a format reconfiguration could therefore be skipped",
+                "fix": "two-tile -Xi construction now uses independent new-only SrcA=CB_ZERO and SrcB=X_IMAG transitions; X-block copy names CB_ZERO as its actual old SrcA",
+                "probe_difference": "probe supplies -Xi as a host input and does not exercise this production-only boundary",
+            },
+            {
+                "id": "two-dest-row-output-alias",
+                "status": "no-mismatch",
+                "finding": "production maps each matrix to DEST rows 2*index and 2*index+1, packs each row to separate real/imag CB pages, and writes only final CB_OUTPUT_REAL/IMAG tensors",
+            },
+        ],
+    }
+
+
 def probe_stage_contract(stage: str) -> dict[str, Any]:
     """Describe one stage's fixed dimensions, queues, and register protocol."""
     stage = normalize_probe_stage(stage)
