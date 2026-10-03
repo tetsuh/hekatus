@@ -14,6 +14,8 @@ from typing import Any
 import numpy as np
 
 PROBE_STAGES = ("a", "b", "c")
+DECOMPOSITION_STAGES = ("a1", "a2", "a3")
+ALL_PROBE_STAGES = (*DECOMPOSITION_STAGES, *PROBE_STAGES)
 TILE = 32
 
 
@@ -55,31 +57,78 @@ def probe_input_pages(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray]:
     }
 
 
+def expected_probe_partials(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray]:
+    """Compute the independent NumPy partial products for a1/a2/a3."""
+    r = _as_complex_batch(r, name="r")
+    x = _as_complex_batch(x, name="x")
+    if r.shape != x.shape:
+        raise ValueError(f"r and x must have identical shapes, got {r.shape} and {x.shape}")
+    r_real = _bfloat16_round(r.real)
+    r_imag = _bfloat16_round(r.imag)
+    x_real = np.asarray(x.real, dtype=np.float32)
+    x_imag = np.asarray(x.imag, dtype=np.float32)
+    a1 = (-r_real @ x_real) + 1j * (-r_imag @ x_real)
+    a2 = (r_imag @ x_imag) + 1j * (-r_real @ x_imag)
+    return {"a1": a1, "a2": a2, "a3": a1 + a2}
+
+
 def expected_probe_outputs(r: np.ndarray, x: np.ndarray) -> dict[str, np.ndarray]:
     """Compute independent expected outputs for stages a, b, and c."""
     r = _as_complex_batch(r, name="r")
     x = _as_complex_batch(x, name="x")
     if r.shape != x.shape:
         raise ValueError(f"r and x must have identical shapes, got {r.shape} and {x.shape}")
-    r_bf16 = _bfloat16_round(r.real) + 1j * _bfloat16_round(r.imag)
-    rx = r_bf16 @ x
+    partials = expected_probe_partials(r, x)
+    rx = -partials["a3"]
     s = 2.0 * np.eye(r.shape[1], dtype=np.complex64)[None, ...] - rx
-    return {"a": -rx, "b": s, "c": x @ s}
+    return {"a": partials["a3"], "b": s, "c": x @ s, **partials}
 
 
 def probe_stage_contract(stage: str) -> dict[str, Any]:
     """Describe one stage's fixed dimensions, queues, and register protocol."""
-    if stage not in PROBE_STAGES:
-        raise ValueError(f"stage must be one of {PROBE_STAGES}, got {stage!r}")
+    if stage not in ALL_PROBE_STAGES:
+        raise ValueError(f"stage must be one of {ALL_PROBE_STAGES}, got {stage!r}")
     uses_x_product = stage == "c"
+    decomposition_calls = {
+        "a1": [{"in0_offset": 0, "in1_offset": 0, "dest_real": 0, "dest_imag": 1}],
+        "a2": [{"in0_offset": 2, "in1_offset": 1, "dest_real": 0, "dest_imag": 1}],
+        "a3": [
+            {"in0_offset": 0, "in1_offset": 0, "dest_real": 0, "dest_imag": 1},
+            {"in0_offset": 2, "in1_offset": 1, "dest_real": 0, "dest_imag": 1},
+        ],
+    }
+    if stage in DECOMPOSITION_STAGES:
+        operation = {
+            "a1": "[−Rr;−Ri]·Xr",
+            "a2": "[Ri;−Rr]·Xi",
+            "a3": "a1+a2 = −R·X",
+        }[stage]
+        matmul_calls = decomposition_calls[stage]
+        dest_seed = "none"
+    else:
+        operation = {"a": "R·X", "b": "2I−R·X", "c": "X·(2I−R·X)"}[stage]
+        matmul_calls = decomposition_calls["a3"] if stage in ("a", "b", "c") else []
+        dest_seed = "none" if stage == "a" else "[2I, 0]"
+    wait_count = 10 if uses_x_product else (5 if stage == "b" else 3)
+    reserve_count = 6 if uses_x_product else 3
+    push_count = 6 if uses_x_product else 3
+    pop_count = 15 if uses_x_product else 9
+    cb_counts = {
+        "wait": wait_count,
+        "reserve": reserve_count,
+        "push": push_count,
+        "pop": pop_count,
+        "wait_front": wait_count,
+        "reserve_back": reserve_count,
+        "push_back": push_count,
+        "pop_front": pop_count,
+    }
     return {
         "stage": stage,
-        "operation": {
-            "a": "R·X",
-            "b": "2I−R·X",
-            "c": "X·(2I−R·X)",
-        }[stage],
+        "operation": operation,
         "matmul_dimensions": {"rt": 2, "ct": 1, "kt": 1},
+        "matmul_calls": matmul_calls,
+        "matmul_block_init_positions": ["before_tile_regs_acquire"],
         "in0_register": "SrcB",
         "in1_register": "SrcA",
         "tile_traversal": {
@@ -88,19 +137,14 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
             "x_block_pages": ["A00", "A10", "A01", "A11"],
         },
         "dest_slots": [0, 1],
-        "dest_seed": "none" if stage == "a" else "[2I, 0]",
+        "dest_seed": dest_seed,
         "tile_regs_sequence": ["acquire", "commit", "wait", "release"],
         "cb_order": {
-            "in0": "CB_TWO_TILE_R" if stage != "c" else "CB_TWO_TILE_X",
+            "in0": "CB_TWO_TILE_R" if not uses_x_product else "CB_TWO_TILE_X",
             "in1": "CB_TWO_TILE_S",
             "outputs": ["CB_OUTPUT_REAL", "CB_OUTPUT_IMAG"],
         },
-        "cb_counts": {
-            "wait": 10 if uses_x_product else (5 if stage != "a" else 3),
-            "reserve": 6 if uses_x_product else 3,
-            "push": 6 if uses_x_product else 3,
-            "pop": 15 if uses_x_product else 9,
-        },
+        "cb_counts": cb_counts,
         "batch": 4,
         "matrix_block": 1,
         "iterations": 1,

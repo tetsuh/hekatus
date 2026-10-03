@@ -28,7 +28,7 @@ from enodia.tt.bench.newton_schulz_kernel import (
     _runtime_args,
 )
 from enodia.tt.bench.two_tile_probe import (
-    PROBE_STAGES,
+    ALL_PROBE_STAGES,
     expected_probe_outputs,
     probe_input_pages,
     probe_stage_contract,
@@ -36,7 +36,7 @@ from enodia.tt.bench.two_tile_probe import (
 
 TILE = 32
 BATCH = 4
-STAGE_INDEX = {stage: index for index, stage in enumerate(PROBE_STAGES)}
+STAGE_INDEX = {"a": 0, "a1": 1, "a2": 2, "a3": 3, "b": 4, "c": 5}
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 
 
@@ -93,6 +93,22 @@ def _relative_errors(actual: np.ndarray, expected: np.ndarray) -> list[float]:
         float(np.linalg.norm(actual[index] - expected[index]) / np.linalg.norm(expected[index]))
         for index in range(actual.shape[0])
     ]
+
+
+def _output_tile_errors(actual: np.ndarray, expected: np.ndarray) -> list[dict[str, float | int]]:
+    """Report each matrix's packed real and imaginary output tile separately."""
+    rows = []
+    for index in range(actual.shape[0]):
+        real_error = float(
+            np.linalg.norm(actual[index].real - expected[index].real)
+            / np.linalg.norm(expected[index].real)
+        )
+        imag_error = float(
+            np.linalg.norm(actual[index].imag - expected[index].imag)
+            / np.linalg.norm(expected[index].imag)
+        )
+        rows.append({"matrix": index, "real_tile": real_error, "imag_tile": imag_error})
+    return rows
 
 
 def run_stage(ttnn, device, stage: str) -> dict:
@@ -208,6 +224,7 @@ def run_stage(ttnn, device, stage: str) -> dict:
                 pass
 
     errors = _relative_errors(actual, expected)
+    output_tile_errors = _output_tile_errors(actual, expected)
     return {
         "stage": stage,
         "status": "pass" if max(errors) <= 1e-2 else "fail",
@@ -215,6 +232,7 @@ def run_stage(ttnn, device, stage: str) -> dict:
         "iterations": 1,
         "matrix_block": 1,
         "relative_errors": errors,
+        "output_tile_relative_errors": output_tile_errors,
         "max_relative_error": max(errors),
         "tolerance": 1e-2,
         "finite": bool(np.isfinite(actual).all()),
@@ -228,7 +246,7 @@ def main(argv: list[str] | None = None) -> int:
     import ttnn
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=PROBE_STAGES, required=True)
+    parser.add_argument("--stage", choices=ALL_PROBE_STAGES, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--env-json", type=Path, default=None)
     args = parser.parse_args(argv)

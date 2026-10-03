@@ -73,9 +73,14 @@ void seed_dest_slots() {
     copy_tile(cb_zero, 0, 1);
 }
 
-// Compute [Sr; Si] = [2I; 0] - R*X, or -R*X when seed_dest is false.
+// Compute [Sr; Si] = [2I; 0] - R*X, or a selected partial product.
 // The R and X CBs are the two operands: in0 is SrcB and in1 is SrcA.
-void r_times_x(bool seed_dest, bool pack_to_s) {
+// Keeping one tile_regs window across both K=1 calls is the a3 contract.
+void r_times_x(
+    bool seed_dest,
+    bool pack_to_s,
+    bool run_k0,
+    bool run_k1) {
     cb_wait_front(cb_two_tile_r, 4);
     cb_wait_front(cb_x_real, 1);
     cb_wait_front(cb_x_imag, 1);
@@ -91,12 +96,16 @@ void r_times_x(bool seed_dest, bool pack_to_s) {
     if (seed_dest) {
         seed_dest_slots();
     }
-    // Real output: (-Rr)*Xr + (+Ri)*Xi.
-    matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 0, false, 1, 2, 1);
-    matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
-    // Imaginary output: (-Rr)*Xi + (-Ri)*Xr.
-    matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 1, 1, false, 1, 2, 1);
-    matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 0, 1, false, 1, 2, 1);
+    if (run_k0) {
+        // k=0: (-Rr)*Xr and (-Ri)*Xr.
+        matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 0, false, 1, 2, 1);
+        matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 1, false, 1, 2, 1);
+    }
+    if (run_k1) {
+        // k=1: (+Ri)*Xi and (-Rr)*Xi, using +2 and +1 CB offsets.
+        matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
+        matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 1, false, 1, 2, 1);
+    }
     tile_regs_commit();
     tile_regs_wait();
 
@@ -156,22 +165,31 @@ void pop_input_pages() {
 }  // namespace
 
 void kernel_main() {
+    // 0=a (legacy alias for a3), 1=a1, 2=a2, 3=a3, 4=b, 5=c.
     constexpr std::uint32_t stage = get_compile_time_arg_val(0);
-    constexpr char probe_stage = stage == 0 ? 'a' : (stage == 1 ? 'b' : 'c');
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     (void)start_tile;
 
     compute_kernel_hw_startup<SrcOrder::Reverse>(cb_two_tile_r, cb_two_tile_s, cb_output_real);
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
-        if (probe_stage == 'a') {
-            r_times_x(false, false);
+        if (stage == 0) {
+            r_times_x(false, false, true, true);
             pop_input_pages();
-        } else if (probe_stage == 'b') {
-            r_times_x(true, false);
+        } else if (stage == 1) {
+            r_times_x(false, false, true, false);
             pop_input_pages();
-        } else if (probe_stage == 'c') {
-            r_times_x(true, true);
+        } else if (stage == 2) {
+            r_times_x(false, false, false, true);
+            pop_input_pages();
+        } else if (stage == 3) {
+            r_times_x(false, false, true, true);
+            pop_input_pages();
+        } else if (stage == 4) {
+            r_times_x(true, false, true, true);
+            pop_input_pages();
+        } else if (stage == 5) {
+            r_times_x(true, true, true, true);
             cb_pop_front(cb_two_tile_r, 4);
             build_x_block();
             x_times_s();
