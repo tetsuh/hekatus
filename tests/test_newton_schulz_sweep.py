@@ -17,6 +17,14 @@ def test_deterministic_hpd_is_repeatable_and_has_requested_condition_number():
     np.testing.assert_allclose(np.linalg.cond(first), 30.0, rtol=1e-5)
 
 
+def test_direction_cosine_deficit_rejects_zero_and_non_finite_norms():
+    zero = np.zeros(2, dtype=np.complex128)
+    non_finite = np.array([np.nan + 0j])
+
+    assert np.isnan(sweep_module._direction_cosine_deficit(zero, zero))
+    assert np.isnan(sweep_module._direction_cosine_deficit(non_finite, non_finite))
+
+
 def test_small_sweep_reports_both_x0_choices_and_metrics():
     results, elapsed = sweep_module.sweep(
         condition_numbers=(10.0,),

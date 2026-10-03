@@ -161,7 +161,7 @@ def _weight(inverse: np.ndarray, steering: np.ndarray) -> np.ndarray:
 def _direction_cosine_deficit(reference: np.ndarray, candidate: np.ndarray) -> float:
     """Return ``1 - |uᴴv|/(||u|| ||v||)`` for two weight directions."""
     denominator = np.linalg.norm(reference) * np.linalg.norm(candidate)
-    if denominator == 0.0:
+    if not denominator > 0.0:
         return float("nan")
     cosine = abs(np.vdot(reference, candidate)) / denominator
     cosine = float(np.clip(cosine, 0.0, 1.0))
@@ -255,6 +255,80 @@ def evaluate_point(
     )
 
 
+def _validate_sweep_parameters(
+    *,
+    iterations: tuple[int, ...],
+    x0_choices: tuple[str, ...],
+    dtypes: tuple[str, ...],
+) -> None:
+    """Validate the parameter choices accepted by :func:`sweep`."""
+    if not x0_choices or any(choice not in X0_CHOICES for choice in x0_choices):
+        raise ValueError(f"x0_choices must be drawn from {X0_CHOICES}")
+    if not iterations or any(
+        not isinstance(value, (int, np.integer)) or value < 0 for value in iterations
+    ):
+        raise ValueError("iterations must contain non-negative integers")
+    if not dtypes or any(_dtype_name(value) not in DTYPES for value in dtypes):
+        raise ValueError(f"dtypes must be drawn from {DTYPES}")
+
+
+def _matrix_sweep_results(
+    matrix: np.ndarray,
+    *,
+    condition_number: float,
+    aperture_size: int,
+    x0_choices: tuple[str, ...],
+    iterations: tuple[int, ...],
+    dtype: np.dtype,
+) -> list[SweepResult]:
+    """Evaluate all initial-value and iteration combinations for one matrix."""
+    results: list[SweepResult] = []
+    for x0 in x0_choices:
+        for iteration_count in iterations:
+            results.append(
+                evaluate_point(
+                    matrix,
+                    condition_number=condition_number,
+                    aperture_size=aperture_size,
+                    x0=x0,
+                    iterations=int(iteration_count),
+                    dtype=dtype,
+                )
+            )
+    return results
+
+
+def _sweep_results(
+    *,
+    condition_numbers: tuple[float, ...],
+    iterations: tuple[int, ...],
+    aperture_sizes: tuple[int, ...],
+    x0_choices: tuple[str, ...],
+    dtypes: tuple[str, ...],
+    seed: int,
+) -> list[SweepResult]:
+    """Evaluate the configured matrix and algorithm parameter combinations."""
+    results: list[SweepResult] = []
+    for dtype in dtypes:
+        matrix_dtype = _complex_dtype(dtype)
+        for condition_number in condition_numbers:
+            for aperture_size in aperture_sizes:
+                matrix = deterministic_hpd(
+                    aperture_size, condition_number, seed=seed, dtype=matrix_dtype
+                )
+                results.extend(
+                    _matrix_sweep_results(
+                        matrix,
+                        condition_number=condition_number,
+                        aperture_size=aperture_size,
+                        x0_choices=x0_choices,
+                        iterations=iterations,
+                        dtype=matrix_dtype,
+                    )
+                )
+    return results
+
+
 def sweep(
     *,
     condition_numbers: tuple[float, ...] = CONDITION_NUMBERS,
@@ -265,37 +339,82 @@ def sweep(
     seed: int = DEFAULT_SEED,
 ) -> tuple[tuple[SweepResult, ...], float]:
     """Run every requested sweep point and return results plus elapsed seconds."""
-    if not x0_choices or any(choice not in X0_CHOICES for choice in x0_choices):
-        raise ValueError(f"x0_choices must be drawn from {X0_CHOICES}")
-    if not iterations or any(
-        not isinstance(value, (int, np.integer)) or value < 0 for value in iterations
-    ):
-        raise ValueError("iterations must contain non-negative integers")
-    if not dtypes or any(_dtype_name(value) not in DTYPES for value in dtypes):
-        raise ValueError(f"dtypes must be drawn from {DTYPES}")
-
+    _validate_sweep_parameters(
+        iterations=iterations,
+        x0_choices=x0_choices,
+        dtypes=dtypes,
+    )
     started = time.perf_counter()
-    results: list[SweepResult] = []
-    for dtype in dtypes:
-        matrix_dtype = _complex_dtype(dtype)
-        for condition_number in condition_numbers:
-            for aperture_size in aperture_sizes:
-                matrix = deterministic_hpd(
-                    aperture_size, condition_number, seed=seed, dtype=matrix_dtype
-                )
-                for x0 in x0_choices:
-                    for iteration_count in iterations:
-                        results.append(
-                            evaluate_point(
-                                matrix,
-                                condition_number=condition_number,
-                                aperture_size=aperture_size,
-                                x0=x0,
-                                iterations=int(iteration_count),
-                                dtype=matrix_dtype,
-                            )
-                        )
+    results = _sweep_results(
+        condition_numbers=condition_numbers,
+        iterations=iterations,
+        aperture_sizes=aperture_sizes,
+        x0_choices=x0_choices,
+        dtypes=dtypes,
+        seed=seed,
+    )
     return tuple(results), time.perf_counter() - started
+
+
+def _available_dtypes(results: tuple[SweepResult, ...]) -> list[str]:
+    """Return dtypes represented in results, in the configured order."""
+    return [dtype for dtype in DTYPES if any(r.dtype == dtype for r in results)]
+
+
+def _recommendation_candidates(
+    results: tuple[SweepResult, ...], dtype: str
+) -> list[dict]:
+    """Build recommendation candidates for one result dtype."""
+    candidates: list[dict] = []
+    for x0 in X0_CHOICES:
+        for iteration_count in sorted({r.iterations for r in results if r.dtype == dtype}):
+            points = [
+                r
+                for r in results
+                if r.dtype == dtype and r.x0 == x0 and r.iterations == iteration_count
+            ]
+            if not points:
+                continue
+            worst_inverse = max(r.inverse_relative_frobenius_error for r in points)
+            worst_direction = max(max(r.mv_direction_error) for r in points)
+            passes = (
+                worst_inverse <= INVERSE_ERROR_GATE
+                and worst_direction <= MV_DIRECTION_ERROR_GATE
+            )
+            candidates.append(
+                {
+                    "x0": x0,
+                    "iterations": iteration_count,
+                    "worst_inverse_relative_frobenius_error": worst_inverse,
+                    "worst_mv_direction_cosine_deficit": worst_direction,
+                    "passes_stage_1_gate": passes,
+                }
+            )
+    return candidates
+
+
+def _select_recommendation(candidates: list[dict]) -> dict:
+    """Select the best candidate using the stage-1 gates and tie breakers."""
+    passing = [candidate for candidate in candidates if candidate["passes_stage_1_gate"]]
+    if passing:
+        return min(
+            passing,
+            key=lambda candidate: (
+                candidate["iterations"],
+                candidate["worst_inverse_relative_frobenius_error"],
+                candidate["worst_mv_direction_cosine_deficit"],
+            ),
+        )
+    return min(
+        candidates,
+        key=lambda candidate: (
+            max(
+                candidate["worst_inverse_relative_frobenius_error"] / INVERSE_ERROR_GATE,
+                candidate["worst_mv_direction_cosine_deficit"] / MV_DIRECTION_ERROR_GATE,
+            ),
+            candidate["iterations"],
+        ),
+    )
 
 
 def provisional_recommendation(results: tuple[SweepResult, ...] | list[SweepResult]) -> dict:
@@ -304,55 +423,8 @@ def provisional_recommendation(results: tuple[SweepResult, ...] | list[SweepResu
     if not results:
         raise ValueError("cannot recommend from an empty sweep")
     by_dtype: dict[str, dict] = {}
-    available_dtypes = [dtype for dtype in DTYPES if any(r.dtype == dtype for r in results)]
-    for dtype in available_dtypes:
-        candidates: list[dict] = []
-        for x0 in X0_CHOICES:
-            for iteration_count in sorted({r.iterations for r in results if r.dtype == dtype}):
-                points = [
-                    r
-                    for r in results
-                    if r.dtype == dtype and r.x0 == x0 and r.iterations == iteration_count
-                ]
-                if not points:
-                    continue
-                worst_inverse = max(r.inverse_relative_frobenius_error for r in points)
-                worst_direction = max(max(r.mv_direction_error) for r in points)
-                passes = (
-                    worst_inverse <= INVERSE_ERROR_GATE
-                    and worst_direction <= MV_DIRECTION_ERROR_GATE
-                )
-                candidates.append(
-                    {
-                        "x0": x0,
-                        "iterations": iteration_count,
-                        "worst_inverse_relative_frobenius_error": worst_inverse,
-                        "worst_mv_direction_cosine_deficit": worst_direction,
-                        "passes_stage_1_gate": passes,
-                    }
-                )
-        passing = [candidate for candidate in candidates if candidate["passes_stage_1_gate"]]
-        if passing:
-            selected = min(
-                passing,
-                key=lambda candidate: (
-                    candidate["iterations"],
-                    candidate["worst_inverse_relative_frobenius_error"],
-                    candidate["worst_mv_direction_cosine_deficit"],
-                ),
-            )
-        else:
-            selected = min(
-                candidates,
-                key=lambda candidate: (
-                    max(
-                        candidate["worst_inverse_relative_frobenius_error"] / INVERSE_ERROR_GATE,
-                        candidate["worst_mv_direction_cosine_deficit"] / MV_DIRECTION_ERROR_GATE,
-                    ),
-                    candidate["iterations"],
-                ),
-            )
-        by_dtype[dtype] = selected
+    for dtype in _available_dtypes(results):
+        by_dtype[dtype] = _select_recommendation(_recommendation_candidates(results, dtype))
 
     return {
         "selection": (
