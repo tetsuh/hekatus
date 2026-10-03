@@ -1213,7 +1213,19 @@ source paths, revision, and NumPy R*X/X*S simulation are recorded in
 `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`.
 This board-free result validates the placement contract; it does not claim a
 cause for the prior device mismatch until the board probe separates traversal
-from copy/pack and state-queue behavior.
+from copy/pack and state-queue behavior. The follow-up batch-4 device record
+found one-tile full/half errors of 0.00527355 and two-tile full/half exact-zero
+outputs (relative error 1.0). A later temporary diagnostic exited 137, so the
+required recovery reset and Stage-1 health probe were performed and no
+batch-8192 run followed. The partial record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`.
+
+The throughput condition audit likewise found that the earlier 2.1945/25.0023
+TFLOPS stock/current-one-tile catalogue had Watcher attached while loaded clock
+samples were 1350 MHz. The clock was comparable to the recorded no-Watcher
+trace, but a same-run no-Watcher remeasurement was not completed; no causal
+Watcher claim is made. Record:
+`docs/measurements/2026-10-03-host-throughput-condition-audit.json`.
 
 ### Beamspace MV
 

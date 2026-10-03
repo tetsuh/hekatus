@@ -1,0 +1,142 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T01:41:45.642272+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "b5b77c98877e7db2c01b80acfb87c73c512eb0bc",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "asic_fmax": 1350,
+      "tdp_limit": 150,
+      "board_power_limit": 300
+    }
+  },
+  "harness": {
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher": true,
+    "rsync_excludes": [".git", ".venv", "__pycache__", "out"],
+    "command": "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh <absolute-out-dir> -- --complex-product-catalogue --complex-product-batch 4 --complex-product-correctness-only --launches-per-row 1"
+  },
+  "measurement": {
+    "kind": "device_correctness_probe",
+    "status": "blocked_after_later_abnormal_debug_exit",
+    "catalogue": "two_tile_complex",
+    "same_device_run": true,
+    "shape": {
+      "name": "newton_schulz_L32_b4",
+      "batch": 4,
+      "m": 32,
+      "k": 32,
+      "n": 32,
+      "real_matmuls": 4,
+      "family": "newton_schulz",
+      "note": "MV inverse step, subaperture L=32"
+    },
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "input_memory": "dram",
+    "r_memory": "dram",
+    "x0_memory": "dram",
+    "correctness_reference": "independent NumPy fixed-eight-step oracle in enodia/tt/bench/run_matmul.py",
+    "correctness_tolerance": 0.01,
+    "rows": [
+      {
+        "row": "one_tile_full_sync_block4",
+        "two_tile_complex": false,
+        "dst_full_sync_en": true,
+        "matrix_block": 4,
+        "relative_error": 0.005273550283163786,
+        "status": "pass"
+      },
+      {
+        "row": "two_tile_full_sync_block4",
+        "two_tile_complex": true,
+        "dst_full_sync_en": true,
+        "matrix_block": 4,
+        "relative_error": 1.0,
+        "status": "fail"
+      },
+      {
+        "row": "one_tile_half_sync_block2",
+        "two_tile_complex": false,
+        "dst_full_sync_en": false,
+        "matrix_block": 2,
+        "relative_error": 0.005273550283163786,
+        "status": "pass"
+      },
+      {
+        "row": "two_tile_half_sync_block2",
+        "two_tile_complex": true,
+        "dst_full_sync_en": false,
+        "matrix_block": 2,
+        "relative_error": 1.0,
+        "status": "fail"
+      }
+    ],
+    "power_clock_provenance": {
+      "trace": "2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked-power.csv",
+      "columns": ["timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c"],
+      "clock_column": "aiclk_mhz",
+      "observed_aiclk_mhz": [800, 1350],
+      "sampling_source": "tt-smi snapshot",
+      "trace_sha256": "91cabecad1707ee3b46cc11b788088970f256167cc205fbc9567b31a72628f14"
+    }
+  },
+  "recovery": {
+    "trigger": "A subsequent temporary diagnostic source exited 137 after the normal batch-4 run.",
+    "reset_performed": true,
+    "reset_command": "tt-smi -r all",
+    "reset_count_for_this_run": 1,
+    "reset_status": 0,
+    "health_probe": {
+      "stage": 1,
+      "record": "2026-10-03-p150a-stage1-health-after-two-tile-debug-reset.json",
+      "status": "pass",
+      "relative_error": 0.004564372822642326,
+      "tolerance": 0.01,
+      "watcher": true,
+      "container_timeout_s": 60,
+      "trace": "2026-10-03-p150a-stage1-health-after-two-tile-debug-reset-power.csv",
+      "trace_sha256": "8a0a75fae36d9392cc7a9c37647b383422632bd31eeaa066ba02e3e26049acb9"
+    },
+    "cleanup": {
+      "containers_remaining": false,
+      "device_users_remaining": false
+    }
+  },
+  "operational_notes": [
+    "The requested batch-4 probe completed normally and was not reset after its numerical failures.",
+    "The two-tile output was exactly zero in the normal catalogue path; a temporary one-iteration diagnostic showed the S=2I-RX intermediate was finite and near the NumPy S result, but it was not part of the committed harness.",
+    "The temporary diagnostic then exited 137. Per protocol, no batch-8192 correctness or throughput run was attempted after recovery.",
+    "This record contains no throughput rows and does not claim a two-tile fix."
+  ]
+}

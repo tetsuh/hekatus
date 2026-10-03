@@ -159,10 +159,17 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 - Tensix dest-register accumulation precision and read-out behavior
 - Two-tile complex Newton-Schulz device mismatch: the pinned LLK source and
   exact NumPy simulation validate the current column-major CB placement and
-  DEST accumulation contract, but prior board runs still failed the numerical
-  gate; isolate copy/pack and state-queue behavior with the prescribed batch-4
-  and batch-8192 probes. Source record:
-  `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`
+  DEST accumulation contract. The batch-4 probe passes one-tile full/half at
+  0.00527355 but returns exact-zero two-tile output (relative error 1.0); a
+  later temporary diagnostic exited 137, so the required reset, Stage-1
+  health probe, and cleanup were completed and device work stopped. Records:
+  `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`,
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`
+- Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
+  Watcher attached and loaded aiclk samples at 1350 MHz; the recorded no-Watcher
+  trace also reached 1350 MHz. A same-run no-Watcher stock/current-one-tile
+  rerun remains open, and no causal Watcher claim is made. Record:
+  `docs/measurements/2026-10-03-host-throughput-condition-audit.json`
 - AFE anti-aliasing characteristics (does the 13 MHz configuration suppress
   everything above 20 MHz?)
 - Actual TGC behavior of the target front end (discontinuities, gain-step
