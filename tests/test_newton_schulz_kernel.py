@@ -52,6 +52,14 @@ class ReferenceTests(unittest.TestCase):
 
         np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-7)
 
+    def test_initial_value_uses_identity_scaled_by_infinity_norm(self):
+        matrices = random_hpd_batch(3, 16, seed=19)
+        norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
+        expected = np.eye(16, dtype=np.complex64)[None, :, :] / norm_inf[:, None, None]
+
+        np.testing.assert_allclose(newton_schulz_kernel._initial_value(matrices), expected)
+        np.testing.assert_allclose(initial_value(matrices), expected)
+
     def test_random_input_is_hermitian_positive_definite_at_the_requested_condition(self):
         matrices = random_hpd_batch(3, 16, condition_number=100.0, seed=7)
 
@@ -167,7 +175,7 @@ class ReferenceTests(unittest.TestCase):
             / "newton_schulz_reader.cpp"
         ).read_text()
 
-        self.assertEqual(newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS, 8)
+        self.assertEqual(newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS, 12)
         self.assertEqual(
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
@@ -371,7 +379,7 @@ class ReferenceTests(unittest.TestCase):
     def test_prepare_rejects_unimplemented_shapes_variants_and_iteration_counts(self):
         matrices = np.zeros((1, 16, 16), dtype=np.complex64)
 
-        with self.assertRaisesRegex(ValueError, "fixed at 8"):
+        with self.assertRaisesRegex(ValueError, "fixed at 12"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
                 None, None, matrices, iterations=7
             )
@@ -631,6 +639,32 @@ class DeviceEquivalenceTests(unittest.TestCase):
             )
             relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
             self.assertLessEqual(relative_error, 1e-2)
+        finally:
+            ttnn.close_device(device)
+
+    def test_batch_8192_true_inverse_error_is_recorded_without_a_threshold(self):
+        import ttnn
+
+        device = ttnn.open_device(device_id=0)
+        try:
+            matrices = random_hpd_batch(8192, 32, seed=95)
+            actual = run_newton_schulz_kernel(
+                ttnn,
+                device,
+                matrices,
+                variant="bf16-fp32state",
+                math_fidelity="HiFi3",
+                fuse_s=True,
+                matrix_block=4,
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
+            )
+            true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+            relative_error = np.linalg.norm(
+                actual.astype(np.complex128) - true_inverse
+            ) / np.linalg.norm(true_inverse)
+            print(f"true inverse relative error (L=32, batch=8192): {relative_error:.8e}")
         finally:
             ttnn.close_device(device)
 

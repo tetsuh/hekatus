@@ -2,7 +2,7 @@
 
 The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
-The throughput variants use 32x32 tiles and a fixed eight-iteration inverse.
+The throughput variants use 32x32 tiles and a fixed twelve-iteration inverse.
 L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
 keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
 products, state, and outputs.
@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 
-NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
@@ -115,12 +115,11 @@ PROFILE_WRITER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
 
 
 def _initial_value(matrices: np.ndarray) -> np.ndarray:
-    """Return the fixed X0 without depending on the NumPy oracle."""
+    """Return X0 = I / ||R||_inf without depending on the NumPy oracle."""
     matrices = np.asarray(matrices, dtype=np.complex64)
-    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
     norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
-    denominator = (norm_1 * norm_inf)[:, None, None]
-    return np.swapaxes(matrices.conj(), -1, -2) / denominator
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    return identity[None, :, :] / norm_inf[:, None, None]
 
 
 def _balanced_ranges(

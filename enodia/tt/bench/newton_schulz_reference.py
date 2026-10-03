@@ -11,7 +11,7 @@ import numpy as np
 
 from enodia.tt.bench.shapes import MatmulShape, total_flops
 
-NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 
 
@@ -48,14 +48,13 @@ def random_hpd_batch(
 
 
 def initial_value(matrices: np.ndarray) -> np.ndarray:
-    """Return X0 = R^H / (||R||_1 * ||R||_inf)."""
+    """Return X0 = I / ||R||_inf."""
     matrices = np.asarray(matrices, dtype=np.complex64)
     if matrices.ndim != 3 or matrices.shape[-1] != matrices.shape[-2]:
         raise ValueError("matrices must have shape (batch, size, size)")
-    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
     norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
-    denominator = (norm_1 * norm_inf)[:, None, None]
-    return np.swapaxes(matrices.conj(), -1, -2) / denominator
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    return identity[None, :, :] / norm_inf[:, None, None]
 
 
 def newton_schulz_reference(

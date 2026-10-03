@@ -47,7 +47,7 @@ constexpr std::uint32_t profile_event_count_offset = 10;
 constexpr std::uint32_t profile_warmup_event_count_offset = 11;
 
 // Counters use the lower 32-bit wall-clock API. All sections accumulate over
-// the assigned tiles and eight iterations; the warmup fields retain the first
+// the assigned tiles and twelve iterations; the warmup fields retain the first
 // tile/iteration separately. Timestamp reads, CB pushes/pops, and setup that
 // is outside a named section remain visible as an explicit residual.
 struct ProfileCounters {
@@ -1105,7 +1105,7 @@ void kernel_main_impl() {
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(4);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
-    static_assert(iterations == 8, "the throughput kernel has a fixed eight-iteration count");
+    static_assert(iterations == 12, "the throughput kernel has a fixed twelve-iteration count");
     using CounterState = std::conditional_t<profile_sample, ProfileCounters, EmptyProfileCounters>;
     CounterState counters{};
 

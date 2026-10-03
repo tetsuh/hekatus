@@ -20,9 +20,10 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak, and Issue #63's measured hand-written rows below land between 3.2%
 > and 30%. The earlier 3.2% figure is retained as historical evidence, with
-> its non-reproduction explained below. Scope 5 uses the measured L=32
-> Newton-Schulz efficiency directly for the current card-count estimate:
-> roughly 100 TFLOPS / roughly 52 TFLOPS per card ≈ 1.9, so plan for about 2
+> its non-reproduction explained below. The eight-iteration Scope 5 estimate
+> was roughly 100 TFLOPS. The selected twelve-iteration count makes it roughly
+> 150 TFLOPS. Using the measured L=32 Newton-Schulz efficiency directly gives
+> roughly 150 TFLOPS / roughly 52 TFLOPS per card ≈ 2.9, so plan for about 3
 > cards. This is an extrapolation using the measured Newton-Schulz workload
 > efficiency, not a full-system benchmark or an all-mode simultaneous
 > benchmark.
@@ -288,22 +289,22 @@ the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 | CF / PCF / F-DMAS | 0.015 | ~0% |
 | SLSC | 1 | 0.3% |
 | MV: R formation only (sliding update) | 2 | 0.6% |
-| MV: with Newton-Schulz inverse | 33 | ~10% |
+| MV: with Newton-Schulz inverse | 49.5 | ~15% |
 | ESBMV (eigendecomposition) | 100–170 | 30–50% |
 
 ## By configuration — basis: usable per card (133 TFLOPS)
 
 | Configuration | Recv ch | L | TFLOPS | Cards |
 |---|---|---|---|---|
-| 128 elements / 64 ch receive | 64 | 32 | 35 | 1 (26% used) |
-| 256 elements / 128 ch receive | 128 | 64 | 560 | 5 (4.2 rounded up) |
-| 256 elements + beamspace (B=16) | 128 | 16 | 19 | 1 (14% used) |
-| post-μBF 256 ch, volume | 256 | 128 | 1,100 | 9 |
-| post-μBF 256 ch + beamspace | 256 | 16 | 37 | 1 (28% used) |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~7.2e7 | impossible |
+| 128 elements / 64 ch receive | 64 | 32 | 52.5 | 1 (40% used) |
+| 256 elements / 128 ch receive | 128 | 64 | 840 | 7 (6.3 rounded up) |
+| 256 elements + beamspace (B=16) | 128 | 16 | 28.5 | 1 (21% used) |
+| post-μBF 256 ch, volume | 256 | 128 | 1,650 | 13 (12.4 rounded up) |
+| post-μBF 256 ch + beamspace | 256 | 16 | 55.5 | 1 (42% used) |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~1.08e8 | impossible |
 
 The last row follows the N⁴ law from the 256-channel volume row
-(1,100 × 16⁴ ≈ 7.2e7). An earlier revision carried 1.85e8 here, which did
+(1,650 × 16⁴ ≈ 1.08e8). An earlier revision carried 1.85e8 here, which did
 not reconcile with the law stated above; the conclusion is unchanged.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) — basis: theoretical peak
@@ -312,15 +313,17 @@ not reconcile with the law stated above; the conclusion is unchanged.
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
-| 1D B-mode | + beamspace MV | ~25 | 8% |
-| 1D color flow | per-channel wall filter + MV | ~30 | 9% |
-| 2D volume | beamspace MV | ~37 | 11% |
+| 1D B-mode | + beamspace MV | ~37.5 | 11% |
+| 1D color flow | per-channel wall filter + MV | ~45 | 14% |
+| 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
-The measured L=32 Newton-Schulz efficiency is 15.6%, or about 52 TFLOPS per
-card; 100 / 52 ≈ 1.9, so plan for about 2 cards. This is an extrapolation
-using the measured Newton-Schulz workload efficiency, not a full-system
-benchmark or an all-mode simultaneous benchmark. The L=32 headline is in
+**Scope 5 planning estimate:** the eight-iteration 1D all-mode workload was
+roughly 100 TFLOPS. The selected twelve-iteration count makes it roughly 150
+TFLOPS. The measured L=32 Newton-Schulz efficiency is 15.6%, or about 52
+TFLOPS per card; 150 / 52 ≈ 2.9, so plan for about 3 cards. This is an
+extrapolation using the measured Newton-Schulz workload efficiency, not a
+full-system benchmark or an all-mode simultaneous benchmark. The L=32 headline
+is in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 ---

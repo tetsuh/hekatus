@@ -88,7 +88,7 @@ def newton_schulz_shapes(
     """One Newton-Schulz matmul: a batch of small square complex matmuls.
 
     The iteration X <- X (2I - R X) is two complex matmuls per iteration,
-    fixed at 8 iterations (design.md §9), over one covariance matrix per
+    fixed at 12 iterations (design.md §9), over one covariance matrix per
     pixel. The batch dimension is what keeps the matrix engine busy, and it
     is the reason this beats a sequential solver despite paying far more
     FLOPs. The batch sizes bracket a frame: a 13 MHz frame is on the order

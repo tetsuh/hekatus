@@ -14,6 +14,7 @@ import pytest
 
 from enodia.tt.bench import run_matmul
 from enodia.tt.bench.configs import configuration_catalogue
+from enodia.tt.bench.newton_schulz_reference import COMPLEX_MATMULS_PER_INVERSE
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 
@@ -640,7 +641,7 @@ def test_acceptance_catalogue_dispatches_both_shapes_and_all_required_rows(
             "fuse_s": kwargs["fuse_s"],
             "matrix_block": kwargs["matrix_block"],
             "row": kwargs["row_name"],
-            "flops_per_iteration": total_flops(shape) * 16,
+            "flops_per_iteration": total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE,
             "achieved_tflops": 1.0,
             "seconds_per_iteration": 1.0,
             "seconds_per_launch_samples": [1.0] * kwargs["repeats"],
@@ -720,7 +721,7 @@ def test_acceptance_catalogue_dispatches_both_shapes_and_all_required_rows(
         and row["math_fidelity"] == "HiFi3"
     )
     l16_shape = next(shape for shape in default_catalogue() if shape.name == l16["shape"]["name"])
-    assert l16["flops_per_iteration"] == total_flops(l16_shape) * 16
+    assert l16["flops_per_iteration"] == total_flops(l16_shape) * COMPLEX_MATMULS_PER_INVERSE
 
 
 def test_successful_main_serializes_repeat_timing_samples(monkeypatch, tmp_path):
@@ -922,7 +923,7 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert len(record["seconds_per_launch_samples"]) == 4
     assert record["seconds_per_launch_p50"] <= record["seconds_per_launch_p99"]
     assert record["seconds_per_launch_p99"] <= record["seconds_per_launch_p99_9"]
-    assert record["flops_per_iteration"] == total_flops(shape) * 16
+    assert record["flops_per_iteration"] == total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
     assert ttnn.sync_calls == 5  # one warm-up plus four timed launches
 
 
@@ -981,7 +982,7 @@ def test_custom_l16_dispatch_keeps_logical_flop_denominator(monkeypatch):
     assert record["matrix_block"] == 4
     assert record["physical_tile_count"] == 4096
     assert record["packing"] == "diagonal_pairs_32x32"
-    assert record["flops_per_iteration"] == total_flops(shape) * 16
+    assert record["flops_per_iteration"] == total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
 
 
 def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
