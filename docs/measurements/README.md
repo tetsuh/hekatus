@@ -101,6 +101,9 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json` | First production staged run (batch 4, matrix block 1, one iteration) fails before later stages; the runner's norm metric overflowed while the downloaded output remained finite. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked-power.csv` | Power, clock, and temperature trace for the first production staged run. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked-watcher.log` | Watcher log for the first production staged run; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass.json` | After the board-free `-Xi` format fix, production stage A (batch 4, block 1, one iteration) passes with relative error 0.00006057. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass-power.csv` | Power, clock, and temperature trace for the passing production stage A. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass-watcher.log` | Watcher log for the passing production stage A; the JSON record stores its SHA-256. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log` | Watcher-enabled named-container stdout for the blocked b probe. |

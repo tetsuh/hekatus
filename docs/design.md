@@ -1261,12 +1261,15 @@ normally, so no reset was performed; watcher-free throughput was not attempted.
 Its record is
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json`.
 
-The production staged bring-up then stopped at the first case (batch 4,
-`matrix_block=1`, one iteration). The runner returned a numerical failure; its
-relative-error norm overflowed while the downloaded output was finite, so the
-later eight-iteration/block-2/block-4 and batch-8192 stages were not run. No
-reset was needed. The record is
-`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`.
+The first production staged bring-up stopped at batch 4, `matrix_block=1`,
+one iteration: the runner's relative-error norm overflowed while the downloaded
+output was finite. A follow-up board-free audit found stale format references
+in the production `-Xi` construction; after that fix, the same stage passed with
+relative error 0.00006057. The original failure and corrected pass are recorded
+in
+`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`
+and
+`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass.json`.
 
 A follow-up board-free probe/production audit compared host tensors, CB page
 capacities, TensorAccessor order and strides, DEST-row packing, source-format
@@ -1280,8 +1283,8 @@ X-block copy. Its matrix queues also use exact matrix-block capacities without
 changing the default one-tile ledger. The machine-readable contract and source
 assertions are `two_tile_fidelity_audit()` in
 `enodia/tt/bench/two_tile_probe.py` and
-`tests/test_newton_schulz_two_tile_audit.py`. No hardware rerun was performed;
-the next staged run remains a parent-owned hardware experiment.
+`tests/test_newton_schulz_two_tile_audit.py`. The corrected parent-owned stage-A
+hardware rerun passed; later staged cases remain pending.
 
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
