@@ -110,6 +110,9 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass.json` | Production stage C (batch 4, block 2, eight iterations) passes with relative error 0.00432563. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass-power.csv` | Power, clock, and temperature trace for the passing production stage C. |
 | `2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass-watcher.log` | Watcher log for the passing production stage C; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass.json` | Production stage D (batch 4, block 4, eight iterations) passes with relative error 0.00432563. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass-power.csv` | Power, clock, and temperature trace for the passing production stage D. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass-watcher.log` | Watcher log for the passing production stage D; the JSON record stores its SHA-256. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log` | Watcher-enabled named-container stdout for the blocked b probe. |
