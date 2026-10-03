@@ -1237,6 +1237,15 @@ machine-readable offsets, DEST slots, CB counts, and tile-register sequence
 are recorded in
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json`.
 
+After the probe was corrected so each `rt=2` call used `dst=0` and emitted both
+DEST rows, stage a3 passed on device: four matrices had maximum relative error
+0.0009221, with real and imaginary output tiles both below 0.001. The next
+stage-b probe then exited 137 before a numerical result, so the one allowed
+reset and Stage-1 recovery were performed and stages c and batch 8192 were not
+attempted. The records are
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json`
+and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json`.
+
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
 were 1350 MHz. The required same-run rerun then used no Watcher, the same

@@ -170,7 +170,12 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json`,
-  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json`
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json`.
+  The corrected probe then passed stage a3 at maximum relative error 0.0009221;
+  stage b subsequently exited 137, triggering one reset and a passing Stage-1
+  health probe, so c and batch 8192 remain unrun. See
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json`
+  and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,
