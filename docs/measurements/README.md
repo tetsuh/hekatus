@@ -98,6 +98,9 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json` | Production batch-8192 two-tile correctness: both full-sync block 4 and half-sync block 2 fail the NumPy gate (3.2010 and 3.3318); no throughput was measured. |
 | `2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked-power.csv` | Power, clock, and temperature trace for the blocked batch-8192 correctness run. |
 | `2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked-watcher.log` | Watcher log for the blocked batch-8192 correctness run; the JSON record stores its SHA-256. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json` | First production staged run (batch 4, matrix block 1, one iteration) fails before later stages; the runner's norm metric overflowed while the downloaded output remained finite. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked-power.csv` | Power, clock, and temperature trace for the first production staged run. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked-watcher.log` | Watcher log for the first production staged run; the JSON record stores its SHA-256. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
 | `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log` | Watcher-enabled named-container stdout for the blocked b probe. |

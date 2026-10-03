@@ -1261,6 +1261,13 @@ normally, so no reset was performed; watcher-free throughput was not attempted.
 Its record is
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json`.
 
+The production staged bring-up then stopped at the first case (batch 4,
+`matrix_block=1`, one iteration). The runner returned a numerical failure; its
+relative-error norm overflowed while the downloaded output was finite, so the
+later eight-iteration/block-2/block-4 and batch-8192 stages were not run. No
+reset was needed. The record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`.
+
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
 were 1350 MHz. The required same-run rerun then used no Watcher, the same
