@@ -834,6 +834,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="X0 placement for the complex-product catalogue (default: input placement)",
     )
     parser.add_argument(
+        "--complex-product-two-tile-input-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=None,
+        help="two-tile input/identity/zero placement (default: common input placement)",
+    )
+    parser.add_argument(
+        "--complex-product-two-tile-r-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=None,
+        help="two-tile R placement (default: common R placement)",
+    )
+    parser.add_argument(
+        "--complex-product-two-tile-x0-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=None,
+        help="two-tile X0 placement (default: common X0 placement)",
+    )
+    parser.add_argument(
         "--complex-product-batch",
         type=int,
         default=8192,
@@ -1109,11 +1127,29 @@ def _complex_catalogue_reference(matrices: np.ndarray) -> np.ndarray:
 
 
 def _resolve_complex_product_memories(args: argparse.Namespace) -> tuple[str, str, str]:
-    """Resolve the catalogue's dedicated placement controls."""
+    """Resolve the catalogue's common placement controls."""
     return _resolve_input_memories(
         args.complex_product_input_memory,
         r_memory=args.complex_product_r_memory,
         x0_memory=args.complex_product_x0_memory,
+    )
+
+
+def _resolve_complex_product_two_tile_memories(
+    args: argparse.Namespace,
+    common_memories: tuple[str, str, str] | None = None,
+) -> tuple[str, str, str]:
+    """Resolve two-tile placement, falling back to each common placement."""
+    if common_memories is None:
+        common_memories = _resolve_complex_product_memories(args)
+    common_input, common_r, common_x0 = common_memories
+    input_memory = getattr(args, "complex_product_two_tile_input_memory", None)
+    r_memory = getattr(args, "complex_product_two_tile_r_memory", None)
+    x0_memory = getattr(args, "complex_product_two_tile_x0_memory", None)
+    return _resolve_input_memories(
+        common_input if input_memory is None else input_memory,
+        r_memory=common_r if r_memory is None else r_memory,
+        x0_memory=common_x0 if x0_memory is None else x0_memory,
     )
 
 
@@ -1169,7 +1205,8 @@ def _run_complex_product_catalogue(
     memory_map: dict[str, object],
 ) -> list[dict]:
     """Gate and time current/two-tile products for both DEST sync modes."""
-    input_memory, r_memory, x0_memory = _resolve_complex_product_memories(args)
+    common_memories = _resolve_complex_product_memories(args)
+    two_tile_memories = _resolve_complex_product_two_tile_memories(args, common_memories)
     shape = next(
         shape for shape in default_catalogue() if shape.name == "newton_schulz_L32_b8192"
     )
@@ -1218,6 +1255,9 @@ def _run_complex_product_catalogue(
 
     for dst_full_sync_en, matrix_block in ((True, 4), (False, 2)):
         for two_tile_complex in (False, True):
+            input_memory, r_memory, x0_memory = (
+                two_tile_memories if two_tile_complex else common_memories
+            )
             label = "two_tile" if two_tile_complex else "one_tile"
             row_name = f"{label}_{'full' if dst_full_sync_en else 'half'}_sync_block{matrix_block}"
             correctness = _run_complex_catalogue_correctness(
@@ -1469,6 +1509,14 @@ def main(argv: list[str] | None = None) -> int:
         complex_input_memory, complex_r_memory, complex_x0_memory = (
             _resolve_complex_product_memories(args)
         )
+        (
+            complex_two_tile_input_memory,
+            complex_two_tile_r_memory,
+            complex_two_tile_x0_memory,
+        ) = _resolve_complex_product_two_tile_memories(
+            args,
+            (complex_input_memory, complex_r_memory, complex_x0_memory),
+        )
         try:
             results = _run_complex_product_catalogue(
                 ttnn,
@@ -1491,6 +1539,9 @@ def main(argv: list[str] | None = None) -> int:
                 "input_memory": complex_input_memory,
                 "r_memory": complex_r_memory,
                 "x0_memory": complex_x0_memory,
+                "two_tile_input_memory": complex_two_tile_input_memory,
+                "two_tile_r_memory": complex_two_tile_r_memory,
+                "two_tile_x0_memory": complex_two_tile_x0_memory,
                 "two_tile_complex": [False, True],
                 "fp32_dest_acc_en": True,
                 "dst_full_sync_en": [True, False],
@@ -1513,6 +1564,13 @@ def main(argv: list[str] | None = None) -> int:
                     "input": complex_input_memory,
                     "r": complex_r_memory,
                     "x0": complex_x0_memory,
+                    "compute": "l1",
+                    "output": "dram",
+                },
+                "two_tile_custom_memory_placement": {
+                    "input": complex_two_tile_input_memory,
+                    "r": complex_two_tile_r_memory,
+                    "x0": complex_two_tile_x0_memory,
                     "compute": "l1",
                     "output": "dram",
                 },

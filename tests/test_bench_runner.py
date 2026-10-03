@@ -883,6 +883,12 @@ def test_complex_product_catalogue_dispatches_custom_memory_placement(
             "l1",
             "--complex-product-x0-memory",
             "l1",
+            "--complex-product-two-tile-input-memory",
+            "dram",
+            "--complex-product-two-tile-r-memory",
+            "dram",
+            "--complex-product-two-tile-x0-memory",
+            "dram",
             "--launches-per-row",
             "7",
             "--out",
@@ -894,6 +900,9 @@ def test_complex_product_catalogue_dispatches_custom_memory_placement(
     assert payload["selection"]["input_memory"] == "l1"
     assert payload["selection"]["r_memory"] == "l1"
     assert payload["selection"]["x0_memory"] == "l1"
+    assert payload["selection"]["two_tile_input_memory"] == "dram"
+    assert payload["selection"]["two_tile_r_memory"] == "dram"
+    assert payload["selection"]["two_tile_x0_memory"] == "dram"
     assert payload["measurement"]["custom_memory_placement"] == {
         "input": "l1",
         "r": "l1",
@@ -901,12 +910,25 @@ def test_complex_product_catalogue_dispatches_custom_memory_placement(
         "compute": "l1",
         "output": "dram",
     }
+    assert payload["measurement"]["two_tile_custom_memory_placement"] == {
+        "input": "dram",
+        "r": "dram",
+        "x0": "dram",
+        "compute": "l1",
+        "output": "dram",
+    }
     assert len(stock_calls) == 1
     assert len(correctness_calls) == len(custom_calls) == 4
-    assert all(
-        call["input_memory"] == call["r_memory"] == call["x0_memory"] == "l1"
-        for call in [*correctness_calls, *custom_calls]
-    )
+    for calls in (correctness_calls, custom_calls):
+        assert all(
+            (
+                call["input_memory"],
+                call["r_memory"],
+                call["x0_memory"],
+            )
+            == (("dram", "dram", "dram") if call["two_tile_complex"] else ("l1", "l1", "l1"))
+            for call in calls
+        )
     custom_rows = [row for row in payload["results"] if row["kind"] == "custom_newton_schulz"]
     assert {row["row"] for row in custom_rows} == {
         "one_tile_full_sync_block4",
@@ -915,11 +937,24 @@ def test_complex_product_catalogue_dispatches_custom_memory_placement(
         "two_tile_half_sync_block2",
     }
     assert all(
-        row["input_memory"] == row["r_memory"] == row["x0_memory"] == "l1"
-        and row["program_config"]["input_memory"]
-        == row["program_config"]["r_memory"]
-        == row["program_config"]["x0_memory"]
-        == "l1"
+        (
+            row["input_memory"],
+            row["r_memory"],
+            row["x0_memory"],
+        )
+        == (("dram", "dram", "dram") if row["row"].startswith("two_tile") else ("l1", "l1", "l1"))
+        and (
+            row["program_config"]["input_memory"],
+            row["program_config"]["r_memory"],
+            row["program_config"]["x0_memory"],
+        )
+        == (("dram", "dram", "dram") if row["row"].startswith("two_tile") else ("l1", "l1", "l1"))
+        and row["memory_placement"] == {
+            "input": row["input_memory"],
+            "r": row["r_memory"],
+            "x0": row["x0_memory"],
+            "compute": "l1",
+        }
         for row in custom_rows
     )
     assert all(row["launches_requested_per_row"] == 7 for row in payload["results"])

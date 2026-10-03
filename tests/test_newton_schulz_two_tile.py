@@ -323,7 +323,15 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
     assert defaults.complex_product_input_memory == "dram"
     assert defaults.complex_product_r_memory is None
     assert defaults.complex_product_x0_memory is None
+    assert defaults.complex_product_two_tile_input_memory is None
+    assert defaults.complex_product_two_tile_r_memory is None
+    assert defaults.complex_product_two_tile_x0_memory is None
     assert run_matmul._resolve_complex_product_memories(defaults) == ("dram", "dram", "dram")
+    assert run_matmul._resolve_complex_product_two_tile_memories(defaults) == (
+        "dram",
+        "dram",
+        "dram",
+    )
     assert defaults.fp32_dest_acc_en is True
     assert defaults.dst_full_sync_en is True
     enabled = parser.parse_args(
@@ -345,6 +353,8 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
             "l1",
             "--complex-product-x0-memory",
             "l1",
+            "--complex-product-two-tile-input-memory",
+            "dram",
         ]
     )
     assert probe.complex_product_batch == 4
@@ -352,6 +362,14 @@ def test_cli_and_dispatch_metadata_keep_two_tile_and_sync_defaults_explicit():
     assert probe.complex_product_input_memory == "l1"
     assert probe.complex_product_r_memory == "l1"
     assert probe.complex_product_x0_memory == "l1"
+    assert probe.complex_product_two_tile_input_memory == "dram"
+    assert probe.complex_product_two_tile_r_memory is None
+    assert probe.complex_product_two_tile_x0_memory is None
+    assert run_matmul._resolve_complex_product_two_tile_memories(probe) == (
+        "dram",
+        "l1",
+        "l1",
+    )
 
 
 def test_complex_catalogue_correctness_forwards_per_input_memory(monkeypatch):
