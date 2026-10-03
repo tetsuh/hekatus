@@ -97,14 +97,12 @@ void r_times_x(
         seed_dest_slots();
     }
     if (run_k0) {
-        // k=0: (-Rr)*Xr and (-Ri)*Xr.
+        // k=0: (-Rr)*Xr and (-Ri)*Xr.  One rt=2 call writes both rows.
         matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 0, false, 1, 2, 1);
-        matmul_block(cb_two_tile_r, cb_two_tile_s, 0, 0, 1, false, 1, 2, 1);
     }
     if (run_k1) {
-        // k=1: (+Ri)*Xi and (-Rr)*Xi, using +2 and +1 CB offsets.
+        // k=1: (+Ri)*Xi and (-Rr)*Xi.  Accumulate into the same two rows.
         matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
-        matmul_block(cb_two_tile_r, cb_two_tile_s, 2, 1, 1, false, 1, 2, 1);
     }
     tile_regs_commit();
     tile_regs_wait();
@@ -136,12 +134,10 @@ void x_times_s() {
     reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
     matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
-    // Real output: Xr*Sr + (-Xi)*Si.
+    // k=0: [Xr; Xi]*Sr writes the real and imaginary output rows.
     matmul_block(cb_two_tile_x, cb_two_tile_s, 0, 0, 0, false, 1, 2, 1);
+    // k=1: [-Xi; Xr]*Si accumulates into those same two output rows.
     matmul_block(cb_two_tile_x, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
-    // Imaginary output: Xr*Si + Xi*Sr.
-    matmul_block(cb_two_tile_x, cb_two_tile_s, 0, 1, 1, false, 1, 2, 1);
-    matmul_block(cb_two_tile_x, cb_two_tile_s, 1, 0, 1, false, 1, 2, 1);
     tile_regs_commit();
     tile_regs_wait();
     pack_reconfig_data_format(cb_output_real);

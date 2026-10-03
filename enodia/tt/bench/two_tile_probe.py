@@ -95,11 +95,12 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         raise ValueError(f"stage must be one of {ALL_PROBE_STAGES}, got {stage!r}")
     uses_x_product = stage == "c"
     decomposition_calls = {
-        "a1": [{"in0_offset": 0, "in1_offset": 0, "dest_real": 0, "dest_imag": 1}],
-        "a2": [{"in0_offset": 2, "in1_offset": 1, "dest_real": 0, "dest_imag": 1}],
+        # rt=2 writes DEST slots dst and dst + 1 in one call.
+        "a1": [{"in0_offset": 0, "in1_offset": 0, "dst": 0}],
+        "a2": [{"in0_offset": 2, "in1_offset": 1, "dst": 0}],
         "a3": [
-            {"in0_offset": 0, "in1_offset": 0, "dest_real": 0, "dest_imag": 1},
-            {"in0_offset": 2, "in1_offset": 1, "dest_real": 0, "dest_imag": 1},
+            {"in0_offset": 0, "in1_offset": 0, "dst": 0},
+            {"in0_offset": 2, "in1_offset": 1, "dst": 0},
         ],
     }
     if stage in DECOMPOSITION_STAGES:
@@ -132,6 +133,7 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         "stage": stage,
         "operation": operation,
         "matmul_dimensions": {"rt": 2, "ct": 1, "kt": 1},
+        "matmul_call_count": len(matmul_calls),
         "matmul_calls": matmul_calls,
         "matmul_block_init_positions": ["before_tile_regs_acquire"],
         "in0_register": "SrcB",
@@ -143,6 +145,7 @@ def probe_stage_contract(stage: str) -> dict[str, Any]:
         },
         "dest_slots": [0, 1],
         "dest_seed": dest_seed,
+        "pack_indices": [0, 1],
         "tile_regs_sequence": ["acquire", "commit", "wait", "release"],
         "cb_order": {
             "in0": "CB_TWO_TILE_R" if not uses_x_product else "CB_TWO_TILE_X",

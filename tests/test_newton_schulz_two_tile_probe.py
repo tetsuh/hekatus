@@ -1,5 +1,6 @@
 """Board-free contracts for the minimal two-tile a/b/c probe."""
 
+import re
 from pathlib import Path
 
 import numpy as np
@@ -65,22 +66,34 @@ def test_probe_decomposition_covers_partial_products_and_offsets():
     assert DECOMPOSITION_STAGES == ("a1", "a2", "a3")
     assert set(DECOMPOSITION_STAGES).issubset(ALL_PROBE_STAGES)
     assert expected["a1"].shape == expected["a2"].shape == (1, 2, 2)
-    assert probe_stage_contract("a1")["matmul_calls"] == [
-        {"in0_offset": 0, "in1_offset": 0, "dest_real": 0, "dest_imag": 1}
-    ]
-    assert probe_stage_contract("a2")["matmul_calls"] == [
-        {"in0_offset": 2, "in1_offset": 1, "dest_real": 0, "dest_imag": 1}
-    ]
-    assert len(probe_stage_contract("a3")["matmul_calls"]) == 2
+
+    expected_calls = {
+        "a1": [{"in0_offset": 0, "in1_offset": 0, "dst": 0}],
+        "a2": [{"in0_offset": 2, "in1_offset": 1, "dst": 0}],
+        "a3": [
+            {"in0_offset": 0, "in1_offset": 0, "dst": 0},
+            {"in0_offset": 2, "in1_offset": 1, "dst": 0},
+        ],
+    }
+    for stage, calls in expected_calls.items():
+        contract = probe_stage_contract(stage)
+        assert contract["matmul_call_count"] == len(calls)
+        assert contract["matmul_calls"] == calls
+        assert contract["pack_indices"] == [0, 1]
+        assert contract["tile_regs_sequence"] == ["acquire", "commit", "wait", "release"]
 
 
 def test_probe_contract_records_cb_order_dest_slots_and_sync_sequence():
+    expected_call_counts = {"a1": 1, "a2": 1, "a3": 2, "a": 2, "b": 2, "c": 2}
     for stage in ALL_PROBE_STAGES:
         contract = probe_stage_contract(stage)
         assert contract["matmul_dimensions"] == {"rt": 2, "ct": 1, "kt": 1}
+        assert contract["matmul_call_count"] == expected_call_counts[stage]
+        assert all(call["dst"] == 0 for call in contract["matmul_calls"])
         assert contract["in0_register"] == "SrcB"
         assert contract["in1_register"] == "SrcA"
         assert contract["dest_slots"] == [0, 1]
+        assert contract["pack_indices"] == [0, 1]
         assert contract["tile_regs_sequence"] == ["acquire", "commit", "wait", "release"]
         assert contract["cb_counts"]["wait"] > 0
         assert contract["cb_counts"]["reserve"] > 0
@@ -96,17 +109,35 @@ def test_probe_compute_source_keeps_two_k_terms_and_stage_boundaries():
     assert "copy_tile(cb_x_imag, 0, 1);" in source
     assert "copy_tile(cb_negative_x_imag, 0, 2);" in source
     assert "copy_tile(cb_x_real, 0, 3);" in source
-    assert "tile_regs_acquire();" in source
-    assert "tile_regs_commit();" in source
-    assert "tile_regs_wait();" in source
-    assert "tile_regs_release();" in source
     assert "run_k0" in source
     assert "run_k1" in source
     assert "r_times_x(false, false, true, false)" in source
     assert "r_times_x(false, false, false, true)" in source
     assert "r_times_x(false, false, true, true)" in source
-    for offset in ("0, 0, 0", "2, 1, 0"):
-        assert offset in source
+
+    r_start = source.index("void r_times_x(")
+    x_start = source.index("void x_times_s()")
+    pop_start = source.index("void pop_input_pages()")
+    r_source = source[r_start:x_start]
+    x_source = source[x_start:pop_start]
+    call_pattern = r"matmul_block\({cb}, cb_two_tile_s,\s*(\d+),\s*(\d+),\s*(\d+),\s*false,\s*(\d+),\s*(\d+),\s*(\d+)\)"
+
+    r_calls = re.findall(call_pattern.format(cb="cb_two_tile_r"), r_source)
+    x_calls = re.findall(call_pattern.format(cb="cb_two_tile_x"), x_source)
+    assert r_calls == [("0", "0", "0", "1", "2", "1"), ("2", "1", "0", "1", "2", "1")]
+    assert x_calls == [("0", "0", "0", "1", "2", "1"), ("2", "1", "0", "1", "2", "1")]
+
+    for function_source in (r_source, x_source):
+        order = [
+            function_source.index("tile_regs_acquire();"),
+            function_source.index("matmul_block(", function_source.index("tile_regs_acquire();")),
+            function_source.index("tile_regs_commit();"),
+            function_source.index("tile_regs_wait();"),
+            function_source.index("pack_tile(0"),
+            function_source.index("pack_tile(1"),
+            function_source.index("tile_regs_release();"),
+        ]
+        assert order == sorted(order)
 
 
 def test_probe_reader_and_writer_expose_explicit_cb_pack_path():
