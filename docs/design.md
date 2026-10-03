@@ -1283,6 +1283,11 @@ error. Their records are
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json`
 and
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass.json`.
+The final same-run no-Watcher catalogue used 1,000 launches per row. Current
+one-tile full-sync block 4 reached 51.8949 TFLOPS with all-L1 placement; the
+executable two-tile DRAM-placement rows reached 24.4249 TFLOPS full-sync block
+4 and 23.3301 TFLOPS half-sync block 2. Its record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-mixed-memory-catalogue-1000.json`.
 
 A follow-up board-free probe/production audit compared host tensors, CB page
 capacities, TensorAccessor order and strides, DEST-row packing, source-format

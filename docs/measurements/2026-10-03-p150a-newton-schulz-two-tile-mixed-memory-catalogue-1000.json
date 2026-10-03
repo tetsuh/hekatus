@@ -1,0 +1,248 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T05:09:10.942501+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "ad1c20a",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "ad1c20a",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "runner": "enodia/tt/bench/run_matmul.py",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher": false,
+    "same_device_run": true,
+    "visible_board_count": 2,
+    "rsync_excludes": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ]
+  },
+  "measurement": {
+    "kind": "throughput_catalogue",
+    "catalogue": "two_tile_complex",
+    "batch": 8192,
+    "launches_per_row": 1000,
+    "rows": 5,
+    "watcher": false,
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "runner_exit_status": 0,
+    "reset_performed": false,
+    "cleanup_verified": true,
+    "correctness_reference": "independent NumPy fixed-eight-step oracle in this runner",
+    "correctness_tolerance": 0.01,
+    "same_device_run": true,
+    "current_memory_placement": {
+      "input": "l1",
+      "r": "l1",
+      "x0": "l1",
+      "compute": "l1",
+      "output": "dram"
+    },
+    "two_tile_memory_placement": {
+      "input": "dram",
+      "r": "dram",
+      "x0": "dram",
+      "compute": "l1",
+      "output": "dram"
+    },
+    "power_trace": "2026-10-03-p150a-newton-schulz-two-tile-mixed-memory-catalogue-1000-power.csv",
+    "power_trace_sha256": "eb705b563b09c580ec655a1dcafaf56823321c963f28961553764c3f4c5e5242",
+    "power_clock_provenance": {
+      "trace": "power-20261003T050910Z.csv",
+      "columns": [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c"
+      ],
+      "power_column": "power_w",
+      "clock_column": "aiclk_mhz",
+      "temperature_column": "asic_temp_c",
+      "sampling_source": "tt-smi snapshot"
+    }
+  },
+  "rows": [
+    {
+      "row": "stock_best",
+      "status": "ok",
+      "achieved_tflops": 9.096230750694394,
+      "repeats": 1000,
+      "launches_requested_per_row": 1000,
+      "correctness": null,
+      "input_memory": "l1",
+      "r_memory": null,
+      "x0_memory": null,
+      "seconds_per_launch_p99": 0.00026531353963946456,
+      "seconds_per_launch_p99_9": 0.0003216563859532463
+    },
+    {
+      "row": "one_tile_full_sync_block4",
+      "status": "ok",
+      "achieved_tflops": 51.894932136319156,
+      "repeats": 1000,
+      "launches_requested_per_row": 1000,
+      "correctness": {
+        "relative_error": 0.005221145693212748,
+        "tolerance": 0.01,
+        "status": "pass"
+      },
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "seconds_per_launch_p99": 0.0007390519395266892,
+      "seconds_per_launch_p99_9": 0.000755630224339256
+    },
+    {
+      "row": "two_tile_full_sync_block4",
+      "status": "ok",
+      "achieved_tflops": 24.42490729118679,
+      "repeats": 1000,
+      "launches_requested_per_row": 1000,
+      "correctness": {
+        "relative_error": 0.0052215405739843845,
+        "tolerance": 0.01,
+        "status": "pass"
+      },
+      "input_memory": "dram",
+      "r_memory": "dram",
+      "x0_memory": "dram",
+      "seconds_per_launch_p99": 0.001535478977202729,
+      "seconds_per_launch_p99_9": 0.00157596449981429
+    },
+    {
+      "row": "one_tile_half_sync_block2",
+      "status": "ok",
+      "achieved_tflops": 43.596702554711094,
+      "repeats": 1000,
+      "launches_requested_per_row": 1000,
+      "correctness": {
+        "relative_error": 0.005221145693212748,
+        "tolerance": 0.01,
+        "status": "pass"
+      },
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "seconds_per_launch_p99": 0.0008665407615990261,
+      "seconds_per_launch_p99_9": 0.000879350620958575
+    },
+    {
+      "row": "two_tile_half_sync_block2",
+      "status": "ok",
+      "achieved_tflops": 23.33008887078387,
+      "repeats": 1000,
+      "launches_requested_per_row": 1000,
+      "correctness": {
+        "relative_error": 0.0052215405739843845,
+        "tolerance": 0.01,
+        "status": "pass"
+      },
+      "input_memory": "dram",
+      "r_memory": "dram",
+      "x0_memory": "dram",
+      "seconds_per_launch_p99": 0.0015659900887476396,
+      "seconds_per_launch_p99_9": 0.001582362529556121
+    }
+  ],
+  "selection": {
+    "shape_filters": [
+      "newton_schulz_L32_b8192"
+    ],
+    "program_config_kind_filters": [],
+    "custom_math_fidelity": [
+      "HiFi3"
+    ],
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "two_tile_input_memory": "dram",
+    "two_tile_r_memory": "dram",
+    "two_tile_x0_memory": "dram",
+    "two_tile_complex": [
+      false,
+      true
+    ],
+    "fp32_dest_acc_en": true,
+    "dst_full_sync_en": [
+      true,
+      false
+    ],
+    "matrix_blocks": {
+      "full": 4,
+      "half": 2
+    },
+    "batch": 8192,
+    "correctness_only": false,
+    "launches_per_row": 1000
+  },
+  "notes": [
+    "Current one-tile rows use all-L1 inputs to reproduce the historical approximately 51.8 TFLOPS condition.",
+    "Two-tile rows use DRAM input/R/X0 placement because all-L1 two-tile matrix blocks fail the L1 preflight budget; these are the executable correctness-approved placements.",
+    "Stock-best is included in the same no-Watcher run for context; no claim is made that its placement matches the custom rows."
+  ]
+}

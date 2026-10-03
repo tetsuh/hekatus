@@ -205,6 +205,10 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   half-sync block 2 passed with the same error. Records:
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass.json`.
+  The final same-run no-Watcher 1,000-launch catalogue measured current
+  one-tile all-L1 full block 4 at 51.8949 TFLOPS, two-tile DRAM full block 4 at
+  24.4249 TFLOPS, and two-tile DRAM half block 2 at 23.3301 TFLOPS. Record:
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-mixed-memory-catalogue-1000.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,
