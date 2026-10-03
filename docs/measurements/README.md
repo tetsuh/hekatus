@@ -37,6 +37,7 @@ trace beside it under the same stem.
 | `2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json` | Issue #65 toolchain-separated default-only comparison: 68 rows (59 successful, 9 failed), image digest `sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4` in its environment block |
 | `2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1-power.csv` | Power, clock, and temperature trace for the 0.70.1 default-only comparison (88 samples); its provenance is the matching result record above |
 | `2026-08-23-host-iq-path-vs-golden.json` | The #6 measurement: the IQ path (front end + IQ DAS) against the RF golden on the development host — per-stage errors at L0 checkpoints 1 and 2, image difference, and the axial PSF at −6 / −20 / −40 dB at D=8 and D=4, on the provisional `linear-5mhz` profile. Written by `python -m enodia.spec.beamform.decimation_sweep --record`; summarized in design.md §5 and §15 |
+| `2026-10-03-host-newton-schulz-reference-sweep.json` | The #85 stage-1 host sweep: both fixed Newton-Schulz X0 choices, N=8..16, condition numbers 10/30/100/300, L=16/32/64, and float64/float32 inverse, MV-direction, and same-array beam-pattern metrics. Written by `python -m enodia.spec.beamform.newton_schulz_sweep --record docs/measurements/2026-10-03-host-newton-schulz-reference-sweep.json`; the beam-pattern metric is measured evidence, not the stage-1 gate |
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
