@@ -194,7 +194,10 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   rerun passed at relative error 0.00006057. Records:
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass.json`.
-  Later staged cases remain unrun.
+  Stage B (batch 4, block 1, eight iterations) then passed at relative error
+  0.00432563. Later block-2/block-4 and batch-8192 stages remain unrun.
+  Record:
+  `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-b-pass.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,

@@ -1270,6 +1270,9 @@ in
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json`
 and
 `docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass.json`.
+The next stage, batch 4 with `matrix_block=1` and eight iterations, also passed
+with relative error 0.00432563. Its record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-production-two-tile-stage-b-pass.json`.
 
 A follow-up board-free probe/production audit compared host tensors, CB page
 capacities, TensorAccessor order and strides, DEST-row packing, source-format
