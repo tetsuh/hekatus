@@ -166,10 +166,14 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
-  Watcher attached and loaded aiclk samples at 1350 MHz; the recorded no-Watcher
-  trace also reached 1350 MHz. A same-run no-Watcher stock/current-one-tile
-  rerun remains open, and no causal Watcher claim is made. Record:
-  `docs/measurements/2026-10-03-host-throughput-condition-audit.json`
+  Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
+  rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,
+  and 43.6209 TFLOPS one-tile half-sync block 2 with loaded `aiclk_mhz` values
+  of 1343 and 1350 (1350 in most samples). The full-sync result is within
+  0.3% of the earlier 51.9164 TFLOPS all-L1 row;
+  no causal Watcher effect is established. Records:
+  `docs/measurements/2026-10-03-host-throughput-condition-audit.json`,
+  `docs/measurements/2026-10-03-p150a-newton-schulz-l32-b8192-no-watcher-one-tile-catalog-1000.json`
 - AFE anti-aliasing characteristics (does the 13 MHz configuration suppress
   everything above 20 MHz?)
 - Actual TGC behavior of the target front end (discontinuities, gain-step

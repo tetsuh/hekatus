@@ -1220,12 +1220,21 @@ required recovery reset and Stage-1 health probe were performed and no
 batch-8192 run followed. The partial record is
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json`.
 
-The throughput condition audit likewise found that the earlier 2.1945/25.0023
-TFLOPS stock/current-one-tile catalogue had Watcher attached while loaded clock
-samples were 1350 MHz. The clock was comparable to the recorded no-Watcher
-trace, but a same-run no-Watcher remeasurement was not completed; no causal
-Watcher claim is made. Record:
-`docs/measurements/2026-10-03-host-throughput-condition-audit.json`.
+The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
+stock/current-one-tile catalogue had Watcher attached while loaded clock samples
+were 1350 MHz. The required same-run rerun then used no Watcher, the same
+L=32/batch-8192 `bf16-fp32state` all-L1 placement, device 0, and 1,000 launches
+per row. Stock reached 9.1048 TFLOPS, one-tile full-sync block 4 reached
+51.7988 TFLOPS, and one-tile half-sync block 2 reached 43.6209 TFLOPS; both
+one-tile correctness gates were 0.00522115. The power trace recorded
+`aiclk_mhz` 800 at startup and 1343/1350 under load (1350 in most loaded
+samples); the wrapper stdout contains no Watcher line because
+`TT_METAL_WATCHER` was absent. The full-sync result is
+within 0.3% of the earlier 51.9164 TFLOPS all-L1 block-4 row, so this run does
+not establish a Watcher throughput effect. No reset was needed; the named
+container and device-user cleanup were clear. The audit and rerun records are
+`docs/measurements/2026-10-03-host-throughput-condition-audit.json` and
+`docs/measurements/2026-10-03-p150a-newton-schulz-l32-b8192-no-watcher-one-tile-catalog-1000.json`.
 
 ### Beamspace MV
 

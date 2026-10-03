@@ -1,0 +1,37 @@
+environment -> /tmp/hekatus-63-throughput-no-watcher-clean/env-20261003T020514Z.json
+2026-10-03 02:05:14.875 | DEBUG    | ttnn:<module>:79 - Initial ttnn.CONFIG:
+Config{cache_path=/root/.cache/ttnn,model_cache_path=/root/.cache/ttnn/models,tmp_dir=/tmp/ttnn,enable_model_cache=false,enable_fast_runtime_mode=true,throw_exception_on_fallback=false,enable_logging=false,enable_graph_report=false,enable_graph_python_stack_traces=false,enable_detailed_buffer_report=false,enable_detailed_tensor_report=false,enable_comparison_mode=false,comparison_mode_should_raise_exception=false,comparison_mode_pcc=0.9999,root_report_path=generated/ttnn/reports,report_name=std::nullopt,std::nullopt}
+2026-10-03 02:05:16.391 | info     |          Device | Opening user mode device driver (tt_cluster.cpp:228)
+2026-10-03 02:05:16.391 | info     |             UMD | Cluster constructor started. (cluster.cpp:348)
+2026-10-03 02:05:16.391 | info     |             UMD | Creating TopologyDiscovery for architecture: blackhole (topology_discovery.cpp:95)
+2026-10-03 02:05:16.391 | info     |             UMD | Starting topology discovery. (topology_discovery.cpp:114)
+2026-10-03 02:05:16.395 | info     |             UMD | Established firmware bundle version: 19.6.0 (topology_discovery.cpp:574)
+2026-10-03 02:05:16.395 | info     |             UMD | Completed topology discovery. (topology_discovery.cpp:118)
+2026-10-03 02:05:16.450 | warning  |             UMD | hwloc_set_area_membind(): failed for physical_device_id: 0 on NodeSet: [0] with errno: Operation not permitted (pid: 1 tid: 135496493582144) (cpuset_lib.cpp:440)
+2026-10-03 02:05:16.450 | warning  |             UMD | ---- ttSiliconDevice::init_hugepage: bind_area_to_memory_nodeset() failed (physical_device_id: 0 ch: 0). Hugepage allocation is not on NumaNode matching TT Device. Side-Effect is decreased Device->Host perf (Issue #893). (silicon_sysmem_manager.cpp:271)
+2026-10-03 02:05:16.450 | info     |             UMD | Opening local chip ids/PCIe ids: {0}/[0] and remote chip ids {} (cluster.cpp:168)
+2026-10-03 02:05:16.450 | info     |             UMD | IOMMU: disabled (cluster.cpp:142)
+2026-10-03 02:05:16.450 | info     |             UMD | KMD version: 2.11.0 (cluster.cpp:145)
+2026-10-03 02:05:16.450 | info     |             UMD | Cluster constructor completed. (cluster.cpp:544)
+2026-10-03 02:05:16.450 | info     |             UMD | Starting devices in cluster (cluster.cpp:1048)
+2026-10-03 02:05:16.456 | info     |             UMD | Starting devices in cluster completed. (cluster.cpp:1056)
+2026-10-03 02:05:16.485 | info     |     Distributed | Using auto discovery to generate mesh graph. (metal_env.cpp:405)
+2026-10-03 02:05:16.485 | info     |     Distributed | Constructing control plane using auto-discovery (no mesh graph descriptor). (metal_env.cpp:467)
+2026-10-03 02:05:16.485 | warning  |          Always | Unknown motherboard 'TUF GAMING Z790-PLUS WIFI D4' for chip_id=0 (bus_id=0x6) — falling back to bus_id as tray_id. Add this motherboard and its bus IDs to mobo_to_bus_ids in physical_system_discovery.cpp. (physical_system_discovery.cpp:112)
+2026-10-03 02:05:16.485 | info     |          Fabric | Logical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {0:1} (topology_mapper_utils.cpp:2452)
+2026-10-03 02:05:16.485 | info     |          Fabric | Physical multi-mesh adjacency: intermesh degree histogram {0:1}; intra-mesh degree histograms mesh0 {0:1} (topology_mapper_utils.cpp:2460)
+2026-10-03 02:05:16.489 | info     |    BuildKernels | Using pre-compiled firmware from: /opt/venv/lib/python3.12/site-packages/ttnn/tt_metal/pre-compiled/9314036231347928172/ (build_env_manager.cpp:347)
+2026-10-03 02:05:16.500 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-10-03 02:05:16.500 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+2026-10-03 02:05:23.953 | warning  |           Metal | Dispatch telemetry SMC buffer is unavailable (dispatch_telemetry.cpp:53)
+wrote /out/three-row-results.json
+2026-10-03 02:05:23.980 | info     |    BuildKernels | JIT cache stats: 0/38 hits (0.0%) [0 cached, 4 build-once dedup, 0 merged artifacts, 0 merged genfiles] (build_cache_telemetry.cpp:207)
+2026-10-03 02:05:23.980 | info     |    BuildKernels | JIT telemetry: 2 registered TelemetryTokens (build_cache_telemetry.cpp:230)
+2026-10-03 02:05:23.984 | info     |          Device | Closing user mode device drivers (tt_cluster.cpp:513)
+2026-10-03 02:05:23.984 | info     |             UMD | Closing devices in cluster (cluster.cpp:1061)
+2026-10-03 02:05:24.117 | info     |             UMD | Closing devices in cluster completed. (cluster.cpp:1070)
+2026-10-03 02:05:24.117 | info     |             UMD | Cluster destructor started. (cluster.cpp:778)
+2026-10-03 02:05:24.117 | info     |             UMD | Cluster destructor completed. (cluster.cpp:781)
+
+results     -> /tmp/hekatus-63-throughput-no-watcher-clean/results-20261003T020514Z.json
+power trace -> /tmp/hekatus-63-throughput-no-watcher-clean/power-20261003T020514Z.csv
