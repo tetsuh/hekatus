@@ -137,11 +137,40 @@ def test_probe_compute_source_keeps_two_k_terms_and_stage_boundaries():
     assert "matmul_block(cb_two_tile_r, cb_identity, 4, 0, 0, false, 1, 2, 1);" in source
     assert "seed_dest_slots" not in source
 
+    # K=2 leaves the compute sources on BF16 identity/R. c must restore the
+    # state-format S/X descriptors independently before its short matmul init.
+    c_source = source[source.index("void x_times_s()"):source.index("void pop_input_pages()")]
+    assert "reconfig_data_format_srca(cb_identity, cb_two_tile_s);" in c_source
+    assert "reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);" in c_source
+    assert "reconfig_data_format(cb_two_tile_s, cb_two_tile_x);" not in c_source
+    assert "pack_reconfig_data_format(cb_two_tile_s, cb_output_real);" in c_source
+    assert "pack_reconfig_data_format(cb_two_tile_s, cb_output_imag);" in c_source
+
     r_start = source.index("void r_times_x(")
     x_start = source.index("void x_times_s()")
     pop_start = source.index("void pop_input_pages()")
     r_source = source[r_start:x_start]
     x_source = source[x_start:pop_start]
+    assert "pack_reconfig_data_format(cb_output_real, cb_two_tile_s);" in r_source
+    assert "reconfig_data_format_srca(cb_identity, cb_x_real);" in source
+    recycle_start = r_source.index("if (pack_to_s)")
+    recycle_source = r_source[recycle_start:]
+    recycle_order = [
+        recycle_source.index("cb_pop_front(cb_two_tile_s, 2);"),
+        recycle_source.index("cb_reserve_back(cb_two_tile_s, 2);"),
+        recycle_source.index("pack_reconfig_data_format(cb_output_real, cb_two_tile_s);"),
+        recycle_source.index("cb_push_back(cb_two_tile_s, 2);"),
+    ]
+    assert recycle_order == sorted(recycle_order)
+    c_order = [
+        c_source.index("cb_wait_front(cb_two_tile_s, 2);"),
+        c_source.index("reconfig_data_format_srca(cb_identity, cb_two_tile_s);"),
+        c_source.index("reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);"),
+        c_source.index("tile_regs_wait();"),
+        c_source.index("pack_reconfig_data_format(cb_two_tile_s, cb_output_real);"),
+        c_source.index("cb_push_back(cb_output_real, 1);")
+    ]
+    assert c_order == sorted(c_order)
     call_pattern = r"matmul_block\({cb}, cb_two_tile_s,\s*(\d+),\s*(\d+),\s*(\d+),\s*false,\s*(\d+),\s*(\d+),\s*(\d+)\)"
 
     r_calls = re.findall(call_pattern.format(cb="cb_two_tile_r"), r_source)

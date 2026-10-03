@@ -30,7 +30,7 @@ void build_x_column() {
     copy_tile(cb_x_imag, 0, 1);
     tile_regs_commit();
     tile_regs_wait();
-    pack_reconfig_data_format(cb_two_tile_s);
+    pack_reconfig_data_format(cb_output_real, cb_two_tile_s);
     pack_tile(0, cb_two_tile_s);
     pack_tile(1, cb_two_tile_s);
     tile_regs_release();
@@ -42,7 +42,9 @@ void build_x_block() {
     cb_wait_front(cb_x_imag, 1);
     cb_wait_front(cb_negative_x_imag, 1);
     cb_reserve_back(cb_two_tile_x, 4);
-    reconfig_data_format_srca(cb_two_tile_x, cb_x_real);
+    // The seed-free K=2 call leaves SrcA on BF16 CB_IDENTITY. Reconfigure
+    // from that format before unpacking the FP32/state X pages.
+    reconfig_data_format_srca(cb_identity, cb_x_real);
     tile_regs_acquire();
     copy_tile_init(cb_x_real);
     copy_tile(cb_x_real, 0, 0);
@@ -54,7 +56,7 @@ void build_x_block() {
     copy_tile(cb_x_real, 0, 3);
     tile_regs_commit();
     tile_regs_wait();
-    pack_reconfig_data_format(cb_two_tile_x);
+    pack_reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
     pack_tile(0, cb_two_tile_x);
     pack_tile(1, cb_two_tile_x);
     pack_tile(2, cb_two_tile_x);
@@ -106,7 +108,7 @@ void r_times_x(
         // Recycle the input column only after all matmul reads complete.
         cb_pop_front(cb_two_tile_s, 2);
         cb_reserve_back(cb_two_tile_s, 2);
-        pack_reconfig_data_format(cb_two_tile_s);
+        pack_reconfig_data_format(cb_output_real, cb_two_tile_s);
         pack_tile(0, cb_two_tile_s);
         pack_tile(1, cb_two_tile_s);
         cb_push_back(cb_two_tile_s, 2);
@@ -129,7 +131,10 @@ void x_times_s() {
     cb_wait_front(cb_two_tile_s, 2);
     cb_reserve_back(cb_output_real, 1);
     cb_reserve_back(cb_output_imag, 1);
-    reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
+    // b-prime's K=2 call leaves SrcA=BF16 I and SrcB=BF16 R. Configure the
+    // c operands independently so S and X/state are unpacked as FP32.
+    reconfig_data_format_srca(cb_identity, cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);
     matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     // k=0: [Xr; Xi]*Sr writes the real and imaginary output rows.
@@ -138,9 +143,9 @@ void x_times_s() {
     matmul_block(cb_two_tile_x, cb_two_tile_s, 2, 1, 0, false, 1, 2, 1);
     tile_regs_commit();
     tile_regs_wait();
-    pack_reconfig_data_format(cb_output_real);
+    pack_reconfig_data_format(cb_two_tile_s, cb_output_real);
     pack_tile(0, cb_output_real);
-    pack_reconfig_data_format(cb_output_imag);
+    pack_reconfig_data_format(cb_two_tile_s, cb_output_imag);
     pack_tile(1, cb_output_imag);
     tile_regs_release();
     cb_push_back(cb_output_real, 1);

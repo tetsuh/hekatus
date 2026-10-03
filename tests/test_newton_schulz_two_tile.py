@@ -238,6 +238,8 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     two_tile_source = source[two_tile_start:two_tile_end]
     assert "copy_tile(x_imag, index, 1);" in two_tile_source
     assert "copy_tile(negative_x_imag, index, 2);" in two_tile_source
+    assert "reconfig_data_format_srca(cb_identity, x_real);" in two_tile_source
+    assert "reconfig_data_format_srca(cb_identity, cb_s_real);" in two_tile_source
     assert "void build_two_tile_x_column" in two_tile_source
     assert two_tile_source.count("matmul_block(\n            cb_two_tile_r,") == 3
     assert two_tile_source.count("matmul_block(\n            cb_two_tile_x,") == 2
@@ -248,7 +250,12 @@ def test_two_tile_source_pairs_init_and_execute_dimensions_and_two_output_pack()
     assert "copy_tile(cb_identity" not in two_tile_source
     assert "pack_reconfig_data_format(cb_s_imag, cb_s_real);" in two_tile_source
     assert "pack_reconfig_data_format(cb_s_real, cb_s_imag);" in two_tile_source
-    assert "pack_reconfig_data_format(output_real, output_imag);" in two_tile_source
+    assert "reconfig_data_format_srca(cb_identity, cb_two_tile_s);" in two_tile_source
+    assert "reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);" in two_tile_source
+    assert "pack_reconfig_data_format(cb_s_imag, output_real);" in two_tile_source
+    assert "pack_reconfig_data_format(cb_s_real, output_imag);" in two_tile_source
+    assert "cb_wait_front(cb_two_tile_r, 6 * block_count);" in two_tile_source
+    assert "cb_pop_front(cb_two_tile_r, 6 * block_count);" in two_tile_source
     assert "pack_tile<true>" in two_tile_source
     assert "constexpr bool two_tile_complex = get_compile_time_arg_val(5) != 0;" in source
     assert "get_compile_time_arg_val(two_tile_complex ? 6 : 5)" in split_source

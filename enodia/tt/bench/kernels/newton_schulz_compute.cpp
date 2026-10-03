@@ -825,7 +825,10 @@ void build_two_tile_x_block(
     cb_wait_front(x_imag, block_count);
     cb_wait_front(negative_x_imag, block_count);
     cb_reserve_back(cb_two_tile_x, 4 * block_count);
-    reconfig_data_format_srca(cb_two_tile_x, x_real);
+    // K=2 of the preceding R*X call leaves SrcA on the BF16 identity CB.
+    // Use that actual format as the old operand so the first X/state copy
+    // cannot interpret FP32 state bytes as BF16.
+    reconfig_data_format_srca(cb_identity, x_real);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         tile_regs_acquire();
         copy_tile_init(x_real);
@@ -876,7 +879,9 @@ void build_two_tile_s_block(std::uint32_t block_count) {
     cb_wait_front(cb_s_real, block_count);
     cb_wait_front(cb_s_imag, block_count);
     cb_reserve_back(cb_two_tile_s, 2 * block_count);
-    reconfig_data_format_srca(cb_two_tile_s, cb_s_real);
+    // The preceding K=2 call leaves SrcA on BF16 CB_IDENTITY. Use it as the
+    // old operand so unpacking the FP32/state S pages is explicit.
+    reconfig_data_format_srca(cb_identity, cb_s_real);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         tile_regs_acquire();
         copy_tile_init(cb_s_real);
@@ -973,7 +978,10 @@ void two_tile_x_matmul_block(
     std::uint32_t output_imag) {
     cb_wait_front(cb_two_tile_x, 4 * block_count);
     cb_wait_front(cb_two_tile_s, 2 * block_count);
-    reconfig_data_format(cb_two_tile_s, cb_two_tile_x);
+    // K=2 of b-prime leaves SrcA=BF16 I and SrcB=BF16 R. Switch each source
+    // independently before X*S so both unpackers match their state CBs.
+    reconfig_data_format_srca(cb_identity, cb_two_tile_s);
+    reconfig_data_format_srcb(cb_two_tile_r, cb_two_tile_x);
     matmul_block_init(cb_two_tile_x, cb_two_tile_s, false, 1, 2, 1);
     tile_regs_acquire();
     for (std::uint32_t index = 0; index < block_count; ++index) {
@@ -1015,7 +1023,7 @@ void two_tile_x_matmul_block(
     for (std::uint32_t index = 0; index < block_count; ++index) {
         pack_tile<true>(2 * index, output_real, index);
     }
-    pack_reconfig_data_format(output_real, output_imag);
+    pack_reconfig_data_format(cb_s_real, output_imag);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         pack_tile<true>(2 * index + 1, output_imag, index);
     }
@@ -1027,7 +1035,7 @@ void two_tile_x_matmul_block(
 template <std::uint32_t iterations, bool state_fp32>
 void process_two_tile_matrix_block(std::uint32_t block_count) {
     (void)state_fp32;
-    cb_wait_front(cb_two_tile_r, 4 * block_count);
+    cb_wait_front(cb_two_tile_r, 6 * block_count);
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
         std::uint32_t x_real;
         std::uint32_t x_imag;
@@ -1045,7 +1053,7 @@ void process_two_tile_matrix_block(std::uint32_t block_count) {
             iteration + 1 == iterations ? cb_output_imag : cb_state_imag;
         two_tile_x_matmul_block(x_real, x_imag, block_count, output_real, output_imag);
     }
-    cb_pop_front(cb_two_tile_r, 4 * block_count);
+    cb_pop_front(cb_two_tile_r, 6 * block_count);
 }
 
 // The block path is selected only for matrix_block > 1. Keeping it separate
