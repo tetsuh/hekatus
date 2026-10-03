@@ -1248,11 +1248,13 @@ and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.j
 
 The seed-free K=3 replacement then passed stage b′ at batch 4 with maximum
 relative error 0.0009218: `[2I; 0]·I` was supplied as a third matmul term and
-no DEST seed copy was used. Stage c produced non-finite output for all four
-matrices, so this numerical failure stopped the experiment without a reset;
-batch 8192 and throughput remain unmeasured. The records are
-`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`
-and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json`.
+no DEST seed copy was used. The first c attempt produced non-finite output for
+all four matrices; explicit independent SrcA/SrcB format transitions then made
+c pass with maximum relative error 0.0020847. No reset was needed for either
+numerical result, and batch 8192/throughput remain unmeasured. The records are
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`,
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json`,
+and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass.json`.
 
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
