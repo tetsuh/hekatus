@@ -184,6 +184,10 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json`,
   `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass.json`.
+  Production batch-8192 correctness still fails both full-sync block 4 and
+  half-sync block 2 at relative errors 3.2010 and 3.3318; the run completed
+  normally, so no reset was performed and throughput was not measured. Record:
+  `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json`.
 - Throughput condition audit: the earlier 2.1945/25.0023 TFLOPS catalogue had
   Watcher attached and loaded aiclk samples at 1350 MHz. The same-run no-Watcher
   rerun reached 9.1048 TFLOPS stock, 51.7988 TFLOPS one-tile full-sync block 4,

@@ -1255,6 +1255,11 @@ numerical result, and batch 8192/throughput remain unmeasured. The records are
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`,
 `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json`,
 and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass.json`.
+The subsequent production batch-8192 run still failed both full-sync block 4
+and half-sync block 2 at relative errors 3.2010 and 3.3318. It completed
+normally, so no reset was performed; watcher-free throughput was not attempted.
+Its record is
+`docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json`.
 
 The throughput condition audit found that the earlier 2.1945/25.0023 TFLOPS
 stock/current-one-tile catalogue had Watcher attached while loaded clock samples
