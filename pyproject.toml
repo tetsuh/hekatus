@@ -32,7 +32,9 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = ["--strict-markers"]
 markers = [
+    "slow: simulation-backed tests with high computational cost",
     "tt_device: requires the digest-pinned toolchain container and a board",
     "red_diagnostic: intentional Issue #63 RED evidence, skipped by default",
 ]

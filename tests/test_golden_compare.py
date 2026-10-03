@@ -21,6 +21,7 @@ def sweep(frame):
     return decimation_sweep.sweep(profile, events, records, scatterers)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("decimation", "cp1_pct", "cp1_phase", "cp2_pct", "cp2_phase", "rms_db", "max_db"),
     [
@@ -46,6 +47,7 @@ def test_the_per_stage_figures_quoted_in_the_design_are_pinned(
     assert r.image.max_db == pytest.approx(max_db, abs=0.05)
 
 
+@pytest.mark.slow
 def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(sweep):
     r = sweep.reports[8]
     assert r.floor_pct == pytest.approx(0.0003, abs=0.00005)
@@ -58,6 +60,7 @@ def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(swee
     assert "not attributable" not in r.checkpoint1[1].line(r.floor_pct)
 
 
+@pytest.mark.slow
 def test_a_silent_reference_reports_nan_rather_than_dropping_the_event(frame, golden):
     profile, events, records, scatterers = frame
     # Event 0's line is 19 mm from every scatterer: its record is quantized silence.
@@ -75,6 +78,7 @@ def test_a_silent_reference_reports_nan_rather_than_dropping_the_event(frame, go
     assert "nan" in r.checkpoint2[0].line(r.floor_pct)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     ("decimation", "w6", "w20", "w40", "peaks"),
     [
@@ -162,6 +166,7 @@ def test_an_unavailable_sweep_harness_status_remains_unknown(monkeypatch):
     assert decimation_sweep.environment()["harness_dirty"] is None
 
 
+@pytest.mark.slow
 def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, frame):
     """ADR-0005 records are data other tools read; `json.dumps` would happily
     emit `NaN`, which strict parsers reject. Non-finite floats become null and
@@ -183,6 +188,7 @@ def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, 
     json.dumps(json_safe(nasty), allow_nan=False)
 
 
+@pytest.mark.slow
 def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):
     text = "\n".join(sweep.lines())
     for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 / -40 dB", "floor"):

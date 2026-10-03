@@ -118,6 +118,16 @@ Co-Authored-By: <name> <email>
   Intentional RED commits are permitted in feature-branch history when clearly
   labeled and followed by GREEN before merge.
 
+### Test selections by purpose
+
+- Review-tool validation and local pre-commit checks use
+  `uv run pytest -q -m "not slow"`. This skips only the simulation-backed tests
+  whose arithmetic cost can exceed a review-time validation limit; it does not
+  change their importance or the checks they perform.
+- CI uses `uv run pytest -q` without a marker filter. The full suite, including
+  every `slow` test, remains the required coverage run so cost-based selection
+  cannot hide a regression from the build.
+
 ## 5. Contract-document synchronization
 
 A change that touches a **contract** must update the contract document in the
