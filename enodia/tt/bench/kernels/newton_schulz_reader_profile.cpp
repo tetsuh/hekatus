@@ -548,9 +548,12 @@ void kernel_main() {
         tile_count = get_arg_val<std::uint32_t>(8);
     }
 
-    constexpr auto first_input_args = TensorAccessorArgs<4>();
+    // The five reader mode arguments precede every TensorAccessorArgs group:
+    // iterations, fuse_s, batch_reads, matrix_block, and reload_r.
+    constexpr std::uint32_t first_input_compile_arg = 5;
+    constexpr auto first_input_args = TensorAccessorArgs<first_input_compile_arg>();
     constexpr auto r_negative_imag_args = TensorAccessorArgs<
-        (fuse_s ? 4 : first_input_args.next_compile_time_args_offset())>();
+        (fuse_s ? first_input_compile_arg : first_input_args.next_compile_time_args_offset())>();
     constexpr auto r_imag_args =
         TensorAccessorArgs<r_negative_imag_args.next_compile_time_args_offset()>();
     constexpr auto r_negative_real_args =

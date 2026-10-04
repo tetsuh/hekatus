@@ -301,6 +301,87 @@ class ReferenceTests(unittest.TestCase):
             assert definitions[newton_schulz_kernel.CB_R_IMAG][1] == expected_pages
             assert definitions[newton_schulz_kernel.CB_R_NEG_REAL][1] == expected_pages
 
+    def test_reload_reader_accessor_abi_starts_after_all_mode_arguments(self):
+        reader_args = newton_schulz_kernel._reader_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            profile=False,
+            fuse_s=True,
+            batch_reads=False,
+            matrix_block=4,
+            reload_r=True,
+        )
+        assert reader_args == [8, 1, 0, 4, 1]
+        tensor_compile_args = [
+            *reader_args,
+            0,
+            2 * 32 * 32,
+            0,
+            2 * 32 * 32,
+            0,
+            2 * 32 * 32,
+            0,
+            4 * 32 * 32,
+            0,
+            4 * 32 * 32,
+        ]
+        first_accessor = len(reader_args)
+        assert tensor_compile_args[first_accessor] == 0
+        assert tensor_compile_args[first_accessor + 1] == 2_048
+
+        kernel_dir = Path(__file__).parents[1] / "enodia/tt/bench/kernels"
+        for reader_name in (
+            "newton_schulz_reader_optimized.cpp",
+            "newton_schulz_reader_profile.cpp",
+        ):
+            source = (kernel_dir / reader_name).read_text()
+            assert "first_input_compile_arg = 5" in source
+            assert "TensorAccessorArgs<first_input_compile_arg>()" in source
+            assert (
+                "(fuse_s ? first_input_compile_arg : first_input_args.next_compile_time_args_offset())"
+                in source
+            )
+            assert "TensorAccessorArgs<4>()" not in source
+
+    def test_reload_reader_fused_batch4_block4_l32_model_has_no_zero_reads(self):
+        block_count = 4
+        r_page_bytes = 32 * 32 * 2
+        x0_page_bytes = 32 * 32 * 4
+        modeled_iterations = []
+        for iteration in range(NEWTON_SCHULZ_ITERATIONS):
+            r_pages = 3 * block_count
+            x0_pages = 2 * block_count if iteration == 0 else 0
+            modeled_iterations.append(
+                {
+                    "page_count": r_pages + x0_pages,
+                    "byte_count": r_pages * r_page_bytes + x0_pages * x0_page_bytes,
+                    "r_pages": r_pages,
+                    "x0_pages": x0_pages,
+                }
+            )
+
+        assert [entry["page_count"] for entry in modeled_iterations] == [20, *([12] * 7)]
+        assert [entry["byte_count"] for entry in modeled_iterations] == [
+            57_344,
+            *([24_576] * 7),
+        ]
+        assert all(entry["page_count"] > 0 for entry in modeled_iterations)
+        assert all(entry["byte_count"] > 0 for entry in modeled_iterations)
+        assert all(entry["r_pages"] == 12 for entry in modeled_iterations)
+        assert modeled_iterations[0]["x0_pages"] == 8
+        assert all(entry["x0_pages"] == 0 for entry in modeled_iterations[1:])
+
+        # Fused S has three signed BF16 R pages per matrix and no positive
+        # R-real page.  The model therefore matches the CB ledger and cannot
+        # dispatch a zero-page group for the padded four-tile work range.
+        assert newton_schulz_kernel.CB_R_REAL not in newton_schulz_kernel._cb_definitions(
+            SimpleNamespace(bfloat16="bf16", float32="fp32"),
+            "fp32",
+            fuse_s=True,
+            matrix_block=4,
+        )
+        assert newton_schulz_kernel._padded_tile_count(4, 4) == 4
+        assert newton_schulz_kernel._matrix_block_ranges(0, 4, 4) == [(0, 4)]
+
     def test_fused_s_host_descriptors_prepare_signed_r_inputs_and_reader_dispatch(self):
         ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
         fused = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32, fuse_s=True)
@@ -325,10 +406,12 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("noc_async_read_barrier();", optimized_reader)
         self.assertIn("r_negative_imag_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
         self.assertIn("r_real_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
+        self.assertIn("first_input_compile_arg = 5", optimized_reader)
         self.assertIn(
-            "(fuse_s ? 4 : first_input_args.next_compile_time_args_offset())",
+            "(fuse_s ? first_input_compile_arg : first_input_args.next_compile_time_args_offset())",
             optimized_reader,
         )
+        self.assertNotIn("TensorAccessorArgs<4>()", optimized_reader)
 
         compute_source = (
             Path(__file__).parents[1]
