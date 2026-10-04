@@ -1,0 +1,127 @@
+{
+  "record_schema": "adr-0005-board-diagnostic-v1",
+  "what": "Issue #85 Stage 2 Newton-Schulz BF16 input quantization diagnosis",
+  "harness_revision": "39e2d1a",
+  "environment": {
+    "board_type": "p150a",
+    "firmware_bundle": "19.6.0.0",
+    "driver": "2.11.0",
+    "toolchain_image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "device_id": 0,
+    "host_numpy_version": "2.5.1",
+    "note": "No host identity is recorded; board-side runs used the pinned container through run_in_container.sh."
+  },
+  "algorithm": {
+    "initial_value": "I / ||R||_infinity",
+    "iterations": 12,
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3 or HiFi4",
+    "matrix_block": 4,
+    "fuse_s": true,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "threshold_unchanged": 1e-2,
+    "device_test_assertion_added": false
+  },
+  "host_quantization": {
+    "batch": 4,
+    "size": 32,
+    "condition_number": 100.0,
+    "seed": 95,
+    "input_dtype": "complex64",
+    "rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic; ml_dtypes was unavailable",
+    "host_metrics": {
+      "bf16_quantized_inverse_vs_original_inverse_relative_error": 0.018827411100325143,
+      "host_float32_original_reference_vs_original_true_inverse_relative_error": 2.687500058506295e-7,
+      "host_float32_quantized_reference_vs_quantized_true_inverse_relative_error": 2.413340782139347e-7,
+      "host_float32_quantized_reference_vs_original_true_inverse_relative_error": 0.018827415696147588,
+      "host_float32_quantized_input_original_x0_reference_vs_quantized_true_inverse_relative_error": 2.772786046872795e-7,
+      "host_float32_quantized_input_original_x0_reference_vs_original_true_inverse_relative_error": 0.018827424660182963
+    },
+    "quantization_matches_device_error_scale": true
+  },
+  "device_cases": [
+    {
+      "label": "original-R baseline from the preceding Stage 2 run",
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "input_bf16_rounded": false,
+      "math_fidelity": "HiFi3",
+      "kernel_vs_original_numpy_reference_relative_error": 0.01902561769824019,
+      "kernel_vs_original_true_inverse_relative_error": 0.019025563146087745,
+      "container_host_float32_original_reference_vs_original_true_inverse_relative_error": 9.755846361596958e-7,
+      "reference_threshold": 1e-2,
+      "reference_threshold_pass": false
+    },
+    {
+      "label": "quantized-R diagnostic",
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "input_bf16_rounded": true,
+      "math_fidelity": "HiFi3",
+      "kernel_vs_quantized_numpy_reference_relative_error": 0.00372915489984017,
+      "kernel_vs_quantized_true_inverse_relative_error": 0.0037292384772544197,
+      "container_host_float32_quantized_reference_vs_quantized_true_inverse_relative_error": 9.533990208687997e-7,
+      "container_host_float32_original_reference_vs_original_true_inverse_relative_error": 9.755846361596958e-7,
+      "reference_threshold": 1e-2,
+      "reference_threshold_pass": true
+    },
+    {
+      "label": "quantized-R diagnostic",
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "input_bf16_rounded": true,
+      "math_fidelity": "HiFi4",
+      "kernel_vs_quantized_numpy_reference_relative_error": 0.003705240828515758,
+      "kernel_vs_quantized_true_inverse_relative_error": 0.0037053002526658656,
+      "container_host_float32_quantized_reference_vs_quantized_true_inverse_relative_error": 9.533990208687997e-7,
+      "container_host_float32_original_reference_vs_original_true_inverse_relative_error": 9.755846361596958e-7,
+      "reference_threshold": 1e-2,
+      "reference_threshold_pass": true
+    }
+  ],
+  "diagnostic_comparisons": [
+    {
+      "label": "original-R, matrix_block=1, fused S",
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "math_fidelity": "HiFi3",
+      "kernel_vs_original_numpy_reference_relative_error": 0.01902561769824019,
+      "conclusion": "Changing matrix_block does not explain the error."
+    },
+    {
+      "label": "original-R, matrix_block=4, unfused S",
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "math_fidelity": "HiFi3",
+      "kernel_vs_original_numpy_reference_relative_error": 0.01882151303566803,
+      "conclusion": "Removing fused S does not remove the BF16-scale error."
+    }
+  ],
+  "r_fp32_capability": {
+    "possible_with_existing_arguments": false,
+    "reason": "r_memory and input_memory select placement only; _reader_input_dtypes returns BF16 for all R components. No existing argument changes the R dtype.",
+    "source": "enodia/tt/bench/newton_schulz_kernel.py",
+    "device_run_attempted": false
+  },
+  "unperformed": [
+    "L=32 batch=8192 diagnostic",
+    "L=16 batch=8192 diagonal-packing diagnostic",
+    "1000-launch throughput",
+    "new device-test threshold assertion"
+  ],
+  "reset_performed": false,
+  "conclusion": "The original-R error near 1.9e-2 is explained by BF16 quantization of R: host inverse perturbation is 1.8827e-2, while the quantized-R kernel/reference comparison passes the unchanged 1e-2 threshold. HiFi4 improves the quantized-R kernel/reference error only slightly versus HiFi3.",
+  "strict_json": true
+}
