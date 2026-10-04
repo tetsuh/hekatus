@@ -1176,10 +1176,12 @@ as-is.
 
 **The Newton-Schulz initial value is fixed as part of the specification**
 (`X₀ = I/‖R‖∞`). Convergence and the required iteration count depend on it,
-and determinism demands a fixed count. The Stage 1 sweep selected `N = 12`
-provisionally: at κ=300, L=32, float32, the inverse relative error is at most
-5e-4 and the MV-direction cosine deficit is 8.33e-8. M5 image-quality
-confirmation remains the condition of the final decision. Accelerator
+and determinism demands a fixed count. The Stage 1 sweep selected `N = 12`;
+ADR-0012 accepts it as a provisional implementation choice. At κ=300, L=32,
+float32, the inverse relative error is at most 5e-4 and the MV-direction
+cosine deficit is 8.33e-8. M5 image-quality confirmation remains an explicit
+validation condition, and a later ADR will supersede this choice if M5
+invalidates it. Accelerator
 correctness uses the independent NumPy fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
@@ -2287,7 +2289,10 @@ main merge is retained in branch history; commits after `0d786b0` update
 records and documentation and add input validation and host tests, without
 changing the kernel or valid numerical paths. These are measured dispatch
 timings, not the theoretical planning
-multipliers above, and they do not establish M5 image quality.
+multipliers above, and they do not establish M5 image quality. The physical
+board provenance for the two superseded diagnostics is recorded separately in
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`;
+that supplement changes neither source record nor measured value.
 
 The same record separates input representation from solver error: at κ=100,
 BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by

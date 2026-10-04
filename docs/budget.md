@@ -360,7 +360,10 @@ history; commits after `0d786b0` update records and documentation and add input
 validation and host tests, without changing the kernel or valid numerical paths.
 These are board timings, not a
 revised theoretical peak or an M5 image-quality result; the BF16 input-`R`
-perturbation remains a separate representation question.
+perturbation remains a separate representation question. The physical-board
+provenance for the two superseded diagnostics is recorded in
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`;
+the supplement adds no measured values and leaves both source records unchanged.
 
 ---
 

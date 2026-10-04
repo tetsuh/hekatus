@@ -1,6 +1,6 @@
 # ADR-0012: Newton-Schulz initial value and iteration count
 
-- Status: **Proposed** — 2026-10-03
+- Status: **Accepted** — 2026-10-04
 - Date: 2026-10-03
 - Owner decision: yes
 
@@ -13,9 +13,9 @@ and fixed counts from 8 through 16 on condition numbers 10, 30, 100, and 300,
 with aperture sizes 16, 32, and 64, in float32 and float64. The record is
 `docs/measurements/2026-10-03-host-newton-schulz-reference-sweep.json`.
 
-The Stage 2 decision is provisional until the M5 image-quality confirmation.
-The execution count remains fixed: the real-time path must not use a
-convergence-gated loop.
+The Stage 2 decision is an accepted provisional implementation choice pending
+M5 image-quality confirmation. The execution count remains fixed: the
+real-time path must not use a convergence-gated loop.
 
 ## Options considered
 
@@ -40,9 +40,11 @@ weight direction cosine deficit `8.33e-8`, below `1e-7`. The count is selected
 from inverse and MV-direction evidence; beam-pattern evidence remains recorded
 but is not the Stage 1 gate.
 
-This is a provisional decision. M5 image-quality confirmation is a condition
-of the final decision. Until that confirmation, the implementation carries
-out exactly twelve iterations and does not add a convergence test.
+This is an accepted provisional implementation decision. M5 image-quality
+confirmation remains an explicit validation condition. Until that confirmation,
+the implementation carries out exactly twelve iterations and does not add a
+convergence test. If M5 invalidates this choice, a later ADR will supersede
+this record and record the replacement decision.
 
 ## Consequences
 
@@ -69,12 +71,21 @@ out exactly twelve iterations and does not add a convergence test.
 - The representation of `R` remains open: a follow-up Issue will compare an
   FP32-R variant with the BF16 variant in the same run before deciding the
   production format.
-- Image-quality confirmation remains open. A later decision record or the
-  decision-carrying pull request must record the M5 outcome before this
-  proposal can become accepted.
+- Image-quality confirmation remains open. The accepted provisional choice
+  is valid for the current implementation; a later decision record must record
+  the M5 outcome. If that outcome reverses the choice, the later ADR will
+  supersede this record.
+- The verified physical-board provenance for both predecessor diagnostics is
+  recorded in
+  `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
+  The supplement identifies each source run and board serial without changing
+  either predecessor record or its measured values.
 
 ## Status history
 
 - 2026-10-03: Proposed for Issue #85 Stage 2; the owner decision and Stage 1
   evidence select `X0 = I / ||R||_infinity` and `N = 12`, subject to M5
   confirmation.
+- 2026-10-04: Accepted in pull request #90 as a provisional implementation
+  decision; M5 remains an explicit validation condition and any reversal will
+  be recorded by a later ADR.
