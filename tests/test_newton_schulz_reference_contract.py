@@ -1,5 +1,7 @@
 """Contract tests for the independent Newton-Schulz reference inputs."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -57,6 +59,29 @@ def test_reference_accepts_complex128_x0_after_canonicalization():
 
     assert got.dtype == np.dtype(np.complex64)
     np.testing.assert_array_equal(got, initial_value(matrices))
+
+
+def test_narrowing_conversions_reject_overflow_without_runtime_warnings():
+    matrices = np.eye(2, dtype=np.complex128)[None, :, :] * 1e300
+    x0 = np.eye(2, dtype=np.complex128)[None, :, :] * 1e300
+    real_values = np.array([1e300], dtype=np.float64)
+    complex_values = np.array([1e300 + 1j * 1e300], dtype=np.complex128)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="finite"):
+            newton_schulz_reference(matrices, x0=x0)
+        with pytest.raises(ValueError, match="finite"):
+            bf16_round_to_float32(real_values)
+        with pytest.raises(ValueError, match="finite"):
+            bf16_round_complex(complex_values)
+    assert caught == []
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="finite"):
+            newton_schulz_kernel._initial_value(matrices)
+    assert caught == []
 
 
 @pytest.mark.parametrize("iterations", [-1, 1.0, True, "12"])

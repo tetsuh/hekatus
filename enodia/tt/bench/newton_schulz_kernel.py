@@ -10,6 +10,7 @@ products, state, and outputs.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -130,9 +131,11 @@ def _canonicalize_matrices(
     ):
         raise ValueError("matrices must have shape (batch, size, size)")
     try:
-        canonical = values.astype(np.complex64, copy=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("matrices must be numeric") from exc
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            canonical = values.astype(np.complex64, copy=False)
+    except (TypeError, ValueError, RuntimeWarning) as exc:
+        raise ValueError("matrices must be numeric and finite after conversion") from exc
     if not np.all(np.isfinite(canonical)):
         raise ValueError("matrices must be finite")
     if check_norm and canonical.shape[0]:

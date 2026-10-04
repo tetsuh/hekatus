@@ -7,6 +7,8 @@ any host.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from enodia.tt.bench.shapes import MatmulShape, total_flops
@@ -22,7 +24,12 @@ def bf16_round_to_float32(values: np.ndarray) -> np.ndarray:
         raise ValueError("values must have a float32 or float64 dtype")
     if not np.all(np.isfinite(values)):
         raise ValueError("values must be finite")
-    values = values.astype(np.float32, copy=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            values = values.astype(np.float32, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("values must remain finite after float32 conversion") from exc
     if not np.all(np.isfinite(values)):
         raise ValueError("values must remain finite after float32 conversion")
     bits = values.view(np.uint32)
@@ -37,12 +44,20 @@ def bf16_round_complex(values: np.ndarray) -> np.ndarray:
         raise ValueError("values must have a complex64 or complex128 dtype")
     if not np.all(np.isfinite(values)):
         raise ValueError("values must be finite")
-    values = values.astype(np.complex64, copy=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            values = values.astype(np.complex64, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("values must remain finite after complex64 conversion") from exc
     if not np.all(np.isfinite(values)):
         raise ValueError("values must remain finite after complex64 conversion")
-    return (
+    rounded = (
         bf16_round_to_float32(values.real) + 1j * bf16_round_to_float32(values.imag)
     ).astype(np.complex64)
+    if not np.all(np.isfinite(rounded)):
+        raise ValueError("values must remain finite after BF16 conversion")
+    return rounded
 
 
 def random_hpd_batch(
@@ -88,9 +103,11 @@ def _canonicalize_matrices(matrices: np.ndarray) -> np.ndarray:
     ):
         raise ValueError("matrices must have shape (batch, size, size)")
     try:
-        canonical = values.astype(np.complex64, copy=False)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("matrices must be numeric") from exc
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            canonical = values.astype(np.complex64, copy=False)
+    except (TypeError, ValueError, RuntimeWarning) as exc:
+        raise ValueError("matrices must be numeric and finite after conversion") from exc
     if not np.all(np.isfinite(canonical)):
         raise ValueError("matrices must be finite")
     norm_inf = np.linalg.norm(canonical, ord=np.inf, axis=(-2, -1))
@@ -117,7 +134,15 @@ def _canonicalize_x0(x0: np.ndarray, matrices: np.ndarray) -> np.ndarray:
         raise ValueError("x0 must have a complex64 or complex128 dtype")
     if not np.all(np.isfinite(values)):
         raise ValueError("x0 must be finite")
-    return values.astype(np.complex64, copy=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            canonical = values.astype(np.complex64, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("x0 must remain finite after complex64 conversion") from exc
+    if not np.all(np.isfinite(canonical)):
+        raise ValueError("x0 must remain finite after complex64 conversion")
+    return canonical
 
 
 def initial_value(matrices: np.ndarray) -> np.ndarray:
