@@ -873,6 +873,48 @@ class DeviceEquivalenceTests(unittest.TestCase):
     not (DEVICE_TEST and HAS_TTNN),
     reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
 )
+@pytest.mark.parametrize(
+    ("batch", "size"),
+    ((4, 32), (8192, 32), (4, 16), (8192, 16)),
+    ids=("batch4-L32", "batch8192-L32", "batch4-L16", "batch8192-L16"),
+)
+@pytest.mark.parametrize(
+    "double_buffer", (False, True), ids=("one_window", "two_window")
+)
+def test_device_double_buffer_matches_numpy(batch, size, double_buffer):
+    import ttnn
+
+    device = ttnn.open_device(device_id=0)
+    try:
+        matrices = random_hpd_batch(batch, size, seed=95 + batch + size)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
+        )
+        actual = run_newton_schulz_kernel(
+            ttnn,
+            device,
+            matrices,
+            variant="bf16-fp32state",
+            math_fidelity="HiFi3",
+            fuse_s=True,
+            matrix_block=4,
+            double_buffer=double_buffer,
+            input_memory="l1",
+            r_memory="l1",
+            x0_memory="l1",
+        )
+        assert actual.shape == (batch, size, size)
+        relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        assert relative_error <= 1e-2
+    finally:
+        ttnn.close_device(device)
+
+
+@pytest.mark.tt_device
+@pytest.mark.skipif(
+    not (DEVICE_TEST and HAS_TTNN),
+    reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
+)
 @pytest.mark.parametrize("batch", (4, 8192), ids=("batch4", "batch8192"))
 @pytest.mark.parametrize("reload_r", (False, True), ids=("resident", "reload_r"))
 def test_device_reload_r_matches_numpy_for_both_residency_paths(batch, reload_r):
