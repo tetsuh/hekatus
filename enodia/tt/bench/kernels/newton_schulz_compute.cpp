@@ -1195,8 +1195,6 @@ void write_profile_slot(
     profile[warmup_base + profile_residual_offset] = warmup_total - warmup_section_sum;
     profile[base + profile_event_count_offset] = event_count;
     profile[warmup_base + profile_warmup_event_count_offset] = warmup_event_count;
-    profile[base + profile_ready_offset] = profile_magic;
-    profile[warmup_base + profile_ready_offset] = profile_magic;
 }
 
 void write_block_profile_fields(
@@ -1228,6 +1226,8 @@ void write_block_profile_fields(
     profile[base + profile_residual_offset] = profile[base + profile_total_offset] - profile[base + profile_section_sum_offset];
     profile[warmup_base + profile_residual_offset] =
         profile[warmup_base + profile_total_offset] - profile[warmup_base + profile_section_sum_offset];
+    profile[base + profile_ready_offset] = profile_magic;
+    profile[warmup_base + profile_ready_offset] = profile_magic;
 }
 
 void write_profile_counters(ProfileCounters& counters) {
