@@ -488,6 +488,7 @@ def run_custom_newton_schulz(
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
+    reload_r: bool = False,
     matrix_block: int = 1,
     input_memory: str = "l1",
     r_memory: str | None = None,
@@ -581,6 +582,8 @@ def run_custom_newton_schulz(
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
         }
+        if reload_r:
+            prepare_kwargs["reload_r"] = True
         if input_memory != "l1":
             prepare_kwargs["input_memory"] = input_memory
         if explicit_r_memory:
@@ -615,6 +618,7 @@ def run_custom_newton_schulz(
             "math_fidelity": math_fidelity,
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
+            "reload_r": reload_r,
             "matrix_block": matrix_block,
             "row": row_name or f"custom_block{matrix_block}",
             "physical_tile_count": getattr(
@@ -765,6 +769,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="group each matrix's reader NoC reads behind one barrier",
     )
     parser.add_argument(
+        "--reload-r",
+        action="store_true",
+        help="reload R circular-buffer pages for every fixed iteration",
+    )
+    parser.add_argument(
+        "--compare-reload-r",
+        action="store_true",
+        help="run resident and reload-R custom rows in one device session",
+    )
+    parser.add_argument(
         "--matrix-block",
         type=int,
         choices=MATRIX_BLOCK_CHOICES,
@@ -793,6 +807,12 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if args.launches_per_row < 1:
         parser.error(
             f"--launches-per-row must be at least 1, got {args.launches_per_row}"
+        )
+    if args.reload_r and args.compare_reload_r:
+        parser.error("--reload-r cannot be combined with --compare-reload-r")
+    if (args.reload_r or args.compare_reload_r) and args.acceptance_catalogue:
+        parser.error(
+            "--reload-r/--compare-reload-r require the normal custom-row runner"
         )
     if args.acceptance_catalogue:
         return
@@ -1191,71 +1211,91 @@ def main(argv: list[str] | None = None) -> int:
                         and dtype_name == "bfloat16"
                         and memory_name == "l1"
                     ):
+                        reload_modes = (
+                            (False, True) if args.compare_reload_r else (args.reload_r,)
+                        )
                         for math_fidelity in custom_fidelities:
-                            custom_record = {
-                                "shape": asdict(shape),
-                                "execution_shape": asdict(shape),
-                                "representative": shape.representative,
-                                "dtype": dtype_name,
-                                "memory": memory_name,
-                                "input_memory": input_memory,
-                                "r_memory": r_memory,
-                                "x0_memory": x0_memory,
-                                "memory_placement": {
-                                    "input": input_memory,
-                                    "r": r_memory,
-                                    "x0": x0_memory,
-                                    "compute": "l1",
-                                },
-                                "program_config": {
-                                    "name": CUSTOM_KIND,
-                                    "kind": CUSTOM_KIND,
-                                    "variant": args.custom_variant,
-                                    "math_fidelity": math_fidelity,
-                                    "fuse_s": args.fuse_s,
-                                    "batch_reads": args.batch_reads,
-                                    "matrix_block": args.matrix_block,
+                            for reload_r in reload_modes:
+                                custom_record = {
+                                    "shape": asdict(shape),
+                                    "execution_shape": asdict(shape),
+                                    "representative": shape.representative,
+                                    "dtype": dtype_name,
+                                    "memory": memory_name,
                                     "input_memory": input_memory,
                                     "r_memory": r_memory,
                                     "x0_memory": x0_memory,
-                                },
-                                "iterations": args.iters,
-                                "repeats": args.repeats,
-                                "kind": CUSTOM_KIND,
-                                "row": f"custom_block{args.matrix_block}",
-                            }
-                            custom_record.update(
-                                run_custom_newton_schulz(
-                                    ttnn,
-                                    device,
-                                    shape,
-                                    dtype_name=dtype_name,
-                                    memory_name=memory_name,
-                                    variant=args.custom_variant,
-                                    math_fidelity=math_fidelity,
-                                    profile=args.profile,
-                                    fuse_s=args.fuse_s,
-                                    batch_reads=args.batch_reads,
-                                    matrix_block=args.matrix_block,
-                                    input_memory=input_memory,
-                                    r_memory=r_memory,
-                                    x0_memory=x0_memory,
-                                    iters=args.iters,
-                                    repeats=args.repeats,
+                                    "memory_placement": {
+                                        "input": input_memory,
+                                        "r": r_memory,
+                                        "x0": x0_memory,
+                                        "compute": "l1",
+                                    },
+                                    "program_config": {
+                                        "name": CUSTOM_KIND,
+                                        "kind": CUSTOM_KIND,
+                                        "variant": args.custom_variant,
+                                        "math_fidelity": math_fidelity,
+                                        "fuse_s": args.fuse_s,
+                                        "batch_reads": args.batch_reads,
+                                        "reload_r": reload_r,
+                                        "matrix_block": args.matrix_block,
+                                        "input_memory": input_memory,
+                                        "r_memory": r_memory,
+                                        "x0_memory": x0_memory,
+                                    },
+                                    "iterations": args.iters,
+                                    "repeats": args.repeats,
+                                    "kind": CUSTOM_KIND,
+                                    "row": (
+                                        f"custom_block{args.matrix_block}"
+                                        if not args.compare_reload_r
+                                        else (
+                                            f"custom_block{args.matrix_block}"
+                                            f"_reload_r_{str(reload_r).lower()}"
+                                        )
+                                    ),
+                                }
+                                custom_record.update(
+                                    run_custom_newton_schulz(
+                                        ttnn,
+                                        device,
+                                        shape,
+                                        dtype_name=dtype_name,
+                                        memory_name=memory_name,
+                                        variant=args.custom_variant,
+                                        math_fidelity=math_fidelity,
+                                        profile=args.profile,
+                                        fuse_s=args.fuse_s,
+                                        batch_reads=args.batch_reads,
+                                        reload_r=reload_r,
+                                        matrix_block=args.matrix_block,
+                                        input_memory=input_memory,
+                                        r_memory=r_memory,
+                                        x0_memory=x0_memory,
+                                        iters=args.iters,
+                                        repeats=args.repeats,
+                                    )
                                 )
-                            )
-                            with_efficiency(custom_record, args.peak_tflops)
-                            print(
-                                _format_line(
-                                    shape,
-                                    dtype_name,
-                                    memory_name,
-                                    f"{CUSTOM_KIND}:{math_fidelity}",
-                                    custom_record,
-                                ),
-                                flush=True,
-                            )
-                            results.append(custom_record)
+                                with_efficiency(custom_record, args.peak_tflops)
+                                print(
+                                    _format_line(
+                                        shape,
+                                        dtype_name,
+                                        memory_name,
+                                        (
+                                            f"{CUSTOM_KIND}:{math_fidelity}"
+                                            if not args.compare_reload_r
+                                            else (
+                                                f"{CUSTOM_KIND}:{math_fidelity}:"
+                                                f"reload_r={str(reload_r).lower()}"
+                                            )
+                                        ),
+                                        custom_record,
+                                    ),
+                                    flush=True,
+                                )
+                                results.append(custom_record)
     finally:
         ttnn.close_device(device)
 
@@ -1271,6 +1311,8 @@ def main(argv: list[str] | None = None) -> int:
             "x0_memory": x0_memory,
             "fuse_s": args.fuse_s,
             "batch_reads": args.batch_reads,
+            "reload_r": args.reload_r,
+            "compare_reload_r": args.compare_reload_r,
         },
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,

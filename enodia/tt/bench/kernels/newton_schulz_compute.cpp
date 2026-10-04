@@ -807,15 +807,28 @@ void wait_r_inputs_block(std::uint32_t block_count) {
 
 // The block path is selected only for matrix_block > 1.  Keeping it separate
 // leaves the original single-matrix path and its profiling scopes untouched.
+template <bool fuse_s>
+void pop_r_inputs_block(std::uint32_t block_count);
+
 void stream_initial_or_state(
     std::uint32_t iteration,
     std::uint32_t& x_real,
     std::uint32_t& x_imag);
 
-template <std::uint32_t iterations, bool state_fp32, bool fuse_s, bool one_dest_half>
+template <
+    std::uint32_t iterations,
+    bool state_fp32,
+    bool fuse_s,
+    bool one_dest_half,
+    bool reload_r>
 void process_matrix_block(std::uint32_t block_count) {
-    wait_r_inputs_block<fuse_s>(block_count);
+    if constexpr (!reload_r) {
+        wait_r_inputs_block<fuse_s>(block_count);
+    }
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        if constexpr (reload_r) {
+            wait_r_inputs_block<fuse_s>(block_count);
+        }
         std::uint32_t x_real;
         std::uint32_t x_imag;
         stream_initial_or_state(iteration, x_real, x_imag);
@@ -892,14 +905,19 @@ void process_matrix_block(std::uint32_t block_count) {
             false,
             true,
             true);
+        if constexpr (reload_r) {
+            pop_r_inputs_block<fuse_s>(block_count);
+        }
     }
-    if constexpr (!fuse_s) {
-        cb_pop_front(cb_r_real, block_count);
-    }
-    cb_pop_front(cb_r_negative_imag, block_count);
-    cb_pop_front(cb_r_imag, block_count);
-    if constexpr (fuse_s) {
-        cb_pop_front(cb_r_negative_real, block_count);
+    if constexpr (!reload_r) {
+        if constexpr (!fuse_s) {
+            cb_pop_front(cb_r_real, block_count);
+        }
+        cb_pop_front(cb_r_negative_imag, block_count);
+        cb_pop_front(cb_r_imag, block_count);
+        if constexpr (fuse_s) {
+            cb_pop_front(cb_r_negative_real, block_count);
+        }
     }
 }
 
@@ -925,6 +943,30 @@ void wait_r_inputs_profiled(ProfileCounters& counters, bool warmup) {
         counters.warmup_r_wait,
         get_timestamp_32b() - start,
         warmup);
+}
+
+template <bool fuse_s>
+void pop_r_inputs() {
+    if constexpr (!fuse_s) {
+        cb_pop_front(cb_r_real, 1);
+    }
+    cb_pop_front(cb_r_negative_imag, 1);
+    cb_pop_front(cb_r_imag, 1);
+    if constexpr (fuse_s) {
+        cb_pop_front(cb_r_negative_real, 1);
+    }
+}
+
+template <bool fuse_s>
+void pop_r_inputs_block(std::uint32_t block_count) {
+    if constexpr (!fuse_s) {
+        cb_pop_front(cb_r_real, block_count);
+    }
+    cb_pop_front(cb_r_negative_imag, block_count);
+    cb_pop_front(cb_r_imag, block_count);
+    if constexpr (fuse_s) {
+        cb_pop_front(cb_r_negative_real, block_count);
+    }
 }
 
 // The compute page is one 32x32 uint32 L1 tile: three 32-word stage slots,
@@ -1103,6 +1145,7 @@ void kernel_main_impl() {
     constexpr bool state_fp32 = get_compile_time_arg_val(1) != 0;
     constexpr bool fuse_s = get_compile_time_arg_val(3) != 0;
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(4);
+    constexpr bool reload_r = get_compile_time_arg_val(5) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
     static_assert(iterations == 12, "the throughput kernel has a fixed twelve-iteration count");
@@ -1128,16 +1171,29 @@ void kernel_main_impl() {
 
     if constexpr (matrix_block == 1) {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
-        if constexpr (profile_sample) {
-            if (start_tile == 0) {
-                wait_r_inputs_profiled<fuse_s>(counters, tile == 0);
+        if constexpr (!reload_r) {
+            if constexpr (profile_sample) {
+                if (start_tile == 0) {
+                    wait_r_inputs_profiled<fuse_s>(counters, tile == 0);
+                } else {
+                    wait_r_inputs<fuse_s>();
+                }
             } else {
                 wait_r_inputs<fuse_s>();
             }
-        } else {
-            wait_r_inputs<fuse_s>();
         }
         for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+            if constexpr (reload_r) {
+                if constexpr (profile_sample) {
+                    if (start_tile == 0) {
+                        wait_r_inputs_profiled<fuse_s>(counters, tile == 0 && iteration == 0);
+                    } else {
+                        wait_r_inputs<fuse_s>();
+                    }
+                } else {
+                    wait_r_inputs<fuse_s>();
+                }
+            }
             std::uint32_t x_real;
             std::uint32_t x_imag;
             stream_initial_or_state(iteration, x_real, x_imag);
@@ -1288,22 +1344,32 @@ void kernel_main_impl() {
                     counters.warmup_end = get_timestamp_32b();
                 }
             }
+            if constexpr (reload_r) {
+                pop_r_inputs<fuse_s>();
+            }
         }
 
-        if constexpr (!fuse_s) {
-            cb_pop_front(cb_r_real, 1);
-        }
-        cb_pop_front(cb_r_negative_imag, 1);
-        cb_pop_front(cb_r_imag, 1);
-        if constexpr (fuse_s) {
-            cb_pop_front(cb_r_negative_real, 1);
+        if constexpr (!reload_r) {
+            if constexpr (!fuse_s) {
+                cb_pop_front(cb_r_real, 1);
+            }
+            cb_pop_front(cb_r_negative_imag, 1);
+            cb_pop_front(cb_r_imag, 1);
+            if constexpr (fuse_s) {
+                cb_pop_front(cb_r_negative_real, 1);
+            }
         }
     }
     } else {
         for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
             const std::uint32_t block_count =
                 (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-            process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>(block_count);
+            process_matrix_block<
+                iterations,
+                state_fp32,
+                fuse_s,
+                (matrix_block == 8),
+                reload_r>(block_count);
             if constexpr (profile_sample) {
                 if (start_tile == 0) {
                     counters.event_count += iterations;

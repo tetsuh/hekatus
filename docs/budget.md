@@ -187,6 +187,24 @@ records 50.0263 TFLOPS for its current reproduction and 50.6196 TFLOPS for
 its historical row; those rows are cited as the repeatability context, not
 as the source of the 51.92 value.
 
+**R-residency attribution disposition.** The complete-provenance superseding
+record
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding.json`
+supersedes the immutable predecessor
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json`.
+It measures resident and per-iteration R reload in one watcher-free run under the
+same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1
+conditions, with 1,000 launches per row. Both variants pass the batch-4 and
+batch-8192 correctness gates. Resident reaches **51.82917713218822 TFLOPS** and
+reload-R reaches **31.33414466591468 TFLOPS**, so reload-R is **39.5434% lower**
+in TFLOPS and 65.1843% slower at median latency. The resident result remains
+within the existing roughly +/-2-4% repeatability context of the 51.92 TFLOPS
+headline; the headline and roughly two-card extrapolation therefore remain
+unchanged. R residency is a measured material attribution, while the control
+does not claim it is the sole cause of the remaining combined-kernel gap. The
+companion power trace is
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv`.
+
 The packed L=16 `custom_block4` row reached 10.7733 TFLOPS (3.2450%,
 reported as **10.77 TFLOPS and 3.24%**), or 14.5x the same-run stock best
 of 0.7420 TFLOPS, in

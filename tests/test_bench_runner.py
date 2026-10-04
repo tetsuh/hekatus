@@ -6,6 +6,7 @@ pin the execution count to the accounting, using a stub in place of the
 toolchain so they run anywhere.
 """
 
+import builtins
 import json
 import sys
 from types import SimpleNamespace
@@ -164,6 +165,78 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert enabled_flags.input_memory == "dram"
     assert enabled_flags.r_memory == "l1"
     assert enabled_flags.x0_memory == "dram"
+
+
+@pytest.mark.parametrize("reload_flag", ["--reload-r", "--compare-reload-r"])
+def test_acceptance_catalogue_rejects_reload_modes_before_ttnn_import(
+    monkeypatch, capsys, reload_flag
+):
+    original_import = builtins.__import__
+
+    def reject_ttnn_import(name, *args, **kwargs):
+        if name == "ttnn":
+            raise AssertionError("invalid CLI arguments imported ttnn")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_ttnn_import)
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_matmul.main(["--acceptance-catalogue", reload_flag])
+
+    assert excinfo.value.code == 2
+    assert (
+        "--reload-r/--compare-reload-r require the normal custom-row runner"
+        in capsys.readouterr().err
+    )
+
+
+def test_normal_reload_r_runner_remains_accepted(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "reload_r": kwargs["reload_r"],
+            "output_memory": "l1",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "reload-r.json"
+
+    assert (
+        run_matmul.main(
+            [
+                "--only",
+                "newton_schulz_L32_b8192",
+                "--dtype",
+                "bfloat16",
+                "--memory",
+                "l1",
+                "--kind",
+                "custom_newton_schulz",
+                "--reload-r",
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert len(calls) == 1
+    assert calls[0]["reload_r"] is True
+    assert json.loads(output.read_text())["selection"]["reload_r"] is True
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -525,6 +598,8 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "x0_memory": "l1",
         "fuse_s": False,
         "batch_reads": False,
+        "reload_r": False,
+        "compare_reload_r": False,
     }
     assert len(payload["results"]) == 4
     assert all(

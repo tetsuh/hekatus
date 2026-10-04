@@ -231,6 +231,166 @@ class ReferenceTests(unittest.TestCase):
         self.assertNotIn("copy_tile", reader_source)
         self.assertNotIn("route_", reader_source)
 
+    def test_reload_r_compile_args_and_default_resident_path_are_explicit(self):
+        resident_reader = newton_schulz_kernel._reader_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            profile=False,
+            fuse_s=False,
+            batch_reads=False,
+            matrix_block=1,
+            reload_r=False,
+        )
+        reload_reader = newton_schulz_kernel._reader_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            profile=False,
+            fuse_s=True,
+            batch_reads=False,
+            matrix_block=4,
+            reload_r=True,
+        )
+        resident_compute = newton_schulz_kernel._compute_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            state_fp32=True,
+            profile=False,
+            fuse_s=True,
+            matrix_block=4,
+            reload_r=False,
+        )
+        reload_compute = newton_schulz_kernel._compute_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            state_fp32=True,
+            profile=False,
+            fuse_s=True,
+            matrix_block=4,
+            reload_r=True,
+        )
+
+        assert resident_reader == [8]
+        assert reload_reader == [8, 1, 0, 4, 1]
+        assert resident_compute == [8, 1, 0, 1, 4, 0]
+        assert reload_compute == [8, 1, 0, 1, 4, 1]
+
+        compute = (
+            Path(__file__).parents[1]
+            / "enodia/tt/bench/kernels/newton_schulz_compute.cpp"
+        ).read_text()
+        reader = (
+            Path(__file__).parents[1]
+            / "enodia/tt/bench/kernels/newton_schulz_reader_optimized.cpp"
+        ).read_text()
+        assert "constexpr bool reload_r = get_compile_time_arg_val(5) != 0;" in compute
+        assert "constexpr bool reload_r = get_compile_time_arg_val(4) != 0;" in reader
+        assert compute.index("if constexpr (!reload_r)") < compute.index(
+            "for (std::uint32_t iteration = 0; iteration < iterations; ++iteration)"
+        )
+
+    def test_reload_r_cb_ledger_replays_and_consumes_r_without_changing_capacity(self):
+        compute = (
+            Path(__file__).parents[1]
+            / "enodia/tt/bench/kernels/newton_schulz_compute.cpp"
+        ).read_text()
+        reader = (
+            Path(__file__).parents[1]
+            / "enodia/tt/bench/kernels/newton_schulz_reader_optimized.cpp"
+        ).read_text()
+        assert "pop_r_inputs<fuse_s>();" in compute
+        assert "pop_r_inputs_block<fuse_s>(block_count);" in compute
+        assert "read_matrix_reload" in reader
+        assert "read_matrix_block_reload" in reader
+        assert reader.count("for (std::uint32_t iteration = 0; iteration < iterations; ++iteration)") >= 2
+        assert "if (first_iteration)" in reader
+
+        ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
+        for matrix_block in (1, 2, 4, 8):
+            definitions = newton_schulz_kernel._cb_definitions(
+                ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
+            )
+            expected_pages = 2 if matrix_block == 1 else matrix_block
+            assert definitions[newton_schulz_kernel.CB_R_NEG_IMAG][1] == expected_pages
+            assert definitions[newton_schulz_kernel.CB_R_IMAG][1] == expected_pages
+            assert definitions[newton_schulz_kernel.CB_R_NEG_REAL][1] == expected_pages
+
+    def test_reload_reader_accessor_abi_starts_after_all_mode_arguments(self):
+        reader_args = newton_schulz_kernel._reader_compile_args(
+            iterations=NEWTON_SCHULZ_ITERATIONS,
+            profile=False,
+            fuse_s=True,
+            batch_reads=False,
+            matrix_block=4,
+            reload_r=True,
+        )
+        assert reader_args == [8, 1, 0, 4, 1]
+        tensor_compile_args = [
+            *reader_args,
+            0,
+            2 * 32 * 32,
+            0,
+            2 * 32 * 32,
+            0,
+            2 * 32 * 32,
+            0,
+            4 * 32 * 32,
+            0,
+            4 * 32 * 32,
+        ]
+        first_accessor = len(reader_args)
+        assert tensor_compile_args[first_accessor] == 0
+        assert tensor_compile_args[first_accessor + 1] == 2_048
+
+        kernel_dir = Path(__file__).parents[1] / "enodia/tt/bench/kernels"
+        for reader_name in (
+            "newton_schulz_reader_optimized.cpp",
+            "newton_schulz_reader_profile.cpp",
+        ):
+            source = (kernel_dir / reader_name).read_text()
+            assert "first_input_compile_arg = 5" in source
+            assert "TensorAccessorArgs<first_input_compile_arg>()" in source
+            assert (
+                "(fuse_s ? first_input_compile_arg : first_input_args.next_compile_time_args_offset())"
+                in source
+            )
+            assert "TensorAccessorArgs<4>()" not in source
+
+    def test_reload_reader_fused_batch4_block4_l32_model_has_no_zero_reads(self):
+        block_count = 4
+        r_page_bytes = 32 * 32 * 2
+        x0_page_bytes = 32 * 32 * 4
+        modeled_iterations = []
+        for iteration in range(NEWTON_SCHULZ_ITERATIONS):
+            r_pages = 3 * block_count
+            x0_pages = 2 * block_count if iteration == 0 else 0
+            modeled_iterations.append(
+                {
+                    "page_count": r_pages + x0_pages,
+                    "byte_count": r_pages * r_page_bytes + x0_pages * x0_page_bytes,
+                    "r_pages": r_pages,
+                    "x0_pages": x0_pages,
+                }
+            )
+
+        assert [entry["page_count"] for entry in modeled_iterations] == [20, *([12] * 7)]
+        assert [entry["byte_count"] for entry in modeled_iterations] == [
+            57_344,
+            *([24_576] * 7),
+        ]
+        assert all(entry["page_count"] > 0 for entry in modeled_iterations)
+        assert all(entry["byte_count"] > 0 for entry in modeled_iterations)
+        assert all(entry["r_pages"] == 12 for entry in modeled_iterations)
+        assert modeled_iterations[0]["x0_pages"] == 8
+        assert all(entry["x0_pages"] == 0 for entry in modeled_iterations[1:])
+
+        # Fused S has three signed BF16 R pages per matrix and no positive
+        # R-real page.  The model therefore matches the CB ledger and cannot
+        # dispatch a zero-page group for the padded four-tile work range.
+        assert newton_schulz_kernel.CB_R_REAL not in newton_schulz_kernel._cb_definitions(
+            SimpleNamespace(bfloat16="bf16", float32="fp32"),
+            "fp32",
+            fuse_s=True,
+            matrix_block=4,
+        )
+        assert newton_schulz_kernel._padded_tile_count(4, 4) == 4
+        assert newton_schulz_kernel._matrix_block_ranges(0, 4, 4) == [(0, 4)]
+
     def test_fused_s_host_descriptors_prepare_signed_r_inputs_and_reader_dispatch(self):
         ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32")
         fused = newton_schulz_kernel._cb_definitions(ttnn, ttnn.float32, fuse_s=True)
@@ -255,10 +415,12 @@ class ReferenceTests(unittest.TestCase):
         self.assertIn("noc_async_read_barrier();", optimized_reader)
         self.assertIn("r_negative_imag_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
         self.assertIn("r_real_address = get_arg_val<std::uint32_t>(0)", optimized_reader)
+        self.assertIn("first_input_compile_arg = 5", optimized_reader)
         self.assertIn(
-            "(fuse_s ? 4 : first_input_args.next_compile_time_args_offset())",
+            "(fuse_s ? first_input_compile_arg : first_input_args.next_compile_time_args_offset())",
             optimized_reader,
         )
+        self.assertNotIn("TensorAccessorArgs<4>()", optimized_reader)
 
         compute_source = (
             Path(__file__).parents[1]
@@ -700,6 +862,39 @@ class DeviceEquivalenceTests(unittest.TestCase):
             self.assertLessEqual(relative_error, 1e-2)
         finally:
             ttnn.close_device(device)
+
+
+@pytest.mark.tt_device
+@pytest.mark.skipif(
+    not (DEVICE_TEST and HAS_TTNN),
+    reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
+)
+@pytest.mark.parametrize("batch", (4, 8192), ids=("batch4", "batch8192"))
+@pytest.mark.parametrize("reload_r", (False, True), ids=("resident", "reload_r"))
+def test_device_reload_r_matches_numpy_for_both_residency_paths(batch, reload_r):
+    import ttnn
+
+    device = ttnn.open_device(device_id=0)
+    try:
+        matrices = random_hpd_batch(batch, 32, seed=95 + batch)
+        expected = newton_schulz_reference(matrices)
+        actual = run_newton_schulz_kernel(
+            ttnn,
+            device,
+            matrices,
+            variant="bf16-fp32state",
+            math_fidelity="HiFi3",
+            fuse_s=True,
+            reload_r=reload_r,
+            matrix_block=4,
+            input_memory="l1",
+            r_memory="l1",
+            x0_memory="l1",
+        )
+        relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        assert relative_error <= 1e-2
+    finally:
+        ttnn.close_device(device)
 
 
 if __name__ == "__main__":

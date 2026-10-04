@@ -343,6 +343,42 @@ def _reader_input_dtypes(ttnn, state_dtype, *, fuse_s: bool) -> list[Any]:
     ]
 
 
+def _reader_compile_args(
+    *,
+    iterations: int,
+    profile: bool,
+    fuse_s: bool,
+    batch_reads: bool,
+    matrix_block: int,
+    reload_r: bool,
+) -> list[int]:
+    """Return reader compile arguments for the selected source ABI."""
+    args = [iterations]
+    if profile or fuse_s or batch_reads or matrix_block > 1 or reload_r:
+        args.extend([int(fuse_s), int(batch_reads), matrix_block, int(reload_r)])
+    return args
+
+
+def _compute_compile_args(
+    *,
+    iterations: int,
+    state_fp32: bool,
+    profile: bool,
+    fuse_s: bool,
+    matrix_block: int,
+    reload_r: bool,
+) -> list[int]:
+    """Return compute compile arguments shared by host and device kernels."""
+    return [
+        iterations,
+        int(state_fp32),
+        int(profile),
+        int(fuse_s),
+        matrix_block,
+        int(reload_r),
+    ]
+
+
 def _reader_input_memories(
     *,
     input_memory: str = "l1",
@@ -849,6 +885,7 @@ class NewtonSchulzKernel:
     profile: bool
     fuse_s: bool
     batch_reads: bool
+    reload_r: bool
     matrix_block: int
     profile_output: Any | None
     tile_count: int
@@ -870,6 +907,7 @@ class NewtonSchulzKernel:
         profile: bool = False,
         fuse_s: bool = False,
         batch_reads: bool = False,
+        reload_r: bool = False,
         matrix_block: int = 1,
         input_memory: str = "l1",
         r_memory: str | None = None,
@@ -1020,9 +1058,14 @@ class NewtonSchulzKernel:
                 )
             )
 
-        reader_compile_args = [iterations]
-        if profile or fuse_s or batch_reads or matrix_block > 1:
-            reader_compile_args.extend([int(fuse_s), int(batch_reads), matrix_block])
+        reader_compile_args = _reader_compile_args(
+            iterations=iterations,
+            profile=profile,
+            fuse_s=fuse_s,
+            batch_reads=batch_reads,
+            matrix_block=matrix_block,
+            reload_r=reload_r,
+        )
         for tensor in inputs:
             reader_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
         writer_compile_args: list[int] = [matrix_block]
@@ -1060,7 +1103,7 @@ class NewtonSchulzKernel:
             if profile
             else (
                 _KERNEL_DIR / "newton_schulz_reader_optimized.cpp"
-                if fuse_s or batch_reads or matrix_block > 1
+                if fuse_s or batch_reads or matrix_block > 1 or reload_r
                 else _KERNEL_DIR / "newton_schulz_reader.cpp"
             )
         )
@@ -1088,7 +1131,14 @@ class NewtonSchulzKernel:
                 kernel_source=str((_KERNEL_DIR / "newton_schulz_compute.cpp").resolve()),
                 source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
                 core_ranges=core_ranges,
-                compile_time_args=[iterations, int(state_fp32), int(profile), int(fuse_s), matrix_block],
+                compile_time_args=_compute_compile_args(
+                    iterations=iterations,
+                    state_fp32=state_fp32,
+                    profile=profile,
+                    fuse_s=fuse_s,
+                    matrix_block=matrix_block,
+                    reload_r=reload_r,
+                ),
                 runtime_args=compute_args,
                 config=ttnn.ComputeConfigDescriptor(
                     math_fidelity=math_fidelity_value,
@@ -1113,6 +1163,7 @@ class NewtonSchulzKernel:
             profile=profile,
             fuse_s=fuse_s,
             batch_reads=batch_reads,
+            reload_r=reload_r,
             matrix_block=matrix_block,
             profile_output=profile_output,
             tile_count=tile_count,
@@ -1219,6 +1270,7 @@ def run_newton_schulz_kernel(
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
+    reload_r: bool = False,
     matrix_block: int = 1,
     input_memory: str = "l1",
     r_memory: str | None = None,
@@ -1234,6 +1286,7 @@ def run_newton_schulz_kernel(
         profile=profile,
         fuse_s=fuse_s,
         batch_reads=batch_reads,
+        reload_r=reload_r,
         matrix_block=matrix_block,
         input_memory=input_memory,
         r_memory=r_memory,
