@@ -186,14 +186,19 @@ records 50.0263 TFLOPS for its current reproduction and 50.6196 TFLOPS for
 its historical row; those rows are cited as the repeatability context, not
 as the source of the 51.92 value.
 
-**R-residency attribution disposition:** The compute implementation waits for
-R's circular-buffer pages before the fixed eight-iteration loop and pops them
-only after it; no per-iteration R-reload variant exists in this kernel. The
-records therefore do not isolate R residency from the combined kernel result.
-The 51.92 TFLOPS / 15.6% / 5.7x headline and the roughly two-card
-extrapolation remain combined workload results and do not assign credit to R
-residency. A resident-versus-reload measurement is deferred to a follow-up
-Issue.
+**R-residency attribution disposition.** The immutable PR #81 control record
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json`
+measures resident and per-iteration R reload in one watcher-free run under the
+same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1
+conditions, with 1,000 launches per row. Both variants pass the batch-4 and
+batch-8192 correctness gates. Resident reaches **51.8585 TFLOPS** and reload-R
+reaches **31.3663 TFLOPS**, so reload-R is **39.5% lower** in TFLOPS and 65.2%
+slower at median latency. The resident result is within the existing roughly
++/-2-4% repeatability context of the 51.92 TFLOPS headline; the headline and
+roughly two-card extrapolation therefore remain unchanged. R residency is now
+a measured material attribution, while the control does not claim it is the
+sole cause of the remaining combined-kernel gap. The companion power trace is
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv`.
 
 The packed L=16 `custom_block4` row reached 10.7733 TFLOPS (3.2450%,
 reported as **10.77 TFLOPS and 3.24%**), or 14.5x the same-run stock best

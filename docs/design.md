@@ -1363,15 +1363,21 @@ optimization record
 shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
 versus baseline.
 
-**R-residency attribution disposition.** For each matrix/block group, the
-compute implementation waits for the R circular-buffer pages before the fixed
-eight-iteration loop and pops them only after that loop. This kernel has no
-variant that reloads R between iterations. The cited Scope 5 records therefore
-do not provide a resident-versus-reload control; the combined acceptance
-catalogue keeps `r_memory=l1` for its custom rows. The 5.7x/15.6% L=32 result,
-the packed L=16 comparison, and the roughly two-card extrapolation remain
-combined workload results and do not depend on assigning credit to R residency.
-A resident-versus-reload control is deferred to a follow-up Issue.
+**R-residency attribution disposition.** PR #81's immutable control record
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json`
+measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
+all-inputs-L1 run with `reload_r=false` and `reload_r=true`, 1,000 launches per
+variant. Both variants pass the batch-4 and batch-8192 NumPy correctness gates.
+The resident row reaches **51.8585 TFLOPS**; reloading R on every one of the
+fixed eight iterations reaches **31.3663 TFLOPS**, **39.5% lower** (the median
+launch is 65.2% slower). The resident value is within the existing roughly
++/-2-4% repeatability context of the earlier 51.92 TFLOPS headline, so the
+headline and roughly two-card extrapolation remain unchanged. The control does
+change attribution: R residency is a material contributor to the resident
+throughput. The remaining difference is still a combined kernel result; this
+control does not claim that R is the sole bottleneck or separate dispatch and
+other fixed overheads. The companion power trace is
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv`.
 
 The unpack diagnostic
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
