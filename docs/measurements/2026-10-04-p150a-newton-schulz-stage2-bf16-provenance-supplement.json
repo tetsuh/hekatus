@@ -1,0 +1,46 @@
+{
+  "record_schema": "adr-0005-board-provenance-supplement-v1",
+  "what": "Verified physical-board provenance for the two preceding Issue #85 Stage 2 BF16 diagnostic records",
+  "measurement_values_changed": false,
+  "original_records_unchanged": true,
+  "source_records": [
+    {
+      "record": "2026-10-04-p150a-newton-schulz-stage2-bf16-diagnostic.json",
+      "record_commit": "f63d166",
+      "run_identifier": "19698dec-918a-4bd0-a33d-8b4dd103ef98",
+      "record_harness_revision": "39e2d1a",
+      "board_probe_harness_revision": "39e2d1a",
+      "device_id": 0,
+      "board_type": "p150a",
+      "board_serial": "000004033191411c",
+      "evidence": {
+        "observed_environment_field": "board_id",
+        "device_cases": [
+          "L=32, batch=4, original-R baseline",
+          "L=32, batch=4, BF16-R quantized HiFi3",
+          "L=32, batch=4, BF16-R quantized HiFi4"
+        ],
+        "source_run_identity": "The worker run identifier and harness revision match the board-probe output that reported this board_id."
+      }
+    },
+    {
+      "record": "2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json",
+      "record_commit": "c55e545",
+      "run_identifier": "c31cba3a-9101-4489-8f5e-2fd175d61aa3",
+      "record_harness_revision": "f63d166",
+      "board_probe_harness_revision": "39e2d1a",
+      "device_id": 0,
+      "board_type": "p150a",
+      "board_serial": "000004033191411c",
+      "evidence": {
+        "observed_environment_field": "board_id",
+        "device_cases": [
+          "L=32, batch=8192, BF16-R quantized HiFi3",
+          "L=16, batch=8192, BF16-R quantized HiFi3"
+        ],
+        "source_run_identity": "The worker run identifier and harness revision match the board-probe output that reported this board_id."
+      }
+    }
+  ],
+  "note": "This supplement is corroborating source evidence only. Each predecessor record now carries its own record-local board_serial and board_provenance fields; the supplement is not a substitute for the ADR-0005 record-local environment requirement."
+}

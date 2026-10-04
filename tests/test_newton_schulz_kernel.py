@@ -18,6 +18,7 @@ from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_reference import (
     COMPLEX_MATMULS_PER_INVERSE,
     NEWTON_SCHULZ_ITERATIONS,
+    bf16_round_complex,
     initial_value,
     inverse_flops,
     newton_schulz_reference,
@@ -51,6 +52,14 @@ class ReferenceTests(unittest.TestCase):
         expected = initial_value(matrices)
 
         np.testing.assert_allclose(actual, expected, rtol=2e-6, atol=2e-7)
+
+    def test_initial_value_uses_identity_scaled_by_infinity_norm(self):
+        matrices = random_hpd_batch(3, 16, seed=19)
+        norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
+        expected = np.eye(16, dtype=np.complex64)[None, :, :] / norm_inf[:, None, None]
+
+        np.testing.assert_allclose(newton_schulz_kernel._initial_value(matrices), expected)
+        np.testing.assert_allclose(initial_value(matrices), expected)
 
     def test_random_input_is_hermitian_positive_definite_at_the_requested_condition(self):
         matrices = random_hpd_batch(3, 16, condition_number=100.0, seed=7)
@@ -167,11 +176,12 @@ class ReferenceTests(unittest.TestCase):
             / "newton_schulz_reader.cpp"
         ).read_text()
 
-        self.assertEqual(newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS, 8)
+        self.assertEqual(newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS, 12)
         self.assertEqual(
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
         )
+        self.assertEqual(newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE, 24)
         complex_start = compute_source.index("void complex_real_impl")
         complex_end = compute_source.index("template <bool profile_sample>", complex_start)
         complex_source = compute_source[complex_start:complex_end]
@@ -256,10 +266,10 @@ class ReferenceTests(unittest.TestCase):
             reload_r=True,
         )
 
-        assert resident_reader == [8]
-        assert reload_reader == [8, 1, 0, 4, 1]
-        assert resident_compute == [8, 1, 0, 1, 4, 0]
-        assert reload_compute == [8, 1, 0, 1, 4, 1]
+        assert resident_reader == [NEWTON_SCHULZ_ITERATIONS]
+        assert reload_reader == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 4, 1]
+        assert resident_compute == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 1, 4, 0]
+        assert reload_compute == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 1, 4, 1]
 
         compute = (
             Path(__file__).parents[1]
@@ -310,7 +320,7 @@ class ReferenceTests(unittest.TestCase):
             matrix_block=4,
             reload_r=True,
         )
-        assert reader_args == [8, 1, 0, 4, 1]
+        assert reader_args == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 4, 1]
         tensor_compile_args = [
             *reader_args,
             0,
@@ -359,10 +369,13 @@ class ReferenceTests(unittest.TestCase):
                 }
             )
 
-        assert [entry["page_count"] for entry in modeled_iterations] == [20, *([12] * 7)]
+        assert [entry["page_count"] for entry in modeled_iterations] == [
+            20,
+            *([12] * (NEWTON_SCHULZ_ITERATIONS - 1)),
+        ]
         assert [entry["byte_count"] for entry in modeled_iterations] == [
             57_344,
-            *([24_576] * 7),
+            *([24_576] * (NEWTON_SCHULZ_ITERATIONS - 1)),
         ]
         assert all(entry["page_count"] > 0 for entry in modeled_iterations)
         assert all(entry["byte_count"] > 0 for entry in modeled_iterations)
@@ -533,7 +546,7 @@ class ReferenceTests(unittest.TestCase):
     def test_prepare_rejects_unimplemented_shapes_variants_and_iteration_counts(self):
         matrices = np.zeros((1, 16, 16), dtype=np.complex64)
 
-        with self.assertRaisesRegex(ValueError, "fixed at 8"):
+        with self.assertRaisesRegex(ValueError, "fixed at 12"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
                 None, None, matrices, iterations=7
             )
@@ -746,7 +759,9 @@ def test_device_partial_block_padding_matches_numpy(
     device = ttnn.open_device(device_id=0)
     try:
         matrices = random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
-        expected = newton_schulz_reference(matrices)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
+        )
         actual = run_newton_schulz_kernel(
             ttnn,
             device,
@@ -778,7 +793,9 @@ class DeviceEquivalenceTests(unittest.TestCase):
         device = ttnn.open_device(device_id=0)
         try:
             matrices = random_hpd_batch(8192, 32, seed=95)
-            expected = newton_schulz_reference(matrices)
+            expected = newton_schulz_reference(
+                bf16_round_complex(matrices), x0=initial_value(matrices)
+            )
             actual = run_newton_schulz_kernel(
                 ttnn,
                 device,
@@ -796,6 +813,32 @@ class DeviceEquivalenceTests(unittest.TestCase):
         finally:
             ttnn.close_device(device)
 
+    def test_batch_8192_true_inverse_error_is_recorded_without_a_threshold(self):
+        import ttnn
+
+        device = ttnn.open_device(device_id=0)
+        try:
+            matrices = random_hpd_batch(8192, 32, seed=95)
+            actual = run_newton_schulz_kernel(
+                ttnn,
+                device,
+                matrices,
+                variant="bf16-fp32state",
+                math_fidelity="HiFi3",
+                fuse_s=True,
+                matrix_block=4,
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
+            )
+            true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+            relative_error = np.linalg.norm(
+                actual.astype(np.complex128) - true_inverse
+            ) / np.linalg.norm(true_inverse)
+            print(f"true inverse relative error (L=32, batch=8192): {relative_error:.8e}")
+        finally:
+            ttnn.close_device(device)
+
     def test_batch_8192_matches_numpy_at_l16_diagonal_pairs_block4_fused_hifi3_fp32_state(
         self,
     ):
@@ -804,7 +847,9 @@ class DeviceEquivalenceTests(unittest.TestCase):
         device = ttnn.open_device(device_id=0)
         try:
             matrices = random_hpd_batch(8192, 16, seed=95)
-            expected = newton_schulz_reference(matrices)
+            expected = newton_schulz_reference(
+                bf16_round_complex(matrices), x0=initial_value(matrices)
+            )
             actual = run_newton_schulz_kernel(
                 ttnn,
                 device,
@@ -836,7 +881,9 @@ def test_device_reload_r_matches_numpy_for_both_residency_paths(batch, reload_r)
     device = ttnn.open_device(device_id=0)
     try:
         matrices = random_hpd_batch(batch, 32, seed=95 + batch)
-        expected = newton_schulz_reference(matrices)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
+        )
         actual = run_newton_schulz_kernel(
             ttnn,
             device,

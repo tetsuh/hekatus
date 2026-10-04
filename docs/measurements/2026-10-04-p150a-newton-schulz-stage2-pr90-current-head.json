@@ -1,0 +1,3354 @@
+{
+  "record_schema": "adr-0005-pr90-current-head-board-diagnostic-v1",
+  "what": "Issue #85 Stage 2 device validation on the current PR #90 head after correcting CONV-90-001",
+  "captured_at": "2026-10-04",
+  "harness_revision": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
+  "pr_head": "0d786b0f6d83d21eceac8c3df7dbd38ace06b83e",
+  "environment": {
+    "board_serial": "000004033191411c",
+    "board_type": "p150a",
+    "firmware_bundle": "19.6.0.0",
+    "kernel_driver": "2.11.0",
+    "toolchain_release": "0.75.0",
+    "toolchain_image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "device_id": 0,
+    "dram_status": true,
+    "dram_speed": "16G",
+    "pcie_speed": 4,
+    "pcie_width": "16",
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    }
+  },
+  "algorithm": {
+    "initial_value": "I / ||R||_infinity from original unrounded R",
+    "iterations": 12,
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "matrix_block": 4,
+    "fuse_s": true,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "bf16_r_input": true,
+    "threshold": 0.01,
+    "threshold_changed": false
+  },
+  "input_generation": {
+    "condition_number": 100.0,
+    "seed": 95,
+    "rounding": "real and imaginary planes independently rounded from float32 to BF16 with round-to-nearest-even bit arithmetic"
+  },
+  "device_cases": [
+    {
+      "size": 32,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "iterations": 12,
+      "x0": "identity_norminf_from_original_R",
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "matrix_block": 4,
+      "fuse_s": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "bf16_r_input": true,
+      "metrics": {
+        "kernel_vs_bf16_r_rounded_reference_relative_error": 0.0038488404689937957,
+        "kernel_vs_bf16_r_true_inverse_relative_error": 0.0038489184347136494,
+        "kernel_vs_original_unrounded_r_true_inverse_relative_error": 0.019025563146087745,
+        "host_bf16_r_reference_vs_bf16_r_true_inverse_relative_error": 9.238890056950432e-07,
+        "threshold": 0.01,
+        "threshold_pass": true
+      },
+      "throughput": {
+        "launch_count": 1000,
+        "flops_per_launch": 25165824,
+        "seconds_per_launch_p50": 5.758600127592217e-05,
+        "seconds_per_launch_p99": 8.588352859078436e-05,
+        "seconds_per_launch_min": 5.567499829339795e-05,
+        "tflops_p50": 0.4370128753934217,
+        "tflops_min_time": 0.452013017896836
+      }
+    },
+    {
+      "size": 16,
+      "batch": 4,
+      "condition_number": 100.0,
+      "seed": 95,
+      "iterations": 12,
+      "x0": "identity_norminf_from_original_R",
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "matrix_block": 4,
+      "fuse_s": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "bf16_r_input": true,
+      "metrics": {
+        "kernel_vs_bf16_r_rounded_reference_relative_error": 0.0034019563710236,
+        "kernel_vs_bf16_r_true_inverse_relative_error": 0.003401912522509647,
+        "kernel_vs_original_unrounded_r_true_inverse_relative_error": 0.018952581586560435,
+        "host_bf16_r_reference_vs_bf16_r_true_inverse_relative_error": 7.313712654131835e-07,
+        "threshold": 0.01,
+        "threshold_pass": true
+      },
+      "throughput": {
+        "launch_count": 1000,
+        "flops_per_launch": 3145728,
+        "seconds_per_launch_p50": 6.172549910843372e-05,
+        "seconds_per_launch_p99": 6.313143949228106e-05,
+        "seconds_per_launch_min": 5.949800106463954e-05,
+        "tflops_p50": 0.05096318450943381,
+        "tflops_min_time": 0.05287115438689164
+      }
+    },
+    {
+      "size": 32,
+      "batch": 8192,
+      "condition_number": 100.0,
+      "seed": 95,
+      "iterations": 12,
+      "x0": "identity_norminf_from_original_R",
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "matrix_block": 4,
+      "fuse_s": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "bf16_r_input": true,
+      "metrics": {
+        "kernel_vs_bf16_r_rounded_reference_relative_error": 0.0036713376154573663,
+        "kernel_vs_bf16_r_true_inverse_relative_error": 0.0036713373533858134,
+        "kernel_vs_original_unrounded_r_true_inverse_relative_error": 0.021771370356961698,
+        "host_bf16_r_reference_vs_bf16_r_true_inverse_relative_error": 8.918200398979606e-07,
+        "threshold": 0.01,
+        "threshold_pass": true
+      },
+      "throughput": {
+        "launch_count": 1000,
+        "flops_per_launch": 51539607552,
+        "seconds_per_launch_p50": 0.0008878325006662635,
+        "seconds_per_launch_p99": 0.0009270697605461462,
+        "seconds_per_launch_min": 0.0008831949999148492,
+        "tflops_p50": 58.05104849543434,
+        "tflops_min_time": 58.35586428474918
+      }
+    },
+    {
+      "size": 16,
+      "batch": 8192,
+      "condition_number": 100.0,
+      "seed": 95,
+      "iterations": 12,
+      "x0": "identity_norminf_from_original_R",
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "matrix_block": 4,
+      "fuse_s": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "bf16_r_input": true,
+      "metrics": {
+        "kernel_vs_bf16_r_rounded_reference_relative_error": 0.0038075009607569316,
+        "kernel_vs_bf16_r_true_inverse_relative_error": 0.0038075015374724884,
+        "kernel_vs_original_unrounded_r_true_inverse_relative_error": 0.02124024840684276,
+        "host_bf16_r_reference_vs_bf16_r_true_inverse_relative_error": 7.430015748639145e-07,
+        "threshold": 0.01,
+        "threshold_pass": true
+      },
+      "throughput": {
+        "launch_count": 1000,
+        "flops_per_launch": 6442450944,
+        "seconds_per_launch_p50": 0.0005161270019016229,
+        "seconds_per_launch_p99": 0.0005216701306198957,
+        "seconds_per_launch_min": 0.0005129370001668576,
+        "tflops_p50": 12.482297807057908,
+        "tflops_min_time": 12.55992634944307
+      }
+    }
+  ],
+  "device_test": {
+    "command": "./enodia/tt/bench/run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py",
+    "selected": 1031,
+    "passed": 1031,
+    "failed": 0,
+    "skipped": 0,
+    "deselected": 1054,
+    "duration_seconds": 94.3,
+    "thresholdless_true_inverse_command": "./enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device tests/test_newton_schulz_kernel.py::DeviceEquivalenceTests::test_batch_8192_true_inverse_error_is_recorded_without_a_threshold",
+    "thresholdless_true_inverse_relative_error_l32_batch8192": 0.0217713704,
+    "thresholdless_assertion": false,
+    "current_pr_head_device_tests": true
+  },
+  "docker_ps_zero_checks": {
+    "before_probe": 0,
+    "after_probe": 0,
+    "before_device_test": 0,
+    "after_device_test": 0,
+    "before_thresholdless_test": 0,
+    "after_thresholdless_test": 0
+  },
+  "reset_performed": false,
+  "host_sweep_inherited": {
+    "record_schema_source": "issue-85-stage2-host-bf16-sweep-v1",
+    "grid": {
+      "condition_numbers": [
+        10.0,
+        30.0,
+        100.0,
+        300.0
+      ],
+      "aperture_sizes": [
+        16,
+        32,
+        64
+      ],
+      "iterations": 12,
+      "x0": "identity_norminf",
+      "matrix_seed": 85,
+      "dtype": "float32",
+      "look_directions_deg": [
+        -30.0,
+        -15.0,
+        0.0,
+        15.0,
+        30.0
+      ],
+      "pattern_directions_deg": [
+        -60.0,
+        -45.0,
+        -30.0,
+        -15.0,
+        0.0,
+        15.0,
+        30.0,
+        45.0,
+        60.0
+      ],
+      "bf16_rounding": "real and imaginary planes independently rounded from float32 to BF16 with round-to-nearest-even bit arithmetic"
+    },
+    "metric_definitions": {
+      "inverse_relative_frobenius_error": "||candidate - truth||_F / ||truth||_F",
+      "mv_weight_direction": "1 - |w_truth^H w_candidate| / (||w_truth||_2 ||w_candidate||_2)",
+      "beam_pattern_relative_error": "relative Frobenius error between w^H a(theta) response arrays over look and pattern directions",
+      "truths": "Every row reports original unrounded complex128 truth; rounded rows also report the R_bf16 complex128 truth as an auxiliary solver-error baseline."
+    },
+    "result_count": 24,
+    "results": [
+      {
+        "condition_number": 10.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003614891918540458,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.195654274152254e-06,
+              5.809017317282006e-06,
+              3.4470062332259133e-06,
+              5.634606239923734e-06,
+              5.876831227213941e-06
+            ],
+            "by_look_direction_deg": [
+              0.24571364841835194,
+              0.19529412382048938,
+              0.15043842894646245,
+              0.19234000371798404,
+              0.19643073978954934
+            ],
+            "mean_cosine_deficit": 5.992623058359569e-06,
+            "max_cosine_deficit": 9.195654274152254e-06,
+            "max_direction_angle_deg": 0.24571364841835194
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0030732715031434855,
+            "max_absolute_error": 0.002892209390878805,
+            "relative_error_by_look_direction": [
+              0.003654775155065805,
+              0.002773685948501776,
+              0.0021882735941692296,
+              0.0034605570085469504,
+              0.0030637155427129244
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.5030804093745415e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.103828801926284e-15,
+              1.532107773982716e-14,
+              1.709743457922741e-14,
+              8.548717289613705e-15,
+              1.8762769116165146e-14
+            ],
+            "by_look_direction_deg": [
+              7.73124918760008e-06,
+              1.0029569411827041e-05,
+              1.059505231752994e-05,
+              7.491833340751661e-06,
+              1.1099057401270736e-05
+            ],
+            "mean_cosine_deficit": 1.3766765505351941e-14,
+            "max_cosine_deficit": 1.8762769116165146e-14,
+            "max_direction_angle_deg": 1.1099057401270736e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.40433137023809e-07,
+            "max_absolute_error": 1.2722310557690237e-07,
+            "relative_error_by_look_direction": [
+              1.1165982347536569e-07,
+              1.4404141357008592e-07,
+              1.5575214273866267e-07,
+              1.0168772649480658e-07,
+              1.707262702381871e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0036149284249909278,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.19560462198099e-06,
+              5.809095998898783e-06,
+              3.4469937906234094e-06,
+              5.634724560721338e-06,
+              5.8769861797092204e-06
+            ],
+            "by_look_direction_deg": [
+              0.24571298504786432,
+              0.19529544642114757,
+              0.1504381574284827,
+              0.1923420231780477,
+              0.19643332938769203
+            ],
+            "mean_cosine_deficit": 5.992681030386749e-06,
+            "max_cosine_deficit": 9.19560462198099e-06,
+            "max_direction_angle_deg": 0.24571298504786432
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0030732778153514276,
+            "max_absolute_error": 0.00289217101918568,
+            "relative_error_by_look_direction": [
+              0.003654752535396705,
+              0.0027737072971747182,
+              0.002188238605377671,
+              0.00346059055824516,
+              0.003063739215530621
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003939781413863409,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.405565491502841e-06,
+              5.200578756636709e-06,
+              9.641225929724051e-06,
+              6.734645022765662e-06,
+              7.469236542378965e-06
+            ],
+            "by_look_direction_deg": [
+              0.22050427400463657,
+              0.1847836993019193,
+              0.25159621842165975,
+              0.21027867348534277,
+              0.22145016448615873
+            ],
+            "mean_cosine_deficit": 7.290250348601646e-06,
+            "max_cosine_deficit": 9.641225929724051e-06,
+            "max_direction_angle_deg": 0.25159621842165975
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0021893962951778975,
+            "max_absolute_error": 0.0020721692053939323,
+            "relative_error_by_look_direction": [
+              0.0025596655714750427,
+              0.0017108693554329633,
+              0.0025501262595715355,
+              0.0017829698457786712,
+              0.0021929384457698943
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.663409808042834e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3869795029440866e-14,
+              2.531308496145357e-14,
+              3.9745984281580604e-14,
+              2.9531932455029164e-14,
+              3.7414515929867775e-14
+            ],
+            "by_look_direction_deg": [
+              1.2518779069552075e-05,
+              1.289169934879393e-05,
+              1.6154155476968805e-05,
+              1.392462677356116e-05,
+              1.567320072462458e-05
+            ],
+            "mean_cosine_deficit": 3.11750625314744e-14,
+            "max_cosine_deficit": 3.9745984281580604e-14,
+            "max_direction_angle_deg": 1.6154155476968805e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.4940697728560075e-07,
+            "max_absolute_error": 1.2180376407899957e-07,
+            "relative_error_by_look_direction": [
+              9.896183650167298e-08,
+              1.5370377260016576e-07,
+              1.7643059271554662e-07,
+              1.4424911321367425e-07,
+              1.6286911065250056e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.003939774728846759,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.405249354275334e-06,
+              5.2006556077177635e-06,
+              9.64115757495776e-06,
+              6.734627879367849e-06,
+              7.469234604928765e-06
+            ],
+            "by_look_direction_deg": [
+              0.22049956737960355,
+              0.1847850646102401,
+              0.25159532652995675,
+              0.2102784058470872,
+              0.2214501357650689
+            ],
+            "mean_cosine_deficit": 7.290185004249494e-06,
+            "max_cosine_deficit": 9.64115757495776e-06,
+            "max_direction_angle_deg": 0.25159532652995675
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0021894072907904976,
+            "max_absolute_error": 0.0020721678719703793,
+            "relative_error_by_look_direction": [
+              0.002559665833614629,
+              0.0017109044620265612,
+              0.0025501516454211836,
+              0.0017829763652555276,
+              0.0021929299183793627
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003240080072299917,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.582866906188698e-06,
+              5.9265524657847735e-06,
+              5.918265245319354e-06,
+              5.367883345153146e-06,
+              4.922823574116109e-06
+            ],
+            "by_look_direction_deg": [
+              0.17346282640491908,
+              0.19725994669951608,
+              0.1971219819922322,
+              0.1877324548224832,
+              0.17978147706854086
+            ],
+            "mean_cosine_deficit": 5.343678307312416e-06,
+            "max_cosine_deficit": 5.9265524657847735e-06,
+            "max_direction_angle_deg": 0.19725994669951608
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0012291504161393186,
+            "max_absolute_error": 0.0007870967251288614,
+            "relative_error_by_look_direction": [
+              0.0011846277230722227,
+              0.0011941735501362519,
+              0.0011893420030671452,
+              0.001294365509411176,
+              0.001279581053998162
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.243007907865643e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.827072323607354e-14,
+              4.1522341120980855e-14,
+              6.916689443414725e-14,
+              6.128431095930864e-14,
+              3.674838211509268e-14
+            ],
+            "by_look_direction_deg": [
+              2.2669257917249843e-05,
+              1.651119651020547e-05,
+              2.1310162845882393e-05,
+              2.005913882365416e-05,
+              1.5533050064947642e-05
+            ],
+            "mean_cosine_deficit": 5.739853037312059e-14,
+            "max_cosine_deficit": 7.827072323607354e-14,
+            "max_direction_angle_deg": 2.2669257917249843e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.6027282481324527e-07,
+            "max_absolute_error": 1.254299485720412e-07,
+            "relative_error_by_look_direction": [
+              1.9778814488371478e-07,
+              1.5600464819098242e-07,
+              1.7171761900597576e-07,
+              1.3096950842659343e-07,
+              1.3603315537901222e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0032400735357784077,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.582839314482001e-06,
+              5.926621435059509e-06,
+              5.918178581976186e-06,
+              5.367635350750355e-06,
+              4.922987320354899e-06
+            ],
+            "by_look_direction_deg": [
+              0.17346230422672948,
+              0.1972610944873231,
+              0.1971205387205425,
+              0.18772811818042034,
+              0.17978446705178808
+            ],
+            "mean_cosine_deficit": 5.34365240052459e-06,
+            "max_cosine_deficit": 5.926621435059509e-06,
+            "max_direction_angle_deg": 0.1972610944873231
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0012291064487344311,
+            "max_absolute_error": 0.000787044865573569,
+            "relative_error_by_look_direction": [
+              0.001184646801248192,
+              0.0011941140206974696,
+              0.0011892567427792687,
+              0.0012942958438520746,
+              0.0012795586325347618
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.006314794839325543,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.5971876144216246e-05,
+              1.6588265366879185e-05,
+              1.7836268765392127e-05,
+              1.8952566745888966e-05,
+              1.0258733232237915e-05
+            ],
+            "by_look_direction_deg": [
+              0.32382932542580134,
+              0.3300188280629067,
+              0.3422080958294123,
+              0.3527543139182724,
+              0.259528388348279
+            ],
+            "mean_cosine_deficit": 1.5921542050922887e-05,
+            "max_cosine_deficit": 1.8952566745888966e-05,
+            "max_direction_angle_deg": 0.3527543139182724
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00388662807903582,
+            "max_absolute_error": 0.0033825000858662955,
+            "relative_error_by_look_direction": [
+              0.0030756326357457356,
+              0.005167451802437811,
+              0.0035150131395475007,
+              0.003989196488626337,
+              0.0033908798126373457
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.3987628101432307e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.532107773982716e-14,
+              2.0872192862952943e-14,
+              6.761258219967203e-14,
+              2.142730437526552e-14,
+              1.1435297153639112e-14
+            ],
+            "by_look_direction_deg": [
+              1.0029569411827041e-05,
+              1.1706354451251847e-05,
+              2.106936231525657e-05,
+              1.186100256021862e-05,
+              8.664856156940838e-06
+            ],
+            "mean_cosine_deficit": 2.7333690866271353e-14,
+            "max_cosine_deficit": 6.761258219967203e-14,
+            "max_direction_angle_deg": 2.106936231525657e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.9242512263120778e-07,
+            "max_absolute_error": 1.9980119151025742e-07,
+            "relative_error_by_look_direction": [
+              1.1632716250787217e-07,
+              1.6798400942853383e-07,
+              2.8601636299948686e-07,
+              1.7341622438989828e-07,
+              1.3746407954959816e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.006314798497978979,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.5972266171115912e-05,
+              1.6587891275676725e-05,
+              1.7835134102250905e-05,
+              1.8952826019935642e-05,
+              1.025851704428149e-05
+            ],
+            "by_look_direction_deg": [
+              0.3238332793042262,
+              0.330015106812527,
+              0.3421972107545167,
+              0.35275672678445,
+              0.259525653736599
+            ],
+            "mean_cosine_deficit": 1.5921326922652136e-05,
+            "max_cosine_deficit": 1.8952826019935642e-05,
+            "max_direction_angle_deg": 0.35275672678445
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.003886591147687132,
+            "max_absolute_error": 0.0033825823705444322,
+            "relative_error_by_look_direction": [
+              0.003075616100844648,
+              0.005167387080770303,
+              0.0035149287406730043,
+              0.003989208178193981,
+              0.0033908608998238416
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.009404744436032994,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.785095910813219e-05,
+              2.6937987667841057e-05,
+              3.822416890186808e-05,
+              4.2405860965377684e-05,
+              3.170805380148245e-05
+            ],
+            "by_look_direction_deg": [
+              0.4985140976921082,
+              0.42055343062751016,
+              0.5009657549456206,
+              0.527657490336785,
+              0.4562717402161986
+            ],
+            "mean_cosine_deficit": 3.5425406088940294e-05,
+            "max_cosine_deficit": 4.2405860965377684e-05,
+            "max_direction_angle_deg": 0.527657490336785
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.005073923857620327,
+            "max_absolute_error": 0.004143893682115049,
+            "relative_error_by_look_direction": [
+              0.005088660261222661,
+              0.0041648075428324495,
+              0.005171015732512508,
+              0.004371852156814459,
+              0.006309316189522825
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.69783108869122e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.4083846855992306e-14,
+              5.750955267558311e-14,
+              5.972999872483342e-14,
+              5.950795411990839e-14,
+              7.627232179174825e-14
+            ],
+            "by_look_direction_deg": [
+              1.4959322771548181e-05,
+              1.943155808007896e-05,
+              1.980313203006426e-05,
+              1.9766288961818032e-05,
+              2.237799197015199e-05
+            ],
+            "mean_cosine_deficit": 5.74207348336131e-14,
+            "max_cosine_deficit": 7.627232179174825e-14,
+            "max_direction_angle_deg": 2.237799197015199e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.13989342471276e-07,
+            "max_absolute_error": 1.9545510480418457e-07,
+            "relative_error_by_look_direction": [
+              1.4358976826749595e-07,
+              1.8548815673550212e-07,
+              1.8186884908174456e-07,
+              2.9976015718456225e-07,
+              2.3083273895131182e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.009404725650328318,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.785037877168662e-05,
+              2.6938757795025303e-05,
+              3.822365838046515e-05,
+              4.240535976629545e-05,
+              3.1707975892469875e-05
+            ],
+            "by_look_direction_deg": [
+              0.49851027600779213,
+              0.42055944218955943,
+              0.5009624094677372,
+              0.5276543720873915,
+              0.4562711796663354
+            ],
+            "mean_cosine_deficit": 3.542522612118848e-05,
+            "max_cosine_deficit": 4.240535976629545e-05,
+            "max_direction_angle_deg": 0.5276543720873915
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.005073881812159293,
+            "max_absolute_error": 0.004143876583947766,
+            "relative_error_by_look_direction": [
+              0.00508862520267668,
+              0.004164863006343425,
+              0.005171016984969218,
+              0.004371691914644641,
+              0.006309251721575814
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0077267553784119355,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.4623986608851567e-05,
+              2.2136718162535374e-05,
+              3.51070999374814e-05,
+              2.625534379774308e-05,
+              2.1165941660017396e-05
+            ],
+            "by_look_direction_deg": [
+              0.4020848451612658,
+              0.3812370052043423,
+              0.4801051654780312,
+              0.41519052616098734,
+              0.37278393957218714
+            ],
+            "mean_cosine_deficit": 2.5857818033325763e-05,
+            "max_cosine_deficit": 3.51070999374814e-05,
+            "max_direction_angle_deg": 0.4801051654780312
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.002721524088172831,
+            "max_absolute_error": 0.002028600905135525,
+            "relative_error_by_look_direction": [
+              0.002855559584871428,
+              0.002700972500290276,
+              0.0028570047002113293,
+              0.002552843065703474,
+              0.00261984666113043
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.948952926948934e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.3677947663381929e-13,
+              2.0317081350640365e-13,
+              1.376676550535194e-13,
+              1.857403120197887e-13,
+              1.1235457009206584e-13
+            ],
+            "by_look_direction_deg": [
+              2.9967333363006965e-05,
+              3.652315530498142e-05,
+              3.006447246172566e-05,
+              3.4921325168204706e-05,
+              2.7160202361215215e-05
+            ],
+            "mean_cosine_deficit": 1.5514256546111939e-13,
+            "max_cosine_deficit": 2.0317081350640365e-13,
+            "max_direction_angle_deg": 3.652315530498142e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.8569107118103734e-07,
+            "max_absolute_error": 2.093451173613181e-07,
+            "relative_error_by_look_direction": [
+              2.701192898161052e-07,
+              3.940975337109822e-07,
+              2.871808645034709e-07,
+              2.7878928533747595e-07,
+              1.4027844070664098e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.007726756727510553,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.462418552473533e-05,
+              2.213653198801513e-05,
+              3.5107064751849215e-05,
+              2.6254779772472148e-05,
+              2.1166155223073524e-05
+            ],
+            "by_look_direction_deg": [
+              0.40208646921244645,
+              0.38123540205280193,
+              0.48010492488699874,
+              0.4151860664930197,
+              0.3727858202576468
+            ],
+            "mean_cosine_deficit": 2.585774345202907e-05,
+            "max_cosine_deficit": 3.5107064751849215e-05,
+            "max_direction_angle_deg": 0.48010492488699874
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.002721571640075693,
+            "max_absolute_error": 0.00202852820405701,
+            "relative_error_by_look_direction": [
+              0.002855538891544464,
+              0.002701171546348451,
+              0.002857054546130433,
+              0.0025528037674777747,
+              0.0026198971303196044
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.015674428686805304,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00015109862795903428,
+              3.8295579822600345e-05,
+              0.00016125457336169102,
+              0.00013968395796426503,
+              0.0001225812278847771
+            ],
+            "by_look_direction_deg": [
+              0.9960321554635282,
+              0.5014334951475321,
+              1.028962356131726,
+              0.9576701520558808,
+              0.8971272539485571
+            ],
+            "mean_cosine_deficit": 0.00012258279339847356,
+            "max_cosine_deficit": 0.00016125457336169102,
+            "max_direction_angle_deg": 1.028962356131726
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.014233900198865142,
+            "max_absolute_error": 0.014809593029133391,
+            "relative_error_by_look_direction": [
+              0.014997670694315025,
+              0.0089576477702334,
+              0.017503208160633735,
+              0.011985194262716856,
+              0.016801919999982533
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 7.247083029603376e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.235634396669411e-13,
+              4.707345624410664e-14,
+              3.36952687973735e-13,
+              2.2148949341271873e-13,
+              1.5754064719430971e-13
+            ],
+            "by_look_direction_deg": [
+              7.353365609537607e-05,
+              1.7580275371856632e-05,
+              4.703510229039085e-05,
+              3.813416094359975e-05,
+              3.216132574986464e-05
+            ],
+            "mean_cosine_deficit": 3.173239448983622e-13,
+            "max_cosine_deficit": 8.235634396669411e-13,
+            "max_direction_angle_deg": 7.353365609537607e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 8.078489546729615e-07,
+            "max_absolute_error": 1.254703794294361e-06,
+            "relative_error_by_look_direction": [
+              1.2870648121171228e-06,
+              2.7138582392131973e-07,
+              7.718788398757154e-07,
+              4.943524461268889e-07,
+              5.799815312461827e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.015674406697133058,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00015111373952103602,
+              3.829566254920369e-05,
+              0.00016124871575595723,
+              0.00013968219835480689,
+              0.00012257496086809372
+            ],
+            "by_look_direction_deg": [
+              0.9960819626810019,
+              0.5014340367522344,
+              1.0289436668244973,
+              0.9576641199745258,
+              0.8971043201833533
+            ],
+            "mean_cosine_deficit": 0.0001225830554098195,
+            "max_cosine_deficit": 0.00016124871575595723,
+            "max_direction_angle_deg": 1.0289436668244973
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.014234058916568107,
+            "max_absolute_error": 0.01481079774197236,
+            "relative_error_by_look_direction": [
+              0.014998685628727526,
+              0.008957677451980454,
+              0.01750294393423048,
+              0.01198524803952589,
+              0.01680152398028163
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.020294050566338085,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0001294422511627369,
+              0.00025186613117489376,
+              8.861804748583335e-05,
+              0.00011848339426068222,
+              0.00012469179150376153
+            ],
+            "by_look_direction_deg": [
+              0.9218926312669996,
+              1.2859723522862365,
+              0.7627846168436909,
+              0.8820042178327544,
+              0.904817674556305
+            ],
+            "mean_cosine_deficit": 0.00014262032311758156,
+            "max_cosine_deficit": 0.00025186613117489376,
+            "max_direction_angle_deg": 1.2859723522862365
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.011930600582861004,
+            "max_absolute_error": 0.013962984521068911,
+            "relative_error_by_look_direction": [
+              0.00912374732998036,
+              0.016215304541417397,
+              0.007783283429515737,
+              0.012526795759540355,
+              0.01234691597614528
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 9.902810421308491e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              5.855316231873076e-13,
+              3.991251773527438e-13,
+              5.632161403923419e-13,
+              6.767919558114954e-13,
+              7.290834602713403e-13
+            ],
+            "by_look_direction_deg": [
+              6.200301493850383e-05,
+              5.1190832512535644e-05,
+              6.081002420833689e-05,
+              6.665998695132028e-05,
+              6.918727936647865e-05
+            ],
+            "mean_cosine_deficit": 5.907496714030458e-13,
+            "max_cosine_deficit": 7.290834602713403e-13,
+            "max_direction_angle_deg": 6.918727936647865e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.216048203450614e-07,
+            "max_absolute_error": 6.488651511626642e-07,
+            "relative_error_by_look_direction": [
+              7.148055988793561e-07,
+              5.027090887394719e-07,
+              8.254902150725155e-07,
+              6.777033128164685e-07,
+              8.318528197467949e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0202939678067921,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0001294421378355004,
+              0.0002518692188439031,
+              8.861228112277963e-05,
+              0.00011847598153258421,
+              0.00012469714723373215
+            ],
+            "by_look_direction_deg": [
+              0.9218922276977622,
+              1.2859802350680278,
+              0.7627597989331396,
+              0.8819766262497185,
+              0.9048371065003006
+            ],
+            "mean_cosine_deficit": 0.0001426193533136999,
+            "max_cosine_deficit": 0.0002518692188439031,
+            "max_direction_angle_deg": 1.2859802350680278
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.011930519922339296,
+            "max_absolute_error": 0.013962899731663219,
+            "relative_error_by_look_direction": [
+              0.009123708994540238,
+              0.016215296718929267,
+              0.007782893423972147,
+              0.01252636755447403,
+              0.012347239122148775
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.018387515459822798,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0002049828445276347,
+              0.0002324605212637998,
+              0.0001396261291802814,
+              0.00011577750047286894,
+              0.0001518544160954427
+            ],
+            "by_look_direction_deg": [
+              1.1601223852594973,
+              1.2354371235760973,
+              0.957471890482634,
+              0.8718743579113959,
+              0.9985201637785367
+            ],
+            "mean_cosine_deficit": 0.0001689402823080055,
+            "max_cosine_deficit": 0.0002324605212637998,
+            "max_direction_angle_deg": 1.2354371235760973
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.010155098249420402,
+            "max_absolute_error": 0.009316901274790243,
+            "relative_error_by_look_direction": [
+              0.010328132934653992,
+              0.014218671973540407,
+              0.007909857043608555,
+              0.007431523348174537,
+              0.009647407968998805
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3019353976493098e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.66577903984944e-13,
+              1.0239586956117819e-12,
+              4.4375614294267507e-13,
+              9.89985871058252e-13,
+              1.6753265441593612e-12
+            ],
+            "by_look_direction_deg": [
+              6.615506293519092e-05,
+              8.199339129594133e-05,
+              5.397713374956178e-05,
+              8.062173285079494e-05,
+              0.00010487871678764112
+            ],
+            "mean_cosine_deficit": 9.59921031551403e-13,
+            "max_cosine_deficit": 1.6753265441593612e-12,
+            "max_direction_angle_deg": 0.00010487871678764112
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.397147833782196e-07,
+            "max_absolute_error": 5.378508178256844e-07,
+            "relative_error_by_look_direction": [
+              5.267731796474362e-07,
+              6.352078670783997e-07,
+              3.7276822002041765e-07,
+              6.453179488808059e-07,
+              8.900420857307866e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.01838749407899385,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00020498524545653485,
+              0.0002324647900007193,
+              0.00013962167268544157,
+              0.00011577612574531493,
+              0.00015185793626093513
+            ],
+            "by_look_direction_deg": [
+              1.1601291796289954,
+              1.235448467300538,
+              0.9574566100264882,
+              0.8718691815326276,
+              0.9985317374453113
+            ],
+            "mean_cosine_deficit": 0.00016894115402978915,
+            "max_cosine_deficit": 0.0002324647900007193,
+            "max_direction_angle_deg": 1.235448467300538
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.010155088834321275,
+            "max_absolute_error": 0.009317063127647565,
+            "relative_error_by_look_direction": [
+              0.010328175146404585,
+              0.01421864536060463,
+              0.007909810202977359,
+              0.007431612877962704,
+              0.009647316561361838
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.057392638985412414,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0003687194495785029,
+              0.0031607027764061213,
+              0.001867847588054139,
+              0.0013803862811356815,
+              0.002121416022273448
+            ],
+            "by_look_direction_deg": [
+              1.5559620450967357,
+              4.556631574331744,
+              3.502482475796472,
+              3.01084166945152,
+              3.7327367198123507
+            ],
+            "mean_cosine_deficit": 0.0017798144234895785,
+            "max_cosine_deficit": 0.0031607027764061213,
+            "max_direction_angle_deg": 4.556631574331744
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.05932715544042748,
+            "max_absolute_error": 0.06476561840990819,
+            "relative_error_by_look_direction": [
+              0.02032015861253739,
+              0.07530458360603096,
+              0.06739052727392962,
+              0.04784142610753225,
+              0.06682398148689672
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002733233890712649,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.1754409556807843e-08,
+              1.9658583649828643e-09,
+              1.67783952287337e-08,
+              1.5140942388747192e-08,
+              1.6636851674078912e-08
+            ],
+            "by_look_direction_deg": [
+              0.008784924633634937,
+              0.0035926403454573366,
+              0.010495734614968123,
+              0.00997043448846346,
+              0.01045136952473773
+            ],
+            "mean_cosine_deficit": 1.2455291442670102e-08,
+            "max_cosine_deficit": 1.67783952287337e-08,
+            "max_direction_angle_deg": 0.010495734614968123
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00015567580735776436,
+            "max_absolute_error": 0.00017654323571067944,
+            "relative_error_by_look_direction": [
+              0.00012483009656630002,
+              5.873383027908654e-05,
+              0.00022355145863051153,
+              0.0001621292407524226,
+              0.00019221758044455555
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.057398024919302446,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00036765307945108017,
+              0.003165076071148687,
+              0.0018698171505091565,
+              0.0013796399301854168,
+              0.0021189326338008074
+            ],
+            "by_look_direction_deg": [
+              1.5537102861002414,
+              4.559784531580929,
+              3.5043291710519964,
+              3.0100274171252757,
+              3.730550484799131
+            ],
+            "mean_cosine_deficit": 0.0017802237730190295,
+            "max_cosine_deficit": 0.003165076071148687,
+            "max_direction_angle_deg": 4.559784531580929
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.05934174463099342,
+            "max_absolute_error": 0.0647223180360394,
+            "relative_error_by_look_direction": [
+              0.02028342297426739,
+              0.07535634898207551,
+              0.06744410795938009,
+              0.04781190006695379,
+              0.06680311878027084
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.059455387336504524,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0007316455872292682,
+              0.0022329007697631242,
+              0.0019666715100458143,
+              0.001976645641360797,
+              0.001888709279899925
+            ],
+            "by_look_direction_deg": [
+              2.19186848181715,
+              3.8295979891220586,
+              3.593972464214767,
+              3.603077494254495,
+              3.521993626125713
+            ],
+            "mean_cosine_deficit": 0.0017593145576597856,
+            "max_cosine_deficit": 0.0022329007697631242,
+            "max_direction_angle_deg": 3.8295979891220586
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.04167244030101309,
+            "max_absolute_error": 0.04532455576918755,
+            "relative_error_by_look_direction": [
+              0.03125878860432057,
+              0.04854584564473683,
+              0.04056036846725347,
+              0.0336739632792548,
+              0.054299832236631
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0003877711138679726,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              5.467829777838773e-08,
+              7.34141791802756e-09,
+              1.0140876471886884e-08,
+              1.3340185622823242e-08,
+              5.083809717643106e-08
+            ],
+            "by_look_direction_deg": [
+              0.018947203740420426,
+              0.0069426872879137305,
+              0.008159722266457458,
+              0.009358765535080773,
+              0.018269736158323554
+            ],
+            "mean_cosine_deficit": 2.7267774993511295e-08,
+            "max_cosine_deficit": 5.467829777838773e-08,
+            "max_direction_angle_deg": 0.018947203740420426
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00015581346876206143,
+            "max_absolute_error": 0.00016623853412923626,
+            "relative_error_by_look_direction": [
+              0.00023578470956283156,
+              0.00011435274990847284,
+              9.606785350891285e-05,
+              9.759936341793909e-05,
+              0.00020230583604521535
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.05941832373595774,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0007282565380636319,
+              0.002227347952580061,
+              0.0019607019766969547,
+              0.0019814960892522437,
+              0.0018825645470542662
+            ],
+            "by_look_direction_deg": [
+              2.186785504265872,
+              3.824831497644687,
+              3.588512053026671,
+              3.6074970016798695,
+              3.5162579241735905
+            ],
+            "mean_cosine_deficit": 0.0017560734207294315,
+            "max_cosine_deficit": 0.002227347952580061,
+            "max_direction_angle_deg": 3.824831497644687
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.04161578225439701,
+            "max_absolute_error": 0.04526062817363947,
+            "relative_error_by_look_direction": [
+              0.031151441596864397,
+              0.04845043910824484,
+              0.040494680412593395,
+              0.03370418737389489,
+              0.05422103879560472
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0429898280634873,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.000635631917386692,
+              0.0008453709058076075,
+              0.001285453172645612,
+              0.0006882346709257137,
+              0.0007846359062209096
+            ],
+            "by_look_direction_deg": [
+              2.042977038403811,
+              2.356090013790111,
+              2.9054425573944167,
+              2.125841177074288,
+              2.2698654810773897
+            ],
+            "mean_cosine_deficit": 0.0008478653145973069,
+            "max_cosine_deficit": 0.001285453172645612,
+            "max_direction_angle_deg": 2.9054425573944167
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.021430437214996906,
+            "max_absolute_error": 0.01692273145113256,
+            "relative_error_by_look_direction": [
+              0.020151476233911104,
+              0.017455464738609844,
+              0.02688410649589531,
+              0.02318741291156111,
+              0.017486789885063504
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023633435359388627,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.8296041782182044e-07,
+              1.2459346705462337e-06,
+              1.38430761520425e-06,
+              1.824811140083149e-06,
+              2.0905839986928854e-06
+            ],
+            "by_look_direction_deg": [
+              0.05014349352948276,
+              0.09044515573003425,
+              0.09533535417713924,
+              0.10945778565419968,
+              0.11715788336613821
+            ],
+            "mean_cosine_deficit": 1.3857195684696677e-06,
+            "max_cosine_deficit": 2.0905839986928854e-06,
+            "max_direction_angle_deg": 0.11715788336613821
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0007385210216381332,
+            "max_absolute_error": 0.0005300222855548304,
+            "relative_error_by_look_direction": [
+              0.0005397777747893827,
+              0.0007127726816765253,
+              0.0007549274789735294,
+              0.0008054248568328371,
+              0.0008436309468768551
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.04304148490521755,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0006336064692799015,
+              0.000874452286567684,
+              0.0013195853295714377,
+              0.000717378245858602,
+              0.0007665553599633945
+            ],
+            "by_look_direction_deg": [
+              2.0397191124753586,
+              2.3962787785310855,
+              2.943771785580665,
+              2.170389590539524,
+              2.2435571617959758
+            ],
+            "mean_cosine_deficit": 0.0008623155382482039,
+            "max_cosine_deficit": 0.0013195853295714377,
+            "max_direction_angle_deg": 2.943771785580665
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.02154201413516122,
+            "max_absolute_error": 0.01713934417947694,
+            "relative_error_by_look_direction": [
+              0.020108315089470766,
+              0.01767433688519094,
+              0.02694642204160616,
+              0.023307014724259383,
+              0.01774939872633478
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        }
+      }
+    ],
+    "summary": {
+      "bf16_quantization_impact_worst": {
+        "inverse_relative_error": [
+          0.05941832373595774,
+          300.0,
+          32
+        ],
+        "mv_direction_max_cosine_deficit": [
+          0.003165076071148687,
+          300.0,
+          16
+        ],
+        "beam_pattern_relative_error": [
+          0.05934174463099342,
+          300.0,
+          16
+        ]
+      },
+      "bf16_quantization_impact_representative_kappa100_L32": {
+        "inverse_true_quantized_vs_original_relative_error": 0.0202939678067921,
+        "mv_weight_direction": {
+          "by_look_direction": [
+            0.0001294421378355004,
+            0.0002518692188439031,
+            8.861228112277963e-05,
+            0.00011847598153258421,
+            0.00012469714723373215
+          ],
+          "by_look_direction_deg": [
+            0.9218922276977622,
+            1.2859802350680278,
+            0.7627597989331396,
+            0.8819766262497185,
+            0.9048371065003006
+          ],
+          "mean_cosine_deficit": 0.0001426193533136999,
+          "max_cosine_deficit": 0.0002518692188439031,
+          "max_direction_angle_deg": 1.2859802350680278
+        },
+        "beam_pattern": {
+          "relative_frobenius_error": 0.011930519922339296,
+          "max_absolute_error": 0.013962899731663219,
+          "relative_error_by_look_direction": [
+            0.009123708994540238,
+            0.016215296718929267,
+            0.007782893423972147,
+            0.01252636755447403,
+            0.012347239122148775
+          ]
+        }
+      }
+    }
+  },
+  "supersedes": [
+    "2026-10-04-p150a-newton-schulz-stage2-bf16-diagnostic.json",
+    "2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json"
+  ],
+  "provenance": {
+    "superseded_records_are_unchanged": true,
+    "host_sweep_values_copied_exactly_from": "2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json",
+    "board_runs_used_current_pr_head": true,
+    "board_probe_code_head": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
+    "device_test_head": "0d786b0f6d83d21eceac8c3df7dbd38ace06b83e"
+  },
+  "r_fp32_capability": {
+    "possible_with_existing_arguments": false,
+    "reason": "r_memory and input_memory select placement only; _reader_input_dtypes returns BF16 for all R components. No existing argument changes R dtype.",
+    "source": "enodia/tt/bench/newton_schulz_kernel.py",
+    "device_run_attempted": false
+  },
+  "unverified": [
+    "M5 image-quality confirmation",
+    "FP32-R variant comparison"
+  ],
+  "conclusion": "On the current PR head, all four L=32/L=16 batch-4/batch-8192 cases pass the unchanged 1e-2 kernel-versus-BF16-R-reference threshold. The kernel remains approximately 1.9e-2 to 2.2e-2 from the original unrounded-R true inverse because of BF16 input-R perturbation. The board-gated test selection passes all 1031 selected tests; the thresholdless L=32 true-inverse diagnostic reports 2.17713704e-2 without an assertion.",
+  "strict_json": true
+}

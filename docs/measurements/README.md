@@ -6,9 +6,9 @@ produced it.
 A throughput figure is only evidence if the environment behind it can be
 reproduced later. design.md §2 records that a firmware update once changed
 the core count, and the first measurements on this project ran on a different
-board from the target — so every result file here carries, in its own
-`environment` block, the board type and serial, firmware bundle, kernel
-driver version, the toolchain image by digest, and the revision of the
+board from the target — so every accelerator-backed result file here carries,
+in its own `environment` block, the board type and serial, firmware bundle,
+kernel driver version, the toolchain image by digest, and the revision of the
 harness that computed the numbers. For accelerator-backed records,
 `environment.tt_env_active_release` is host-side context captured before the
 pinned container starts; it is not the release identity of the container.
@@ -145,6 +145,10 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000.json` | Issue #63 acceptance catalogue: both L=16 and L=32 stock/custom rows, fuse_s variants, HiFi3/HiFi4, and 1,000 launches per row, with device correctness-test evidence. |
 | `2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000-power.csv` | Power and clock trace for the combined L=16/L=32 acceptance catalogue. |
 | `2026-10-03-host-newton-schulz-reference-sweep.json` | The #85 stage-1 host sweep: both fixed Newton-Schulz X0 choices, N=8..16, condition numbers 10/30/100/300, L=16/32/64, and float64/float32 inverse, MV-direction, and same-array beam-pattern metrics. Written by `python -m enodia.spec.beamform.newton_schulz_sweep --record docs/measurements/2026-10-03-host-newton-schulz-reference-sweep.json`; the beam-pattern metric is measured evidence, not the stage-1 gate |
+| `2026-10-04-p150a-newton-schulz-stage2-bf16-diagnostic.json` | Issue #85 Stage 2 board-free and board diagnostic: BF16 R quantization versus the original float32 R, plus HiFi3/HiFi4 kernel comparisons on the fixed L=32 batch-4 configuration; no device threshold is changed |
+| `2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json` | Issue #85 Stage 2 full diagnostic: 24-point host BF16 input-R sweep plus L=32/L=16 batch-8192 HiFi3 device validation and 1,000-launch throughput; thresholds and existing code are unchanged |
+| `2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json` | Source evidence/corroboration for the two preceding Stage 2 BF16 diagnostics: records their verified run identifiers, harness revisions, and physical board serials; each source record carries the same serial locally. |
+| `2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json` | Supersedes the two Stage 2 BF16 diagnostic records above. Throughput and error measurements use harness commit `ce8bb30`; device tests use commit `0d786b0`, as recorded in the measurement fields; L=32/L=16 batch-4/batch-8192 validation and 1,000-launch throughput. |
 | `2026-10-04-p150a-newton-schulz-partial-block-padding-fuse-s-true.json` | ADV-81-001 device verification: the seven named fuse_s=true partial-block L=16/L=32 cases passed against the independent NumPy reference under the pinned 60-second Watcher run. |
 | `2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json` | Immutable predecessor for the PR #81 resident-versus-reload-R control; it remains readable but is superseded by the complete-provenance retake below. |
 | `2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv` | Immutable predecessor power, clock, and temperature trace; its provenance is the matching predecessor record above. |
@@ -154,7 +158,6 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 **Correction (peak fidelity, 2026-10-03).** `2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json` associates the 332 TFLOPS BF16 peak with LoFi and derives HiFi2/HiFi3/HiFi4 reference peaks of 166.0/110.7/83.0 TFLOPS from it. The record states that association as an inference; it does not hold. tt-metal's `tech_reports/GEMM_FLOPS/GEMM_FLOPS.md` gives the ideal cycles per tile product as 16 (LoFi), 32 (HiFi2), 48 (HiFi3) and 64 (HiFi4), or about 5.4 TFLOPS per matrix engine at LoFi and 1.35 GHz, and `docs/design.md` §2 lists Block FP8 at 664 TFLOPS beside BF16 at 332. The 332 figure is therefore the HiFi2-rate BF16 peak, and the LoFi rate is about twice it. The record is not rewritten; its efficiency figures remain correct against the 332 denominator, while its derived per-fidelity reference peaks should be read as half their true values.
 
 All imported JSON records retain their source `harness_commit` values unchanged. Full commit resolution for every recorded value was verified on the retained `feat/63-fidelity-split-diagnostics` branch, which is the provenance authority for these diagnostics; some of those commits are also reachable from `main`. Companion CSV traces inherit provenance from the matching JSON stem.
-
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says
 so — the same invariant ADR-0004 sets for decisions. The reasoning is in

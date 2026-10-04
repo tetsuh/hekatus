@@ -20,9 +20,11 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak, and Issue #63's measured hand-written rows below land between 3.2%
 > and 30%. The earlier 3.2% figure is retained as historical evidence, with
-> its non-reproduction explained below. Scope 5 uses the measured L=32
-> Newton-Schulz efficiency directly for the current card-count estimate:
-> roughly 100 TFLOPS / roughly 52 TFLOPS per card ≈ 1.9, so plan for about 2
+> its non-reproduction explained below. The historical eight-iteration Scope 5
+> planning baseline was roughly 100 TFLOPS. The selected twelve-iteration
+> count makes the current Stage 2 estimate roughly 150 TFLOPS. Using the
+> measured L=32 Newton-Schulz efficiency directly gives
+> roughly 150 TFLOPS / roughly 52 TFLOPS per card ≈ 2.9, so plan for about 3
 > cards. This is an extrapolation using the measured Newton-Schulz workload
 > efficiency, not a full-system benchmark or an all-mode simultaneous
 > benchmark.
@@ -196,10 +198,12 @@ same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1
 conditions, with 1,000 launches per row. Both variants pass the batch-4 and
 batch-8192 correctness gates. Resident reaches **51.82917713218822 TFLOPS** and
 reload-R reaches **31.33414466591468 TFLOPS**, so reload-R is **39.5434% lower**
-in TFLOPS and 65.1843% slower at median latency. The resident result remains
-within the existing roughly +/-2-4% repeatability context of the 51.92 TFLOPS
-headline; the headline and roughly two-card extrapolation therefore remain
-unchanged. R residency is a measured material attribution, while the control
+in TFLOPS and 65.1843% slower at median latency. This retained Issue #63
+control is historical eight-iteration evidence, not the current Stage 2
+N=12 specification. The resident result remains within the existing roughly
++/-2-4% repeatability context of the 51.92 TFLOPS headline; the headline and
+roughly two-card extrapolation therefore remain unchanged. R residency is a
+measured material attribution, while the control
 does not claim it is the sole cause of the remaining combined-kernel gap. The
 companion power trace is
 `docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv`.
@@ -306,22 +310,22 @@ the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 | CF / PCF / F-DMAS | 0.015 | ~0% |
 | SLSC | 1 | 0.3% |
 | MV: R formation only (sliding update) | 2 | 0.6% |
-| MV: with Newton-Schulz inverse | 33 | ~10% |
+| MV: with Newton-Schulz inverse | 49.5 | ~15% |
 | ESBMV (eigendecomposition) | 100–170 | 30–50% |
 
 ## By configuration — basis: usable per card (133 TFLOPS)
 
 | Configuration | Recv ch | L | TFLOPS | Cards |
 |---|---|---|---|---|
-| 128 elements / 64 ch receive | 64 | 32 | 35 | 1 (26% used) |
-| 256 elements / 128 ch receive | 128 | 64 | 560 | 5 (4.2 rounded up) |
-| 256 elements + beamspace (B=16) | 128 | 16 | 19 | 1 (14% used) |
-| post-μBF 256 ch, volume | 256 | 128 | 1,100 | 9 |
-| post-μBF 256 ch + beamspace | 256 | 16 | 37 | 1 (28% used) |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~7.2e7 | impossible |
+| 128 elements / 64 ch receive | 64 | 32 | 52.5 | 1 (40% used) |
+| 256 elements / 128 ch receive | 128 | 64 | 840 | 7 (6.3 rounded up) |
+| 256 elements + beamspace (B=16) | 128 | 16 | 28.5 | 1 (21% used) |
+| post-μBF 256 ch, volume | 256 | 128 | 1,650 | 13 (12.4 rounded up) |
+| post-μBF 256 ch + beamspace | 256 | 16 | 55.5 | 1 (42% used) |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~1.08e8 | impossible |
 
 The last row follows the N⁴ law from the 256-channel volume row
-(1,100 × 16⁴ ≈ 7.2e7). An earlier revision carried 1.85e8 here, which did
+(1,650 × 16⁴ ≈ 1.08e8). An earlier revision carried 1.85e8 here, which did
 not reconcile with the law stated above; the conclusion is unchanged.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) — basis: theoretical peak
@@ -330,16 +334,39 @@ not reconcile with the law stated above; the conclusion is unchanged.
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
-| 1D B-mode | + beamspace MV | ~25 | 8% |
-| 1D color flow | per-channel wall filter + MV | ~30 | 9% |
-| 2D volume | beamspace MV | ~37 | 11% |
+| 1D B-mode | + beamspace MV | ~37.5 | 11% |
+| 1D color flow | per-channel wall filter + MV | ~45 | 14% |
+| 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
-The measured L=32 Newton-Schulz efficiency is 15.6%, or about 52 TFLOPS per
-card; 100 / 52 ≈ 1.9, so plan for about 2 cards. This is an extrapolation
-using the measured Newton-Schulz workload efficiency, not a full-system
-benchmark or an all-mode simultaneous benchmark. The L=32 headline is in
+**Scope 5 planning estimate:** the historical eight-iteration 1D all-mode
+planning baseline was roughly 100 TFLOPS. The selected twelve-iteration count
+makes the current Stage 2 estimate roughly 150 TFLOPS. The measured L=32
+Newton-Schulz efficiency is 15.6%, or about 52
+TFLOPS per card; 150 / 52 ≈ 2.9, so plan for about 3 cards. This is an
+extrapolation using the measured Newton-Schulz workload efficiency, not a
+full-system benchmark or an all-mode simultaneous benchmark. The L=32 headline
+is in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
+
+**Stage 2 measured timing (separate from the planning estimate):** the
+2026-10-04 record
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
+was measured with harness commit `ce8bb30`, and device tests were run at
+commit `0d786b0`, as recorded in the measurement record. It supersedes the two
+earlier BF16 diagnostics. It measures the twelve-iteration
+BF16-`R` path at 58.1 TFLOPS / 0.888 ms p50 for L=32 and 12.5 TFLOPS /
+0.516 ms p50 for packed L=16, from 1,000 launches per case. The L=32 launch
+time is about 1.33× the comparable eight-iteration record. The board-gated
+test selection passed 1,031/1,031 at commit `0d786b0`. The diff from
+`ce8bb30` to `0d786b0` contains only the measurement-record update and no
+kernel or valid numerical-path changes. The measured TT kernel and benchmark
+numerical paths are unchanged. Commit `0debbe2` aligned the spec defaults (X0
+and iteration count) with ADR-0012. These are board timings, not a revised
+theoretical peak or an M5 image-quality result; the BF16 input-`R`
+perturbation remains a separate representation question. A separate
+source-evidence supplement corroborates the physical-board provenance for the
+two predecessor diagnostics:
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
 
 ---
 

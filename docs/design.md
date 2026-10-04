@@ -1160,7 +1160,8 @@ the old term, add the new) cuts R-formation cost to 1/5.
 X_{k+1} = X_k (2I − R X_k)
 ```
 
-- **All matmul.** Quadratic convergence, ~8 iterations
+- **All matmul.** Quadratic convergence, with a fixed twelve-iteration count
+  selected provisionally by the Stage 1 sweep
 - With diagonal loading ε = 1/100, condition number ~100, convergence is
   stable
 - Complex arithmetic decomposes into 4 real matmuls (3 with Karatsuba)
@@ -1174,22 +1175,31 @@ FLOPs. This is the single biggest reason not to port a GPU implementation
 as-is.
 
 **The Newton-Schulz initial value is fixed as part of the specification**
-(e.g. `X₀ = Rᴴ/(‖R‖₁‖R‖∞)`). Convergence and the required iteration count
-depend on it, and determinism demands a fixed default. Whether 8 iterations
-suffice at κ≈100 is settled offline, initial value included. Accelerator
-correctness uses the independent NumPy fixed-iteration oracle in
+(`X₀ = I/‖R‖∞`). Convergence and the required iteration count depend on it,
+and determinism demands a fixed count. The Stage 1 sweep selected `N = 12`;
+ADR-0012 accepts it as a provisional implementation choice. The canonical
+`enodia/spec` default uses the same `X₀ = I/‖R‖∞` and
+`NEWTON_SCHULZ_ITERATIONS = 12`, while callers may override both for sweeps.
+At κ=300, L=32, float32, the inverse relative error is at most 5e-4 and the
+MV-direction cosine deficit is 8.33e-8. M5 image-quality confirmation remains
+an explicit validation condition, and a later ADR will supersede this choice
+if M5 invalidates it. Accelerator correctness uses the independent NumPy
+fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 
-### Precision split (to be measured)
+### Historical eight-iteration precision split hypothesis (not current N=12 production)
 
-Each iteration passes 16 matmuls, so pure BF16 accumulates error and can
-break quadratic convergence. **The working hypothesis is a hybrid:**
+The historical eight-iteration experiment passed 16 matmuls per iteration, so
+pure BF16 was expected to accumulate error and break quadratic convergence.
+Its **working hypothesis was a hybrid**:
 - first 4 iterations in BF16 (rough convergence)
 - last 4 iterations in FP32 (polish)
 
-FP32 matmul runs at ~1/4 of BF16, so total cost is 1.75×. The reference
-implementation sweeps "N iterations in BF16, then M in FP32."
+FP32 matmul was estimated at ~1/4 of BF16, so that historical split was
+estimated at 1.75× cost. The reference implementation swept "N iterations in
+BF16, then M in FP32" as an experiment. The current Stage 2 production
+specification is fixed at N=12; no 4+4 split is part of that specification.
 
 ### Beamspace MV
 
@@ -1223,16 +1233,16 @@ MV cost is dominated by the inverse, `L³` (L = subaperture size). Growing
 elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 64 → 128 receive channels is 16×.
 
-### 30 fps, 2048 depth points, Newton-Schulz ×8, complex→real ×4
+### 30 fps, 2048 depth points, Newton-Schulz ×12, complex→real ×4
 
 | Configuration | Recv ch | L | TFLOPS | Cards @40% |
 |---|---|---|---|---|
-| 128 elem / 64 ch recv | 64 | 32 | 35 | 1 (26% used) |
-| 256 elem / 128 ch recv | 128 | 64 | 560 | 5 (4.2 rounded up) |
-| 256 elem + beamspace (B=16) | 128 | 64→16 | 19 | 1 (14% used) |
-| post-μBF 256 ch, MV, volume | 256 | 128 | 1,100 | 9 |
-| post-μBF 256 ch + beamspace | 256→16 | – | 37 | **1 (28% used)** |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~72,000,000 | ~540k (impossible) |
+| 128 elem / 64 ch recv | 64 | 32 | 52.5 | 1 (40% used) |
+| 256 elem / 128 ch recv | 128 | 64 | 840 | 7 (6.3 rounded up) |
+| 256 elem + beamspace (B=16) | 128 | 64→16 | 28.5 | 1 (21% used) |
+| post-μBF 256 ch, MV, volume | 256 | 128 | 1,650 | 13 (12.4 rounded up) |
+| post-μBF 256 ch + beamspace | 256→16 | – | 55.5 | **1 (42% used)** |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~108,000,000 | ~810k (impossible) |
 
 ### By method (64 recv ch, 30 fps)
 
@@ -1242,7 +1252,7 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | CF / PCF / F-DMAS | 0.015 | ~0% |
 | SLSC | 1 | 0.3% |
 | MV: R formation only (sliding) | 2 | 0.6% |
-| MV: with Newton-Schulz inverse | 33 | ~10% |
+| MV: with Newton-Schulz inverse | 49.5 | ~15% |
 | ESBMV (eigendecomposition) | 100–170 | 30–50% |
 
 ### Target configuration (1D 256 elem / 128 ch recv + post-μBF 2D)
@@ -1251,14 +1261,16 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 |---|---|---|---|
 | 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
 | 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
-| 1D B-mode | + beamspace MV | ~25 | 8% |
-| 1D color flow | per-channel wall filter + MV | ~30 | 9% |
-| 2D volume | beamspace MV | ~37 | 11% |
+| 1D B-mode | + beamspace MV | ~37.5 | 11% |
+| 1D color flow | per-channel wall filter + MV | ~45 | 14% |
+| 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the 1D all-mode workload is roughly 100 TFLOPS.
-Using the measured L=32 Newton-Schulz efficiency of 15.6% gives about 52
-TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 100 / 52 ≈ 1.9:
-plan for about 2 cards. This is an extrapolation using the measured
+**Scope 5 planning estimate:** the historical eight-iteration 1D all-mode
+planning baseline was roughly 100 TFLOPS. Applying the selected twelve-iteration
+count gives the current Stage 2 estimate of roughly 150 TFLOPS. Using the
+measured L=32 Newton-Schulz efficiency of 15.6% gives
+about 52 TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 150 / 52 ≈
+2.9: plan for about 3 cards. This is an extrapolation using the measured
 Newton-Schulz workload efficiency, not a full-system benchmark or an all-mode
 simultaneous benchmark. The L=32 headline is the `block4_all_l1` row in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
@@ -1278,9 +1290,10 @@ older revision said "5–7×," which ignored the depth-point reduction).
 Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
 validate the earlier plain MV (L=64) capacity assumption: the measured L=32
 row is 15.6% and packed L=16 is 3.24%, both below the 30% efficiency
-target. The current ~100 TFLOPS 1D all-mode workload maps to about 2 cards by
-the measured L=32 efficiency, as an extrapolation from
-that Newton-Schulz workload rather than a full-system or all-mode benchmark.
+target. The selected twelve-iteration workload is roughly 150 TFLOPS and
+maps to about 3 cards by the measured L=32 efficiency, as an extrapolation
+from that Newton-Schulz workload rather than a full-system or all-mode
+benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
 **Two capacity bases appear**: "% of theoretical peak" percentages are
@@ -1324,10 +1337,10 @@ the companion power traces use the matching result stems with a `-power.csv`
 suffix. The generic card counts in this table retain the 40% target basis; they
 are separate from the Scope 5 estimate. Scope 5's card-count estimate is
 explicit:
-15.6% of the 332 TFLOPS peak is about 52 TFLOPS per card, so the ~100 TFLOPS
-1D all-mode workload gives 100 / 52 ≈ 1.9 and plans for about 2 cards. This
-is an extrapolation using the measured Newton-Schulz workload efficiency, not
-a full-system benchmark or an all-mode simultaneous benchmark. The L=32
+15.6% of the 332 TFLOPS peak is about 52 TFLOPS per card, so the selected
+roughly 150 TFLOPS workload gives 150 / 52 ≈ 2.9 and plans for about 3 cards.
+This is an extrapolation using the measured Newton-Schulz workload efficiency,
+not a full-system benchmark or an all-mode simultaneous benchmark. The L=32
 headline is the `block4_all_l1` row
 in `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
 the current/history context is
@@ -1372,11 +1385,14 @@ It measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
 all-inputs-L1 run with `reload_r=false` and `reload_r=true`, 1,000 launches per
 variant. Both variants pass the batch-4 and batch-8192 NumPy correctness gates.
 The resident row reaches **51.82917713218822 TFLOPS**; reloading R on every one
-of the fixed eight iterations reaches **31.33414466591468 TFLOPS**, **39.5434%
-lower** (the median launch is 65.1843% slower). The resident value remains
-within the existing roughly +/-2-4% repeatability context of the earlier 51.92
-TFLOPS headline, so the headline and roughly two-card extrapolation remain
-unchanged. The control does change attribution: R residency is a material
+of the historical fixed eight iterations reaches **31.33414466591468 TFLOPS**,
+**39.5434% lower** (the median launch is 65.1843% slower). The resident value
+remains within the existing roughly +/-2-4% repeatability context of the
+earlier 51.92 TFLOPS headline, so the historical headline and its
+historical eight-iteration, roughly two-card extrapolation remain unchanged.
+Stage 2's twelve-iteration planning estimate is documented separately in §10.
+The control does change
+attribution: R residency is a material
 contributor to the resident throughput. The remaining difference is still a
 combined kernel result; this control does not claim that R is the sole
 bottleneck or separate dispatch and other fixed overheads. The companion power
@@ -1446,7 +1462,7 @@ The reader reserves eight pages, writes page offsets
 eight pages for every input queue (reader source lines 92--161).  It reads
 source tile `start_tile + offset + index`; the non-batched path barriers each
 page before publication.  The compute block path waits on all eight input
-pages, and pops each R queue once after the eight iterations.  Constants are
+pages, and pops each R queue once after the twelve iterations. Constants are
 reserved/pushed once and intentionally remain resident.  `CB_S_REAL` and
 `CB_S_IMAG` are reserved/pushed eight pages per S construction and consumed
 as the right operands; `CB_NEG_X_IMAG` is reserved/pushed eight pages per
@@ -1818,10 +1834,10 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with about two cards for the current 1D all-mode planning
+**The PoC starts with about three cards for the current 1D all-mode planning
 workload**, using the Scope 5 extrapolation from measured L=32
 Newton-Schulz efficiency. This is not a full-system or all-mode benchmark.
-Two cards also provide failure isolation, while inference-only scaling remains
+Three cards also provide failure isolation, while inference-only scaling remains
 an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
@@ -1842,7 +1858,7 @@ IQ              int16 complex   ← L1-resident
 channel vector  FP32
   ↓ R = xxᴴ                     squaring doubles DR; FP32 mandatory
 R               FP32
-  ↓ Newton-Schulz (8 iter)      hybrid (measure)
+  ↓ Newton-Schulz (12 iter)     hybrid (measure)
 weights         FP32
   ↓ apply                       BF16 acceptable
 output
@@ -2230,10 +2246,11 @@ A record, so the same debates are not repeated.
 
 The measured conclusions are deliberately bounded to the batch-8192 records.
 First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
-is materially above stock but below the 30% efficiency target. Applying the
-measured L=32 workload efficiency to the ~100 TFLOPS 1D all-mode estimate
-therefore gives about 2 cards; this is an extrapolation, not a full-system or
-all-mode benchmark. Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
+is materially above stock but below the 30% efficiency target. For the
+historical eight-iteration path, applying the measured L=32 workload
+efficiency to the ~100 TFLOPS 1D all-mode estimate therefore gives about 2
+cards; this is an extrapolation, not a full-system or all-mode benchmark.
+Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
 stock) and is faster in wall-clock than L=32 only as a cost/operation-volume
 comparison for the diagonal fallback, because it uses fewer logical dimensions
 and less work. It is not a beamspace-dimension reduction versus an MV
@@ -2259,6 +2276,35 @@ Bottleneck evidence is in
 and `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`.
 The L=64 capacity table is host-only and reproducible with
 `python3 tools/newton_schulz_l64_capacity.py`; it does not add L=64 dispatch.
+
+### Issue #85 Stage 2 timing and BF16 evidence
+
+The Stage 2 board record
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
+was measured with harness commit `ce8bb30`, and device tests were run at
+commit `0d786b0`, as recorded in the measurement record. It supersedes the two
+earlier 2026-10-04 BF16 diagnostics. It measures the
+selected twelve-iteration kernel with BF16-rounded `R`, not an image-quality
+result. L=32 reaches **58.1 TFLOPS** at a **0.888 ms** p50 launch time, and
+packed L=16 reaches **12.5 TFLOPS** at **0.516 ms** p50, with 1,000 launches
+per case. Against the corresponding eight-iteration records, the L=32 launch
+time is about **1.33×**; the L=16 comparison is about **1.28×**. The same
+record reports 1,031/1,031 selected board-gated tests passing at commit
+`0d786b0`. The diff from `ce8bb30` to `0d786b0` contains only the
+measurement-record update and no kernel or valid numerical-path changes. The
+measured TT kernel and benchmark numerical paths are unchanged. Commit
+`0debbe2` aligned the spec defaults (X0 and iteration count) with ADR-0012.
+These are measured dispatch timings, not the theoretical planning multipliers
+above, and they do not establish M5 image quality. A separate source-evidence
+supplement corroborates the physical board provenance for the two predecessor
+diagnostics:
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
+
+The same record separates input representation from solver error: at κ=100,
+BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by
+2.52e-4, and the beam pattern by 1.42e-2 against the unrounded truth, while the
+kernel is about 3.67e-3 from the BF16-`R` reference. The production `R` format
+remains a follow-up decision; no FP32-`R` device variant has been measured.
 
 ### Investigation items
 

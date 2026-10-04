@@ -100,7 +100,7 @@ void read_matrix(std::uint32_t tile_id, const RAccessor &r_real,
   if constexpr (batch_reads) {
     // Reserve every destination before issuing any DMA.  This prevents a
     // later reservation from overtaking an earlier read while the compute
-    // kernel holds resident R pages across all eight iterations.
+    // kernel holds resident R pages across all twelve iterations.
     if constexpr (!fuse_s) {
       cb_reserve_back(cb_r_real, 1);
     }

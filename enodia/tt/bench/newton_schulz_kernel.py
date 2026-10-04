@@ -2,7 +2,7 @@
 
 The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
-The throughput variants use 32x32 tiles and a fixed eight-iteration inverse.
+The throughput variants use 32x32 tiles and a fixed twelve-iteration inverse.
 L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
 keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
 products, state, and outputs.
@@ -10,13 +10,14 @@ products, state, and outputs.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
@@ -114,13 +115,56 @@ PROFILE_WRITER_NOC_WRITE_OFFSET = 2
 PROFILE_WRITER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
 
 
+def _canonicalize_matrices(
+    matrices: np.ndarray,
+    *,
+    allow_empty_batch: bool = False,
+    check_norm: bool = True,
+) -> np.ndarray:
+    """Canonicalize and validate batched square matrices without importing spec."""
+    values = np.asarray(matrices)
+    if (
+        values.ndim != 3
+        or values.shape[0] < (0 if allow_empty_batch else 1)
+        or values.shape[1] < 1
+        or values.shape[1] != values.shape[2]
+    ):
+        raise ValueError("matrices must have shape (batch, size, size)")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            canonical = values.astype(np.complex64, copy=False)
+    except (TypeError, ValueError, RuntimeWarning) as exc:
+        raise ValueError("matrices must be numeric and finite after conversion") from exc
+    if not np.all(np.isfinite(canonical)):
+        raise ValueError("matrices must be finite")
+    if check_norm and canonical.shape[0]:
+        norm_inf = np.linalg.norm(canonical, ord=np.inf, axis=(-2, -1))
+        if not np.all(np.isfinite(norm_inf)) or np.any(norm_inf <= 0.0):
+            raise ValueError("matrices must have finite, non-zero infinity norms")
+    return canonical
+
+
+def _validate_iterations(iterations: int, *, fixed: bool = False) -> int:
+    if isinstance(iterations, (bool, np.bool_)) or not isinstance(
+        iterations, (int, np.integer)
+    ):
+        raise TypeError("iterations must be a non-negative integer")
+    if iterations < 0:
+        raise ValueError("iterations must not be negative")
+    if fixed and iterations != NEWTON_SCHULZ_ITERATIONS:
+        raise ValueError(
+            f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
+        )
+    return int(iterations)
+
+
 def _initial_value(matrices: np.ndarray) -> np.ndarray:
-    """Return the fixed X0 without depending on the NumPy oracle."""
-    matrices = np.asarray(matrices, dtype=np.complex64)
-    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
+    """Return X0 = I / ||R||_inf without depending on the NumPy oracle."""
+    matrices = _canonicalize_matrices(matrices)
     norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
-    denominator = (norm_1 * norm_inf)[:, None, None]
-    return np.swapaxes(matrices.conj(), -1, -2) / denominator
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    return identity[None, :, :] / norm_inf[:, None, None]
 
 
 def _balanced_ranges(
@@ -354,6 +398,7 @@ def _reader_compile_args(
     reload_r: bool,
 ) -> list[int]:
     """Return reader compile arguments for the selected source ABI."""
+    iterations = _validate_iterations(iterations)
     args = [iterations]
     if profile or fuse_s or batch_reads or matrix_block > 1 or reload_r:
         args.extend([int(fuse_s), int(batch_reads), matrix_block, int(reload_r)])
@@ -370,6 +415,7 @@ def _compute_compile_args(
     reload_r: bool,
 ) -> list[int]:
     """Return compute compile arguments shared by host and device kernels."""
+    iterations = _validate_iterations(iterations)
     return [
         iterations,
         int(state_fp32),
@@ -920,10 +966,7 @@ class NewtonSchulzKernel:
         input_memory, r_memory, x0_memory = _resolve_input_memories(
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
-        if iterations != NEWTON_SCHULZ_ITERATIONS:
-            raise ValueError(
-                f"the kernel is fixed at {NEWTON_SCHULZ_ITERATIONS} iterations, got {iterations}"
-            )
+        iterations = _validate_iterations(iterations, fixed=True)
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
         _validate_matrix_block(
@@ -934,9 +977,9 @@ class NewtonSchulzKernel:
         )
         state_fp32 = variant == "bf16-fp32state"
 
-        matrices = np.asarray(matrices, dtype=np.complex64)
-        if matrices.ndim != 3 or matrices.shape[-1] != matrices.shape[-2]:
-            raise ValueError("matrices must have shape (batch, size, size)")
+        matrices = _canonicalize_matrices(
+            matrices, allow_empty_batch=True, check_norm=False
+        )
         batch, size, _ = matrices.shape
         if batch < 1:
             raise ValueError("batch must be positive")

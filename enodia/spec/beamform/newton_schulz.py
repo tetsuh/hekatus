@@ -8,9 +8,13 @@ ones considered by the stage-1 sweep:
 * ``r_h_norms``: ``Rᴴ / (||R||₁ ||R||∞)``
 * ``identity_norminf``: ``I / ||R||∞``
 
-Complex64 and complex128 inputs use the same computation with their matching
-real precision.  The optional ``dtype`` argument selects that precision when a
-caller wants to pass a real matrix or explicitly cast an input.
+The canonical default follows the owner-approved Stage 2 choice in ADR-0012:
+``identity_norminf`` with twelve updates. Callers may still select the
+historical ``r_h_norms`` initial value and any non-negative iteration count for
+Stage-1 sweeps and comparison experiments. Complex64 and complex128 inputs use
+the same computation with their matching real precision. The optional
+``dtype`` argument selects that precision when a caller wants to pass a real
+matrix or explicitly cast an input.
 """
 
 from __future__ import annotations
@@ -22,6 +26,11 @@ import numpy as np
 X0_R_H_NORMS = "r_h_norms"
 X0_IDENTITY_NORM_INF = "identity_norminf"
 X0_CHOICES = (X0_R_H_NORMS, X0_IDENTITY_NORM_INF)
+
+# ADR-0012 records the owner-approved Stage 2 choice: the canonical spec
+# default uses identity_norminf and twelve fixed updates. Callers may override
+# this count for Stage-1 sweeps and historical experiments.
+NEWTON_SCHULZ_ITERATIONS = 12
 
 
 def _complex_dtype(array: np.ndarray, dtype: np.dtype | type | None) -> np.dtype:
@@ -54,9 +63,9 @@ def _ldexp_complex(array: np.ndarray, exponent: int) -> np.ndarray:
 
 def newton_schulz_inverse(
     R: np.ndarray,
-    iterations: int,
+    iterations: int = NEWTON_SCHULZ_ITERATIONS,
     *,
-    x0: str = X0_R_H_NORMS,
+    x0: str = X0_IDENTITY_NORM_INF,
     dtype: np.dtype | type | None = None,
 ) -> np.ndarray:
     """Approximate ``R⁻¹`` with a fixed number of Newton-Schulz updates.
@@ -67,11 +76,14 @@ def newton_schulz_inverse(
         A non-empty square matrix.  Hermitian positive-definiteness is expected
         by the MV caller but is not required to perform the algebra here.
     iterations:
-        Exact number of updates to execute.  Zero returns the selected initial
-        value, and no residual or convergence condition can shorten the loop.
+        Exact number of updates to execute. Defaults to the twelve updates
+        selected by ADR-0012; callers may override it for sweeps or historical
+        experiments. Zero returns the selected initial value, and no residual
+        or convergence condition can shorten the loop.
     x0:
-        ``"r_h_norms"`` for ``Rᴴ / (||R||₁ ||R||∞)`` or
-        ``"identity_norminf"`` for ``I / ||R||∞``.
+        ``"identity_norminf"`` (the ADR-0012 default) for ``I / ||R||∞`` or
+        ``"r_h_norms"`` for the historical Stage-1 comparison
+        ``Rᴴ / (||R||₁ ||R||∞)``.
     dtype:
         Optional float or complex precision.  Float32 and complex64 select the
         complex64 path; float64 and complex128 select complex128.  If omitted,
@@ -130,6 +142,7 @@ def newton_schulz_inverse(
 
 
 __all__ = [
+    "NEWTON_SCHULZ_ITERATIONS",
     "X0_CHOICES",
     "X0_IDENTITY_NORM_INF",
     "X0_R_H_NORMS",

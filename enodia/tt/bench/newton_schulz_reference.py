@@ -7,12 +7,57 @@ any host.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 
 from enodia.tt.bench.shapes import MatmulShape, total_flops
 
-NEWTON_SCHULZ_ITERATIONS = 8
+NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
+
+
+def bf16_round_to_float32(values: np.ndarray) -> np.ndarray:
+    """Round finite real floating values to BF16 with RNE."""
+    values = np.asarray(values)
+    if values.dtype.kind != "f" or values.dtype.itemsize not in (4, 8):
+        raise ValueError("values must have a float32 or float64 dtype")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must be finite")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            values = values.astype(np.float32, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("values must remain finite after float32 conversion") from exc
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must remain finite after float32 conversion")
+    bits = values.view(np.uint32)
+    bias = np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))
+    return ((bits + bias) & np.uint32(0xFFFF0000)).view(np.float32)
+
+
+def bf16_round_complex(values: np.ndarray) -> np.ndarray:
+    """Round complex floating planes independently to BF16."""
+    values = np.asarray(values)
+    if values.dtype.kind != "c" or values.dtype.itemsize not in (8, 16):
+        raise ValueError("values must have a complex64 or complex128 dtype")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must be finite")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            values = values.astype(np.complex64, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("values must remain finite after complex64 conversion") from exc
+    if not np.all(np.isfinite(values)):
+        raise ValueError("values must remain finite after complex64 conversion")
+    rounded = (
+        bf16_round_to_float32(values.real) + 1j * bf16_round_to_float32(values.imag)
+    ).astype(np.complex64)
+    if not np.all(np.isfinite(rounded)):
+        raise ValueError("values must remain finite after BF16 conversion")
+    return rounded
 
 
 def random_hpd_batch(
@@ -47,27 +92,77 @@ def random_hpd_batch(
     return matrices.astype(np.complex64)
 
 
-def initial_value(matrices: np.ndarray) -> np.ndarray:
-    """Return X0 = R^H / (||R||_1 * ||R||_inf)."""
-    matrices = np.asarray(matrices, dtype=np.complex64)
-    if matrices.ndim != 3 or matrices.shape[-1] != matrices.shape[-2]:
+def _canonicalize_matrices(matrices: np.ndarray) -> np.ndarray:
+    """Canonicalize and validate batched square matrices."""
+    values = np.asarray(matrices)
+    if (
+        values.ndim != 3
+        or values.shape[0] < 1
+        or values.shape[1] < 1
+        or values.shape[1] != values.shape[2]
+    ):
         raise ValueError("matrices must have shape (batch, size, size)")
-    norm_1 = np.linalg.norm(matrices, ord=1, axis=(-2, -1))
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            canonical = values.astype(np.complex64, copy=False)
+    except (TypeError, ValueError, RuntimeWarning) as exc:
+        raise ValueError("matrices must be numeric and finite after conversion") from exc
+    if not np.all(np.isfinite(canonical)):
+        raise ValueError("matrices must be finite")
+    norm_inf = np.linalg.norm(canonical, ord=np.inf, axis=(-2, -1))
+    if not np.all(np.isfinite(norm_inf)) or np.any(norm_inf <= 0.0):
+        raise ValueError("matrices must have finite, non-zero infinity norms")
+    return canonical
+
+
+def _validate_iterations(iterations: int) -> int:
+    if isinstance(iterations, (bool, np.bool_)) or not isinstance(
+        iterations, (int, np.integer)
+    ):
+        raise TypeError("iterations must be a non-negative integer")
+    if iterations < 0:
+        raise ValueError("iterations must not be negative")
+    return int(iterations)
+
+
+def _canonicalize_x0(x0: np.ndarray, matrices: np.ndarray) -> np.ndarray:
+    values = np.asarray(x0)
+    if values.shape != matrices.shape:
+        raise ValueError(f"x0 must have shape {matrices.shape}, got {values.shape}")
+    if values.dtype.kind != "c" or values.dtype.itemsize not in (8, 16):
+        raise ValueError("x0 must have a complex64 or complex128 dtype")
+    if not np.all(np.isfinite(values)):
+        raise ValueError("x0 must be finite")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            canonical = values.astype(np.complex64, copy=False)
+        except RuntimeWarning as exc:
+            raise ValueError("x0 must remain finite after complex64 conversion") from exc
+    if not np.all(np.isfinite(canonical)):
+        raise ValueError("x0 must remain finite after complex64 conversion")
+    return canonical
+
+
+def initial_value(matrices: np.ndarray) -> np.ndarray:
+    """Return X0 = I / ||R||_inf."""
+    matrices = _canonicalize_matrices(matrices)
     norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
-    denominator = (norm_1 * norm_inf)[:, None, None]
-    return np.swapaxes(matrices.conj(), -1, -2) / denominator
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    return identity[None, :, :] / norm_inf[:, None, None]
 
 
 def newton_schulz_reference(
     matrices: np.ndarray,
     *,
     iterations: int = NEWTON_SCHULZ_ITERATIONS,
+    x0: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Run the specified fixed count; there is no convergence-gated exit."""
-    if iterations < 0:
-        raise ValueError("iterations must not be negative")
-    matrices = np.asarray(matrices, dtype=np.complex64)
-    x = initial_value(matrices).astype(np.complex64, copy=False)
+    """Run a fixed count, optionally with an explicitly supplied X0."""
+    iterations = _validate_iterations(iterations)
+    matrices = _canonicalize_matrices(matrices)
+    x = initial_value(matrices) if x0 is None else _canonicalize_x0(x0, matrices)
     identity = np.eye(matrices.shape[-1], dtype=np.complex64)
     for _ in range(iterations):
         x = x @ (2.0 * identity - matrices @ x)
