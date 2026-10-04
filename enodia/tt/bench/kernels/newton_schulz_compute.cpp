@@ -807,6 +807,9 @@ void wait_r_inputs_block(std::uint32_t block_count) {
 
 // The block path is selected only for matrix_block > 1.  Keeping it separate
 // leaves the original single-matrix path and its profiling scopes untouched.
+template <bool fuse_s>
+void pop_r_inputs_block(std::uint32_t block_count);
+
 void stream_initial_or_state(
     std::uint32_t iteration,
     std::uint32_t& x_real,
