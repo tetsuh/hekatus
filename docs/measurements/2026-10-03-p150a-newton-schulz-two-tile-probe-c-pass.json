@@ -1,0 +1,470 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T03:57:48.304941+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "a004bd3",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "configuration_mode": "issue_63_two_tile_minimal_probe",
+  "selection": {
+    "stage": "c",
+    "stage_index": 5,
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "device_id": 0,
+    "input_memory": "dram",
+    "output_memory": "dram",
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state"
+  },
+  "measurement": {
+    "kind": "device_two_tile_minimal_probe",
+    "stage": "c",
+    "watcher": true,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "same_device_run": true,
+    "device_id": 0,
+    "power_trace": "2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass-power.csv",
+    "power_clock_provenance": {
+      "trace": "power-20261003T035748Z.csv",
+      "columns": [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c"
+      ],
+      "clock_column": "aiclk_mhz",
+      "power_column": "power_w",
+      "temperature_column": "asic_temp_c",
+      "sampling_source": "tt-smi snapshot"
+    },
+    "environment_provenance": {
+      "source": "--env-json",
+      "record_field": "environment",
+      "adr": "ADR-0005"
+    },
+    "power_trace_sha256": "bda2e29425a938e5a90335aa3d5e3c5326daa9c32e457c97af0dc47535cd914d",
+    "watcher_log": "2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass-watcher.log",
+    "watcher_log_sha256": "38a114b9617250856650f0867888921a574daed621d3c930879a5fb4e52b7cc6",
+    "reset_performed": false,
+    "cleanup_verified": true
+  },
+  "source_host_report": {
+    "source_files": [
+      "enodia/tt/bench/kernels/two_tile_probe_reader.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_compute.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
+      "enodia/tt/bench/two_tile_probe.py"
+    ],
+    "contract": {
+      "stage": "c",
+      "operation": "X\u00b7(2I\u2212R\u00b7X)",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "matmul_call_count": 5,
+      "matmul_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        },
+        {
+          "in0_offset": 4,
+          "in1_offset": 2,
+          "dst": 0
+        },
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "r_times_x_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        },
+        {
+          "in0_offset": 4,
+          "in1_offset": 2,
+          "dst": 0
+        }
+      ],
+      "x_times_s_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "matmul_block_init_positions": [
+        "before_tile_regs_acquire"
+      ],
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11",
+          "A02",
+          "A12"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10",
+          "B20"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "pack_indices": [
+        0,
+        1
+      ],
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": [
+          "CB_TWO_TILE_R",
+          "CB_TWO_TILE_X"
+        ],
+        "in1": [
+          "CB_TWO_TILE_S",
+          "CB_IDENTITY"
+        ],
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 10,
+        "reserve": 6,
+        "push": 6,
+        "pop": 15,
+        "wait_front": 10,
+        "reserve_back": 6,
+        "push_back": 6,
+        "pop_front": 15
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    },
+    "in0": "CB_TWO_TILE_R six-page K=3 block for a/b_prime, CB_TWO_TILE_X for c; matmul maps it to SrcB",
+    "in1": "CB_TWO_TILE_S [Xr, Xi] plus resident BF16 CB_IDENTITY [I]; matmul maps both to SrcA",
+    "dest_slots": [
+      0,
+      1
+    ],
+    "tile_regs_sequence": [
+      "acquire",
+      "commit",
+      "wait",
+      "release"
+    ],
+    "cb_wait_reserve_push_pop": {
+      "wait": 10,
+      "reserve": 6,
+      "push": 6,
+      "pop": 15,
+      "wait_front": 10,
+      "reserve_back": 6,
+      "push_back": 6,
+      "pop_front": 15
+    }
+  },
+  "result": {
+    "stage": "c",
+    "status": "pass",
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "relative_errors": [
+      0.0020847017876803875,
+      0.002008755225688219,
+      0.002001946559175849,
+      0.0020745322108268738
+    ],
+    "output_tile_relative_errors": [
+      {
+        "matrix": 0,
+        "real_tile": 0.0020997931715101004,
+        "imag_tile": 0.002070626011118293
+      },
+      {
+        "matrix": 1,
+        "real_tile": 0.0019907932728528976,
+        "imag_tile": 0.0020283774938434362
+      },
+      {
+        "matrix": 2,
+        "real_tile": 0.0020007258281111717,
+        "imag_tile": 0.0020030569285154343
+      },
+      {
+        "matrix": 3,
+        "real_tile": 0.00207326328381896,
+        "imag_tile": 0.0020759410690516233
+      }
+    ],
+    "max_relative_error": 0.0020847017876803875,
+    "tolerance": 0.01,
+    "finite": true,
+    "expected": "independent NumPy probe oracle with BF16-rounded R",
+    "host_input_seed": {
+      "r": 6300,
+      "x": 6301
+    },
+    "contract": {
+      "stage": "c",
+      "operation": "X\u00b7(2I\u2212R\u00b7X)",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "matmul_call_count": 5,
+      "matmul_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        },
+        {
+          "in0_offset": 4,
+          "in1_offset": 2,
+          "dst": 0
+        },
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "r_times_x_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        },
+        {
+          "in0_offset": 4,
+          "in1_offset": 2,
+          "dst": 0
+        }
+      ],
+      "x_times_s_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "matmul_block_init_positions": [
+        "before_tile_regs_acquire"
+      ],
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11",
+          "A02",
+          "A12"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10",
+          "B20"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "pack_indices": [
+        0,
+        1
+      ],
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": [
+          "CB_TWO_TILE_R",
+          "CB_TWO_TILE_X"
+        ],
+        "in1": [
+          "CB_TWO_TILE_S",
+          "CB_IDENTITY"
+        ],
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 10,
+        "reserve": 6,
+        "push": 6,
+        "pop": 15,
+        "wait_front": 10,
+        "reserve_back": 6,
+        "push_back": 6,
+        "pop_front": 15
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    }
+  },
+  "harness": {
+    "commit": "a004bd3",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher": true,
+    "watcher_first_execution": true,
+    "visible_board_count": 2,
+    "rsync_excludes": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ]
+  },
+  "note": "After the explicit SrcA/SrcB format transitions, seed-free K=3 b_prime followed by X\u00b7S passed the batch-4 NumPy gate; batch-8192 and throughput were not part of this stage record."
+}

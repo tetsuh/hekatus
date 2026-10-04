@@ -1,0 +1,110 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T01:51:51+00:00",
+    "board": null,
+    "platform": "Linux",
+    "machine_architecture": "x86_64",
+    "python": "3.12.13",
+    "numpy": "2.5.1",
+    "harness_commit": "b5b77c98877e7db2c01b80acfb87c73c512eb0bc",
+    "harness_dirty": false
+  },
+  "measurement": {
+    "kind": "board_throughput_condition_audit",
+    "question": "Was the previous stock/custom throughput comparison made with Watcher enabled, and did the board clock reach 1350 MHz?",
+    "reference_scope": "Existing local copies of remote wrapper stdout, wrapper environment, result JSON, and power CSV; no new board run",
+    "source_artifacts": [
+      {
+        "label": "current one-tile catalogue stdout",
+        "artifact": "out-final/ssh-run.log",
+        "sha256": "46d84f60ae2252c705c92f02de243b767ab31317880aaabcfe8c841a3fefd27f",
+        "evidence": "The LLRuntime log contains Watcher log creation, device attachment, initialization, and periodic Watcher checks."
+      },
+      {
+        "label": "current one-tile catalogue power trace",
+        "artifact": "out-final/power-20261003T011712Z.csv",
+        "sha256": "72e07182e186038314df73cf34eb89f5c388b57f912a01aabff970908383ff44",
+        "evidence": "The aiclk_mhz column contains 1350 during the loaded samples."
+      },
+      {
+        "label": "earlier Watcher run stdout",
+        "artifact": "out/ssh-run.log",
+        "sha256": "f166990c82441874425fdbdfc30734eaa82f73640bea7b3285250f5016f8611e",
+        "evidence": "The log contains the same Watcher attachment and periodic checks."
+      },
+      {
+        "label": "earlier Watcher run power trace",
+        "artifact": "power-20261003T005618Z.csv",
+        "sha256": "5dc9cf948edb5863e19ded08b31b35f77491d8f7e0c48e6a27b84a2b18667fe8",
+        "evidence": "The aiclk_mhz column contains 1350 during the loaded samples."
+      },
+      {
+        "label": "committed no-Watcher fidelity throughput record",
+        "artifact": "docs/measurements/2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000.json",
+        "sha256": "9c9b71d5f78c945a8d50fb5df2b2f78c4732d817446fcd3fb8cbf3f2395d7b12",
+        "evidence": "The throughput metadata says watcher=false; its companion trace has aiclk_mhz=1350 loaded samples."
+      },
+      {
+        "label": "committed no-Watcher fidelity throughput power trace",
+        "artifact": "docs/measurements/2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000-power.csv",
+        "sha256": "ccb365b7bd0a9275b932e13cdfdea89027a665e815e3a7f6578b5dcb8d372e6c",
+        "evidence": "The aiclk_mhz column is 1350 during loaded samples."
+      }
+    ],
+    "condition_audit": {
+      "previous_current_one_tile_catalogue": {
+        "wrapper_watcher": "enabled; explicit TT_METAL_WATCHER=1 is confirmed by the Watcher stdout evidence",
+        "aiclk_mhz": "1350 during loaded samples",
+        "shape": "newton_schulz_L32_b8192",
+        "batch": 8192,
+        "iters": 1,
+        "launches_per_row": 1000,
+        "device_id": 0,
+        "timeout_s": 60,
+        "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "stock_row": {
+          "row": "stock_best",
+          "selection": "ttnn.matmul default BF16 row; source-derived HiFi2",
+          "achieved_tflops": 2.1945411947218574
+        },
+        "custom_rows": [
+          {
+            "row": "one_tile_full_sync_block4",
+            "variant": "bf16-fp32state",
+            "fuse_s": true,
+            "matrix_block": 4,
+            "dst_full_sync_en": true,
+            "input_memory": "dram",
+            "r_memory": "dram",
+            "x0_memory": "dram",
+            "correctness_relative_error": 0.005221145693212748,
+            "achieved_tflops": 25.00230186709654
+          },
+          {
+            "row": "one_tile_half_sync_block2",
+            "variant": "bf16-fp32state",
+            "fuse_s": true,
+            "matrix_block": 2,
+            "dst_full_sync_en": false,
+            "input_memory": "dram",
+            "r_memory": "dram",
+            "x0_memory": "dram",
+            "correctness_relative_error": 0.005221145693212748,
+            "achieved_tflops": 23.157988012667932
+          }
+        ]
+      },
+      "comparison": {
+        "clock_conclusion": "The observed clock condition was comparable: loaded samples were 1350 MHz in both Watcher-enabled and recorded Watcher-disabled traces.",
+        "watcher_conclusion": "The previous 2.1945/25.0023 TFLOPS catalogue did run with Watcher attached. The committed 2026-10-02 9.113/44.759 TFLOPS fidelity record declares watcher=false, but it uses L1 inputs and a different catalogue path, so it is not a clean Watcher-only experiment.",
+        "causal_conclusion": "Watcher overhead remains a plausible condition difference but is not established as causal because no same-run no-Watcher remeasurement of stock plus current one-tile rows was completed before the required post-abnormal-exit stop."
+      }
+    },
+    "status": "incomplete_pending_same_run_no_watcher_rerun"
+  },
+  "operational_notes": [
+    "No connection alias, host identity, or shell-only connection name is part of this record.",
+    "The requested no-Watcher stock/current-one-tile remeasurement was not run after the batch-4 diagnostic's later abnormal temporary-debug exit and recovery protocol.",
+    "Throughput rows are numerical-correctness-gated; the two-tile rows were not throughput candidates."
+  ]
+}

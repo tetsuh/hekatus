@@ -1,0 +1,121 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T03:00:51.075376+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "ec70802eb0e6fceae858888577c1c3b07094fe58",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "ec70802eb0e6fceae858888577c1c3b07094fe58",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher": true,
+    "visible_board_count": 2,
+    "rsync_excludes": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ],
+    "command": "TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=tools/newton_schulz_two_tile_probe.py run_in_container.sh --stage b --out /out/b.json"
+  },
+  "measurement": {
+    "kind": "device_two_tile_minimal_probe",
+    "stage": "b",
+    "status": "blocked_timeout_or_abnormal_exit",
+    "shape": {
+      "name": "newton_schulz_L32_b4",
+      "batch": 4,
+      "m": 32,
+      "k": 32,
+      "n": 32
+    },
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "matrix_block": 1,
+    "correctness_reference": "independent NumPy probe oracle",
+    "tolerance": 0.01,
+    "watcher": true,
+    "container_timeout_s": 60,
+    "device_id": 0,
+    "exit_status": 137,
+    "power_trace": "2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv",
+    "power_trace_sha256": "629215591f7bb553016d07256a7d4e2d39e3c2fc0fe9fa505b37aed6ad8863b8",
+    "stdout_log": "2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-stdout.log",
+    "stdout_log_sha256": "5df678132a3015b455d8c28c8464ca4d3dbc2bf0ac9ce812f84b36e3db094cbf",
+    "previous_stage": "a3 pass; b produced no numerical JSON result"
+  },
+  "recovery": {
+    "reset_performed": true,
+    "reset_command": "tt-smi -r all",
+    "reset_status": 0,
+    "health_probe": "2026-10-03-p150a-stage1-health-after-two-tile-b-reset.json",
+    "cleanup_verified": true,
+    "containers_remaining": false,
+    "device_users_remaining": false
+  },
+  "operational_notes": [
+    "The b probe entered an abnormal exit (137) after the external 60-second wrapper limit and produced no result JSON.",
+    "Per protocol exactly one reset and a Stage-1 health probe were performed; c and batch-8192 were not attempted after recovery."
+  ]
+}

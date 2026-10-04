@@ -1,0 +1,131 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T03:59:26.597692+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "cf27f82",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "code_commit": "a004bd3",
+    "recording_commit": "cf27f82",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "pytest_mode": true,
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher": true,
+    "visible_board_count": 2,
+    "rsync_excludes": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ],
+    "command": "run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py"
+  },
+  "measurement": {
+    "kind": "device_two_tile_production_correctness",
+    "status": "blocked_numerical_failure",
+    "batch": 8192,
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "input_memory": "dram",
+    "r_memory": "dram",
+    "x0_memory": "dram",
+    "watcher": true,
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "selected_tests": 4,
+    "deselected_tests": 21,
+    "passed_tests": 3,
+    "failed_tests": 1,
+    "test": "DeviceEquivalenceTests.test_batch_8192_two_tile_complex_products_match_numpy_for_both_sync_modes",
+    "power_trace": "2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked-power.csv",
+    "power_trace_sha256": "50577d25b0a1778bd0a53a0e3f0a3f886088d572b45342cd1eec1e6202414b59",
+    "watcher_log": "2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked-watcher.log",
+    "watcher_log_sha256": "5fc580ecbf0916798d7cece62cfcc717621e2f4789f0a1d233fa19184440b449",
+    "reset_performed": false,
+    "cleanup_verified": true
+  },
+  "results": [
+    {
+      "name": "two-tile-full-sync-block4",
+      "dst_full_sync_en": true,
+      "matrix_block": 4,
+      "relative_error": 3.201037645339966,
+      "tolerance": 0.01,
+      "status": "fail"
+    },
+    {
+      "name": "two-tile-half-sync-block2",
+      "dst_full_sync_en": false,
+      "matrix_block": 2,
+      "relative_error": 3.3317930698394775,
+      "tolerance": 0.01,
+      "status": "fail"
+    }
+  ],
+  "operational_notes": [
+    "The container completed normally; this was a numerical failure, not a timeout or abnormal device exit.",
+    "Per protocol no reset was performed. Watcher-free throughput was not attempted because no production two-tile correctness case passed."
+  ]
+}

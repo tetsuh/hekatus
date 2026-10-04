@@ -1,0 +1,364 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T03:00:27.379526+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "ec70802eb0e6fceae858888577c1c3b07094fe58",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "configuration_mode": "issue_63_two_tile_minimal_probe",
+  "selection": {
+    "stage": "a3",
+    "stage_index": 3,
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "device_id": 0,
+    "input_memory": "dram",
+    "output_memory": "dram",
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state"
+  },
+  "measurement": {
+    "kind": "device_two_tile_minimal_probe",
+    "stage": "a3",
+    "watcher": true,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "same_device_run": true,
+    "device_id": 0,
+    "power_trace": "2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass-power.csv",
+    "power_clock_provenance": {
+      "trace": "power-20261003T030027Z.csv",
+      "columns": [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c"
+      ],
+      "clock_column": "aiclk_mhz",
+      "power_column": "power_w",
+      "temperature_column": "asic_temp_c",
+      "sampling_source": "tt-smi snapshot"
+    },
+    "environment_provenance": {
+      "source": "--env-json",
+      "record_field": "environment",
+      "adr": "ADR-0005"
+    },
+    "stdout_log": "2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass-stdout.log",
+    "power_trace_sha256": "c5aae064563bd2de49acaa566388e52fa556e244b1a7c24370dbb656e588a12e",
+    "stdout_log_sha256": "e242d41fb6a4b84aee55fcdceff690bfe0e3058e84b61aa717a77145dbf1632d",
+    "result_status": "pass",
+    "reset_performed": false,
+    "cleanup_verified": true
+  },
+  "source_host_report": {
+    "source_files": [
+      "enodia/tt/bench/kernels/two_tile_probe_reader.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_compute.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
+      "enodia/tt/bench/two_tile_probe.py"
+    ],
+    "contract": {
+      "stage": "a3",
+      "operation": "a1+a2 = \u2212R\u00b7X",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "matmul_call_count": 2,
+      "matmul_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "matmul_block_init_positions": [
+        "before_tile_regs_acquire"
+      ],
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "pack_indices": [
+        0,
+        1
+      ],
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": "CB_TWO_TILE_R",
+        "in1": "CB_TWO_TILE_S",
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 3,
+        "reserve": 3,
+        "push": 3,
+        "pop": 9,
+        "wait_front": 3,
+        "reserve_back": 3,
+        "push_back": 3,
+        "pop_front": 9
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    },
+    "in0": "CB_TWO_TILE_R for a/b, CB_TWO_TILE_X for c; matmul maps it to SrcB",
+    "in1": "CB_TWO_TILE_S; matmul maps it to SrcA",
+    "dest_slots": [
+      0,
+      1
+    ],
+    "tile_regs_sequence": [
+      "acquire",
+      "commit",
+      "wait",
+      "release"
+    ],
+    "cb_wait_reserve_push_pop": {
+      "wait": 3,
+      "reserve": 3,
+      "push": 3,
+      "pop": 9,
+      "wait_front": 3,
+      "reserve_back": 3,
+      "push_back": 3,
+      "pop_front": 9
+    }
+  },
+  "result": {
+    "stage": "a3",
+    "status": "pass",
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "relative_errors": [
+      0.0009220760548487306,
+      0.0008953481446951628,
+      0.000906822388060391,
+      0.0009113041451200843
+    ],
+    "output_tile_relative_errors": [
+      {
+        "matrix": 0,
+        "real_tile": 0.0009211466531269252,
+        "imag_tile": 0.0009230882278643548
+      },
+      {
+        "matrix": 1,
+        "real_tile": 0.0009145043441094458,
+        "imag_tile": 0.000875299796462059
+      },
+      {
+        "matrix": 2,
+        "real_tile": 0.0009093824774026871,
+        "imag_tile": 0.0009041774901561439
+      },
+      {
+        "matrix": 3,
+        "real_tile": 0.0009106707875616848,
+        "imag_tile": 0.0009119889582507312
+      }
+    ],
+    "max_relative_error": 0.0009220760548487306,
+    "tolerance": 0.01,
+    "finite": true,
+    "expected": "independent NumPy probe oracle with BF16-rounded R",
+    "host_input_seed": {
+      "r": 6300,
+      "x": 6301
+    },
+    "contract": {
+      "stage": "a3",
+      "operation": "a1+a2 = \u2212R\u00b7X",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "matmul_call_count": 2,
+      "matmul_calls": [
+        {
+          "in0_offset": 0,
+          "in1_offset": 0,
+          "dst": 0
+        },
+        {
+          "in0_offset": 2,
+          "in1_offset": 1,
+          "dst": 0
+        }
+      ],
+      "matmul_block_init_positions": [
+        "before_tile_regs_acquire"
+      ],
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "pack_indices": [
+        0,
+        1
+      ],
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": "CB_TWO_TILE_R",
+        "in1": "CB_TWO_TILE_S",
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 3,
+        "reserve": 3,
+        "push": 3,
+        "pop": 9,
+        "wait_front": 3,
+        "reserve_back": 3,
+        "push_back": 3,
+        "pop_front": 9
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    }
+  },
+  "harness": {
+    "commit": "ec70802eb0e6fceae858888577c1c3b07094fe58",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "watcher_first_run": true,
+    "visible_board_count": 2,
+    "rsync_excludes": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ]
+  },
+  "note": "Stage a3 passed after the probe fix that keeps both K=1 calls on the same DEST row slots; stages b/c and batch 8192 were not included in this record."
+}
