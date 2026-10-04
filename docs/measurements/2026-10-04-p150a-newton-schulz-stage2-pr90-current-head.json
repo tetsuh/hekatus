@@ -3,7 +3,7 @@
   "what": "Issue #85 Stage 2 device validation on the current PR #90 head after correcting CONV-90-001",
   "captured_at": "2026-10-04",
   "harness_revision": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
-  "pr_head": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
+  "pr_head": "0d786b0f6d83d21eceac8c3df7dbd38ace06b83e",
   "environment": {
     "board_serial": "000004033191411c",
     "board_type": "p150a",
@@ -189,10 +189,11 @@
     "failed": 0,
     "skipped": 0,
     "deselected": 1054,
-    "duration_seconds": 94.08,
+    "duration_seconds": 94.3,
     "thresholdless_true_inverse_command": "./enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device tests/test_newton_schulz_kernel.py::DeviceEquivalenceTests::test_batch_8192_true_inverse_error_is_recorded_without_a_threshold",
     "thresholdless_true_inverse_relative_error_l32_batch8192": 0.0217713704,
-    "thresholdless_assertion": false
+    "thresholdless_assertion": false,
+    "current_pr_head_device_tests": true
   },
   "docker_ps_zero_checks": {
     "before_probe": 0,
@@ -3334,7 +3335,9 @@
   "provenance": {
     "superseded_records_are_unchanged": true,
     "host_sweep_values_copied_exactly_from": "2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json",
-    "board_runs_used_current_pr_head": true
+    "board_runs_used_current_pr_head": true,
+    "board_probe_code_head": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
+    "device_test_head": "0d786b0f6d83d21eceac8c3df7dbd38ace06b83e"
   },
   "r_fp32_capability": {
     "possible_with_existing_arguments": false,
