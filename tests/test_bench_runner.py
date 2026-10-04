@@ -124,6 +124,22 @@ class _StubDevice:
         return [object()] * self.worker_count
 
 
+def test_issue94_modes_and_rows_preserve_fixed_selection_metadata_without_a_device():
+    parser = run_matmul._build_parser()
+    assert parser.parse_args(["--issue94-catalogue"]).issue94_catalogue is True
+    assert parser.parse_args(["--issue94-correctness"]).issue94_correctness is True
+    rows = [run_matmul._issue94_row_metadata(config) for config in run_matmul.ISSUE94_CONFIGS]
+    assert [row["name"] for row in rows] == [
+        "bf16_fp32dest_block4",
+        "bf16_bf16dest_block4",
+        "bf16_fp32state_block4",
+    ]
+    assert [row["dest_slot_limit"] for row in rows] == [8, 16, 8]
+    assert all(row["double_buffer"] is False for row in rows)
+    assert all(row["iterations"] == 12 for row in rows)
+    assert all(row["input_memory"] == "l1" and row["output_memory"] == "dram" for row in rows)
+
+
 def test_repeatable_shape_and_config_filters_parse_without_a_device():
     args = run_matmul._build_parser().parse_args(
         [

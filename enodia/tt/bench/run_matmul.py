@@ -54,6 +54,7 @@ from enodia.tt.bench.configs import (
 from enodia.tt.bench.newton_schulz_kernel import (
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
+    _output_memory_name,
     _resolve_input_memories,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
@@ -79,6 +80,29 @@ ACCEPTANCE_CATALOGUE_SHAPES = (
 ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS = (1, 4)
 ACCEPTANCE_CATALOGUE_FIDELITIES = ("HiFi3", "HiFi4")
 ACCEPTANCE_CATALOGUE_LAUNCHES = 1000
+ISSUE94_LAUNCHES = 1000
+ISSUE94_VARIANTS = ("bf16", "bf16-fp32state")
+ISSUE94_CORRECTNESS_CASES = ((32, 4), (16, 4), (32, 8192), (16, 8192))
+ISSUE94_CONFIGS = (
+    {
+        "name": "bf16_fp32dest_block4",
+        "variant": "bf16",
+        "fp32_dest_acc_en": True,
+        "matrix_block": 4,
+    },
+    {
+        "name": "bf16_bf16dest_block4",
+        "variant": "bf16",
+        "fp32_dest_acc_en": False,
+        "matrix_block": 4,
+    },
+    {
+        "name": "bf16_fp32state_block4",
+        "variant": "bf16-fp32state",
+        "fp32_dest_acc_en": True,
+        "matrix_block": 4,
+    },
+)
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 
 
@@ -493,6 +517,8 @@ def run_custom_newton_schulz(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
+    output_memory: str | None = None,
+    fp32_dest_acc_en: bool = True,
     row_name: str | None = None,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
@@ -531,7 +557,11 @@ def run_custom_newton_schulz(
     )
 
     try:
-        _validate_matrix_block(matrix_block, variant=variant)
+        _validate_matrix_block(
+            matrix_block,
+            variant=variant,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+        )
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
     if math_fidelity not in CUSTOM_MATH_FIDELITIES:
@@ -556,7 +586,10 @@ def run_custom_newton_schulz(
             state_dtype=_state_dtype(ttnn, variant),
             profile=profile,
             fuse_s=fuse_s,
-            output_memory="dram" if variant == "bf16-fp32state" else "l1",
+            output_memory=(
+                _output_memory_name(variant) if output_memory is None else output_memory
+            ),
+            fp32_dest_acc_en=fp32_dest_acc_en,
             input_memory=input_memory,
             r_memory=r_memory,
             x0_memory=x0_memory,
@@ -590,6 +623,10 @@ def run_custom_newton_schulz(
             prepare_kwargs["r_memory"] = r_memory
         if explicit_x0_memory:
             prepare_kwargs["x0_memory"] = x0_memory
+        if output_memory is not None:
+            prepare_kwargs["output_memory"] = output_memory
+        if not fp32_dest_acc_en:
+            prepare_kwargs["fp32_dest_acc_en"] = False
         # Keep the baseline dispatch signature intact for callers that provide
         # a legacy host stub; non-default blocks must be explicit.
         if matrix_block != 1:
@@ -630,6 +667,7 @@ def run_custom_newton_schulz(
             "input_memory": input_memory,
             "r_memory": r_memory,
             "x0_memory": x0_memory,
+            "fp32_dest_acc_en": fp32_dest_acc_en,
             "l1_preflight_bytes": l1_preflight_bytes,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
@@ -745,6 +783,16 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--issue94-catalogue",
+        action="store_true",
+        help="run the Issue #94 BF16 state and DEST accumulation comparison",
+    )
+    parser.add_argument(
+        "--issue94-correctness",
+        action="store_true",
+        help="run the Issue #94 correctness cases without throughput sampling",
+    )
+    parser.add_argument(
         "--launches-per-row",
         type=int,
         default=ACCEPTANCE_CATALOGUE_LAUNCHES,
@@ -810,11 +858,16 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         )
     if args.reload_r and args.compare_reload_r:
         parser.error("--reload-r cannot be combined with --compare-reload-r")
+    issue94_modes = int(args.issue94_catalogue) + int(args.issue94_correctness)
+    if issue94_modes > 1:
+        parser.error("--issue94-catalogue and --issue94-correctness are mutually exclusive")
+    if issue94_modes and args.acceptance_catalogue:
+        parser.error("Issue #94 modes cannot be combined with --acceptance-catalogue")
     if (args.reload_r or args.compare_reload_r) and args.acceptance_catalogue:
         parser.error(
             "--reload-r/--compare-reload-r require the normal custom-row runner"
         )
-    if args.acceptance_catalogue:
+    if args.acceptance_catalogue or args.issue94_catalogue or args.issue94_correctness:
         return
 
     shapes = _select_shapes(default_catalogue(), args.only)
@@ -958,6 +1011,267 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "adr": "ADR-0005",
         },
     }
+
+
+def _issue94_power_metadata(args: argparse.Namespace) -> dict:
+    power_trace = _record_path(args.power_trace)
+    return {
+        "power_trace": power_trace,
+        "power_clock_provenance": {
+            "trace": power_trace,
+            "columns": list(POWER_TRACE_COLUMNS),
+            "power_column": "power_w",
+            "clock_column": "aiclk_mhz",
+            "temperature_column": "asic_temp_c",
+            "sampling_source": "tt-smi snapshot",
+        },
+    }
+
+
+def _issue94_row_metadata(config: dict) -> dict:
+    from enodia.tt.bench.newton_schulz_kernel import _dest_slot_limit
+
+    fp32_dest_acc_en = config["fp32_dest_acc_en"]
+    return {
+        "name": config["name"],
+        "variant": config["variant"],
+        "matrix_block": config["matrix_block"],
+        "fp32_dest_acc_en": fp32_dest_acc_en,
+        "dst_full_sync_en": True,
+        "dest_slot_limit": _dest_slot_limit(
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=True,
+        ),
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram",
+        "fuse_s": True,
+        "math_fidelity": "HiFi3",
+        "batch_reads": False,
+        "iterations": 12,
+        "double_buffer": False,
+    }
+
+
+def _run_issue94_catalogue(
+    ttnn,
+    device,
+    *,
+    args: argparse.Namespace,
+) -> list[dict]:
+    """Run the Issue #94 state/DEST comparison in one device session."""
+    shapes_by_name = {shape.name: shape for shape in default_catalogue()}
+    shapes = [
+        shapes_by_name["newton_schulz_L32_b8192"],
+        shapes_by_name["newton_schulz_L16_b8192"],
+    ]
+    results: list[dict] = []
+    for shape in shapes:
+        for config in ISSUE94_CONFIGS:
+            row = _issue94_row_metadata(config)
+            custom_record = {
+                "shape": asdict(shape),
+                "execution_shape": asdict(shape),
+                "representative": shape.representative,
+                "dtype": "bfloat16",
+                "memory": "l1",
+                "input_memory": "l1",
+                "r_memory": "l1",
+                "x0_memory": "l1",
+                "output_memory": "dram",
+                "memory_placement": {
+                    "input": "l1",
+                    "r": "l1",
+                    "x0": "l1",
+                    "output": "dram",
+                    "compute": "l1",
+                },
+                "program_config": {
+                    "name": CUSTOM_KIND,
+                    "kind": CUSTOM_KIND,
+                    **row,
+                },
+                "iterations": 1,
+                "repeats": args.launches_per_row,
+                "launches_requested_per_row": args.launches_per_row,
+                "kind": CUSTOM_KIND,
+                "row": config["name"],
+            }
+            custom_record.update(
+                run_custom_newton_schulz(
+                    ttnn,
+                    device,
+                    shape,
+                    dtype_name="bfloat16",
+                    memory_name="l1",
+                    variant=config["variant"],
+                    math_fidelity="HiFi3",
+                    fuse_s=True,
+                    batch_reads=False,
+                    matrix_block=config["matrix_block"],
+                    input_memory="l1",
+                    r_memory="l1",
+                    x0_memory="l1",
+                    output_memory="dram",
+                    fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                    row_name=config["name"],
+                    iters=1,
+                    repeats=args.launches_per_row,
+                )
+            )
+            with_efficiency(custom_record, args.peak_tflops)
+            print(
+                _format_line(
+                    shape,
+                    "bfloat16",
+                    "l1",
+                    config["name"],
+                    custom_record,
+                ),
+                flush=True,
+            )
+            results.append(custom_record)
+    return results
+
+
+def _issue94_bf16_round_to_float32(values):
+    """Round finite real values to BF16 without importing the host oracle."""
+    import numpy as np
+
+    values = np.asarray(values, dtype=np.float32)
+    bits = values.view(np.uint32)
+    bias = np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))
+    return ((bits + bias) & np.uint32(0xFFFF0000)).view(np.float32)
+
+
+def _issue94_bf16_round_complex(values):
+    import numpy as np
+
+    values = np.asarray(values, dtype=np.complex64)
+    return (
+        _issue94_bf16_round_to_float32(values.real)
+        + 1j * _issue94_bf16_round_to_float32(values.imag)
+    ).astype(np.complex64)
+
+
+def _issue94_random_hpd_batch(batch: int, size: int, *, seed: int):
+    """Build the fixed condition-100 HPD inputs used by Issue #94."""
+    import numpy as np
+
+    indices = np.arange(size, dtype=np.float64)
+    basis = np.cos(np.pi * (indices[:, None] + 0.5) * indices[None, :] / size)
+    basis[:, 0] *= np.sqrt(1.0 / size)
+    if size > 1:
+        basis[:, 1:] *= np.sqrt(2.0 / size)
+    eigenvalues = np.geomspace(1.0, 100.0, size)
+    base = (basis * eigenvalues) @ basis.T
+    rng = np.random.default_rng(seed)
+    phases = np.exp(1j * rng.uniform(-np.pi, np.pi, size=(batch, size)))
+    matrices = base[None, :, :] * phases[:, :, None] * phases[:, None, :].conj()
+    return matrices.astype(np.complex64)
+
+
+def _issue94_initial_value(matrices):
+    import numpy as np
+
+    norm_inf = np.linalg.norm(matrices, ord=np.inf, axis=(-2, -1))
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    return identity[None, :, :] / norm_inf[:, None, None]
+
+
+def _issue94_fixed_reference(matrices, x0):
+    """Independent fixed-N=12 NumPy oracle for the board record."""
+    import numpy as np
+
+    matrices = np.asarray(matrices, dtype=np.complex64)
+    x = np.asarray(x0, dtype=np.complex64)
+    identity = np.eye(matrices.shape[-1], dtype=np.complex64)
+    for _ in range(12):
+        x = x @ (2.0 * identity - matrices @ x)
+    return x
+
+
+def _relative_frobenius_error(actual, expected) -> float:
+    import numpy as np
+
+    return float(np.linalg.norm(actual - expected) / np.linalg.norm(expected))
+
+
+def _run_issue94_correctness(
+    ttnn,
+    device,
+    *,
+    args: argparse.Namespace,
+) -> list[dict]:
+    """Run all Issue #94 correctness cases against both required references."""
+    import numpy as np
+
+    from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
+
+    results: list[dict] = []
+    for size, batch in ISSUE94_CORRECTNESS_CASES:
+        matrices = _issue94_random_hpd_batch(batch, size, seed=95)
+        rounded_matrices = _issue94_bf16_round_complex(matrices)
+        x0 = _issue94_initial_value(matrices)
+        rounded_reference = _issue94_fixed_reference(rounded_matrices, x0)
+        rounded_true_inverse = np.linalg.inv(rounded_matrices.astype(np.complex128))
+        true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+        for config in ISSUE94_CONFIGS:
+            row = _issue94_row_metadata(config)
+            actual = run_newton_schulz_kernel(
+                ttnn,
+                device,
+                matrices,
+                variant=config["variant"],
+                math_fidelity="HiFi3",
+                fuse_s=True,
+                matrix_block=config["matrix_block"],
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
+                output_memory="dram",
+                fp32_dest_acc_en=config["fp32_dest_acc_en"],
+            )
+            finite = bool(np.all(np.isfinite(actual)))
+            rounded_error = _relative_frobenius_error(actual, rounded_reference)
+            rounded_true_inverse_error = _relative_frobenius_error(
+                actual.astype(np.complex128), rounded_true_inverse
+            )
+            true_inverse_error = _relative_frobenius_error(
+                actual.astype(np.complex128), true_inverse
+            )
+            result = {
+                **row,
+                "size": size,
+                "batch": batch,
+                "condition_number": 100.0,
+                "seed": 95,
+                "x0": "identity_norminf_from_original_R",
+                "bf16_r_input": True,
+                "finite": finite,
+                "metrics": {
+                    "kernel_vs_bf16_r_rounded_reference_relative_error": rounded_error,
+                    "kernel_vs_bf16_r_true_inverse_relative_error": rounded_true_inverse_error,
+                    "kernel_vs_original_r_true_inverse_relative_error": true_inverse_error,
+                    "bf16_r_reference_vs_original_r_true_inverse_relative_error": _relative_frobenius_error(
+                        rounded_reference, true_inverse
+                    ),
+                    "threshold": 0.01,
+                    "threshold_pass": finite and rounded_error <= 0.01,
+                },
+                "status": "pass" if finite and rounded_error <= 0.01 else "diagnostic_fail",
+                "reference": "enodia/tt/bench/newton_schulz_reference.py",
+                "iterations": 12,
+            }
+            print(
+                f"issue94_correctness row={config['name']} L={size} batch={batch} "
+                f"rounded_error={rounded_error:.8e} true_inverse_error={true_inverse_error:.8e} "
+                f"status={result['status']}",
+                flush=True,
+            )
+            results.append(result)
+    return results
 
 
 def _run_acceptance_catalogue(
@@ -1105,6 +1419,83 @@ def main(argv: list[str] | None = None) -> int:
         environment.update(json.loads(args.env_json.read_text()))
 
     device = ttnn.open_device(device_id=args.device_id)
+    if args.issue94_catalogue:
+        try:
+            results = _run_issue94_catalogue(ttnn, device, args=args)
+        finally:
+            ttnn.close_device(device)
+        payload = {
+            "record_schema": "adr-0005-issue94-bf16-state-v1",
+            "environment": environment,
+            "configuration_mode": "issue94-catalogue",
+            "selection": {
+                "shape_filters": [
+                    "newton_schulz_L32_b8192",
+                    "newton_schulz_L16_b8192",
+                ],
+                "variants": [config["variant"] for config in ISSUE94_CONFIGS],
+                "rows": [_issue94_row_metadata(config) for config in ISSUE94_CONFIGS],
+                "launches_per_row": args.launches_per_row,
+                "same_device_run": True,
+                "device_id": args.device_id,
+                "double_buffer": False,
+            },
+            "algorithm": {
+                "initial_value": "I / ||R||_infinity",
+                "iterations": 12,
+                "fuse_s": True,
+                "math_fidelity": "HiFi3",
+                "batch_reads": False,
+                "all_inputs_l1": True,
+                "all_outputs_dram": True,
+            },
+            "measurement": _issue94_power_metadata(args),
+            "results": results,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+        return 0
+    if args.issue94_correctness:
+        try:
+            results = _run_issue94_correctness(ttnn, device, args=args)
+        finally:
+            ttnn.close_device(device)
+        payload = {
+            "record_schema": "adr-0005-issue94-bf16-state-correctness-v1",
+            "environment": environment,
+            "configuration_mode": "issue94-correctness",
+            "selection": {
+                "cases": [
+                    {"size": size, "batch": batch}
+                    for size, batch in ISSUE94_CORRECTNESS_CASES
+                ],
+                "rows": [_issue94_row_metadata(config) for config in ISSUE94_CONFIGS],
+                "same_device_run": True,
+                "device_id": args.device_id,
+                "double_buffer": False,
+                "threshold": 0.01,
+                "references": [
+                    "BF16-rounded-R fixed-N=12 reference",
+                    "true inverse of original R",
+                ],
+            },
+            "algorithm": {
+                "initial_value": "I / ||R||_infinity from original unrounded R",
+                "iterations": 12,
+                "condition_number": 100.0,
+                "fuse_s": True,
+                "math_fidelity": "HiFi3",
+                "all_inputs_l1": True,
+                "all_outputs_dram": True,
+            },
+            "measurement": _issue94_power_metadata(args),
+            "results": results,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+        return 0
     if args.acceptance_catalogue:
         try:
             results = _run_acceptance_catalogue(

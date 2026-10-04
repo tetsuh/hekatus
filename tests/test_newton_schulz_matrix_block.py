@@ -20,6 +20,47 @@ def _ttnn():
     return SimpleNamespace(bfloat16="bf16", float32="fp32")
 
 
+def test_dest_slot_limit_is_controlled_by_fp32_accumulation_and_sync_mode():
+    assert newton_schulz_kernel._dest_slot_limit(
+        fp32_dest_acc_en=True, dst_full_sync_en=True
+    ) == 8
+    assert newton_schulz_kernel._dest_slot_limit(
+        fp32_dest_acc_en=False, dst_full_sync_en=True
+    ) == 16
+    assert newton_schulz_kernel._dest_slot_limit(
+        fp32_dest_acc_en=True, dst_full_sync_en=False
+    ) == 4
+
+
+def test_issue94_all_l1_inputs_and_dram_outputs_fit_every_required_row():
+    ttnn = _ttnn()
+    common = {
+        "core_count": 110,
+        "fuse_s": True,
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram",
+        "matrix_block": 4,
+    }
+    rows = (
+        ("bf16", True, "bf16", 1_008_384),
+        ("bf16", False, "bf16", 1_008_384),
+        ("bf16-fp32state", True, "fp32", 1_393_408),
+    )
+    for variant, fp32_dest_acc_en, state_dtype, expected in rows:
+        total = newton_schulz_kernel._validate_l1_preflight(
+            ttnn,
+            batch=8192,
+            state_dtype=state_dtype,
+            variant=variant,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            **common,
+        )
+        assert total == expected
+        assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
+
+
 @pytest.mark.parametrize("matrix_block", [1, 2, 4, 8])
 def test_supported_matrix_blocks_validate_and_scale_matrix_queues(matrix_block):
     newton_schulz_kernel._validate_matrix_block(matrix_block)
