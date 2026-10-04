@@ -880,7 +880,9 @@ def test_device_reload_r_matches_numpy_for_both_residency_paths(batch, reload_r)
     device = ttnn.open_device(device_id=0)
     try:
         matrices = random_hpd_batch(batch, 32, seed=95 + batch)
-        expected = newton_schulz_reference(matrices)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
+        )
         actual = run_newton_schulz_kernel(
             ttnn,
             device,
