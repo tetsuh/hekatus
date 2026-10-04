@@ -1380,8 +1380,10 @@ The resident row reaches **51.82917713218822 TFLOPS**; reloading R on every one
 of the fixed eight iterations reaches **31.33414466591468 TFLOPS**, **39.5434%
 lower** (the median launch is 65.1843% slower). The resident value remains
 within the existing roughly +/-2-4% repeatability context of the earlier 51.92
-TFLOPS headline, so the headline and roughly two-card extrapolation remain
-unchanged. The control does change attribution: R residency is a material
+TFLOPS headline, so the historical headline and its eight-iteration,
+roughly two-card extrapolation remain unchanged. Stage 2's twelve-iteration
+planning estimate is documented separately in §10. The control does change
+attribution: R residency is a material
 contributor to the resident throughput. The remaining difference is still a
 combined kernel result; this control does not claim that R is the sole
 bottleneck or separate dispatch and other fixed overheads. The companion power
@@ -2235,10 +2237,11 @@ A record, so the same debates are not repeated.
 
 The measured conclusions are deliberately bounded to the batch-8192 records.
 First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
-is materially above stock but below the 30% efficiency target. Applying the
-measured L=32 workload efficiency to the ~100 TFLOPS 1D all-mode estimate
-therefore gives about 2 cards; this is an extrapolation, not a full-system or
-all-mode benchmark. Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
+is materially above stock but below the 30% efficiency target. For the
+historical eight-iteration path, applying the measured L=32 workload
+efficiency to the ~100 TFLOPS 1D all-mode estimate therefore gives about 2
+cards; this is an extrapolation, not a full-system or all-mode benchmark.
+Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
 stock) and is faster in wall-clock than L=32 only as a cost/operation-volume
 comparison for the diagonal fallback, because it uses fewer logical dimensions
 and less work. It is not a beamspace-dimension reduction versus an MV

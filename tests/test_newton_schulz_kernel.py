@@ -265,10 +265,10 @@ class ReferenceTests(unittest.TestCase):
             reload_r=True,
         )
 
-        assert resident_reader == [8]
-        assert reload_reader == [8, 1, 0, 4, 1]
-        assert resident_compute == [8, 1, 0, 1, 4, 0]
-        assert reload_compute == [8, 1, 0, 1, 4, 1]
+        assert resident_reader == [NEWTON_SCHULZ_ITERATIONS]
+        assert reload_reader == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 4, 1]
+        assert resident_compute == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 1, 4, 0]
+        assert reload_compute == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 1, 4, 1]
 
         compute = (
             Path(__file__).parents[1]
@@ -319,7 +319,7 @@ class ReferenceTests(unittest.TestCase):
             matrix_block=4,
             reload_r=True,
         )
-        assert reader_args == [8, 1, 0, 4, 1]
+        assert reader_args == [NEWTON_SCHULZ_ITERATIONS, 1, 0, 4, 1]
         tensor_compile_args = [
             *reader_args,
             0,
@@ -368,10 +368,13 @@ class ReferenceTests(unittest.TestCase):
                 }
             )
 
-        assert [entry["page_count"] for entry in modeled_iterations] == [20, *([12] * 7)]
+        assert [entry["page_count"] for entry in modeled_iterations] == [
+            20,
+            *([12] * (NEWTON_SCHULZ_ITERATIONS - 1)),
+        ]
         assert [entry["byte_count"] for entry in modeled_iterations] == [
             57_344,
-            *([24_576] * 7),
+            *([24_576] * (NEWTON_SCHULZ_ITERATIONS - 1)),
         ]
         assert all(entry["page_count"] > 0 for entry in modeled_iterations)
         assert all(entry["byte_count"] > 0 for entry in modeled_iterations)
