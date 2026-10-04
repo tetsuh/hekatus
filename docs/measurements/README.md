@@ -69,6 +69,51 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json` | Issue #65 toolchain-separated default-only comparison: 68 rows (59 successful, 9 failed), image digest `sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4` in its environment block |
 | `2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1-power.csv` | Power, clock, and temperature trace for the 0.70.1 default-only comparison (88 samples); its provenance is the matching result record above |
 | `2026-08-23-host-iq-path-vs-golden.json` | The #6 measurement: the IQ path (front end + IQ DAS) against the RF golden on the development host — per-stage errors at L0 checkpoints 1 and 2, image difference, and the axial PSF at −6 / −20 / −40 dB at D=8 and D=4, on the provisional `linear-5mhz` profile. Written by `python -m enodia.spec.beamform.decimation_sweep --record`; summarized in design.md §5 and §15 |
+| `2026-10-02-host-newton-schulz-fidelity-switch-source-audit.json` | Board-free source audit of the pinned tt-metal math-fidelity path: descriptor and public compute APIs are kernel-wide, while matching direct LLK template specializations can be selected at source-level operation boundaries. |
+| `2026-10-03-host-newton-schulz-two-tile-source-audit.json` | Board-free audit of the pinned Blackhole `matmul_block`/unpack/math traversal for `ct=1, rt=2, kt=1`, including exact CB page order, DEST accumulation slots, and a NumPy R*X/X*S simulation. |
+| `2026-10-03-host-throughput-condition-audit.json` | Board-free audit of previous throughput artifacts: the 2.1945/25.0023 TFLOPS catalogue had Watcher attached while loaded power samples reached 1350 MHz. |
+| `2026-10-03-p150a-newton-schulz-l32-b8192-no-watcher-one-tile-catalog-1000.json` | Same-run no-Watcher rerun of stock best plus one-tile full-sync block 4 and half-sync block 2, all L1 inputs, L=32/batch-8192, 1,000 launches per row; loaded `aiclk_mhz` values were 1343 and 1350, and the wrapper stdout has no Watcher line. |
+| `2026-10-03-p150a-newton-schulz-l32-b8192-no-watcher-one-tile-catalog-1000-power.csv` | Power, clock, and temperature trace for the no-Watcher three-row throughput rerun above. |
+| `2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked.json` | Batch-4 Watcher correctness probe after the board-free audit: one-tile full/half pass at 0.00527355, two-tile full/half fail with exact-zero output at relative error 1.0; the later temporary diagnostic exit 137 triggered the required one reset and stopped further experiments. |
+| `2026-10-03-p150a-newton-schulz-two-tile-batch4-blocked-power.csv` | Power, clock, and temperature trace for the blocked batch-4 two-tile probe above. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked.json` | Minimal stage-a probe: batch 4, one iteration, matrix block 1, no DEST seed; all four `-R·X` products failed the 1e-2 NumPy gate, so stages b/c were not run. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked-power.csv` | Power, clock, and temperature trace for the first-failure stage-a probe above. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked.json` | Decomposed stage-a1 probe (k=0 only): real output tiles pass while imaginary output tiles fail, so a2/a3 and later stages were not run. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a1-blocked-power.csv` | Power, clock, and temperature trace for the first-failure a1 probe above. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json` | After the DEST-row fix, the batch-4 Watcher a3 probe passes all four matrices and both output tiles below the 1e-2 NumPy gate. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass-power.csv` | Power, clock, and temperature trace for the passing a3 probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json` | Seed-free K=3 stage b′: the BF16 `[2I; 0]` term is a third matmul contribution, and all four batch-4 matrices pass below the 1e-2 NumPy gate without DEST seeding. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass-power.csv` | Power, clock, and temperature trace for the passing b′ probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked.json` | Stage c then produced non-finite output for all four matrices; this numerical failure stopped the experiment without reset, batch-8192 validation, or throughput. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-blocked-power.csv` | Power, clock, and temperature trace for the blocked c probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass.json` | After explicit SrcA/SrcB format transitions, seed-free b′ followed by X·S passes batch 4 with maximum relative error 0.0020847. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass-power.csv` | Power, clock, and temperature trace for the passing c probe. |
+| `2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked.json` | Production batch-8192 two-tile correctness: both full-sync block 4 and half-sync block 2 fail the NumPy gate (3.2010 and 3.3318); no throughput was measured. |
+| `2026-10-03-p150a-newton-schulz-two-tile-b8192-correctness-blocked-power.csv` | Power, clock, and temperature trace for the blocked batch-8192 correctness run. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked.json` | First production staged run (batch 4, matrix block 1, one iteration) fails before later stages; the runner's norm metric overflowed while the downloaded output remained finite. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-blocked-power.csv` | Power, clock, and temperature trace for the first production staged run. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass.json` | After the board-free `-Xi` format fix, production stage A (batch 4, block 1, one iteration) passes with relative error 0.00006057. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-a-pass-power.csv` | Power, clock, and temperature trace for the passing production stage A. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-b-pass.json` | Production stage B (batch 4, block 1, eight iterations) passes with relative error 0.00432563. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-b-pass-power.csv` | Power, clock, and temperature trace for the passing production stage B. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass.json` | Production stage C (batch 4, block 2, eight iterations) passes with relative error 0.00432563. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-c-pass-power.csv` | Power, clock, and temperature trace for the passing production stage C. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass.json` | Production stage D (batch 4, block 4, eight iterations) passes with relative error 0.00432563. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-stage-d-pass-power.csv` | Power, clock, and temperature trace for the passing production stage D. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass.json` | Production batch-8192 full-sync block-4 correctness passes with relative error 0.00652210. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-full-pass-power.csv` | Power, clock, and temperature trace for the passing batch-8192 full-sync run. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass.json` | Production batch-8192 half-sync block-2 correctness passes with relative error 0.00652210. |
+| `2026-10-03-p150a-newton-schulz-production-two-tile-b8192-half-pass-power.csv` | Power, clock, and temperature trace for the passing batch-8192 half-sync run. |
+| `2026-10-03-p150a-newton-schulz-two-tile-mixed-memory-catalogue-1000.json` | Same no-Watcher device run with 1,000 launches per row: current one-tile all-L1 and executable two-tile DRAM-placement full/half rows, plus stock context. |
+| `2026-10-03-p150a-newton-schulz-two-tile-mixed-memory-catalogue-1000-power.csv` | Power, clock, and temperature trace for the mixed-placement throughput catalogue. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked.json` | The prior batch-4 Watcher b probe entered exit 137 before producing a result; the required single reset and Stage-1 recovery followed, so c and batch 8192 were not attempted. |
+| `2026-10-03-p150a-newton-schulz-two-tile-probe-b-blocked-power.csv` | Power, clock, and temperature trace for the blocked b probe. |
+| `2026-10-03-p150a-stage1-health-after-two-tile-b-reset.json` | Required post-reset Stage-1 health probe after the b abnormal exit: pass at relative error 0.004564372822642326, with cleanup clear. |
+| `2026-10-03-p150a-stage1-health-after-two-tile-b-reset-power.csv` | Power, clock, and temperature trace for the post-reset health probe. |
+| `2026-10-03-p150a-stage1-health-after-two-tile-debug-reset.json` | Required post-reset Stage-1 health probe: pass at relative error 0.004564372822642326, with cleanup checks clear. |
+| `2026-10-03-p150a-stage1-health-after-two-tile-debug-reset-power.csv` | Power, clock, and temperature trace for the post-reset health probe above. |
+| `2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000.json` | First device fidelity-split measurement: legacy all-HiFi3 and direct-LLK `0+8` pass the batch-8192 NumPy gate; `4+4` and `6+2` fail, so only the passing forms receive same-run 1,000-launch throughput rows. |
+| `2026-10-02-p150a-newton-schulz-l32-b8192-fidelity-split-catalog-1000-power.csv` | Power and clock trace for the fidelity-split comparison above. |
 | `2026-09-27-p150a-newton-schulz-l32-b8192.json` | Issue #63: L=32, batch 8192 fixed-eight-iteration Newton-Schulz throughput; same-run stock `ttnn.matmul` and `custom_newton_schulz` rows, with correctness evidence and per-launch P50/P99/P99.9. The companion power trace shares the stem. |
 | `2026-09-27-p150a-newton-schulz-l32-b8192-stock-catalogue-merge.json` | Supersedes the preceding Issue #63 record after the stock catalogue merge; repeats the same device-0 stock/custom comparison with the merged runner's default-only mode. |
 | `2026-09-27-p150a-newton-schulz-l32-b8192-catalog-1000.json` | Supersedes the preceding Issue #63 throughput record; measures the complete stock configuration catalogue and custom row in one run with 1,000 launches per row for P99.9. |
@@ -108,6 +153,7 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 
 **Correction (peak fidelity, 2026-10-03).** `2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json` associates the 332 TFLOPS BF16 peak with LoFi and derives HiFi2/HiFi3/HiFi4 reference peaks of 166.0/110.7/83.0 TFLOPS from it. The record states that association as an inference; it does not hold. tt-metal's `tech_reports/GEMM_FLOPS/GEMM_FLOPS.md` gives the ideal cycles per tile product as 16 (LoFi), 32 (HiFi2), 48 (HiFi3) and 64 (HiFi4), or about 5.4 TFLOPS per matrix engine at LoFi and 1.35 GHz, and `docs/design.md` §2 lists Block FP8 at 664 TFLOPS beside BF16 at 332. The 332 figure is therefore the HiFi2-rate BF16 peak, and the LoFi rate is about twice it. The record is not rewritten; its efficiency figures remain correct against the 332 denominator, while its derived per-fidelity reference peaks should be read as half their true values.
 
+All imported JSON records retain their source `harness_commit` values unchanged. Full commit resolution for every recorded value was verified on the retained `feat/63-fidelity-split-diagnostics` branch, which is the provenance authority for these diagnostics; some of those commits are also reachable from `main`. Companion CSV traces inherit provenance from the matching JSON stem.
 
 Results are not rewritten. A measurement that turns out to be wrong, or is
 retaken on a corrected harness, is superseded by a later record that says

@@ -1,0 +1,331 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T02:14:28.894862+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "3e06fa8c926ec6d2916990c70a8b04f1f8894ea4",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "configuration_mode": "issue_63_two_tile_minimal_probe",
+  "selection": {
+    "stage": "a",
+    "stage_index": 0,
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "device_id": 0,
+    "input_memory": "dram",
+    "output_memory": "dram",
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state"
+  },
+  "measurement": {
+    "kind": "device_two_tile_minimal_probe",
+    "stage": "a",
+    "watcher": true,
+    "container_timeout_s": 60,
+    "named_container": true,
+    "same_device_run": true,
+    "device_id": 0,
+    "power_trace": "power-20261003T021428Z.csv",
+    "power_clock_provenance": {
+      "trace": "2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked-power.csv",
+      "columns": [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c"
+      ],
+      "clock_column": "aiclk_mhz",
+      "power_column": "power_w",
+      "temperature_column": "asic_temp_c",
+      "sampling_source": "tt-smi snapshot",
+      "observed_aiclk_mhz": [
+        800,
+        1350
+      ],
+      "loaded_aiclk_mhz": [
+        1350
+      ],
+      "trace_sha256": "137bcf894972cb52e65009638c544b908e11ea7106da9114dbc9be4636e53727"
+    },
+    "environment_provenance": {
+      "source": "--env-json",
+      "record_field": "environment",
+      "adr": "ADR-0005"
+    },
+    "command": "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 HEKATUS_TT_RUNNER=tools/newton_schulz_two_tile_probe.py ./enodia/tt/bench/run_in_container.sh <absolute-out-dir> -- --stage a --out /out/probe-stage-a.json",
+    "harness_commit": "3e06fa8c926ec6d2916990c70a8b04f1f8894ea4",
+    "harness_dirty": false,
+    "source_audit_record": "docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json",
+    "reset": {
+      "performed": false,
+      "reason": "numerical mismatch; reset is prohibited by the protocol"
+    },
+    "cleanup": {
+      "containers_remaining": false,
+      "device_users_remaining": false,
+      "wrapper_exit_status": 1,
+      "device_exit_status": 0
+    },
+    "stopped_after_stage": "a",
+    "stages_not_run": [
+      "b",
+      "c"
+    ],
+    "stop_reason": "stage a numerical mismatch exceeded the 1e-2 gate",
+    "watcher_check": {
+      "environment_variable": "TT_METAL_WATCHER=1",
+      "wrapper_environment_entry": true,
+      "stdout_artifact": "2026-10-03-p150a-newton-schulz-two-tile-probe-a-blocked-stdout.log",
+      "stdout_sha256": "c44d11071a5925c3af6f8be03fa3b8c6fac5e0ef8ef8acebd91c9567021ff6da",
+      "stdout_bytes": 5569,
+      "watcher_attach_confirmed": true,
+      "watcher_log_line_count": 7
+    },
+    "source_sha256": {
+      "enodia/tt/bench/kernels/two_tile_probe_reader.cpp": "7dfbed51e1a1f02a63f163bb30857806d69f4d464b2fc0c85b657b2918c07323",
+      "enodia/tt/bench/kernels/two_tile_probe_compute.cpp": "281367b0c8cd91cd5d99462755944258805b96f654f53994cebe8f9a170ec86c",
+      "enodia/tt/bench/kernels/two_tile_probe_writer.cpp": "b06c14ea0ce09e1f95951d022c7058ccce01f5c583ea3e6675e77703ff00b8f8",
+      "enodia/tt/bench/two_tile_probe.py": "9a488b2b79320c6934c53a07b7e006cdd21a83c18973784a2c734f10a35c3649",
+      "tools/newton_schulz_two_tile_probe.py": "7edb07999d7ecb3124d24f7535e4bb4c31982d6964eb90df89cd0438f03abdc6"
+    },
+    "result_sha256": "fca1831c88c9bb04723f0e597ef331d66b915f9197281ee9b19323d6f735427f",
+    "result_bytes": 6154,
+    "power_trace_sha256": "137bcf894972cb52e65009638c544b908e11ea7106da9114dbc9be4636e53727",
+    "notes": [
+      "Stage a is the first numerical failure: all four finite outputs exceeded the 1e-2 gate.",
+      "Per protocol, no reset was performed after the numerical failure and stages b/c were not run.",
+      "The wrapper exited with status 1 because the probe returned the numerical failure; device and container cleanup completed normally."
+    ]
+  },
+  "source_host_report": {
+    "source_files": [
+      "enodia/tt/bench/kernels/two_tile_probe_reader.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_compute.cpp",
+      "enodia/tt/bench/kernels/two_tile_probe_writer.cpp",
+      "enodia/tt/bench/two_tile_probe.py"
+    ],
+    "contract": {
+      "stage": "a",
+      "operation": "R·X",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": "CB_TWO_TILE_R",
+        "in1": "CB_TWO_TILE_S",
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 3,
+        "reserve": 3,
+        "push": 3,
+        "pop": 9
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    },
+    "in0": "CB_TWO_TILE_R for a/b, CB_TWO_TILE_X for c; matmul maps it to SrcB",
+    "in1": "CB_TWO_TILE_S; matmul maps it to SrcA",
+    "dest_slots": [
+      0,
+      1
+    ],
+    "tile_regs_sequence": [
+      "acquire",
+      "commit",
+      "wait",
+      "release"
+    ],
+    "cb_wait_reserve_push_pop": {
+      "wait": 3,
+      "reserve": 3,
+      "push": 3,
+      "pop": 9
+    }
+  },
+  "result": {
+    "stage": "a",
+    "status": "fail",
+    "batch": 4,
+    "iterations": 1,
+    "matrix_block": 1,
+    "relative_errors": [
+      0.7095628976821899,
+      0.6930240392684937,
+      0.7105450630187988,
+      0.6807436347007751
+    ],
+    "max_relative_error": 0.7105450630187988,
+    "tolerance": 0.01,
+    "finite": true,
+    "expected": "independent NumPy probe oracle with BF16-rounded R",
+    "host_input_seed": {
+      "r": 6300,
+      "x": 6301
+    },
+    "contract": {
+      "stage": "a",
+      "operation": "R·X",
+      "matmul_dimensions": {
+        "rt": 2,
+        "ct": 1,
+        "kt": 1
+      },
+      "in0_register": "SrcB",
+      "in1_register": "SrcA",
+      "tile_traversal": {
+        "r_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ],
+        "x_column_pages": [
+          "B00",
+          "B10"
+        ],
+        "x_block_pages": [
+          "A00",
+          "A10",
+          "A01",
+          "A11"
+        ]
+      },
+      "dest_slots": [
+        0,
+        1
+      ],
+      "dest_seed": "none",
+      "tile_regs_sequence": [
+        "acquire",
+        "commit",
+        "wait",
+        "release"
+      ],
+      "cb_order": {
+        "in0": "CB_TWO_TILE_R",
+        "in1": "CB_TWO_TILE_S",
+        "outputs": [
+          "CB_OUTPUT_REAL",
+          "CB_OUTPUT_IMAG"
+        ]
+      },
+      "cb_counts": {
+        "wait": 3,
+        "reserve": 3,
+        "push": 3,
+        "pop": 9
+      },
+      "batch": 4,
+      "matrix_block": 1,
+      "iterations": 1
+    }
+  },
+  "failure": {
+    "type": "numerical_mismatch",
+    "stage": "a",
+    "max_relative_error": 0.7105450630187988,
+    "relative_errors": [
+      0.7095628976821899,
+      0.6930240392684937,
+      0.7105450630187988,
+      0.6807436347007751
+    ],
+    "tolerance": 0.01,
+    "finite": true
+  }
+}

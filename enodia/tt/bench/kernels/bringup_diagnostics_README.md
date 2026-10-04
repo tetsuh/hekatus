@@ -17,6 +17,13 @@ This is the standalone contract for ordinary numerical bring-up. The Stage
   unpack-side `reconfig_data_format` and pack-side
   `pack_reconfig_data_format`. Full common initialization is not used
   mid-kernel.
+- **Two-tile DEST base:** For `rt=2`, pass the block-base DEST index; the
+  output rows use that index and the next slot. Evidence: `docs/measurements/2026-10-03-host-newton-schulz-two-tile-source-audit.json`
+  and `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-a3-pass.json`.
+- **Constant K term:** Add a constant term as another matmul K term, not as a
+  DEST seed. Evidence: `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-b-prime-pass.json`.
+- **Separate source reconfiguration:** On a format change, reconfigure `SrcA`
+  and `SrcB` independently before the operation. Evidence: `docs/measurements/2026-10-03-p150a-newton-schulz-two-tile-probe-c-pass.json`.
 - **Initialization order:** After the first matmul-family call, no
   `*_init_common` may occur in a normal compute kernel; use short init plus
   explicit reconfiguration instead. The static test applies this rule to

@@ -1,0 +1,81 @@
+{
+  "status": "completed",
+  "environment": {
+    "captured_at": "2026-10-02T15:36:34+00:00",
+    "board": null,
+    "platform": "Linux",
+    "machine_architecture": "x86_64",
+    "cpu": "x86_64",
+    "python": "3.12.3",
+    "numpy": "2.4.2",
+    "scipy": "not installed",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "harness_commit": "7091cef72436af6bee06b05f3b7a3c253cbbefc1",
+    "harness_dirty": false,
+    "tt_metal_source_revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+    "tt_metal_source_revision_note": "The release image does not embed a source revision; this is the repository's prior source audit revision for the pinned image."
+  },
+  "measurement": {
+    "kind": "board_free_source_audit",
+    "question": "Can one compute kernel select math fidelity per operation or iteration?",
+    "reference_scope": "Pinned tt-metal release source audit; no board execution",
+    "source_audit_method": "Read the descriptor, JIT, public compute, and Blackhole LLK sources from the pinned-release source audit.",
+    "conclusion": "ComputeConfigDescriptor selects one math fidelity per compute KernelDescriptor. The public matmul_block_init and matmul_block APIs do not accept a fidelity argument and both use the compile-time MATH_FIDELITY descriptor. The Blackhole LLK wrappers expose fidelity as a C++ template parameter, so one compute-kernel source can contain matching HiFi2 and HiFi3 LLK specializations and reinitialize the matmul MOP between operations. This is compile-time specialization, not a runtime fidelity switch, and requires a custom direct-LLK path rather than the public matmul_block wrappers.",
+    "findings": [
+      {
+        "topic": "descriptor_scope",
+        "sources": [
+          "tt_metal/api/tt-metalium/program_descriptors.hpp:98-106",
+          "tt_metal/impl/kernels/kernel.cpp:836-844"
+        ],
+        "evidence": "ComputeConfigDescriptor has one math_fidelity field, and ComputeKernel::set_build_options copies that field into the JIT build options for the compute kernel.",
+        "result": "One fidelity per compute kernel descriptor."
+      },
+      {
+        "topic": "compile_time_binding",
+        "sources": [
+          "tt_metal/jit_build/genfiles.cpp:774-783"
+        ],
+        "evidence": "The JIT emits constexpr ckernel::MathFidelity MATH_FIDELITY into the generated compute descriptors.",
+        "result": "The descriptor value is compile-time state visible to the whole compute-kernel translation unit, not a runtime operation argument."
+      },
+      {
+        "topic": "public_compute_api",
+        "sources": [
+          "tt_metal/hw/inc/api/compute/matmul.h:170-242"
+        ],
+        "evidence": "matmul_block_init invokes llk_math_matmul_init<MATH_FIDELITY, MM_THROTTLE>, and matmul_block invokes llk_math_matmul<MATH_FIDELITY, MM_THROTTLE>. Neither public function has a math-fidelity parameter.",
+        "result": "The existing matmul_block path cannot switch fidelity per operation or iteration."
+      },
+      {
+        "topic": "direct_llk_specialization",
+        "sources": [
+          "tt_metal/hw/ckernels/blackhole/metal/llk_api/llk_math_matmul_api.h:11-60",
+          "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_matmul.h:658-732"
+        ],
+        "evidence": "llk_math_matmul_init<math_fidelity> forwards the template value to _llk_math_matmul_init_<math_fidelity>, and llk_math_matmul<math_fidelity> forwards it to _llk_math_matmul_<math_fidelity>. The LLK implementation derives fidelity phases and MOP structure from that template value.",
+        "result": "A custom compute source can instantiate distinct matching fidelity pairs and reinitialize the LLK matmul state at an operation boundary."
+      },
+      {
+        "topic": "matching_init_and_execute",
+        "sources": [
+          "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_matmul.h:692-732"
+        ],
+        "evidence": "The LLK documentation requires _llk_math_matmul_ to use matching template arguments after _llk_math_matmul_init_. The fidelity controls replay phases and address-mod state.",
+        "result": "The HiFi2/HiFi3 path must pair init and execute at the same fidelity; changing only init or only execute is not valid."
+      }
+    ],
+    "decision_for_stage_2": {
+      "use_single_kernel": "yes, subject to board JIT validation",
+      "implementation_route": "Direct matching llk_math_matmul_init<F> and llk_math_matmul<F> specializations behind a small compute-kernel helper.",
+      "public_descriptor_route": "not sufficient",
+      "runtime_switch": "not available; choose the specialization at compile time at each source-level operation boundary",
+      "fallback": "If the pinned image rejects the direct-LLK source or the board run is not live, use two diagnostic launches and mark throughput as out of scope."
+    },
+    "limitations": [
+      "This record is source evidence only and does not establish that the custom direct-LLK source compiles or runs on p150a.",
+      "No host or board execution was used for this audit."
+    ]
+  }
+}
