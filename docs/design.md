@@ -2283,9 +2283,9 @@ PR head. These are measured dispatch timings, not the theoretical planning
 multipliers above, and they do not establish M5 image quality.
 
 The same record separates input representation from solver error: at κ=100,
-BF16 rounding of `R` moves the inverse by about 2e-2, the MV direction by
-2.5e-4, and the beam pattern by 1.4e-2 against the unrounded truth, while the
-kernel is about 3.7e-3 from the BF16-`R` reference. The production `R` format
+BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by
+2.52e-4, and the beam pattern by 1.42e-2 against the unrounded truth, while the
+kernel is about 3.67e-3 from the BF16-`R` reference. The production `R` format
 remains a follow-up decision; no FP32-`R` device variant has been measured.
 
 ### Investigation items
