@@ -1,0 +1,487 @@
+{
+  "record_schema": "adr-0005-board-diagnostic-v1",
+  "status": "completed",
+  "diagnostic_only": true,
+  "throughput_headline_allowed": false,
+  "what": "Issue #92 acceptance-condition-4 diagnostic profiling of the Newton-Schulz block circular-buffer windows",
+  "issue": "#92",
+  "pull_request": "#93",
+  "scope_note": "This record must not be used as a throughput headline or to replace any prior throughput, correctness, or error record.",
+  "source": {
+    "archive_commit": "edc60e9c5c625abfe409a05c7be24558f11bf789",
+    "archive_sha256": "9884d2829a0f8f8f7a5c23961302cb946346e132c25234e132c3d61f06868f52",
+    "archive_exclusions_verified": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ],
+    "harness_commit": "edc60e9c5c625abfe409a05c7be24558f11bf789",
+    "harness_dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh"
+  },
+  "environment": {
+    "captured_at": "2026-10-04T15:21:01.642363+00:00",
+    "board_inventory": 2,
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "bus_id": "0000:06:00.0",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "dm_app_fw": "0.22.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "eth_fw": "0.0.0",
+      "gddr_fw": "2.12"
+    },
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "device_id": 0,
+    "device_node": "/dev/tenstorrent/0",
+    "toolchain": {
+      "image_tag": "localhost/hekatus-tt-metal-v0750-profiler-runtime:run-1",
+      "image_repo_digest": "localhost/hekatus-tt-metal-v0750-profiler-runtime@sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
+      "image_local_id": "sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
+      "tt_metal_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+      "tt_metal_submodules": {
+        "models/demos/t3000/llama2_70b/reference/llama": "29125b7ad8b5513eeaa4417ed92892bf39c8bd74",
+        "tt_metal/third_party/tracy": "27221a69789f24d492135093e096b978b4ca3a68",
+        "tt_metal/third_party/tt-cluster-descriptors": "7b2176e2fe913089f8cd2be9dfb738ead6e7aa27",
+        "tt_metal/third_party/umd": "bc77ac2f7382ffeb9fa5430055f0854d53979489"
+      },
+      "build_reuse": {
+        "rebuilt": false,
+        "cmake_build_type": "Release",
+        "enable_tracy": true,
+        "generated_tracy_define": "-DTRACY_ENABLE",
+        "verified_artifacts": [
+          "build_Release/lib/libtracy.so.0.13.3",
+          "build_Release/bin/tracy-capture",
+          "build_Release/bin/tracy-csvexport",
+          "build_Release/generated/profiler/tracy_debug_categories_generated.hpp"
+        ],
+        "device_profiler_environment": "TT_METAL_DEVICE_PROFILER=1"
+      }
+    },
+    "fixed_health_image": {
+      "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+      "local_image_id": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+    }
+  },
+  "algorithm": {
+    "kernel": "custom_newton_schulz",
+    "matrix_size": 32,
+    "batch": 8192,
+    "physical_tile_count": 8192,
+    "matrix_block": 4,
+    "fuse_s": true,
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state",
+    "state_format": "FP32",
+    "iterations": 12,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "device_id": 0
+  },
+  "l1_preflight": {
+    "per_core_budget_bytes": 1572864,
+    "compute_grid": [
+      11,
+      10
+    ],
+    "profile_enabled": true,
+    "one_window_bytes": 1405696,
+    "two_window_bytes": 1495808,
+    "one_window_fits": true,
+    "two_window_fits": true
+  },
+  "commands": {
+    "health_probe": "TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=tools/newton_schulz_bringup.py HEKATUS_TT_IMAGE=<fixed-health-image> HEKATUS_TT_CONTAINER_TIMEOUT_S=60 timeout 60s ./enodia/tt/bench/run_in_container.sh <out-dir> -- --stage 1",
+    "one_window_profile": "env -u TT_METAL_WATCHER TT_METAL_DEVICE_PROFILER=1 HEKATUS_TT_IMAGE=<tracy-runtime-image> HEKATUS_TT_CONTAINER_TIMEOUT_S=60 timeout 60s ./enodia/tt/bench/run_in_container.sh <out-dir> -- --device-id 0 --only newton_schulz_L32_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --profile --profile-csv /out/generated/profiler/.logs/profile_log_device.csv --iters 1 --repeats 1",
+    "two_window_profile": "env -u TT_METAL_WATCHER TT_METAL_DEVICE_PROFILER=1 HEKATUS_TT_IMAGE=<tracy-runtime-image> HEKATUS_TT_CONTAINER_TIMEOUT_S=60 timeout 60s ./enodia/tt/bench/run_in_container.sh <out-dir> -- --device-id 0 --only newton_schulz_L32_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --profile --profile-csv /out/generated/profiler/.logs/profile_log_device.csv --double-buffer --iters 1 --repeats 1",
+    "counter_diagnostic": "official tracy.process_model_log.run_device_profiler with the direct run_matmul.py command, capture_perf_counters_groups=[all], is_command_binary_exe=true, TT_METAL_LOGS_PATH=/out",
+    "noc_diagnostic": "python3 -m tracy -p -r --collect-noc-traces --no-capture-tool --check-exit-code -o /out/tracy-noc-one-window -t 5000 /work/enodia/tt/bench/run_matmul.py <common-configuration>"
+  },
+  "health_probe": {
+    "status": "pass",
+    "watcher": true,
+    "batch": 1,
+    "relative_error": 0.004564372822642326,
+    "tolerance": 0.01,
+    "elapsed_s": 0.33441855099999884,
+    "external_timeout_s": 60,
+    "docker_ps_before": 0,
+    "docker_ps_after": 0,
+    "stdout_log_sha256": "8a94a7fde3f6ef9fe66ed2180dd139156b72f5ddb3b5711d674b3e9bb763f3b7"
+  },
+  "main_profiles": [
+    {
+      "label": "one-window",
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": false,
+      "batch": 8192,
+      "external_timeout_s": 60,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "l1_preflight_bytes": 1405696,
+      "single_sample_elapsed_s": 0.0010123630000293815,
+      "result_artifact": "results-20261004T151951Z.json",
+      "profile_csv_artifact": "profile_log_device.csv",
+      "result_sha256": "319eceaa373b2a9c2d8848bd8da1566604cd62603e7bbee66d2790f52ad980bc",
+      "profile_csv_sha256": "e2643e7ab39627b0c18ca6753ae1f8d1424a29892bd6edda400d603327602190",
+      "cycle_counter_profile": {
+        "clock": "get_timestamp_32b_lower_32_wall_clock",
+        "profile_transport_complete": true,
+        "named_sections_cover_total": false,
+        "NCRISC": {
+          "total_cycles": 992120,
+          "cb_wait_cycles": 827742,
+          "cb_wait_share": 0.83432,
+          "noc_read_cycles": 161202,
+          "noc_read_share": 0.16248,
+          "residual_cycles": 3176
+        },
+        "BRISC": {
+          "total_cycles": 1039370,
+          "cb_wait_cycles": 1010982,
+          "cb_wait_share": 0.97269,
+          "noc_write_cycles": 26717,
+          "noc_write_share": 0.02570,
+          "residual_cycles": 1671
+        },
+        "TRISC0": {
+          "total_cycles": 1037214,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 1037214
+        },
+        "TRISC1": {
+          "total_cycles": 1036924,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 1036924
+        },
+        "TRISC2": {
+          "total_cycles": 1037741,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 1037741
+        }
+      },
+      "device_profiler_csv": {
+        "run_host_id": 2048,
+        "measurement_core_coordinates": [
+          1,
+          2
+        ],
+        "whole_kernel_intervals_cycles": {
+          "NCRISC": 995419,
+          "BRISC": 1044103,
+          "TRISC0": 1037570,
+          "TRISC1": 1038087,
+          "TRISC2": 1038311
+        },
+        "compute_zone": "NS-COMPUTE-TOTAL",
+        "compute_zone_intervals_cycles": {
+          "TRISC0": 1037513,
+          "TRISC1": 1038029,
+          "TRISC2": 1038259
+        },
+        "csv_header_variant": "zone name/type/run host ID/RISC processor type",
+        "host_parser_note": "The repository parser expects the older zone phase/Run ID header; these values were decoded from the pinned image CSV with an offline compatibility parser."
+      }
+    },
+    {
+      "label": "two-window",
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": false,
+      "batch": 8192,
+      "external_timeout_s": 60,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "l1_preflight_bytes": 1495808,
+      "single_sample_elapsed_s": 0.0009291270000062468,
+      "result_artifact": "results-20261004T152101Z.json",
+      "profile_csv_artifact": "profile_log_device.csv",
+      "result_sha256": "c28ec7adaa3f182bdc8a2504094c04a9f47953b4319084a13047fef3292b0e5d",
+      "profile_csv_sha256": "ffc7c779aa0484c53a857f86673ad84bae6de2ecfb3afdeacd08e9544c766844",
+      "cycle_counter_profile": {
+        "clock": "get_timestamp_32b_lower_32_wall_clock",
+        "profile_transport_complete": true,
+        "named_sections_cover_total": false,
+        "NCRISC": {
+          "total_cycles": 805300,
+          "cb_wait_cycles": 637580,
+          "cb_wait_share": 0.79173,
+          "noc_read_cycles": 164381,
+          "noc_read_share": 0.20412,
+          "residual_cycles": 3339
+        },
+        "BRISC": {
+          "total_cycles": 891232,
+          "cb_wait_cycles": 862972,
+          "cb_wait_share": 0.96829,
+          "noc_write_cycles": 26503,
+          "noc_write_share": 0.02974,
+          "residual_cycles": 1757
+        },
+        "TRISC0": {
+          "total_cycles": 888513,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 888513
+        },
+        "TRISC1": {
+          "total_cycles": 888214,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 888214
+        },
+        "TRISC2": {
+          "total_cycles": 889023,
+          "named_wait_cycles": 0,
+          "named_active_cycles": 0,
+          "unclassified_cycles": 889023
+        }
+      },
+      "device_profiler_csv": {
+        "run_host_id": 2048,
+        "measurement_core_coordinates": [
+          1,
+          2
+        ],
+        "whole_kernel_intervals_cycles": {
+          "NCRISC": 808594,
+          "BRISC": 895937,
+          "TRISC0": 888885,
+          "TRISC1": 889424,
+          "TRISC2": 889611
+        },
+        "compute_zone": "NS-COMPUTE-TOTAL",
+        "compute_zone_intervals_cycles": {
+          "TRISC0": 888828,
+          "TRISC1": 889366,
+          "TRISC2": 889559
+        },
+        "csv_header_variant": "zone name/type/run host ID/RISC processor type",
+        "host_parser_note": "The repository parser expects the older zone phase/Run ID header; these values were decoded from the pinned image CSV with an offline compatibility parser."
+      }
+    }
+  ],
+  "performance_counters": {
+    "status": "pass",
+    "scope": "one-window only",
+    "official_tool": "tracy.process_model_log.run_device_profiler",
+    "counter_groups": [
+      "all"
+    ],
+    "multipass": true,
+    "multipass_passes": [
+      "all (L1 bank 0)",
+      "fpu, pack, unpack, l1_1, instrn (L1 bank 1)"
+    ],
+    "replayed_workload": true,
+    "report_rows": 2,
+    "report_artifact": "ops_perf_results_2026_10_04_15_26_27.csv",
+    "report_sha256": "1d8645c6d0ea9fb18a0c2f18d483285a374ffd7debfe900cf9e0893732d64e3d",
+    "metrics_percent": {
+      "math_fidelity": "HiFi3",
+      "math_util_median_range": [
+        35.63862970599092,
+        35.67909072287391
+      ],
+      "unpacker_write_efficiency_avg_range": [
+        89.85519355984707,
+        89.8963626707546
+      ],
+      "packer_efficiency_avg_range": [
+        75.58558550323163,
+        75.59844934476075
+      ],
+      "unpacker_idle_wait_avg_range": [
+        12.930780356439396,
+        12.950379301668818
+      ],
+      "math_idle_wait_avg_range": [
+        0.5110193992008973,
+        0.5117562753970224
+      ],
+      "pack_idle_wait_avg_range": [
+        2.131733093821047,
+        2.13213706297453
+      ],
+      "thread_stall_avg_ranges": {
+        "unpack_thread_t0": [
+          16.797315787491023,
+          16.839485770663735
+        ],
+        "math_thread_t1": [
+          22.24624133057334,
+          22.444060497434098
+        ],
+        "pack_thread_t2": [
+          56.37487928142017,
+          56.56814068139432
+        ]
+      },
+      "data_hazard_stall_avg": 0.0,
+      "fidelity_stall_avg": 0.0,
+      "math_dest_write_port_stall_avg_range": [
+        0.0040516781597787765,
+        0.0040660147161451715
+      ],
+      "math_scoreboard_stall_avg_range": [
+        0.0040516781597787765,
+        0.0040660147161451715
+      ],
+      "instruction_available_avg_ranges": {
+        "unpack_t0": [
+          22.23482101729926,
+          22.273140109756465
+        ],
+        "math_t1": [
+          73.52620519410242,
+          73.71808907139697
+        ],
+        "pack_t2": [
+          13.5827331026032,
+          13.602314430164462
+        ]
+      }
+    },
+    "two_window_collected": false,
+    "limitations": [
+      "Counters are a one-window diagnostic only.",
+      "The official all-group mode replayed the workload in two L1-bank passes; these are not throughput samples."
+    ]
+  },
+  "noc": {
+    "status": "pass",
+    "scope": "one-window only",
+    "runs": [
+      1024,
+      2048
+    ],
+    "trace_artifacts": [
+      {
+        "file": "noc_trace_dev0_ID1024.json",
+        "sha256": "193396dfce85a6b5a0f789e61f17e8260c0cfea68f1c86524ad49004f5c93eca"
+      },
+      {
+        "file": "noc_trace_dev0_ID2048.json",
+        "sha256": "1878e396fe48a25e91133efc63baa4bd62e91098c66e7e45f8651c21c3c4d278"
+      }
+    ],
+    "run_2048_all_cores": {
+      "NCRISC": {
+        "read_events": 41180,
+        "read_bytes": 118116352,
+        "noc": "NOC_0",
+        "read_barrier_start_events": 41180,
+        "read_barrier_end_events": 41180
+      },
+      "BRISC": {
+        "write_events": 16384,
+        "write_bytes": 67108864,
+        "noc": "NOC_1",
+        "write_barrier_start_events": 2048,
+        "write_barrier_end_events": 2048
+      },
+      "TRISC0": {
+        "noc_transfer_events": 0
+      },
+      "TRISC1": {
+        "noc_transfer_events": 0
+      },
+      "TRISC2": {
+        "noc_transfer_events": 0
+      }
+    },
+    "run_2048_measurement_core": {
+      "coordinates": [
+        1,
+        2
+      ],
+      "NCRISC_read_events": 382,
+      "NCRISC_read_bytes": 1095680,
+      "BRISC_write_events": 152,
+      "BRISC_write_bytes": 622592
+    },
+    "two_window_collected": false,
+    "interpretation_note": "NoC counts identify reader reads and writer writes; overlap with RISC intervals is not treated as causal proof."
+  },
+  "interpretation": {
+    "evidence_level": "sufficient to identify compute-side remaining bottleneck candidates; insufficient for exclusive phase causality",
+    "block_boundary_io": {
+      "status": "supported",
+      "evidence": [
+        "NCRISC reader and BRISC writer spend most of their time waiting for compute: in the two-window case NCRISC CB-empty wait is 79.173% and BRISC CB/output wait is 96.829%. These are producer/consumer waits because compute has not consumed or returned the buffers, not evidence that data movement blocks compute.",
+        "The one-window-to-two-window whole-kernel intervals fall from NCRISC 995419 to 808594 cycles, BRISC 1044103 to 895937 cycles, and TRISC0-2 approximately 1037570-1038311 to 888885-889611 cycles; the full interval is approximately 15% shorter.",
+        "The recorded NoC volume is 118116352 bytes read plus 67108864 bytes written per launch. Using the recorded approximately 0.774 ms launch interval, this derives 185225216 / 0.000774 seconds = approximately 239-240 GB/s aggregate decimal bandwidth, or approximately 2.17-2.18 GB/s per 110 cores (rounded to approximately 240 GB/s and 2 GB/s/core). This is a derived diagnostic estimate, not a new measurement.",
+        "The one-window NoC trace shows the expected external reader and writer transfers, while the two-window change preserves the same block operation configuration."
+      ]
+    },
+    "intra_core_handoff": {
+      "status": "primary_remaining_candidate",
+      "evidence": [
+        "One-window stored counters report math/FPU utilization of about 36% from math_util_median_range 35.63862970599092-35.67909072287391%, math-thread idle wait of about 0.51% from math_idle_wait_avg_range 0.5110193992008973-0.5117562753970224%, unpack-thread instruction availability of about 22% from instruction_available_avg_ranges.unpack_t0 22.23482101729926-22.273140109756465%, and pack-thread stall of about 56% from thread_stall_avg_ranges.pack_thread_t2 56.37487928142017-56.56814068139432%. These are raw counters; distinctions among thread stall, idle wait, instruction availability, and packer efficiency are not established, so pack-side behavior is not assigned a causal role.",
+        "The corresponding raw instruction-availability values are math 73.52620519410242-73.71808907139697%, unpack 22.23482101729926-22.273140109756465%, and pack 13.5827331026032-13.602314430164462%; under the tag-local definition these are TYPE_INSTRN_AVAILABLE_N / ref_cnt * 100 availability/pending fractions, including time waiting to issue, not issued-instruction shares. No distinct THREAD_INSTRUCTIONS_N-derived issue-rate field is present in the captured report. The remaining roughly 64% cannot be distinguished without kernel-internal zones: it may be per-tile instruction overhead for kt=1 (one-tile matrix) or DEST/CB synchronization among the three threads.",
+        "The low FPU utilization is not explained by a large math-thread waiting-for-unpack fraction. TRISC instruction supply and unpack/math/pack handoff remain the primary remaining candidates in a cautious, non-exclusive sense; pack-side behavior is one candidate, not an established primary cause.",
+        "HiFi3 versus HiFi4 provides supporting compute-side sensitivity evidence: the L=32 custom_block4_fuse_s_true_HiFi3 and custom_block4_fuse_s_true_HiFi4 rows in docs/measurements/2026-10-02-p150a-newton-schulz-l16-l32-acceptance-catalog-1000.json record 51.781374837548015 versus 47.98370329686341 TFLOPS, approximately a 7% difference; this is existing-record evidence, not a new measurement.",
+        "Full-sync versus half-sync provides further recorded sensitivity evidence: docs/measurements/2026-10-03-p150a-newton-schulz-l32-b8192-no-watcher-one-tile-catalog-1000.json records 51.79878273060208 versus 43.62088939974863 TFLOPS for one_tile_full_sync_block4 versus one_tile_half_sync_block2. It establishes configuration sensitivity in that record, not a unique synchronization cause.",
+        "The unpack diagnostic records 47.08116268827682 versus 44.48023794811746 TFLOPS for bf16 versus bf16-fp32state in docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json, but output placement differs (L1 versus DRAM), so this is confounded and is not an isolated state-precision effect.",
+        "TRISC named wait/active sections are zero and the TRISC body is unclassified by the L1 cycle-counter pages; exact kernel phase attribution requires kernel-internal zones.",
+        "Two-buffer performance counters are unavailable, so this candidate interpretation has no mode-to-mode counter comparison."
+      ]
+    },
+    "conclusion": "Two-buffering removed/shortened the block-boundary I/O and compute serialization (the full interval is approximately 15% shorter). The remaining bottleneck is on the compute side, not data movement (NoC and DRAM/L1 reads/writes). Within compute, FPU utilization remains about 36%; TRISC instruction supply and unpack/math/pack handoff are the main candidates, while pack-side behavior is one candidate and not the established primary cause. Exact kernel phase attribution requires kernel-internal zones. Threads other than math issue relatively few instructions, and the remaining roughly 64% cannot be distinguished without kernel-internal zones: it may be per-tile instruction overhead for kt=1 (one-tile matrix) or DEST/CB synchronization among the three threads. This is not an exclusive causal claim because the compute body remains unclassified and two-buffer performance counters are unavailable."
+  },
+  "limitations": [
+    "The main profiler runs used TT_METAL_DEVICE_PROFILER=1 with Watcher explicitly unset; no Watcher-plus-profiler evidence is claimed.",
+    "The prior Watcher-plus-profiler attempt failed before kernel launch with BRISC ELF segment overflow; the prior power-off PCIe read-0xffffffff incident is preserved as operational history.",
+    "The repository device-profile parser expects an older tt-metal CSV header; the current pinned image emits zone name/type/run host ID fields, so whole-kernel intervals were decoded with an offline compatibility parser without rerunning the successful profiles.",
+    "The first official counter-tool setup attempt failed before kernel launch because its default watcher log path was under the read-only source mount; the bounded multipass run completed after setting TT_METAL_LOGS_PATH to the writable diagnostic output mount.",
+    "Performance-counter definitions and causal attribution among thread stall, idle wait, instruction availability, and packer efficiency remain unresolved; two-buffer performance counters are unavailable.",
+    "The main profiles have one timed sample each and are diagnostic only; no p50/p99/p99.9 or throughput headline is derived here.",
+    "No source-zone change was required; reader and writer profile sources provide built-in whole-kernel intervals, and compute provides NS-COMPUTE-TOTAL."
+  ],
+  "recovery": {
+    "reset_performed": false,
+    "stage1_health_probe_before_profiles": "pass",
+    "stage1_health_probe_after_profiles": "not needed after normal closure",
+    "prior_power_off_pcie_incident": "preserved limitation; corrected before this session",
+    "containers_remaining": false
+  },
+  "cleanup": {
+    "docker_ps_before_each_workload": "0 running containers",
+    "docker_ps_after_each_workload": "0 running containers",
+    "device_scope": "device 0 only",
+    "main_profile_containers_named_one_shot": true,
+    "optional_diagnostic_containers_named_one_shot": true
+  },
+  "raw_artifacts": {
+    "retained_board_side": true,
+    "artifact_paths_are_relative_names_only": true,
+    "one_window_profile_csv_sha256": "e2643e7ab39627b0c18ca6753ae1f8d1424a29892bd6edda400d603327602190",
+    "two_window_profile_csv_sha256": "ffc7c779aa0484c53a857f86673ad84bae6de2ecfb3afdeacd08e9544c766844",
+    "counter_report_sha256": "1d8645c6d0ea9fb18a0c2f18d483285a374ffd7debfe900cf9e0893732d64e3d",
+    "noc_trace_sha256": [
+      "193396dfce85a6b5a0f789e61f17e8260c0cfea68f1c86524ad49004f5c93eca",
+      "1878e396fe48a25e91133efc63baa4bd62e91098c66e7e45f8651c21c3c4d278"
+    ]
+  },
+  "strict_json": true
+}

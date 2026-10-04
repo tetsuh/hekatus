@@ -97,6 +97,16 @@ def test_cycle_counter_profile_uses_l1_transport_and_timestamps():
     assert "profile[warmup_base + profile_ready_offset] = profile_magic" in slot_source
     assert "profile_warmup_ready_offset" in slot_source
     assert "profile_warmup_event_count_offset" in slot_source
+    assert "profile_block_input_cb_wait_offset" in compute
+    assert "profile_block_output_cb_wait_offset" in compute
+    assert "profile_block_input_cb_reserve_offset" in compute
+    assert "profile_block_output_cb_reserve_offset" in compute
+    assert "profile_block_dest_acquire_wait_offset" in compute
+    assert "profile_block_dest_pack_wait_offset" in compute
+    assert "block_cb_wait_front<profile_sample>" in compute
+    assert "block_cb_reserve_back<profile_sample>" in compute
+    assert "block_tile_regs_acquire<profile_sample>" in compute
+    assert "block_tile_regs_wait<profile_sample>" in compute
     assert "while (profile[profile_ready_offset] != profile_magic" in slot_source
     assert "cb_push_back(cb_profile_compute, 1)" in slot_source
     slot0 = slot_source.split("COMPILE_FOR_TRISC == 0", 1)[1].split("COMPILE_FOR_TRISC == 1", 1)[0]
@@ -107,6 +117,36 @@ def test_cycle_counter_profile_uses_l1_transport_and_timestamps():
     assert "profile[profile_total_offset]" not in slot2
     assert "cb_push_back(cb_profile_compute, 1)" not in slot0 + slot1
 
+
+
+def test_block_profile_schema_fits_page_and_profile_disabled_path_is_explicit():
+    from enodia.tt.bench import newton_schulz_kernel
+
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32", uint32="u32")
+    offsets = (
+        newton_schulz_kernel.PROFILE_BLOCK_INPUT_CB_WAIT_OFFSET,
+        newton_schulz_kernel.PROFILE_BLOCK_OUTPUT_CB_WAIT_OFFSET,
+        newton_schulz_kernel.PROFILE_BLOCK_INPUT_CB_RESERVE_OFFSET,
+        newton_schulz_kernel.PROFILE_BLOCK_OUTPUT_CB_RESERVE_OFFSET,
+        newton_schulz_kernel.PROFILE_BLOCK_DEST_ACQUIRE_WAIT_OFFSET,
+        newton_schulz_kernel.PROFILE_BLOCK_DEST_PACK_WAIT_OFFSET,
+    )
+    assert all(0 <= offset < newton_schulz_kernel.PROFILE_PAGE_WORDS for offset in offsets)
+    assert newton_schulz_kernel._compute_compile_args(
+        iterations=12,
+        state_fp32=True,
+        profile=False,
+        fuse_s=True,
+        matrix_block=4,
+        reload_r=False,
+    ) == [12, 1, 0, 1, 4, 0]
+    assert not set(newton_schulz_kernel._cb_definitions(ttnn, ttnn.bfloat16)).intersection(
+        {
+            newton_schulz_kernel.CB_PROFILE_READER,
+            newton_schulz_kernel.CB_PROFILE_COMPUTE,
+            newton_schulz_kernel.CB_PROFILE_WRITER,
+        }
+    )
 
 
 def test_profile_false_has_no_profile_cbs_or_tracy_environment():

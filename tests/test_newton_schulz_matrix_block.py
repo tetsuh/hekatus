@@ -167,6 +167,160 @@ def test_matrix_block_default_is_baseline_and_invalid_values_fail_host_side():
             newton_schulz_kernel._validate_matrix_block(invalid)
 
 
+def test_double_buffer_doubles_only_external_block_windows_and_preserves_defaults():
+    ttnn = _ttnn()
+    external = (
+        newton_schulz_kernel.CB_R_NEG_IMAG,
+        newton_schulz_kernel.CB_R_IMAG,
+        newton_schulz_kernel.CB_X0_REAL,
+        newton_schulz_kernel.CB_X0_IMAG,
+        newton_schulz_kernel.CB_R_NEG_REAL,
+        newton_schulz_kernel.CB_OUTPUT_REAL,
+        newton_schulz_kernel.CB_OUTPUT_IMAG,
+    )
+    internal = (
+        newton_schulz_kernel.CB_STATE_REAL,
+        newton_schulz_kernel.CB_STATE_IMAG,
+        newton_schulz_kernel.CB_S_REAL,
+        newton_schulz_kernel.CB_S_IMAG,
+        newton_schulz_kernel.CB_NEG_X_IMAG,
+    )
+    expected_single = {1: 2, 2: 2, 4: 4, 8: 8}
+
+    for matrix_block in newton_schulz_kernel.MATRIX_BLOCK_CHOICES:
+        baseline = newton_schulz_kernel._cb_definitions(
+            ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
+        )
+        explicit_default = newton_schulz_kernel._cb_definitions(
+            ttnn,
+            "fp32",
+            fuse_s=True,
+            matrix_block=matrix_block,
+            double_buffer=False,
+        )
+        selected = newton_schulz_kernel._cb_definitions(
+            ttnn,
+            "fp32",
+            fuse_s=True,
+            matrix_block=matrix_block,
+            double_buffer=True,
+        )
+        assert explicit_default == baseline
+        expected_double = expected_single[matrix_block] * (2 if matrix_block > 1 else 1)
+        assert all(selected[index][1] == expected_double for index in external)
+        assert all(selected[index][1] == baseline[index][1] for index in internal)
+
+    # The Issue #92 target is an eight-page window for a four-page push.
+    selected = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=4, double_buffer=True
+    )
+    assert all(selected[index][1] == 8 for index in external)
+    work_ranges = newton_schulz_kernel._balanced_ranges(8192, 110, 4)
+    newton_schulz_kernel._validate_core_group_capacities(work_ranges, 4)
+    assert all(8 % group_count == 0 for start, count in work_ranges for _, group_count in
+               newton_schulz_kernel._matrix_block_ranges(start, count, 4))
+
+
+@pytest.mark.parametrize(
+    ("fuse_s", "cb_index"),
+    [
+        pytest.param(True, newton_schulz_kernel.CB_R_NEG_IMAG, id="fused-r-neg-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_R_IMAG, id="fused-r-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_R_NEG_REAL, id="fused-r-neg-real"),
+        pytest.param(True, newton_schulz_kernel.CB_X0_REAL, id="fused-x0-real"),
+        pytest.param(True, newton_schulz_kernel.CB_X0_IMAG, id="fused-x0-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_OUTPUT_REAL, id="fused-output-real"),
+        pytest.param(True, newton_schulz_kernel.CB_OUTPUT_IMAG, id="fused-output-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_REAL, id="nonfused-r-real"),
+        pytest.param(False, newton_schulz_kernel.CB_R_NEG_IMAG, id="nonfused-r-neg-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_IMAG, id="nonfused-r-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_NEG_REAL, id="nonfused-r-neg-real"),
+        pytest.param(False, newton_schulz_kernel.CB_X0_REAL, id="nonfused-x0-real"),
+        pytest.param(False, newton_schulz_kernel.CB_X0_IMAG, id="nonfused-x0-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_OUTPUT_REAL, id="nonfused-output-real"),
+        pytest.param(False, newton_schulz_kernel.CB_OUTPUT_IMAG, id="nonfused-output-imag"),
+    ],
+)
+def test_matrix_block_four_double_buffer_external_cb_pages(fuse_s, cb_index):
+    ttnn = _ttnn()
+    single_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=False,
+    )
+    double_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=True,
+    )
+
+    assert single_window[cb_index][1] == 4
+    assert double_window[cb_index][1] == 8
+
+
+@pytest.mark.parametrize("fuse_s", [True, False], ids=["fused", "nonfused"])
+@pytest.mark.parametrize(
+    "cb_index",
+    [
+        pytest.param(newton_schulz_kernel.CB_STATE_REAL, id="state-real"),
+        pytest.param(newton_schulz_kernel.CB_STATE_IMAG, id="state-imag"),
+        pytest.param(newton_schulz_kernel.CB_S_REAL, id="s-real"),
+        pytest.param(newton_schulz_kernel.CB_S_IMAG, id="s-imag"),
+        pytest.param(newton_schulz_kernel.CB_PRODUCT_REAL, id="product-real"),
+        pytest.param(newton_schulz_kernel.CB_PRODUCT_IMAG, id="product-imag"),
+        pytest.param(newton_schulz_kernel.CB_NEG_X_IMAG, id="neg-x-imag"),
+    ],
+)
+def test_matrix_block_four_double_buffer_preserves_internal_cb_pages(fuse_s, cb_index):
+    ttnn = _ttnn()
+    single_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=False,
+    )
+    double_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=True,
+    )
+
+    assert double_window[cb_index][1] == single_window[cb_index][1]
+
+
+def test_double_buffer_l1_preflight_fits_l32_and_l16_including_profile_pages():
+    ttnn = _ttnn()
+    ttnn.uint32 = "u32"
+    expected = {
+        (8192, False): 1_483_520,
+        (8192, True): 1_495_808,
+        (4096, False): 967_424,
+        (4096, True): 979_712,
+    }
+    for (batch, profile), total_expected in expected.items():
+        total = newton_schulz_kernel._validate_l1_preflight(
+            ttnn,
+            batch=batch,
+            core_count=110,
+            state_dtype="fp32",
+            profile=profile,
+            fuse_s=True,
+            output_memory="dram",
+            matrix_block=4,
+            double_buffer=True,
+            variant="bf16-fp32state",
+        )
+        assert total == total_expected
+        assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
+
+
 def test_dest_limit_uses_fp32_and_sync_mode_not_a_soft_block_cap():
     for matrix_block in (1, 2, 4):
         newton_schulz_kernel._validate_matrix_block(
@@ -572,8 +726,17 @@ _CB_OPERATION = re.compile(
 )
 
 
+def _normalize_profile_wrappers(source: str) -> str:
+    source = re.sub(
+        r"\bblock_cb_(wait_front|reserve_back|push_back|pop_front)<profile_sample>\(\s*([^,\s]+)\s*,\s*([^,\s]+)[^)]*\)",
+        r"cb_\1(\2, \3)",
+        source,
+    )
+    return re.sub(r"\bblock_tile_regs_(acquire|wait)<profile_sample>\([^)]*\)", r"tile_regs_\1();", source)
+
+
 def _without_comments(source: str) -> str:
-    return re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
+    return _normalize_profile_wrappers(re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL))
 
 
 def _cb_ledger(source: str) -> Counter:
@@ -634,8 +797,8 @@ def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:
     post_start = function.index("\n    if constexpr (one_dest_half) {", else_start)
     right_start = function.index("\n    if (consume_right)", post_start)
     if one_dest:
-        return function[branch_start:else_start] + function[post_start:]
-    return function[else_start:post_start] + function[right_start:]
+        return _normalize_profile_wrappers(function[branch_start:else_start] + function[post_start:])
+    return _normalize_profile_wrappers(function[else_start:post_start] + function[right_start:])
 
 
 def _writer_branch_source(source: str, *, matrix_block: int) -> str:
@@ -829,22 +992,23 @@ def test_state_capacity_follows_reserve_pop_order_and_rejects_under_capacity(
 
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():
     compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
-    complex_start = compute.index("template <bool one_dest_half>\nvoid complex_matmul_block")
-    fused_start = compute.index("template <bool one_dest_half>\nvoid fused_s_matmul_block")
+    complex_start = compute.index("template <bool one_dest_half, bool profile_sample>\nvoid complex_matmul_block")
+    fused_start = compute.index("template <bool one_dest_half, bool profile_sample>\nvoid fused_s_matmul_block")
     complex_source = compute[complex_start:fused_start]
     assert "if constexpr (one_dest_half)" in complex_source
-    assert complex_source.count("tile_regs_acquire();") == 3
+    assert complex_source.count("block_tile_regs_acquire<profile_sample>") == 3
+    assert complex_source.count("block_tile_regs_wait<profile_sample>") == 3
     assert complex_source.count("tile_regs_commit();") == 3
     assert "pack_tile_block(0, output_real, block_count);" in complex_source
     assert "pack_tile_block(0, output_imag, block_count);" in complex_source
-    two_dest_source = complex_source[complex_source.index("    } else {") :]
+    two_dest_source = _normalize_profile_wrappers(complex_source[complex_source.index("    } else {") :])
     assert two_dest_source.index("cb_pop_front(left_real, block_count)") < two_dest_source.index(
         "cb_reserve_back(output_real, block_count)"
     )
-    assert "complex_matmul_block<one_dest_half>" in compute
-    assert "fused_s_matmul_block<one_dest_half>" in compute
+    assert "complex_matmul_block<one_dest_half, profile_sample>" in compute
+    assert "fused_s_matmul_block<one_dest_half, profile_sample>" in compute
     assert "process_matrix_block<" in compute
-    assert "reload_r>(block_count);" in compute
+    assert "reload_r," in compute
 
 
 def test_invalid_input_memory_is_rejected_before_custom_prepare():
