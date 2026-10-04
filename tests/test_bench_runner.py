@@ -453,6 +453,10 @@ def test_double_buffer_selection_reaches_same_run_comparison(monkeypatch, tmp_pa
         False,
         True,
     ]
+    assert [row["row"] for row in payload["results"]] == [
+        "custom_block4_double_buffer_false",
+        "custom_block4_double_buffer_true",
+    ]
     assert payload["selection"]["compare_double_buffer"] is True
 
 

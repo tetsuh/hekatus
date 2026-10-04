@@ -1306,6 +1306,7 @@ def main(argv: list[str] | None = None) -> int:
                                             reload_r=reload_r,
                                             matrix_block=args.matrix_block,
                                             double_buffer=double_buffer,
+                                            row_name=custom_record["row"],
                                             input_memory=input_memory,
                                             r_memory=r_memory,
                                             x0_memory=x0_memory,
