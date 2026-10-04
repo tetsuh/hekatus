@@ -1,0 +1,759 @@
+{
+  "supersedes": "2026-09-29-p150a-newton-schulz-profile-breakdown-cycle-counter-blocked.json",
+  "status": "completed",
+  "environment": {
+    "captured_at": "2026-09-29T15:17:54.601406+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "f90b97bdeab75643f16626a5914350da60d50af2",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "board_inventory": 2,
+    "running_containers": 0
+  },
+  "device": {
+    "device_id": 0,
+    "device_nodes": [
+      "/dev/tenstorrent/0"
+    ],
+    "compute_cores_used": 110,
+    "input_and_compute_memory": "l1",
+    "selected_custom_variant": "bf16-fp32state",
+    "kernel_structure": "order1-single-dest"
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "batch": 8192,
+    "matrix_size": 32,
+    "cores": "all available compute/storage cores",
+    "measurement_core": 0,
+    "external_timeout_s": 60,
+    "watcher": true,
+    "method": "l1_cycle_counters",
+    "clock": "get_timestamp_32b_lower_32_wall_clock",
+    "sampling": "first_tile_first_iteration_on_core_0",
+    "aggregation": "core_0_reader_compute_writer_triplet",
+    "profile_transport_complete": true,
+    "profile_records": [
+      {
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "NCRISC",
+        "profile_page_ready": true,
+        "total_cycles": 893978,
+        "sample_count": 75,
+        "sections": [
+          {
+            "name": "reader_read_and_wait",
+            "cycles": 887444,
+            "percent_of_total": 99.26910953065959
+          },
+          {
+            "name": "reader_constant_read",
+            "cycles": 6534,
+            "percent_of_total": 0.7308904693404088
+          }
+        ]
+      },
+      {
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC0",
+        "profile_page_ready": true,
+        "total_cycles": 20553,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 16779,
+            "percent_of_total": 81.6377171215881
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 3774,
+            "percent_of_total": 18.36228287841191
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          }
+        ]
+      },
+      {
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC1",
+        "profile_page_ready": true,
+        "total_cycles": 21325,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 203,
+            "percent_of_total": 0.9519343493552169
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 201,
+            "percent_of_total": 0.9425556858147714
+          },
+          {
+            "name": "s_binary",
+            "cycles": 20713,
+            "percent_of_total": 97.13012895662368
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 208,
+            "percent_of_total": 0.9753810082063306
+          }
+        ]
+      },
+      {
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC2",
+        "profile_page_ready": true,
+        "total_cycles": 624,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 624,
+            "percent_of_total": 100.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          }
+        ]
+      },
+      {
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "BRISC",
+        "profile_page_ready": true,
+        "total_cycles": 911558,
+        "sample_count": 75,
+        "sections": [
+          {
+            "name": "writer_writes",
+            "cycles": 911558,
+            "percent_of_total": 100.0
+          }
+        ]
+      }
+    ],
+    "core_work_ranges": [
+      [
+        0,
+        75
+      ],
+      [
+        75,
+        75
+      ],
+      [
+        150,
+        75
+      ],
+      [
+        225,
+        75
+      ],
+      [
+        300,
+        75
+      ],
+      [
+        375,
+        75
+      ],
+      [
+        450,
+        75
+      ],
+      [
+        525,
+        75
+      ],
+      [
+        600,
+        75
+      ],
+      [
+        675,
+        75
+      ],
+      [
+        750,
+        75
+      ],
+      [
+        825,
+        75
+      ],
+      [
+        900,
+        75
+      ],
+      [
+        975,
+        75
+      ],
+      [
+        1050,
+        75
+      ],
+      [
+        1125,
+        75
+      ],
+      [
+        1200,
+        75
+      ],
+      [
+        1275,
+        75
+      ],
+      [
+        1350,
+        75
+      ],
+      [
+        1425,
+        75
+      ],
+      [
+        1500,
+        75
+      ],
+      [
+        1575,
+        75
+      ],
+      [
+        1650,
+        75
+      ],
+      [
+        1725,
+        75
+      ],
+      [
+        1800,
+        75
+      ],
+      [
+        1875,
+        75
+      ],
+      [
+        1950,
+        75
+      ],
+      [
+        2025,
+        75
+      ],
+      [
+        2100,
+        75
+      ],
+      [
+        2175,
+        75
+      ],
+      [
+        2250,
+        75
+      ],
+      [
+        2325,
+        75
+      ],
+      [
+        2400,
+        75
+      ],
+      [
+        2475,
+        75
+      ],
+      [
+        2550,
+        75
+      ],
+      [
+        2625,
+        75
+      ],
+      [
+        2700,
+        75
+      ],
+      [
+        2775,
+        75
+      ],
+      [
+        2850,
+        75
+      ],
+      [
+        2925,
+        75
+      ],
+      [
+        3000,
+        75
+      ],
+      [
+        3075,
+        75
+      ],
+      [
+        3150,
+        75
+      ],
+      [
+        3225,
+        75
+      ],
+      [
+        3300,
+        75
+      ],
+      [
+        3375,
+        75
+      ],
+      [
+        3450,
+        75
+      ],
+      [
+        3525,
+        75
+      ],
+      [
+        3600,
+        75
+      ],
+      [
+        3675,
+        75
+      ],
+      [
+        3750,
+        75
+      ],
+      [
+        3825,
+        75
+      ],
+      [
+        3900,
+        74
+      ],
+      [
+        3974,
+        74
+      ],
+      [
+        4048,
+        74
+      ],
+      [
+        4122,
+        74
+      ],
+      [
+        4196,
+        74
+      ],
+      [
+        4270,
+        74
+      ],
+      [
+        4344,
+        74
+      ],
+      [
+        4418,
+        74
+      ],
+      [
+        4492,
+        74
+      ],
+      [
+        4566,
+        74
+      ],
+      [
+        4640,
+        74
+      ],
+      [
+        4714,
+        74
+      ],
+      [
+        4788,
+        74
+      ],
+      [
+        4862,
+        74
+      ],
+      [
+        4936,
+        74
+      ],
+      [
+        5010,
+        74
+      ],
+      [
+        5084,
+        74
+      ],
+      [
+        5158,
+        74
+      ],
+      [
+        5232,
+        74
+      ],
+      [
+        5306,
+        74
+      ],
+      [
+        5380,
+        74
+      ],
+      [
+        5454,
+        74
+      ],
+      [
+        5528,
+        74
+      ],
+      [
+        5602,
+        74
+      ],
+      [
+        5676,
+        74
+      ],
+      [
+        5750,
+        74
+      ],
+      [
+        5824,
+        74
+      ],
+      [
+        5898,
+        74
+      ],
+      [
+        5972,
+        74
+      ],
+      [
+        6046,
+        74
+      ],
+      [
+        6120,
+        74
+      ],
+      [
+        6194,
+        74
+      ],
+      [
+        6268,
+        74
+      ],
+      [
+        6342,
+        74
+      ],
+      [
+        6416,
+        74
+      ],
+      [
+        6490,
+        74
+      ],
+      [
+        6564,
+        74
+      ],
+      [
+        6638,
+        74
+      ],
+      [
+        6712,
+        74
+      ],
+      [
+        6786,
+        74
+      ],
+      [
+        6860,
+        74
+      ],
+      [
+        6934,
+        74
+      ],
+      [
+        7008,
+        74
+      ],
+      [
+        7082,
+        74
+      ],
+      [
+        7156,
+        74
+      ],
+      [
+        7230,
+        74
+      ],
+      [
+        7304,
+        74
+      ],
+      [
+        7378,
+        74
+      ],
+      [
+        7452,
+        74
+      ],
+      [
+        7526,
+        74
+      ],
+      [
+        7600,
+        74
+      ],
+      [
+        7674,
+        74
+      ],
+      [
+        7748,
+        74
+      ],
+      [
+        7822,
+        74
+      ],
+      [
+        7896,
+        74
+      ],
+      [
+        7970,
+        74
+      ],
+      [
+        8044,
+        74
+      ],
+      [
+        8118,
+        74
+      ]
+    ]
+  },
+  "throughput_observation": {
+    "status": "completed",
+    "launches_measured": 1,
+    "seconds_per_launch_p50": 0.0011800439997387002,
+    "seconds_per_launch_p99": 0.0011800439997387002,
+    "seconds_per_launch_p99_9": 0.0011800439997387002,
+    "achieved_tflops": 29.11733662101443,
+    "peak_tflops": 332.0,
+    "peak_efficiency": 0.08770282114763382,
+    "flops_per_iteration": 34359738368
+  },
+  "bottleneck_assessment": {
+    "claim": "The reader and writer data-mover windows are the dominant non-matmul cost on the sampled core; within the sampled compute iteration, S binary work dominates TRISC1.",
+    "evidence": [
+      {
+        "risc": "NCRISC",
+        "section": "reader_read_and_wait",
+        "cycles": 887444,
+        "percent_of_ncrisc_total": 99.26910953065959,
+        "scope": "core 0 reader range of 75 tiles"
+      },
+      {
+        "risc": "BRISC",
+        "section": "writer_writes",
+        "cycles": 911558,
+        "percent_of_brisc_total": 100.0,
+        "scope": "core 0 writer range of 75 tiles"
+      },
+      {
+        "risc": "TRISC1",
+        "section": "s_binary",
+        "cycles": 20713,
+        "percent_of_trisc1_total": 97.13012895662368,
+        "scope": "first tile and first Newton-Schulz iteration on core 0"
+      },
+      {
+        "risc": "TRISC1",
+        "section": "complex_real_plus_complex_imag",
+        "cycles": 404,
+        "percent_of_trisc1_total": 1.8944900351699885,
+        "scope": "first tile and first Newton-Schulz iteration on core 0"
+      }
+    ],
+    "caveat": "Reader/writer counters cover the core-0 tile range, while compute counters intentionally sample only the first tile and first iteration; their totals must not be summed as if they shared one interval."
+  },
+  "reset_performed": false,
+  "correctness": {
+    "status": "not_run_in_profile_pass",
+    "reference_record": "2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json"
+  },
+  "note": "The row-major profile-page host fix was validated by a known-value host test before this run. All three profile pages reported ready and all five RISC records were decoded with nonzero, scope-consistent counters."
+}

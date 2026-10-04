@@ -1,0 +1,118 @@
+{
+  "status": "blocked",
+  "environment": {
+    "captured_at": "2026-10-01T22:01:22.709266+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "f8326104d231065ed768fe0c4d83833126130319",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "f8326104d231065ed768fe0c4d83833126130319",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "container_timeout_s": 60,
+    "container_cleanup_verified": true
+  },
+  "configuration": {
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "batch_reads": false,
+    "matrix_block": 8,
+    "r_memory": "l1",
+    "x0_memory": "dram",
+    "x0_dtype": "fp32",
+    "input_memory": "l1",
+    "output_memory": "dram",
+    "l1_preflight_total_bytes": 1032960,
+    "l1_budget_bytes": 1572864
+  },
+  "correctness": {
+    "batch4": {
+      "status": "not_run",
+      "reason": "reader JIT compilation failed before kernel execution"
+    },
+    "batch8192": {
+      "status": "not_run",
+      "reason": "batch4 compile gate failed"
+    }
+  },
+  "failure": {
+    "phase": "reader_kernel_jit_compile",
+    "exit_status": 1,
+    "error": "newton_schulz_reader_optimized.cpp cannot deduce one Accessor type when R tensors are L1 and X0 tensors are DRAM; mixed TensorAccessor types conflict in read_matrix/read_matrix_block templates",
+    "reset_performed": false,
+    "device_kernel_execution_started": false
+  },
+  "measurement": {
+    "throughput_status": "not_run",
+    "rows_not_run": [
+      "stock_best",
+      "block4_l1_x0_l1",
+      "block4_r_l1_x0_dram",
+      "block8_r_l1_x0_dram"
+    ],
+    "power_trace": "2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-block8-compile-blocked-power.csv"
+  },
+  "notes": [
+    "The process closed the device normally after the compile failure; no reset was performed.",
+    "The board-side named container was removed by the wrapper."
+  ]
+}

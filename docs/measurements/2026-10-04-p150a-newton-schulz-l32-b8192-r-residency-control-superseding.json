@@ -1,0 +1,232 @@
+{
+  "status": "pass",
+  "supersedes": {
+    "record": "2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json",
+    "power_trace": "2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv",
+    "reason": "Retaken on device 0 with complete captured board provenance and the clean harness revision; the predecessor remains immutable."
+  },
+  "measurement": {
+    "issue": "#63",
+    "follow_up": "PR #81",
+    "requirement": "ADV-81-PROVENANCE-001",
+    "description": "Same-run resident-versus-reload-R throughput control retaken with complete live environment provenance.",
+    "device_id": 0,
+    "shape": {
+      "name": "newton_schulz_L32_b8192",
+      "batch": 8192,
+      "L": 32,
+      "matrix_block": 4
+    },
+    "kernel": {
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "batch_reads": false,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "iterations": 8
+    },
+    "selection": {
+      "device_id": 0,
+      "shape_filters": [
+        "newton_schulz_L32_b8192"
+      ],
+      "dtype": "bfloat16",
+      "memory": "l1",
+      "kind": "custom_newton_schulz",
+      "custom_variant": "bf16-fp32state",
+      "custom_math_fidelity": [
+        "HiFi3"
+      ],
+      "fuse_s": true,
+      "batch_reads": false,
+      "matrix_block": 4,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "reload_modes": [
+        false,
+        true
+      ],
+      "launches_per_variant": 1000,
+      "watcher": false
+    }
+  },
+  "correctness": {
+    "reference": "enodia/tt/bench/newton_schulz_reference.py (independent NumPy fixed-iteration reference)",
+    "relative_error_tolerance": 0.01,
+    "configuration": {
+      "L": 32,
+      "matrix_block": 4,
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "device_id": 0
+    },
+    "batch4": {
+      "resident": {
+        "reload_r": false,
+        "relative_error": 0.006603435,
+        "finite": true,
+        "status": "pass",
+        "watcher": true,
+        "external_timeout_s": 60
+      },
+      "reload_r": {
+        "reload_r": true,
+        "relative_error": 0.006603435,
+        "finite": true,
+        "status": "pass",
+        "watcher": true,
+        "external_timeout_s": 60
+      }
+    },
+    "batch8192": {
+      "resident": {
+        "reload_r": false,
+        "relative_error": 0.006527114,
+        "finite": true,
+        "status": "pass",
+        "watcher": true,
+        "external_timeout_s": 60
+      },
+      "reload_r": {
+        "reload_r": true,
+        "relative_error": 0.006527114,
+        "finite": true,
+        "status": "pass",
+        "watcher": true,
+        "external_timeout_s": 60
+      }
+    },
+    "command": "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py::test_device_reload_r_matches_numpy_for_both_residency_paths -q -s"
+  },
+  "performance": {
+    "same_run": true,
+    "watcher": false,
+    "external_timeout_s": 900,
+    "flops_per_iteration": 34359738368,
+    "complex_matmuls_per_iteration": 16,
+    "real_matmuls_per_iteration": 64,
+    "launches_per_variant": 1000,
+    "rows": [
+      {
+        "row": "resident",
+        "reload_r": false,
+        "status": "pass",
+        "achieved_tflops": 51.82917713218822,
+        "efficiency_percent_of_332_tflops": 15.611197931381996,
+        "seconds_per_launch_p50": 0.0006672579993391992,
+        "seconds_per_launch_p99": 0.0007424354506474629,
+        "seconds_per_launch_p99_9": 0.0007718731721197396,
+        "launches_measured": 1000
+      },
+      {
+        "row": "reload_r",
+        "reload_r": true,
+        "status": "pass",
+        "achieved_tflops": 31.33414466591468,
+        "efficiency_percent_of_332_tflops": 9.437995381299602,
+        "seconds_per_launch_p50": 0.0011022054986824514,
+        "seconds_per_launch_p99": 0.001202754130208632,
+        "seconds_per_launch_p99_9": 0.0013053970397686493,
+        "launches_measured": 1000
+      }
+    ],
+    "comparison": {
+      "tflops_difference_reload_minus_resident": -20.495032466273543,
+      "tflops_difference_percent_vs_resident": -39.543426309859775,
+      "median_latency_difference_percent_reload_vs_resident": 65.18430648624532,
+      "p99_latency_difference_percent_reload_vs_resident": 62.00117184055994,
+      "p99_9_latency_difference_percent_reload_vs_resident": 69.1206647568449,
+      "faster_variant": "resident",
+      "headline_conclusion": "Resident reaches 51.82917713218822 TFLOPS; reload-R reaches 31.33414466591468 TFLOPS, 39.543426309859775% lower."
+    },
+    "command": "env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 ./enodia/tt/bench/run_in_container.sh -- --device-id 0 --only newton_schulz_L32_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --compare-reload-r --iters 1 --repeats 1000"
+  },
+  "power_trace": {
+    "file": "2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv",
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "sampling_source": "tt-smi snapshot",
+    "samples": 3,
+    "power_w_min": 44.0,
+    "power_w_max": 75.0,
+    "aiclk_mhz_max": 1350.0,
+    "asic_temp_c_max": 61.6
+  },
+  "environment": {
+    "captured_at": "2026-10-04T02:44:00.854633+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "d545fa506473fc8b9ea604584c2bac38ff771f35",
+    "harness_dirty": false,
+    "kernel_driver_version": "2.11.0",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "device_id": 0,
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "d545fa506473fc8b9ea604584c2bac38ff771f35",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "correctness_watcher": true,
+    "performance_watcher": false,
+    "correctness_timeout_s": 60,
+    "performance_timeout_s": 900,
+    "container_cleanup_verified": true,
+    "correctness_commands": [
+      "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py::test_device_reload_r_matches_numpy_for_both_residency_paths -q -s"
+    ],
+    "comparison_command": "env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 ./enodia/tt/bench/run_in_container.sh -- --device-id 0 --only newton_schulz_L32_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --compare-reload-r --iters 1 --repeats 1000"
+  },
+  "cleanup": {
+    "correctness_run": "normal closure",
+    "performance_run": "normal closure",
+    "docker_ps_after_correctness": "empty",
+    "docker_ps_after_performance": "empty",
+    "docker_ps_final": "empty",
+    "container_cleanup_verified": true
+  },
+  "recovery": {
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal closure",
+    "additional_reset_after_stage1": false,
+    "cleanup_verified": true
+  },
+  "notes": [
+    "Correctness passed for resident and reload-R at batch 4 and batch 8192 with exact captured relative errors below 1e-2.",
+    "Performance was one watcher-free run with 1,000 launches per variant under the unchanged L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1 conditions.",
+    "The board serial and board_id were captured from the live environment; no host name, connection name, absolute local path, or secret is included.",
+    "The predecessor record and its companion power trace are immutable; this record and trace supersede them."
+  ]
+}

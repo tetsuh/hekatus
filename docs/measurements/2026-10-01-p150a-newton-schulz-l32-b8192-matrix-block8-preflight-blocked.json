@@ -1,0 +1,67 @@
+{
+  "status": "blocked",
+  "environment": {
+    "captured_at": "2026-10-01T11:35:41.742843+00:00",
+    "platform": "Linux",
+    "kernel": "6.18.40.1-microsoft-standard-WSL2",
+    "architecture": "x86_64",
+    "python": "3.12.3",
+    "harness_commit": "8a2b5073498fe63afe3fbdbb1e26ba0c49182af6",
+    "harness_dirty": false,
+    "board": null
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "batch_reads": false,
+    "matrix_block": 8,
+    "device_execution": "not_started",
+    "dest_slots": {
+      "required": 8,
+      "available": 8,
+      "status": "pass"
+    },
+    "l1_preflight": {
+      "status": "fail",
+      "cb_bytes": 374784,
+      "static_prefix_bytes": 111360,
+      "tensor_bytes": 1234944,
+      "total_bytes": 1721088,
+      "budget_bytes": 1572864,
+      "over_budget_bytes": 148224
+    }
+  },
+  "cb_breakdown_bytes": {
+    "CB_NEG_X_IMAG": 32768,
+    "CB_OUTPUT_IMAG": 32768,
+    "CB_OUTPUT_REAL": 32768,
+    "CB_STATE_IMAG": 32768,
+    "CB_STATE_REAL": 32768,
+    "CB_S_IMAG": 32768,
+    "CB_S_REAL": 32768,
+    "CB_X0_IMAG": 32768,
+    "CB_X0_REAL": 32768,
+    "CB_R_IMAG": 16384,
+    "CB_R_NEG_IMAG": 16384,
+    "CB_R_NEG_REAL": 16384,
+    "CB_R_REAL": 16384,
+    "CB_PRODUCT_IMAG": 4096,
+    "CB_PRODUCT_REAL": 4096,
+    "CB_ZERO": 4096,
+    "CB_IDENTITY": 2048
+  },
+  "failure": {
+    "type": "l1_budget",
+    "message": "Block 8 passes the modeled FP32 DEST-slot limit but exceeds the per-core L1 budget before allocation or launch.",
+    "reset_performed": false,
+    "hardware_run_performed": false
+  },
+  "missing_evidence": [
+    "batch-4 correctness",
+    "batch-8192 correctness",
+    "block-1/4/8 throughput comparison"
+  ],
+  "note": "The host preflight failed as required; no device execution was attempted."
+}

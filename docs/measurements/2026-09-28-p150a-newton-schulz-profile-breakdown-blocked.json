@@ -1,0 +1,57 @@
+{
+  "status": "blocked",
+  "environment": {
+    "captured_at": "2026-09-28T13:39:21Z",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "4662c547a8328483180459c07de2841b0122cb6f",
+    "harness_dirty": false,
+    "board_inventory": 2,
+    "target_device": {
+      "device_id": 0,
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "dram_status": true
+    },
+    "running_containers": 0
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "kernel_structure": "order1-single-dest",
+    "batch": 8192,
+    "cores": "all available compute/storage cores",
+    "external_timeout_s": 60,
+    "watcher_smoke": {
+      "status": "completed",
+      "watcher": true,
+      "device_id": 0,
+      "launches": 1
+    },
+    "method": "TT_METAL_DEVICE_PROFILER with DeviceZoneScopedN",
+    "profile_csv": null,
+    "profile_command": "run_matmul.py --only newton_schulz_L32_b8192 --kind custom_newton_schulz --custom-math-fidelity HiFi3 --profile",
+    "profile_status": "blocked_before_device_open"
+  },
+  "failure": {
+    "type": "toolchain_capability",
+    "message": "TT_METAL_DEVICE_PROFILER requires a Tracy-enabled build of tt-metal.",
+    "scope": "the pinned release container rejects TT_METAL_DEVICE_PROFILER before opening the device",
+    "reset_performed": false
+  },
+  "fallback": {
+    "method": "L1 cycle counters",
+    "status": "not_completed",
+    "reason": "the fallback instrumentation did not reach a validated host-and-device implementation in this run"
+  },
+  "missing_evidence": [
+    "TRISC0/TRISC1/TRISC2, reader, and writer cycle totals",
+    "per-section cycle percentages",
+    "a bottleneck conclusion"
+  ],
+  "note": "No profiling numbers are claimed. The opt-in profiling implementation and host tests are committed separately; this record preserves the failed runtime attempt without rewriting prior measurements."
+}

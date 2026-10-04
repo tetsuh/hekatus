@@ -1,0 +1,1170 @@
+{
+  "supersedes": "2026-09-29-p150a-newton-schulz-profile-breakdown-cycle-counter.json",
+  "status": "completed",
+  "environment": {
+    "captured_at": "2026-09-30T09:28:45.756956+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "7e8737c841615e82d874777eae83d73c144eb58c",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "board_inventory": 2,
+    "running_containers": 0
+  },
+  "device": {
+    "device_id": 0,
+    "device_nodes": [
+      "/dev/tenstorrent/0"
+    ],
+    "compute_cores_used": 110,
+    "input_and_compute_memory": "l1",
+    "selected_custom_variant": "bf16-fp32state",
+    "kernel_structure": "order1-single-dest"
+  },
+  "measurement": {
+    "shape": "newton_schulz_L32_b8192",
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "batch": 8192,
+    "matrix_size": 32,
+    "cores": "all available compute/storage cores",
+    "measurement_core": 0,
+    "external_timeout_s": 60,
+    "watcher": true,
+    "method": "l1_cycle_counters",
+    "clock": "get_timestamp_32b_lower_32_wall_clock",
+    "sampling": "all_tiles_all_iterations_with_core_0_first_tile_iteration_warmup",
+    "aggregation": "core_0_per_risc_reader_compute_writer_pages",
+    "profile_transport_complete": true,
+    "profile_consistency": {
+      "all_scopes_pass": true,
+      "warmup_scopes_pass": true,
+      "named_sections_cover_total": false,
+      "warmup_named_sections_cover_total": false
+    },
+    "profile_records": [
+      {
+        "profile_page_ready": true,
+        "total_cycles": 1059091,
+        "warmup_total_cycles": 18989,
+        "event_count": 377,
+        "warmup_event_count": 7,
+        "sample_count": 7,
+        "sections": [
+          {
+            "name": "reader_cb_empty_wait",
+            "cycles": 295119,
+            "percent_of_total": 27.865310912848848,
+            "warmup_cycles": 317,
+            "warmup_percent_of_total": 1.6693875401548264
+          },
+          {
+            "name": "reader_noc_read_and_barrier",
+            "cycles": 722481,
+            "percent_of_total": 68.21708427321165,
+            "warmup_cycles": 17748,
+            "warmup_percent_of_total": 93.46463742166517
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 41491,
+            "percent_of_total": 3.917604813939501,
+            "warmup_cycles": 924,
+            "warmup_percent_of_total": 4.865975038179999
+          }
+        ],
+        "warmup_sections": [
+          {
+            "name": "reader_cb_empty_wait",
+            "cycles": 317,
+            "percent_of_total": 1.6693875401548264
+          },
+          {
+            "name": "reader_noc_read_and_barrier",
+            "cycles": 17748,
+            "percent_of_total": 93.46463742166517
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 924,
+            "percent_of_total": 4.865975038179999
+          }
+        ],
+        "section_sum_cycles": 1017600,
+        "coverage_section_sum_cycles": 1059091,
+        "warmup_section_sum_cycles": 18065,
+        "warmup_coverage_section_sum_cycles": 18989,
+        "recorded_section_sum_cycles": 1017600,
+        "recorded_warmup_section_sum_cycles": 18065,
+        "residual_cycles": 41491,
+        "warmup_residual_cycles": 924,
+        "recorded_residual_cycles": 41491,
+        "recorded_warmup_residual_cycles": 924,
+        "named_sections_cover_total": false,
+        "warmup_named_sections_cover_total": false,
+        "consistency_exact": true,
+        "warmup_consistency_exact": true,
+        "consistency_record_valid": true,
+        "warmup_consistency_record_valid": true,
+        "consistency_pass": true,
+        "warmup_consistency_pass": true,
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "NCRISC"
+      },
+      {
+        "profile_page_ready": true,
+        "total_cycles": 1079098,
+        "warmup_total_cycles": 22738,
+        "event_count": 600,
+        "warmup_event_count": 1,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 19655,
+            "percent_of_total": 1.8214286376214208,
+            "warmup_cycles": 16960,
+            "warmup_percent_of_total": 74.5887940891899
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 124154,
+            "percent_of_total": 11.505349838476208,
+            "warmup_cycles": 3969,
+            "warmup_percent_of_total": 17.45536106957516
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 935289,
+            "percent_of_total": 86.67322152390237,
+            "warmup_cycles": 1809,
+            "warmup_percent_of_total": 7.955844841234937
+          }
+        ],
+        "warmup_sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 16960,
+            "percent_of_total": 74.5887940891899
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 3969,
+            "percent_of_total": 17.45536106957516
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 1809,
+            "percent_of_total": 7.955844841234937
+          }
+        ],
+        "section_sum_cycles": 143809,
+        "coverage_section_sum_cycles": 1079098,
+        "warmup_section_sum_cycles": 20929,
+        "warmup_coverage_section_sum_cycles": 22738,
+        "recorded_section_sum_cycles": 143809,
+        "recorded_warmup_section_sum_cycles": 20929,
+        "residual_cycles": 935289,
+        "warmup_residual_cycles": 1809,
+        "recorded_residual_cycles": 935289,
+        "recorded_warmup_residual_cycles": 1809,
+        "named_sections_cover_total": false,
+        "warmup_named_sections_cover_total": false,
+        "consistency_exact": true,
+        "warmup_consistency_exact": true,
+        "consistency_record_valid": true,
+        "warmup_consistency_record_valid": true,
+        "consistency_pass": true,
+        "warmup_consistency_pass": true,
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC0"
+      },
+      {
+        "profile_page_ready": true,
+        "total_cycles": 1078410,
+        "warmup_total_cycles": 22232,
+        "event_count": 600,
+        "warmup_event_count": 1,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 112547,
+            "percent_of_total": 10.436383193776022,
+            "warmup_cycles": 194,
+            "warmup_percent_of_total": 0.8726160489384671
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 109959,
+            "percent_of_total": 10.196400255932344,
+            "warmup_cycles": 202,
+            "warmup_percent_of_total": 0.9086002159050018
+          },
+          {
+            "name": "s_binary",
+            "cycles": 344473,
+            "percent_of_total": 31.94267486392003,
+            "warmup_cycles": 21160,
+            "warmup_percent_of_total": 95.17812162648434
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 85748,
+            "percent_of_total": 7.9513357628360275,
+            "warmup_cycles": 184,
+            "warmup_percent_of_total": 0.8276358402302987
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 425683,
+            "percent_of_total": 39.47320592353557,
+            "warmup_cycles": 492,
+            "warmup_percent_of_total": 2.2130262684418858
+          }
+        ],
+        "warmup_sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 194,
+            "percent_of_total": 0.8726160489384671
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 202,
+            "percent_of_total": 0.9086002159050018
+          },
+          {
+            "name": "s_binary",
+            "cycles": 21160,
+            "percent_of_total": 95.17812162648434
+          },
+          {
+            "name": "pack_push",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 184,
+            "percent_of_total": 0.8276358402302987
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 492,
+            "percent_of_total": 2.2130262684418858
+          }
+        ],
+        "section_sum_cycles": 652727,
+        "coverage_section_sum_cycles": 1078410,
+        "warmup_section_sum_cycles": 21740,
+        "warmup_coverage_section_sum_cycles": 22232,
+        "recorded_section_sum_cycles": 652727,
+        "recorded_warmup_section_sum_cycles": 21740,
+        "residual_cycles": 425683,
+        "warmup_residual_cycles": 492,
+        "recorded_residual_cycles": 425683,
+        "recorded_warmup_residual_cycles": 492,
+        "named_sections_cover_total": false,
+        "warmup_named_sections_cover_total": false,
+        "consistency_exact": true,
+        "warmup_consistency_exact": true,
+        "consistency_record_valid": true,
+        "warmup_consistency_record_valid": true,
+        "consistency_pass": true,
+        "warmup_consistency_pass": true,
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC1"
+      },
+      {
+        "profile_page_ready": true,
+        "total_cycles": 1078821,
+        "warmup_total_cycles": 22600,
+        "event_count": 600,
+        "warmup_event_count": 1,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 351697,
+            "percent_of_total": 32.60012550738259,
+            "warmup_cycles": 633,
+            "warmup_percent_of_total": 2.8008849557522124
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0,
+            "warmup_cycles": 0,
+            "warmup_percent_of_total": 0.0
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 727124,
+            "percent_of_total": 67.3998744926174,
+            "warmup_cycles": 21967,
+            "warmup_percent_of_total": 97.19911504424779
+          }
+        ],
+        "warmup_sections": [
+          {
+            "name": "r_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "x_cb_wait",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_real",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "complex_imag",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "s_binary",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "pack_push",
+            "cycles": 633,
+            "percent_of_total": 2.8008849557522124
+          },
+          {
+            "name": "state_handoff",
+            "cycles": 0,
+            "percent_of_total": 0.0
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 21967,
+            "percent_of_total": 97.19911504424779
+          }
+        ],
+        "section_sum_cycles": 351697,
+        "coverage_section_sum_cycles": 1078821,
+        "warmup_section_sum_cycles": 633,
+        "warmup_coverage_section_sum_cycles": 22600,
+        "recorded_section_sum_cycles": 351697,
+        "recorded_warmup_section_sum_cycles": 633,
+        "residual_cycles": 727124,
+        "warmup_residual_cycles": 21967,
+        "recorded_residual_cycles": 727124,
+        "recorded_warmup_residual_cycles": 21967,
+        "named_sections_cover_total": false,
+        "warmup_named_sections_cover_total": false,
+        "consistency_exact": true,
+        "warmup_consistency_exact": true,
+        "consistency_record_valid": true,
+        "warmup_consistency_record_valid": true,
+        "consistency_pass": true,
+        "warmup_consistency_pass": true,
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "TRISC2"
+      },
+      {
+        "profile_page_ready": true,
+        "total_cycles": 1080714,
+        "warmup_total_cycles": 37284,
+        "event_count": 75,
+        "warmup_event_count": 1,
+        "sample_count": 1,
+        "sections": [
+          {
+            "name": "writer_cb_wait_front",
+            "cycles": 774430,
+            "percent_of_total": 71.65910684973083,
+            "warmup_cycles": 32900,
+            "warmup_percent_of_total": 88.24160497800665
+          },
+          {
+            "name": "writer_noc_write_and_barrier",
+            "cycles": 299489,
+            "percent_of_total": 27.712142157869703,
+            "warmup_cycles": 4225,
+            "warmup_percent_of_total": 11.331938633193863
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 6795,
+            "percent_of_total": 0.6287509923994692,
+            "warmup_cycles": 159,
+            "warmup_percent_of_total": 0.42645638879948505
+          }
+        ],
+        "warmup_sections": [
+          {
+            "name": "writer_cb_wait_front",
+            "cycles": 32900,
+            "percent_of_total": 88.24160497800665
+          },
+          {
+            "name": "writer_noc_write_and_barrier",
+            "cycles": 4225,
+            "percent_of_total": 11.331938633193863
+          },
+          {
+            "name": "unclassified_overhead",
+            "cycles": 159,
+            "percent_of_total": 0.42645638879948505
+          }
+        ],
+        "section_sum_cycles": 1073919,
+        "coverage_section_sum_cycles": 1080714,
+        "warmup_section_sum_cycles": 37125,
+        "warmup_coverage_section_sum_cycles": 37284,
+        "recorded_section_sum_cycles": 1073919,
+        "recorded_warmup_section_sum_cycles": 37125,
+        "residual_cycles": 6795,
+        "warmup_residual_cycles": 159,
+        "recorded_residual_cycles": 6795,
+        "recorded_warmup_residual_cycles": 159,
+        "named_sections_cover_total": false,
+        "warmup_named_sections_cover_total": false,
+        "consistency_exact": true,
+        "warmup_consistency_exact": true,
+        "consistency_record_valid": true,
+        "warmup_consistency_record_valid": true,
+        "consistency_pass": true,
+        "warmup_consistency_pass": true,
+        "core_index": 0,
+        "measurement_core": 0,
+        "risc": "BRISC"
+      }
+    ],
+    "core_work_ranges": [
+      [
+        0,
+        75
+      ],
+      [
+        75,
+        75
+      ],
+      [
+        150,
+        75
+      ],
+      [
+        225,
+        75
+      ],
+      [
+        300,
+        75
+      ],
+      [
+        375,
+        75
+      ],
+      [
+        450,
+        75
+      ],
+      [
+        525,
+        75
+      ],
+      [
+        600,
+        75
+      ],
+      [
+        675,
+        75
+      ],
+      [
+        750,
+        75
+      ],
+      [
+        825,
+        75
+      ],
+      [
+        900,
+        75
+      ],
+      [
+        975,
+        75
+      ],
+      [
+        1050,
+        75
+      ],
+      [
+        1125,
+        75
+      ],
+      [
+        1200,
+        75
+      ],
+      [
+        1275,
+        75
+      ],
+      [
+        1350,
+        75
+      ],
+      [
+        1425,
+        75
+      ],
+      [
+        1500,
+        75
+      ],
+      [
+        1575,
+        75
+      ],
+      [
+        1650,
+        75
+      ],
+      [
+        1725,
+        75
+      ],
+      [
+        1800,
+        75
+      ],
+      [
+        1875,
+        75
+      ],
+      [
+        1950,
+        75
+      ],
+      [
+        2025,
+        75
+      ],
+      [
+        2100,
+        75
+      ],
+      [
+        2175,
+        75
+      ],
+      [
+        2250,
+        75
+      ],
+      [
+        2325,
+        75
+      ],
+      [
+        2400,
+        75
+      ],
+      [
+        2475,
+        75
+      ],
+      [
+        2550,
+        75
+      ],
+      [
+        2625,
+        75
+      ],
+      [
+        2700,
+        75
+      ],
+      [
+        2775,
+        75
+      ],
+      [
+        2850,
+        75
+      ],
+      [
+        2925,
+        75
+      ],
+      [
+        3000,
+        75
+      ],
+      [
+        3075,
+        75
+      ],
+      [
+        3150,
+        75
+      ],
+      [
+        3225,
+        75
+      ],
+      [
+        3300,
+        75
+      ],
+      [
+        3375,
+        75
+      ],
+      [
+        3450,
+        75
+      ],
+      [
+        3525,
+        75
+      ],
+      [
+        3600,
+        75
+      ],
+      [
+        3675,
+        75
+      ],
+      [
+        3750,
+        75
+      ],
+      [
+        3825,
+        75
+      ],
+      [
+        3900,
+        74
+      ],
+      [
+        3974,
+        74
+      ],
+      [
+        4048,
+        74
+      ],
+      [
+        4122,
+        74
+      ],
+      [
+        4196,
+        74
+      ],
+      [
+        4270,
+        74
+      ],
+      [
+        4344,
+        74
+      ],
+      [
+        4418,
+        74
+      ],
+      [
+        4492,
+        74
+      ],
+      [
+        4566,
+        74
+      ],
+      [
+        4640,
+        74
+      ],
+      [
+        4714,
+        74
+      ],
+      [
+        4788,
+        74
+      ],
+      [
+        4862,
+        74
+      ],
+      [
+        4936,
+        74
+      ],
+      [
+        5010,
+        74
+      ],
+      [
+        5084,
+        74
+      ],
+      [
+        5158,
+        74
+      ],
+      [
+        5232,
+        74
+      ],
+      [
+        5306,
+        74
+      ],
+      [
+        5380,
+        74
+      ],
+      [
+        5454,
+        74
+      ],
+      [
+        5528,
+        74
+      ],
+      [
+        5602,
+        74
+      ],
+      [
+        5676,
+        74
+      ],
+      [
+        5750,
+        74
+      ],
+      [
+        5824,
+        74
+      ],
+      [
+        5898,
+        74
+      ],
+      [
+        5972,
+        74
+      ],
+      [
+        6046,
+        74
+      ],
+      [
+        6120,
+        74
+      ],
+      [
+        6194,
+        74
+      ],
+      [
+        6268,
+        74
+      ],
+      [
+        6342,
+        74
+      ],
+      [
+        6416,
+        74
+      ],
+      [
+        6490,
+        74
+      ],
+      [
+        6564,
+        74
+      ],
+      [
+        6638,
+        74
+      ],
+      [
+        6712,
+        74
+      ],
+      [
+        6786,
+        74
+      ],
+      [
+        6860,
+        74
+      ],
+      [
+        6934,
+        74
+      ],
+      [
+        7008,
+        74
+      ],
+      [
+        7082,
+        74
+      ],
+      [
+        7156,
+        74
+      ],
+      [
+        7230,
+        74
+      ],
+      [
+        7304,
+        74
+      ],
+      [
+        7378,
+        74
+      ],
+      [
+        7452,
+        74
+      ],
+      [
+        7526,
+        74
+      ],
+      [
+        7600,
+        74
+      ],
+      [
+        7674,
+        74
+      ],
+      [
+        7748,
+        74
+      ],
+      [
+        7822,
+        74
+      ],
+      [
+        7896,
+        74
+      ],
+      [
+        7970,
+        74
+      ],
+      [
+        8044,
+        74
+      ],
+      [
+        8118,
+        74
+      ]
+    ]
+  },
+  "scope_comparison": {
+    "all_scopes_are": "all assigned tiles and all eight Newton-Schulz iterations on core 0 where applicable",
+    "event_counts": {
+      "NCRISC": {
+        "all": 377,
+        "warmup": 7
+      },
+      "TRISC0": {
+        "all": 600,
+        "warmup": 1
+      },
+      "TRISC1": {
+        "all": 600,
+        "warmup": 1
+      },
+      "TRISC2": {
+        "all": 600,
+        "warmup": 1
+      },
+      "BRISC": {
+        "all": 75,
+        "warmup": 1
+      }
+    },
+    "risc_total_cycles_min": 1059091,
+    "risc_total_cycles_max": 1080714,
+    "risc_total_cycles_spread_percent": 2.041656477111032,
+    "note": "Totals are overlapping RISC execution windows and must not be summed."
+  },
+  "throughput_observation": {
+    "status": "completed",
+    "launches_measured": 1,
+    "seconds_per_launch_p50": 0.0012807510000243383,
+    "seconds_per_launch_p99": 0.0012807510000243383,
+    "seconds_per_launch_p99_9": 0.0012807510000243383,
+    "achieved_tflops": 26.82780522314412,
+    "peak_tflops": 332.0,
+    "peak_efficiency": 0.0808066422383859,
+    "flops_per_iteration": 34359738368
+  },
+  "bottleneck_assessment": {
+    "claim": "No unique bottleneck is established by this pass.",
+    "evidence": [
+      {
+        "risc": "TRISC1",
+        "section": "s_binary",
+        "cycles": 344473,
+        "percent_of_trisc1_total": 31.94267486392003,
+        "comparison": "1.548x the combined complex_real plus complex_imag cycles over the all-work scope"
+      },
+      {
+        "risc": "TRISC1",
+        "section": "s_binary_warmup",
+        "cycles": 21160,
+        "comparison": "53.434x the combined warmup complex_real plus complex_imag cycles; this is isolated as startup and is not used as the steady-state conclusion"
+      },
+      {
+        "risc": "NCRISC",
+        "sections": [
+          "reader_cb_empty_wait",
+          "reader_noc_read_and_barrier"
+        ],
+        "cycles": {
+          "reader_cb_empty_wait": 295119,
+          "reader_noc_read_and_barrier": 722481
+        },
+        "percent_of_ncrisc_total": {
+          "reader_cb_empty_wait": 27.865310912848848,
+          "reader_noc_read_and_barrier": 68.21708427321165
+        },
+        "interpretation": "separated intervals are observed, but CB wait can be backpressure from another RISC"
+      },
+      {
+        "risc": "BRISC",
+        "sections": [
+          "writer_cb_wait_front",
+          "writer_noc_write_and_barrier"
+        ],
+        "cycles": {
+          "writer_cb_wait_front": 774430,
+          "writer_noc_write_and_barrier": 299489
+        },
+        "percent_of_brisc_total": {
+          "writer_cb_wait_front": 71.65910684973083,
+          "writer_noc_write_and_barrier": 27.712142157869703
+        },
+        "interpretation": "separated intervals are observed, but CB wait can be backpressure from another RISC"
+      }
+    ],
+    "limitations": [
+      "All RISC totals are overlapping execution windows, not additive wall-clock components.",
+      "TRISC0/TRISC1/TRISC2 retain substantial unclassified_overhead residuals; named-section coverage is not complete.",
+      "Therefore the record does not call reader, writer, or S binary a causal bottleneck."
+    ]
+  },
+  "reset_performed": false,
+  "correctness": {
+    "status": "not_run_in_profile_pass",
+    "reference_record": "2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json"
+  },
+  "note": "The first run exposed residual cycles. The host residual accounting fix was applied and the one permitted retry produced exact coverage consistency with residuals explicit for every RISC and for the warmup scope."
+}

@@ -1,0 +1,54 @@
+{
+  "environment": {
+    "captured_at": "2026-10-01T12:32:26.168475+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "d7ab64807c37cf8a895f09df550f1b7678e3d894",
+    "harness_dirty": false,
+    "board_info": {
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "device_id": 0,
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "cm_fw": "0.28.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "probe": {
+    "name": "Stage 1 real_one_tile",
+    "batch": 1,
+    "cores": 1,
+    "tile_shape": [32, 32],
+    "device_id": 0,
+    "watcher": false,
+    "external_timeout_s": 60,
+    "container_name_isolated": true,
+    "container_cleanup": "no containers remained after normal exit",
+    "status": "pass",
+    "finite": true,
+    "numerical_error": 0.004564372822642326,
+    "tolerance": 0.01,
+    "elapsed_s": 0.288902569001948
+  },
+  "recovery": {
+    "owner_reset_before_probe": true,
+    "reset_device": 0,
+    "reset_count_increment": 1,
+    "reset_reason": "residual board-side container continued beyond the external SSH timeout",
+    "post_reset_clock_mhz": 800,
+    "post_reset_health_probe": "this record",
+    "running_containers_after_probe": 0
+  },
+  "power_trace": "2026-10-01-p150a-stage1-health-container-cleanup-power.csv",
+  "scope": "Recovery health evidence only; no performance claim."
+}

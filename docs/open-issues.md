@@ -16,7 +16,7 @@ closing it; the record in `design.md` is what persists.
 | # | Item | Who | State |
 |---|---|---|---|
 | B1 | ERISC custom-firmware development procedure; whether the deprecated or the fabric-based EDM is the current recommendation | Track B | blocked until a chip-to-chip transfer runs (#30) |
-| B2 | Effective efficiency **measured** with stock explicit matmul configurations: the 0.75.0 full sweep reaches 3.024% on its best BF16 Newton-Schulz row and 58.410% on a large square matmul (source: `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`); broad FIR and beamspace shapes improve with explicit configs, but the roughly 13.2x gap to 40% remains open for the MV inverse | Track B | measured; gap open |
+| B2 | Effective efficiency is measured for both stock and hand-written Newton-Schulz rows: stock reaches 3.024% on its best BF16 row, while Issue #63 reaches 15.6% at L=32 and 3.24% at packed L=16. The result is between 3.2% and 30%; the residual planning gap remains open | Track B | measured; residual gap open |
 | B3 | `run_routing()` firing conditions and their jitter impact | Track B | blocked until a link carries traffic; it is an idle-loop property of the Ethernet core |
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
@@ -36,20 +36,40 @@ B=16, 128 channels, 65536 pixels rises from 3.5508 (1.070%) to 7.1949
 (2.167%). Newton-Schulz has a stricter boundary: no explicit config beats the
 best default where the default L1 row succeeds, while DRAM-only large-batch
 reuse gains 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64 respectively;
-the largest is only 0.4251 TFLOPS (0.128%). The best inverse denominator is
-therefore still 3.024% at L=64, batch 1024, default L1, leaving roughly 13.2x
-to the 40% target. The 0.70.1 default-only comparison is separate, with 59
-successes and 9 failures out of 68. Its 4096-square reference is 58.687%
-versus 58.410% in 0.75.0, and NS L=32 batch 8192 L1 is 3.026% versus 2.992%;
-small dispatch-bound beamspace p4096 rows differ by up to 0.872 percentage
-points, so this is bounded evidence rather than a universal toolchain claim.
-The records also show that the August 3.227% L=64 batch 8192 L1 row does not
+the largest is only 0.4251 TFLOPS (0.128%). The stock inverse denominator is
+still 3.024% at L=64, batch 1024, default L1, but the Issue #63 hand-written
+rows now measure 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS / 3.24% at
+packed L=16. The measured result is between 3.2% and 30%, so the 30%
+efficiency target is not established. Applying the measured L=32 workload
+efficiency (15.6%, about 52 TFLOPS per card) to the roughly 100 TFLOPS 1D
+all-mode estimate gives about 2 cards. This is an extrapolation from the
+Newton-Schulz workload, not a full-system or all-mode benchmark.
+
+The three Scope 5 conclusions are: (1) L=32 is 5.7x the same-run stock best
+but remains below the 30% target; (2) packed L=16 is 14.5x stock and faster in
+wall-clock than L=32 only as a cost/operation-volume comparison for the
+diagonal fallback, because it uses fewer logical dimensions and less work;
+this is not a beamspace-dimension reduction versus an MV image-quality
+comparison. The L=16 record is
+`docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`;
+(3) fixed handoff/queue overhead is the leading measured explanation, while
+math, unpack, and reader were not established as causal bottlenecks. The
+steady record explicitly declines a unique bottleneck; its RISC windows
+overlap and compute retains unclassified cycles. The optimization, unpack,
+and matrix-block records correlate the handoff/queue interpretation but do
+not prove causality.
+
+The 0.70.1 default-only comparison is separate, with 59 successes and 9
+failures out of 68. Its 4096-square reference is 58.687% versus 58.410% in
+0.75.0, and NS L=32 batch 8192 L1 is 3.026% versus 2.992%; small
+dispatch-bound beamspace p4096 rows differ by up to 0.872 percentage points,
+so this is bounded evidence rather than a universal toolchain claim. The
+records also show that the August 3.227% L=64 batch 8192 L1 row does not
 reproduce under the current all-L1 output placement: both September records
 fail it with allocator OOM. The old harness placed only inputs in L1 and left
 output placement at the operation default; the current harness explicitly
 places output in L1. The identical failure in both current images is not
-evidence of a toolchain regression. The remaining MV-inverse lever is a
-hand-written kernel. The exact records are
+evidence of a toolchain regression. The exact stock records are
 `docs/measurements/2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json`,
 its targeted four-row superseder
 `docs/measurements/2026-09-21-p150a-stock-matmul-batched-dram-superseding-ttnn-0.75.0.json`,
@@ -58,6 +78,10 @@ its targeted two-row unbatched superseder
 `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`,
 and the historical source is
 `docs/measurements/2026-08-14-p150a-effective-efficiency.json`.
+The hand-written records are
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`,
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`,
+and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`.
 
 ---
 
@@ -66,20 +90,39 @@ and the historical source is
 - Newton-Schulz: precision split (BF16/TF32/FP32), iteration count, choice of
   the initial value X0
 - Beamspace: basis design and dimension. **The dimension is no longer a free
-  choice on compute grounds alone**: measured on one p150a development board,
-  one complex matmul of the Newton-Schulz step — the iteration issues two —
-  costs 250 µs on a 32x32 matrix against 627 µs on a 16x16 one, so the larger
-  dimension is 2.5x faster in wall-clock while paying eight times the
-  arithmetic. A 16x16 matrix fills half of a 32x32 tile and pays for the empty
-  half. That reverses under a kernel that packs several small matrices into
-  one tile, so the choice is now coupled to how far Track B goes into
-  hand-written kernels, and to the sample-support limit that made 16
-  attractive in the first place (§9, §11). The two figures are records
-  `newton_schulz_L32_b8192` and `newton_schulz_L16_b8192`, bfloat16 in L1, of
-  the 2026-08-14 measurement; the catalogue names that dimension L after the
-  subaperture, because the shape is the same either way — a beamspace
-  covariance of dimension B and a subaperture covariance of dimension L give
-  the Newton-Schulz step the same matrix to invert
+  choice on compute grounds alone, and the planning claim has changed.** The
+  stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16
+  matrix paid for empty tile area. The packed Issue #63 kernel reverses that
+  ordering: L=16 `custom_block4` reaches 10.77 TFLOPS (3.24%) and has a
+  0.4019 ms per-iteration median, versus L=32's 0.6655 ms in the same-shape
+  batch records. Use L=16 for beamspace cost planning when sample support
+  permits; this wall-clock result is only the diagonal fallback's
+  cost/operation-volume comparison, not a beamspace-dimension or MV
+  image-quality comparison. Do not append the old stock ordering as if it
+  still governed the kernel. The L=16 record is
+  `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog-1000.json`;
+  the L=32 records are
+  `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`
+  and
+  `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
+  The catalogue names that dimension L after the subaperture, because the
+  shape is the same either way — a beamspace covariance of dimension B and a
+  subaperture covariance of dimension L give the Newton-Schulz step the same
+  matrix to invert
+- Issue #63 bottleneck evidence. The steady
+  cycle-counter record
+  `docs/measurements/2026-09-30-p150a-newton-schulz-profile-breakdown-cycle-counter-steady.json`
+  separates queue waits but establishes no unique causal bottleneck because
+  RISC windows overlap and compute has unclassified residuals. The optimization
+  record
+  `docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
+  shows only small changes from `fuse_s` and `batch_reads`; the unpack record
+  `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
+  does not establish unpack as causal; and the matrix-block record
+  `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-catalog-1000.json`
+  correlates block-4's gain with fewer fixed queue/handoff turns. Thus fixed
+  handoff/queue overhead is the leading measured explanation, not proof; math,
+  unpack, and reader remain unestablished as causal bottlenecks.
 - Transmit compounding: window width, apodization, contributing-transmit
   truncation
 - Decimation ratio and interpolation tap count (are 4 taps enough?). The
