@@ -22,6 +22,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.signal import hilbert
 
+from enodia.spec.beamform.newton_schulz import newton_schulz_inverse as newton_schulz_inverse
 from enodia.spec.beamform.rf_delay import delay_rf
 from enodia.spec.probe import ProbeProfile
 from enodia.spec.records import RFEventRecord
