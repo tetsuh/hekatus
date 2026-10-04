@@ -1,0 +1,390 @@
+{
+  "record_schema": "adr-0005-board-diagnostic-v1",
+  "status": "completed",
+  "diagnostic_only": true,
+  "throughput_headline_allowed": false,
+  "what": "Issue #92 acceptance-condition-4 official performance-counter decomposition for one-window and two-window block circular buffers",
+  "issue": "#92",
+  "pull_request": "#93",
+  "scope_note": "This record is a diagnostic replay record. It is not a throughput headline and does not replace any prior correctness, throughput, or error record.",
+  "source": {
+    "archive_commit": "3fc228c69692b5df9f60823d2d53c7b73af907ba",
+    "archive_sha256": "01950ca45286b19717a48f4dfe9728989342839cb536cad1e8110d7f02d1cda9",
+    "archive_exclusions_verified": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ],
+    "harness_commit": "3fc228c69692b5df9f60823d2d53c7b73af907ba",
+    "harness_dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh"
+  },
+  "environment": {
+    "captured_at": "2026-10-04T17:10:24Z",
+    "board_inventory": 2,
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "bus_id": "0000:06:00.0",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "dm_app_fw": "0.22.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "eth_fw": "0.0.0",
+      "gddr_fw": "2.12"
+    },
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "device_id": 0,
+    "device_node": "/dev/tenstorrent/0",
+    "toolchain": {
+      "image_tag": "localhost/hekatus-tt-metal-v0750-profiler-runtime:run-1",
+      "image_repo_digest": "localhost/hekatus-tt-metal-v0750-profiler-runtime@sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
+      "image_local_id": "sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
+      "tt_metal_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+      "tracy_enabled": true,
+      "device_profiler_environment": "TT_METAL_DEVICE_PROFILER=1"
+    }
+  },
+  "algorithm": {
+    "kernel": "custom_newton_schulz",
+    "matrix_size": 32,
+    "batch": 8192,
+    "physical_tile_count": 8192,
+    "matrix_block": 4,
+    "fuse_s": true,
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state",
+    "state_format": "FP32",
+    "iterations": 12,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "device_id": 0
+  },
+  "counter_definition_source": {
+    "path": "tt-metal/tech_reports/PerfCounters/perf-counters.md",
+    "revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "sha256": "1cce8b542131ec911399f6dc795ebef16f3f2465d8e911da9f5a13076afc9ca6",
+    "source_status": "present in the pinned v0.75.0 tag",
+    "counter_groups": "FPU, PACK, UNPACK, L1 bank 0, and INSTRN selected by all (bitfield 47); L1 bank 1 is captured in the official second pass",
+    "multipass_definition": "The official all-group mode runs pass 1 with L1 bank 0 and pass 2 with FPU, PACK, UNPACK, L1 bank 1, and INSTRN. The workload is replayed once per pass; these are diagnostic replays, not throughput samples.",
+    "definitions": {
+      "fpu_util": "FPU_COUNTER / ref_cnt * 100; fraction of cycles the FPU executes a valid operation.",
+      "math_util": "MATH_COUNTER / ref_cnt * 100; combined FPU and SFPU utilization.",
+      "thread_stall": "THREAD_STALLS_N / ref_cnt * 100; T0 is unpack, T1 is math, and T2 is pack.",
+      "instruction_available": "The report's UNPACK/MATH/PACK Instrn Avail Rate T0/T1/T2 fields are instruction issue-rate evidence; the tag-local reference calls this THREAD_INSTRUCTIONS_N / ref_cnt.",
+      "idle_wait": "WAITING_FOR_UNPACK_IDLE_0, WAITING_FOR_MATH_IDLE_1, or WAITING_FOR_PACK_IDLE_2 divided by ref_cnt.",
+      "semaphore_wait": "Semaphore Zero Wait TN is WAITING_FOR_NONZERO_SEM_N / ref_cnt; Semaphore Full Wait TN is WAITING_FOR_NONFULL_SEM_N / ref_cnt. Zero wait indicates waiting for a producer signal; full wait indicates downstream consumer/backpressure synchronization.",
+      "packer_efficiency": "Primary PACKER_DEST_READ_AVAILABLE / PACKER_BUSY * 100; fallback DEST_READ_GRANTED_0 / PACKER_DEST_READ_AVAILABLE * 100 when PACKER_BUSY is zero.",
+      "math_to_pack_handoff": "Primary AVAILABLE_MATH / PACKER_BUSY * 100; fallback AVAILABLE_MATH / ref_cnt when PACKER_BUSY is zero. Values above 100% mean math produces output faster than the packer consumes it.",
+      "dest_read_backpressure": "(PACKER_DEST_READ_AVAILABLE - DEST_READ_GRANTED_0) / PACKER_DEST_READ_AVAILABLE * 100; destination-register read requests blocked from grant."
+    },
+    "blackhole_note": "The tag-local document says Blackhole PACK_COUNT=1 and that Packer Efficiency and Math-to-Pack Handoff use fallback formulas when PACKER_BUSY is zero. The emitted ops CSV does not expose PACKER_BUSY, PACKER_DEST_READ_AVAILABLE, DEST_READ_GRANTED_0, or the branch selection, so those derived metrics cannot be assigned a formula branch from this output alone."
+  },
+  "commands": {
+    "counter_runner": "official tracy.process_model_log.run_device_profiler with direct /work/enodia/tt/bench/run_matmul.py, --device-id 0 --only newton_schulz_L32_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --iters 1 --repeats 1",
+    "one_window_selector": "double_buffer=false",
+    "two_window_selector": "--double-buffer",
+    "counter_groups": "all",
+    "watcher": "unset",
+    "outer_timeout": "timeout 60s",
+    "log_path_safety": "TT_METAL_LOGS_PATH=/out",
+    "container_scope": "device 0 only, named one-shot container"
+  },
+  "workloads": [
+    {
+      "label": "one-window",
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": false,
+      "batch": 8192,
+      "external_timeout_s": 60,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "multipass_replay_count": 2,
+      "multipass_passes": [
+        "all with L1 bank 0",
+        "fpu, pack, unpack, l1_1, instrn with L1 bank 1"
+      ],
+      "report_rows": 2,
+      "ops_report_file": "ops_perf_results_2026_10_04_17_09_54.csv",
+      "ops_report_sha256": "b71ac20c074593cf37193ce0dd2e09a9f95db8e9397b047f2069e8e77ebdaf7a",
+      "raw_profile_csv_file": "profile_log_device.csv",
+      "raw_profile_csv_sha256": "e2bb52a4f0088231f9e9a7f3f22b4e36ee6fcd14a15b7d8fe9e377287ff82902"
+    },
+    {
+      "label": "two-window",
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": false,
+      "batch": 8192,
+      "external_timeout_s": 60,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "multipass_replay_count": 2,
+      "multipass_passes": [
+        "all with L1 bank 0",
+        "fpu, pack, unpack, l1_1, instrn with L1 bank 1"
+      ],
+      "report_rows": 2,
+      "ops_report_file": "ops_perf_results_2026_10_04_17_10_24.csv",
+      "ops_report_sha256": "58f5c9117bf4d407bf7a4b6df20643e78d348fe621824652b4e4e32caf012dc9",
+      "raw_profile_csv_file": "profile_log_device.csv",
+      "raw_profile_csv_sha256": "49ba51ab1794b9ffc269778b11ccb31b90fea13e17bcad69731b9bd5cd5bd28e"
+    }
+  ],
+  "metrics": {
+    "reported_scope": "Each value is the report's Avg (%) across the two official multipass rows unless a median field is named; pass_1 and pass_2 are retained as raw report values.",
+    "requested_headers": [
+      "FPU Util Median (%)",
+      "MATH Util Median (%)",
+      "Thread 0 Stall Rate Avg (%)",
+      "Thread 1 Stall Rate Avg (%)",
+      "Thread 2 Stall Rate Avg (%)",
+      "UNPACK Instrn Avail Rate T0 Avg (%)",
+      "MATH Instrn Avail Rate T1 Avg (%)",
+      "PACK Instrn Avail Rate T2 Avg (%)",
+      "Unpack Idle Wait T0 Avg (%)",
+      "Math Idle Wait T1 Avg (%)",
+      "Pack Idle Wait T2 Avg (%)",
+      "Semaphore Zero Wait T0 Avg (%)",
+      "Semaphore Zero Wait T1 Avg (%)",
+      "Semaphore Zero Wait T2 Avg (%)",
+      "Semaphore Full Wait T0 Avg (%)",
+      "Semaphore Full Wait T1 Avg (%)",
+      "Semaphore Full Wait T2 Avg (%)",
+      "Packer Efficiency Avg (%)",
+      "Math-to-Pack Handoff Efficiency Avg (%)",
+      "Dest Read Backpressure Avg (%)"
+    ],
+    "one_window": {
+      "pass_1": {
+        "fpu_util_median_percent": 35.74336836394889,
+        "math_util_median_percent": 35.74336836394889,
+        "thread_stall_avg_percent": {
+          "T0_unpack": 16.84445608471653,
+          "T1_math": 22.253796628506386,
+          "T2_pack": 56.55540894241798
+        },
+        "instruction_available_avg_percent": {
+          "T0_unpack": 22.281055571841936,
+          "T1_math": 73.70922082686201,
+          "T2_pack": 13.606495464482265
+        },
+        "idle_wait_avg_percent": {
+          "T0_unpack": 12.954353452553585,
+          "T1_math": 0.5119099121652905,
+          "T2_pack": 2.1338934426860425
+        },
+        "semaphore_zero_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 0.0,
+          "T2_pack": 74.87794637343666
+        },
+        "semaphore_full_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 22.160272428769908,
+          "T2_pack": 0.0
+        },
+        "packer_efficiency_avg_percent": 75.59351176122532,
+        "math_to_pack_handoff_avg_percent": 208.5441691247354,
+        "dest_read_backpressure_avg_percent": 0.0,
+        "math_dest_write_port_stall_avg_percent": 0.004058851229994171,
+        "math_scoreboard_stall_avg_percent": 0.004058851229994171,
+        "data_hazard_stall_avg_percent": 0.0,
+        "fidelity_stall_avg_percent": 0.0
+      },
+      "pass_2": {
+        "fpu_util_median_percent": 35.65686552390015,
+        "math_util_median_percent": 35.65686552390015,
+        "thread_stall_avg_percent": {
+          "T0_unpack": 16.801517191172945,
+          "T1_math": 22.44885533268358,
+          "T2_pack": 56.36537689117117
+        },
+        "instruction_available_avg_percent": {
+          "T0_unpack": 22.239327870173888,
+          "T1_math": 73.52041546375798,
+          "T2_pack": 13.586364040821186
+        },
+        "idle_wait_avg_percent": {
+          "T0_unpack": 12.933783312484424,
+          "T1_math": 0.5111390293187179,
+          "T2_pack": 2.1318590622956393
+        },
+        "semaphore_zero_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 0.0,
+          "T2_pack": 74.68775760359142
+        },
+        "semaphore_full_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 22.355441407758565,
+          "T2_pack": 0.0
+        },
+        "packer_efficiency_avg_percent": 75.58522630443585,
+        "math_to_pack_handoff_avg_percent": 208.5217778554147,
+        "dest_read_backpressure_avg_percent": 0.0,
+        "math_dest_write_port_stall_avg_percent": 0.004049290559130056,
+        "math_scoreboard_stall_avg_percent": 0.004049290559130056,
+        "data_hazard_stall_avg_percent": 0.0,
+        "fidelity_stall_avg_percent": 0.0
+      }
+    },
+    "two_window": {
+      "pass_1": {
+        "fpu_util_median_percent": 41.63858053198133,
+        "math_util_median_percent": 41.63858053198133,
+        "thread_stall_avg_percent": {
+          "T0_unpack": 19.745183239748915,
+          "T1_math": 25.953661703227247,
+          "T2_pack": 49.452500459050285
+        },
+        "instruction_available_avg_percent": {
+          "T0_unpack": 26.43132433670533,
+          "T1_math": 69.3606802707997,
+          "T2_pack": 15.841072179117603
+        },
+        "idle_wait_avg_percent": {
+          "T0_unpack": 15.213211144751847,
+          "T1_math": 0.5953535484534805,
+          "T2_pack": 2.5395459491882146
+        },
+        "semaphore_zero_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 0.0,
+          "T2_pack": 70.73614100082223
+        },
+        "semaphore_full_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 25.84292257780418,
+          "T2_pack": 0.0
+        },
+        "packer_efficiency_avg_percent": 75.33354168380072,
+        "math_to_pack_handoff_avg_percent": 207.8272049172163,
+        "dest_read_backpressure_avg_percent": 0.0,
+        "math_dest_write_port_stall_avg_percent": 0.0040660105549535554,
+        "math_scoreboard_stall_avg_percent": 0.0040660105549535554,
+        "data_hazard_stall_avg_percent": 0.0,
+        "fidelity_stall_avg_percent": 0.0
+      },
+      "pass_2": {
+        "fpu_util_median_percent": 41.567041218838014,
+        "math_util_median_percent": 41.567041218838014,
+        "thread_stall_avg_percent": {
+          "T0_unpack": 19.697778929762332,
+          "T1_math": 26.171005363917658,
+          "T2_pack": 49.24913373801196
+        },
+        "instruction_available_avg_percent": {
+          "T0_unpack": 26.36682052304748,
+          "T1_math": 69.15195245435893,
+          "T2_pack": 15.812759636447232
+        },
+        "idle_wait_avg_percent": {
+          "T0_unpack": 15.182594036697767,
+          "T1_math": 0.5942458547405605,
+          "T2_pack": 2.539985016064025
+        },
+        "semaphore_zero_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 0.0,
+          "T2_pack": 70.52764681138835
+        },
+        "semaphore_full_wait_avg_percent": {
+          "T0_unpack": 0.0,
+          "T1_math": 26.060288358853057,
+          "T2_pack": 0.0
+        },
+        "packer_efficiency_avg_percent": 75.30858368323257,
+        "math_to_pack_handoff_avg_percent": 207.75862036058868,
+        "dest_read_backpressure_avg_percent": 0.0,
+        "math_dest_write_port_stall_avg_percent": 0.004066005168758271,
+        "math_scoreboard_stall_avg_percent": 0.004066005168758271,
+        "data_hazard_stall_avg_percent": 0.0,
+        "fidelity_stall_avg_percent": 0.0
+      }
+    }
+  },
+  "availability": {
+    "missing_requested_metrics": [],
+    "raw_profile_csv_retained": true,
+    "ops_report_is_derived": true,
+    "branch_inputs_not_exposed_in_ops_csv": [
+      "PACKER_BUSY",
+      "PACKER_DEST_READ_AVAILABLE",
+      "DEST_READ_GRANTED_0",
+      "AVAILABLE_MATH",
+      "semaphore identity/phase mapping"
+    ],
+    "interpretation_limit": "Packer Efficiency and Math-to-Pack Handoff are available as official derived report metrics, but the output does not expose the branch inputs needed to distinguish the primary/fallback formula or map a specific kernel phase."
+  },
+  "interpretation": {
+    "evidence_level": "sufficient to distinguish large semaphore/hand-off waits from measured destination-read backpressure; insufficient to prove whether packer efficiency or a specific semaphore dominates kernel causality",
+    "semaphore_handoff": {
+      "status": "supported_candidate",
+      "evidence": [
+        "Official definitions identify Semaphore Zero Wait T2 as the pack thread waiting for a producer signal and Semaphore Full Wait T1 as the math thread waiting for a semaphore to become non-full, i.e. producer/consumer synchronization or downstream backpressure.",
+        "One-window raw report values are approximately 74.69-74.88% for Semaphore Zero Wait T2 and 22.16-22.36% for Semaphore Full Wait T1; all T0/T1 zero waits and T0/T2 full waits are 0%.",
+        "Two-window raw report values are approximately 70.53-70.74% for Semaphore Zero Wait T2 and 25.84-26.06% for Semaphore Full Wait T1; the same other semaphore waits remain 0%."
+      ]
+    },
+    "packer_and_backpressure": {
+      "status": "candidate_not_proven_dominant",
+      "evidence": [
+        "Packer Efficiency is approximately 75.31-75.59% and Math-to-Pack Handoff is approximately 207.76-208.54% in the two replay passes for both modes. Under the tag-local definitions, the former indicates that packer busy cycles do not always have destination data, while the latter means math availability exceeds packer consumption; neither proves raw pack bandwidth saturation.",
+        "Dest Read Backpressure is 0.0% in every one-window and two-window report row, and Math Dest Write Port Stall is approximately 0.004%, so this capture does not show destination-read grant backpressure.",
+        "The tag-local document warns that Packer Efficiency and Math-to-Pack Handoff can use fallback formulas when PACKER_BUSY is zero; the report does not expose the branch inputs."
+      ]
+    },
+    "compute_utilization": {
+      "status": "supported",
+      "evidence": [
+        "FPU and MATH utilization are approximately 35.66-35.74% for one-window and 41.57-41.64% for two-window.",
+        "Math instruction availability is approximately 73.52-73.71% for one-window and 69.15-69.36% for two-window; unpack availability is approximately 22.24-22.28% and 26.37-26.43%; pack availability is approximately 13.59-13.61% and 15.81-15.84%."
+      ]
+    },
+    "conclusion": "The strongest directly defined synchronization evidence is semaphore/hand-off waiting, not NoC/DRAM movement: T2 Semaphore Zero Wait and T1 Semaphore Full Wait are large in both modes, while Dest Read Backpressure is zero. Packer Efficiency and Math-to-Pack Handoff indicate a pack/math balance issue under the official formulas, but their branch inputs and kernel phase are unavailable, so pack bandwidth/backpressure is not established as the dominant cause. Two-buffer counters are diagnostic replays only and do not prove a causal mode comparison."
+  },
+  "limitations": [
+    "Both captures use official all-group multipass replay: two workload replays per mode, not throughput measurements.",
+    "The report exposes derived metrics but not PACKER_BUSY, PACKER_DEST_READ_AVAILABLE, DEST_READ_GRANTED_0, AVAILABLE_MATH, or semaphore identity/phase mapping, so formula branch and kernel-phase causality remain unresolved.",
+    "No kernel-internal zones were added; the counter data cannot attribute waits to a specific source operation or semaphore.",
+    "The earlier Watcher-plus-profiler BRISC overflow and power-off PCIe incident remain limitations; Watcher was unset for both counter captures.",
+    "This record is diagnostic-only and does not alter prior profiler or throughput records."
+  ],
+  "recovery": {
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal counter closure",
+    "containers_remaining": false
+  },
+  "cleanup": {
+    "docker_ps_before_each_counter_workload": "0 running containers",
+    "docker_ps_after_each_counter_workload": "0 running containers",
+    "device_scope": "device 0 only",
+    "named_one_shot_containers": true
+  },
+  "raw_artifacts": {
+    "retained_board_side": true,
+    "artifact_paths_are_relative_names_only": true,
+    "definition_file": "tt-metal/tech_reports/PerfCounters/perf-counters.md",
+    "definition_sha256": "1cce8b542131ec911399f6dc795ebef16f3f2465d8e911da9f5a13076afc9ca6",
+    "one_window_ops_report_sha256": "b71ac20c074593cf37193ce0dd2e09a9f95db8e9397b047f2069e8e77ebdaf7a",
+    "one_window_raw_profile_csv_sha256": "e2bb52a4f0088231f9e9a7f3f22b4e36ee6fcd14a15b7d8fe9e377287ff82902",
+    "two_window_ops_report_sha256": "58f5c9117bf4d407bf7a4b6df20643e78d348fe621824652b4e4e32caf012dc9",
+    "two_window_raw_profile_csv_sha256": "49ba51ab1794b9ffc269778b11ccb31b90fea13e17bcad69731b9bd5cd5bd28e"
+  },
+  "strict_json": true
+}
