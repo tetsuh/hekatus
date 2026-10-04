@@ -2274,8 +2274,8 @@ The current-head Stage 2 board record
 `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
 supersedes the two earlier 2026-10-04 BF16 diagnostics. It measures the
 selected twelve-iteration kernel with BF16-rounded `R`, not an image-quality
-result. L=32 reaches **58.1 TFLOPS** at a **0.887 ms** p50 launch time, and
-packed L=16 reaches **12.5 TFLOPS** at **0.515 ms** p50, with 1,000 launches
+result. L=32 reaches **58.1 TFLOPS** at a **0.888 ms** p50 launch time, and
+packed L=16 reaches **12.5 TFLOPS** at **0.516 ms** p50, with 1,000 launches
 per case. Against the corresponding eight-iteration records, the L=32 launch
 time is about **1.33×**; the L=16 comparison is about **1.28×**. The same
 record reports 1,031/1,031 selected board-gated tests passing on the current
