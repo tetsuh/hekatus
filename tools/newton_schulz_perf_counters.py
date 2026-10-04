@@ -27,7 +27,7 @@ _ROWS = {
 def _build_target_command(row: dict, output: str) -> str:
     sync_flag = "" if row["dst_full_sync_en"] else " --no-dst-full-sync-en"
     return (
-        "python3 /work/enodia/tt/bench/run_matmul.py"
+        "/opt/venv/bin/python3 /work/enodia/tt/bench/run_matmul.py"
         f" --device-id 0 --only {row['shape']} --dtype bfloat16 --memory l1"
         " --kind custom_newton_schulz"
         f" --custom-variant {row['variant']} --custom-math-fidelity HiFi3"
