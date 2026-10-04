@@ -1216,6 +1216,28 @@ def _issue94_fixed_reference(matrices, x0):
     return x
 
 
+def _issue94_failed_row(size: int, batch: int, config: dict, exc: Exception, row: dict | None):
+    """Build a serializable failure while retaining the correctness row identity."""
+    if row is None:
+        row = {
+            "name": config["name"],
+            "variant": config["variant"],
+            "matrix_block": config["matrix_block"],
+            "fp32_dest_acc_en": config["fp32_dest_acc_en"],
+        }
+    error_type = type(exc).__name__
+    error_message = str(exc)
+    return {
+        **row,
+        "size": size,
+        "batch": batch,
+        "status": "failed",
+        "error": f"{error_type}: {error_message}",
+        "error_type": error_type,
+        "error_message": error_message,
+    }
+
+
 def _relative_frobenius_error(actual, expected) -> float:
     import numpy as np
 
@@ -1233,65 +1255,81 @@ def _run_issue94_correctness(
 
     results: list[dict] = []
     for size, batch in ISSUE94_CORRECTNESS_CASES:
-        matrices = _issue94_random_hpd_batch(batch, size, seed=95)
-        rounded_matrices = _issue94_bf16_round_complex(matrices)
-        x0 = _issue94_initial_value(matrices)
-        rounded_reference = _issue94_fixed_reference(rounded_matrices, x0)
-        rounded_true_inverse = np.linalg.inv(rounded_matrices.astype(np.complex128))
-        true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+        case_error = None
+        try:
+            matrices = _issue94_random_hpd_batch(batch, size, seed=95)
+            rounded_matrices = _issue94_bf16_round_complex(matrices)
+            x0 = _issue94_initial_value(matrices)
+            rounded_reference = _issue94_fixed_reference(rounded_matrices, x0)
+            rounded_true_inverse = np.linalg.inv(rounded_matrices.astype(np.complex128))
+            true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+        except Exception as exc:  # noqa: BLE001 - retain every row after host preparation fails
+            case_error = exc
+
         for config in ISSUE94_CONFIGS:
-            row = _issue94_row_metadata(config)
-            actual = run_newton_schulz_kernel(
-                ttnn,
-                device,
-                matrices,
-                variant=config["variant"],
-                math_fidelity="HiFi3",
-                fuse_s=True,
-                matrix_block=config["matrix_block"],
-                input_memory="l1",
-                r_memory="l1",
-                x0_memory="l1",
-                output_memory="dram",
-                fp32_dest_acc_en=config["fp32_dest_acc_en"],
-            )
-            finite = bool(np.all(np.isfinite(actual)))
-            rounded_error = _relative_frobenius_error(actual, rounded_reference)
-            rounded_true_inverse_error = _relative_frobenius_error(
-                actual.astype(np.complex128), rounded_true_inverse
-            )
-            true_inverse_error = _relative_frobenius_error(
-                actual.astype(np.complex128), true_inverse
-            )
-            result = {
-                **row,
-                "size": size,
-                "batch": batch,
-                "condition_number": 100.0,
-                "seed": 95,
-                "x0": "identity_norminf_from_original_R",
-                "bf16_r_input": True,
-                "finite": finite,
-                "metrics": {
-                    "kernel_vs_bf16_r_rounded_reference_relative_error": rounded_error,
-                    "kernel_vs_bf16_r_true_inverse_relative_error": rounded_true_inverse_error,
-                    "kernel_vs_original_r_true_inverse_relative_error": true_inverse_error,
-                    "bf16_r_reference_vs_original_r_true_inverse_relative_error": _relative_frobenius_error(
-                        rounded_reference, true_inverse
-                    ),
-                    "threshold": 0.01,
-                    "threshold_pass": finite and rounded_error <= 0.01,
-                },
-                "status": "pass" if finite and rounded_error <= 0.01 else "diagnostic_fail",
-                "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference",
-                "iterations": 12,
-            }
-            print(
-                f"issue94_correctness row={config['name']} L={size} batch={batch} "
-                f"rounded_error={rounded_error:.8e} true_inverse_error={true_inverse_error:.8e} "
-                f"status={result['status']}",
-                flush=True,
-            )
+            row = None
+            try:
+                row = _issue94_row_metadata(config)
+                if case_error is not None:
+                    raise case_error
+                actual = run_newton_schulz_kernel(
+                    ttnn,
+                    device,
+                    matrices,
+                    variant=config["variant"],
+                    math_fidelity="HiFi3",
+                    fuse_s=True,
+                    matrix_block=config["matrix_block"],
+                    input_memory="l1",
+                    r_memory="l1",
+                    x0_memory="l1",
+                    output_memory="dram",
+                    fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                )
+                finite = bool(np.all(np.isfinite(actual)))
+                rounded_error = _relative_frobenius_error(actual, rounded_reference)
+                rounded_true_inverse_error = _relative_frobenius_error(
+                    actual.astype(np.complex128), rounded_true_inverse
+                )
+                true_inverse_error = _relative_frobenius_error(
+                    actual.astype(np.complex128), true_inverse
+                )
+                result = {
+                    **row,
+                    "size": size,
+                    "batch": batch,
+                    "condition_number": 100.0,
+                    "seed": 95,
+                    "x0": "identity_norminf_from_original_R",
+                    "bf16_r_input": True,
+                    "finite": finite,
+                    "metrics": {
+                        "kernel_vs_bf16_r_rounded_reference_relative_error": rounded_error,
+                        "kernel_vs_bf16_r_true_inverse_relative_error": rounded_true_inverse_error,
+                        "kernel_vs_original_r_true_inverse_relative_error": true_inverse_error,
+                        "bf16_r_reference_vs_original_r_true_inverse_relative_error": _relative_frobenius_error(
+                            rounded_reference, true_inverse
+                        ),
+                        "threshold": 0.01,
+                        "threshold_pass": finite and rounded_error <= 0.01,
+                    },
+                    "status": "pass" if finite and rounded_error <= 0.01 else "diagnostic_fail",
+                    "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference",
+                    "iterations": 12,
+                }
+                print(
+                    f"issue94_correctness row={config['name']} L={size} batch={batch} "
+                    f"rounded_error={rounded_error:.8e} true_inverse_error={true_inverse_error:.8e} "
+                    f"status={result['status']}",
+                    flush=True,
+                )
+            except Exception as exc:  # noqa: BLE001 - one row failure must not lose the run
+                result = _issue94_failed_row(size, batch, config, exc, row)
+                print(
+                    f"issue94_correctness row={config['name']} L={size} batch={batch} "
+                    f"status=failed error={result['error']}",
+                    flush=True,
+                )
             results.append(result)
     return results
 

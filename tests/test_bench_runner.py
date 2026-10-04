@@ -174,6 +174,50 @@ def test_issue94_correctness_writer_records_fixed_reference_without_a_device(
     } == {"enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"}
 
 
+def test_issue94_correctness_keeps_rows_after_an_intermediate_failure(
+    monkeypatch, tmp_path
+):
+    ttnn = _StubTtnn()
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "ISSUE94_CORRECTNESS_CASES", ((2, 1),))
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    calls = 0
+
+    def fake_kernel(_ttnn, _device, matrices, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("injected middle row failure")
+        return run_matmul._issue94_fixed_reference(
+            run_matmul._issue94_bf16_round_complex(matrices),
+            run_matmul._issue94_initial_value(matrices),
+        )
+
+    monkeypatch.setattr(newton_schulz_kernel, "run_newton_schulz_kernel", fake_kernel)
+    output = tmp_path / "issue94-correctness-failure.json"
+
+    assert run_matmul.main(["--issue94-correctness", "--out", str(output)]) == 0
+
+    payload = json.loads(output.read_text())
+    results = payload["results"]
+    assert output.exists()
+    assert [result["status"] for result in results] == ["pass", "failed", "pass"]
+    failed = results[1]
+    config = run_matmul.ISSUE94_CONFIGS[1]
+    assert failed["size"] == 2
+    assert failed["batch"] == 1
+    assert failed["name"] == config["name"]
+    assert failed["variant"] == config["variant"]
+    assert failed["matrix_block"] == config["matrix_block"]
+    assert failed["error"] == "RuntimeError: injected middle row failure"
+    assert failed["error_type"] == "RuntimeError"
+    assert failed["error_message"] == "injected middle row failure"
+
+
 def test_repeatable_shape_and_config_filters_parse_without_a_device():
     args = run_matmul._build_parser().parse_args(
         [
