@@ -627,6 +627,7 @@ def test_the_simulated_frame_is_unchanged_by_the_schema():
         assert np.array_equal(a.data, b.data)
 
 
+@pytest.mark.slow
 def test_simulate_frame_preserves_the_mvp1_rf_and_golden_image_fingerprints(frame, golden):
     """Raw RF remains byte-identical; the displayed image retains its MVP-1 q4 fingerprint."""
     from enodia.spec.beamform import envelope, log_compress

@@ -695,6 +695,7 @@ def test_the_simulator_stamps_the_configurations_own_generation():
 # --- the beamformer reads the map ---------------------------------------
 
 
+@pytest.mark.slow
 def test_the_identity_map_is_the_general_path_not_a_second_one(frame, golden):
     """Acceptance: with one event per line and unit weights, the pipeline
     reproduces the golden **numerically**. `golden` is the session fixture
@@ -714,6 +715,7 @@ def test_the_identity_map_is_the_general_path_not_a_second_one(frame, golden):
     assert np.array_equal(line_x, ref_line_x)
 
 
+@pytest.mark.slow
 def test_the_beamformer_is_not_told_which_mla_it_is_running(frame):
     """The MLA count appears nowhere in the beamformer's arguments: the map
     alone carries it. Passing an MLA-4 map of the same frame must produce
@@ -824,6 +826,7 @@ def test_the_rf_consumer_refuses_a_map_shaped_object_that_is_not_a_map():
         das_rf_golden(profile, list(config.events), records, contribution=raw)
 
 
+@pytest.mark.slow
 def test_the_iq_consumer_refuses_a_map_shaped_object_that_is_not_a_map(frame):
     """The same ingress, and the reason it is one function rather than two:
     the IQ path was the second consumer to read its weights off whatever it
@@ -898,6 +901,7 @@ def test_the_rf_consumer_refuses_a_double_that_only_claims_the_type():
         das_rf_golden(profile, list(config.events), records, contribution=double)
 
 
+@pytest.mark.slow
 def test_the_iq_consumer_refuses_a_double_that_only_claims_the_type(frame):
     """Both consumers, for the reason the ingress is one function: a
     correction applied to one of them is no correction."""
@@ -954,6 +958,7 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
     assert unnormalized[-1] < 0.75 * unnormalized[middle]
 
 
+@pytest.mark.slow
 def test_the_iq_path_reads_the_same_map_structure(frame):
     """One summation structure, not two: the identity map through `das_iq`
     equals the default call bit for bit, and an MLA map multiplies its
