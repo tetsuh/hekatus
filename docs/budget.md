@@ -345,14 +345,15 @@ is in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
-2026-10-04 record
-`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json`
-measures the twelve-iteration BF16-`R` path at 58.1 TFLOPS / 0.887 ms p50 for
-L=32 and 12.5 TFLOPS / 0.515 ms p50 for packed L=16, from 1,000 launches per
-case. The L=32 launch time is about 1.33× the comparable eight-iteration
-record. These are board timings, not a revised theoretical peak or an M5
-image-quality result; the BF16 input-`R` perturbation remains a separate
-representation question.
+The current-head 2026-10-04 record
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
+supersedes the two earlier BF16 diagnostics. It measures the twelve-iteration
+BF16-`R` path at 58.1 TFLOPS / 0.887 ms p50 for L=32 and 12.5 TFLOPS /
+0.515 ms p50 for packed L=16, from 1,000 launches per case. The L=32 launch
+time is about 1.33× the comparable eight-iteration record. The current-head
+board-gated test selection passed 1,031/1,031. These are board timings, not a
+revised theoretical peak or an M5 image-quality result; the BF16 input-`R`
+perturbation remains a separate representation question.
 
 ---
 
