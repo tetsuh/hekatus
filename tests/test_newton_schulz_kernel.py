@@ -905,6 +905,12 @@ def test_device_double_buffer_matches_numpy(batch, size, double_buffer):
         )
         assert actual.shape == (batch, size, size)
         relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        print(
+            "double_buffer_correctness "
+            f"L={size} batch={batch} double_buffer={double_buffer} "
+            f"relative_error={relative_error:.9e}",
+            flush=True,
+        )
         assert relative_error <= 1e-2
     finally:
         ttnn.close_device(device)
