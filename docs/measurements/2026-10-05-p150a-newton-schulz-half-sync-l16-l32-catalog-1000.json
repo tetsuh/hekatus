@@ -2,6 +2,7 @@
   "status": "completed",
   "measurement": {
     "issue": "#96",
+    "adr": "ADR-0005",
     "description": "Same-run full-sync versus half-sync DEST comparison for the current N=12 double-buffered Newton-Schulz configuration.",
     "device_id": 0,
     "same_device_run": true,
@@ -3604,7 +3605,7 @@
   },
   "counters": {
     "source": "tt-metal v0.75.0 tag-local tech_reports/PerfCounters/perf-counters.md",
-    "image": "localhost/hekatus-tt-metal-v0750-profiler-runtime@sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
+    "image_digest": "sha256:a753cdb54c72f401dea2fe070262ed32662d0d7516dc71d8c3195838e4aa63e5",
     "tt_metal_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
     "watcher": false,
     "device_id": 0,
@@ -3715,7 +3716,7 @@
   },
   "environment": {
     "captured_at": "2026-10-04T22:44:18.732379+00:00",
-    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
     "image_pinned": true,
     "tt_env_active_release": "0.75.0",
     "kernel": "Linux 6.8.0-138-generic",
