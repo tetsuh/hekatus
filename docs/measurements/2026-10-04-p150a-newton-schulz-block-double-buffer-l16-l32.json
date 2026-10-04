@@ -1,0 +1,540 @@
+{
+  "status": "completed",
+  "measurement": {
+    "issue": "#92",
+    "description": "Same-device one-window versus two-window block circular-buffer comparison.",
+    "device_id": 0,
+    "same_device_run": true,
+    "selection": {
+      "shapes": [
+        {
+          "name": "newton_schulz_L32_b8192",
+          "L": 32,
+          "batch": 8192,
+          "physical_tiles": 8192
+        },
+        {
+          "name": "newton_schulz_L16_b8192",
+          "L": 16,
+          "batch": 8192,
+          "physical_tiles": 4096
+        }
+      ],
+      "matrix_block": 4,
+      "variant": "bf16-fp32state",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "state_format": "FP32",
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "device_id": 0,
+      "double_buffer_modes": [
+        false,
+        true
+      ],
+      "launches_per_row": 1000,
+      "performance_watcher": false
+    },
+    "commands": {
+      "host_preflight": "uv run python - <<'PY' (board-free _validate_l1_preflight for L=32 physical_batch=8192 and L=16 physical_batch=4096, double_buffer=True) PY",
+      "correctness": "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py -k 'test_device_double_buffer_matches_numpy' -q -s",
+      "performance": "env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 ./enodia/tt/bench/run_in_container.sh -- --device-id 0 --only newton_schulz_L32_b8192 --only newton_schulz_L16_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --compare-double-buffer --iters 1 --repeats 1000",
+      "profiling": "env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 ./enodia/tt/bench/run_in_container.sh -- --device-id 0 --only newton_schulz_L32_b8192 --only newton_schulz_L16_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --compare-double-buffer --profile --iters 1 --repeats 1"
+    }
+  },
+  "implementation": {
+    "switch": "double_buffer",
+    "default": false,
+    "matrix_block_behavior": {
+      "1": {
+        "single_window_pages": 2,
+        "double_buffer_pages": 2,
+        "note": "The legacy one-matrix path already has two pages and is unchanged."
+      },
+      "2": {
+        "single_window_pages": 2,
+        "double_buffer_pages": 4
+      },
+      "4": {
+        "single_window_pages": 4,
+        "double_buffer_pages": 8
+      },
+      "8": {
+        "single_window_pages": 8,
+        "double_buffer_pages": 16,
+        "note": "State queues remain source-derived at 16 pages."
+      }
+    },
+    "fused_s_block4_cb_pages": {
+      "one_window": {
+        "CB_R_NEG_IMAG": 4,
+        "CB_R_IMAG": 4,
+        "CB_R_NEG_REAL": 4,
+        "CB_X0_REAL": 4,
+        "CB_X0_IMAG": 4,
+        "CB_OUTPUT_REAL": 4,
+        "CB_OUTPUT_IMAG": 4,
+        "CB_STATE_REAL": 4,
+        "CB_STATE_IMAG": 4,
+        "CB_S_REAL": 4,
+        "CB_S_IMAG": 4,
+        "CB_NEG_X_IMAG": 4
+      },
+      "two_windows": {
+        "CB_R_NEG_IMAG": 8,
+        "CB_R_IMAG": 8,
+        "CB_R_NEG_REAL": 8,
+        "CB_X0_REAL": 8,
+        "CB_X0_IMAG": 8,
+        "CB_OUTPUT_REAL": 8,
+        "CB_OUTPUT_IMAG": 8,
+        "CB_STATE_REAL": 4,
+        "CB_STATE_IMAG": 4,
+        "CB_S_REAL": 4,
+        "CB_S_IMAG": 4,
+        "CB_NEG_X_IMAG": 4
+      }
+    },
+    "kernel_flow_audit": {
+      "reader": "Existing block reader reserves and pushes one matrix_block group at a time; the larger external CB capacity permits the next group to queue while compute works.",
+      "compute": "Existing block compute waits_front and pops each R/X0 group at block_count granularity; no kernel source change was required.",
+      "writer": "Existing block writer waits_front and pops each output group at block_count granularity; the larger output CB permits overlap.",
+      "capacity_guard": "The block-4 push is four pages and the two-window capacity is eight pages; the existing partial-block guard still validates the four-page operation group.",
+      "kernel_source_changed": false
+    },
+    "l1_preflight": {
+      "per_core_budget_bytes": 1572864,
+      "static_prefix_bytes": 111360,
+      "profile_pages_included_in_profile_rows": 12288,
+      "rows": [
+        {
+          "L": 32,
+          "physical_batch": 8192,
+          "one_window_total_bytes": 1393408,
+          "two_window_total_bytes": 1483520,
+          "two_window_headroom_bytes": 89344,
+          "two_window_fits": true
+        },
+        {
+          "L": 16,
+          "physical_batch": 4096,
+          "one_window_total_bytes": 877312,
+          "two_window_total_bytes": 967424,
+          "two_window_headroom_bytes": 605440,
+          "two_window_fits": true
+        }
+      ],
+      "profile_rows": {
+        "L32_one_window_total_bytes": 1405696,
+        "L32_two_window_total_bytes": 1495808,
+        "L16_one_window_total_bytes": 889600,
+        "L16_two_window_total_bytes": 979712,
+        "all_fit": true
+      }
+    }
+  },
+  "correctness": {
+    "reference": "enodia/tt/bench/newton_schulz_reference.py (independent NumPy fixed-iteration reference)",
+    "comparison_input": "BF16-rounded R with the independent FP32-state reference X0",
+    "relative_error_tolerance": 0.01,
+    "watcher": true,
+    "external_timeout_s": 60,
+    "rows": [
+      {
+        "L": 32,
+        "batch": 4,
+        "double_buffer": false,
+        "relative_error": 0.00390947517,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 32,
+        "batch": 4,
+        "double_buffer": true,
+        "relative_error": 0.00390947517,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 32,
+        "batch": 8192,
+        "double_buffer": false,
+        "relative_error": 0.003672817256,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 32,
+        "batch": 8192,
+        "double_buffer": true,
+        "relative_error": 0.003672817256,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 16,
+        "batch": 4,
+        "double_buffer": false,
+        "relative_error": 0.003574247006,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 16,
+        "batch": 4,
+        "double_buffer": true,
+        "relative_error": 0.003574247006,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 16,
+        "batch": 8192,
+        "double_buffer": false,
+        "relative_error": 0.00382749713,
+        "finite": true,
+        "status": "pass"
+      },
+      {
+        "L": 16,
+        "batch": 8192,
+        "double_buffer": true,
+        "relative_error": 0.00382749713,
+        "finite": true,
+        "status": "pass"
+      }
+    ]
+  },
+  "performance": {
+    "same_run": true,
+    "watcher": false,
+    "launches_per_row": 1000,
+    "flops_per_launch": {
+      "L32": 34359738368,
+      "L16": 8589934592
+    },
+    "rows": [
+      {
+        "row": "custom_block4_double_buffer_false",
+        "L": 16,
+        "batch": 8192,
+        "double_buffer": false,
+        "status": "pass",
+        "l1_preflight_bytes": 877312,
+        "achieved_tflops": 12.576476380507565,
+        "efficiency_percent_of_332_tflops": 3.7880952953336036,
+        "seconds_per_launch_p50": 0.000516568500017911,
+        "seconds_per_launch_p99": 0.0005233480800018242,
+        "seconds_per_launch_p99_9": 0.0006133966969302904,
+        "launches_measured": 1000
+      },
+      {
+        "row": "custom_block4_double_buffer_true",
+        "L": 16,
+        "batch": 8192,
+        "double_buffer": true,
+        "status": "pass",
+        "l1_preflight_bytes": 967424,
+        "achieved_tflops": 14.107700980451211,
+        "efficiency_percent_of_332_tflops": 4.249307524232292,
+        "seconds_per_launch_p50": 0.00046067249996895043,
+        "seconds_per_launch_p99": 0.0004664721499818825,
+        "seconds_per_launch_p99_9": 0.0004939410649715222,
+        "launches_measured": 1000
+      },
+      {
+        "row": "custom_block4_double_buffer_false",
+        "L": 32,
+        "batch": 8192,
+        "double_buffer": false,
+        "status": "pass",
+        "l1_preflight_bytes": 1393408,
+        "achieved_tflops": 58.74483818872645,
+        "efficiency_percent_of_332_tflops": 17.694228370098326,
+        "seconds_per_launch_p50": 0.0008826700000099663,
+        "seconds_per_launch_p99": 0.0009485804400219421,
+        "seconds_per_launch_p99_9": 0.0009617320499718288,
+        "launches_measured": 1000
+      },
+      {
+        "row": "custom_block4_double_buffer_true",
+        "L": 32,
+        "batch": 8192,
+        "double_buffer": true,
+        "status": "pass",
+        "l1_preflight_bytes": 1483520,
+        "achieved_tflops": 67.06450362829192,
+        "efficiency_percent_of_332_tflops": 20.20015169526865,
+        "seconds_per_launch_p50": 0.0007743085000129213,
+        "seconds_per_launch_p99": 0.000782188099914265,
+        "seconds_per_launch_p99_9": 0.0008576035589858293,
+        "launches_measured": 1000
+      }
+    ],
+    "comparison": {
+      "L16_tflops_change_percent_two_minus_one": 12.175306927120788,
+      "L32_tflops_change_percent_two_minus_one": 14.162376978275626,
+      "L16_p50_change_percent_two_minus_one": -10.820636575211706,
+      "L32_p50_change_percent_two_minus_one": -12.276558622794642,
+      "headline": "Two windows improved the measured throughput by 12.18% at L=16 and 14.16% at L=32 in this run."
+    }
+  },
+  "cycle_counters": {
+    "same_session": true,
+    "mode": "l1_cycle_counters",
+    "clock": "get_timestamp_32b_lower_32_wall_clock",
+    "measurement_core": 0,
+    "sampling": "all tiles and fixed iterations; core 0 first tile/iteration warmup retained",
+    "performance_counters": "not collected; the pinned toolchain run exposed the cycle-counter profile only",
+    "profile_transport_complete": true,
+    "consistency_pass": true,
+    "named_sections_cover_total": false,
+    "rows": [
+      {
+        "L": 16,
+        "double_buffer": false,
+        "reader": {
+          "total_cycles": 504924,
+          "cb_empty_wait_cycles": 413726,
+          "cb_empty_wait_share": 0.8193827189834509,
+          "noc_read_cycles": 89400,
+          "noc_read_share": 0.17705634907431614,
+          "active_or_unclassified_share": 0.18061728101654903,
+          "unclassified_cycles": 1798
+        },
+        "compute": {
+          "trisc_total_cycles": {
+            "TRISC0": 550308,
+            "TRISC1": 550033,
+            "TRISC2": 550844
+          },
+          "named_wait_cycles": 0,
+          "named_busy_cycles": 0,
+          "unclassified_cycles": {
+            "TRISC0": 550308,
+            "TRISC1": 550033,
+            "TRISC2": 550844
+          }
+        },
+        "writer": {
+          "total_cycles": 552262,
+          "cb_wait_front_cycles": 535105,
+          "cb_wait_front_share": 0.9689332237235225,
+          "noc_write_cycles": 16224,
+          "noc_write_share": 0.029377360745443285,
+          "active_or_unclassified_share": 0.03106677627647747,
+          "unclassified_cycles": 933
+        }
+      },
+      {
+        "L": 16,
+        "double_buffer": true,
+        "reader": {
+          "total_cycles": 389868,
+          "cb_empty_wait_cycles": 298202,
+          "cb_empty_wait_share": 0.7648793950773082,
+          "noc_read_cycles": 89770,
+          "noc_read_share": 0.23025742046025835,
+          "active_or_unclassified_share": 0.2351206049226918,
+          "unclassified_cycles": 1896
+        },
+        "compute": {
+          "trisc_total_cycles": {
+            "TRISC0": 474044,
+            "TRISC1": 473741,
+            "TRISC2": 474551
+          },
+          "named_wait_cycles": 0,
+          "named_busy_cycles": 0,
+          "unclassified_cycles": {
+            "TRISC0": 474044,
+            "TRISC1": 473741,
+            "TRISC2": 474551
+          }
+        },
+        "writer": {
+          "total_cycles": 476931,
+          "cb_wait_front_cycles": 455628,
+          "cb_wait_front_share": 0.9553331614007058,
+          "noc_write_cycles": 20334,
+          "noc_write_share": 0.04263509815885317,
+          "active_or_unclassified_share": 0.04466683859929424,
+          "unclassified_cycles": 969
+        }
+      },
+      {
+        "L": 32,
+        "double_buffer": false,
+        "reader": {
+          "total_cycles": 988301,
+          "cb_empty_wait_cycles": 826813,
+          "cb_empty_wait_share": 0.8366003879384925,
+          "noc_read_cycles": 158316,
+          "noc_read_share": 0.16019006355351254,
+          "active_or_unclassified_share": 0.16339961206150758,
+          "unclassified_cycles": 3172
+        },
+        "compute": {
+          "trisc_total_cycles": {
+            "TRISC0": 1033682,
+            "TRISC1": 1033405,
+            "TRISC2": 1034214
+          },
+          "named_wait_cycles": 0,
+          "named_busy_cycles": 0,
+          "unclassified_cycles": {
+            "TRISC0": 1033682,
+            "TRISC1": 1033405,
+            "TRISC2": 1034214
+          }
+        },
+        "writer": {
+          "total_cycles": 1035665,
+          "cb_wait_front_cycles": 1013819,
+          "cb_wait_front_share": 0.9789063065759681,
+          "noc_write_cycles": 20180,
+          "noc_write_share": 0.019485065151376168,
+          "active_or_unclassified_share": 0.021093693424031904,
+          "unclassified_cycles": 1666
+        }
+      },
+      {
+        "L": 32,
+        "double_buffer": true,
+        "reader": {
+          "total_cycles": 804403,
+          "cb_empty_wait_cycles": 639670,
+          "cb_empty_wait_share": 0.7952108582389673,
+          "noc_read_cycles": 161377,
+          "noc_read_share": 0.2006171036159736,
+          "active_or_unclassified_share": 0.20478914176103272,
+          "unclassified_cycles": 3356
+        },
+        "compute": {
+          "trisc_total_cycles": {
+            "TRISC0": 887883,
+            "TRISC1": 887591,
+            "TRISC2": 888393
+          },
+          "named_wait_cycles": 0,
+          "named_busy_cycles": 0,
+          "unclassified_cycles": {
+            "TRISC0": 887883,
+            "TRISC1": 887591,
+            "TRISC2": 888393
+          }
+        },
+        "writer": {
+          "total_cycles": 890465,
+          "cb_wait_front_cycles": 861498,
+          "cb_wait_front_share": 0.9674698051018288,
+          "noc_write_cycles": 27209,
+          "noc_write_share": 0.030555945489154544,
+          "active_or_unclassified_share": 0.03253019489817118,
+          "unclassified_cycles": 1758
+        }
+      }
+    ],
+    "bottleneck_assessment": {
+      "conclusion": "Block-boundary I/O is implicated, not proven uniquely causal: two windows reduce reader and writer CB wait shares while throughput improves, but fused-S compute work remains unclassified by the current cycle-counter instrumentation.",
+      "evidence": [
+        "Reader CB-empty wait falls from 83.660% to 79.521% at L=32 and from 81.938% to 76.488% at L=16.",
+        "Writer CB wait-front falls from 97.891% to 96.747% at L=32 and from 96.893% to 95.533% at L=16.",
+        "The fused-S TRISC named wait/busy sections are zero and the body is recorded as unclassified, so the counters cannot separate core handoff from residual compute work."
+      ],
+      "evidence_limit": "No unique core-internal versus block-boundary bottleneck claim is made."
+    }
+  },
+  "power_trace": {
+    "file": "2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32-power.csv",
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "sampling_source": "tt-smi snapshot",
+    "performance_run_samples": 3,
+    "performance_power_w_min": 42.0,
+    "performance_power_w_max": 179.0,
+    "performance_aiclk_mhz_max": 1350.0,
+    "performance_asic_temp_c_max": 67.1,
+    "profile_run_samples": 2,
+    "profile_power_w_min": 42.0,
+    "profile_power_w_max": 74.0,
+    "profile_aiclk_mhz_max": 1350.0,
+    "profile_asic_temp_c_max": 60.8,
+    "profile_trace_note": "The profile run had its own wrapper trace; the landed companion trace is the performance comparison trace, while profile sample summaries are retained here."
+  },
+  "environment": {
+    "captured_at": "2026-10-04T13:31:54.911060+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "tt_env_active_release": "0.75.0",
+    "kernel": "Linux 6.8.0-138-generic",
+    "kernel_driver_version": "2.11.0",
+    "kmd_version": "2.11.0",
+    "harness_commit": "b203ad592e8ac3c2eeb2c5e42796e57575d1c8d1",
+    "harness_dirty": false,
+    "harness_capture_note": "The source tree synchronized for the board runs was clean at this commit; the staging procedure intentionally excluded .git, so the wrapper's in-container git probe was unavailable and the commit is carried from the synchronized source revision.",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "device_id": 0,
+      "bus_id": "0000:06:00.0",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "b203ad592e8ac3c2eeb2c5e42796e57575d1c8d1",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_node": "/dev/tenstorrent/0",
+    "device_id": 0,
+    "correctness_watcher": true,
+    "performance_watcher": false,
+    "profile_watcher": false,
+    "correctness_timeout_s": 60,
+    "performance_timeout_s": 900,
+    "profile_timeout_s": 900,
+    "correctness_test": "tests/test_newton_schulz_kernel.py::test_device_double_buffer_matches_numpy",
+    "container_cleanup_verified": true
+  },
+  "cleanup": {
+    "docker_ps_before_each_run": "empty",
+    "docker_ps_after_each_run": "empty",
+    "docker_ps_final": "empty",
+    "performance_run": "normal closure",
+    "profile_run": "normal closure",
+    "correctness_run": "normal closure",
+    "container_cleanup_verified": true
+  },
+  "recovery": {
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal closure",
+    "additional_reset_after_stage1": false
+  },
+  "notes": [
+    "All eight correctness rows passed against the BF16-rounded independent reference at relative error below 1e-2.",
+    "The two-window L=32 and L=16 preflights fit before the device comparison; no device run was attempted for an over-budget row.",
+    "The block-4 reader, compute, and writer source paths were unchanged because their reserve, wait_front, push, and pop units already match block_count.",
+    "No hostname, connection name, home directory, work directory, or user-specific absolute path is included."
+  ]
+}
