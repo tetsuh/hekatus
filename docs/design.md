@@ -1363,21 +1363,25 @@ optimization record
 shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
 versus baseline.
 
-**R-residency attribution disposition.** PR #81's immutable control record
-`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json`
-measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
+**R-residency attribution disposition.** PR #81's complete-provenance superseding
+record
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding.json`
+supersedes the immutable predecessor
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control.json`.
+It measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
 all-inputs-L1 run with `reload_r=false` and `reload_r=true`, 1,000 launches per
 variant. Both variants pass the batch-4 and batch-8192 NumPy correctness gates.
-The resident row reaches **51.8585 TFLOPS**; reloading R on every one of the
-fixed eight iterations reaches **31.3663 TFLOPS**, **39.5% lower** (the median
-launch is 65.2% slower). The resident value is within the existing roughly
-+/-2-4% repeatability context of the earlier 51.92 TFLOPS headline, so the
-headline and roughly two-card extrapolation remain unchanged. The control does
-change attribution: R residency is a material contributor to the resident
-throughput. The remaining difference is still a combined kernel result; this
-control does not claim that R is the sole bottleneck or separate dispatch and
-other fixed overheads. The companion power trace is
-`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv`.
+The resident row reaches **51.82917713218822 TFLOPS**; reloading R on every one
+of the fixed eight iterations reaches **31.33414466591468 TFLOPS**, **39.5434%
+lower** (the median launch is 65.1843% slower). The resident value remains
+within the existing roughly +/-2-4% repeatability context of the earlier 51.92
+TFLOPS headline, so the headline and roughly two-card extrapolation remain
+unchanged. The control does change attribution: R residency is a material
+contributor to the resident throughput. The remaining difference is still a
+combined kernel result; this control does not claim that R is the sole
+bottleneck or separate dispatch and other fixed overheads. The companion power
+trace is
+`docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv`.
 
 The unpack diagnostic
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`

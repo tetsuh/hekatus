@@ -810,8 +810,10 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         )
     if args.reload_r and args.compare_reload_r:
         parser.error("--reload-r cannot be combined with --compare-reload-r")
-    if args.compare_reload_r and args.acceptance_catalogue:
-        parser.error("--compare-reload-r requires the normal custom-row runner")
+    if (args.reload_r or args.compare_reload_r) and args.acceptance_catalogue:
+        parser.error(
+            "--reload-r/--compare-reload-r require the normal custom-row runner"
+        )
     if args.acceptance_catalogue:
         return
 
