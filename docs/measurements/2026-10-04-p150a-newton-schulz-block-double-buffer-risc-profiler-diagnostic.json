@@ -424,25 +424,26 @@
     "interpretation_note": "NoC counts identify reader reads and writer writes; overlap with RISC intervals is not treated as causal proof."
   },
   "interpretation": {
-    "evidence_level": "sufficient for a primary observed block-boundary-I/O effect; insufficient for an exclusive causal bottleneck claim",
+    "evidence_level": "sufficient to identify compute-side remaining bottleneck candidates; insufficient for exclusive phase causality",
     "block_boundary_io": {
       "status": "supported",
       "evidence": [
-        "Reader CB-empty wait share falls from 83.432% to 79.173% with two windows.",
-        "Writer CB wait-front share falls from 97.269% to 96.829% with two windows.",
-        "Measurement-core whole-kernel intervals fall from NCRISC 995419 to 808594 cycles, BRISC 1044103 to 895937 cycles, and TRISC0-2 approximately 1037570-1038311 to 888885-889611 cycles.",
+        "NCRISC reader and BRISC writer spend most of their time waiting for compute: in the two-window case NCRISC CB-empty wait is 79.173% and BRISC CB/output wait is 96.829%. These are producer/consumer waits because compute has not consumed or returned the buffers, not evidence that data movement blocks compute.",
+        "The one-window-to-two-window whole-kernel intervals fall from NCRISC 995419 to 808594 cycles, BRISC 1044103 to 895937 cycles, and TRISC0-2 approximately 1037570-1038311 to 888885-889611 cycles; the full interval is approximately 15% shorter.",
+        "The recorded NoC volume is 118116352 bytes read plus 67108864 bytes written per launch. Using the recorded approximately 0.774 ms launch interval, this derives 185225216 / 0.000774 seconds = approximately 239-240 GB/s aggregate decimal bandwidth, or approximately 2.17-2.18 GB/s per 110 cores (rounded to approximately 240 GB/s and 2 GB/s/core). This is a derived diagnostic estimate, not a new measurement.",
         "The one-window NoC trace shows the expected external reader and writer transfers, while the two-window change preserves the same block operation configuration."
       ]
     },
     "intra_core_handoff": {
-      "status": "not_ruled_out",
+      "status": "primary_remaining_candidate",
       "evidence": [
-        "TRISC named wait/active sections are zero and the TRISC body is unclassified by the L1 cycle-counter pages.",
-        "One-window official counters report unpack-thread stalls around 16.8%, math-thread stalls around 22.2%, pack-thread stalls around 56.4-56.6%, and unpack idle wait around 12.9%.",
-        "The counter diagnostic was not collected for the two-window mode, so it cannot establish a mode-to-mode intra-core comparison."
+        "One-window stored counters report math/FPU utilization of about 36% from math_util_median_range 35.63862970599092-35.67909072287391%, math-thread idle wait of about 0.51% from math_idle_wait_avg_range 0.5110193992008973-0.5117562753970224%, unpack-thread instruction availability of about 22% from instruction_available_avg_ranges.unpack_t0 22.23482101729926-22.273140109756465%, and pack-thread stall of about 56% from thread_stall_avg_ranges.pack_thread_t2 56.37487928142017-56.56814068139432%.",
+        "The low FPU utilization is not explained by a large math-thread waiting-for-unpack fraction. TRISC instruction supply and unpack/math/pack handoff, especially pack-side stall, are the main remaining bottleneck candidates.",
+        "TRISC named wait/active sections are zero and the TRISC body is unclassified by the L1 cycle-counter pages; exact kernel phase attribution requires kernel-internal zones.",
+        "Two-buffer performance counters are unavailable, so this candidate interpretation has no mode-to-mode counter comparison."
       ]
     },
-    "conclusion": "The evidence supports block-boundary circular-buffer I/O as the primary observed effect relieved by the second window, rather than proving an intra-core handoff bottleneck. A unique causal claim is not made because the compute body remains unclassified and the optional counters cover only one-window replays."
+    "conclusion": "Two-buffering removed/shortened the block-boundary I/O and compute serialization (the full interval is approximately 15% shorter). The remaining bottleneck is on the compute side, not data movement (NoC and DRAM/L1 reads/writes). Within compute, FPU utilization remains about 36%; TRISC instruction supply and unpack/math/pack handoff, especially pack-side stall, are the main candidates. Exact kernel phase attribution requires kernel-internal zones. This is not an exclusive causal claim because the compute body remains unclassified and two-buffer performance counters are unavailable."
   },
   "limitations": [
     "The main profiler runs used TT_METAL_DEVICE_PROFILER=1 with Watcher explicitly unset; no Watcher-plus-profiler evidence is claimed.",
