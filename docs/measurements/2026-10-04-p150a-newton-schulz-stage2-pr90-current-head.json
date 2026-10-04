@@ -2,8 +2,8 @@
   "record_schema": "adr-0005-pr90-current-head-board-diagnostic-v1",
   "what": "Issue #85 Stage 2 device validation on the current PR #90 head after correcting CONV-90-001",
   "captured_at": "2026-10-04",
-  "harness_revision": "255ace306f98653a64f4a0816f951f47a33a86b5",
-  "pr_head": "255ace306f98653a64f4a0816f951f47a33a86b5",
+  "harness_revision": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
+  "pr_head": "ce8bb308a22eddc8dc3d18418459362c52a62c4e",
   "environment": {
     "board_serial": "000004033191411c",
     "board_type": "p150a",
@@ -75,11 +75,11 @@
       "throughput": {
         "launch_count": 1000,
         "flops_per_launch": 25165824,
-        "seconds_per_launch_p50": 5.696600055671297e-05,
-        "seconds_per_launch_p99": 8.632797031168585e-05,
-        "seconds_per_launch_min": 5.569499990087934e-05,
-        "tflops_p50": 0.44176919134328124,
-        "tflops_min_time": 0.4518506875803526
+        "seconds_per_launch_p50": 5.758600127592217e-05,
+        "seconds_per_launch_p99": 8.588352859078436e-05,
+        "seconds_per_launch_min": 5.567499829339795e-05,
+        "tflops_p50": 0.4370128753934217,
+        "tflops_min_time": 0.452013017896836
       }
     },
     {
@@ -108,11 +108,11 @@
       "throughput": {
         "launch_count": 1000,
         "flops_per_launch": 3145728,
-        "seconds_per_launch_p50": 6.109750029281713e-05,
-        "seconds_per_launch_p99": 6.31314595011645e-05,
-        "seconds_per_launch_min": 5.9608999436022714e-05,
-        "tflops_p50": 0.05148701640695151,
-        "tflops_min_time": 0.052772702608039145
+        "seconds_per_launch_p50": 6.172549910843372e-05,
+        "seconds_per_launch_p99": 6.313143949228106e-05,
+        "seconds_per_launch_min": 5.949800106463954e-05,
+        "tflops_p50": 0.05096318450943381,
+        "tflops_min_time": 0.05287115438689164
       }
     },
     {
@@ -141,11 +141,11 @@
       "throughput": {
         "launch_count": 1000,
         "flops_per_launch": 51539607552,
-        "seconds_per_launch_p50": 0.0008874195009411778,
-        "seconds_per_launch_p99": 0.000910751261326368,
-        "seconds_per_launch_min": 0.000882861997524742,
-        "tflops_p50": 58.07806510600478,
-        "tflops_min_time": 58.37787524720772
+        "seconds_per_launch_p50": 0.0008878325006662635,
+        "seconds_per_launch_p99": 0.0009270697605461462,
+        "seconds_per_launch_min": 0.0008831949999148492,
+        "tflops_p50": 58.05104849543434,
+        "tflops_min_time": 58.35586428474918
       }
     },
     {
@@ -174,11 +174,11 @@
       "throughput": {
         "launch_count": 1000,
         "flops_per_launch": 6442450944,
-        "seconds_per_launch_p50": 0.0005159810007171473,
-        "seconds_per_launch_p99": 0.0005217510806323844,
-        "seconds_per_launch_min": 0.0005130540012032725,
-        "tflops_p50": 12.485829778704684,
-        "tflops_min_time": 12.557062080970876
+        "seconds_per_launch_p50": 0.0005161270019016229,
+        "seconds_per_launch_p99": 0.0005216701306198957,
+        "seconds_per_launch_min": 0.0005129370001668576,
+        "tflops_p50": 12.482297807057908,
+        "tflops_min_time": 12.55992634944307
       }
     }
   ],
@@ -189,7 +189,7 @@
     "failed": 0,
     "skipped": 0,
     "deselected": 1054,
-    "duration_seconds": 94.17,
+    "duration_seconds": 94.08,
     "thresholdless_true_inverse_command": "./enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device tests/test_newton_schulz_kernel.py::DeviceEquivalenceTests::test_batch_8192_true_inverse_error_is_recorded_without_a_threshold",
     "thresholdless_true_inverse_relative_error_l32_batch8192": 0.0217713704,
     "thresholdless_assertion": false
