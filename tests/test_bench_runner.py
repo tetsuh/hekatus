@@ -140,6 +140,36 @@ def test_issue94_modes_and_rows_preserve_fixed_selection_metadata_without_a_devi
     assert all(row["input_memory"] == "l1" and row["output_memory"] == "dram" for row in rows)
 
 
+def test_issue94_correctness_writer_records_fixed_reference_without_a_device(
+    monkeypatch, tmp_path
+):
+    ttnn = _StubTtnn()
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    config = run_matmul.ISSUE94_CONFIGS[0]
+    monkeypatch.setattr(run_matmul, "ISSUE94_CORRECTNESS_CASES", ((2, 1),))
+    monkeypatch.setattr(run_matmul, "ISSUE94_CONFIGS", (config,))
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    def fake_kernel(_ttnn, _device, matrices, **_kwargs):
+        return run_matmul._issue94_fixed_reference(
+            run_matmul._issue94_bf16_round_complex(matrices),
+            run_matmul._issue94_initial_value(matrices),
+        )
+
+    monkeypatch.setattr(newton_schulz_kernel, "run_newton_schulz_kernel", fake_kernel)
+    output = tmp_path / "issue94-correctness.json"
+
+    assert run_matmul.main(["--issue94-correctness", "--out", str(output)]) == 0
+
+    payload = json.loads(output.read_text())
+    assert {
+        result["reference"] for result in payload["results"]
+    } == {"enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"}
+
+
 def test_repeatable_shape_and_config_filters_parse_without_a_device():
     args = run_matmul._build_parser().parse_args(
         [

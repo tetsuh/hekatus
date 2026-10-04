@@ -104,6 +104,7 @@ ISSUE94_CONFIGS = (
     },
 )
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+POWER_TRACE_SAMPLING_SOURCE = "tt-smi snapshot"
 
 
 def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
@@ -1003,7 +1004,7 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "power_column": "power_w",
             "clock_column": "aiclk_mhz",
             "temperature_column": "asic_temp_c",
-            "sampling_source": "tt-smi snapshot",
+            "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
         },
         "environment_provenance": {
             "source": "--env-json",
@@ -1023,7 +1024,7 @@ def _issue94_power_metadata(args: argparse.Namespace) -> dict:
             "power_column": "power_w",
             "clock_column": "aiclk_mhz",
             "temperature_column": "asic_temp_c",
-            "sampling_source": "tt-smi snapshot",
+            "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
         },
     }
 
@@ -1201,8 +1202,6 @@ def _relative_frobenius_error(actual, expected) -> float:
 def _run_issue94_correctness(
     ttnn,
     device,
-    *,
-    args: argparse.Namespace,
 ) -> list[dict]:
     """Run all Issue #94 correctness cases against both required references."""
     import numpy as np
@@ -1261,7 +1260,7 @@ def _run_issue94_correctness(
                     "threshold_pass": finite and rounded_error <= 0.01,
                 },
                 "status": "pass" if finite and rounded_error <= 0.01 else "diagnostic_fail",
-                "reference": "enodia/tt/bench/newton_schulz_reference.py",
+                "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference",
                 "iterations": 12,
             }
             print(
@@ -1458,7 +1457,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.issue94_correctness:
         try:
-            results = _run_issue94_correctness(ttnn, device, args=args)
+            results = _run_issue94_correctness(ttnn, device)
         finally:
             ttnn.close_device(device)
         payload = {
@@ -1719,7 +1718,7 @@ def main(argv: list[str] | None = None) -> int:
                 "power_column": "power_w",
                 "clock_column": "aiclk_mhz",
                 "temperature_column": "asic_temp_c",
-                "sampling_source": "tt-smi snapshot",
+                "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
             },
         }
     if args.profile:
