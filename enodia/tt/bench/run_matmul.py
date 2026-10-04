@@ -787,6 +787,23 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--half-sync-row",
+        default=None,
+        help="restrict --half-sync-catalogue to one manifest row",
+    )
+    parser.add_argument(
+        "--half-sync-correctness-only",
+        action="store_true",
+        help="run selected half-sync row correctness and skip throughput",
+    )
+    parser.add_argument(
+        "--half-sync-correctness-batch",
+        type=int,
+        choices=HALF_SYNC_CORRECTNESS_BATCHES,
+        default=None,
+        help="run one correctness batch in the selected half-sync row",
+    )
+    parser.add_argument(
         "--launches-per-row",
         type=int,
         default=ACCEPTANCE_CATALOGUE_LAUNCHES,
@@ -900,6 +917,10 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         if args.compare_double_buffer:
             parser.error("--compare-double-buffer is not part of --half-sync-catalogue")
         return
+    if args.half_sync_row or args.half_sync_correctness_only:
+        parser.error(
+            "--half-sync-row/--half-sync-correctness-only require --half-sync-catalogue"
+        )
     if args.acceptance_catalogue:
         return
 
@@ -1106,8 +1127,13 @@ def _run_half_sync_catalogue(
 
         shape = shapes_by_name[row["shape"]]
         correctness = []
+        correctness_batches = (
+            (args.half_sync_correctness_batch,)
+            if args.half_sync_correctness_batch is not None
+            else HALF_SYNC_CORRECTNESS_BATCHES
+        )
         try:
-            for batch in HALF_SYNC_CORRECTNESS_BATCHES:
+            for batch in correctness_batches:
                 correctness.append(
                     _half_sync_correctness(
                         ttnn,
@@ -1134,6 +1160,11 @@ def _run_half_sync_catalogue(
             continue
 
         result["correctness"] = correctness
+        if args.half_sync_correctness_only:
+            result["status"] = "correctness_ok"
+            results.append(result)
+            print(f"{row['row']:72s} correctness passed", flush=True)
+            continue
         if not all(case["passed"] for case in correctness):
             result.update(
                 {
@@ -1326,6 +1357,12 @@ def main(argv: list[str] | None = None) -> int:
         # fail DEST or L1 accounting are retained in the result and never
         # reach kernel preparation or launch.
         preflight_rows = preflight_half_sync_rows(ttnn)
+        if args.half_sync_row is not None:
+            preflight_rows = [
+                row for row in preflight_rows if row["row"] == args.half_sync_row
+            ]
+            if not preflight_rows:
+                parser.error(f"unknown --half-sync-row {args.half_sync_row!r}")
         admitted = [row for row in preflight_rows if row["preflight_status"] == "admitted"]
         results: list[dict] = []
         if admitted:
@@ -1359,7 +1396,13 @@ def main(argv: list[str] | None = None) -> int:
                 "fp32_dest_acc_en": True,
                 "dst_full_sync_en": [True, False],
                 "matrix_blocks": list(MATRIX_BLOCK_CHOICES),
-                "correctness_batches": list(HALF_SYNC_CORRECTNESS_BATCHES),
+                "correctness_batches": list(
+                    (args.half_sync_correctness_batch,)
+                    if args.half_sync_correctness_batch is not None
+                    else HALF_SYNC_CORRECTNESS_BATCHES
+                ),
+                "correctness_only": args.half_sync_correctness_only,
+                "row_filter": args.half_sync_row,
                 "launches_per_row": HALF_SYNC_LAUNCHES,
                 "device_id": args.device_id,
             },
