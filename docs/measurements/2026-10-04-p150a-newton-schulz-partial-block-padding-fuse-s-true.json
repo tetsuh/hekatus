@@ -1,0 +1,160 @@
+{
+  "status": "pass",
+  "measurement": {
+    "issue": "#63",
+    "requirement": "ADV-81-001",
+    "description": "Named partial-block device correctness cases against the independent NumPy fixed-iteration reference.",
+    "device_id": 0,
+    "watcher": true,
+    "external_timeout_s": 60,
+    "tolerance": 0.01,
+    "cases": [
+      {
+        "case_id": "batch3-block4-L32-fuse_s_true",
+        "batch": 3,
+        "L": 32,
+        "matrix_block": 4,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006613869685679674,
+        "elapsed_s": 3.093837473999997
+      },
+      {
+        "case_id": "batch3-block8-L32-fuse_s_true",
+        "batch": 3,
+        "L": 32,
+        "matrix_block": 8,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006101854611188173,
+        "elapsed_s": 0.7726638520000506
+      },
+      {
+        "case_id": "batch5-block8-L32-fuse_s_true",
+        "batch": 5,
+        "L": 32,
+        "matrix_block": 8,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006807816214859486,
+        "elapsed_s": 0.09939259300000458
+      },
+      {
+        "case_id": "batch6-block8-L32-fuse_s_true",
+        "batch": 6,
+        "L": 32,
+        "matrix_block": 8,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.0062738400883972645,
+        "elapsed_s": 0.0992626000000314
+      },
+      {
+        "case_id": "batch7-block8-L32-fuse_s_true",
+        "batch": 7,
+        "L": 32,
+        "matrix_block": 8,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006616657599806786,
+        "elapsed_s": 0.10007630899997366
+      },
+      {
+        "case_id": "batch5-block4-L16-fuse_s_true",
+        "batch": 5,
+        "L": 16,
+        "matrix_block": 4,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006715228781104088,
+        "elapsed_s": 0.09509236300004886
+      },
+      {
+        "case_id": "batch6-block4-L16-fuse_s_true",
+        "batch": 6,
+        "L": 16,
+        "matrix_block": 4,
+        "fuse_s": true,
+        "status": "pass",
+        "relative_error": 0.006906227674335241,
+        "elapsed_s": 0.09699520099997017
+      }
+    ],
+    "optional_fuse_s_false": {
+      "status": "not_run",
+      "cases": [
+        "batch3-block4-L32-fuse_s_false",
+        "batch3-block8-L32-fuse_s_false",
+        "batch5-block8-L32-fuse_s_false",
+        "batch6-block8-L32-fuse_s_false",
+        "batch7-block8-L32-fuse_s_false",
+        "batch5-block4-L16-fuse_s_false",
+        "batch6-block4-L16-fuse_s_false"
+      ],
+      "reason": "Optional follow-up cases were not run after the required fuse_s=true cases passed."
+    },
+    "oracle": "enodia/tt/bench/newton_schulz_reference.py"
+  },
+  "environment": {
+    "captured_at": "2026-10-04T00:11:02.560893+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "ab19710d49b8ff7034802390dc8fe88dee664194",
+    "harness_dirty": false,
+    "kernel_driver_version": "2.11.0",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "device_id": 0,
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    }
+  },
+  "harness": {
+    "commit": "ab19710d49b8ff7034802390dc8fe88dee664194",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_id": 0,
+    "watcher": true,
+    "container_timeout_s": 60,
+    "container_cleanup_verified": true,
+    "test_command": "TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py::test_device_partial_block_padding_matches_numpy -s -p pr81_pytest_observer -k 'batch3-block4-L32-fuse_s_true or batch3-block8-L32-fuse_s_true or batch5-block8-L32-fuse_s_true or batch6-block8-L32-fuse_s_true or batch7-block8-L32-fuse_s_true or batch5-block4-L16-fuse_s_true or batch6-block4-L16-fuse_s_true'",
+    "selection": [
+      "batch3-block4-L32-fuse_s_true",
+      "batch3-block8-L32-fuse_s_true",
+      "batch5-block8-L32-fuse_s_true",
+      "batch6-block8-L32-fuse_s_true",
+      "batch7-block8-L32-fuse_s_true",
+      "batch5-block4-L16-fuse_s_true",
+      "batch6-block4-L16-fuse_s_true"
+    ],
+    "relative_error_capture": "Temporary pytest observer read the test-local relative_error and pytest call duration; the test and production harness were unchanged.",
+    "source_note": "The verified harness code is ab19710; the local checkout also contained a docs-only descendant and that descendant is not recorded as the harness revision."
+  },
+  "recovery": {
+    "timeout": false,
+    "abnormal_exit": false,
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal closure",
+    "docker_ps_after_invocation": "empty",
+    "docker_ps_final": "empty"
+  },
+  "notes": [
+    "All seven required fuse_s=true named cases passed with relative error below 1e-2.",
+    "No fuse_s=false case was run.",
+    "No host name, connection name, or local absolute path is included in this record."
+  ]
+}
