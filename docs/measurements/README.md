@@ -6,10 +6,12 @@ produced it.
 A throughput figure is only evidence if the environment behind it can be
 reproduced later. design.md §2 records that a firmware update once changed
 the core count, and the first measurements on this project ran on a different
-board from the target — so every result file here carries, in its own
-`environment` block, the board type and serial, firmware bundle, kernel
-driver version, the toolchain image by digest, and the revision of the
-harness that computed the numbers. For accelerator-backed records,
+board from the target — so every accelerator-backed result file here carries,
+in its own `environment` block, the board type and serial, firmware bundle,
+kernel driver version, the toolchain image by digest, and the revision of the
+harness that computed the numbers. Retained predecessor records whose values
+cannot be rewritten may instead carry this identity in a linked provenance
+supplement. For accelerator-backed records,
 `environment.tt_env_active_release` is host-side context captured before the
 pinned container starts; it is not the release identity of the container.
 The immutable image digest in `environment.image` is authoritative for the
