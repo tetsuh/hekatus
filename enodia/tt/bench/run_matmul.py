@@ -1160,11 +1160,6 @@ def _run_half_sync_catalogue(
             continue
 
         result["correctness"] = correctness
-        if args.half_sync_correctness_only:
-            result["status"] = "correctness_ok"
-            results.append(result)
-            print(f"{row['row']:72s} correctness passed", flush=True)
-            continue
         if not all(case["passed"] for case in correctness):
             result.update(
                 {
@@ -1177,6 +1172,12 @@ def _run_half_sync_catalogue(
                 f"{row['row']:72s} correctness failed: gate 0.01",
                 flush=True,
             )
+            continue
+
+        if args.half_sync_correctness_only:
+            result["status"] = "correctness_ok"
+            results.append(result)
+            print(f"{row['row']:72s} correctness passed", flush=True)
             continue
 
         record = run_custom_newton_schulz(

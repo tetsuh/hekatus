@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from enodia.tt.bench import newton_schulz_kernel
+from enodia.tt.bench import newton_schulz_kernel, run_matmul
 from enodia.tt.bench.half_sync import half_sync_row_manifest, preflight_half_sync_rows
 
 
@@ -96,3 +96,65 @@ def test_dest_limits_are_explicit_for_full_and_half_sync():
         newton_schulz_kernel._validate_matrix_block(
             4, fp32_dest_acc_en=True, dst_full_sync_en=False
         )
+
+
+def _correctness_only_args():
+    return SimpleNamespace(
+        half_sync_correctness_batch=None,
+        half_sync_correctness_only=True,
+    )
+
+
+def _admitted_row(ttnn):
+    return next(
+        row
+        for row in preflight_half_sync_rows(ttnn)
+        if row["preflight_status"] == "admitted"
+    )
+
+
+def test_correctness_only_rejects_a_mixed_result_and_does_not_print_success(
+    monkeypatch, capsys, ttnn
+):
+    row = _admitted_row(ttnn)
+
+    def fake_correctness(*_args, **kwargs):
+        passed = kwargs["batch"] == 4
+        return {
+            "batch": kwargs["batch"],
+            "gate": 0.01,
+            "relative_error": 0.0 if passed else 0.02,
+            "passed": passed,
+        }
+
+    monkeypatch.setattr(run_matmul, "_half_sync_correctness", fake_correctness)
+    results = run_matmul._run_half_sync_catalogue(
+        ttnn, object(), args=_correctness_only_args(), rows=[row]
+    )
+
+    assert results[0]["status"] == "correctness_failed"
+    assert results[0]["correctness"][1]["relative_error"] > results[0]["correctness"][1]["gate"]
+    assert all(result.get("status") != "correctness_ok" for result in results)
+    output = capsys.readouterr().out
+    assert "correctness failed" in output
+    assert "correctness passed" not in output
+
+
+def test_correctness_only_retains_all_pass_success(monkeypatch, capsys, ttnn):
+    row = _admitted_row(ttnn)
+
+    def fake_correctness(*_args, **kwargs):
+        return {
+            "batch": kwargs["batch"],
+            "gate": 0.01,
+            "relative_error": 0.004,
+            "passed": True,
+        }
+
+    monkeypatch.setattr(run_matmul, "_half_sync_correctness", fake_correctness)
+    results = run_matmul._run_half_sync_catalogue(
+        ttnn, object(), args=_correctness_only_args(), rows=[row]
+    )
+
+    assert results[0]["status"] == "correctness_ok"
+    assert "correctness passed" in capsys.readouterr().out
