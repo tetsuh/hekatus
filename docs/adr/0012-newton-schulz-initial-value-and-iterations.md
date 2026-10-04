@@ -53,13 +53,19 @@ out exactly twelve iterations and does not add a convergence test.
   previous eight-iteration planning figures; the corresponding design and
   budget estimates are updated on this branch.
 - Passing `R` in BF16 introduces a condition-number-dependent perturbation:
-  the current-head record
+  the record
   `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
-  (superseding the two earlier 2026-10-04 diagnostics) reports, at κ=100,
+  was measured with harness commit `ce8bb30`; device tests were run at commit
+  `0d786b0`, as recorded in the measurement record. It supersedes the two
+  earlier 2026-10-04 diagnostics and reports, at κ=100,
   approximately `2.03e-2` inverse error, `2.52e-4` MV-direction deficit, and
   `1.42e-2` beam-pattern error, and at κ=300 approximately `5.94e-2`,
   `3.17e-3`, and `5.93e-2`; the device kernel is approximately `3.67e-3`
-  from the BF16-R reference.
+  from the BF16-R reference. The diff from `ce8bb30` to `0d786b0` contains
+  only the measurement-record update and no kernel or valid numerical-path
+  changes. The main merge is retained in branch history; commits after
+  `0d786b0` update records and documentation and add input validation and host
+  tests, without changing the kernel or valid numerical paths.
 - The representation of `R` remains open: a follow-up Issue will compare an
   FP32-R variant with the BF16 variant in the same run before deciding the
   production format.

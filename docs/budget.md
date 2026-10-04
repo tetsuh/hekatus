@@ -345,13 +345,20 @@ is in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
-current-head 2026-10-04 record
+2026-10-04 record
 `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-pr90-current-head.json`
-supersedes the two earlier BF16 diagnostics. It measures the twelve-iteration
+was measured with harness commit `ce8bb30`, and device tests were run at
+commit `0d786b0`, as recorded in the measurement record. It supersedes the two
+earlier BF16 diagnostics. It measures the twelve-iteration
 BF16-`R` path at 58.1 TFLOPS / 0.888 ms p50 for L=32 and 12.5 TFLOPS /
 0.516 ms p50 for packed L=16, from 1,000 launches per case. The L=32 launch
-time is about 1.33× the comparable eight-iteration record. The current-head
-board-gated test selection passed 1,031/1,031. These are board timings, not a
+time is about 1.33× the comparable eight-iteration record. The board-gated
+test selection passed 1,031/1,031 at commit `0d786b0`. The diff from
+`ce8bb30` to `0d786b0` contains only the measurement-record update and no
+kernel or valid numerical-path changes. The main merge is retained in branch
+history; commits after `0d786b0` update records and documentation and add input
+validation and host tests, without changing the kernel or valid numerical paths.
+These are board timings, not a
 revised theoretical peak or an M5 image-quality result; the BF16 input-`R`
 perturbation remains a separate representation question.
 
