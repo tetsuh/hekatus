@@ -45,6 +45,12 @@ constexpr std::uint32_t profile_section_sum_offset = 8;
 constexpr std::uint32_t profile_residual_offset = 9;
 constexpr std::uint32_t profile_event_count_offset = 10;
 constexpr std::uint32_t profile_warmup_event_count_offset = 11;
+constexpr std::uint32_t profile_block_input_cb_wait_offset = 12;
+constexpr std::uint32_t profile_block_output_cb_wait_offset = 13;
+constexpr std::uint32_t profile_block_input_cb_reserve_offset = 14;
+constexpr std::uint32_t profile_block_output_cb_reserve_offset = 15;
+constexpr std::uint32_t profile_block_dest_acquire_wait_offset = 16;
+constexpr std::uint32_t profile_block_dest_pack_wait_offset = 17;
 
 // Counters use the lower 32-bit wall-clock API. All sections accumulate over
 // the assigned tiles and twelve iterations; the warmup fields retain the first
@@ -64,6 +70,12 @@ struct ProfileCounters {
     std::uint32_t s_binary = 0;
     std::uint32_t pack_push = 0;
     std::uint32_t state_handoff = 0;
+    std::uint32_t block_input_cb_wait = 0;
+    std::uint32_t block_output_cb_wait = 0;
+    std::uint32_t block_input_cb_reserve = 0;
+    std::uint32_t block_output_cb_reserve = 0;
+    std::uint32_t block_dest_acquire_wait = 0;
+    std::uint32_t block_dest_pack_wait = 0;
     std::uint32_t warmup_r_wait = 0;
     std::uint32_t warmup_x_wait = 0;
     std::uint32_t warmup_complex_real = 0;
@@ -71,6 +83,12 @@ struct ProfileCounters {
     std::uint32_t warmup_s_binary = 0;
     std::uint32_t warmup_pack_push = 0;
     std::uint32_t warmup_state_handoff = 0;
+    std::uint32_t warmup_block_input_cb_wait = 0;
+    std::uint32_t warmup_block_output_cb_wait = 0;
+    std::uint32_t warmup_block_input_cb_reserve = 0;
+    std::uint32_t warmup_block_output_cb_reserve = 0;
+    std::uint32_t warmup_block_dest_acquire_wait = 0;
+    std::uint32_t warmup_block_dest_pack_wait = 0;
 };
 
 void add_profile_cycles(std::uint32_t& total, std::uint32_t& warmup, std::uint32_t cycles, bool is_warmup) {
@@ -80,6 +98,105 @@ void add_profile_cycles(std::uint32_t& total, std::uint32_t& warmup, std::uint32
     }
 }
 struct EmptyProfileCounters {};
+
+bool is_block_input_cb(std::uint32_t cb) {
+    return cb == cb_r_real || cb == cb_r_negative_imag || cb == cb_r_imag || cb == cb_x0_real ||
+           cb == cb_x0_imag || cb == cb_r_negative_real;
+}
+
+bool is_block_output_cb(std::uint32_t cb) {
+    return cb == cb_output_real || cb == cb_output_imag;
+}
+
+template <bool profile_sample>
+void block_cb_wait_front(
+    std::uint32_t cb,
+    std::uint32_t count,
+    ProfileCounters* counters,
+    bool warmup) {
+    if constexpr (profile_sample) {
+        if (counters != nullptr) {
+            const std::uint32_t start = get_timestamp_32b();
+            cb_wait_front(cb, count);
+            const std::uint32_t cycles = get_timestamp_32b() - start;
+            if (is_block_input_cb(cb)) {
+                add_profile_cycles(counters->block_input_cb_wait, counters->warmup_block_input_cb_wait, cycles, warmup);
+            } else if (is_block_output_cb(cb)) {
+                add_profile_cycles(
+                    counters->block_output_cb_wait,
+                    counters->warmup_block_output_cb_wait,
+                    cycles,
+                    warmup);
+            }
+            return;
+        }
+    }
+    cb_wait_front(cb, count);
+}
+
+template <bool profile_sample>
+void block_cb_reserve_back(
+    std::uint32_t cb,
+    std::uint32_t count,
+    ProfileCounters* counters,
+    bool warmup) {
+    if constexpr (profile_sample) {
+        if (counters != nullptr) {
+            const std::uint32_t start = get_timestamp_32b();
+            cb_reserve_back(cb, count);
+            const std::uint32_t cycles = get_timestamp_32b() - start;
+            if (is_block_input_cb(cb)) {
+                add_profile_cycles(
+                    counters->block_input_cb_reserve,
+                    counters->warmup_block_input_cb_reserve,
+                    cycles,
+                    warmup);
+            } else if (is_block_output_cb(cb)) {
+                add_profile_cycles(
+                    counters->block_output_cb_reserve,
+                    counters->warmup_block_output_cb_reserve,
+                    cycles,
+                    warmup);
+            }
+            return;
+        }
+    }
+    cb_reserve_back(cb, count);
+}
+
+template <bool profile_sample>
+void block_tile_regs_acquire(ProfileCounters* counters, bool warmup) {
+    if constexpr (profile_sample) {
+        if (counters != nullptr) {
+            const std::uint32_t start = get_timestamp_32b();
+            tile_regs_acquire();
+            add_profile_cycles(
+                counters->block_dest_acquire_wait,
+                counters->warmup_block_dest_acquire_wait,
+                get_timestamp_32b() - start,
+                warmup);
+            return;
+        }
+    }
+    tile_regs_acquire();
+}
+
+template <bool profile_sample>
+void block_tile_regs_wait(ProfileCounters* counters, bool warmup) {
+    if constexpr (profile_sample) {
+        if (counters != nullptr) {
+            const std::uint32_t start = get_timestamp_32b();
+            tile_regs_wait();
+            add_profile_cycles(
+                counters->block_dest_pack_wait,
+                counters->warmup_block_dest_pack_wait,
+                get_timestamp_32b() - start,
+                warmup);
+            return;
+        }
+    }
+    tile_regs_wait();
+}
 
 void pack_one(std::uint32_t output) {
     tile_regs_wait();
@@ -317,6 +434,7 @@ void complex_matmul(
     }
 }
 
+template <bool profile_sample>
 void wait_complex_inputs_block(
     std::uint32_t left_real,
     std::uint32_t left_imag_for_real,
@@ -324,19 +442,21 @@ void wait_complex_inputs_block(
     std::uint32_t right_real,
     std::uint32_t right_imag,
     std::uint32_t block_count,
-    bool resident_left) {
+    bool resident_left,
+    ProfileCounters* counters,
+    bool warmup) {
     if (!resident_left) {
-        cb_wait_front(left_real, block_count);
-        cb_wait_front(left_imag_for_real, block_count);
+        block_cb_wait_front<profile_sample>(left_real, block_count, counters, warmup);
+        block_cb_wait_front<profile_sample>(left_imag_for_real, block_count, counters, warmup);
         if (left_imag_for_imag != left_imag_for_real) {
-            cb_wait_front(left_imag_for_imag, block_count);
+            block_cb_wait_front<profile_sample>(left_imag_for_imag, block_count, counters, warmup);
         }
     }
-    cb_wait_front(right_real, block_count);
-    cb_wait_front(right_imag, block_count);
+    block_cb_wait_front<profile_sample>(right_real, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(right_imag, block_count, counters, warmup);
 }
 
-template <bool one_dest_half>
+template <bool one_dest_half, bool profile_sample>
 void complex_matmul_block(
     std::uint32_t left_real,
     std::uint32_t left_imag_for_real,
@@ -348,15 +468,19 @@ void complex_matmul_block(
     std::uint32_t block_count,
     bool resident_left,
     bool consume_left,
-    bool consume_right) {
-    wait_complex_inputs_block(
+    bool consume_right,
+    ProfileCounters* counters,
+    bool warmup) {
+    wait_complex_inputs_block<profile_sample>(
         left_real,
         left_imag_for_real,
         left_imag_for_imag,
         right_real,
         right_imag,
         block_count,
-        resident_left);
+        resident_left,
+        counters,
+        warmup);
 
     const std::uint32_t block_left_real = left_real;
     const std::uint32_t block_right_real = right_real;
@@ -367,31 +491,31 @@ void complex_matmul_block(
         // Block 8 has only eight FP32/full-sync DEST tiles.  Its state CBs
         // retain two block windows so the next iteration can reserve output
         // while the current state remains available for both DEST passes.
-        cb_reserve_back(output_real, block_count);
-        cb_reserve_back(output_imag, block_count);
+        block_cb_reserve_back<profile_sample>(output_real, block_count, counters, warmup);
+        block_cb_reserve_back<profile_sample>(output_imag, block_count, counters, warmup);
 
         // Accumulate and pack the real and imaginary halves in separate DEST
         // passes, using one tile per matrix in each pass.
         matmul_block_init(left_real, right_real, false, 1, 1, 1);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             matmul_block(block_left_real, block_right_real, index, index, index, false, 1, 1, 1);
             matmul_block(block_left_imag, block_right_imag, index, index, index, false, 1, 1, 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         pack_reconfig_data_format(output_real);
         pack_tile_block(0, output_real, block_count);
         tile_regs_release();
 
         matmul_block_init(left_real, right_real, false, 1, 1, 1);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             matmul_block(block_left_real, block_right_imag, index, index, index, false, 1, 1, 1);
             matmul_block(block_left_imag_for_imag, block_right_real, index, index, index, false, 1, 1, 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         pack_reconfig_data_format(output_imag);
         pack_tile_block(0, output_imag, block_count);
         tile_regs_release();
@@ -401,7 +525,7 @@ void complex_matmul_block(
         // Blocks 2/4 retain the fast two-half path.  Delay output reservation
         // until after the DEST pass because state CBs are also its inputs.
         matmul_block_init(left_real, right_real, false, 1, 1, 1);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             matmul_block(block_left_real, block_right_real, index, index, index, false, 1, 1, 1);
             matmul_block(block_left_imag, block_right_imag, index, index, index, false, 1, 1, 1);
@@ -427,7 +551,7 @@ void complex_matmul_block(
                 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         if (consume_left) {
             // All input reads have completed, so releasing the input slots
             // before reserve_back breaks the state-input/output cycle.
@@ -437,8 +561,8 @@ void complex_matmul_block(
                 cb_pop_front(left_imag_for_imag, block_count);
             }
         }
-        cb_reserve_back(output_real, block_count);
-        cb_reserve_back(output_imag, block_count);
+        block_cb_reserve_back<profile_sample>(output_real, block_count, counters, warmup);
+        block_cb_reserve_back<profile_sample>(output_imag, block_count, counters, warmup);
         pack_reconfig_data_format(output_real);
         pack_tile_block(0, output_real, block_count);
         pack_reconfig_data_format(output_imag);
@@ -463,30 +587,32 @@ void complex_matmul_block(
     }
 }
 
-template <bool one_dest_half>
+template <bool one_dest_half, bool profile_sample>
 void fused_s_matmul_block(
     std::uint32_t negative_r_real,
     std::uint32_t negative_r_imag,
     std::uint32_t positive_r_imag,
     std::uint32_t x_real,
     std::uint32_t x_imag,
-    std::uint32_t block_count) {
-    cb_wait_front(cb_identity, 1);
-    cb_wait_front(cb_zero, 1);
-    cb_wait_front(x_real, block_count);
-    cb_wait_front(x_imag, block_count);
-    cb_wait_front(negative_r_real, block_count);
-    cb_wait_front(negative_r_imag, block_count);
-    cb_wait_front(positive_r_imag, block_count);
-    cb_reserve_back(cb_s_real, block_count);
-    cb_reserve_back(cb_s_imag, block_count);
+    std::uint32_t block_count,
+    ProfileCounters* counters,
+    bool warmup) {
+    block_cb_wait_front<profile_sample>(cb_identity, 1, counters, warmup);
+    block_cb_wait_front<profile_sample>(cb_zero, 1, counters, warmup);
+    block_cb_wait_front<profile_sample>(x_real, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(x_imag, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(negative_r_real, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(negative_r_imag, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(positive_r_imag, block_count, counters, warmup);
+    block_cb_reserve_back<profile_sample>(cb_s_real, block_count, counters, warmup);
+    block_cb_reserve_back<profile_sample>(cb_s_imag, block_count, counters, warmup);
 
     if constexpr (one_dest_half) {
         // Block 8 cannot hold real and imaginary S tiles simultaneously.
         // Build, pack, and release each half before acquiring the next one.
         reconfig_data_format_srca(x_real, cb_identity);
         copy_tile_init(cb_identity);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             copy_tile(cb_identity, 0, index);
         }
@@ -498,14 +624,14 @@ void fused_s_matmul_block(
             matmul_block(positive_r_imag, x_imag, index, index, index, false, 1, 1, 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         pack_reconfig_data_format(cb_s_real);
         pack_tile_block(0, cb_s_real, block_count);
         tile_regs_release();
 
         reconfig_data_format_srca(x_real, cb_zero);
         copy_tile_init(cb_zero);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             copy_tile(cb_zero, 0, index);
         }
@@ -517,7 +643,7 @@ void fused_s_matmul_block(
             matmul_block(negative_r_imag, x_real, index, index, index, false, 1, 1, 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         pack_reconfig_data_format(cb_s_imag);
         pack_tile_block(0, cb_s_imag, block_count);
         tile_regs_release();
@@ -525,7 +651,7 @@ void fused_s_matmul_block(
         // Blocks 1/2/4 retain the two-half fused path.
         reconfig_data_format_srca(x_real, cb_identity);
         copy_tile_init(cb_identity);
-        tile_regs_acquire();
+        block_tile_regs_acquire<profile_sample>(counters, warmup);
         for (std::uint32_t index = 0; index < block_count; ++index) {
             copy_tile(cb_identity, 0, index);
         }
@@ -545,7 +671,7 @@ void fused_s_matmul_block(
             matmul_block(negative_r_imag, x_real, index, index, imag_slot, false, 1, 1, 1);
         }
         tile_regs_commit();
-        tile_regs_wait();
+        block_tile_regs_wait<profile_sample>(counters, warmup);
         pack_reconfig_data_format(cb_s_real);
         pack_tile_block(0, cb_s_real, block_count);
         pack_reconfig_data_format(cb_s_imag);
@@ -556,6 +682,7 @@ void fused_s_matmul_block(
     cb_push_back(cb_s_imag, block_count);
 }
 
+template <bool profile_sample>
 void subtract_block(
     std::uint32_t current_srca,
     std::uint32_t current_srcb,
@@ -564,23 +691,25 @@ void subtract_block(
     std::uint32_t output,
     std::uint32_t block_count,
     bool left_resident,
-    bool consume_right) {
+    bool consume_right,
+    ProfileCounters* counters,
+    bool warmup) {
     if (!left_resident) {
-        cb_wait_front(left, block_count);
+        block_cb_wait_front<profile_sample>(left, block_count, counters, warmup);
     } else {
-        cb_wait_front(left, 1);
+        block_cb_wait_front<profile_sample>(left, 1, counters, warmup);
     }
-    cb_wait_front(right, block_count);
-    cb_reserve_back(output, block_count);
+    block_cb_wait_front<profile_sample>(right, block_count, counters, warmup);
+    block_cb_reserve_back<profile_sample>(output, block_count, counters, warmup);
     reconfig_data_format(current_srca, left, current_srcb, right);
     pack_reconfig_data_format(output);
     sub_tiles_init(left, right);
-    tile_regs_acquire();
+    block_tile_regs_acquire<profile_sample>(counters, warmup);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         sub_tiles(left, right, left_resident ? 0 : index, index, index);
     }
     tile_regs_commit();
-    tile_regs_wait();
+    block_tile_regs_wait<profile_sample>(counters, warmup);
     pack_tile_block(0, output, block_count);
     tile_regs_release();
     cb_push_back(output, block_count);
@@ -592,23 +721,26 @@ void subtract_block(
     }
 }
 
+template <bool profile_sample>
 void negate_state_imag_block(
     std::uint32_t x_imag,
     std::uint32_t current_srca,
     std::uint32_t current_srcb,
-    std::uint32_t block_count) {
-    cb_wait_front(x_imag, block_count);
-    cb_wait_front(cb_zero, 1);
-    cb_reserve_back(cb_negative_x_imag, block_count);
+    std::uint32_t block_count,
+    ProfileCounters* counters,
+    bool warmup) {
+    block_cb_wait_front<profile_sample>(x_imag, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(cb_zero, 1, counters, warmup);
+    block_cb_reserve_back<profile_sample>(cb_negative_x_imag, block_count, counters, warmup);
     reconfig_data_format(current_srca, cb_zero, current_srcb, x_imag);
     pack_reconfig_data_format(cb_negative_x_imag);
     sub_tiles_init(cb_zero, x_imag);
-    tile_regs_acquire();
+    block_tile_regs_acquire<profile_sample>(counters, warmup);
     for (std::uint32_t index = 0; index < block_count; ++index) {
         sub_tiles(cb_zero, x_imag, 0, index, index);
     }
     tile_regs_commit();
-    tile_regs_wait();
+    block_tile_regs_wait<profile_sample>(counters, warmup);
     pack_tile_block(0, cb_negative_x_imag, block_count);
     tile_regs_release();
     cb_push_back(cb_negative_x_imag, block_count);
@@ -793,15 +925,18 @@ void state_handoff_profiled(
         warmup);
 }
 
-template <bool fuse_s>
-void wait_r_inputs_block(std::uint32_t block_count) {
+template <bool fuse_s, bool profile_sample>
+void wait_r_inputs_block(
+    std::uint32_t block_count,
+    ProfileCounters* counters,
+    bool warmup) {
     if constexpr (!fuse_s) {
-        cb_wait_front(cb_r_real, block_count);
+        block_cb_wait_front<profile_sample>(cb_r_real, block_count, counters, warmup);
     }
-    cb_wait_front(cb_r_negative_imag, block_count);
-    cb_wait_front(cb_r_imag, block_count);
+    block_cb_wait_front<profile_sample>(cb_r_negative_imag, block_count, counters, warmup);
+    block_cb_wait_front<profile_sample>(cb_r_imag, block_count, counters, warmup);
     if constexpr (fuse_s) {
-        cb_wait_front(cb_r_negative_real, block_count);
+        block_cb_wait_front<profile_sample>(cb_r_negative_real, block_count, counters, warmup);
     }
 }
 
@@ -820,14 +955,18 @@ template <
     bool state_fp32,
     bool fuse_s,
     bool one_dest_half,
-    bool reload_r>
-void process_matrix_block(std::uint32_t block_count) {
+    bool reload_r,
+    bool profile_sample>
+void process_matrix_block(
+    std::uint32_t block_count,
+    ProfileCounters* counters,
+    bool warmup) {
     if constexpr (!reload_r) {
-        wait_r_inputs_block<fuse_s>(block_count);
+        wait_r_inputs_block<fuse_s, profile_sample>(block_count, counters, warmup);
     }
     for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
         if constexpr (reload_r) {
-            wait_r_inputs_block<fuse_s>(block_count);
+            wait_r_inputs_block<fuse_s, profile_sample>(block_count, counters, warmup);
         }
         std::uint32_t x_real;
         std::uint32_t x_imag;
@@ -844,15 +983,17 @@ void process_matrix_block(std::uint32_t block_count) {
         }
 
         if constexpr (fuse_s) {
-            fused_s_matmul_block<one_dest_half>(
+            fused_s_matmul_block<one_dest_half, profile_sample>(
                 cb_r_negative_real,
                 cb_r_negative_imag,
                 cb_r_imag,
                 x_real,
                 x_imag,
-                block_count);
+                block_count,
+                counters,
+                warmup);
         } else {
-            complex_matmul_block<one_dest_half>(
+            complex_matmul_block<one_dest_half, profile_sample>(
                 cb_r_real,
                 cb_r_negative_imag,
                 cb_r_imag,
@@ -863,8 +1004,10 @@ void process_matrix_block(std::uint32_t block_count) {
                 block_count,
                 true,
                 false,
-                false);
-            subtract_block(
+                false,
+                counters,
+                warmup);
+            subtract_block<profile_sample>(
                 x_real,
                 cb_r_imag,
                 cb_identity,
@@ -872,8 +1015,10 @@ void process_matrix_block(std::uint32_t block_count) {
                 cb_s_real,
                 block_count,
                 true,
-                true);
-            subtract_block(
+                true,
+                counters,
+                warmup);
+            subtract_block<profile_sample>(
                 cb_identity,
                 cb_product_real,
                 cb_zero,
@@ -881,19 +1026,27 @@ void process_matrix_block(std::uint32_t block_count) {
                 cb_s_imag,
                 block_count,
                 true,
-                true);
+                true,
+                counters,
+                warmup);
         }
 
         const std::uint32_t handoff_srca = fuse_s ? x_real : cb_zero;
         const std::uint32_t handoff_srcb = fuse_s ? cb_r_negative_imag : cb_product_imag;
-        negate_state_imag_block(x_imag, handoff_srca, handoff_srcb, block_count);
+        negate_state_imag_block<profile_sample>(
+            x_imag,
+            handoff_srca,
+            handoff_srcb,
+            block_count,
+            counters,
+            warmup);
         residual_format_transition_to_matmul(x_real, x_imag);
 
         const std::uint32_t output_real =
             iteration + 1 == iterations ? cb_output_real : cb_state_real;
         const std::uint32_t output_imag =
             iteration + 1 == iterations ? cb_output_imag : cb_state_imag;
-        complex_matmul_block<one_dest_half>(
+        complex_matmul_block<one_dest_half, profile_sample>(
             x_real,
             cb_negative_x_imag,
             x_imag,
@@ -904,7 +1057,9 @@ void process_matrix_block(std::uint32_t block_count) {
             block_count,
             false,
             true,
-            true);
+            true,
+            counters,
+            warmup);
         if constexpr (reload_r) {
             pop_r_inputs_block<fuse_s>(block_count);
         }
@@ -1044,6 +1199,37 @@ void write_profile_slot(
     profile[warmup_base + profile_ready_offset] = profile_magic;
 }
 
+void write_block_profile_fields(
+    volatile tt_l1_ptr std::uint32_t* profile,
+    std::uint32_t base,
+    ProfileCounters& counters) {
+    const std::uint32_t block_section_sum = counters.block_input_cb_wait + counters.block_output_cb_wait +
+                                             counters.block_input_cb_reserve + counters.block_output_cb_reserve +
+                                             counters.block_dest_acquire_wait + counters.block_dest_pack_wait;
+    const std::uint32_t warmup_block_section_sum =
+        counters.warmup_block_input_cb_wait + counters.warmup_block_output_cb_wait +
+        counters.warmup_block_input_cb_reserve + counters.warmup_block_output_cb_reserve +
+        counters.warmup_block_dest_acquire_wait + counters.warmup_block_dest_pack_wait;
+    const std::uint32_t warmup_base = base + profile_warmup_base;
+    profile[base + profile_block_input_cb_wait_offset] = counters.block_input_cb_wait;
+    profile[base + profile_block_output_cb_wait_offset] = counters.block_output_cb_wait;
+    profile[base + profile_block_input_cb_reserve_offset] = counters.block_input_cb_reserve;
+    profile[base + profile_block_output_cb_reserve_offset] = counters.block_output_cb_reserve;
+    profile[base + profile_block_dest_acquire_wait_offset] = counters.block_dest_acquire_wait;
+    profile[base + profile_block_dest_pack_wait_offset] = counters.block_dest_pack_wait;
+    profile[warmup_base + profile_block_input_cb_wait_offset] = counters.warmup_block_input_cb_wait;
+    profile[warmup_base + profile_block_output_cb_wait_offset] = counters.warmup_block_output_cb_wait;
+    profile[warmup_base + profile_block_input_cb_reserve_offset] = counters.warmup_block_input_cb_reserve;
+    profile[warmup_base + profile_block_output_cb_reserve_offset] = counters.warmup_block_output_cb_reserve;
+    profile[warmup_base + profile_block_dest_acquire_wait_offset] = counters.warmup_block_dest_acquire_wait;
+    profile[warmup_base + profile_block_dest_pack_wait_offset] = counters.warmup_block_dest_pack_wait;
+    profile[base + profile_section_sum_offset] += block_section_sum;
+    profile[warmup_base + profile_section_sum_offset] += warmup_block_section_sum;
+    profile[base + profile_residual_offset] = profile[base + profile_total_offset] - profile[base + profile_section_sum_offset];
+    profile[warmup_base + profile_residual_offset] =
+        profile[warmup_base + profile_total_offset] - profile[warmup_base + profile_section_sum_offset];
+}
+
 void write_profile_counters(ProfileCounters& counters) {
     volatile tt_l1_ptr std::uint32_t* profile = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_tile_address(cb_profile_compute, 0));
@@ -1071,6 +1257,7 @@ void write_profile_counters(ProfileCounters& counters) {
         0,
         0,
         0);
+    write_block_profile_fields(profile, 0, counters);
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 1
     write_profile_slot(
         profile,
@@ -1093,6 +1280,7 @@ void write_profile_counters(ProfileCounters& counters) {
         counters.warmup_s_binary,
         0,
         counters.warmup_state_handoff);
+    write_block_profile_fields(profile, profile_slot_stride, counters);
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 2
     cb_reserve_back(cb_profile_compute, 1);
     write_profile_slot(
@@ -1116,6 +1304,7 @@ void write_profile_counters(ProfileCounters& counters) {
         0,
         counters.warmup_pack_push,
         0);
+    write_block_profile_fields(profile, 2 * profile_slot_stride, counters);
     while (profile[profile_ready_offset] != profile_magic ||
            profile[profile_warmup_ready_offset] != profile_magic ||
            profile[profile_slot_stride + profile_ready_offset] != profile_magic ||
@@ -1364,12 +1553,23 @@ void kernel_main_impl() {
         for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
             const std::uint32_t block_count =
                 (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-            process_matrix_block<
-                iterations,
-                state_fp32,
-                fuse_s,
-                (matrix_block == 8),
-                reload_r>(block_count);
+            if constexpr (profile_sample) {
+                process_matrix_block<
+                    iterations,
+                    state_fp32,
+                    fuse_s,
+                    (matrix_block == 8),
+                    reload_r,
+                    true>(block_count, &counters, start_tile == 0 && offset == 0);
+            } else {
+                process_matrix_block<
+                    iterations,
+                    state_fp32,
+                    fuse_s,
+                    (matrix_block == 8),
+                    reload_r,
+                    false>(block_count, nullptr, false);
+            }
             if constexpr (profile_sample) {
                 if (start_tile == 0) {
                     counters.event_count += iterations;

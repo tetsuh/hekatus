@@ -113,6 +113,12 @@ PROFILE_READER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
 PROFILE_WRITER_CB_WAIT_OFFSET = 1
 PROFILE_WRITER_NOC_WRITE_OFFSET = 2
 PROFILE_WRITER_COUNT_OFFSET = PROFILE_EVENT_COUNT_OFFSET
+PROFILE_BLOCK_INPUT_CB_WAIT_OFFSET = 12
+PROFILE_BLOCK_OUTPUT_CB_WAIT_OFFSET = 13
+PROFILE_BLOCK_INPUT_CB_RESERVE_OFFSET = 14
+PROFILE_BLOCK_OUTPUT_CB_RESERVE_OFFSET = 15
+PROFILE_BLOCK_DEST_ACQUIRE_WAIT_OFFSET = 16
+PROFILE_BLOCK_DEST_PACK_WAIT_OFFSET = 17
 
 
 def _canonicalize_matrices(
@@ -1317,6 +1323,12 @@ class NewtonSchulzKernel:
             ("s_binary", PROFILE_S_BINARY_OFFSET),
             ("pack_push", PROFILE_PACK_PUSH_OFFSET),
             ("state_handoff", PROFILE_STATE_HANDOFF_OFFSET),
+            ("block_external_input_cb_wait", PROFILE_BLOCK_INPUT_CB_WAIT_OFFSET),
+            ("block_external_output_cb_wait", PROFILE_BLOCK_OUTPUT_CB_WAIT_OFFSET),
+            ("block_external_input_cb_reserve", PROFILE_BLOCK_INPUT_CB_RESERVE_OFFSET),
+            ("block_external_output_cb_reserve", PROFILE_BLOCK_OUTPUT_CB_RESERVE_OFFSET),
+            ("block_dest_acquire_wait", PROFILE_BLOCK_DEST_ACQUIRE_WAIT_OFFSET),
+            ("block_dest_pack_wait", PROFILE_BLOCK_DEST_PACK_WAIT_OFFSET),
         )
         for risc_index, risc in enumerate(("TRISC0", "TRISC1", "TRISC2")):
             base = risc_index * PROFILE_SLOT_STRIDE
