@@ -126,6 +126,86 @@ def test_matrix_block_default_is_baseline_and_invalid_values_fail_host_side():
             newton_schulz_kernel._validate_matrix_block(invalid)
 
 
+def test_double_buffer_doubles_only_external_block_windows_and_preserves_defaults():
+    ttnn = _ttnn()
+    external = (
+        newton_schulz_kernel.CB_R_NEG_IMAG,
+        newton_schulz_kernel.CB_R_IMAG,
+        newton_schulz_kernel.CB_X0_REAL,
+        newton_schulz_kernel.CB_X0_IMAG,
+        newton_schulz_kernel.CB_R_NEG_REAL,
+        newton_schulz_kernel.CB_OUTPUT_REAL,
+        newton_schulz_kernel.CB_OUTPUT_IMAG,
+    )
+    internal = (
+        newton_schulz_kernel.CB_STATE_REAL,
+        newton_schulz_kernel.CB_STATE_IMAG,
+        newton_schulz_kernel.CB_S_REAL,
+        newton_schulz_kernel.CB_S_IMAG,
+        newton_schulz_kernel.CB_NEG_X_IMAG,
+    )
+    expected_single = {1: 2, 2: 2, 4: 4, 8: 8}
+
+    for matrix_block in newton_schulz_kernel.MATRIX_BLOCK_CHOICES:
+        baseline = newton_schulz_kernel._cb_definitions(
+            ttnn, "fp32", fuse_s=True, matrix_block=matrix_block
+        )
+        explicit_default = newton_schulz_kernel._cb_definitions(
+            ttnn,
+            "fp32",
+            fuse_s=True,
+            matrix_block=matrix_block,
+            double_buffer=False,
+        )
+        selected = newton_schulz_kernel._cb_definitions(
+            ttnn,
+            "fp32",
+            fuse_s=True,
+            matrix_block=matrix_block,
+            double_buffer=True,
+        )
+        assert explicit_default == baseline
+        expected_double = expected_single[matrix_block] * (2 if matrix_block > 1 else 1)
+        assert all(selected[index][1] == expected_double for index in external)
+        assert all(selected[index][1] == baseline[index][1] for index in internal)
+
+    # The Issue #92 target is an eight-page window for a four-page push.
+    selected = newton_schulz_kernel._cb_definitions(
+        ttnn, "fp32", fuse_s=True, matrix_block=4, double_buffer=True
+    )
+    assert all(selected[index][1] == 8 for index in external)
+    work_ranges = newton_schulz_kernel._balanced_ranges(8192, 110, 4)
+    newton_schulz_kernel._validate_core_group_capacities(work_ranges, 4)
+    assert all(8 % group_count == 0 for start, count in work_ranges for _, group_count in
+               newton_schulz_kernel._matrix_block_ranges(start, count, 4))
+
+
+def test_double_buffer_l1_preflight_fits_l32_and_l16_including_profile_pages():
+    ttnn = _ttnn()
+    ttnn.uint32 = "u32"
+    expected = {
+        (8192, False): 1_483_520,
+        (8192, True): 1_495_808,
+        (4096, False): 967_424,
+        (4096, True): 979_712,
+    }
+    for (batch, profile), total_expected in expected.items():
+        total = newton_schulz_kernel._validate_l1_preflight(
+            ttnn,
+            batch=batch,
+            core_count=110,
+            state_dtype="fp32",
+            profile=profile,
+            fuse_s=True,
+            output_memory="dram",
+            matrix_block=4,
+            double_buffer=True,
+            variant="bf16-fp32state",
+        )
+        assert total == total_expected
+        assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
+
+
 def test_dest_limit_uses_fp32_and_sync_mode_not_a_soft_block_cap():
     for matrix_block in (1, 2, 4):
         newton_schulz_kernel._validate_matrix_block(

@@ -540,6 +540,21 @@ def _cb_page_size(ttnn, data_format) -> int:
     return _TILE_BYTES_FLOAT32 if data_format == ttnn.float32 or data_format == uint32 else _TILE_BYTES_BFLOAT16
 
 
+def _matrix_queue_pages(matrix_block: int, *, double_buffer: bool) -> int:
+    """Return the input/output CB capacity for the selected block window.
+
+    Matrix block 1 already has a two-page queue and keeps that historical
+    capacity.  Larger blocks use one block window by default and two windows
+    when ``double_buffer`` is enabled; the compute-side state queues retain
+    their source-derived capacities separately.
+    """
+    _validate_matrix_block(matrix_block)
+    single_window_pages = 2 if matrix_block == 1 else matrix_block
+    if double_buffer and matrix_block > 1:
+        return 2 * single_window_pages
+    return single_window_pages
+
+
 def _cb_definitions(
     ttnn,
     state_dtype,
@@ -547,8 +562,9 @@ def _cb_definitions(
     profile: bool = False,
     fuse_s: bool = False,
     matrix_block: int = 1,
+    double_buffer: bool = False,
 ) -> dict[int, tuple[Any, int]]:
-    """Describe the CB formats shared by both state-precision variants."""
+    """Describe CB formats, optionally exposing two block input/output windows."""
     _validate_matrix_block(matrix_block)
     definitions = {
         CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
@@ -577,15 +593,28 @@ def _cb_definitions(
         # absent rather than renumbering any shared CB.
         definitions[CB_R_REAL] = (ttnn.bfloat16, 2)
         definitions = {CB_R_REAL: definitions.pop(CB_R_REAL), **definitions}
-    # Identity/zero and profile pages are resident singletons.  Every queue
-    # carrying a matrix, intermediate, or output is widened for one block.
+    # Identity/zero and profile pages are resident singletons.  S, product,
+    # and negated-state queues are consumed within one compute block; only the
+    # external R/X0 inputs and final outputs need a second producer/consumer
+    # window.
     resident = {CB_IDENTITY, CB_ZERO, CB_PROFILE_READER, CB_PROFILE_COMPUTE, CB_PROFILE_WRITER}
+    double_buffered = {
+        CB_R_REAL,
+        CB_R_NEG_IMAG,
+        CB_R_IMAG,
+        CB_R_NEG_REAL,
+        CB_X0_REAL,
+        CB_X0_IMAG,
+        CB_OUTPUT_REAL,
+        CB_OUTPUT_IMAG,
+    }
     # The non-one-destination branch pops the current state block before it
     # reserves the reused state output, so blocks 2 and 4 need one window.
     # Block 8 reserves output before popping its current state for the two
     # DEST-half passes and therefore needs two windows.  The matrix_block == 1
-    # path retains its original two-page descriptor via the outer condition.
+    # path retains its original two-page descriptor.
     state_queue_pages = 2 * matrix_block if matrix_block == 8 else matrix_block
+    matrix_queue_pages = _matrix_queue_pages(matrix_block, double_buffer=double_buffer)
     definitions = {
         index: (
             data_format,
@@ -598,7 +627,11 @@ def _cb_definitions(
                     page_count,
                     state_queue_pages
                     if index in {CB_STATE_REAL, CB_STATE_IMAG}
-                    else matrix_block,
+                    else (
+                        matrix_queue_pages
+                        if index in double_buffered
+                        else matrix_block
+                    ),
                 )
             ),
         )
@@ -766,6 +799,7 @@ def _validate_l1_preflight(
     r_memory: str | None = None,
     x0_memory: str | None = None,
     matrix_block: int = 1,
+    double_buffer: bool = False,
     variant: str | None = None,
 ) -> int:
     """Validate L1 usage without touching a device or allocating tensors."""
@@ -779,6 +813,7 @@ def _validate_l1_preflight(
         profile=profile,
         fuse_s=fuse_s,
         matrix_block=matrix_block,
+        double_buffer=double_buffer,
     )
     tensor_bytes = _tensor_l1_bytes(
         ttnn,
@@ -934,6 +969,7 @@ class NewtonSchulzKernel:
     batch_reads: bool
     reload_r: bool
     matrix_block: int
+    double_buffer: bool
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -956,6 +992,7 @@ class NewtonSchulzKernel:
         batch_reads: bool = False,
         reload_r: bool = False,
         matrix_block: int = 1,
+        double_buffer: bool = False,
         input_memory: str = "l1",
         r_memory: str | None = None,
         x0_memory: str | None = None,
@@ -1010,6 +1047,7 @@ class NewtonSchulzKernel:
             profile=profile,
             fuse_s=fuse_s,
             matrix_block=matrix_block,
+            double_buffer=double_buffer,
         )
         tensor_l1_bytes = _tensor_l1_bytes(
             ttnn,
@@ -1209,6 +1247,7 @@ class NewtonSchulzKernel:
             batch_reads=batch_reads,
             reload_r=reload_r,
             matrix_block=matrix_block,
+            double_buffer=double_buffer,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -1316,6 +1355,7 @@ def run_newton_schulz_kernel(
     batch_reads: bool = False,
     reload_r: bool = False,
     matrix_block: int = 1,
+    double_buffer: bool = False,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
@@ -1332,6 +1372,7 @@ def run_newton_schulz_kernel(
         batch_reads=batch_reads,
         reload_r=reload_r,
         matrix_block=matrix_block,
+        double_buffer=double_buffer,
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,

@@ -148,6 +148,8 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert default_flags.input_memory == "l1"
     assert default_flags.r_memory is None
     assert default_flags.x0_memory is None
+    assert default_flags.double_buffer is False
+    assert default_flags.compare_double_buffer is False
     enabled_flags = run_matmul._build_parser().parse_args(
         [
             "--fuse-s",
@@ -158,6 +160,7 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
             "l1",
             "--x0-memory",
             "dram",
+            "--double-buffer",
         ]
     )
     assert enabled_flags.fuse_s is True
@@ -165,6 +168,9 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert enabled_flags.input_memory == "dram"
     assert enabled_flags.r_memory == "l1"
     assert enabled_flags.x0_memory == "dram"
+    assert enabled_flags.double_buffer is True
+    alias_flags = run_matmul._build_parser().parse_args(["--block-double-buffer"])
+    assert alias_flags.double_buffer is True
 
 
 @pytest.mark.parametrize("reload_flag", ["--reload-r", "--compare-reload-r"])
@@ -397,6 +403,59 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     assert payload["results"][0]["program_config"]["batch_reads"] is True
 
 
+def test_double_buffer_selection_reaches_same_run_comparison(monkeypatch, tmp_path):
+    ttnn = _StubTtnn()
+    ttnn.bfloat16 = "bf16"
+    ttnn.open_device = lambda device_id: object()
+    ttnn.close_device = lambda device: None
+    calls = []
+
+    def fake_custom(*args, **kwargs):
+        calls.append(kwargs)
+        return {
+            "status": "ok",
+            "kind": "custom_newton_schulz",
+            "variant": kwargs["variant"],
+            "math_fidelity": kwargs["math_fidelity"],
+            "double_buffer": kwargs["double_buffer"],
+            "output_memory": "dram",
+            "achieved_tflops": 1.0,
+            "seconds_per_launch_p50": 1.0,
+            "seconds_per_launch_p99": 1.0,
+            "seconds_per_launch_p99_9": 1.0,
+        }
+
+    monkeypatch.setitem(sys.modules, "ttnn", ttnn)
+    monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fake_custom)
+    output = tmp_path / "double-buffer.json"
+    assert run_matmul.main(
+        [
+            "--only",
+            "newton_schulz_L32_b8192",
+            "--dtype",
+            "bfloat16",
+            "--memory",
+            "l1",
+            "--kind",
+            "custom_newton_schulz",
+            "--fuse-s",
+            "--matrix-block",
+            "4",
+            "--compare-double-buffer",
+            "--out",
+            str(output),
+        ]
+    ) == 0
+
+    payload = json.loads(output.read_text())
+    assert [call["double_buffer"] for call in calls] == [False, True]
+    assert [row["program_config"]["double_buffer"] for row in payload["results"]] == [
+        False,
+        True,
+    ]
+    assert payload["selection"]["compare_double_buffer"] is True
+
+
 def test_row_specs_applies_dtype_specific_catalogue_filtering():
     shape = next(
         shape for shape in default_catalogue() if shape.name == "beamspace_B16_ch128_p4096"
@@ -600,6 +659,8 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "batch_reads": False,
         "reload_r": False,
         "compare_reload_r": False,
+        "double_buffer": False,
+        "compare_double_buffer": False,
     }
     assert len(payload["results"]) == 4
     assert all(
