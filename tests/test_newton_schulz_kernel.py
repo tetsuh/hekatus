@@ -592,10 +592,10 @@ def test_device_partial_block_padding_matches_numpy(
 
     device = ttnn.open_device(device_id=0)
     try:
-        matrices = bf16_round_complex(
-            random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
+        matrices = random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
         )
-        expected = newton_schulz_reference(matrices)
         actual = run_newton_schulz_kernel(
             ttnn,
             device,
@@ -626,8 +626,10 @@ class DeviceEquivalenceTests(unittest.TestCase):
 
         device = ttnn.open_device(device_id=0)
         try:
-            matrices = bf16_round_complex(random_hpd_batch(8192, 32, seed=95))
-            expected = newton_schulz_reference(matrices)
+            matrices = random_hpd_batch(8192, 32, seed=95)
+            expected = newton_schulz_reference(
+                bf16_round_complex(matrices), x0=initial_value(matrices)
+            )
             actual = run_newton_schulz_kernel(
                 ttnn,
                 device,
@@ -678,8 +680,10 @@ class DeviceEquivalenceTests(unittest.TestCase):
 
         device = ttnn.open_device(device_id=0)
         try:
-            matrices = bf16_round_complex(random_hpd_batch(8192, 16, seed=95))
-            expected = newton_schulz_reference(matrices)
+            matrices = random_hpd_batch(8192, 16, seed=95)
+            expected = newton_schulz_reference(
+                bf16_round_complex(matrices), x0=initial_value(matrices)
+            )
             actual = run_newton_schulz_kernel(
                 ttnn,
                 device,

@@ -77,12 +77,16 @@ def newton_schulz_reference(
     matrices: np.ndarray,
     *,
     iterations: int = NEWTON_SCHULZ_ITERATIONS,
+    x0: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Run the specified fixed count; there is no convergence-gated exit."""
+    """Run a fixed count, optionally with an explicitly supplied X0."""
     if iterations < 0:
         raise ValueError("iterations must not be negative")
     matrices = np.asarray(matrices, dtype=np.complex64)
-    x = initial_value(matrices).astype(np.complex64, copy=False)
+    x = initial_value(matrices) if x0 is None else np.asarray(x0, dtype=np.complex64)
+    if x.shape != matrices.shape:
+        raise ValueError(f"x0 must have shape {matrices.shape}, got {x.shape}")
+    x = x.astype(np.complex64, copy=False)
     identity = np.eye(matrices.shape[-1], dtype=np.complex64)
     for _ in range(iterations):
         x = x @ (2.0 * identity - matrices @ x)
