@@ -194,12 +194,23 @@
     }
   ],
   "correctness": {
-    "reference": "independent fixed-N=12 NumPy oracle in enodia/tt/bench/run_matmul.py",
+    "oracle": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference",
+    "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference",
+    "reference_kind": "independent fixed-N=12 NumPy recurrence; enodia/tt/bench/newton_schulz_reference.py is not called by this run",
+    "reference_inputs": "_issue94_fixed_reference(rounded_R, X0_from_original_R)",
+    "reference_algorithm": "x = x @ (2I - rounded_R @ x), repeated by _issue94_fixed_reference for the fixed N=12",
+    "bf16_rounding_source": "enodia/tt/bench/run_matmul.py:_issue94_bf16_round_complex -> _issue94_bf16_round_to_float32; original R real and imaginary float32 planes are independently BF16-rounded with RNE",
+    "x0_source": "enodia/tt/bench/run_matmul.py:_issue94_initial_value(original_R): X0 = I / ||R||_infinity from original unrounded R",
+    "runner": "enodia/tt/bench/run_matmul.py --issue94-correctness via enodia/tt/bench/run_in_container.sh",
+    "selection_source": "enodia/tt/bench/run_matmul.py:ISSUE94_CORRECTNESS_CASES and ISSUE94_CONFIGS",
     "references_compared": [
-      "BF16-rounded-R fixed-N=12 reference with X0 from original R",
-      "true inverse of original unrounded R"
+      "BF16-rounded-R fixed-N=12 reference: _issue94_fixed_reference(rounded_R, X0_from_original_R)",
+      "true inverse of original unrounded R: np.linalg.inv(original_R.astype(np.complex128))"
     ],
+    "auxiliary_reference": "true inverse of BF16-rounded R: np.linalg.inv(rounded_R.astype(np.complex128)); reported as kernel_vs_bf16_r_true_inverse_relative_error",
     "threshold": 0.01,
+    "threshold_definition": "pass iff finite(kernel_output) and ||kernel_output - rounded_reference||_F / ||rounded_reference||_F <= 0.01",
+    "threshold_source": "enodia/tt/bench/run_matmul.py:_run_issue94_correctness; metrics.threshold and metrics.threshold_pass",
     "same_device_run": true,
     "watcher": true,
     "external_timeout_s": 60,
@@ -242,7 +253,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_bf16dest_block4",
@@ -276,7 +287,7 @@
           "threshold_pass": false
         },
         "status": "diagnostic_fail",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32state_block4",
@@ -310,7 +321,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32dest_block4",
@@ -344,7 +355,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_bf16dest_block4",
@@ -378,7 +389,7 @@
           "threshold_pass": false
         },
         "status": "diagnostic_fail",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32state_block4",
@@ -412,7 +423,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32dest_block4",
@@ -446,7 +457,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_bf16dest_block4",
@@ -480,7 +491,7 @@
           "threshold_pass": false
         },
         "status": "diagnostic_fail",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32state_block4",
@@ -514,7 +525,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32dest_block4",
@@ -548,7 +559,7 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_bf16dest_block4",
@@ -582,7 +593,7 @@
           "threshold_pass": false
         },
         "status": "diagnostic_fail",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       },
       {
         "name": "bf16_fp32state_block4",
@@ -616,12 +627,14 @@
           "threshold_pass": true
         },
         "status": "pass",
-        "reference": "enodia/tt/bench/newton_schulz_reference.py"
+        "reference": "enodia/tt/bench/run_matmul.py:_issue94_fixed_reference"
       }
     ],
     "command": "HEKATUS_TT_HARNESS_COMMIT=<harness-commit> HEKATUS_TT_HARNESS_DIRTY=false TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh <correctness-output-dir> -- --issue94-correctness"
   },
   "performance": {
+    "runner": "enodia/tt/bench/run_matmul.py --issue94-catalogue via enodia/tt/bench/run_in_container.sh",
+    "selection_source": "enodia/tt/bench/run_matmul.py:ISSUE94_CONFIGS and fixed shape_filters newton_schulz_L32_b8192/newton_schulz_L16_b8192",
     "same_device_run": true,
     "watcher": false,
     "launches_per_row": 1000,
@@ -15785,6 +15798,7 @@
   "power": {
     "trace": "2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck-power.csv",
     "sha256": "dfe660797ffbf383e837c9efaedd8aec038432df8bda0f704bbcd44e04039bef",
+    "sampling_source": "enodia/tt/bench/telemetry.py:_sample_loop using tt-smi snapshot",
     "sample_count": 5,
     "power_w_min": 44.0,
     "power_w_max": 181.0,

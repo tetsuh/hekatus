@@ -43,6 +43,20 @@ numerical comparisons remain valid; this note corrects the reference name
 without rewriting any landed JSON record. Future records and documentation
 must use the independent NumPy reference name.
 
+**Issue #94 record correction (unmerged record).** The correctness rows in
+`2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck.json` were produced
+by `enodia/tt/bench/run_matmul.py:_issue94_fixed_reference`, not by
+`enodia/tt/bench/newton_schulz_reference.py`. The runner first builds
+`original_R` with `run_matmul.py:_issue94_random_hpd_batch`, rounds its real
+and imaginary float32 planes independently to BF16 with RNE through
+`_issue94_bf16_round_complex`, and builds `X0 = I / ||original_R||_infinity`
+through `_issue94_initial_value`. `_issue94_fixed_reference` then applies the
+fixed twelve-step recurrence to the BF16-rounded R and that original-R X0;
+the companion true-inverse comparison is
+`np.linalg.inv(original_R.astype(np.complex128))`. All twelve row labels now
+name the actual function. No measurement value, sample array, power trace, or
+harness identity was changed.
+
 The board-side acceptance catalogue is one named-container invocation:
 
 ```text
