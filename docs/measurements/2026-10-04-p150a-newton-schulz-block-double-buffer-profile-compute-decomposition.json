@@ -269,43 +269,69 @@
     }
   ],
   "interpretation": {
-    "evidence_level": "supported decomposition; residual attribution is insufficient for an exclusive busy-share or phase-causal claim",
+    "evidence_level": "supported decomposition; exact source semantics rule out treating DEST brackets as hardware wait durations",
+    "source_audit": {
+      "source_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+      "bundled_tt_llk_tree": "fd52f27deb91c31bab0bb1998dddb3d11c2d6bfa",
+      "architecture": "Blackhole",
+      "scope": "Exact v0.75.0 tt-metal source tree used for the audit; tt_metal/tt-llk is bundled in that tree rather than a separate git submodule at this revision.",
+      "tile_regs_acquire": {
+        "api": "tt_metal/hw/inc/api/compute/reg_api.h:45-47 defines tile_regs_acquire as MATH((llk_math_wait_for_dest_available())).",
+        "math_helper": "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_common.h:93-98 calls math_dest_wait without a RISC-V polling loop.",
+        "hardware_wait": "tt_metal/tt-llk/tt_llk_blackhole/common/inc/cmath_common.h:262-265 implements math_dest_wait with TTI_SEMWAIT on semaphore MATH_PACK and STALL_ON_MAX.",
+        "instruction_path": "tt_metal/tt-llk/tt_llk_blackhole/common/inc/ckernel_ops.h:474-478 defines TT_OP_SEMWAIT and TTI_SEMWAIT; :12 defines INSTRUCTION_WORD as .ttinsn inline assembly. common_globals.h:15-28 selects the MATH/PACK body for the corresponding TRISC build.",
+        "semantics": "The math-side API emits a hardware semaphore-wait instruction through the TRISC instruction stream; it does not poll the semaphore in RISC-V code."
+      },
+      "tile_regs_wait": {
+        "api": "tt_metal/hw/inc/api/compute/reg_api.h:49-56 defines tile_regs_wait as PACK((llk_packer_wait_for_math_done())).",
+        "pack_helper": "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_pack_common.h:24-27 implements llk_packer_wait_for_math_done with TTI_SEMWAIT on semaphore MATH_PACK and STALL_ON_ZERO.",
+        "instruction_path": "The same ckernel_ops.h:474-478 TTI_SEMWAIT and :12 INSTRUCTION_WORD path emits the pack-side hardware wait.",
+        "semantics": "The pack-side API emits a hardware semaphore-wait instruction; it does not poll the semaphore in RISC-V code."
+      },
+      "cb_wait_front": {
+        "source": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:473-485",
+        "semantics": "cb_wait_front reads pages_acked and pages_received_ptr, then executes a RISC-V do/while loop whose reg_read repeats until enough pages are received. This is RISC-V-side polling. The neighboring non-blocking cb_pages_available_at_front at :440-447 likewise directly reads the counter, but does not wait.",
+        "boundary": "The TRISC external-input CB brackets therefore measure the RISC-V polling call interval, unlike the tile_regs_* brackets, which surround instruction emission for a hardware wait."
+      }
+    },
     "block_boundary_io": {
       "status": "supported_as_changing_component",
       "evidence": [
         "For L32 batch8192, TRISC0 external input CB wait falls from 45.004% one-window to 6.303% two-window; for L16 it falls from 45.195% to 10.106%.",
         "The other TRISC external-input wait percentages are already below 0.27% in the batch8192 captures, and external output reserves are below 0.071%; no compute-side external-output CB waits or input reserves were observed.",
-        "The reader/writer path's existing counters and the new TRISC0 input-wait change agree that the second window removes block-boundary serialization."
+        "Because the exact v0.75.0 cb_wait_front source is a RISC-V polling loop, this reduction is evidence for a reduced block-boundary polling/serialization component."
       ]
     },
     "dest_handoff": {
-      "status": "supported_as_small_measured_component",
+      "status": "hardware_wait_not_measured_by_cycle_bracket",
       "evidence": [
-        "Across batch8192 captures, per-TRISC DEST acquire waits are approximately 0.125-0.594% and DEST pack waits approximately 0.118-0.431%.",
-        "The measured DEST waits are much smaller than TRISC residual cycles; residual is total minus named counters and is not a measured busy share."
+        "The raw per-TRISC dest_acquire_wait and dest_pack_wait cycle fields are preserved, but their brackets surround calls that emit TTI_SEMWAIT instructions; they do not measure the duration of the hardware-side MATH_PACK semaphore wait.",
+        "The raw percentages must therefore be described as RISC-V-side enqueue/dispatch intervals around tile_regs_acquire/tile_regs_wait, not as small hardware handoff waits and not as evidence that DEST handoff is non-dominant.",
+        "The prior official counter record provides direct semaphore-wait evidence: Semaphore Zero Wait T2 is approximately 74.69-74.88% one-window and 70.53-70.74% two-window; Semaphore Full Wait T1 is approximately 22.16-22.36% one-window and 25.84-26.06% two-window. These values are relevant to handoff/backpressure waiting, but their kernel-operation phase identity remains unresolved."
       ]
     },
     "residual_work": {
       "status": "unresolved",
       "evidence": [
-        "TRISC0 residual is approximately 54-89% depending on window and L; TRISC1/TRISC2 residual is approximately 99% because the named accounting covers only the specified waits.",
-        "The residual includes all remaining kernel work and cannot be assigned to a specific operation or called a busy percentage without further kernel-internal phase instrumentation."
+        "TRISC0 residual is approximately 54-89% depending on window and L; TRISC1/TRISC2 residual is approximately 99% because the named accounting covers only the specified brackets.",
+        "Residual includes all remaining kernel work and may include hardware instruction-queue backpressure or stop time after an emitted wait; these cycle counters cannot split that time by phase or call it a measured busy percentage without kernel-internal zones."
       ]
     },
     "semaphore_cross_check": {
-      "status": "consistent_but_not_phase_mapped",
+      "status": "direct_handoff_wait_evidence_but_not_phase_mapped",
       "evidence": [
-        "The prior official counter record reports large Semaphore Zero Wait T2 and Semaphore Full Wait T1 in both modes; the new TRISC external-input wait reduction agrees with a producer/consumer serialization effect.",
-        "The semaphore values do not identify a specific kernel operation, and no new semaphore counters were collected in this fixed-image cycle-counter run."
+        "The official Semaphore Zero Wait T2 and Semaphore Full Wait T1 values above are direct performance-counter evidence of semaphore waiting in both modes, unlike the tile_regs_* RISC-V call brackets.",
+        "The semaphore definitions do not identify a unique kernel operation or TRISC phase in this record, and no new semaphore counters were collected in the fixed-image cycle-counter run."
       ]
     },
-    "conclusion": "Two-window buffering removes a large TRISC0 external-input CB wait component for both L16 and L32; measured DEST acquire/pack waits remain small. The evidence supports block-boundary I/O/compute serialization as the changing bound rather than an established intra-core DEST-handoff bound. Residual work remains unclassified and is not a measured busy share; exact phase causality is insufficient without kernel-internal zones."
+    "conclusion": "Two-window buffering removes a large TRISC0 external-input CB polling component for both L16 and L32, supporting reduced block-boundary I/O/compute serialization. The DEST acquire/pack fields are RISC-V-side enqueue/dispatch brackets rather than hardware wait durations, so they cannot establish a small or non-dominant intra-core handoff. Official semaphore waits are the direct handoff-wait evidence, but phase mapping remains incomplete. Residual work remains unclassified and may include hardware instruction-queue backpressure; exact phase causality is insufficient without kernel-internal zones."
   },
   "limitations": [
     "The fixed release image has no Tracy device profiler; this record uses the repository's L1 cycle-counter profile transport and explicitly does not claim Tracy evidence.",
     "The batch4 validation runner reports finite output and profile-page consistency but is not a correctness oracle; prior Watcher correctness records remain authoritative.",
     "External CB counters classify only R/X0 input CB IDs and external output CB IDs; state/intermediate CB operations remain in residual work.",
-    "DEST acquire/pack waits are measured around tile register calls, but remaining code inside matmul, pack, format transitions, and synchronization is residual.",
+    "The DEST fields bracket tile_regs_* calls that enqueue hardware semaphore waits, so they do not expose hardware-side wait duration; residual may include instruction-queue backpressure or stop time that these brackets cannot attribute.",
+    "Official semaphore waits provide direct synchronization evidence but do not uniquely map to a kernel operation or phase in this capture.",
     "The prior Watcher-plus-profiler overflow, power-off PCIe incident, diagnostic-only qualification, and prior raw measurement records remain unchanged."
   ],
   "recovery": {

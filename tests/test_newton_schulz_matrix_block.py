@@ -180,6 +180,80 @@ def test_double_buffer_doubles_only_external_block_windows_and_preserves_default
                newton_schulz_kernel._matrix_block_ranges(start, count, 4))
 
 
+@pytest.mark.parametrize(
+    ("fuse_s", "cb_index"),
+    [
+        pytest.param(True, newton_schulz_kernel.CB_R_NEG_IMAG, id="fused-r-neg-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_R_IMAG, id="fused-r-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_R_NEG_REAL, id="fused-r-neg-real"),
+        pytest.param(True, newton_schulz_kernel.CB_X0_REAL, id="fused-x0-real"),
+        pytest.param(True, newton_schulz_kernel.CB_X0_IMAG, id="fused-x0-imag"),
+        pytest.param(True, newton_schulz_kernel.CB_OUTPUT_REAL, id="fused-output-real"),
+        pytest.param(True, newton_schulz_kernel.CB_OUTPUT_IMAG, id="fused-output-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_REAL, id="nonfused-r-real"),
+        pytest.param(False, newton_schulz_kernel.CB_R_NEG_IMAG, id="nonfused-r-neg-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_IMAG, id="nonfused-r-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_R_NEG_REAL, id="nonfused-r-neg-real"),
+        pytest.param(False, newton_schulz_kernel.CB_X0_REAL, id="nonfused-x0-real"),
+        pytest.param(False, newton_schulz_kernel.CB_X0_IMAG, id="nonfused-x0-imag"),
+        pytest.param(False, newton_schulz_kernel.CB_OUTPUT_REAL, id="nonfused-output-real"),
+        pytest.param(False, newton_schulz_kernel.CB_OUTPUT_IMAG, id="nonfused-output-imag"),
+    ],
+)
+def test_matrix_block_four_double_buffer_external_cb_pages(fuse_s, cb_index):
+    ttnn = _ttnn()
+    single_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=False,
+    )
+    double_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=True,
+    )
+
+    assert single_window[cb_index][1] == 4
+    assert double_window[cb_index][1] == 8
+
+
+@pytest.mark.parametrize("fuse_s", [True, False], ids=["fused", "nonfused"])
+@pytest.mark.parametrize(
+    "cb_index",
+    [
+        pytest.param(newton_schulz_kernel.CB_STATE_REAL, id="state-real"),
+        pytest.param(newton_schulz_kernel.CB_STATE_IMAG, id="state-imag"),
+        pytest.param(newton_schulz_kernel.CB_S_REAL, id="s-real"),
+        pytest.param(newton_schulz_kernel.CB_S_IMAG, id="s-imag"),
+        pytest.param(newton_schulz_kernel.CB_PRODUCT_REAL, id="product-real"),
+        pytest.param(newton_schulz_kernel.CB_PRODUCT_IMAG, id="product-imag"),
+        pytest.param(newton_schulz_kernel.CB_NEG_X_IMAG, id="neg-x-imag"),
+    ],
+)
+def test_matrix_block_four_double_buffer_preserves_internal_cb_pages(fuse_s, cb_index):
+    ttnn = _ttnn()
+    single_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=False,
+    )
+    double_window = newton_schulz_kernel._cb_definitions(
+        ttnn,
+        "fp32",
+        fuse_s=fuse_s,
+        matrix_block=4,
+        double_buffer=True,
+    )
+
+    assert double_window[cb_index][1] == single_window[cb_index][1]
+
+
 def test_double_buffer_l1_preflight_fits_l32_and_l16_including_profile_pages():
     ttnn = _ttnn()
     ttnn.uint32 = "u32"
