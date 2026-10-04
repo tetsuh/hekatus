@@ -84,7 +84,7 @@
       "fpu_util": "FPU_COUNTER / ref_cnt * 100; fraction of cycles the FPU executes a valid operation.",
       "math_util": "MATH_COUNTER / ref_cnt * 100; combined FPU and SFPU utilization.",
       "thread_stall": "THREAD_STALLS_N / ref_cnt * 100; T0 is unpack, T1 is math, and T2 is pack.",
-      "instruction_available": "The report's UNPACK/MATH/PACK Instrn Avail Rate T0/T1/T2 fields are instruction issue-rate evidence; the tag-local reference calls this THREAD_INSTRUCTIONS_N / ref_cnt.",
+      "instruction_available": "The report's UNPACK/MATH/PACK Instrn Avail Rate T0/T1/T2 fields are TYPE_INSTRN_AVAILABLE_N / ref_cnt * 100: the fraction of time that that instruction type was available or pending in the instruction buffer, including time waiting to issue. The distinct issue-rate metric is THREAD_INSTRUCTIONS_N / ref_cnt; no such distinct THREAD_INSTRUCTIONS_N-derived field was present in these report headers.",
       "idle_wait": "WAITING_FOR_UNPACK_IDLE_0, WAITING_FOR_MATH_IDLE_1, or WAITING_FOR_PACK_IDLE_2 divided by ref_cnt.",
       "semaphore_wait": "Semaphore Zero Wait TN is WAITING_FOR_NONZERO_SEM_N / ref_cnt; Semaphore Full Wait TN is WAITING_FOR_NONFULL_SEM_N / ref_cnt. Zero wait indicates waiting for a producer signal; full wait indicates downstream consumer/backpressure synchronization.",
       "packer_efficiency": "Primary PACKER_DEST_READ_AVAILABLE / PACKER_BUSY * 100; fallback DEST_READ_GRANTED_0 / PACKER_DEST_READ_AVAILABLE * 100 when PACKER_BUSY is zero.",
@@ -322,6 +322,8 @@
     "missing_requested_metrics": [],
     "raw_profile_csv_retained": true,
     "ops_report_is_derived": true,
+    "issue_rate_fields_present": false,
+    "issue_rate_note": "No distinct THREAD_INSTRUCTIONS_N-derived issue-rate field was present in either captured ops report; no issue-rate conclusion is drawn.",
     "branch_inputs_not_exposed_in_ops_csv": [
       "PACKER_BUSY",
       "PACKER_DEST_READ_AVAILABLE",

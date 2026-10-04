@@ -9,13 +9,17 @@ toolchain so they run anywhere.
 import builtins
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from enodia.tt.bench import run_matmul
 from enodia.tt.bench.configs import configuration_catalogue
-from enodia.tt.bench.newton_schulz_reference import COMPLEX_MATMULS_PER_INVERSE
+from enodia.tt.bench.newton_schulz_reference import (
+    COMPLEX_MATMULS_PER_INVERSE,
+    inverse_flops,
+)
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 
@@ -1123,6 +1127,22 @@ def test_custom_l16_dispatch_keeps_logical_flop_denominator(monkeypatch):
     assert record["physical_tile_count"] == 4096
     assert record["packing"] == "diagonal_pairs_32x32"
     assert record["flops_per_iteration"] == total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
+
+
+def test_block_double_buffer_record_flops_match_current_inverse_accounting():
+    record_path = (
+        Path(__file__).parents[1]
+        / "docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json"
+    )
+    record = json.loads(record_path.read_text())
+    shapes = {shape.name: shape for shape in default_catalogue()}
+
+    assert COMPLEX_MATMULS_PER_INVERSE == 24
+    for size in (16, 32):
+        shape = shapes[f"newton_schulz_L{size}_b8192"]
+        expected = inverse_flops(shape)
+        assert expected == COMPLEX_MATMULS_PER_INVERSE * total_flops(shape)
+        assert record["performance"]["flops_per_launch"][f"L{size}"] == expected
 
 
 def test_custom_row_rejects_non_target_shapes_without_opening_kernel():
