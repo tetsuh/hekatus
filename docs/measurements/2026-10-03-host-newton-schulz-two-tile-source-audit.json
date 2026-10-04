@@ -1,0 +1,83 @@
+{
+  "environment": {
+    "captured_at": "2026-10-03T01:37:55+00:00",
+    "board": null,
+    "platform": "Linux",
+    "machine_architecture": "x86_64",
+    "python": "3.12.13",
+    "numpy": "2.5.1",
+    "scipy": "not installed",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "harness_commit": "b8843567d7b17c74c061632cb99eda6aa7b974c4",
+    "harness_dirty": false,
+    "tt_metal_source_revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+    "tt_metal_source_revision_note": "Pinned-release source checked out locally; the release image does not embed a source revision.",
+    "source_audit_commit": "b8843567d7b17c74c061632cb99eda6aa7b974c4"
+  },
+  "measurement": {
+    "kind": "board_free_source_audit",
+    "question": "What exact tile order does the pinned Blackhole matmul_block path consume for rt=2, kt=2, ct=1 when decomposed into two kt=1 calls?",
+    "reference_scope": "Pinned tt-metal release source audit and exact NumPy tile simulation; no board execution",
+    "source_audit_method": "Read the public compute API, Blackhole unpack API/LLK, Blackhole math API/LLK, and the host two-tile CB construction.",
+    "sources": [
+      {
+        "path": "tt_metal/hw/inc/api/compute/matmul.h",
+        "revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+        "lines": "170-182, 221-241",
+        "finding": "matmul_block_init programs unpack and math with ct_dim, rt_dim, and kt_dim; matmul_block calls the matching unpack and math operation. The public API maps in0 to SrcB and in1 to SrcA, while the mathematical block remains in0[rt,kt] x in1[kt,ct]."
+      },
+      {
+        "path": "tt_metal/hw/ckernels/blackhole/metal/llk_api/llk_unpack_AB_matmul_api.h",
+        "revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+        "lines": "70-127",
+        "finding": "The CB tile indices are forwarded unchanged to the Blackhole LLK; operand A is the first CB/in0 and operand B is the second CB/in1. The LLK receives the dimensions on both init and execute."
+      },
+      {
+        "path": "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_unpack_AB_matmul.h",
+        "revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+        "lines": "355-366, 379-425",
+        "finding": "For ct=1 and rt=2, reuse_a is false and the outer address loop has one column iteration. Each MOP run covers the two output rows; the in0/SrcB base advances by TILE_SIZE_B*kt_dim between those rows, while the in1/SrcA tile is reused. Therefore a kt=1 call consumes in0 pages [a, a+1] and one in1 page [b]. Two kt=1 calls for the original kt=2 block consume [a,a+1] with b and [a+2,a+3] with b+1 when the CB is physically column-major by output row. The source-register mapping is not a guess: _llk_unpack_configure_addresses_ writes the in1 address to SEC0/SrcA and the in0 address to SEC1/SrcB."
+      },
+      {
+        "path": "tt_metal/tt-llk/tt_llk_blackhole/llk_lib/llk_math_matmul.h",
+        "revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+        "lines": "719-760",
+        "finding": "For ct=1 and rt=2, the math traversal writes destination slots dst and dst+1 in row order. Each MVMUL accumulates into the selected DEST slot; the end operation clears a source register, not the destination. The two kt=1 calls therefore share destination slots and accumulate both K terms."
+      },
+      {
+        "path": "tt_metal/hw/ckernels/blackhole/metal/llk_api/llk_unpack_common_api.h",
+        "revision": "901dd9ce93816ffd1fd185b801fc727065e9ae07",
+        "lines": "37-65",
+        "finding": "Source-register tile sizes come from the CB page sizes. The two-tile path starts matmul with in0=BF16 R in SrcB and in1=FP32 X/S in SrcA, so the unpack stride is the BF16 in0 page size for R*X and the FP32 in0 page size for X*S."
+      }
+    ],
+    "tile_traversal": {
+      "geometry": "ct=1, rt=2, kt=1",
+      "in0_cb": "First CB; mathematical A; loaded into SrcB",
+      "in1_cb": "Second CB; mathematical B; loaded into SrcA",
+      "in0_order": "row-major within each rt=2, kt=1 block: [A00, A10]; the second K term starts at the next two pages",
+      "in1_order": "row-major within the kt=1, ct=1 block: [B00] for the first K term and [B10] for the second",
+      "dest_order": "row-major output slots [C00, C10] at dst and dst+1",
+      "accumulation": "Both K=1 calls use the same destination slots; the second call adds rather than replaces."
+    },
+    "physical_layout": {
+      "r_matrix": "[[-Rr, Ri], [-Ri, -Rr]]",
+      "r_cb_pages": "[-Rr, -Ri, Ri, -Rr]",
+      "x_matrix": "[[Xr, -Xi], [Xi, Xr]]",
+      "x_cb_pages": "[Xr, Xi, -Xi, Xr]",
+      "column_cb_pages": "[Xr, Xi] or [Sr, Si]",
+      "reason": "The two K=1 calls consume each 2x2 block by columns, so the four pages are physically column-major even though each tile's elements remain row-major."
+    },
+    "numpy_simulation": {
+      "test": "tests/test_newton_schulz_two_tile.py::test_two_tile_llk_traversal_matches_complex_r_x_and_x_s_products",
+      "result": "pass",
+      "checks": [
+        "R*X uses destination slots [real, imag] seeded by [2I, 0]",
+        "X*S uses the same [real, imag] destination-slot traversal",
+        "Both products match complex NumPy matrix multiplication exactly for distinct non-commuting tile values"
+      ]
+    },
+    "conclusion": "The pinned LLK traversal agrees with the current column-major four-page placement and two K=1 calls. This audit does not by itself explain the prior device relative errors; the remaining device investigation must distinguish source traversal from CB copy/pack or state-queue behavior rather than changing the placement spec by guesswork."
+  }
+}
