@@ -1,0 +1,5249 @@
+{
+  "record_schema": "adr-0005-board-diagnostic-v1",
+  "what": "Issue #85 Stage 2 full BF16 input-R diagnostic: host grid plus L=32/L=16 device validation and throughput",
+  "captured_at": "2026-10-04",
+  "harness_revision": "f63d166",
+  "source_commit": "f63d16633b90321334d9416fa07dbb831e15e94e",
+  "environment": {
+    "board_type": "p150a",
+    "firmware_bundle": "19.6.0.0",
+    "driver": "2.11.0",
+    "toolchain_image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "device_id": 0,
+    "note": "No host identity, connection name, or local path is recorded. Device runs used run_in_container.sh with no Watcher for the large cases."
+  },
+  "algorithm": {
+    "initial_value": "I / ||R||_infinity",
+    "iterations": 12,
+    "variant": "bf16-fp32state",
+    "math_fidelity": "HiFi3",
+    "matrix_block": 4,
+    "fuse_s": true,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "threshold": 0.01,
+    "threshold_changed": false,
+    "device_test_assertion_changed": false
+  },
+  "host_sweep": {
+    "record_schema_source": "issue-85-stage2-host-bf16-sweep-v1",
+    "grid": {
+      "condition_numbers": [
+        10.0,
+        30.0,
+        100.0,
+        300.0
+      ],
+      "aperture_sizes": [
+        16,
+        32,
+        64
+      ],
+      "iterations": 12,
+      "x0": "identity_norminf",
+      "matrix_seed": 85,
+      "dtype": "float32",
+      "look_directions_deg": [
+        -30.0,
+        -15.0,
+        0.0,
+        15.0,
+        30.0
+      ],
+      "pattern_directions_deg": [
+        -60.0,
+        -45.0,
+        -30.0,
+        -15.0,
+        0.0,
+        15.0,
+        30.0,
+        45.0,
+        60.0
+      ],
+      "bf16_rounding": "real and imaginary planes independently rounded from float32 to BF16 with round-to-nearest-even bit arithmetic"
+    },
+    "metric_definitions": {
+      "inverse_relative_frobenius_error": "||candidate - truth||_F / ||truth||_F",
+      "mv_weight_direction": "1 - |w_truth^H w_candidate| / (||w_truth||_2 ||w_candidate||_2)",
+      "beam_pattern_relative_error": "relative Frobenius error between w^H a(theta) response arrays over look and pattern directions",
+      "truths": "Every row reports original unrounded complex128 truth; rounded rows also report the R_bf16 complex128 truth as an auxiliary solver-error baseline."
+    },
+    "result_count": 24,
+    "results": [
+      {
+        "condition_number": 10.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003614891918540458,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.195654274152254e-06,
+              5.809017317282006e-06,
+              3.4470062332259133e-06,
+              5.634606239923734e-06,
+              5.876831227213941e-06
+            ],
+            "by_look_direction_deg": [
+              0.24571364841835194,
+              0.19529412382048938,
+              0.15043842894646245,
+              0.19234000371798404,
+              0.19643073978954934
+            ],
+            "mean_cosine_deficit": 5.992623058359569e-06,
+            "max_cosine_deficit": 9.195654274152254e-06,
+            "max_direction_angle_deg": 0.24571364841835194
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0030732715031434855,
+            "max_absolute_error": 0.002892209390878805,
+            "relative_error_by_look_direction": [
+              0.003654775155065805,
+              0.002773685948501776,
+              0.0021882735941692296,
+              0.0034605570085469504,
+              0.0030637155427129244
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.5030804093745415e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.103828801926284e-15,
+              1.532107773982716e-14,
+              1.709743457922741e-14,
+              8.548717289613705e-15,
+              1.8762769116165146e-14
+            ],
+            "by_look_direction_deg": [
+              7.73124918760008e-06,
+              1.0029569411827041e-05,
+              1.059505231752994e-05,
+              7.491833340751661e-06,
+              1.1099057401270736e-05
+            ],
+            "mean_cosine_deficit": 1.3766765505351941e-14,
+            "max_cosine_deficit": 1.8762769116165146e-14,
+            "max_direction_angle_deg": 1.1099057401270736e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.40433137023809e-07,
+            "max_absolute_error": 1.2722310557690237e-07,
+            "relative_error_by_look_direction": [
+              1.1165982347536569e-07,
+              1.4404141357008592e-07,
+              1.5575214273866267e-07,
+              1.0168772649480658e-07,
+              1.707262702381871e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0036149284249909278,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              9.19560462198099e-06,
+              5.809095998898783e-06,
+              3.4469937906234094e-06,
+              5.634724560721338e-06,
+              5.8769861797092204e-06
+            ],
+            "by_look_direction_deg": [
+              0.24571298504786432,
+              0.19529544642114757,
+              0.1504381574284827,
+              0.1923420231780477,
+              0.19643332938769203
+            ],
+            "mean_cosine_deficit": 5.992681030386749e-06,
+            "max_cosine_deficit": 9.19560462198099e-06,
+            "max_direction_angle_deg": 0.24571298504786432
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0030732778153514276,
+            "max_absolute_error": 0.00289217101918568,
+            "relative_error_by_look_direction": [
+              0.003654752535396705,
+              0.0027737072971747182,
+              0.002188238605377671,
+              0.00346059055824516,
+              0.003063739215530621
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.768062993788359e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.327471962526033e-15,
+              4.141131881851834e-14,
+              2.842170943040401e-14,
+              1.9317880628477724e-14,
+              1.2989609388114332e-14
+            ],
+            "by_look_direction_deg": [
+              6.9360898910140305e-06,
+              1.6489107943111647e-05,
+              1.3660378340025536e-05,
+              1.1262047877356564e-05,
+              9.234973977599935e-06
+            ],
+            "mean_cosine_deficit": 2.1893598045608086e-14,
+            "max_cosine_deficit": 4.141131881851834e-14,
+            "max_direction_angle_deg": 1.6489107943111647e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.647622373122639e-07,
+            "max_absolute_error": 1.4721349285403295e-07,
+            "relative_error_by_look_direction": [
+              1.0120836397966622e-07,
+              2.4060835128269903e-07,
+              1.5487646744869439e-07,
+              1.7338454925149337e-07,
+              1.2716035262343358e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003939781413863409,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.405565491502841e-06,
+              5.200578756636709e-06,
+              9.641225929724051e-06,
+              6.734645022765662e-06,
+              7.469236542378965e-06
+            ],
+            "by_look_direction_deg": [
+              0.22050427400463657,
+              0.1847836993019193,
+              0.25159621842165975,
+              0.21027867348534277,
+              0.22145016448615873
+            ],
+            "mean_cosine_deficit": 7.290250348601646e-06,
+            "max_cosine_deficit": 9.641225929724051e-06,
+            "max_direction_angle_deg": 0.25159621842165975
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0021893962951778975,
+            "max_absolute_error": 0.0020721692053939323,
+            "relative_error_by_look_direction": [
+              0.0025596655714750427,
+              0.0017108693554329633,
+              0.0025501262595715355,
+              0.0017829698457786712,
+              0.0021929384457698943
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.663409808042834e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3869795029440866e-14,
+              2.531308496145357e-14,
+              3.9745984281580604e-14,
+              2.9531932455029164e-14,
+              3.7414515929867775e-14
+            ],
+            "by_look_direction_deg": [
+              1.2518779069552075e-05,
+              1.289169934879393e-05,
+              1.6154155476968805e-05,
+              1.392462677356116e-05,
+              1.567320072462458e-05
+            ],
+            "mean_cosine_deficit": 3.11750625314744e-14,
+            "max_cosine_deficit": 3.9745984281580604e-14,
+            "max_direction_angle_deg": 1.6154155476968805e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.4940697728560075e-07,
+            "max_absolute_error": 1.2180376407899957e-07,
+            "relative_error_by_look_direction": [
+              9.896183650167298e-08,
+              1.5370377260016576e-07,
+              1.7643059271554662e-07,
+              1.4424911321367425e-07,
+              1.6286911065250056e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.003939774728846759,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.405249354275334e-06,
+              5.2006556077177635e-06,
+              9.64115757495776e-06,
+              6.734627879367849e-06,
+              7.469234604928765e-06
+            ],
+            "by_look_direction_deg": [
+              0.22049956737960355,
+              0.1847850646102401,
+              0.25159532652995675,
+              0.2102784058470872,
+              0.2214501357650689
+            ],
+            "mean_cosine_deficit": 7.290185004249494e-06,
+            "max_cosine_deficit": 9.64115757495776e-06,
+            "max_direction_angle_deg": 0.25159532652995675
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0021894072907904976,
+            "max_absolute_error": 0.0020721678719703793,
+            "relative_error_by_look_direction": [
+              0.002559665833614629,
+              0.0017109044620265612,
+              0.0025501516454211836,
+              0.0017829763652555276,
+              0.0021929299183793627
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 2.879663386793034e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.26405569239796e-14,
+              4.3520742565306136e-14,
+              3.6637359812630166e-14,
+              4.618527782440651e-14,
+              3.7636560534792807e-14
+            ],
+            "by_look_direction_deg": [
+              1.463916852406315e-05,
+              1.6903855776160324e-05,
+              1.5509568494356516e-05,
+              1.741363392971263e-05,
+              1.571963993965638e-05
+            ],
+            "mean_cosine_deficit": 3.9324099532223043e-14,
+            "max_cosine_deficit": 4.618527782440651e-14,
+            "max_direction_angle_deg": 1.741363392971263e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.5730523757227524e-07,
+            "max_absolute_error": 1.1714487206425203e-07,
+            "relative_error_by_look_direction": [
+              1.3071752467293227e-07,
+              1.32648178578164e-07,
+              1.6408507111017744e-07,
+              1.9154255802451474e-07,
+              1.6268345204413645e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 10.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.003240080072299917,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.582866906188698e-06,
+              5.9265524657847735e-06,
+              5.918265245319354e-06,
+              5.367883345153146e-06,
+              4.922823574116109e-06
+            ],
+            "by_look_direction_deg": [
+              0.17346282640491908,
+              0.19725994669951608,
+              0.1971219819922322,
+              0.1877324548224832,
+              0.17978147706854086
+            ],
+            "mean_cosine_deficit": 5.343678307312416e-06,
+            "max_cosine_deficit": 5.9265524657847735e-06,
+            "max_direction_angle_deg": 0.19725994669951608
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0012291504161393186,
+            "max_absolute_error": 0.0007870967251288614,
+            "relative_error_by_look_direction": [
+              0.0011846277230722227,
+              0.0011941735501362519,
+              0.0011893420030671452,
+              0.001294365509411176,
+              0.001279581053998162
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.243007907865643e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              7.827072323607354e-14,
+              4.1522341120980855e-14,
+              6.916689443414725e-14,
+              6.128431095930864e-14,
+              3.674838211509268e-14
+            ],
+            "by_look_direction_deg": [
+              2.2669257917249843e-05,
+              1.651119651020547e-05,
+              2.1310162845882393e-05,
+              2.005913882365416e-05,
+              1.5533050064947642e-05
+            ],
+            "mean_cosine_deficit": 5.739853037312059e-14,
+            "max_cosine_deficit": 7.827072323607354e-14,
+            "max_direction_angle_deg": 2.2669257917249843e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.6027282481324527e-07,
+            "max_absolute_error": 1.254299485720412e-07,
+            "relative_error_by_look_direction": [
+              1.9778814488371478e-07,
+              1.5600464819098242e-07,
+              1.7171761900597576e-07,
+              1.3096950842659343e-07,
+              1.3603315537901222e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0032400735357784077,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.582839314482001e-06,
+              5.926621435059509e-06,
+              5.918178581976186e-06,
+              5.367635350750355e-06,
+              4.922987320354899e-06
+            ],
+            "by_look_direction_deg": [
+              0.17346230422672948,
+              0.1972610944873231,
+              0.1971205387205425,
+              0.18772811818042034,
+              0.17978446705178808
+            ],
+            "mean_cosine_deficit": 5.34365240052459e-06,
+            "max_cosine_deficit": 5.926621435059509e-06,
+            "max_direction_angle_deg": 0.1972610944873231
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0012291064487344311,
+            "max_absolute_error": 0.000787044865573569,
+            "relative_error_by_look_direction": [
+              0.001184646801248192,
+              0.0011941140206974696,
+              0.0011892567427792687,
+              0.0012942958438520746,
+              0.0012795586325347618
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.274772018313764e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.629630012686903e-14,
+              4.318767565791859e-14,
+              4.3298697960381105e-14,
+              4.3520742565306136e-14,
+              5.4067861299245124e-14
+            ],
+            "by_look_direction_deg": [
+              1.7434551215247057e-05,
+              1.6839048422762124e-05,
+              1.6860678551682353e-05,
+              1.6903855776160324e-05,
+              1.8841142131235978e-05
+            ],
+            "mean_cosine_deficit": 4.6074255521943996e-14,
+            "max_cosine_deficit": 5.4067861299245124e-14,
+            "max_direction_angle_deg": 1.8841142131235978e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.203046292033909e-07,
+            "max_absolute_error": 1.1246329906912091e-07,
+            "relative_error_by_look_direction": [
+              1.485323025438508e-07,
+              1.0737391964870672e-07,
+              1.1748065848213164e-07,
+              9.558267163820072e-08,
+              1.2648977738260918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.006314794839325543,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.5971876144216246e-05,
+              1.6588265366879185e-05,
+              1.7836268765392127e-05,
+              1.8952566745888966e-05,
+              1.0258733232237915e-05
+            ],
+            "by_look_direction_deg": [
+              0.32382932542580134,
+              0.3300188280629067,
+              0.3422080958294123,
+              0.3527543139182724,
+              0.259528388348279
+            ],
+            "mean_cosine_deficit": 1.5921542050922887e-05,
+            "max_cosine_deficit": 1.8952566745888966e-05,
+            "max_direction_angle_deg": 0.3527543139182724
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00388662807903582,
+            "max_absolute_error": 0.0033825000858662955,
+            "relative_error_by_look_direction": [
+              0.0030756326357457356,
+              0.005167451802437811,
+              0.0035150131395475007,
+              0.003989196488626337,
+              0.0033908798126373457
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 2.3987628101432307e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.532107773982716e-14,
+              2.0872192862952943e-14,
+              6.761258219967203e-14,
+              2.142730437526552e-14,
+              1.1435297153639112e-14
+            ],
+            "by_look_direction_deg": [
+              1.0029569411827041e-05,
+              1.1706354451251847e-05,
+              2.106936231525657e-05,
+              1.186100256021862e-05,
+              8.664856156940838e-06
+            ],
+            "mean_cosine_deficit": 2.7333690866271353e-14,
+            "max_cosine_deficit": 6.761258219967203e-14,
+            "max_direction_angle_deg": 2.106936231525657e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.9242512263120778e-07,
+            "max_absolute_error": 1.9980119151025742e-07,
+            "relative_error_by_look_direction": [
+              1.1632716250787217e-07,
+              1.6798400942853383e-07,
+              2.8601636299948686e-07,
+              1.7341622438989828e-07,
+              1.3746407954959816e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.006314798497978979,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.5972266171115912e-05,
+              1.6587891275676725e-05,
+              1.7835134102250905e-05,
+              1.8952826019935642e-05,
+              1.025851704428149e-05
+            ],
+            "by_look_direction_deg": [
+              0.3238332793042262,
+              0.330015106812527,
+              0.3421972107545167,
+              0.35275672678445,
+              0.259525653736599
+            ],
+            "mean_cosine_deficit": 1.5921326922652136e-05,
+            "max_cosine_deficit": 1.8952826019935642e-05,
+            "max_direction_angle_deg": 0.35275672678445
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.003886591147687132,
+            "max_absolute_error": 0.0033825823705444322,
+            "relative_error_by_look_direction": [
+              0.003075616100844648,
+              0.005167387080770303,
+              0.0035149287406730043,
+              0.003989208178193981,
+              0.0033908608998238416
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 3.6838175140497177e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4654943925052066e-14,
+              6.128431095930864e-14,
+              9.137135492665038e-14,
+              3.630429290524262e-14,
+              8.881784197001252e-14
+            ],
+            "by_look_direction_deg": [
+              9.80911239371097e-06,
+              2.005913882365416e-05,
+              2.449303836449816e-05,
+              1.5438909500480757e-05,
+              2.4148365394514843e-05
+            ],
+            "mean_cosine_deficit": 5.848654893725324e-14,
+            "max_cosine_deficit": 9.137135492665038e-14,
+            "max_direction_angle_deg": 2.449303836449816e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 3.011027336919375e-07,
+            "max_absolute_error": 3.422846145037098e-07,
+            "relative_error_by_look_direction": [
+              1.4311381853451953e-07,
+              3.025092836115569e-07,
+              3.444091948162784e-07,
+              2.614461545127467e-07,
+              3.893507058512981e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.009404744436032994,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.785095910813219e-05,
+              2.6937987667841057e-05,
+              3.822416890186808e-05,
+              4.2405860965377684e-05,
+              3.170805380148245e-05
+            ],
+            "by_look_direction_deg": [
+              0.4985140976921082,
+              0.42055343062751016,
+              0.5009657549456206,
+              0.527657490336785,
+              0.4562717402161986
+            ],
+            "mean_cosine_deficit": 3.5425406088940294e-05,
+            "max_cosine_deficit": 4.2405860965377684e-05,
+            "max_direction_angle_deg": 0.527657490336785
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.005073923857620327,
+            "max_absolute_error": 0.004143893682115049,
+            "relative_error_by_look_direction": [
+              0.005088660261222661,
+              0.0041648075428324495,
+              0.005171015732512508,
+              0.004371852156814459,
+              0.006309316189522825
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 3.69783108869122e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.4083846855992306e-14,
+              5.750955267558311e-14,
+              5.972999872483342e-14,
+              5.950795411990839e-14,
+              7.627232179174825e-14
+            ],
+            "by_look_direction_deg": [
+              1.4959322771548181e-05,
+              1.943155808007896e-05,
+              1.980313203006426e-05,
+              1.9766288961818032e-05,
+              2.237799197015199e-05
+            ],
+            "mean_cosine_deficit": 5.74207348336131e-14,
+            "max_cosine_deficit": 7.627232179174825e-14,
+            "max_direction_angle_deg": 2.237799197015199e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.13989342471276e-07,
+            "max_absolute_error": 1.9545510480418457e-07,
+            "relative_error_by_look_direction": [
+              1.4358976826749595e-07,
+              1.8548815673550212e-07,
+              1.8186884908174456e-07,
+              2.9976015718456225e-07,
+              2.3083273895131182e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.009404725650328318,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.785037877168662e-05,
+              2.6938757795025303e-05,
+              3.822365838046515e-05,
+              4.240535976629545e-05,
+              3.1707975892469875e-05
+            ],
+            "by_look_direction_deg": [
+              0.49851027600779213,
+              0.42055944218955943,
+              0.5009624094677372,
+              0.5276543720873915,
+              0.4562711796663354
+            ],
+            "mean_cosine_deficit": 3.542522612118848e-05,
+            "max_cosine_deficit": 4.240535976629545e-05,
+            "max_direction_angle_deg": 0.5276543720873915
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.005073881812159293,
+            "max_absolute_error": 0.004143876583947766,
+            "relative_error_by_look_direction": [
+              0.00508862520267668,
+              0.004164863006343425,
+              0.005171016984969218,
+              0.004371691914644641,
+              0.006309251721575814
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 4.2646767574801386e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.483702463810914e-14,
+              5.306866057708248e-14,
+              7.049916206369744e-14,
+              9.392486788328824e-14,
+              1.3722356584366935e-13
+            ],
+            "by_look_direction_deg": [
+              2.063237243740307e-05,
+              1.866623346736378e-05,
+              2.1514418276737845e-05,
+              2.4832927846360672e-05,
+              3.0015942208195386e-05
+            ],
+            "mean_cosine_deficit": 8.391065620116933e-14,
+            "max_cosine_deficit": 1.3722356584366935e-13,
+            "max_direction_angle_deg": 3.0015942208195386e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.513731938385688e-07,
+            "max_absolute_error": 1.9066487516296246e-07,
+            "relative_error_by_look_direction": [
+              2.25214988171195e-07,
+              2.047623126542422e-07,
+              2.4179249854425287e-07,
+              2.450528526161078e-07,
+              3.2737552210646205e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 30.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0077267553784119355,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.4623986608851567e-05,
+              2.2136718162535374e-05,
+              3.51070999374814e-05,
+              2.625534379774308e-05,
+              2.1165941660017396e-05
+            ],
+            "by_look_direction_deg": [
+              0.4020848451612658,
+              0.3812370052043423,
+              0.4801051654780312,
+              0.41519052616098734,
+              0.37278393957218714
+            ],
+            "mean_cosine_deficit": 2.5857818033325763e-05,
+            "max_cosine_deficit": 3.51070999374814e-05,
+            "max_direction_angle_deg": 0.4801051654780312
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.002721524088172831,
+            "max_absolute_error": 0.002028600905135525,
+            "relative_error_by_look_direction": [
+              0.002855559584871428,
+              0.002700972500290276,
+              0.0028570047002113293,
+              0.002552843065703474,
+              0.00261984666113043
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 5.948952926948934e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.3677947663381929e-13,
+              2.0317081350640365e-13,
+              1.376676550535194e-13,
+              1.857403120197887e-13,
+              1.1235457009206584e-13
+            ],
+            "by_look_direction_deg": [
+              2.9967333363006965e-05,
+              3.652315530498142e-05,
+              3.006447246172566e-05,
+              3.4921325168204706e-05,
+              2.7160202361215215e-05
+            ],
+            "mean_cosine_deficit": 1.5514256546111939e-13,
+            "max_cosine_deficit": 2.0317081350640365e-13,
+            "max_direction_angle_deg": 3.652315530498142e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.8569107118103734e-07,
+            "max_absolute_error": 2.093451173613181e-07,
+            "relative_error_by_look_direction": [
+              2.701192898161052e-07,
+              3.940975337109822e-07,
+              2.871808645034709e-07,
+              2.7878928533747595e-07,
+              1.4027844070664098e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.007726756727510553,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.462418552473533e-05,
+              2.213653198801513e-05,
+              3.5107064751849215e-05,
+              2.6254779772472148e-05,
+              2.1166155223073524e-05
+            ],
+            "by_look_direction_deg": [
+              0.40208646921244645,
+              0.38123540205280193,
+              0.48010492488699874,
+              0.4151860664930197,
+              0.3727858202576468
+            ],
+            "mean_cosine_deficit": 2.585774345202907e-05,
+            "max_cosine_deficit": 3.5107064751849215e-05,
+            "max_direction_angle_deg": 0.48010492488699874
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.002721571640075693,
+            "max_absolute_error": 0.00202852820405701,
+            "relative_error_by_look_direction": [
+              0.002855538891544464,
+              0.002701171546348451,
+              0.002857054546130433,
+              0.0025528037674777747,
+              0.0026198971303196044
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 5.667691818886596e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.7064127888488656e-13,
+              1.305622276959184e-13,
+              1.27675647831893e-13,
+              1.6409096303959814e-13,
+              1.2578826869003024e-13
+            ],
+            "by_look_direction_deg": [
+              3.347184709266719e-05,
+              2.9278337048126537e-05,
+              2.8952872998872167e-05,
+              3.282312768296007e-05,
+              2.8738076734973873e-05
+            ],
+            "mean_cosine_deficit": 1.4375167722846526e-13,
+            "max_cosine_deficit": 1.7064127888488656e-13,
+            "max_direction_angle_deg": 3.347184709266719e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 2.49600018289964e-07,
+            "max_absolute_error": 2.1526376295171626e-07,
+            "relative_error_by_look_direction": [
+              3.520846111240507e-07,
+              2.4286604671023253e-07,
+              1.662586564952317e-07,
+              2.406460577183663e-07,
+              2.041203467079798e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.015674428686805304,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00015109862795903428,
+              3.8295579822600345e-05,
+              0.00016125457336169102,
+              0.00013968395796426503,
+              0.0001225812278847771
+            ],
+            "by_look_direction_deg": [
+              0.9960321554635282,
+              0.5014334951475321,
+              1.028962356131726,
+              0.9576701520558808,
+              0.8971272539485571
+            ],
+            "mean_cosine_deficit": 0.00012258279339847356,
+            "max_cosine_deficit": 0.00016125457336169102,
+            "max_direction_angle_deg": 1.028962356131726
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.014233900198865142,
+            "max_absolute_error": 0.014809593029133391,
+            "relative_error_by_look_direction": [
+              0.014997670694315025,
+              0.0089576477702334,
+              0.017503208160633735,
+              0.011985194262716856,
+              0.016801919999982533
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 7.247083029603376e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.235634396669411e-13,
+              4.707345624410664e-14,
+              3.36952687973735e-13,
+              2.2148949341271873e-13,
+              1.5754064719430971e-13
+            ],
+            "by_look_direction_deg": [
+              7.353365609537607e-05,
+              1.7580275371856632e-05,
+              4.703510229039085e-05,
+              3.813416094359975e-05,
+              3.216132574986464e-05
+            ],
+            "mean_cosine_deficit": 3.173239448983622e-13,
+            "max_cosine_deficit": 8.235634396669411e-13,
+            "max_direction_angle_deg": 7.353365609537607e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 8.078489546729615e-07,
+            "max_absolute_error": 1.254703794294361e-06,
+            "relative_error_by_look_direction": [
+              1.2870648121171228e-06,
+              2.7138582392131973e-07,
+              7.718788398757154e-07,
+              4.943524461268889e-07,
+              5.799815312461827e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.015674406697133058,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00015111373952103602,
+              3.829566254920369e-05,
+              0.00016124871575595723,
+              0.00013968219835480689,
+              0.00012257496086809372
+            ],
+            "by_look_direction_deg": [
+              0.9960819626810019,
+              0.5014340367522344,
+              1.0289436668244973,
+              0.9576641199745258,
+              0.8971043201833533
+            ],
+            "mean_cosine_deficit": 0.0001225830554098195,
+            "max_cosine_deficit": 0.00016124871575595723,
+            "max_direction_angle_deg": 1.0289436668244973
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.014234058916568107,
+            "max_absolute_error": 0.01481079774197236,
+            "relative_error_by_look_direction": [
+              0.014998685628727526,
+              0.008957677451980454,
+              0.01750294393423048,
+              0.01198524803952589,
+              0.01680152398028163
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 8.07016207959251e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              2.3981927554928006e-12,
+              1.3489209749195652e-13,
+              6.838973831690964e-14,
+              2.0816681711721685e-13,
+              1.5631940186722204e-13
+            ],
+            "by_look_direction_deg": [
+              0.00012548149191244956,
+              2.9759860020269187e-05,
+              2.119010463505997e-05,
+              3.69694833367781e-05,
+              3.2036426925603535e-05
+            ],
+            "mean_cosine_deficit": 5.931921620572211e-13,
+            "max_cosine_deficit": 2.3981927554928006e-12,
+            "max_direction_angle_deg": 0.00012548149191244956
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 1.0547604509791376e-06,
+            "max_absolute_error": 1.674678580618999e-06,
+            "relative_error_by_look_direction": [
+              1.933539563029422e-06,
+              3.994826980370805e-07,
+              3.521618446017224e-07,
+              5.108487799557084e-07,
+              5.907162712839427e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.020294050566338085,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0001294422511627369,
+              0.00025186613117489376,
+              8.861804748583335e-05,
+              0.00011848339426068222,
+              0.00012469179150376153
+            ],
+            "by_look_direction_deg": [
+              0.9218926312669996,
+              1.2859723522862365,
+              0.7627846168436909,
+              0.8820042178327544,
+              0.904817674556305
+            ],
+            "mean_cosine_deficit": 0.00014262032311758156,
+            "max_cosine_deficit": 0.00025186613117489376,
+            "max_direction_angle_deg": 1.2859723522862365
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.011930600582861004,
+            "max_absolute_error": 0.013962984521068911,
+            "relative_error_by_look_direction": [
+              0.00912374732998036,
+              0.016215304541417397,
+              0.007783283429515737,
+              0.012526795759540355,
+              0.01234691597614528
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 9.902810421308491e-07,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              5.855316231873076e-13,
+              3.991251773527438e-13,
+              5.632161403923419e-13,
+              6.767919558114954e-13,
+              7.290834602713403e-13
+            ],
+            "by_look_direction_deg": [
+              6.200301493850383e-05,
+              5.1190832512535644e-05,
+              6.081002420833689e-05,
+              6.665998695132028e-05,
+              6.918727936647865e-05
+            ],
+            "mean_cosine_deficit": 5.907496714030458e-13,
+            "max_cosine_deficit": 7.290834602713403e-13,
+            "max_direction_angle_deg": 6.918727936647865e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.216048203450614e-07,
+            "max_absolute_error": 6.488651511626642e-07,
+            "relative_error_by_look_direction": [
+              7.148055988793561e-07,
+              5.027090887394719e-07,
+              8.254902150725155e-07,
+              6.777033128164685e-07,
+              8.318528197467949e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.0202939678067921,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0001294421378355004,
+              0.0002518692188439031,
+              8.861228112277963e-05,
+              0.00011847598153258421,
+              0.00012469714723373215
+            ],
+            "by_look_direction_deg": [
+              0.9218922276977622,
+              1.2859802350680278,
+              0.7627597989331396,
+              0.8819766262497185,
+              0.9048371065003006
+            ],
+            "mean_cosine_deficit": 0.0001426193533136999,
+            "max_cosine_deficit": 0.0002518692188439031,
+            "max_direction_angle_deg": 1.2859802350680278
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.011930519922339296,
+            "max_absolute_error": 0.013962899731663219,
+            "relative_error_by_look_direction": [
+              0.009123708994540238,
+              0.016215296718929267,
+              0.007782893423972147,
+              0.01252636755447403,
+              0.012347239122148775
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.075419344665498e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.706235401386039e-13,
+              3.822497873784414e-13,
+              8.189005029635155e-13,
+              1.6214807274650411e-12,
+              1.9058088440715437e-12
+            ],
+            "by_look_direction_deg": [
+              5.5587155819166294e-05,
+              5.009694659950178e-05,
+              7.332519036670559e-05,
+              0.00010317952537732801,
+              0.00011186063986254139
+            ],
+            "mean_cosine_deficit": 1.039812680403429e-12,
+            "max_cosine_deficit": 1.9058088440715437e-12,
+            "max_direction_angle_deg": 0.00011186063986254139
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 7.62658103827792e-07,
+            "max_absolute_error": 5.861585637276731e-07,
+            "relative_error_by_look_direction": [
+              5.178475594258853e-07,
+              5.783436253725865e-07,
+              9.205865544178842e-07,
+              8.629491379555733e-07,
+              8.483255535635918e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 100.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.018387515459822798,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0002049828445276347,
+              0.0002324605212637998,
+              0.0001396261291802814,
+              0.00011577750047286894,
+              0.0001518544160954427
+            ],
+            "by_look_direction_deg": [
+              1.1601223852594973,
+              1.2354371235760973,
+              0.957471890482634,
+              0.8718743579113959,
+              0.9985201637785367
+            ],
+            "mean_cosine_deficit": 0.0001689402823080055,
+            "max_cosine_deficit": 0.0002324605212637998,
+            "max_direction_angle_deg": 1.2354371235760973
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.010155098249420402,
+            "max_absolute_error": 0.009316901274790243,
+            "relative_error_by_look_direction": [
+              0.010328132934653992,
+              0.014218671973540407,
+              0.007909857043608555,
+              0.007431523348174537,
+              0.009647407968998805
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 1.3019353976493098e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.66577903984944e-13,
+              1.0239586956117819e-12,
+              4.4375614294267507e-13,
+              9.89985871058252e-13,
+              1.6753265441593612e-12
+            ],
+            "by_look_direction_deg": [
+              6.615506293519092e-05,
+              8.199339129594133e-05,
+              5.397713374956178e-05,
+              8.062173285079494e-05,
+              0.00010487871678764112
+            ],
+            "mean_cosine_deficit": 9.59921031551403e-13,
+            "max_cosine_deficit": 1.6753265441593612e-12,
+            "max_direction_angle_deg": 0.00010487871678764112
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.397147833782196e-07,
+            "max_absolute_error": 5.378508178256844e-07,
+            "relative_error_by_look_direction": [
+              5.267731796474362e-07,
+              6.352078670783997e-07,
+              3.7276822002041765e-07,
+              6.453179488808059e-07,
+              8.900420857307866e-07
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.01838749407899385,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00020498524545653485,
+              0.0002324647900007193,
+              0.00013962167268544157,
+              0.00011577612574531493,
+              0.00015185793626093513
+            ],
+            "by_look_direction_deg": [
+              1.1601291796289954,
+              1.235448467300538,
+              0.9574566100264882,
+              0.8718691815326276,
+              0.9985317374453113
+            ],
+            "mean_cosine_deficit": 0.00016894115402978915,
+            "max_cosine_deficit": 0.0002324647900007193,
+            "max_direction_angle_deg": 1.235448467300538
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.010155088834321275,
+            "max_absolute_error": 0.009317063127647565,
+            "relative_error_by_look_direction": [
+              0.010328175146404585,
+              0.01421864536060463,
+              0.007909810202977359,
+              0.007431612877962704,
+              0.009647316561361838
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 1.3134902810149751e-06,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              6.621370118864434e-13,
+              1.4629408795485688e-12,
+              5.020428517354958e-13,
+              6.112887973586112e-13,
+              1.144750960690999e-12
+            ],
+            "by_look_direction_deg": [
+              6.593432470570785e-05,
+              9.800562850239754e-05,
+              5.741270698469857e-05,
+              6.335207566702287e-05,
+              8.669481787211012e-05
+            ],
+            "mean_cosine_deficit": 8.766321002440236e-13,
+            "max_cosine_deficit": 1.4629408795485688e-12,
+            "max_direction_angle_deg": 9.800562850239754e-05
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 6.820690840499657e-07,
+            "max_absolute_error": 5.364801867815294e-07,
+            "relative_error_by_look_direction": [
+              5.120853484019281e-07,
+              1.0275824109793724e-06,
+              4.331333033252799e-07,
+              6.389831799726526e-07,
+              6.503283528075923e-07
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 16,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.057392638985412414,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0003687194495785029,
+              0.0031607027764061213,
+              0.001867847588054139,
+              0.0013803862811356815,
+              0.002121416022273448
+            ],
+            "by_look_direction_deg": [
+              1.5559620450967357,
+              4.556631574331744,
+              3.502482475796472,
+              3.01084166945152,
+              3.7327367198123507
+            ],
+            "mean_cosine_deficit": 0.0017798144234895785,
+            "max_cosine_deficit": 0.0031607027764061213,
+            "max_direction_angle_deg": 4.556631574331744
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.05932715544042748,
+            "max_absolute_error": 0.06476561840990819,
+            "relative_error_by_look_direction": [
+              0.02032015861253739,
+              0.07530458360603096,
+              0.06739052727392962,
+              0.04784142610753225,
+              0.06682398148689672
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0002733233890712649,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.1754409556807843e-08,
+              1.9658583649828643e-09,
+              1.67783952287337e-08,
+              1.5140942388747192e-08,
+              1.6636851674078912e-08
+            ],
+            "by_look_direction_deg": [
+              0.008784924633634937,
+              0.0035926403454573366,
+              0.010495734614968123,
+              0.00997043448846346,
+              0.01045136952473773
+            ],
+            "mean_cosine_deficit": 1.2455291442670102e-08,
+            "max_cosine_deficit": 1.67783952287337e-08,
+            "max_direction_angle_deg": 0.010495734614968123
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00015567580735776436,
+            "max_absolute_error": 0.00017654323571067944,
+            "relative_error_by_look_direction": [
+              0.00012483009656630002,
+              5.873383027908654e-05,
+              0.00022355145863051153,
+              0.0001621292407524226,
+              0.00019221758044455555
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.057398024919302446,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.00036765307945108017,
+              0.003165076071148687,
+              0.0018698171505091565,
+              0.0013796399301854168,
+              0.0021189326338008074
+            ],
+            "by_look_direction_deg": [
+              1.5537102861002414,
+              4.559784531580929,
+              3.5043291710519964,
+              3.0100274171252757,
+              3.730550484799131
+            ],
+            "mean_cosine_deficit": 0.0017802237730190295,
+            "max_cosine_deficit": 0.003165076071148687,
+            "max_direction_angle_deg": 4.559784531580929
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.05934174463099342,
+            "max_absolute_error": 0.0647223180360394,
+            "relative_error_by_look_direction": [
+              0.02028342297426739,
+              0.07535634898207551,
+              0.06744410795938009,
+              0.04781190006695379,
+              0.06680311878027084
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0002843009019460181,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              1.4390351688042813e-08,
+              5.27357046919974e-10,
+              1.8376023036559275e-08,
+              1.4598707798185728e-08,
+              1.7929358109292082e-08
+            ],
+            "by_look_direction_deg": [
+              0.00972015823057536,
+              0.0018607584811062897,
+              0.01098407258689911,
+              0.009790273824409265,
+              0.010849756755679037
+            ],
+            "mean_cosine_deficit": 1.3164359535799975e-08,
+            "max_cosine_deficit": 1.8376023036559275e-08,
+            "max_direction_angle_deg": 0.01098407258689911
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00016029581868246242,
+            "max_absolute_error": 0.00018361503644042835,
+            "relative_error_by_look_direction": [
+              0.00013951309049277171,
+              3.112467348505234e-05,
+              0.00023551884445916076,
+              0.00016060932325549454,
+              0.00019727636136143773
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 32,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.059455387336504524,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0007316455872292682,
+              0.0022329007697631242,
+              0.0019666715100458143,
+              0.001976645641360797,
+              0.001888709279899925
+            ],
+            "by_look_direction_deg": [
+              2.19186848181715,
+              3.8295979891220586,
+              3.593972464214767,
+              3.603077494254495,
+              3.521993626125713
+            ],
+            "mean_cosine_deficit": 0.0017593145576597856,
+            "max_cosine_deficit": 0.0022329007697631242,
+            "max_direction_angle_deg": 3.8295979891220586
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.04167244030101309,
+            "max_absolute_error": 0.04532455576918755,
+            "relative_error_by_look_direction": [
+              0.03125878860432057,
+              0.04854584564473683,
+              0.04056036846725347,
+              0.0336739632792548,
+              0.054299832236631
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0003877711138679726,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              5.467829777838773e-08,
+              7.34141791802756e-09,
+              1.0140876471886884e-08,
+              1.3340185622823242e-08,
+              5.083809717643106e-08
+            ],
+            "by_look_direction_deg": [
+              0.018947203740420426,
+              0.0069426872879137305,
+              0.008159722266457458,
+              0.009358765535080773,
+              0.018269736158323554
+            ],
+            "mean_cosine_deficit": 2.7267774993511295e-08,
+            "max_cosine_deficit": 5.467829777838773e-08,
+            "max_direction_angle_deg": 0.018947203740420426
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00015581346876206143,
+            "max_absolute_error": 0.00016623853412923626,
+            "relative_error_by_look_direction": [
+              0.00023578470956283156,
+              0.00011435274990847284,
+              9.606785350891285e-05,
+              9.759936341793909e-05,
+              0.00020230583604521535
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.05941832373595774,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0007282565380636319,
+              0.002227347952580061,
+              0.0019607019766969547,
+              0.0019814960892522437,
+              0.0018825645470542662
+            ],
+            "by_look_direction_deg": [
+              2.186785504265872,
+              3.824831497644687,
+              3.588512053026671,
+              3.6074970016798695,
+              3.5162579241735905
+            ],
+            "mean_cosine_deficit": 0.0017560734207294315,
+            "max_cosine_deficit": 0.002227347952580061,
+            "max_direction_angle_deg": 3.824831497644687
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.04161578225439701,
+            "max_absolute_error": 0.04526062817363947,
+            "relative_error_by_look_direction": [
+              0.031151441596864397,
+              0.04845043910824484,
+              0.040494680412593395,
+              0.03370418737389489,
+              0.05422103879560472
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.00048060832565945566,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              8.329429790343568e-08,
+              4.172700285298703e-08,
+              5.2030350250475976e-08,
+              6.657962070555357e-09,
+              8.204332568872985e-08
+            ],
+            "by_look_direction_deg": [
+              0.02338542511365377,
+              0.016551838017898984,
+              0.018482725214468594,
+              0.00661162615210662,
+              0.02320915139464881
+            ],
+            "mean_cosine_deficit": 5.3150587753236775e-08,
+            "max_cosine_deficit": 8.329429790343568e-08,
+            "max_direction_angle_deg": 0.02338542511365377
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.00024234607693687468,
+            "max_absolute_error": 0.00023415110117971068,
+            "relative_error_by_look_direction": [
+              0.00033781281338486835,
+              0.00024715363774646253,
+              0.00020685392019798718,
+              8.883662934137608e-05,
+              0.0003104430258443735
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "complex64_unrounded",
+        "bf16_rounding": null,
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": null,
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        }
+      },
+      {
+        "condition_number": 300.0,
+        "aperture_size": 64,
+        "matrix_seed": 85,
+        "x0": "identity_norminf",
+        "iterations": 12,
+        "dtype": "float32",
+        "input_representation": "bf16_rounded_complex64",
+        "bf16_rounding": "float32 real and imaginary planes independently rounded to BF16 with round-to-nearest-even bit arithmetic",
+        "metrics_against_original_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0429898280634873,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.000635631917386692,
+              0.0008453709058076075,
+              0.001285453172645612,
+              0.0006882346709257137,
+              0.0007846359062209096
+            ],
+            "by_look_direction_deg": [
+              2.042977038403811,
+              2.356090013790111,
+              2.9054425573944167,
+              2.125841177074288,
+              2.2698654810773897
+            ],
+            "mean_cosine_deficit": 0.0008478653145973069,
+            "max_cosine_deficit": 0.001285453172645612,
+            "max_direction_angle_deg": 2.9054425573944167
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.021430437214996906,
+            "max_absolute_error": 0.01692273145113256,
+            "relative_error_by_look_direction": [
+              0.020151476233911104,
+              0.017455464738609844,
+              0.02688410649589531,
+              0.02318741291156111,
+              0.017486789885063504
+            ]
+          }
+        },
+        "metrics_against_input_complex128_truth": {
+          "inverse_relative_frobenius_error": 0.0023633435359388627,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              3.8296041782182044e-07,
+              1.2459346705462337e-06,
+              1.38430761520425e-06,
+              1.824811140083149e-06,
+              2.0905839986928854e-06
+            ],
+            "by_look_direction_deg": [
+              0.05014349352948276,
+              0.09044515573003425,
+              0.09533535417713924,
+              0.10945778565419968,
+              0.11715788336613821
+            ],
+            "mean_cosine_deficit": 1.3857195684696677e-06,
+            "max_cosine_deficit": 2.0905839986928854e-06,
+            "max_direction_angle_deg": 0.11715788336613821
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0007385210216381332,
+            "max_absolute_error": 0.0005300222855548304,
+            "relative_error_by_look_direction": [
+              0.0005397777747893827,
+              0.0007127726816765253,
+              0.0007549274789735294,
+              0.0008054248568328371,
+              0.0008436309468768551
+            ]
+          }
+        },
+        "quantization_impact_against_original_truth": {
+          "inverse_true_quantized_vs_original_relative_error": 0.04304148490521755,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              0.0006336064692799015,
+              0.000874452286567684,
+              0.0013195853295714377,
+              0.000717378245858602,
+              0.0007665553599633945
+            ],
+            "by_look_direction_deg": [
+              2.0397191124753586,
+              2.3962787785310855,
+              2.943771785580665,
+              2.170389590539524,
+              2.2435571617959758
+            ],
+            "mean_cosine_deficit": 0.0008623155382482039,
+            "max_cosine_deficit": 0.0013195853295714377,
+            "max_direction_angle_deg": 2.943771785580665
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.02154201413516122,
+            "max_absolute_error": 0.01713934417947694,
+            "relative_error_by_look_direction": [
+              0.020108315089470766,
+              0.01767433688519094,
+              0.02694642204160616,
+              0.023307014724259383,
+              0.01774939872633478
+            ]
+          }
+        },
+        "unrounded_float32_solver_against_original_truth": {
+          "inverse_relative_frobenius_error": 0.0023517528358173736,
+          "mv_weight_direction": {
+            "by_look_direction": [
+              4.119225667231774e-07,
+              1.0153930170009318e-06,
+              1.0661894555008544e-06,
+              1.5229969985153247e-06,
+              2.2944272870528692e-06
+            ],
+            "by_look_direction_deg": [
+              0.052005040343987174,
+              0.08164973004335685,
+              0.0836671277957408,
+              0.0999970548252751,
+              0.12273681882720897
+            ],
+            "mean_cosine_deficit": 1.2621858649586316e-06,
+            "max_cosine_deficit": 2.2944272870528692e-06,
+            "max_direction_angle_deg": 0.12273681882720897
+          },
+          "beam_pattern": {
+            "relative_frobenius_error": 0.0006912006216585868,
+            "max_absolute_error": 0.0005110431496977898,
+            "relative_error_by_look_direction": [
+              0.0005712940183410667,
+              0.0006575276845240145,
+              0.0006685498954944487,
+              0.0007405339585185095,
+              0.0007999076668139306
+            ]
+          }
+        }
+      }
+    ],
+    "summary": {
+      "bf16_quantization_impact_worst": {
+        "inverse_relative_error": [
+          0.05941832373595774,
+          300.0,
+          32
+        ],
+        "mv_direction_max_cosine_deficit": [
+          0.003165076071148687,
+          300.0,
+          16
+        ],
+        "beam_pattern_relative_error": [
+          0.05934174463099342,
+          300.0,
+          16
+        ]
+      },
+      "bf16_quantization_impact_representative_kappa100_L32": {
+        "inverse_true_quantized_vs_original_relative_error": 0.0202939678067921,
+        "mv_weight_direction": {
+          "by_look_direction": [
+            0.0001294421378355004,
+            0.0002518692188439031,
+            8.861228112277963e-05,
+            0.00011847598153258421,
+            0.00012469714723373215
+          ],
+          "by_look_direction_deg": [
+            0.9218922276977622,
+            1.2859802350680278,
+            0.7627597989331396,
+            0.8819766262497185,
+            0.9048371065003006
+          ],
+          "mean_cosine_deficit": 0.0001426193533136999,
+          "max_cosine_deficit": 0.0002518692188439031,
+          "max_direction_angle_deg": 1.2859802350680278
+        },
+        "beam_pattern": {
+          "relative_frobenius_error": 0.011930519922339296,
+          "max_absolute_error": 0.013962899731663219,
+          "relative_error_by_look_direction": [
+            0.009123708994540238,
+            0.016215296718929267,
+            0.007782893423972147,
+            0.01252636755447403,
+            0.012347239122148775
+          ]
+        }
+      }
+    }
+  },
+  "device": {
+    "input_generation": {
+      "batch": 8192,
+      "condition_number": 100.0,
+      "seed": 95,
+      "input_dtype": "complex64",
+      "r_rounding": "real and imaginary planes independently rounded from float32 to BF16 with round-to-nearest-even bit arithmetic"
+    },
+    "cases": [
+      {
+        "size": 32,
+        "batch": 8192,
+        "condition_number": 100.0,
+        "seed": 95,
+        "iterations": 12,
+        "variant": "bf16-fp32state",
+        "math_fidelity": "HiFi3",
+        "matrix_block": 4,
+        "fuse_s": true,
+        "input_bf16_rounded": true,
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "metrics": {
+          "kernel_vs_numpy_reference_relative_error": 0.0036719250058832153,
+          "kernel_vs_true_inverse_relative_error": 0.0036719250289624947,
+          "kernel_vs_original_unrounded_true_inverse_relative_error": 0.021770356879396373,
+          "host_float32_reference_vs_true_inverse_relative_error": 8.904555236269024e-07,
+          "host_float32_original_input_reference_vs_original_true_inverse_relative_error": 8.87618377567293e-07,
+          "numpy_reference_threshold": 0.01,
+          "numpy_reference_threshold_pass": true
+        },
+        "throughput": {
+          "launches": 1000,
+          "flops_per_launch": 51539607552,
+          "seconds_per_launch_p50": 0.0008869970001796901,
+          "seconds_per_launch_p99": 0.0009565387601151087,
+          "seconds_per_launch_min": 0.0008816499998829386,
+          "tflops_p50": 58.10572926577991,
+          "tflops_min_time": 58.45812687443225,
+          "seconds_per_launch_samples": [
+            0.0009715060000416997,
+            0.000925972000004549,
+            0.0009598309998182231,
+            0.0009610110000721761,
+            0.0009729219996188476,
+            0.0009654039999986708,
+            0.0009569110002303205,
+            0.0009580930000083754,
+            0.000956535000113945,
+            0.0009594309999556572,
+            0.0009597709999979998,
+            0.0009571569999025087,
+            0.0009196880000672536,
+            0.0008942229997046525,
+            0.0008898820001377317,
+            0.0008862780000526982,
+            0.000887914000031742,
+            0.0008864480000738695,
+            0.000889049999841518,
+            0.0008892670002751402,
+            0.0008872530002008716,
+            0.0008924630001274636,
+            0.0008924439998736489,
+            0.0008918879998418561,
+            0.0008874330001162889,
+            0.0008869970001796901,
+            0.0008898529999896709,
+            0.0008888990000741614,
+            0.0008876299998519244,
+            0.0008873469996615313,
+            0.0008873030001268489,
+            0.0008876290003172471,
+            0.000887137000063376,
+            0.0008876759998202033,
+            0.0008918120001908392,
+            0.0008876710003278276,
+            0.0008868679997249274,
+            0.0008866519997354771,
+            0.0008871159998307121,
+            0.0008872049997989961,
+            0.0008905039999262954,
+            0.0008860429998094332,
+            0.0008874589998413285,
+            0.0008864119999998366,
+            0.0008867830001690891,
+            0.0008868300001267926,
+            0.0008868160002748482,
+            0.0008890849999261263,
+            0.0008899250001377368,
+            0.0008879580000211718,
+            0.0008874919999470876,
+            0.000886684000306559,
+            0.0008870569999999134,
+            0.0008878769999682845,
+            0.0008873710003172164,
+            0.0008872729999893636,
+            0.0008884039998520166,
+            0.0008946140001171443,
+            0.0008880149998731213,
+            0.000888631999714562,
+            0.000886579000052734,
+            0.0008865830000104324,
+            0.0008862700001373014,
+            0.0008889300002010714,
+            0.0008894819998204184,
+            0.0008885460001692991,
+            0.0008873739998307428,
+            0.0008874529999047809,
+            0.0008874250002008921,
+            0.0008864040000844398,
+            0.0008866419998412312,
+            0.0008874599998307531,
+            0.0008901820001483429,
+            0.0008877549998942413,
+            0.0008873490000951278,
+            0.0008880629998202494,
+            0.000887700000021141,
+            0.0008864350002113497,
+            0.0008876580000105605,
+            0.000887397000042256,
+            0.0008906080001906957,
+            0.0008880189998308197,
+            0.0008872010002960451,
+            0.0008854900002006616,
+            0.000887709999915387,
+            0.0008865069999046682,
+            0.0008871400000316498,
+            0.0008868990003065846,
+            0.0008866260000104376,
+            0.000889578000169422,
+            0.0008891540001059184,
+            0.0008862849999786704,
+            0.0008867219999046938,
+            0.0008873189999576425,
+            0.0008867929996085877,
+            0.000886269999682554,
+            0.0008874090003700985,
+            0.0008906970001589798,
+            0.000887426999724994,
+            0.0008873270003277867,
+            0.0008876560000317113,
+            0.0008863359998940723,
+            0.0008863140001267311,
+            0.0008868989998518373,
+            0.00088707799977783,
+            0.0008903780003493011,
+            0.0008878109997567663,
+            0.0008870120000210591,
+            0.0008880939999471593,
+            0.0008876269998836506,
+            0.0008861380001690122,
+            0.0008876449996932934,
+            0.0008872049997989961,
+            0.0008894230004443671,
+            0.0008858800001689815,
+            0.0008868050003911776,
+            0.0008865859999787062,
+            0.0008867530000316037,
+            0.0008892310002011072,
+            0.0008885980000741256,
+            0.0008871279997038073,
+            0.0008867679998729727,
+            0.0008868299996720452,
+            0.0008865849999892816,
+            0.0008865330000844551,
+            0.0008906090001801203,
+            0.0008868559998518322,
+            0.0008865640002113651,
+            0.0008877039999788394,
+            0.0008838819999255065,
+            0.0008865370000421535,
+            0.0008866219995979918,
+            0.0008877089999259624,
+            0.0008911939999052265,
+            0.0008860900002218841,
+            0.0008855729997776507,
+            0.000887192999925901,
+            0.0008907399997042376,
+            0.0008876819997567509,
+            0.0008864579999681155,
+            0.0008883119999154587,
+            0.000890055999661854,
+            0.0008861070000421023,
+            0.0008903040002223861,
+            0.0008857220000209054,
+            0.0008871019999787677,
+            0.0008858500000314962,
+            0.0008862029999363585,
+            0.0008862849999786704,
+            0.0008859849999680591,
+            0.0008901190003598458,
+            0.000885792000190122,
+            0.0008873350002431835,
+            0.0008872609996615211,
+            0.0008865620002325159,
+            0.0008866410003065539,
+            0.0008868679997249274,
+            0.0008890539997992164,
+            0.0008886580003490963,
+            0.0008862759996191016,
+            0.0008868599998095306,
+            0.0008865810000315832,
+            0.0008861060000526777,
+            0.000885961999756546,
+            0.0008897389998310246,
+            0.000887834999957704,
+            0.0008860119996825233,
+            0.0008860060002007231,
+            0.0008868730001267977,
+            0.0008863740004017018,
+            0.0008870659999047348,
+            0.0008895959999790648,
+            0.0008867110000210232,
+            0.0008869779999258753,
+            0.0008870219999153051,
+            0.0008865869999681308,
+            0.0008874579998519039,
+            0.0008879990000423277,
+            0.0008889939999789931,
+            0.000887574999978824,
+            0.0008854850002535386,
+            0.000885374000063166,
+            0.0008866009998200752,
+            0.0008859109998411441,
+            0.0008908300001166936,
+            0.0008881570001904038,
+            0.0008883559999048884,
+            0.0008859210001901374,
+            0.0008860439997988578,
+            0.0008862129998306045,
+            0.0008858179999151616,
+            0.0008861119999892253,
+            0.0008868650002114009,
+            0.0008896459999050421,
+            0.0008874280001691659,
+            0.0008863520001796132,
+            0.0008851269999468059,
+            0.0008859889999257575,
+            0.0008867349997672136,
+            0.0008858880000843783,
+            0.0008859239997036639,
+            0.0008887660001164477,
+            0.0008866600001056213,
+            0.0008864670003276842,
+            0.0008861319997777173,
+            0.0008859300000949588,
+            0.0008864699998412107,
+            0.0008868679997249274,
+            0.0008893669996723474,
+            0.0008855529999891587,
+            0.0008860920002007333,
+            0.0008861910000632633,
+            0.0008861090000209515,
+            0.0008865739996508637,
+            0.0008935149999160785,
+            0.0008867170004123182,
+            0.0008863030002430605,
+            0.0008859350000420818,
+            0.0008895849996406469,
+            0.0008866719999787165,
+            0.0008862419999786653,
+            0.000886350000200764,
+            0.000886151000031532,
+            0.0008867960000316089,
+            0.0008879049996721733,
+            0.0008886689997780195,
+            0.0008854339998833893,
+            0.0008852140003909881,
+            0.0008852149999256653,
+            0.000885035000010248,
+            0.0008853879999151104,
+            0.0008881439998731366,
+            0.0008879989995875803,
+            0.0008858450000843732,
+            0.0008857760003593285,
+            0.0008858009996401961,
+            0.00088681799979895,
+            0.0008858200003487582,
+            0.00088572300001033,
+            0.0008883440000317933,
+            0.0008873290003066359,
+            0.0008858149999468878,
+            0.000890057000106026,
+            0.0008860440002536052,
+            0.0008854699999574223,
+            0.0008858400001372502,
+            0.000886160999925778,
+            0.0008885350002856285,
+            0.000890495000021474,
+            0.0008848480001688586,
+            0.0008857290004016249,
+            0.0008863889997883234,
+            0.0008856680001372297,
+            0.0008860829998411646,
+            0.0008864189999258087,
+            0.0008913990000110061,
+            0.0008883470000000671,
+            0.0008862449999469391,
+            0.0008854460002112319,
+            0.0008867649999046989,
+            0.0008904319997782295,
+            0.0008859199997459655,
+            0.000886615000126767,
+            0.0008894340003280377,
+            0.0008865620002325159,
+            0.0008858950000103505,
+            0.0008857339998940006,
+            0.0008854129996507254,
+            0.0008882369997991191,
+            0.0008864169999469595,
+            0.000885504000052606,
+            0.0008863449997988937,
+            0.0008856800000103249,
+            0.0008859879999363329,
+            0.0008861050000632531,
+            0.0008858880000843783,
+            0.0008908949998840399,
+            0.0008872559997143981,
+            0.0008867430001373577,
+            0.0008862249997036997,
+            0.0008857590000843629,
+            0.0008854419997987861,
+            0.0008855709997988015,
+            0.0008898149999367888,
+            0.000887471000169171,
+            0.0008867330002431117,
+            0.000886136000190163,
+            0.0008866319999469852,
+            0.000890021000031993,
+            0.000886954000179685,
+            0.0008893350000107603,
+            0.0008892229998309631,
+            0.0008863499997460167,
+            0.0008853009999256756,
+            0.0008873619999576476,
+            0.0008869439998306916,
+            0.0008877619998202135,
+            0.0008892509999895992,
+            0.0008877489999576937,
+            0.0008841570002005028,
+            0.0008860709999680694,
+            0.000885171000390983,
+            0.0008859839999786345,
+            0.0008854899997459142,
+            0.0008887199996934214,
+            0.0008901439996407134,
+            0.0008870669998941594,
+            0.000886600000285398,
+            0.0008857709999574581,
+            0.0008844809999573044,
+            0.0008855519999997341,
+            0.0008858989999680489,
+            0.000889030000053026,
+            0.0008893650001482456,
+            0.00088748600001054,
+            0.0008856240001478,
+            0.0008851789998516324,
+            0.0008850009999150643,
+            0.0008850869999150746,
+            0.000886076999904617,
+            0.0008895339997252449,
+            0.0008883149998837325,
+            0.0008853160002217919,
+            0.0008850740000525548,
+            0.0008845249999467342,
+            0.0008855199998833996,
+            0.000885622999703628,
+            0.0008859159997882671,
+            0.0008873899996615364,
+            0.0008901470000637346,
+            0.0008894310003597639,
+            0.0008866220000527392,
+            0.0008852219998516375,
+            0.0008846609998727217,
+            0.0008855940000103146,
+            0.0008876380002220685,
+            0.0008894060001694015,
+            0.0008873550000316754,
+            0.0008867939995980123,
+            0.0008857889997671009,
+            0.000885643999936292,
+            0.0008857620000526367,
+            0.0008875659996192553,
+            0.0008885550000741205,
+            0.0008852790001583344,
+            0.0008837120003590826,
+            0.0008840299997245893,
+            0.0008862529998623359,
+            0.0008839319998514839,
+            0.0008837529999254912,
+            0.0008872060002431681,
+            0.0008868830000210437,
+            0.0008848389998092898,
+            0.0008830300002955482,
+            0.000883411999893724,
+            0.000883950000115874,
+            0.0008847300000525138,
+            0.0008877400000528723,
+            0.0008870739998201316,
+            0.0008842080001159047,
+            0.0008876490001057391,
+            0.0008842229999572737,
+            0.0008842240004014457,
+            0.000885732999904576,
+            0.0008877269997356052,
+            0.0008871190002537332,
+            0.0008877830000528775,
+            0.0008849810001265723,
+            0.0008840039999995497,
+            0.0008836560000418103,
+            0.0008836719998726039,
+            0.0008852300002217817,
+            0.0008872160001374141,
+            0.0008883509999577655,
+            0.0008835240000735212,
+            0.0008838710000418359,
+            0.000883298000189825,
+            0.0008846959999573301,
+            0.0008865219997460372,
+            0.0008876839997356001,
+            0.0008854339998833893,
+            0.0008832619996610447,
+            0.0008840880000207108,
+            0.0008840880000207108,
+            0.0008834000000206288,
+            0.0008835669996187789,
+            0.0008839939996505564,
+            0.0008868230002008204,
+            0.0008881369999471644,
+            0.0008858249998411338,
+            0.0008845009997457964,
+            0.0008836639999572071,
+            0.0008835559997351083,
+            0.0008871810000528058,
+            0.000887741000042297,
+            0.0008840330001476104,
+            0.0008837969999149209,
+            0.0008838379999360768,
+            0.0008854689999679977,
+            0.0008891259999472823,
+            0.0008871489999364712,
+            0.0008823590001156845,
+            0.0008837969999149209,
+            0.0008834039999783272,
+            0.000884262999989005,
+            0.0008846289997563872,
+            0.0008858390001478256,
+            0.0008874680002008972,
+            0.000887964999947144,
+            0.0008840529999361024,
+            0.0008825529998830461,
+            0.0008842910001476412,
+            0.0008835329999783426,
+            0.0008830970000417437,
+            0.0008864320002430759,
+            0.0008872130001691403,
+            0.000889900999936799,
+            0.0008841220001158945,
+            0.0008836659999360563,
+            0.0008836069996505103,
+            0.0008845090001159406,
+            0.0008875690000422765,
+            0.0008872200000951125,
+            0.0008855779997247737,
+            0.0008835479998197115,
+            0.0008836460001475643,
+            0.0008830619999571354,
+            0.0008844989997669472,
+            0.0008869469997989654,
+            0.0008917959999052982,
+            0.0008877079999365378,
+            0.0008833430001686793,
+            0.0008832529997562233,
+            0.0008835779999571969,
+            0.0008877949999259727,
+            0.0008873960000528314,
+            0.0008869779999258753,
+            0.0008864910000738746,
+            0.000883262000115792,
+            0.0008839460001581756,
+            0.0008829469998090644,
+            0.0008889239998097764,
+            0.0008862939998834918,
+            0.0008889579999049602,
+            0.0008884499998202955,
+            0.0008854369998516631,
+            0.0008830919996398734,
+            0.0008828869999888411,
+            0.0008878639996510174,
+            0.0008845420002216997,
+            0.0008871039999576169,
+            0.0008877120003489836,
+            0.0008867829997143417,
+            0.0008853770000314398,
+            0.0008827739998196193,
+            0.0008831250002003799,
+            0.0008872990001691505,
+            0.0008816499998829386,
+            0.0008874599998307531,
+            0.0008876399997461704,
+            0.0008870540000316396,
+            0.0008840529999361024,
+            0.0008842529996400117,
+            0.0008833739998408419,
+            0.0008833810002215614,
+            0.0008834809996187687,
+            0.0008874539998942055,
+            0.0008864970000104222,
+            0.000886569000158488,
+            0.0008851569996295439,
+            0.0008837929999572225,
+            0.0008831740001369326,
+            0.0008850000003803871,
+            0.0008865439999681257,
+            0.0008873699998730444,
+            0.0008867209999152692,
+            0.0008833719998619927,
+            0.0008831089999148389,
+            0.0008825889999570791,
+            0.0008840609998514992,
+            0.0008849850000842707,
+            0.0008867589999681513,
+            0.0008867920000739105,
+            0.0008862519998729113,
+            0.000883385999713937,
+            0.0008833120000417694,
+            0.000883267000062915,
+            0.0008832859998619824,
+            0.0008906429998205567,
+            0.0008875639996404061,
+            0.0008868139998412516,
+            0.000886160999925778,
+            0.000883166999756213,
+            0.000882937999904243,
+            0.0008874629997990269,
+            0.0008885150000423891,
+            0.0008865290001267567,
+            0.0008868849999998929,
+            0.0008843420000630431,
+            0.0008835210001052474,
+            0.0008828620002532261,
+            0.0008843779996823287,
+            0.000886579000052734,
+            0.000886399999671994,
+            0.0008877929999471235,
+            0.0008836330002850445,
+            0.0008835449998514378,
+            0.0008832999997139268,
+            0.0008829120001792035,
+            0.0008854509997036075,
+            0.0008870900001056725,
+            0.0008878469998307992,
+            0.0008858420001160994,
+            0.0008875529997567355,
+            0.0008830070000840351,
+            0.000882738999735011,
+            0.0008854029997564794,
+            0.0008876450001480407,
+            0.0008863779999046528,
+            0.000887380999756715,
+            0.0008861849996719684,
+            0.0008877059999576886,
+            0.00088242599986188,
+            0.0008833040001263726,
+            0.0008855170003698731,
+            0.00088684899992586,
+            0.0008864839996931551,
+            0.0008869600001162325,
+            0.0008861629999046272,
+            0.0008825599998090183,
+            0.0008836240003802232,
+            0.0008832850003273052,
+            0.0008831489999465703,
+            0.0008869419998518424,
+            0.0008862399999998161,
+            0.0008875280000211205,
+            0.0008868280001479434,
+            0.0008860760003699397,
+            0.0008828790000734443,
+            0.0008857530001478153,
+            0.0008872590001374192,
+            0.0008875449998413387,
+            0.000886949000232562,
+            0.0008874979998836352,
+            0.0008852380001371785,
+            0.0008864119999998366,
+            0.0008827710003060929,
+            0.0008832779999465856,
+            0.0008869970001796901,
+            0.0008867530000316037,
+            0.0008866530001796491,
+            0.0008869870002854441,
+            0.000887262000105693,
+            0.0008863010002642113,
+            0.0008868059999258548,
+            0.0008864349997566023,
+            0.0008866289999787114,
+            0.0008867120000104478,
+            0.0008859780000420869,
+            0.000883531999988918,
+            0.0008847439999044582,
+            0.0008855410001160635,
+            0.0008866220000527392,
+            0.0008873830001903116,
+            0.000886369999989256,
+            0.0008873850001691608,
+            0.000883043000158068,
+            0.0008835040002850292,
+            0.0008856429999468673,
+            0.0008869649996086082,
+            0.0008869289999893226,
+            0.0008872240000528109,
+            0.0008859289996507869,
+            0.0008869550001691096,
+            0.0008835640001052525,
+            0.0008866060002219456,
+            0.0008867280002959887,
+            0.0008868950003488862,
+            0.0008871999998518731,
+            0.0008868469999470108,
+            0.0008841929998197884,
+            0.0008832069997879444,
+            0.0008828949999042379,
+            0.0008866279999892868,
+            0.0008870309998201265,
+            0.0008866319999469852,
+            0.0008864470000844449,
+            0.0008872260000316601,
+            0.0008861950000209617,
+            0.0008864080000421382,
+            0.0008900269999685406,
+            0.0008858290002535796,
+            0.0008876870001586212,
+            0.0008856009999362868,
+            0.000887031999809551,
+            0.0008864100000209874,
+            0.0008871999998518731,
+            0.0008846400000948051,
+            0.0008860110001478461,
+            0.0008867749997989449,
+            0.0008863379998729215,
+            0.0008859079998728703,
+            0.0008858490000420716,
+            0.0008911350000744278,
+            0.0008865660001902143,
+            0.0008867989999998827,
+            0.000886908000211406,
+            0.0008863980001478922,
+            0.0008907699998417229,
+            0.0008860149996507971,
+            0.0008864219998940825,
+            0.0008860029997777019,
+            0.0008858109999891894,
+            0.0008861750002324698,
+            0.0008859200002007128,
+            0.0008857789998728549,
+            0.0008853639997141727,
+            0.0008859249996930885,
+            0.0008871439999893482,
+            0.0008850119997987349,
+            0.0008864789997460321,
+            0.000886863999767229,
+            0.000886300999809464,
+            0.0008862179997777275,
+            0.0008863039997777378,
+            0.0008859559998199984,
+            0.0008861669998623256,
+            0.0008881600001586776,
+            0.0008864569999786909,
+            0.0008866269999998622,
+            0.0008865429999787011,
+            0.0008863609996296873,
+            0.000886603999788349,
+            0.0008865119998517912,
+            0.0008874150003066461,
+            0.0008906319999368861,
+            0.0008864609999363893,
+            0.0008865140002853877,
+            0.0008863889997883234,
+            0.00088662000007389,
+            0.0008861060000526777,
+            0.0008859479999046016,
+            0.0008849700002429017,
+            0.0008896160002223041,
+            0.0008866860002854082,
+            0.0008864559999892663,
+            0.0008861040000738285,
+            0.0008867720002854185,
+            0.0008853660001477692,
+            0.0008865039999363944,
+            0.0008865549998517963,
+            0.0008903289999580011,
+            0.0008860460002324544,
+            0.0008862919999046426,
+            0.0008860039997671265,
+            0.0008858149999468878,
+            0.0008866369998941082,
+            0.0008864309997989039,
+            0.0008858149999468878,
+            0.000885299999936251,
+            0.0008861219998834713,
+            0.0008861100000103761,
+            0.0008876299998519244,
+            0.0008870639999258856,
+            0.0008862919999046426,
+            0.0008859879999363329,
+            0.0008859859999574837,
+            0.0008865499999046733,
+            0.0008867690003171447,
+            0.0008864189999258087,
+            0.0008858890000738029,
+            0.0008868769996297488,
+            0.0008868250001796696,
+            0.000886401000116166,
+            0.0008855870000843424,
+            0.0008862419999786653,
+            0.000886187000105565,
+            0.0008874220002326183,
+            0.0008922239999265003,
+            0.0008853350000208593,
+            0.000886475000243081,
+            0.0008863590001055854,
+            0.000886923000052775,
+            0.0008855949999997392,
+            0.0008864439996614237,
+            0.0008865310001056059,
+            0.0008858350001901272,
+            0.0008868849999998929,
+            0.0008867900000950613,
+            0.000885862999894016,
+            0.0008868209997672238,
+            0.0008865390000210027,
+            0.0008863170000950049,
+            0.0008868049999364302,
+            0.0008865030004017171,
+            0.0008856690001266543,
+            0.0008858569999574684,
+            0.0008850459998939186,
+            0.000886254999841185,
+            0.0008866819998729625,
+            0.000885638999989169,
+            0.0008857359998728498,
+            0.0008863660000315576,
+            0.0008862539998517605,
+            0.0008865879999575554,
+            0.0008881029998519807,
+            0.000885273999756464,
+            0.0008864579999681155,
+            0.0008850979997987451,
+            0.0008863269999892509,
+            0.0008906070002012711,
+            0.0008862770000632736,
+            0.0008859589997882722,
+            0.0008858599999257422,
+            0.0008864469996296975,
+            0.0008876229999259522,
+            0.0008864229998835071,
+            0.0008861090000209515,
+            0.0008862070003488043,
+            0.0008858890000738029,
+            0.0008860249999997905,
+            0.0008916460001273663,
+            0.0008864349997566023,
+            0.00088528399965071,
+            0.0008874939999259368,
+            0.000886035999883461,
+            0.0008865710001373373,
+            0.0008859680001478409,
+            0.0008865340000738797,
+            0.0008868619997883798,
+            0.0008852989999468264,
+            0.0008861040000738285,
+            0.0008858159999363124,
+            0.00088636000009501,
+            0.0008861969999998109,
+            0.0008856070003275818,
+            0.0008861579999575042,
+            0.00088582199987286,
+            0.0008864119999998366,
+            0.0008856539998305379,
+            0.00089037499992628,
+            0.0008857109996824875,
+            0.0008857779998834303,
+            0.0008858920000420767,
+            0.0008856669996930577,
+            0.0008886780001375882,
+            0.0008943319999161758,
+            0.0008897629995772149,
+            0.0008892949999790289,
+            0.0008892199998626893,
+            0.0008897150000848342,
+            0.0008896509998521651,
+            0.000890271000116627,
+            0.0008901249998416461,
+            0.0008894389998204133,
+            0.0008890129997780605,
+            0.0008895519999896351,
+            0.0008896350000213715,
+            0.0008894330003386131,
+            0.000889792000180023,
+            0.0008885760003067844,
+            0.0008883069999683357,
+            0.000890136000180064,
+            0.000889937000010832,
+            0.0008901969999897119,
+            0.0008887200001481688,
+            0.0008896730000742537,
+            0.0008898690002752119,
+            0.0008908929999051907,
+            0.0008895769997252501,
+            0.0008906939997359586,
+            0.0008894889997463906,
+            0.0008896699996512325,
+            0.000889472999915597,
+            0.0008896059998733108,
+            0.0008897000002434652,
+            0.0008898529999896709,
+            0.0008896519998415897,
+            0.0008903359998839733,
+            0.0008895890000530926,
+            0.0008898709997993137,
+            0.0008897810002963524,
+            0.0008900190000531438,
+            0.0008896899998944718,
+            0.0008898420001060003,
+            0.0008891870002116775,
+            0.000889164999989589,
+            0.0008903889997782244,
+            0.0008901109999897017,
+            0.0008902029999262595,
+            0.0008896929998627456,
+            0.0008899760000531387,
+            0.000889364000158821,
+            0.0008902669997041812,
+            0.0008895179998944513,
+            0.0008895779997146747,
+            0.000891594999757217,
+            0.0008893750000424916,
+            0.0008896130002540303,
+            0.0008901989999685611,
+            0.0008898259998204594,
+            0.0008895450000636629,
+            0.0008896450003703649,
+            0.0008895490000213613,
+            0.0008894289999261673,
+            0.0008912920002330793,
+            0.0008897040002011636,
+            0.000890261000222381,
+            0.0008943220000219299,
+            0.000892695999937132,
+            0.0008936700000958808,
+            0.0008933809999689402,
+            0.0008945040003709437,
+            0.0008979150002232927,
+            0.0008939480003391509,
+            0.000893328000074689,
+            0.000893333000021812,
+            0.0008936949998314958,
+            0.0008969909999905212,
+            0.0008931060001486912,
+            0.000893583000106446,
+            0.0008938060000218684,
+            0.0008935169998949277,
+            0.000892830999873695,
+            0.0008930970002438698,
+            0.0008936749995882565,
+            0.0008932920000006561,
+            0.0008932439995987806,
+            0.0008935179998843523,
+            0.0008930959997996979,
+            0.0008936419999372447,
+            0.0008939690001170675,
+            0.0008934200000112469,
+            0.000894350000180566,
+            0.0008926059999794234,
+            0.0008936710000853054,
+            0.0008940050001911004,
+            0.0008927710000534717,
+            0.0008975339997050469,
+            0.0008933760000218172,
+            0.0008934040001804533,
+            0.0008938949999901524,
+            0.000893025000095804,
+            0.0008924439998736489,
+            0.0008929539999371627,
+            0.0008934040001804533,
+            0.0008936790000007022,
+            0.0008931630000006407,
+            0.000894468999831588,
+            0.0008929720002015529,
+            0.0008932230002756114,
+            0.0008938770001805096,
+            0.0008938490000218735,
+            0.0008936979997997696,
+            0.000895016999947984,
+            0.0008982360000118206,
+            0.0008974769998530974,
+            0.0009013959997901111,
+            0.0008975639998425322,
+            0.0008975900000223191,
+            0.0008971160000328382,
+            0.000894997000159492,
+            0.0009017920001497259,
+            0.0008973399999376852,
+            0.0008978500000011991,
+            0.0008973060002972488,
+            0.0008970180001597328,
+            0.0008969129999059078,
+            0.0008982650001598813,
+            0.0008972119999270944,
+            0.0008964010003182921,
+            0.0009015410000756674,
+            0.000896998999905918,
+            0.0008968860001914436,
+            0.0008968350002760417,
+            0.0008978670002761646,
+            0.0008963969999058463,
+            0.0008977210000011837,
+            0.0008966390000750835,
+            0.0008973519998107804,
+            0.0008969479999905161,
+            0.0008977319998848543,
+            0.0008968399997684173,
+            0.0008960420000221347,
+            0.0008970600001703133,
+            0.0008968810002443206,
+            0.0008966080004029209,
+            0.0008971990000645746,
+            0.000897323000117467,
+            0.0009019620001708972,
+            0.0008965879997049342,
+            0.0008983630000329867,
+            0.0008967839999058924,
+            0.0008969119999164832,
+            0.0008968069996626582,
+            0.0008973620001597737,
+            0.0008963640002548345,
+            0.0008968520000962599,
+            0.0008964510002442694,
+            0.0008965800002442847,
+            0.0008961620001173287,
+            0.000897253999937675,
+            0.0008959570000115491,
+            0.0008976439999059949,
+            0.0008967900002971874,
+            0.0008984510000118462,
+            0.0009013640001285239,
+            0.0009007800003928423,
+            0.0009008709998852282,
+            0.0009006139998746221,
+            0.0009005780002553365,
+            0.0009012130003611674,
+            0.0009006790000967158,
+            0.000900690999969811,
+            0.0009005800002341857,
+            0.0009010060002765385,
+            0.0009007009998640569,
+            0.0009002749998217041,
+            0.0009009279997371777,
+            0.0009012489999804529,
+            0.0009009569998852385,
+            0.0009003879999909259,
+            0.0009011460001602245,
+            0.0009006780001072912,
+            0.0009005459996842546,
+            0.0009046390000548854,
+            0.0009005150000120921,
+            0.0009015159998853051,
+            0.0009018219998324639,
+            0.0009006389996102371,
+            0.0009010769999804324,
+            0.0009022149997690576,
+            0.0009006049999698007,
+            0.000900890000139043,
+            0.0009012269997583644,
+            0.0009004769999592099,
+            0.0009008560000438592,
+            0.0009015830000862479,
+            0.0009009909999804222,
+            0.0009061300002031203,
+            0.0009051639999597683,
+            0.0009057699999175384,
+            0.0009045710003192653,
+            0.0009045060000971716,
+            0.0009054740003193729,
+            0.0009043089999067888,
+            0.0009043499999279447,
+            0.0009045420001712046,
+            0.0009054390002347645,
+            0.0009044690000337141,
+            0.0009084240000447608,
+            0.0009049659997799608,
+            0.0009050420003404724,
+            0.0009039649999067478,
+            0.00090397199983272,
+            0.0009050389999174513,
+            0.0009048080000866321,
+            0.0009047670000654762,
+            0.0009055250002347748,
+            0.0009047090002241021,
+            0.0009053440003299329,
+            0.0009046320001289132,
+            0.0009054560000549827,
+            0.0009047129997270531,
+            0.0009048030001395091,
+            0.0009047480002664088,
+            0.0009061810001185222,
+            0.0009057350002876774,
+            0.0009050909998222778,
+            0.000908709000214003,
+            0.0009048500000972126,
+            0.0009043630002452119,
+            0.0009044540001923451,
+            0.000906516999748419,
+            0.0009087180001188244,
+            0.0009088580000025104,
+            0.0009081879998120712,
+            0.000909212999886222,
+            0.0009088009996958135,
+            0.0009081349999178201,
+            0.0009123900003942254,
+            0.0009095680002246809,
+            0.0009105950002776808,
+            0.0009111419999499049,
+            0.0009102029998757644,
+            0.0009107540004151815,
+            0.000909965000118973,
+            0.000908829000309197,
+            0.0009089079999284877,
+            0.0009085980000236304,
+            0.0009079460000975814,
+            0.0009086529998967308,
+            0.0009090270000342571,
+            0.0009085589999813237,
+            0.0009088550000342366,
+            0.0009094179999920016,
+            0.0009124009998231486,
+            0.0009083680001822358,
+            0.0009090210000977095,
+            0.0009084250000341854
+          ]
+        }
+      },
+      {
+        "size": 16,
+        "batch": 8192,
+        "condition_number": 100.0,
+        "seed": 95,
+        "iterations": 12,
+        "variant": "bf16-fp32state",
+        "math_fidelity": "HiFi3",
+        "matrix_block": 4,
+        "fuse_s": true,
+        "input_bf16_rounded": true,
+        "input_memory": "l1",
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "metrics": {
+          "kernel_vs_numpy_reference_relative_error": 0.0038121959367291305,
+          "kernel_vs_true_inverse_relative_error": 0.0038121963728903184,
+          "kernel_vs_original_unrounded_true_inverse_relative_error": 0.021243823141074435,
+          "host_float32_reference_vs_true_inverse_relative_error": 7.407925534733927e-07,
+          "host_float32_original_input_reference_vs_original_true_inverse_relative_error": 7.446077727977807e-07,
+          "numpy_reference_threshold": 0.01,
+          "numpy_reference_threshold_pass": true
+        },
+        "throughput": {
+          "launches": 1000,
+          "flops_per_launch": 6442450944,
+          "seconds_per_launch_p50": 0.000514574999897377,
+          "seconds_per_launch_p99": 0.0005200057700403704,
+          "seconds_per_launch_min": 0.0005120460000398452,
+          "tflops_p50": 12.51994547983255,
+          "tflops_min_time": 12.581781604579815,
+          "seconds_per_launch_samples": [
+            0.0005971900000076857,
+            0.0005896850002500287,
+            0.0005889039998692169,
+            0.0005889660001230368,
+            0.0005854030000591592,
+            0.0005489089999173302,
+            0.0005290510002851079,
+            0.0005174970001462498,
+            0.0005174200000510609,
+            0.0005184179999560001,
+            0.0005153500001142675,
+            0.0005157499999768334,
+            0.0005155399999239307,
+            0.0005158670001037535,
+            0.0005152700000508048,
+            0.0005156310003258113,
+            0.0005164899998817418,
+            0.0005159939996701723,
+            0.0005149250000613392,
+            0.0005156760003046656,
+            0.000515830000040296,
+            0.0005161979997865274,
+            0.0005164789999980712,
+            0.000515945000188367,
+            0.00051572100028352,
+            0.0005165839997971489,
+            0.0005151639998075552,
+            0.0005156199999873934,
+            0.0005157690002306481,
+            0.0005165459997442667,
+            0.0005153170000085083,
+            0.0005152469998392917,
+            0.0005161260000932089,
+            0.0005171620000510302,
+            0.0005151949999344652,
+            0.0005182969998713816,
+            0.0005158199996913027,
+            0.0005190770002627687,
+            0.0005176790000405163,
+            0.000516412999786553,
+            0.0005159039997124637,
+            0.0005153449997123971,
+            0.0005152449998604425,
+            0.000515171999722952,
+            0.0005155890003152308,
+            0.0005159229999662784,
+            0.0005151190002834483,
+            0.0005204779999985476,
+            0.0005160430000614724,
+            0.0005150470001353824,
+            0.0005155240000931371,
+            0.000514634999944974,
+            0.000515714999892225,
+            0.0005182940003578551,
+            0.0005167069998606166,
+            0.0005155230001037125,
+            0.0005156629999873985,
+            0.0005156699999133707,
+            0.0005157470000085596,
+            0.0005153219999556313,
+            0.000515372000336356,
+            0.0005154310001671547,
+            0.0005158959997970669,
+            0.0005160069999874395,
+            0.0005153170000085083,
+            0.000515481000093132,
+            0.0005169940000087081,
+            0.0005206719997659093,
+            0.0005152509997969901,
+            0.000515375999839307,
+            0.0005156780002835148,
+            0.0005150709998815728,
+            0.0005194790001041838,
+            0.0005155920002835046,
+            0.0005157979999239615,
+            0.000515704999997979,
+            0.0005170199997337477,
+            0.0005173979998289724,
+            0.0005152090002411569,
+            0.0005167819999769563,
+            0.0005161980002412747,
+            0.0005156450001777557,
+            0.0005165409997971437,
+            0.0005155600001671701,
+            0.0005149819999132887,
+            0.0005153020001671393,
+            0.0005151790001036716,
+            0.0005155929998181819,
+            0.000515719999839348,
+            0.000515188000008493,
+            0.0005162319998817111,
+            0.0005149100002199702,
+            0.0005159890001777967,
+            0.0005162150000614929,
+            0.0005153769998287316,
+            0.0005149169996911951,
+            0.0005157359996701416,
+            0.0005163119999451737,
+            0.000515630999871064,
+            0.0005181120000088413,
+            0.0005171579996385844,
+            0.0005147020001459168,
+            0.0005162110001037945,
+            0.000515471000198886,
+            0.0005156180000085442,
+            0.0005191189998186019,
+            0.0005183830003261392,
+            0.0005157189998499234,
+            0.0005155750000085391,
+            0.0005138860001352441,
+            0.0005154619998393173,
+            0.0005164240001249709,
+            0.000515257000188285,
+            0.0005147100000613136,
+            0.0005170999997972103,
+            0.0005170719996385742,
+            0.0005167570002413413,
+            0.0005200010000407929,
+            0.0005150270003468904,
+            0.0005153719998816086,
+            0.0005149500002517016,
+            0.0005152439998710179,
+            0.0005192730000089796,
+            0.0005152489998181409,
+            0.0005151280001882697,
+            0.0005146859998603759,
+            0.0005155879998710589,
+            0.0005142850000083854,
+            0.0005162090001249453,
+            0.0005138270003044454,
+            0.0005154440000296745,
+            0.0005147960000613239,
+            0.000513946999944892,
+            0.00051551099977587,
+            0.0005154670002411876,
+            0.0005154300001777301,
+            0.0005151250002199959,
+            0.0005153639999662118,
+            0.0005156150000402704,
+            0.0005164679996596533,
+            0.0005182280001463369,
+            0.0005161359999874549,
+            0.0005171660000087286,
+            0.0005150689999027236,
+            0.000515173000167124,
+            0.0005150869997123664,
+            0.0005146149997017346,
+            0.0005154110003786627,
+            0.0005146530002093641,
+            0.0005147720003151335,
+            0.0005144820001987682,
+            0.0005148750001353619,
+            0.0005155429998922045,
+            0.0005159519996595918,
+            0.0005149670000719198,
+            0.000515156999881583,
+            0.0005148330001247814,
+            0.0005145090003679798,
+            0.0005159299998922506,
+            0.0005148170002939878,
+            0.0005162510001355258,
+            0.0005180579996704182,
+            0.000516053999945143,
+            0.0005139350000717968,
+            0.0005151089999344549,
+            0.0005148089999238437,
+            0.0005146550001882133,
+            0.0005147359997863532,
+            0.0005154830000719812,
+            0.0005144539995853847,
+            0.0005150169999978971,
+            0.0005153410002094461,
+            0.0005149669996171724,
+            0.0005133069998919382,
+            0.0005142619997968723,
+            0.0005152419998921687,
+            0.0005147199999555596,
+            0.0005141000001458451,
+            0.0005164059998605808,
+            0.0005169619998923736,
+            0.0005144279998603452,
+            0.0005144470001141599,
+            0.0005153369997970003,
+            0.0005146319999767002,
+            0.0005154549999133451,
+            0.0005143050002516247,
+            0.0005156520001037279,
+            0.0005145590002939571,
+            0.0005151479999767616,
+            0.0005146120001882082,
+            0.0005146610001247609,
+            0.0005147870001565025,
+            0.000514639999892097,
+            0.0005146690000401577,
+            0.0005159229999662784,
+            0.0005149530002199754,
+            0.0005145330001141701,
+            0.0005150199999661709,
+            0.0005182750001040404,
+            0.0005140089997439645,
+            0.0005147689998921123,
+            0.0005147660003785859,
+            0.0005153480001354183,
+            0.0005156170000191196,
+            0.0005154479999873729,
+            0.0005157710002094973,
+            0.0005159810002623999,
+            0.0005145830000401475,
+            0.0005148959999132785,
+            0.0005137570001352287,
+            0.0005141450001246994,
+            0.0005147249999026826,
+            0.0005142659997545707,
+            0.0005155649996595457,
+            0.0005143559997122793,
+            0.0005141679998814652,
+            0.0005144169999766746,
+            0.0005148770001142111,
+            0.0005139390000294952,
+            0.0005150249999132939,
+            0.000516611999955785,
+            0.0005171100001462037,
+            0.0005162020001989731,
+            0.0005155019998710486,
+            0.0005143289999978151,
+            0.0005208299999139854,
+            0.0005143299999872397,
+            0.0005166669998288853,
+            0.0005145569998603605,
+            0.0005153400002200215,
+            0.0005190140000195242,
+            0.0005159900001672213,
+            0.0005147110000507382,
+            0.0005126409996591974,
+            0.0005152069998075604,
+            0.0005156490001354541,
+            0.0005148280001776584,
+            0.0005152789999556262,
+            0.0005141179999554879,
+            0.0005146919997969235,
+            0.0005147480001141957,
+            0.0005144829997334455,
+            0.0005146199996488576,
+            0.0005161299995961599,
+            0.0005160630003047117,
+            0.0005143729999872448,
+            0.0005142929999237822,
+            0.0005149369999344344,
+            0.0005143790003785398,
+            0.000514603999818064,
+            0.0005146190001141804,
+            0.0005142410000189557,
+            0.0005135569999765721,
+            0.0005141749998074374,
+            0.0005145669997546065,
+            0.0005157190003046708,
+            0.0005144329998074681,
+            0.0005141080000612419,
+            0.0005156640004315705,
+            0.0005164459998923121,
+            0.0005170039999029541,
+            0.0005135449996487296,
+            0.0005140650000612368,
+            0.0005144760002622206,
+            0.0005141269998603093,
+            0.0005147730003045581,
+            0.0005149749999873166,
+            0.0005149759999767412,
+            0.0005140940002092975,
+            0.0005121890003465523,
+            0.0005138339997756702,
+            0.0005149359999450098,
+            0.0005143200000929937,
+            0.0005137269999977434,
+            0.0005138749997968262,
+            0.0005152489998181409,
+            0.0005151380000825156,
+            0.0005148320001353568,
+            0.0005142830000295362,
+            0.0005142689997228445,
+            0.0005148129998815421,
+            0.0005140709999977844,
+            0.0005178779997550009,
+            0.0005165930001567176,
+            0.0005147240003680054,
+            0.0005138820001775457,
+            0.0005145260001881979,
+            0.0005139939999025955,
+            0.0005140980001669959,
+            0.0005135870001140574,
+            0.000513708000198676,
+            0.0005143289999978151,
+            0.0005141520000506716,
+            0.0005157980003787088,
+            0.0005144410001776123,
+            0.0005152509997969901,
+            0.0005143680000401218,
+            0.0005136950003361562,
+            0.0005148079999344191,
+            0.0005144780002410698,
+            0.0005147630004103121,
+            0.0005139740001141035,
+            0.0005147800002305303,
+            0.0005140490002304432,
+            0.0005148959999132785,
+            0.0005141249998814601,
+            0.0005176889999347623,
+            0.0005163779997019446,
+            0.000516970999797195,
+            0.0005130180002197449,
+            0.0005148690001988143,
+            0.000518285999987711,
+            0.000514295999892056,
+            0.0005146529997546168,
+            0.0005141320002621796,
+            0.0005141569999977946,
+            0.0005141540000295208,
+            0.0005145539998920867,
+            0.000516083999627881,
+            0.0005134809998708079,
+            0.0005144930000824388,
+            0.000513349000357266,
+            0.0005160509999768692,
+            0.0005164730000615236,
+            0.0005164449999028875,
+            0.00051384699963819,
+            0.0005161570002201188,
+            0.0005144470001141599,
+            0.0005157359996701416,
+            0.0005142089999026211,
+            0.0005140899997968518,
+            0.0005186280000089027,
+            0.0005157720001989219,
+            0.0005143980001776072,
+            0.0005144290003045171,
+            0.0005138010001246585,
+            0.0005143939997651614,
+            0.000514032000410225,
+            0.0005141700003150618,
+            0.0005135110000082932,
+            0.0005138339997756702,
+            0.0005150830002094153,
+            0.0005136500003573019,
+            0.0005143670000506972,
+            0.0005149460002940032,
+            0.0005141530000400962,
+            0.0005158409999239666,
+            0.0005163379996702133,
+            0.0005154000000402448,
+            0.0005146209996382822,
+            0.0005142260001775867,
+            0.0005145959999026672,
+            0.0005140240000400809,
+            0.0005124699996486015,
+            0.0005142969998814806,
+            0.0005145109998920816,
+            0.0005146170001353312,
+            0.0005133010004101379,
+            0.0005134149996592896,
+            0.000516272999902867,
+            0.0005156290003469621,
+            0.0005173330000616261,
+            0.0005137240000294696,
+            0.0005141950000506768,
+            0.0005144219999237976,
+            0.0005149140001776686,
+            0.0005140500002198678,
+            0.0005149090002305456,
+            0.0005140339999343269,
+            0.0005187760002627329,
+            0.0005139190002410032,
+            0.0005134269999871321,
+            0.00051441599998725,
+            0.0005140100001881365,
+            0.0005141940000612522,
+            0.0005144710003150976,
+            0.0005141520000506716,
+            0.0005143610001141496,
+            0.000514634999944974,
+            0.0005143510002199037,
+            0.000514964000103646,
+            0.000513922000209277,
+            0.0005141569999977946,
+            0.0005143309999766643,
+            0.0005147470001247711,
+            0.0005142680001881672,
+            0.0005145959999026672,
+            0.0005167100002836378,
+            0.0005157830000825925,
+            0.0005140660000506614,
+            0.0005145559998709359,
+            0.0005143459998180333,
+            0.0005145459999766899,
+            0.0005145180002728011,
+            0.0005158389999451174,
+            0.0005154829996172339,
+            0.0005143030002727755,
+            0.0005141650003679388,
+            0.0005143450002833561,
+            0.0005191219997868757,
+            0.0005148549998921226,
+            0.0005129589999341988,
+            0.0005166570003893867,
+            0.0005165050001778582,
+            0.0005138039996381849,
+            0.0005142559998603247,
+            0.0005137389998708386,
+            0.000513841999691067,
+            0.0005143690000295464,
+            0.0005148640002516913,
+            0.0005138650003573275,
+            0.0005139270001564,
+            0.0005142629997862969,
+            0.0005163569999240281,
+            0.0005140210000718071,
+            0.0005142469999555033,
+            0.0005152650001036818,
+            0.0005139639997651102,
+            0.0005142449999766541,
+            0.0005181900000934547,
+            0.0005144080000718532,
+            0.0005146489997969184,
+            0.0005146670000613085,
+            0.0005152560001988604,
+            0.0005144080000718532,
+            0.0005161650001355156,
+            0.0005163309997442411,
+            0.0005165449997548421,
+            0.0005142459999660787,
+            0.0005159929996807477,
+            0.0005143250000401167,
+            0.000515395999627799,
+            0.0005146319999767002,
+            0.0005141969995747786,
+            0.0005147550000401679,
+            0.0005137979997016373,
+            0.0005142939999132068,
+            0.0005142009999872243,
+            0.0005140640000718122,
+            0.0005137759999342961,
+            0.0005142029999660735,
+            0.0005149619996700494,
+            0.0005180699999982608,
+            0.0005139629997756856,
+            0.0005143690000295464,
+            0.0005131320003783912,
+            0.0005138470000929374,
+            0.00051369800030443,
+            0.0005140369999026007,
+            0.0005140379998920253,
+            0.0005158210001354746,
+            0.0005163679998076987,
+            0.0005146359999343986,
+            0.0005145580003045325,
+            0.0005150990000402089,
+            0.0005136739996487449,
+            0.0005150269998921431,
+            0.0005126880000716483,
+            0.0005145689997334557,
+            0.0005145579998497851,
+            0.0005147540000507433,
+            0.0005133650001880596,
+            0.0005161359999874549,
+            0.0005149899998286855,
+            0.0005148160003045632,
+            0.0005153179999979329,
+            0.0005155079998075962,
+            0.0005163350001566869,
+            0.0005137980001563847,
+            0.0005157279997547448,
+            0.0005144100000507024,
+            0.0005140379998920253,
+            0.0005147470001247711,
+            0.0005148750001353619,
+            0.0005143339999449381,
+            0.000514151000061247,
+            0.00051415600000837,
+            0.0005139369995958987,
+            0.0005136459999448562,
+            0.0005149570001776738,
+            0.0005182270001569123,
+            0.0005138189999343012,
+            0.0005145300001458963,
+            0.0005144959995959653,
+            0.0005154300001777301,
+            0.000513619000230392,
+            0.0005147850001776533,
+            0.0005138179999448766,
+            0.0005136700001457939,
+            0.0005144199999449484,
+            0.000515614999585523,
+            0.00051627799984999,
+            0.0005155919998287573,
+            0.0005143809999026416,
+            0.0005142229997545655,
+            0.0005152779999662016,
+            0.0005146230000718788,
+            0.0005141209999237617,
+            0.0005144249998920714,
+            0.0005137869998179667,
+            0.0005151039999873319,
+            0.0005140329999449023,
+            0.0005146640000930347,
+            0.000513602999944851,
+            0.0005146060002516606,
+            0.000514516000293952,
+            0.0005157069999768282,
+            0.0005158719995961292,
+            0.000514962999659474,
+            0.0005144990000189864,
+            0.0005138680003256013,
+            0.0005136039999342756,
+            0.0005145380000612931,
+            0.0005135180003890127,
+            0.0005140070002198627,
+            0.0005137610000929271,
+            0.0005134400003043993,
+            0.0005153560000508151,
+            0.0005141819997334096,
+            0.0005148430000190274,
+            0.00051361799978622,
+            0.0005121019999023702,
+            0.0005143100001987477,
+            0.0005144679998920765,
+            0.0005155180001565896,
+            0.0005136689997016219,
+            0.0005142719996911183,
+            0.000514738999754627,
+            0.0005196870001782372,
+            0.0005161459998817008,
+            0.000517732999924192,
+            0.0005139759996382054,
+            0.0005141300002833304,
+            0.0005144270003256679,
+            0.0005139099998814345,
+            0.0005153739998604578,
+            0.0005152089997864095,
+            0.0005135759997756395,
+            0.0005144080000718532,
+            0.0005138060000717815,
+            0.0005145719997017295,
+            0.0005150390002199856,
+            0.0005139210002198524,
+            0.0005142700001670164,
+            0.0005142330001035589,
+            0.000513727999987168,
+            0.00051441599998725,
+            0.0005134500001986453,
+            0.0005147729998498107,
+            0.0005146309999872756,
+            0.0005143229996065202,
+            0.0005138460001035128,
+            0.0005148049999661453,
+            0.000514141000167001,
+            0.0005165040001884336,
+            0.0005164949998288648,
+            0.0005140329999449023,
+            0.0005148929999450047,
+            0.000514903000293998,
+            0.0005143539997334301,
+            0.0005143479997968825,
+            0.0005141899996488064,
+            0.0005138460001035128,
+            0.0005150800002411415,
+            0.0005133599997861893,
+            0.0005157539999345317,
+            0.0005136810000294645,
+            0.0005144729998391995,
+            0.0005138850001458195,
+            0.0005159050001566357,
+            0.000516919999881793,
+            0.0005165509996913897,
+            0.0005157150003469724,
+            0.0005144669999026519,
+            0.0005142059999343473,
+            0.0005143019998286036,
+            0.0005142840000189608,
+            0.0005135719998179411,
+            0.0005148139998709667,
+            0.000514141000167001,
+            0.0005142190002516145,
+            0.0005138599999554572,
+            0.0005146670000613085,
+            0.0005140930002198729,
+            0.000513932000103523,
+            0.0005146999997123203,
+            0.0005136239997227676,
+            0.0005151509999450354,
+            0.0005145029999766848,
+            0.0005144589999872551,
+            0.0005143359999237873,
+            0.0005136189997756446,
+            0.0005135809997227625,
+            0.0005145790000824491,
+            0.0005162259999451635,
+            0.0005147299998498056,
+            0.0005189270000300894,
+            0.000513966999733384,
+            0.0005152469998392917,
+            0.0005140940002092975,
+            0.0005153109996172134,
+            0.0005145579998497851,
+            0.0005141520000506716,
+            0.0005145520003679849,
+            0.0005143940002199088,
+            0.0005135619999236951,
+            0.0005145220002304995,
+            0.0005168180000509892,
+            0.0005146960002093692,
+            0.0005142159998285933,
+            0.0005141100000400911,
+            0.0005147340002622514,
+            0.000514949000262277,
+            0.0005142330001035589,
+            0.0005137439998179616,
+            0.0005139729996699316,
+            0.0005136559998391022,
+            0.0005148519999238488,
+            0.0005136119998496724,
+            0.0005145879999872705,
+            0.0005135050000717456,
+            0.0005145539998920867,
+            0.0005136059999131248,
+            0.000514067000040086,
+            0.0005140309999660531,
+            0.0005135639999025443,
+            0.0005139919999237463,
+            0.0005142179998074425,
+            0.0005148800000824849,
+            0.0005136899999342859,
+            0.0005145700001776277,
+            0.0005158669996490062,
+            0.0005149399999027082,
+            0.0005198589997235104,
+            0.0005178139999770792,
+            0.0005156649999662477,
+            0.0005138810001881211,
+            0.0005148630002622667,
+            0.0005140289999872039,
+            0.0005142400000295311,
+            0.0005149260000507638,
+            0.000514040999860299,
+            0.0005141579999872192,
+            0.0005139439999766182,
+            0.0005132109999976819,
+            0.00051415600000837,
+            0.0005155179997018422,
+            0.0005153329998393019,
+            0.0005170780000298691,
+            0.000513966999733384,
+            0.0005134590001034667,
+            0.0005138870001246687,
+            0.0005139640002198576,
+            0.000513169999976526,
+            0.0005135759997756395,
+            0.0005140039997968415,
+            0.0005141329997968569,
+            0.0005139600002621592,
+            0.0005150130000401987,
+            0.0005137809998814191,
+            0.000513862999923731,
+            0.000514201999976649,
+            0.0005141110000295157,
+            0.0005144289998497698,
+            0.0005145430000084161,
+            0.0005139509999025904,
+            0.0005195000003368477,
+            0.0005148220002411108,
+            0.0005136459999448562,
+            0.0005143809999026416,
+            0.0005145519999132375,
+            0.0005147570000190171,
+            0.0005148669997652178,
+            0.0005147079996277171,
+            0.0005151450000084878,
+            0.0005144659999132273,
+            0.0005141789997651358,
+            0.0005146190001141804,
+            0.0005136620002303971,
+            0.0005149949997758085,
+            0.0005146739999872807,
+            0.0005133770000611548,
+            0.0005141569999977946,
+            0.0005136820000188891,
+            0.000514325999574794,
+            0.0005140349999237515,
+            0.0005150270003468904,
+            0.0005145019999872602,
+            0.0005144219999237976,
+            0.0005142850000083854,
+            0.0005139849999977741,
+            0.0005140970001775713,
+            0.0005135160004101635,
+            0.0005138809997333738,
+            0.0005131409998284653,
+            0.0005140870002833253,
+            0.0005156039997018524,
+            0.0005155419999027799,
+            0.0005166670002836327,
+            0.0005164960002730368,
+            0.0005139780000718019,
+            0.0005160670002624101,
+            0.0005143240000506921,
+            0.0005140379998920253,
+            0.0005142979998709052,
+            0.000513502999638149,
+            0.0005137960001775355,
+            0.0005139920003784937,
+            0.0005135510000400245,
+            0.0005137449998073862,
+            0.0005138710002938751,
+            0.0005149769999661657,
+            0.0005147990000295977,
+            0.0005175129999770434,
+            0.0005154719997335633,
+            0.000514151000061247,
+            0.0005138859996804968,
+            0.0005132879996381234,
+            0.0005141889996593818,
+            0.0005140980001669959,
+            0.0005148410000401782,
+            0.0005141439996805275,
+            0.0005141179999554879,
+            0.0005146530002093641,
+            0.0005144920000930142,
+            0.0005134880002515274,
+            0.0005147570000190171,
+            0.0005140369999026007,
+            0.0005148360000930552,
+            0.0005142199997862917,
+            0.0005165889997442719,
+            0.0005140510002092924,
+            0.0005143329999555135,
+            0.0005146480002622411,
+            0.0005152300000190735,
+            0.000514844000008452,
+            0.0005149300000084622,
+            0.0005146580001564871,
+            0.0005141990000083752,
+            0.0005145780000930245,
+            0.0005147329998180794,
+            0.0005152080002517323,
+            0.0005163290002201393,
+            0.0005154609998498927,
+            0.000513509000029444,
+            0.00051364899991313,
+            0.0005140040002515889,
+            0.0005147379997652024,
+            0.0005144440001458861,
+            0.0005146739999872807,
+            0.0005146339999555494,
+            0.0005141289998391585,
+            0.0005140399998708745,
+            0.0005132969999976922,
+            0.0005145700001776277,
+            0.0005140289999872039,
+            0.0005140539997228188,
+            0.0005164630001672776,
+            0.0005159830002412491,
+            0.0005145969998920918,
+            0.000514201999976649,
+            0.0005120460000398452,
+            0.0005139140002938802,
+            0.0005133160002515069,
+            0.0005152089997864095,
+            0.0005138439996699162,
+            0.0005140939997545502,
+            0.0005148959999132785,
+            0.0005143539997334301,
+            0.0005149260000507638,
+            0.0005142240001987375,
+            0.0005141589999766438,
+            0.0005149799999344395,
+            0.0005142780000824132,
+            0.0005142390000401065,
+            0.000513504000082321,
+            0.0005129139999553445,
+            0.0005142669997439953,
+            0.000513742999828537,
+            0.0005136409999977332,
+            0.0005145780000930245,
+            0.0005185569998502615,
+            0.0005173239997020573,
+            0.000516626999797154,
+            0.0005136209997544938,
+            0.0005145289997017244,
+            0.0005142380000506819,
+            0.0005148649997863686,
+            0.0005136529998708284,
+            0.0005140419998497237,
+            0.0005135199999131146,
+            0.0005135749997862149,
+            0.0005156970000825822,
+            0.0005145609998180589,
+            0.0005150830002094153,
+            0.0005143160001352953,
+            0.0005139859999871987,
+            0.0005137389998708386,
+            0.0005138619999343064,
+            0.0005148859995642852,
+            0.0005141930000718276,
+            0.0005138010001246585,
+            0.000516157999754796,
+            0.0005137490002198319,
+            0.0005159150000508816,
+            0.0005160790001355053,
+            0.000516616999902908,
+            0.0005148719997123408,
+            0.0005142840000189608,
+            0.000513653999860253,
+            0.0005147120000401628,
+            0.0005140380003467726,
+            0.0005137939997439389,
+            0.0005140879998180026,
+            0.0005145310001353209,
+            0.0005137520001881057,
+            0.0005135190003784373,
+            0.0005141980000189506,
+            0.0005147520000718941,
+            0.000518733999797405,
+            0.0005142199997862917,
+            0.0005159839997759263,
+            0.000517145000230812,
+            0.0005170879999241151,
+            0.0005159010001989373,
+            0.0005134630000611651,
+            0.0005140060002304381,
+            0.0005145850000189967,
+            0.0005144709998603503,
+            0.0005136639997544989,
+            0.000514365000071848,
+            0.0005134500001986453,
+            0.0005141030001141189,
+            0.0005145400000401423,
+            0.0005141159999766387,
+            0.0005153639999662118,
+            0.000514040999860299,
+            0.0005151919999661914,
+            0.0005151150003257499,
+            0.0005143329999555135,
+            0.0005143449998286087,
+            0.0005150090000825003,
+            0.0005144840001776174,
+            0.000514534999638272,
+            0.0005149660000824952,
+            0.0005145589998392097,
+            0.0005160040000191657,
+            0.0005158520002623845,
+            0.0005157760001566203,
+            0.0005175050000616466,
+            0.0005140309999660531,
+            0.0005130490003466548,
+            0.0005144570000084059,
+            0.0005140000002938905,
+            0.0005144679998920765,
+            0.0005136839999977383,
+            0.0005155379999450815,
+            0.0005140230000506563,
+            0.0005149019998498261,
+            0.0005151720001776994,
+            0.0005144730002939468,
+            0.0005120569999235158,
+            0.0005169129999558209,
+            0.0005153379997864249,
+            0.0005165509996913897,
+            0.0005160939999768743,
+            0.0005144760002622206,
+            0.0005134399998496519,
+            0.0005139939999025955,
+            0.0005140449998179975,
+            0.0005196609999984503,
+            0.000514750000093045,
+            0.0005145459999766899,
+            0.0005142969998814806,
+            0.0005136519998814038,
+            0.0005135589999554213,
+            0.000514504999955534,
+            0.0005145170002833765,
+            0.0005147440001564973,
+            0.0005142509999132017,
+            0.0005136520003361511,
+            0.00051415600000837,
+            0.0005142330001035589,
+            0.0005140299999766285,
+            0.0005139700001564051,
+            0.000513583000156359,
+            0.0005148280001776584,
+            0.0005165210000086518,
+            0.0005161199997019139,
+            0.0005159480001566408,
+            0.0005155620001460193,
+            0.000514588999976695,
+            0.0005137620000823517,
+            0.0005140349999237515,
+            0.000514305999786302,
+            0.0005132869996486988,
+            0.0005140069997651153,
+            0.0005151649997969798,
+            0.0005138890001035179,
+            0.0005144910001035896,
+            0.0005138559999977588,
+            0.0005138630003784783,
+            0.0005132579999553855,
+            0.0005163599998923019,
+            0.0005144029996699828,
+            0.0005148209997969388,
+            0.0005149769999661657,
+            0.0005141579999872192,
+            0.0005131769999024982,
+            0.0005140060002304381,
+            0.0005134430002726731,
+            0.0005141219999131863,
+            0.0005143350003891101,
+            0.0005152399999133195,
+            0.0005148939999344293,
+            0.0005152019998604374,
+            0.0005164579997654073,
+            0.0005163759997230954,
+            0.0005160649998288136,
+            0.0005148939999344293,
+            0.0005143769999449432,
+            0.0005139610002515838,
+            0.0005137590001140779,
+            0.000513723000040045,
+            0.0005146899998180743,
+            0.0005143250000401167,
+            0.0005137009998179565,
+            0.0005144510000718583,
+            0.0005133569998179155,
+            0.0005147430001670728,
+            0.0005141540000295208,
+            0.0005160270002306788,
+            0.0005162510001355258,
+            0.0005161649996807682,
+            0.0005159870001989475,
+            0.0005135179999342654,
+            0.0005141259998708847,
+            0.0005145620002622309,
+            0.000514177000241034,
+            0.0005188790000829613,
+            0.0005141409997122537,
+            0.0005142879999766592,
+            0.0005131410002832126,
+            0.0005142570003044966,
+            0.0005140100001881365,
+            0.0005142049999449227,
+            0.0005143359999237873,
+            0.0005137919997650897,
+            0.0005132350001986197,
+            0.0005141280003044812,
+            0.0005138100000294799,
+            0.0005137910002304125,
+            0.000513614000283269,
+            0.0005148560003362945,
+            0.0005139330000929476,
+            0.000514062000092963,
+            0.0005153130000508099,
+            0.0005144419997122895,
+            0.0005164209997019498,
+            0.0005162520001249504,
+            0.0005169949999981327,
+            0.0005161980002412747,
+            0.0005153080001036869,
+            0.0005143300004419871,
+            0.000517509000019345,
+            0.0005138040000929323,
+            0.0005129820001457119,
+            0.0005139039999448869,
+            0.0005141639999237668,
+            0.0005138420001458144,
+            0.0005138649999025802,
+            0.0005157729997335991,
+            0.0005144460001247353,
+            0.0005138749997968262,
+            0.0005177739999453479,
+            0.0005159459997230442,
+            0.0005167429999346496,
+            0.0005143660000612726,
+            0.0005147520000718941,
+            0.0005135619999236951,
+            0.0005137610000929271,
+            0.0005135749997862149,
+            0.000513723000040045,
+            0.0005145519999132375,
+            0.0005139520003467624,
+            0.0005150169999978971,
+            0.0005147779997969337,
+            0.000513634000071761,
+            0.0005146660000718839,
+            0.0005141270003150566,
+            0.0005142609998074477,
+            0.000514146000114124,
+            0.0005141320002621796,
+            0.0005137119997016271,
+            0.0005142179998074425,
+            0.0005136009999660018,
+            0.0005138189999343012,
+            0.0005141160004313861,
+            0.000513812000008329,
+            0.0005137029997968057
+          ]
+        }
+      }
+    ],
+    "all_cases_reference_threshold_pass": true,
+    "reset_performed": false,
+    "containers_zero_after_runs": true
+  },
+  "r_fp32_capability": {
+    "possible_with_existing_arguments": false,
+    "reason": "r_memory and input_memory select placement only; _reader_input_dtypes returns BF16 for all R components. No existing argument changes R dtype.",
+    "source": "enodia/tt/bench/newton_schulz_kernel.py",
+    "device_run_attempted": false
+  },
+  "unperformed": [
+    "FP32-R device configuration, because existing arguments cannot select an FP32 R dtype",
+    "New device-test threshold assertion",
+    "Image-quality or M5 validation"
+  ],
+  "conclusion": "BF16 input quantization moves the inverse and beam-pattern truth at high condition numbers; with R rounded before the device path, L=32 and L=16 kernel/reference errors pass the unchanged 1e-2 threshold. HiFi4 is only marginally better than HiFi3 for L=32 batch=4; large-case throughput was measured for both sizes."
+}
