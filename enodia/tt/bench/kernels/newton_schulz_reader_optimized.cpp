@@ -22,6 +22,77 @@ void read_one(std::uint32_t cb, std::uint32_t tile_id,
 }
 
 template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
+void read_matrix_reload(
+    std::uint32_t tile_id,
+    std::uint32_t iterations,
+    const RAccessor &r_real,
+    const RAccessor &r_negative_imag,
+    const RAccessor &r_imag,
+    const X0Accessor &x0_real,
+    const X0Accessor &x0_imag,
+    const RAccessor &r_negative_real) {
+  for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+    const bool first_iteration = iteration == 0;
+    if constexpr (batch_reads) {
+      if constexpr (!fuse_s) {
+        cb_reserve_back(cb_r_real, 1);
+      }
+      cb_reserve_back(cb_r_negative_imag, 1);
+      cb_reserve_back(cb_r_imag, 1);
+      if constexpr (fuse_s) {
+        cb_reserve_back(cb_r_negative_real, 1);
+      }
+      if (first_iteration) {
+        cb_reserve_back(cb_x0_real, 1);
+        cb_reserve_back(cb_x0_imag, 1);
+      }
+
+      if constexpr (!fuse_s) {
+        noc_async_read_page(tile_id, r_real, get_write_ptr(cb_r_real));
+      }
+      noc_async_read_page(tile_id, r_negative_imag,
+                          get_write_ptr(cb_r_negative_imag));
+      noc_async_read_page(tile_id, r_imag, get_write_ptr(cb_r_imag));
+      if constexpr (fuse_s) {
+        noc_async_read_page(tile_id, r_negative_real,
+                            get_write_ptr(cb_r_negative_real));
+      }
+      if (first_iteration) {
+        noc_async_read_page(tile_id, x0_real, get_write_ptr(cb_x0_real));
+        noc_async_read_page(tile_id, x0_imag, get_write_ptr(cb_x0_imag));
+      }
+      noc_async_read_barrier();
+
+      if constexpr (!fuse_s) {
+        cb_push_back(cb_r_real, 1);
+      }
+      cb_push_back(cb_r_negative_imag, 1);
+      cb_push_back(cb_r_imag, 1);
+      if constexpr (fuse_s) {
+        cb_push_back(cb_r_negative_real, 1);
+      }
+      if (first_iteration) {
+        cb_push_back(cb_x0_real, 1);
+        cb_push_back(cb_x0_imag, 1);
+      }
+    } else {
+      if constexpr (!fuse_s) {
+        read_one(cb_r_real, tile_id, r_real);
+      }
+      read_one(cb_r_negative_imag, tile_id, r_negative_imag);
+      read_one(cb_r_imag, tile_id, r_imag);
+      if constexpr (fuse_s) {
+        read_one(cb_r_negative_real, tile_id, r_negative_real);
+      }
+      if (first_iteration) {
+        read_one(cb_x0_real, tile_id, x0_real);
+        read_one(cb_x0_imag, tile_id, x0_imag);
+      }
+    }
+  }
+}
+
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
 void read_matrix(std::uint32_t tile_id, const RAccessor &r_real,
                  const RAccessor &r_negative_imag, const RAccessor &r_imag,
                  const X0Accessor &x0_real, const X0Accessor &x0_imag,
@@ -160,6 +231,107 @@ void read_matrix_block(
   cb_push_back(cb_x0_real, block_count);
   cb_push_back(cb_x0_imag, block_count);
 }
+
+template <bool fuse_s, bool batch_reads, typename RAccessor, typename X0Accessor>
+void read_matrix_block_reload(
+    std::uint32_t tile_id,
+    std::uint32_t block_count,
+    std::uint32_t iterations,
+    const RAccessor &r_real,
+    const RAccessor &r_negative_imag,
+    const RAccessor &r_imag,
+    const X0Accessor &x0_real,
+    const X0Accessor &x0_imag,
+    const RAccessor &r_negative_real) {
+  for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+    const bool first_iteration = iteration == 0;
+    if constexpr (!fuse_s) {
+      cb_reserve_back(cb_r_real, block_count);
+    }
+    cb_reserve_back(cb_r_negative_imag, block_count);
+    cb_reserve_back(cb_r_imag, block_count);
+    if constexpr (fuse_s) {
+      cb_reserve_back(cb_r_negative_real, block_count);
+    }
+    if (first_iteration) {
+      cb_reserve_back(cb_x0_real, block_count);
+      cb_reserve_back(cb_x0_imag, block_count);
+    }
+
+    for (std::uint32_t index = 0; index < block_count; ++index) {
+      const std::uint32_t tile = tile_id + index;
+      const std::uint32_t r_negative_imag_ptr =
+          get_write_ptr(cb_r_negative_imag) + index * get_tile_size(cb_r_negative_imag);
+      const std::uint32_t r_imag_ptr =
+          get_write_ptr(cb_r_imag) + index * get_tile_size(cb_r_imag);
+      if constexpr (batch_reads) {
+        if constexpr (!fuse_s) {
+          const std::uint32_t r_real_ptr =
+              get_write_ptr(cb_r_real) + index * get_tile_size(cb_r_real);
+          noc_async_read_page(tile, r_real, r_real_ptr);
+        }
+        noc_async_read_page(tile, r_negative_imag, r_negative_imag_ptr);
+        noc_async_read_page(tile, r_imag, r_imag_ptr);
+        if constexpr (fuse_s) {
+          const std::uint32_t r_negative_real_ptr =
+              get_write_ptr(cb_r_negative_real) + index * get_tile_size(cb_r_negative_real);
+          noc_async_read_page(tile, r_negative_real, r_negative_real_ptr);
+        }
+        if (first_iteration) {
+          const std::uint32_t x0_real_ptr =
+              get_write_ptr(cb_x0_real) + index * get_tile_size(cb_x0_real);
+          const std::uint32_t x0_imag_ptr =
+              get_write_ptr(cb_x0_imag) + index * get_tile_size(cb_x0_imag);
+          noc_async_read_page(tile, x0_real, x0_real_ptr);
+          noc_async_read_page(tile, x0_imag, x0_imag_ptr);
+        }
+      } else {
+        if constexpr (!fuse_s) {
+          const std::uint32_t r_real_ptr =
+              get_write_ptr(cb_r_real) + index * get_tile_size(cb_r_real);
+          noc_async_read_page(tile, r_real, r_real_ptr);
+          noc_async_read_barrier();
+        }
+        noc_async_read_page(tile, r_negative_imag, r_negative_imag_ptr);
+        noc_async_read_barrier();
+        noc_async_read_page(tile, r_imag, r_imag_ptr);
+        noc_async_read_barrier();
+        if constexpr (fuse_s) {
+          const std::uint32_t r_negative_real_ptr =
+              get_write_ptr(cb_r_negative_real) + index * get_tile_size(cb_r_negative_real);
+          noc_async_read_page(tile, r_negative_real, r_negative_real_ptr);
+          noc_async_read_barrier();
+        }
+        if (first_iteration) {
+          const std::uint32_t x0_real_ptr =
+              get_write_ptr(cb_x0_real) + index * get_tile_size(cb_x0_real);
+          const std::uint32_t x0_imag_ptr =
+              get_write_ptr(cb_x0_imag) + index * get_tile_size(cb_x0_imag);
+          noc_async_read_page(tile, x0_real, x0_real_ptr);
+          noc_async_read_barrier();
+          noc_async_read_page(tile, x0_imag, x0_imag_ptr);
+          noc_async_read_barrier();
+        }
+      }
+    }
+    if constexpr (batch_reads) {
+      noc_async_read_barrier();
+    }
+
+    if constexpr (!fuse_s) {
+      cb_push_back(cb_r_real, block_count);
+    }
+    cb_push_back(cb_r_negative_imag, block_count);
+    cb_push_back(cb_r_imag, block_count);
+    if constexpr (fuse_s) {
+      cb_push_back(cb_r_negative_real, block_count);
+    }
+    if (first_iteration) {
+      cb_push_back(cb_x0_real, block_count);
+      cb_push_back(cb_x0_imag, block_count);
+    }
+  }
+}
 } // namespace
 
 void kernel_main() {
@@ -170,7 +342,7 @@ void kernel_main() {
   constexpr bool fuse_s = get_compile_time_arg_val(1) != 0;
   constexpr bool batch_reads = get_compile_time_arg_val(2) != 0;
   constexpr std::uint32_t matrix_block = get_compile_time_arg_val(3);
-  (void)iterations;
+  constexpr bool reload_r = get_compile_time_arg_val(4) != 0;
 
   std::uint32_t r_real_address = 0;
   std::uint32_t r_negative_imag_address;
@@ -242,34 +414,84 @@ void kernel_main() {
       for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
         // The first argument is a deliberately unused template placeholder;
         // fused S never references CB_R_REAL or its accessor.
-        read_matrix<fuse_s, batch_reads>(start_tile + offset, r_negative_imag,
-                                         r_negative_imag, r_imag, x0_real,
-                                         x0_imag, r_negative_real);
+        if constexpr (reload_r) {
+          read_matrix_reload<fuse_s, batch_reads>(
+              start_tile + offset,
+              iterations,
+              r_negative_imag,
+              r_negative_imag,
+              r_imag,
+              x0_real,
+              x0_imag,
+              r_negative_real);
+        } else {
+          read_matrix<fuse_s, batch_reads>(start_tile + offset, r_negative_imag,
+                                           r_negative_imag, r_imag, x0_real,
+                                           x0_imag, r_negative_real);
+        }
       }
     } else {
       for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
         const std::uint32_t block_count =
             (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-        read_matrix_block<fuse_s, batch_reads>(
-            start_tile + offset, block_count, r_negative_imag,
-            r_negative_imag, r_imag, x0_real, x0_imag, r_negative_real);
+        if constexpr (reload_r) {
+          read_matrix_block_reload<fuse_s, batch_reads>(
+              start_tile + offset,
+              block_count,
+              iterations,
+              r_negative_imag,
+              r_negative_imag,
+              r_imag,
+              x0_real,
+              x0_imag,
+              r_negative_real);
+        } else {
+          read_matrix_block<fuse_s, batch_reads>(
+              start_tile + offset, block_count, r_negative_imag,
+              r_negative_imag, r_imag, x0_real, x0_imag, r_negative_real);
+        }
       }
     }
   } else {
     const auto r_real = TensorAccessor(first_input_args, r_real_address);
     if constexpr (matrix_block == 1) {
       for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-        read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
-                                         r_negative_imag, r_imag, x0_real,
-                                         x0_imag, r_real);
+        if constexpr (reload_r) {
+          read_matrix_reload<fuse_s, batch_reads>(
+              start_tile + offset,
+              iterations,
+              r_real,
+              r_negative_imag,
+              r_imag,
+              x0_real,
+              x0_imag,
+              r_real);
+        } else {
+          read_matrix<fuse_s, batch_reads>(start_tile + offset, r_real,
+                                           r_negative_imag, r_imag, x0_real,
+                                           x0_imag, r_real);
+        }
       }
     } else {
       for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
         const std::uint32_t block_count =
             (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-        read_matrix_block<fuse_s, batch_reads>(
-            start_tile + offset, block_count, r_real, r_negative_imag,
-            r_imag, x0_real, x0_imag, r_real);
+        if constexpr (reload_r) {
+          read_matrix_block_reload<fuse_s, batch_reads>(
+              start_tile + offset,
+              block_count,
+              iterations,
+              r_real,
+              r_negative_imag,
+              r_imag,
+              x0_real,
+              x0_imag,
+              r_real);
+        } else {
+          read_matrix_block<fuse_s, batch_reads>(
+              start_tile + offset, block_count, r_real, r_negative_imag,
+              r_imag, x0_real, x0_imag, r_real);
+        }
       }
     }
   }

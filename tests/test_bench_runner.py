@@ -524,6 +524,8 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "x0_memory": "l1",
         "fuse_s": False,
         "batch_reads": False,
+        "reload_r": False,
+        "compare_reload_r": False,
     }
     assert len(payload["results"]) == 4
     assert all(

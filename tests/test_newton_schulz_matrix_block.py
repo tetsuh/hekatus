@@ -802,7 +802,8 @@ def test_block8_compute_uses_one_dest_half_for_products_s_and_output():
     )
     assert "complex_matmul_block<one_dest_half>" in compute
     assert "fused_s_matmul_block<one_dest_half>" in compute
-    assert "process_matrix_block<iterations, state_fp32, fuse_s, (matrix_block == 8)>" in compute
+    assert "process_matrix_block<" in compute
+    assert "reload_r>(block_count);" in compute
 
 
 def test_invalid_input_memory_is_rejected_before_custom_prepare():
@@ -853,5 +854,7 @@ def test_cli_exposes_matrix_block_with_baseline_default():
     assert parser.parse_args(["--matrix-block", "2"]).matrix_block == 2
     assert parser.parse_args(["--matrix-block", "4"]).matrix_block == 4
     assert parser.parse_args(["--matrix-block", "8"]).matrix_block == 8
+    assert parser.parse_args(["--reload-r"]).reload_r is True
+    assert parser.parse_args(["--compare-reload-r"]).compare_reload_r is True
     with pytest.raises(SystemExit):
         parser.parse_args(["--matrix-block", "3"])
