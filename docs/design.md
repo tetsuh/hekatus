@@ -2292,14 +2292,13 @@ time is about **1.33×**; the L=16 comparison is about **1.28×**. The same
 record reports 1,031/1,031 selected board-gated tests passing at commit
 `0d786b0`. The diff from `ce8bb30` to `0d786b0` contains only the
 measurement-record update and no kernel or valid numerical-path changes. The
-main merge is retained in branch history; commits after `0d786b0` update
-records and documentation and add input validation and host tests, without
-changing the kernel or valid numerical paths. These are measured dispatch
-timings, not the theoretical planning
-multipliers above, and they do not establish M5 image quality. The physical
-board provenance for the two superseded diagnostics is recorded separately in
-`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`;
-that supplement changes neither source record nor measured value.
+measured TT kernel and benchmark numerical paths are unchanged. Commit
+`0debbe2` aligned the spec defaults (X0 and iteration count) with ADR-0012.
+These are measured dispatch timings, not the theoretical planning multipliers
+above, and they do not establish M5 image quality. A separate source-evidence
+supplement corroborates the physical board provenance for the two predecessor
+diagnostics:
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
 
 The same record separates input representation from solver error: at κ=100,
 BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by

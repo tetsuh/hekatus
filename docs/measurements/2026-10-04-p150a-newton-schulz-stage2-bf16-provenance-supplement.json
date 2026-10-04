@@ -42,5 +42,5 @@
       }
     }
   ],
-  "note": "This supplement supplies provenance only. It does not copy measured values into the predecessor records and does not supersede either record."
+  "note": "This supplement is corroborating source evidence only. Each predecessor record now carries its own record-local board_serial and board_provenance fields; the supplement is not a substitute for the ADR-0005 record-local environment requirement."
 }

@@ -10,6 +10,11 @@
     "driver": "2.11.0",
     "toolchain_image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
     "device_id": 0,
+    "board_serial": "000004033191411c",
+    "board_provenance": {
+      "run_identifier": "c31cba3a-9101-4489-8f5e-2fd175d61aa3",
+      "source_field": "board_id"
+    },
     "note": "No host identity, connection name, or local path is recorded. Device runs used run_in_container.sh with no Watcher for the large cases."
   },
   "algorithm": {

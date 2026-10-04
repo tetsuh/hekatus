@@ -359,15 +359,14 @@ BF16-`R` path at 58.1 TFLOPS / 0.888 ms p50 for L=32 and 12.5 TFLOPS /
 time is about 1.33× the comparable eight-iteration record. The board-gated
 test selection passed 1,031/1,031 at commit `0d786b0`. The diff from
 `ce8bb30` to `0d786b0` contains only the measurement-record update and no
-kernel or valid numerical-path changes. The main merge is retained in branch
-history; commits after `0d786b0` update records and documentation and add input
-validation and host tests, without changing the kernel or valid numerical paths.
-These are board timings, not a
-revised theoretical peak or an M5 image-quality result; the BF16 input-`R`
-perturbation remains a separate representation question. The physical-board
-provenance for the two superseded diagnostics is recorded in
-`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`;
-the supplement adds no measured values and leaves both source records unchanged.
+kernel or valid numerical-path changes. The measured TT kernel and benchmark
+numerical paths are unchanged. Commit `0debbe2` aligned the spec defaults (X0
+and iteration count) with ADR-0012. These are board timings, not a revised
+theoretical peak or an M5 image-quality result; the BF16 input-`R`
+perturbation remains a separate representation question. A separate
+source-evidence supplement corroborates the physical-board provenance for the
+two predecessor diagnostics:
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
 
 ---
 
