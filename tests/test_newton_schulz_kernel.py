@@ -18,6 +18,7 @@ from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_reference import (
     COMPLEX_MATMULS_PER_INVERSE,
     NEWTON_SCHULZ_ITERATIONS,
+    bf16_round_complex,
     initial_value,
     inverse_flops,
     newton_schulz_reference,
@@ -591,7 +592,9 @@ def test_device_partial_block_padding_matches_numpy(
 
     device = ttnn.open_device(device_id=0)
     try:
-        matrices = random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
+        matrices = bf16_round_complex(
+            random_hpd_batch(batch, size, seed=95 + batch + size + matrix_block)
+        )
         expected = newton_schulz_reference(matrices)
         actual = run_newton_schulz_kernel(
             ttnn,
@@ -623,7 +626,7 @@ class DeviceEquivalenceTests(unittest.TestCase):
 
         device = ttnn.open_device(device_id=0)
         try:
-            matrices = random_hpd_batch(8192, 32, seed=95)
+            matrices = bf16_round_complex(random_hpd_batch(8192, 32, seed=95))
             expected = newton_schulz_reference(matrices)
             actual = run_newton_schulz_kernel(
                 ttnn,
@@ -675,7 +678,7 @@ class DeviceEquivalenceTests(unittest.TestCase):
 
         device = ttnn.open_device(device_id=0)
         try:
-            matrices = random_hpd_batch(8192, 16, seed=95)
+            matrices = bf16_round_complex(random_hpd_batch(8192, 16, seed=95))
             expected = newton_schulz_reference(matrices)
             actual = run_newton_schulz_kernel(
                 ttnn,

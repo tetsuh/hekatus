@@ -2243,6 +2243,24 @@ and `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-matrix-block-cat
 The L=64 capacity table is host-only and reproducible with
 `python3 tools/newton_schulz_l64_capacity.py`; it does not add L=64 dispatch.
 
+### Issue #85 Stage 2 timing and BF16 evidence
+
+The Stage 2 board record
+`docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-full-diagnostic.json`
+measures the selected twelve-iteration kernel with BF16-rounded `R`, not an
+image-quality result. L=32 reaches **58.1 TFLOPS** at a **0.887 ms** p50
+launch time, and packed L=16 reaches **12.5 TFLOPS** at **0.515 ms** p50,
+with 1,000 launches per case. Against the corresponding eight-iteration
+records, the L=32 launch time is about **1.33×**; the L=16 comparison is about
+**1.28×**. These are measured dispatch timings, not the theoretical planning
+multipliers above, and they do not establish M5 image quality.
+
+The same record separates input representation from solver error: at κ=100,
+BF16 rounding of `R` moves the inverse by about 2e-2, the MV direction by
+2.5e-4, and the beam pattern by 1.4e-2 against the unrounded truth, while the
+kernel is about 3.7e-3 from the BF16-`R` reference. The production `R` format
+remains a follow-up decision; no FP32-`R` device variant has been measured.
+
 ### Investigation items
 
 - ERISC custom-firmware development procedure; presence of a newer

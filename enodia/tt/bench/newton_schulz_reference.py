@@ -15,6 +15,22 @@ NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
 
 
+def bf16_round_to_float32(values: np.ndarray) -> np.ndarray:
+    """Round finite float32 values to BF16 with round-to-nearest-even."""
+    values = np.asarray(values, dtype=np.float32)
+    bits = values.view(np.uint32)
+    bias = np.uint32(0x7FFF) + ((bits >> np.uint32(16)) & np.uint32(1))
+    return ((bits + bias) & np.uint32(0xFFFF0000)).view(np.float32)
+
+
+def bf16_round_complex(values: np.ndarray) -> np.ndarray:
+    """Round complex64 real and imaginary planes independently to BF16."""
+    values = np.asarray(values, dtype=np.complex64)
+    return (
+        bf16_round_to_float32(values.real) + 1j * bf16_round_to_float32(values.imag)
+    ).astype(np.complex64)
+
+
 def random_hpd_batch(
     batch: int,
     size: int,

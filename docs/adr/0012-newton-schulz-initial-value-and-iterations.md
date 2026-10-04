@@ -52,6 +52,14 @@ out exactly twelve iterations and does not add a convergence test.
 - The Newton-Schulz iteration-dependent cost is `12 / 8 = 1.5` times the
   previous eight-iteration planning figures; the corresponding design and
   budget estimates are updated on this branch.
+- Passing `R` in BF16 introduces a condition-number-dependent perturbation:
+  the 2026-10-04 diagnostics report, at κ=100, approximately `2e-2` inverse
+  error, `2.5e-4` MV-direction deficit, and `1.4e-2` beam-pattern error, and
+  at κ=300 approximately `5.9e-2`, `3.2e-3`, and `5.9e-2`; the device kernel
+  is approximately `3.7e-3` from the BF16-R reference.
+- The representation of `R` remains open: a follow-up Issue will compare an
+  FP32-R variant with the BF16 variant in the same run before deciding the
+  production format.
 - Image-quality confirmation remains open. A later decision record or the
   decision-carrying pull request must record the M5 outcome before this
   proposal can become accepted.
