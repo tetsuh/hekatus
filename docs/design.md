@@ -1177,12 +1177,14 @@ as-is.
 **The Newton-Schulz initial value is fixed as part of the specification**
 (`X₀ = I/‖R‖∞`). Convergence and the required iteration count depend on it,
 and determinism demands a fixed count. The Stage 1 sweep selected `N = 12`;
-ADR-0012 accepts it as a provisional implementation choice. At κ=300, L=32,
-float32, the inverse relative error is at most 5e-4 and the MV-direction
-cosine deficit is 8.33e-8. M5 image-quality confirmation remains an explicit
-validation condition, and a later ADR will supersede this choice if M5
-invalidates it. Accelerator
-correctness uses the independent NumPy fixed-iteration oracle in
+ADR-0012 accepts it as a provisional implementation choice. The canonical
+`enodia/spec` default uses the same `X₀ = I/‖R‖∞` and
+`NEWTON_SCHULZ_ITERATIONS = 12`, while callers may override both for sweeps.
+At κ=300, L=32, float32, the inverse relative error is at most 5e-4 and the
+MV-direction cosine deficit is 8.33e-8. M5 image-quality confirmation remains
+an explicit validation condition, and a later ADR will supersede this choice
+if M5 invalidates it. Accelerator correctness uses the independent NumPy
+fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 

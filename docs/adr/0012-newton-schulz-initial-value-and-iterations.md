@@ -49,7 +49,9 @@ this record and record the replacement decision.
 ## Consequences
 
 - The independent host reference and the TT host preparation use the selected
-  initial value and fixed count.
+  initial value and fixed count. The canonical `enodia/spec` default likewise
+  uses `X0 = I / ||R||_infinity` and `NEWTON_SCHULZ_ITERATIONS = 12`; callers
+  may override both for sweeps and historical comparisons.
 - The compute kernel's compile-time iteration assertion follows `N = 12`.
 - The Newton-Schulz iteration-dependent cost is `12 / 8 = 1.5` times the
   previous eight-iteration planning figures; the corresponding design and
