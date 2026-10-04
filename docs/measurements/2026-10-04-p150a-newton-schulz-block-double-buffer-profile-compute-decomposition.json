@@ -1,0 +1,323 @@
+{
+  "record_schema": "adr-0005-board-diagnostic-v1",
+  "status": "completed",
+  "diagnostic_only": true,
+  "throughput_headline_allowed": false,
+  "what": "Issue #92 acceptance-condition-4 profile-only compute-path decomposition for block circular-buffer buffering",
+  "issue": "#92",
+  "pull_request": "#93",
+  "scope_note": "This record is diagnostic-only. It is not a throughput headline and does not replace any prior measurement record.",
+  "source": {
+    "archive_commit": "76950173d29e75d3d0814ffdee657a66bf18efca",
+    "archive_sha256": "b2e933d19884ad00ccbdf3c38dbb889a0c8dc67c8bdf247f3a70325c50314bf8",
+    "harness_commit": "76950173d29e75d3d0814ffdee657a66bf18efca",
+    "harness_dirty": false,
+    "archive_exclusions_verified": [
+      ".git",
+      ".venv",
+      "__pycache__",
+      "out"
+    ],
+    "wrapper": "enodia/tt/bench/run_in_container.sh"
+  },
+  "environment": {
+    "captured_at": "2026-10-04T19:13:11Z",
+    "board_inventory": 2,
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "bus_id": "0000:06:00.0",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "dm_app_fw": "0.22.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "eth_fw": "0.0.0",
+      "gddr_fw": "2.12"
+    },
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "device_id": 0,
+    "device_node": "/dev/tenstorrent/0",
+    "toolchain": {
+      "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+      "local_image_id": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+      "tt_metal_commit": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+      "tracy_enabled": false,
+      "cycle_counter_profile_enabled": true,
+      "device_profiler_environment": "TT_METAL_DEVICE_PROFILER unset; fixed release image cycle-counter transport used"
+    }
+  },
+  "algorithm": {
+    "kernel": "custom_newton_schulz",
+    "matrix_sizes": [
+      16,
+      32
+    ],
+    "batches": [
+      4,
+      8192
+    ],
+    "matrix_block": 4,
+    "fuse_s": true,
+    "math_fidelity": "HiFi3",
+    "variant": "bf16-fp32state",
+    "state_format": "FP32",
+    "iterations": 12,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "device_id": 0
+  },
+  "instrumentation": {
+    "source": "enodia/tt/bench/kernels/newton_schulz_compute.cpp",
+    "profile_only": true,
+    "tracy_device_zones_added": false,
+    "block_path_only": true,
+    "fused_s_path_covered": true,
+    "profile_page_words": 1024,
+    "profile_page_bytes": 4096,
+    "profile_slot_stride_words": 64,
+    "new_offsets": {
+      "block_external_input_cb_wait": 12,
+      "block_external_output_cb_wait": 13,
+      "block_external_input_cb_reserve": 14,
+      "block_external_output_cb_reserve": 15,
+      "block_dest_acquire_wait": 16,
+      "block_dest_pack_wait": 17
+    },
+    "labels": {
+      "block_external_input_cb_wait": "profiled cb_wait_front for R/X0 input CBs only",
+      "block_external_output_cb_wait": "profiled cb_wait_front for external output CBs; zero when compute does not wait on output",
+      "block_external_input_cb_reserve": "profiled cb_reserve_back for R/X0 input CBs; zero when reader owns input reserves",
+      "block_external_output_cb_reserve": "profiled cb_reserve_back for external output CBs",
+      "block_dest_acquire_wait": "profiled tile_regs_acquire wait",
+      "block_dest_pack_wait": "profiled tile_regs_wait before packing",
+      "unclassified_overhead": "total profile interval minus all named sections; not a measured busy share"
+    },
+    "disabled_path": "profile=false keeps the existing non-profile block calls and does not allocate profile CBs; board-free source/schema tests cover this contract."
+  },
+  "commands": {
+    "batch4_validation": "TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=/out/runner.py HEKATUS_TT_IMAGE=<fixed-release-image> HEKATUS_TT_CONTAINER_TIMEOUT_S=60 timeout 60s ./enodia/tt/bench/run_in_container.sh <out-dir> -- --size {16|32} [--double-buffer]",
+    "batch8192_capture": "TT_METAL_WATCHER=1 HEKATUS_TT_IMAGE=<fixed-release-image> HEKATUS_TT_CONTAINER_TIMEOUT_S=60 timeout 60s ./enodia/tt/bench/run_in_container.sh <out-dir> -- --device-id 0 --only newton_schulz_L{16|32}_b8192 --dtype bfloat16 --memory l1 --kind custom_newton_schulz --custom-variant bf16-fp32state --custom-math-fidelity HiFi3 --fuse-s --matrix-block 4 --input-memory l1 --r-memory l1 --x0-memory l1 --profile [--double-buffer] --iters 1 --repeats 1",
+    "watcher": true,
+    "outer_timeout_s": 60,
+    "container_scope": "device 0 only, named one-shot container",
+    "reset": "none"
+  },
+  "captures": [
+    {
+      "label": "batch4-L16-one-window",
+      "size": 16,
+      "batch": 4,
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "artifact": "wrapper.log",
+      "artifact_sha256": "2fb7b8ede9c590da904720f19a3a6458fd5c7112fc00ab41ffd7b9a376f704e4",
+      "trisc": {
+        "TRISC0": {"total_cycles": 90085, "external_input_cb_wait": [41728, 46.320697], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [2, 0.00222], "dest_acquire_wait": [158, 0.17539], "dest_pack_wait": [58, 0.064384], "residual": [48139, 53.437309]},
+        "TRISC1": {"total_cycles": 89800, "external_input_cb_wait": [72, 0.080178], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [9, 0.010022], "dest_acquire_wait": [401, 0.446548], "dest_pack_wait": [192, 0.213808], "residual": [89126, 99.249443]},
+        "TRISC2": {"total_cycles": 90552, "external_input_cb_wait": [140, 0.154607], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [40, 0.044174], "dest_acquire_wait": [59, 0.065156], "dest_pack_wait": [198, 0.218659], "residual": [90115, 99.517404]}
+      }
+    },
+    {
+      "label": "batch4-L16-two-window",
+      "size": 16,
+      "batch": 4,
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "artifact": "wrapper.log",
+      "artifact_sha256": "1f1ea5c09119776f3ed7c7804af946a449880a482bcbb59ae904a9fe3e232e13",
+      "trisc": {
+        "TRISC0": {"total_cycles": 90084, "external_input_cb_wait": [41726, 46.318991], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [2, 0.00222], "dest_acquire_wait": [163, 0.180942], "dest_pack_wait": [50, 0.055504], "residual": [48143, 53.442343]},
+        "TRISC1": {"total_cycles": 89789, "external_input_cb_wait": [71, 0.079074], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [9, 0.010023], "dest_acquire_wait": [400, 0.445489], "dest_pack_wait": [176, 0.196015], "residual": [89133, 99.269398]},
+        "TRISC2": {"total_cycles": 90545, "external_input_cb_wait": [136, 0.150202], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [40, 0.044177], "dest_acquire_wait": [52, 0.05743], "dest_pack_wait": [198, 0.218676], "residual": [90119, 99.529516]}
+      }
+    },
+    {
+      "label": "batch4-L32-one-window",
+      "size": 32,
+      "batch": 4,
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "artifact": "wrapper.log",
+      "artifact_sha256": "c63b3d9c4bc5fa5ed64001f3ae1a29ce142a1d844121cd8fbbff76164d1cb32f",
+      "trisc": {
+        "TRISC0": {"total_cycles": 90087, "external_input_cb_wait": [41731, 46.322999], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [2, 0.00222], "dest_acquire_wait": [156, 0.173166], "dest_pack_wait": [44, 0.048842], "residual": [48154, 53.452773]},
+        "TRISC1": {"total_cycles": 89802, "external_input_cb_wait": [63, 0.070154], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [9, 0.010022], "dest_acquire_wait": [406, 0.452106], "dest_pack_wait": [184, 0.204895], "residual": [89140, 99.262823]},
+        "TRISC2": {"total_cycles": 90554, "external_input_cb_wait": [174, 0.192151], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [40, 0.044173], "dest_acquire_wait": [53, 0.058529], "dest_pack_wait": [192, 0.212028], "residual": [90095, 99.49312]}
+      }
+    },
+    {
+      "label": "batch4-L32-two-window",
+      "size": 32,
+      "batch": 4,
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "artifact": "wrapper.log",
+      "artifact_sha256": "815c49930c42a07881f8b45f01c62665b2ef8971d871d750faa2b06f90881f78",
+      "trisc": {
+        "TRISC0": {"total_cycles": 90117, "external_input_cb_wait": [41752, 46.330881], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [2, 0.002219], "dest_acquire_wait": [158, 0.175328], "dest_pack_wait": [57, 0.063251], "residual": [48148, 53.428321]},
+        "TRISC1": {"total_cycles": 89818, "external_input_cb_wait": [71, 0.079049], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [9, 0.01002], "dest_acquire_wait": [393, 0.437551], "dest_pack_wait": [169, 0.188158], "residual": [89176, 99.285221]},
+        "TRISC2": {"total_cycles": 90575, "external_input_cb_wait": [136, 0.150152], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [40, 0.044162], "dest_acquire_wait": [52, 0.057411], "dest_pack_wait": [198, 0.218603], "residual": [90149, 99.529672]}
+      }
+    },
+    {
+      "label": "batch8192-L16-one-window",
+      "size": 16,
+      "batch": 8192,
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "result_artifact": "results-20261004T191258Z.json",
+      "result_sha256": "a8416926623fad5efcde24c014216b081a9db0e4145b38446dd280bc78aa62ac",
+      "trisc": {
+        "TRISC0": {"total_cycles": 875413, "external_input_cb_wait": [395647, 45.195468], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [41, 0.004684], "dest_acquire_wait": [1128, 0.128853], "dest_pack_wait": [2033, 0.232233], "residual": [476564, 54.438762]},
+        "TRISC1": {"total_cycles": 875103, "external_input_cb_wait": [1711, 0.19552], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [34, 0.003885], "dest_acquire_wait": [3402, 0.388754], "dest_pack_wait": [1034, 0.118158], "residual": [868922, 99.293683]},
+        "TRISC2": {"total_cycles": 875867, "external_input_cb_wait": [1461, 0.166806], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [359, 0.040988], "dest_acquire_wait": [1884, 0.215101], "dest_pack_wait": [2386, 0.272416], "residual": [869777, 99.304689]}
+      }
+    },
+    {
+      "label": "batch8192-L16-two-window",
+      "size": 16,
+      "batch": 8192,
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "result_artifact": "results-20261004T191302Z.json",
+      "result_sha256": "a0d7d593ce63fc1b3da2d675343de741581aa17febb0fd6433a035efd1485e06",
+      "trisc": {
+        "TRISC0": {"total_cycles": 533355, "external_input_cb_wait": [53902, 10.106214], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [40, 0.0075], "dest_acquire_wait": [1304, 0.24449], "dest_pack_wait": [1332, 0.24974], "residual": [476777, 89.392056]},
+        "TRISC1": {"total_cycles": 533018, "external_input_cb_wait": [1321, 0.247834], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [34, 0.006379], "dest_acquire_wait": [3086, 0.578967], "dest_pack_wait": [773, 0.145023], "residual": [527804, 99.021797]},
+        "TRISC2": {"total_cycles": 533788, "external_input_cb_wait": [1395, 0.26134], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [367, 0.068754], "dest_acquire_wait": [1159, 0.217127], "dest_pack_wait": [2198, 0.411774], "residual": [528669, 99.041005]}
+      }
+    },
+    {
+      "label": "batch8192-L32-one-window",
+      "size": 32,
+      "batch": 8192,
+      "double_buffer": false,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "result_artifact": "results-20261004T191306Z.json",
+      "result_sha256": "52e5e54f0706ae7c2aa5ef7931157c0212a3f828cc5d1052ccc27d9e43c9b8fd",
+      "trisc": {
+        "TRISC0": {"total_cycles": 1656793, "external_input_cb_wait": [745627, 45.004234], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [78, 0.004708], "dest_acquire_wait": [2075, 0.125242], "dest_pack_wait": [4047, 0.244267], "residual": [904966, 54.621549]},
+        "TRISC1": {"total_cycles": 1656484, "external_input_cb_wait": [3155, 0.190464], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [52, 0.003139], "dest_acquire_wait": [6556, 0.395778], "dest_pack_wait": [2028, 0.122428], "residual": [1644693, 99.288191]},
+        "TRISC2": {"total_cycles": 1657247, "external_input_cb_wait": [2731, 0.164791], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [667, 0.040247], "dest_acquire_wait": [3721, 0.224529], "dest_pack_wait": [4534, 0.273586], "residual": [1645594, 99.296846]}
+      }
+    },
+    {
+      "label": "batch8192-L32-two-window",
+      "size": 32,
+      "batch": 8192,
+      "double_buffer": true,
+      "status": "pass",
+      "watcher": true,
+      "docker_ps_before": 0,
+      "docker_ps_after": 0,
+      "profile_page_ready": true,
+      "consistency_pass": true,
+      "result_artifact": "results-20261004T191311Z.json",
+      "result_sha256": "e665b6df6aa98b35d8954982d6cf3c371d5f9c1a2c37c046b9982f866ca161ab",
+      "trisc": {
+        "TRISC0": {"total_cycles": 971993, "external_input_cb_wait": [61260, 6.302515], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [78, 0.008025], "dest_acquire_wait": [2472, 0.254323], "dest_pack_wait": [2557, 0.263068], "residual": [905626, 93.17207]},
+        "TRISC1": {"total_cycles": 971673, "external_input_cb_wait": [2618, 0.269432], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [52, 0.005352], "dest_acquire_wait": [5769, 0.593718], "dest_pack_wait": [1486, 0.152932], "residual": [961748, 98.978566]},
+        "TRISC2": {"total_cycles": 972448, "external_input_cb_wait": [2572, 0.264487], "external_output_cb_wait": [0, 0.0], "external_input_cb_reserve": [0, 0.0], "external_output_cb_reserve": [688, 0.070749], "dest_acquire_wait": [2215, 0.227776], "dest_pack_wait": [4182, 0.430049], "residual": [962791, 99.006939]}
+      }
+    }
+  ],
+  "interpretation": {
+    "evidence_level": "supported decomposition; residual attribution is insufficient for an exclusive busy-share or phase-causal claim",
+    "block_boundary_io": {
+      "status": "supported_as_changing_component",
+      "evidence": [
+        "For L32 batch8192, TRISC0 external input CB wait falls from 45.004% one-window to 6.303% two-window; for L16 it falls from 45.195% to 10.106%.",
+        "The other TRISC external-input wait percentages are already below 0.27% in the batch8192 captures, and external output reserves are below 0.071%; no compute-side external-output CB waits or input reserves were observed.",
+        "The reader/writer path's existing counters and the new TRISC0 input-wait change agree that the second window removes block-boundary serialization."
+      ]
+    },
+    "dest_handoff": {
+      "status": "supported_as_small_measured_component",
+      "evidence": [
+        "Across batch8192 captures, per-TRISC DEST acquire waits are approximately 0.125-0.594% and DEST pack waits approximately 0.118-0.431%.",
+        "The measured DEST waits are much smaller than TRISC residual cycles; residual is total minus named counters and is not a measured busy share."
+      ]
+    },
+    "residual_work": {
+      "status": "unresolved",
+      "evidence": [
+        "TRISC0 residual is approximately 54-89% depending on window and L; TRISC1/TRISC2 residual is approximately 99% because the named accounting covers only the specified waits.",
+        "The residual includes all remaining kernel work and cannot be assigned to a specific operation or called a busy percentage without further kernel-internal phase instrumentation."
+      ]
+    },
+    "semaphore_cross_check": {
+      "status": "consistent_but_not_phase_mapped",
+      "evidence": [
+        "The prior official counter record reports large Semaphore Zero Wait T2 and Semaphore Full Wait T1 in both modes; the new TRISC external-input wait reduction agrees with a producer/consumer serialization effect.",
+        "The semaphore values do not identify a specific kernel operation, and no new semaphore counters were collected in this fixed-image cycle-counter run."
+      ]
+    },
+    "conclusion": "Two-window buffering removes a large TRISC0 external-input CB wait component for both L16 and L32; measured DEST acquire/pack waits remain small. The evidence supports block-boundary I/O/compute serialization as the changing bound rather than an established intra-core DEST-handoff bound. Residual work remains unclassified and is not a measured busy share; exact phase causality is insufficient without kernel-internal zones."
+  },
+  "limitations": [
+    "The fixed release image has no Tracy device profiler; this record uses the repository's L1 cycle-counter profile transport and explicitly does not claim Tracy evidence.",
+    "The batch4 validation runner reports finite output and profile-page consistency but is not a correctness oracle; prior Watcher correctness records remain authoritative.",
+    "External CB counters classify only R/X0 input CB IDs and external output CB IDs; state/intermediate CB operations remain in residual work.",
+    "DEST acquire/pack waits are measured around tile register calls, but remaining code inside matmul, pack, format transitions, and synchronization is residual.",
+    "The prior Watcher-plus-profiler overflow, power-off PCIe incident, diagnostic-only qualification, and prior raw measurement records remain unchanged."
+  ],
+  "recovery": {
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal closure",
+    "containers_remaining": false
+  },
+  "cleanup": {
+    "docker_ps_before_each_workload": "0 running containers",
+    "docker_ps_after_each_workload": "0 running containers",
+    "device_scope": "device 0 only",
+    "named_one_shot_containers": true
+  },
+  "strict_json": true
+}

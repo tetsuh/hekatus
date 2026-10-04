@@ -611,8 +611,17 @@ _CB_OPERATION = re.compile(
 )
 
 
+def _normalize_profile_wrappers(source: str) -> str:
+    source = re.sub(
+        r"\bblock_cb_(wait_front|reserve_back|push_back|pop_front)<profile_sample>\(\s*([^,\s]+)\s*,\s*([^,\s]+)[^)]*\)",
+        r"cb_\1(\2, \3)",
+        source,
+    )
+    return re.sub(r"\bblock_tile_regs_(acquire|wait)<profile_sample>\([^)]*\)", r"tile_regs_\1();", source)
+
+
 def _without_comments(source: str) -> str:
-    return re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL)
+    return _normalize_profile_wrappers(re.sub(r"//[^\n]*|/\*.*?\*/", "", source, flags=re.DOTALL))
 
 
 def _cb_ledger(source: str) -> Counter:
@@ -673,8 +682,8 @@ def _complex_block_branch_source(source: str, *, one_dest: bool) -> str:
     post_start = function.index("\n    if constexpr (one_dest_half) {", else_start)
     right_start = function.index("\n    if (consume_right)", post_start)
     if one_dest:
-        return function[branch_start:else_start] + function[post_start:]
-    return function[else_start:post_start] + function[right_start:]
+        return _normalize_profile_wrappers(function[branch_start:else_start] + function[post_start:])
+    return _normalize_profile_wrappers(function[else_start:post_start] + function[right_start:])
 
 
 def _writer_branch_source(source: str, *, matrix_block: int) -> str:
@@ -868,22 +877,23 @@ def test_state_capacity_follows_reserve_pop_order_and_rejects_under_capacity(
 
 def test_block8_compute_uses_one_dest_half_for_products_s_and_output():
     compute = (KERNEL_DIR / "newton_schulz_compute.cpp").read_text()
-    complex_start = compute.index("template <bool one_dest_half>\nvoid complex_matmul_block")
-    fused_start = compute.index("template <bool one_dest_half>\nvoid fused_s_matmul_block")
+    complex_start = compute.index("template <bool one_dest_half, bool profile_sample>\nvoid complex_matmul_block")
+    fused_start = compute.index("template <bool one_dest_half, bool profile_sample>\nvoid fused_s_matmul_block")
     complex_source = compute[complex_start:fused_start]
     assert "if constexpr (one_dest_half)" in complex_source
-    assert complex_source.count("tile_regs_acquire();") == 3
+    assert complex_source.count("block_tile_regs_acquire<profile_sample>") == 3
+    assert complex_source.count("block_tile_regs_wait<profile_sample>") == 3
     assert complex_source.count("tile_regs_commit();") == 3
     assert "pack_tile_block(0, output_real, block_count);" in complex_source
     assert "pack_tile_block(0, output_imag, block_count);" in complex_source
-    two_dest_source = complex_source[complex_source.index("    } else {") :]
+    two_dest_source = _normalize_profile_wrappers(complex_source[complex_source.index("    } else {") :])
     assert two_dest_source.index("cb_pop_front(left_real, block_count)") < two_dest_source.index(
         "cb_reserve_back(output_real, block_count)"
     )
-    assert "complex_matmul_block<one_dest_half>" in compute
-    assert "fused_s_matmul_block<one_dest_half>" in compute
+    assert "complex_matmul_block<one_dest_half, profile_sample>" in compute
+    assert "fused_s_matmul_block<one_dest_half, profile_sample>" in compute
     assert "process_matrix_block<" in compute
-    assert "reload_r>(block_count);" in compute
+    assert "reload_r," in compute
 
 
 def test_invalid_input_memory_is_rejected_before_custom_prepare():
