@@ -20,9 +20,10 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak, and Issue #63's measured hand-written rows below land between 3.2%
 > and 30%. The earlier 3.2% figure is retained as historical evidence, with
-> its non-reproduction explained below. The eight-iteration Scope 5 estimate
-> was roughly 100 TFLOPS. The selected twelve-iteration count makes it roughly
-> 150 TFLOPS. Using the measured L=32 Newton-Schulz efficiency directly gives
+> its non-reproduction explained below. The historical eight-iteration Scope 5
+> planning baseline was roughly 100 TFLOPS. The selected twelve-iteration
+> count makes the current Stage 2 estimate roughly 150 TFLOPS. Using the
+> measured L=32 Newton-Schulz efficiency directly gives
 > roughly 150 TFLOPS / roughly 52 TFLOPS per card ≈ 2.9, so plan for about 3
 > cards. This is an extrapolation using the measured Newton-Schulz workload
 > efficiency, not a full-system benchmark or an all-mode simultaneous
@@ -197,10 +198,12 @@ same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1
 conditions, with 1,000 launches per row. Both variants pass the batch-4 and
 batch-8192 correctness gates. Resident reaches **51.82917713218822 TFLOPS** and
 reload-R reaches **31.33414466591468 TFLOPS**, so reload-R is **39.5434% lower**
-in TFLOPS and 65.1843% slower at median latency. The resident result remains
-within the existing roughly +/-2-4% repeatability context of the 51.92 TFLOPS
-headline; the headline and roughly two-card extrapolation therefore remain
-unchanged. R residency is a measured material attribution, while the control
+in TFLOPS and 65.1843% slower at median latency. This retained Issue #63
+control is historical eight-iteration evidence, not the current Stage 2
+N=12 specification. The resident result remains within the existing roughly
++/-2-4% repeatability context of the 51.92 TFLOPS headline; the headline and
+roughly two-card extrapolation therefore remain unchanged. R residency is a
+measured material attribution, while the control
 does not claim it is the sole cause of the remaining combined-kernel gap. The
 companion power trace is
 `docs/measurements/2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv`.
@@ -335,9 +338,10 @@ not reconcile with the law stated above; the conclusion is unchanged.
 | 1D color flow | per-channel wall filter + MV | ~45 | 14% |
 | 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the eight-iteration 1D all-mode workload was
-roughly 100 TFLOPS. The selected twelve-iteration count makes it roughly 150
-TFLOPS. The measured L=32 Newton-Schulz efficiency is 15.6%, or about 52
+**Scope 5 planning estimate:** the historical eight-iteration 1D all-mode
+planning baseline was roughly 100 TFLOPS. The selected twelve-iteration count
+makes the current Stage 2 estimate roughly 150 TFLOPS. The measured L=32
+Newton-Schulz efficiency is 15.6%, or about 52
 TFLOPS per card; 150 / 52 ≈ 2.9, so plan for about 3 cards. This is an
 extrapolation using the measured Newton-Schulz workload efficiency, not a
 full-system benchmark or an all-mode simultaneous benchmark. The L=32 headline

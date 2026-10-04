@@ -181,6 +181,7 @@ class ReferenceTests(unittest.TestCase):
             newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE,
             2 * newton_schulz_kernel.NEWTON_SCHULZ_ITERATIONS,
         )
+        self.assertEqual(newton_schulz_kernel.COMPLEX_MATMULS_PER_INVERSE, 24)
         complex_start = compute_source.index("void complex_real_impl")
         complex_end = compute_source.index("template <bool profile_sample>", complex_start)
         complex_source = compute_source[complex_start:complex_end]

@@ -7,6 +7,7 @@ machine, not only on the one holding the card.
 
 import pytest
 
+from enodia.tt.bench.newton_schulz_reference import COMPLEX_MATMULS_PER_INVERSE
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
 
 
@@ -60,10 +61,13 @@ def test_catalogue_pins_the_exact_workload_inventory():
 
 def test_l16_denominator_excludes_32x32_pair_padding():
     shape = next(shape for shape in default_catalogue() if shape.name == "newton_schulz_L16_b8192")
-    logical_inverse_flops = total_flops(shape) * 16
-    padded_pair_flops = shape.batch // 2 * 4 * 2 * 32**3 * 16
+    logical_inverse_flops = total_flops(shape) * COMPLEX_MATMULS_PER_INVERSE
+    padded_pair_flops = (
+        shape.batch // 2 * 4 * 2 * 32**3 * COMPLEX_MATMULS_PER_INVERSE
+    )
 
-    assert logical_inverse_flops == 8192 * 4 * 2 * 16**3 * 16
+    assert COMPLEX_MATMULS_PER_INVERSE == 24
+    assert logical_inverse_flops == 8192 * 4 * 2 * 16**3 * 24
     assert logical_inverse_flops < padded_pair_flops
 
 

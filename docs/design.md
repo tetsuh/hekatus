@@ -1186,15 +1186,18 @@ correctness uses the independent NumPy fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 
-### Precision split (to be measured)
+### Historical eight-iteration precision split hypothesis (not current N=12 production)
 
-Each iteration passes 16 matmuls, so pure BF16 accumulates error and can
-break quadratic convergence. **The working hypothesis is a hybrid:**
+The historical eight-iteration experiment passed 16 matmuls per iteration, so
+pure BF16 was expected to accumulate error and break quadratic convergence.
+Its **working hypothesis was a hybrid**:
 - first 4 iterations in BF16 (rough convergence)
 - last 4 iterations in FP32 (polish)
 
-FP32 matmul runs at ~1/4 of BF16, so total cost is 1.75×. The reference
-implementation sweeps "N iterations in BF16, then M in FP32."
+FP32 matmul was estimated at ~1/4 of BF16, so that historical split was
+estimated at 1.75× cost. The reference implementation swept "N iterations in
+BF16, then M in FP32" as an experiment. The current Stage 2 production
+specification is fixed at N=12; no 4+4 split is part of that specification.
 
 ### Beamspace MV
 
@@ -1260,9 +1263,10 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~45 | 14% |
 | 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the eight-iteration 1D all-mode workload was
-roughly 100 TFLOPS. Applying the selected twelve-iteration count gives roughly
-150 TFLOPS. Using the measured L=32 Newton-Schulz efficiency of 15.6% gives
+**Scope 5 planning estimate:** the historical eight-iteration 1D all-mode
+planning baseline was roughly 100 TFLOPS. Applying the selected twelve-iteration
+count gives the current Stage 2 estimate of roughly 150 TFLOPS. Using the
+measured L=32 Newton-Schulz efficiency of 15.6% gives
 about 52 TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 150 / 52 ≈
 2.9: plan for about 3 cards. This is an extrapolation using the measured
 Newton-Schulz workload efficiency, not a full-system benchmark or an all-mode
@@ -1379,12 +1383,13 @@ It measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
 all-inputs-L1 run with `reload_r=false` and `reload_r=true`, 1,000 launches per
 variant. Both variants pass the batch-4 and batch-8192 NumPy correctness gates.
 The resident row reaches **51.82917713218822 TFLOPS**; reloading R on every one
-of the fixed eight iterations reaches **31.33414466591468 TFLOPS**, **39.5434%
-lower** (the median launch is 65.1843% slower). The resident value remains
-within the existing roughly +/-2-4% repeatability context of the earlier 51.92
-TFLOPS headline, so the historical headline and its eight-iteration,
-roughly two-card extrapolation remain unchanged. Stage 2's twelve-iteration
-planning estimate is documented separately in §10. The control does change
+of the historical fixed eight iterations reaches **31.33414466591468 TFLOPS**,
+**39.5434% lower** (the median launch is 65.1843% slower). The resident value
+remains within the existing roughly +/-2-4% repeatability context of the
+earlier 51.92 TFLOPS headline, so the historical headline and its
+historical eight-iteration, roughly two-card extrapolation remain unchanged.
+Stage 2's twelve-iteration planning estimate is documented separately in §10.
+The control does change
 attribution: R residency is a material
 contributor to the resident throughput. The remaining difference is still a
 combined kernel result; this control does not claim that R is the sole

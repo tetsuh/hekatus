@@ -1,7 +1,10 @@
 # Newton-Schulz bring-up diagnostics
 
-`tools/newton_schulz_bringup.py` is the authoritative stage and configuration mapping. The `bringup_*.cpp` files are isolated diagnostics, not production kernels.
-The production specification uses a fixed twelve-iteration count; the historical bring-up records below retain their original iteration counts.
+`tools/newton_schulz_bringup.py` is the authoritative stage and configuration
+mapping. The `bringup_*.cpp` files are isolated diagnostics, not production
+kernels. The production specification uses fixed N=12 in the TT kernel and
+independent reference; all eight-iteration stages and four-plus-four variants
+below are historical bring-up experiments and retain their original counts.
 
 ## Rules
 
