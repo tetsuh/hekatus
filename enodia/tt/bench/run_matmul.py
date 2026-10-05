@@ -917,9 +917,14 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         if args.compare_double_buffer:
             parser.error("--compare-double-buffer is not part of --half-sync-catalogue")
         return
-    if args.half_sync_row or args.half_sync_correctness_only:
+    if (
+        args.half_sync_row
+        or args.half_sync_correctness_only
+        or args.half_sync_correctness_batch is not None
+    ):
         parser.error(
-            "--half-sync-row/--half-sync-correctness-only require --half-sync-catalogue"
+            "--half-sync-row/--half-sync-correctness-only/"
+            "--half-sync-correctness-batch require --half-sync-catalogue"
         )
     if args.acceptance_catalogue:
         return

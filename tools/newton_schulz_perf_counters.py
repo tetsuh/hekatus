@@ -6,8 +6,6 @@ import argparse
 import os
 from pathlib import Path
 
-from tools.tracy.process_model_log import run_device_profiler
-
 _ROWS = {
     "full": {
         "shape": "newton_schulz_L16_b8192",
@@ -38,12 +36,18 @@ def _build_target_command(row: dict, output: str) -> str:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--row", choices=tuple(_ROWS))
+    parser.add_argument("--row", choices=tuple(_ROWS), required=True)
     parser.add_argument("--logs", type=Path, required=True)
     parser.add_argument("--target-out", default="/out/perf-target.json")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+
+    from tools.tracy.process_model_log import run_device_profiler
 
     row = _ROWS[args.row]
     os.environ.pop("TT_METAL_WATCHER", None)
