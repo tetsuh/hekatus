@@ -1265,15 +1265,32 @@ elements scales `L ∝ N` and scanlines `∝ N`, so the **total goes as N⁴**.
 | 1D color flow | per-channel wall filter + MV | ~45 | 14% |
 | 2D volume | beamspace MV | ~55.5 | 17% |
 
-**Scope 5 planning estimate:** the historical eight-iteration 1D all-mode
-planning baseline was roughly 100 TFLOPS. Applying the selected twelve-iteration
-count gives the current Stage 2 estimate of roughly 150 TFLOPS. Using the
-measured L=32 Newton-Schulz efficiency of 15.6% gives
-about 52 TFLOPS per card (15.6% of the 332 TFLOPS BF16 peak), so 150 / 52 ≈
-2.9: plan for about 3 cards. This is an extrapolation using the measured
-Newton-Schulz workload efficiency, not a full-system benchmark or an all-mode
-simultaneous benchmark. The L=32 headline is the `block4_all_l1` row in
-`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
+**Scope 5 planning estimate (recalculated):** the target-configuration table
+provides the arithmetic. The non-Newton-Schulz share is `~5 + ~40 = ~45`
+TFLOPS from **1D B-mode / DAS + phase-screen correction** and **1D B-mode / +
+SLSC / CF / DMAS**. The Newton-Schulz share is `~37.5 + ~45 = ~82.5` TFLOPS
+from **1D B-mode / + beamspace MV** and **1D color flow / per-channel wall
+filter + MV**. The historical eight-iteration all-mode claim therefore
+recomputes as `45 + 55 = 100 TFLOPS`. The current twelve-iteration estimate is
+`45 + 82.5 = 127.5 TFLOPS` (about 130), not 150. Equivalently, the eight-
+iteration Newton-Schulz share is `82.5 × 8/12 = 55` TFLOPS and applying 12/8
+to that share gives `55 × 12/8 = 82.5`; the non-Newton-Schulz 45 TFLOPS is
+not multiplied. These values are from this table and §10's matching
+budget.md target-configuration table; they are a budget calculation, not a
+new measurement.
+
+For the one-card denominator, use only the main-branch PR93 double-buffer
+record `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
+`performance.rows[3]` is `L=32`, `batch=8192`, `matrix_block=4`,
+`state_format=FP32`, `double_buffer=true`; the record's
+`performance.flops_per_launch.L32=51,539,607,552` and row
+`seconds_per_launch_p50=0.0007743085000129213`. Recompute rather than use the
+stored fastest-launch `achieved_tflops=67.06450362829192`:
+`51,539,607,552 / 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS`
+per card, or 20.0488% of the 332 TFLOPS peak. Therefore
+`127.5 / 66.5621100003 = 1.9155`, so plan for about 2 cards. This is an
+extrapolation from one kernel row, not a system-wide or all-mode benchmark.
+The PR93 record is the denominator source; PR95 and PR98 values are not used.
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -1288,12 +1305,12 @@ On pixel rate: scanlines ×1.7, fps ×2–3.3, but **depth points less than
 half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
 Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
-validate the earlier plain MV (L=64) capacity assumption: the measured L=32
-row is 15.6% and packed L=16 is 3.24%, both below the 30% efficiency
-target. The selected twelve-iteration workload is roughly 150 TFLOPS and
-maps to about 3 cards by the measured L=32 efficiency, as an extrapolation
-from that Newton-Schulz workload rather than a full-system or all-mode
-benchmark.
+validate the earlier plain MV (L=64) capacity assumption: the historical L=32
+`achieved_tflops` row is 15.6% at fastest launch and packed L=16 is 3.24% at
+fastest launch, both below the 30% efficiency target. The corrected current
+1D all-mode workload is 127.5 TFLOPS and maps to about 2 cards by the PR93
+L=32 p50 denominator, as an extrapolation from that Newton-Schulz workload
+rather than a full-system or all-mode benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
 **Two capacity bases appear**: "% of theoretical peak" percentages are
@@ -1303,16 +1320,20 @@ from one basis with a count from the other. **The 40% is a target for
 hand-written kernels, not a measured figure**:
 issue #65's ttnn 0.75.0 full sweep measured a best BF16 Newton-Schulz result
 of 3.024% (L=64, batch 1024, default L1) and 58.410% on a large square
-matmul. Explicit stock configs help broad shapes: front-end FIR width 32 in
+matmul; these stored stock-catalogue values are fastest-launch values, not
+p50. Explicit stock configs help broad shapes: front-end FIR width 32 in
 L1 rises from 1.307% by default to 4.605% with an explicit multicast config,
 and beamspace reaches 2.167% (128 channels) and 2.208% (256 channels) with
 explicit configs. For Newton-Schulz, explicit configs do not beat the best
 default where the default L1 row succeeds; DRAM-only large-batch reuse gains
 7.7%, 10.0%, and about 35% for L=16, L=32, and L=64, but the largest reaches
 only 0.128% of peak. The stock denominator is therefore not a missed stock
-configuration. Issue #63's hand-written rows provide bounded recovery evidence:
-L=32 reaches 51.92 TFLOPS (15.6%) and L=16 reaches 10.77 TFLOPS (3.24%), both
-between the historical 3.2% floor and the 30% efficiency planning target. The
+configuration. The stock-catalogue TFLOPS values and percentages in this
+comparison come from stored `achieved_tflops`/efficiency fields and are
+fastest-launch values, not p50. Issue #63's hand-written rows provide bounded
+recovery evidence: L=32 reaches 51.92 TFLOPS (15.6%) and L=16 reaches 10.77
+TFLOPS (3.24%), also fastest-launch values rather than p50, both between the
+historical 3.2% floor and the 30% efficiency planning target. The
 original full record contains 284 rows, with 190 `ok` and 94 `failed` entries
 in its `results` array. A targeted record supersedes four failed batch-1024
 L16/L32 `batched_dram_sharded` rows after correcting the DRAM-worker count; its
@@ -1335,14 +1356,19 @@ p4096 rows differ by up to 0.872 percentage points. The records are
 and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
 suffix. The generic card counts in this table retain the 40% target basis; they
-are separate from the Scope 5 estimate. Scope 5's card-count estimate is
-explicit:
-15.6% of the 332 TFLOPS peak is about 52 TFLOPS per card, so the selected
-roughly 150 TFLOPS workload gives 150 / 52 ≈ 2.9 and plans for about 3 cards.
-This is an extrapolation using the measured Newton-Schulz workload efficiency,
-not a full-system benchmark or an all-mode simultaneous benchmark. The L=32
-headline is the `block4_all_l1` row
-in `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
+are separate from the Scope 5 estimate. Scope 5's recalculated card-count
+estimate is explicit: the target table gives `45 + 82.5 = 127.5 TFLOPS`,
+where only the Newton-Schulz share is scaled by 12/8. The PR93 L=32 p50
+calculation gives `51,539,607,552 / 0.0007743085000129213 / 10^12 =
+66.5621100003 TFLOPS` per card, so `127.5 / 66.5621100003 = 1.9155` and the
+plan is about 2 cards. This is an extrapolation using one measured
+Newton-Schulz workload row, not a full-system benchmark or an all-mode
+simultaneous benchmark. The PR93 denominator record is
+`docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`,
+`performance.rows[3]`; its stored `achieved_tflops` value is fastest-launch and
+is not used in this division. The L=32 Issue #63 historical headline remains
+in
+`docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
 the current/history context is
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`.
 The L=16 headline is `custom_block4` in
@@ -1355,13 +1381,16 @@ volume row; an earlier revision carried 1.85e8 there, which did not reconcile.
 
 #### Issue #63 Scope 5 evidence
 
-The three conclusions are: (1) L=32 recovers 5.7x the same-run stock best but
-reaches only 15.6%, below the 30% efficiency target; applying that measured
-workload efficiency to the ~100 TFLOPS 1D all-mode estimate gives about 2
-cards, an extrapolation rather than a full-system or all-mode benchmark; (2)
-packed L=16 reaches 14.5x stock at 3.24% and is faster in wall-clock than
-L=32 only as a cost/operation-volume comparison for the diagonal fallback,
-with fewer logical dimensions and less work, not as a beamspace-dimension
+The three conclusions are: (1) the historical L=32 fastest-launch
+`achieved_tflops` value recovers 5.7x the same-run stock best but reaches only
+15.6%, below the 30% efficiency target; applying that historical workload
+efficiency to the ~100 TFLOPS eight-iteration 1D all-mode estimate gave about
+2 cards, an extrapolation rather than a full-system or all-mode benchmark. The
+corrected current N=12 estimate instead uses the PR93 p50 denominator and is
+about 2 cards; (2) packed L=16 reaches 14.5x stock at 3.24% (also a
+fastest-launch `achieved_tflops` value) and is faster in wall-clock than L=32
+only as a cost/operation-volume comparison for the diagonal fallback, with
+fewer logical dimensions and less work, not as a beamspace-dimension
 reduction versus an MV image-quality comparison; and (3) fixed handoff/queue
 overhead is the leading measured explanation, while math, unpack, and reader
 were not established as causal bottlenecks. These conclusions are bounded to
@@ -1384,12 +1413,14 @@ supersedes the immutable predecessor
 It measures the same L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state,
 all-inputs-L1 run with `reload_r=false` and `reload_r=true`, 1,000 launches per
 variant. Both variants pass the batch-4 and batch-8192 NumPy correctness gates.
-The resident row reaches **51.82917713218822 TFLOPS**; reloading R on every one
-of the historical fixed eight iterations reaches **31.33414466591468 TFLOPS**,
-**39.5434% lower** (the median launch is 65.1843% slower). The resident value
-remains within the existing roughly +/-2-4% repeatability context of the
-earlier 51.92 TFLOPS headline, so the historical headline and its
-historical eight-iteration, roughly two-card extrapolation remain unchanged.
+The resident and reload-R TFLOPS values below are stored `achieved_tflops`
+fastest-launch values, not p50: the resident row reaches
+**51.82917713218822 TFLOPS**; reloading R on every one of the historical fixed
+eight iterations reaches **31.33414466591468 TFLOPS**, **39.5434% lower** (the
+median launch is 65.1843% slower). The resident value remains within the
+existing roughly +/-2-4% repeatability context of the earlier 51.92 TFLOPS
+headline, so the historical headline and its historical eight-iteration,
+roughly two-card extrapolation remain unchanged.
 Stage 2's twelve-iteration planning estimate is documented separately in §10.
 The control does change
 attribution: R residency is a material
@@ -1834,10 +1865,10 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with about three cards for the current 1D all-mode planning
-workload**, using the Scope 5 extrapolation from measured L=32
-Newton-Schulz efficiency. This is not a full-system or all-mode benchmark.
-Three cards also provide failure isolation, while inference-only scaling remains
+**The PoC starts with about two cards for the current 1D all-mode planning
+workload**, using the Scope 5 extrapolation from the PR93 L=32 p50
+Newton-Schulz measurement. This is not a full-system or all-mode benchmark.
+Two cards also provide failure isolation, while inference-only scaling remains
 an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
@@ -2210,12 +2241,14 @@ A record, so the same debates are not repeated.
   Newton-Schulz, no explicit config beats the best default where default L1
   succeeds; DRAM-only reuse gains 7.7%, 10.0%, and about 35% on the large
   L=16, L=32, and L=64 batches, but tops out at 0.128%. The stock inverse
-  denominator remains 3.024% (L=64, batch 1024, default L1). Issue #63's
-  hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
-  3.24% at packed L=16, so the measured result lies between 3.2% and 30%
+  denominator remains 3.024% (L=64, batch 1024, default L1; fastest launch).
+  Issue #63's hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
+  3.24% at packed L=16; these are stored `achieved_tflops` fastest-launch
+  values, not p50. The measured result therefore lies between 3.2% and 30%
   and does not establish the 30% efficiency target. The two toolchains agree
   on the decision-driving rows without a universal claim: square BF16 is
-  58.687% versus 58.410%, NS L=32 batch 8192 L1 is 3.026% versus 2.992%,
+  58.687% versus 58.410% (fastest-launch values), NS L=32 batch 8192 L1 is
+  3.026% versus 2.992% (fastest-launch values),
   and small beamspace p4096 defaults differ by up to 0.872 percentage points.
   Both current records fail the August L=64 batch 8192 BF16 L1 row with
   allocator OOM because the current harness explicitly places output in L1,
@@ -2226,7 +2259,9 @@ A record, so the same debates are not repeated.
   the historical row is in
   `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40%
   basis used by the generic card counts is the target that gap has to reach;
-  Scope 5's ~2-card 1D estimate instead uses the measured 15.6% efficiency
+  Scope 5's historical ~2-card 1D estimate used the measured 15.6%
+  fastest-launch efficiency; the corrected current estimate uses the PR93 p50
+  denominator.
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
@@ -2245,13 +2280,15 @@ A record, so the same debates are not repeated.
 ### Issue #63 Scope 5 conclusions
 
 The measured conclusions are deliberately bounded to the batch-8192 records.
-First, L=32 reaches 51.92 TFLOPS (15.6%, 5.7x the same-run stock best), which
-is materially above stock but below the 30% efficiency target. For the
-historical eight-iteration path, applying the measured L=32 workload
-efficiency to the ~100 TFLOPS 1D all-mode estimate therefore gives about 2
-cards; this is an extrapolation, not a full-system or all-mode benchmark.
-Second, packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x
-stock) and is faster in wall-clock than L=32 only as a cost/operation-volume
+First, the historical L=32 stored `achieved_tflops` value is 51.92 TFLOPS
+(15.6%, 5.7x the same-run stock best) at fastest launch, not p50; it is
+materially above stock but below the 30% efficiency target. For the historical
+eight-iteration path, applying that measured L=32 workload efficiency to the
+~100 TFLOPS 1D all-mode estimate therefore gave about 2 cards; the corrected
+current N=12 estimate uses the PR93 p50 denominator and is also about 2 cards.
+Both are extrapolations, not full-system or all-mode benchmarks. Second,
+packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x stock) at fastest launch, not
+p50, and is faster in wall-clock than L=32 only as a cost/operation-volume
 comparison for the diagonal fallback, because it uses fewer logical dimensions
 and less work. It is not a beamspace-dimension reduction versus an MV
 image-quality comparison, so the stock-only dimension ordering must not drive
