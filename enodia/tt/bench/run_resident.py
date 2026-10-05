@@ -69,7 +69,7 @@ def _sharded_ring_config(ttnn: Any, config: ResidentConfig):
 def _cb(ttnn: Any, *, index: int, core_ranges):
     format_descriptor = ttnn.CBFormatDescriptor(
         buffer_index=index,
-        data_type=ttnn.uint32,
+        data_format=ttnn.uint32,
         page_size=PAGE_BYTES,
         tile=ttnn.TileDescriptor(32, 32, False),
     )
