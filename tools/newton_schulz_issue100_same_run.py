@@ -35,8 +35,16 @@ ISSUE100_COMPARISON_CONFIGS = (
 )
 
 
-def run_issue100_comparison(ttnn, device, *, repeats: int) -> list[dict]:
-    """Run both Issue #100 configurations for both requested shapes."""
+def run_issue100_comparison(
+    ttnn, device, *, repeats: int, stop_on_failure: bool = False
+) -> list[dict]:
+    """Run both Issue #100 configurations for both requested shapes.
+
+    ``stop_on_failure`` is used by the combined acceptance driver so a failed
+    row is terminal and no later device row is attempted.  The historical
+    performance-only driver keeps its original continue-through-results
+    behavior by default.
+    """
     shapes = {
         shape.name: shape
         for shape in default_catalogue()
@@ -97,6 +105,8 @@ def run_issue100_comparison(ttnn, device, *, repeats: int) -> list[dict]:
                 row.get("tflops_fastest_launch_derived"),
                 flush=True,
             )
+            if stop_on_failure and row.get("status") != "ok":
+                return results
     return results
 
 
