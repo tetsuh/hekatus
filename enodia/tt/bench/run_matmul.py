@@ -87,6 +87,7 @@ ACCEPTANCE_CATALOGUE_MATRIX_BLOCKS = (1, 4)
 ACCEPTANCE_CATALOGUE_FIDELITIES = ("HiFi3", "HiFi4")
 ACCEPTANCE_CATALOGUE_LAUNCHES = 1000
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+POWER_TRACE_SAMPLING_SOURCE = "tt-smi snapshot"
 
 
 def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
@@ -1062,7 +1063,7 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "power_column": "power_w",
             "clock_column": "aiclk_mhz",
             "temperature_column": "asic_temp_c",
-            "sampling_source": "tt-smi snapshot",
+            "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
         },
         "environment_provenance": {
             "source": "--env-json",
@@ -1423,7 +1424,7 @@ def main(argv: list[str] | None = None) -> int:
                     "power_column": "power_w",
                     "clock_column": "aiclk_mhz",
                     "temperature_column": "asic_temp_c",
-                    "sampling_source": "tt-smi snapshot",
+                    "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
                 },
                 "environment_provenance": {
                     "source": "--env-json",
@@ -1679,7 +1680,7 @@ def main(argv: list[str] | None = None) -> int:
                 "power_column": "power_w",
                 "clock_column": "aiclk_mhz",
                 "temperature_column": "asic_temp_c",
-                "sampling_source": "tt-smi snapshot",
+                "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
             },
         }
     if args.profile:
