@@ -62,7 +62,7 @@ def _sharded_ring_config(ttnn: Any, config: ResidentConfig):
         _core_range(ttnn, config.consumer_core),
         ttnn.ShardStrategy.HEIGHT,
         ttnn.ShardOrientation.ROW_MAJOR,
-        use_height_and_width_as_shard_shape=True,
+        use_height_and_width_as_shard_shape=False,
     )
 
 
