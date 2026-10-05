@@ -272,10 +272,25 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     with pytest.raises(SystemExit) as error:
         run_matmul._validate(run_matmul._build_parser(), invalid_half_sync)
     assert error.value.code == 2
-    valid_half_sync = run_matmul._build_parser().parse_args(
+    invalid_catalogue_batch = run_matmul._build_parser().parse_args(
         ["--half-sync-catalogue", "--half-sync-correctness-batch", "4"]
     )
+    with pytest.raises(SystemExit) as error:
+        run_matmul._validate(run_matmul._build_parser(), invalid_catalogue_batch)
+    assert error.value.code == 2
+    valid_half_sync = run_matmul._build_parser().parse_args(
+        [
+            "--half-sync-catalogue",
+            "--half-sync-correctness-only",
+            "--half-sync-correctness-batch",
+            "4",
+        ]
+    )
     run_matmul._validate(run_matmul._build_parser(), valid_half_sync)
+    valid_catalogue = run_matmul._build_parser().parse_args(
+        ["--half-sync-catalogue"]
+    )
+    run_matmul._validate(run_matmul._build_parser(), valid_catalogue)
 
     from tools import newton_schulz_perf_counters
 

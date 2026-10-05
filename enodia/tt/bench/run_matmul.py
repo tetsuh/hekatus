@@ -953,6 +953,14 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if args.acceptance_catalogue and args.half_sync_catalogue:
         parser.error("--acceptance-catalogue and --half-sync-catalogue are exclusive")
     if args.half_sync_catalogue:
+        if (
+            args.half_sync_correctness_batch is not None
+            and not args.half_sync_correctness_only
+        ):
+            parser.error(
+                "--half-sync-correctness-batch requires "
+                "--half-sync-correctness-only"
+            )
         if args.reload_r or args.compare_reload_r:
             parser.error("--reload-r modes are not part of --half-sync-catalogue")
         if args.compare_double_buffer:
@@ -1175,7 +1183,8 @@ def _run_half_sync_catalogue(
         correctness = []
         correctness_batches = (
             (args.half_sync_correctness_batch,)
-            if args.half_sync_correctness_batch is not None
+            if args.half_sync_correctness_only
+            and args.half_sync_correctness_batch is not None
             else HALF_SYNC_CORRECTNESS_BATCHES
         )
         try:

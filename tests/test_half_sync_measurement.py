@@ -158,3 +158,40 @@ def test_correctness_only_retains_all_pass_success(monkeypatch, capsys, ttnn):
 
     assert results[0]["status"] == "correctness_ok"
     assert "correctness passed" in capsys.readouterr().out
+
+
+def test_catalogue_never_times_after_either_correctness_batch_fails(monkeypatch, ttnn):
+    row = _admitted_row(ttnn)
+    args = SimpleNamespace(
+        half_sync_correctness_batch=None,
+        half_sync_correctness_only=False,
+    )
+    for failed_batch in (4, 8192):
+        calls = []
+
+        def fake_correctness(
+            *_args, _calls=calls, _failed_batch=failed_batch, **kwargs
+        ):
+            batch = kwargs["batch"]
+            _calls.append(batch)
+            passed = batch != _failed_batch
+            return {
+                "batch": batch,
+                "gate": 0.01,
+                "relative_error": 0.004 if passed else 0.02,
+                "passed": passed,
+            }
+
+        def fail_if_timed(*_args, **_kwargs):
+            raise AssertionError("throughput must not run after correctness failure")
+
+        monkeypatch.setattr(run_matmul, "_half_sync_correctness", fake_correctness)
+        monkeypatch.setattr(run_matmul, "run_custom_newton_schulz", fail_if_timed)
+        results = run_matmul._run_half_sync_catalogue(
+            ttnn, object(), args=args, rows=[row]
+        )
+
+        assert calls == [4, 8192]
+        assert results[0]["status"] == "correctness_failed"
+        assert results[0]["correctness"][0]["passed"] is (failed_batch != 4)
+        assert results[0]["correctness"][1]["passed"] is (failed_batch != 8192)
