@@ -97,8 +97,8 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   inverse, so FP32 state does not remove the dominant input-precision bound.
   The implementation default is therefore `variant=bf16` with
   `fp32_dest_acc_en=true`; the R representation itself remains open in #88.
-  Issue #100 does not rerun the board measurement or claim a new throughput
-  denominator here.
+  Issue #100's board record confirms the defaults and supplies a new-default
+  throughput denominator without changing the R-format decision.
 - Beamspace: basis design and dimension. **The dimension is no longer a free
   choice on compute grounds alone, and the planning claim has changed.** The
   stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16
@@ -205,7 +205,7 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   provisional 0.7 with no source (design.md §4, ADR-0008); a sourced value
   replaces it through a reviewed profile update
 
-## Issue #100 measured defaults (device validation pending)
+## Issue #100 measured defaults (device validation complete)
 
 - Defaults exactly match the read-only PR98/#96 row
   `L32_b8192_bf16_full_sync_block8`: `variant=bf16`, `math_fidelity=HiFi3`,
@@ -226,28 +226,29 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 - Under the measured defaults, all 128 batch-1..64 partial cases for L=16/32
   at block 8 fit; the existing 1,024-case explicit block/fusion inventory
   remains covered by board-free preflight tests. The PR98/#96 row's stored
-  78.78349 TFLOPS from p50 (about 78.8) is historical evidence only: this
-  change makes no new performance claim, no measurement JSON/CSV changes, and
-  device status remains **UNMEASURED** because no board, container, SSH, or
-  measurement rerun was performed.
-- Tomorrow's device-only commands intentionally omit measured fuse, fidelity,
-  and placement flags so defaults exercise the measured row:
+  78.78349 TFLOPS from p50 (about 78.8) remains historical evidence only. The
+  post-merge ADR-0005 record
+  `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
+  reports new-default L=32/batch=8,192 p50 78.644100 TFLOPS versus previous
+  default p50 66.474414 TFLOPS, with L=16 p50 values 15.956476 and 13.953926.
+  All eight named correctness cases passed the 0.01 gate.
+- The reproducible device commands were:
 
   ```bash
-  enodia/tt/bench/run_in_container.sh --pytest \
-    -m tt_device \
+  TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+    enodia/tt/bench/run_in_container.sh --pytest -m tt_device \
     tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
 
-  enodia/tt/bench/run_in_container.sh out/issue100-defaults -- \
-    --device-id 0 \
-    --only newton_schulz_L32_b8192 \
-    --only newton_schulz_L16_b8192 \
-    --dtype bfloat16 --memory l1 --kind custom_newton_schulz \
-    --iters 1 --repeats 1000
+  env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \
+    HEKATUS_TT_RUNNER=tools/newton_schulz_issue100_same_run.py \
+    enodia/tt/bench/run_in_container.sh <out-dir> -- \
+    --out /out/issue100-same-run.json --device-id 0 --repeats 1000
   ```
-- The card denominator and resulting `100..127.5 TFLOPS` card range remain
-  unmeasured placeholders until that ADR-0005 record lands; power, clock,
-  duration, and new-default device performance are also unmeasured.
+- The measured L=32/batch=8,192 new-default p50 denominator is
+  **78.644100 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
+  therefore **1.2716–1.6212 cards**, or 2 physical cards when rounded up.
+  This remains an extrapolation rather than a full-system benchmark; the R
+  representation remains open in #88.
 
 ## Settled (recorded; reflected in design.md)
 

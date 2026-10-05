@@ -1190,9 +1190,9 @@ fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 
-### Issue #100 measured defaults (host-only update; device validation pending)
+### Issue #100 measured defaults (device validation complete)
 
-The host API and bench runner now default to the exact PR98/#96 measured
+The host API and bench runner default to the exact PR98/#96 measured
 configuration: `variant=bf16`, `math_fidelity=HiFi3`, `fuse_s=true`,
 `fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
 `dst_full_sync_en=true`. R and X0 inputs are in L1 and output tensors are in
@@ -1200,14 +1200,28 @@ DRAM; the compatibility input shorthand and its resident identity/zero buffers
 remain in L1. Every prior configuration remains selectable with explicit
 arguments.
 
-The read-only PR98/#96 row is `L32_b8192_bf16_full_sync_block8` in the
-measurement record's `performance.rows`: L=32, batch=8,192, BF16 state, HiFi3,
-fused S, FP32 DEST, block 8, full-sync, double buffering, R/X0 L1, DRAM output,
-and `preflight_bytes=1,295,104`. Its stored 78.78349 TFLOPS from p50 (about
-78.8) is historical evidence only. This implementation makes no new
-performance claim; its device status is **UNMEASURED** because no board,
-container, SSH, or measurement rerun was performed, and no measurement JSON or
-CSV is changed.
+The read-only PR98/#96 row remains historical evidence: it is
+`L32_b8192_bf16_full_sync_block8` with `preflight_bytes=1,295,104` and stored
+78.78349 TFLOPS from p50 (about 78.8). The post-merge ADR-0005 record
+`docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
+records the new same-device comparison under harness commit
+`204b6dbeb8385217db9d87f5946269158c8061db`.
+
+The performance rows retain 1,000 launch samples and p50/p99/p99.9 for both
+configurations:
+
+| Shape | Configuration | p50 / p99 / p99.9 (ms) | p50 / fastest TFLOPS |
+|---|---|---:|---:|
+| L=32, batch=8,192 | new BF16 state, block 8 | 0.655352 / 0.703308 / 0.761452 | 78.644100 / 79.168445 |
+| L=32, batch=8,192 | previous FP32 state, block 4 | 0.775330 / 0.822727 / 0.950311 | 66.474414 / 66.854503 |
+| L=16, batch=8,192 | new BF16 state, block 8 | 0.403752 / 0.410837 / 0.478760 | 15.956476 / 16.143823 |
+| L=16, batch=8,192 | previous FP32 state, block 4 | 0.461695 / 0.500405 / 0.557589 | 13.953926 / 14.068729 |
+
+All eight named L=16/L=32 batch-4/8,192 and tail correctness cases passed the
+0.01 gate against the BF16-rounded-R reference; the maximum recorded relative
+error was 0.004587267. The record carries the p150a board identity, firmware
+19.6.0.0, KMD 2.11.0, release 0.75.0, image digest, harness commit, device 0,
+power trace, and cleanup evidence. No reset or health recovery was required.
 
 BF16 state is selected because the BF16-rounded-R input already bounds the
 solver error against the true inverse in the Issue #94 record
@@ -1240,35 +1254,27 @@ budget, and fails before allocation. Under the measured defaults, all 128
 batch-1..64 partial cases for L=16/32 at block 8 fit. The existing 1,024-case
 explicit block/fusion inventory remains covered by board-free preflight tests.
 
-Tomorrow's device-only commands intentionally omit fuse, fidelity, and
-placement overrides so the defaults exercise the measured configuration:
+The reproducible device procedure was:
 
 ```bash
 # Correctness for the default batch and tail cases.
-enodia/tt/bench/run_in_container.sh --pytest \
-  -m tt_device \
+TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  enodia/tt/bench/run_in_container.sh --pytest -m tt_device \
   tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
 
-# Same-run 1,000-launch record for both default shapes.
-enodia/tt/bench/run_in_container.sh out/issue100-defaults -- \
-  --device-id 0 \
-  --only newton_schulz_L32_b8192 \
-  --only newton_schulz_L16_b8192 \
-  --dtype bfloat16 --memory l1 --kind custom_newton_schulz \
-  --iters 1 --repeats 1000
+# Same-device 1,000-launch comparison of both defaults and both shapes.
+env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \
+  HEKATUS_TT_RUNNER=tools/newton_schulz_issue100_same_run.py \
+  enodia/tt/bench/run_in_container.sh <out-dir> -- \
+  --out /out/issue100-same-run.json --device-id 0 --repeats 1000
 ```
 
-The read-only PR98/#96 row is historical evidence, not a new performance
-claim: it records the same fused/HiFi3 measured configuration and
-`preflight_bytes=1,295,104` (78.78349 TFLOPS from p50, about 78.8). This branch
-has no device result and does not change any measurement JSON or CSV.
-
-The one-card denominator is **UNMEASURED** until tomorrow's same-run ADR-0005
-record reports the new-default L=16/L=32 batch-4 and batch-8,192 rows, tails,
-and 1,000-launch p50/p99/p99.9. Until then the card range is only the symbolic
-`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card`; power, clock,
-duration, and new-default device performance remain unmeasured. Historical
-denominator values are not reused.
+For acceptance criterion 3, the L=32/batch=8,192 new-default p50 is the
+measured per-card denominator: `78.644100 TFLOPS/card`. Applying the existing
+bounded workload range gives `100 / 78.644100` through `127.5 / 78.644100`, or
+**1.2716–1.6212 cards**; rounding up to physical cards yields **2 cards**.
+This remains a planning extrapolation, not a full-system or all-mode benchmark.
+Historical denominator values are not reused.
 
 ### Historical eight-iteration precision split hypothesis (not current N=12 production)
 
@@ -1419,13 +1425,15 @@ Because `P_C`, `L_C`, and the fixed/inverse split are not specified, this is a
 bounded range rather than a fabricated aggregate point; exact mode bindings
 can narrow it later.
 
-For Issue #100, the one-card denominator is reserved for tomorrow's same-run
-ADR-0005 record and is **UNMEASURED** on this branch. The record must report
-L=16/L=32 batch-4 and batch-8,192 new-default p50/p99/p99.9 values and the
-named tails. Until it lands, the range is only
-`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card` cards; no
-numeric card count is asserted. The historical PR93 denominator is context for
-older planning text only and is not reused for Issue #100.
+For Issue #100, the one-card denominator is the L=32/batch=8,192
+new-default p50 in
+`docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`:
+`78.644100 TFLOPS/card`. The bounded range therefore maps to
+`100 / 78.644100` through `127.5 / 78.644100`, or **1.2716–1.6212 cards**;
+rounding up to physical cards yields **2 cards**. The historical PR93
+denominator is context for older planning text only and is not reused for
+Issue #100. This remains a planning extrapolation, not a full-system or
+all-mode benchmark.
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -1444,8 +1452,9 @@ validate the earlier plain MV (L=64) capacity assumption: the historical L=32
 `achieved_tflops` row is 15.6% at fastest launch, not p50, and packed L=16 is
 3.24% at fastest launch, not p50; both are below the 30% efficiency target. The
 corrected N=12 1D all-mode workload remains a documented 100–127.5 TFLOPS
-range. Issue #100 leaves its card count symbolic until tomorrow's new-default
-p50 denominator is measured. This is an extrapolation from that Newton-Schulz
+range. Issue #100 now uses the measured new-default L=32/batch=8,192 p50 of
+78.644100 TFLOPS/card, mapping the range to 1.2716–1.6212 cards (2 physical
+cards when rounded up). This is an extrapolation from that Newton-Schulz
 workload rather than a full-system or all-mode benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
@@ -1495,9 +1504,9 @@ suffix. The generic card counts in this table retain the 40% target basis; they
 are separate from the Scope 5 estimate. Scope 5's inverse-only correction is
 `T_12=100+0.5(I_B,8+I_C,8)`, with `0 ≤ I_B,8 ≤ 25` and `0 ≤ I_C,8 ≤ 30`.
 The fixed 45 TFLOPS is not scaled by 12/8, so the source-supported range is
-`100–127.5 TFLOPS`. Issue #100 leaves the per-card denominator and resulting
-card range unmeasured until tomorrow's same-run new-default p50 record; no
-numeric card count is asserted here. This is an extrapolation using one
+`100–127.5 TFLOPS`. Issue #100's measured per-card denominator is the
+new-default L=32/batch=8,192 p50 of 78.644100 TFLOPS/card, giving 1.2716–1.6212
+cards (2 physical cards when rounded up). This is an extrapolation using one
 Newton-Schulz workload definition, not a full-system benchmark or an all-mode
 simultaneous benchmark. Historical denominator records remain provenance for
 older planning text only. The L=32 Issue #63 historical headline remains
@@ -1520,9 +1529,10 @@ The three conclusions are: (1) the historical L=32 fastest-launch
 15.6%, below the 30% efficiency target; applying that historical workload
 efficiency to the ~100 TFLOPS eight-iteration 1D all-mode estimate gave about
 2 cards in that historical N=8 scenario, an extrapolation rather than a
-full-system or all-mode benchmark. Issue #100 leaves the corrected current
-N=12 card count unmeasured until tomorrow's new-default p50 record; (2) packed
-L=16 reaches 14.5x stock at 3.24% (also a fastest-launch `achieved_tflops`
+full-system or all-mode benchmark. Issue #100's corrected current N=12 card
+count is 1.2716–1.6212 cards from the measured new-default p50 denominator
+(2 physical cards when rounded up); (2) packed L=16 reaches 14.5x stock at
+3.24% (also a fastest-launch `achieved_tflops`
 value) and is faster in wall-clock than L=32
 only as a cost/operation-volume comparison for the diagonal fallback, with
 fewer logical dimensions and less work, not as a beamspace-dimension
@@ -2005,10 +2015,11 @@ commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
 **The PoC card count for the current N=12 1D all-mode planning workload is
-UNMEASURED for Issue #100** until tomorrow's new-default same-run p50 record.
-The Scope 5 range remains a planning extrapolation, not a full-system or
-all-mode benchmark. Two cards remain a failure-isolation planning option, while
-inference-only scaling remains an additional benefit.
+1.2716–1.6212 cards for Issue #100's measured new-default denominator**
+(2 physical cards when rounded up). The Scope 5 range remains a planning
+extrapolation, not a full-system or all-mode benchmark. Two cards remain a
+failure-isolation planning option, while inference-only scaling remains an
+additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
 via-host transports are interchangeable.
@@ -2402,7 +2413,8 @@ A record, so the same debates are not repeated.
   basis used by the generic card counts is the target that gap has to reach;
   Scope 5's historical N=8 ~2-card 1D estimate used the measured 15.6%
   fastest-launch efficiency; Issue #100's corrected current N=12 denominator
-  is pending tomorrow's same-run p50 record.
+  is the measured new-default L=32/batch=8,192 p50 of 78.644100 TFLOPS/card,
+  yielding 1.2716–1.6212 cards (2 physical cards when rounded up).
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
@@ -2426,9 +2438,10 @@ First, the historical L=32 stored `achieved_tflops` value is 51.92 TFLOPS
 materially above stock but below the 30% efficiency target. For the historical
 eight-iteration path, applying that measured L=32 workload efficiency to the
 ~100 TFLOPS 1D all-mode estimate therefore gave about 2 cards in that
-historical N=8 scenario; Issue #100 leaves the current N=12 card count
-unmeasured until tomorrow's same-run p50 record. Both are extrapolations, not
-full-system or all-mode benchmarks. Second,
+historical N=8 scenario; Issue #100's current N=12 denominator is now the
+measured new-default L=32/batch=8,192 p50 of 78.644100 TFLOPS/card, mapping the
+bounded range to 1.2716–1.6212 cards (2 physical cards when rounded up). Both
+are extrapolations, not full-system or all-mode benchmarks. Second,
 packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x stock) at fastest launch, not
 p50, and is faster in wall-clock than L=32 only as a cost/operation-volume
 comparison for the diagonal fallback, because it uses fewer logical dimensions
