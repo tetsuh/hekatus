@@ -1927,11 +1927,12 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with about two cards for the current 1D all-mode planning
-workload**, using the Scope 5 extrapolation from the PR93 L=32 p50
-Newton-Schulz measurement. This is not a full-system or all-mode benchmark.
-Two cards also provide failure isolation, while inference-only scaling remains
-an additional benefit.
+**The PoC starts with about 2–3 cards for the current 1D all-mode planning
+workload: 3 cards at the conservative upper bound, with 2 cards only as the
+lower-end starting point**, using the Scope 5 extrapolation from the PR93 L=32
+p50 Newton-Schulz measurement. This is not a full-system or all-mode
+benchmark. Two cards also provide failure isolation, while inference-only
+scaling remains an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
 via-host transports are interchangeable.
