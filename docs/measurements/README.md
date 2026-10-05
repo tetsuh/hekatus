@@ -43,6 +43,20 @@ numerical comparisons remain valid; this note corrects the reference name
 without rewriting any landed JSON record. Future records and documentation
 must use the independent NumPy reference name.
 
+**Issue #94 record correction (unmerged record).** The correctness rows in
+`2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck.json` were produced
+by `enodia/tt/bench/run_matmul.py:_issue94_fixed_reference`, not by
+`enodia/tt/bench/newton_schulz_reference.py`. The runner first builds
+`original_R` with `run_matmul.py:_issue94_random_hpd_batch`, rounds its real
+and imaginary float32 planes independently to BF16 with RNE through
+`_issue94_bf16_round_complex`, and builds `X0 = I / ||original_R||_infinity`
+through `_issue94_initial_value`. `_issue94_fixed_reference` then applies the
+fixed twelve-step recurrence to the BF16-rounded R and that original-R X0;
+the companion true-inverse comparison is
+`np.linalg.inv(original_R.astype(np.complex128))`. All twelve row labels now
+name the actual function. No measurement value, sample array, power trace, or
+harness identity was changed.
+
 The board-side acceptance catalogue is one named-container invocation:
 
 ```text
@@ -154,6 +168,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-power.csv` | Immutable predecessor power, clock, and temperature trace; its provenance is the matching predecessor record above. |
 | `2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding.json` | Supersedes the predecessor record above with a clean harness capture: L=32, batch 8192, block 4, fused S, HiFi3, FP32 state, all inputs L1; both variants passed batch-4 and batch-8192 correctness, then each ran 1,000 launches in one watcher-free run. Resident reached 51.82917713218822 TFLOPS and reload-R 31.33414466591468 TFLOPS; the companion power trace shares the stem. |
 | `2026-10-04-p150a-newton-schulz-l32-b8192-r-residency-control-superseding-power.csv` | Power, clock, and temperature trace for the complete-provenance superseding resident-versus-reload-R control above. |
+| `2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck.json` | Issue #94 same-device L=16/L=32, batch-8192, block-4, fused-S, HiFi3 comparison of BF16 state with FP32 DEST accumulation, BF16 state without FP32 DEST accumulation, and FP32 state; all inputs L1, outputs DRAM, N=12, with batch-4/batch-8192 correctness against BF16-rounded-R and true-inverse references. The record includes the 0.01 gate, DEST-capacity controls, power trace, and bounded pack/unpack-versus-synchronization inference. |
+| `2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck-power.csv` | Power, clock, and temperature trace for the Issue #94 BF16-state/DEST comparison above. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json` | Issue #92 same-device L=16/L=32, batch-8192, block-4, fused-S, HiFi3, FP32-state, all-inputs-L1 comparison of one and two external CB windows; includes batch-4/batch-8192 BF16-rounded-reference correctness, 1,000-launch p50/p99/p99.9 rows, L1 preflight, and cycle-counter profiling. The corrected N=12/24-complex-matmul FLOPs fields are L16=6442450944 and L32=51539607552; p50-derived values are L16 12.4716->13.9849 and L32 58.3906->66.5621 TFLOPS, while stored `achieved_tflops` values are the fastest/best-launch TFLOPS selected by the runner; the p50-derived values differ by definition. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32-power.csv` | Power, clock, and temperature trace for the Issue #92 block double-buffer comparison above. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-risc-profiler-diagnostic.json` | Issue #92/PR #93 diagnostic-only Tracy profile of L=32, batch 8192, block 4, fused-S, HiFi3, FP32-state one-window versus two-window runs. Reader/writer waits are primarily waits on compute; two-buffering shortens the full interval by about 15%, and compute-side instruction supply plus unpack/math/pack handoff remain cautious, non-exclusive candidates. Counter definitions do not establish pack-side causality. The recorded NoC bytes and approximately 0.774 ms launch interval derive approximately 240 GB/s aggregate and 2 GB/s/core (not a new measurement); two-window counters remain unavailable. Existing HiFi3/HiFi4, full/half-sync, and BF16/FP32-state comparisons are cited with their confounds. Not a throughput headline or replacement for prior records. |

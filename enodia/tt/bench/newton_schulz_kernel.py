@@ -807,12 +807,19 @@ def _validate_l1_preflight(
     matrix_block: int = 1,
     double_buffer: bool = False,
     variant: str | None = None,
+    fp32_dest_acc_en: bool = True,
+    dst_full_sync_en: bool = True,
 ) -> int:
     """Validate L1 usage without touching a device or allocating tensors."""
     input_memory, r_memory, x0_memory = _resolve_input_memories(
         input_memory, r_memory=r_memory, x0_memory=x0_memory
     )
-    _validate_matrix_block(matrix_block, variant=variant)
+    _validate_matrix_block(
+        matrix_block,
+        variant=variant,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+    )
     definitions = _cb_definitions(
         ttnn,
         state_dtype,
@@ -1002,6 +1009,7 @@ class NewtonSchulzKernel:
         input_memory: str = "l1",
         r_memory: str | None = None,
         x0_memory: str | None = None,
+        output_memory: str | None = None,
         fp32_dest_acc_en: bool = True,
         dst_full_sync_en: bool = True,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
@@ -1012,6 +1020,10 @@ class NewtonSchulzKernel:
         iterations = _validate_iterations(iterations, fixed=True)
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
+        if output_memory is None:
+            output_memory = _output_memory_name(variant)
+        elif output_memory not in INPUT_MEMORY_CHOICES:
+            raise ValueError(f"unknown output memory {output_memory!r}")
         _validate_matrix_block(
             matrix_block,
             fp32_dest_acc_en=fp32_dest_acc_en,
@@ -1061,7 +1073,7 @@ class NewtonSchulzKernel:
             core_count=len(work_ranges),
             state_dtype=state_dtype,
             fuse_s=fuse_s,
-            output_memory=_output_memory_name(variant),
+            output_memory=output_memory,
             input_memory=input_memory,
             r_memory=r_memory,
             x0_memory=x0_memory,
@@ -1094,7 +1106,6 @@ class NewtonSchulzKernel:
                 inputs.append(tensor)
 
             output_shape = ttnn.Shape((tile_count, 1, _TILE, _TILE))
-            output_memory = _output_memory_name(variant)
             output_memory_config = (
                 ttnn.DRAM_MEMORY_CONFIG if output_memory == "dram" else ttnn.L1_MEMORY_CONFIG
             )
@@ -1371,6 +1382,8 @@ def run_newton_schulz_kernel(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
+    output_memory: str | None = None,
+    fp32_dest_acc_en: bool = True,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -1388,6 +1401,8 @@ def run_newton_schulz_kernel(
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,
+        output_memory=output_memory,
+        fp32_dest_acc_en=fp32_dest_acc_en,
     )
     try:
         kernel.launch()
