@@ -18,15 +18,17 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 
 > **The 40% is a target for hand-written kernels, not an expectation of the
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
-> of peak (a fastest-launch stock-catalogue value), and Issue #63's measured
-> hand-written rows below land between 3.2%
-> and 30%. The earlier 3.2% figure is retained as historical evidence, with
-> its non-reproduction explained below. The corrected Scope 5 calculation
-> decomposes the 1D all-mode estimate into non-Newton-Schulz work and the
-> Newton-Schulz share before applying 12/8; the detailed equation below gives
-> roughly 127.5 TFLOPS and about 2 cards from the p50 denominator. This is an
-> extrapolation using the measured Newton-Schulz workload efficiency, not a
-> full-system benchmark or an all-mode simultaneous benchmark.
+> of peak (a stored `achieved_tflops` fastest-launch stock-catalogue value,
+> not p50), and Issue #63's measured hand-written rows below are stored
+> `achieved_tflops` fastest-launch values, not p50; they land between the
+> historical 3.2% floor and the 30% planning target. The earlier 3.2% figure is
+> retained as historical evidence, with its non-reproduction explained below.
+> The corrected Scope 5 calculation decomposes the 1D all-mode estimate into
+> non-Newton-Schulz work and the Newton-Schulz share before applying 12/8; the
+> detailed equation below gives roughly 127.5 TFLOPS and about 2 cards from the
+> p50 denominator. This is an extrapolation using the measured Newton-Schulz
+> workload efficiency, not a full-system benchmark or an all-mode simultaneous
+> benchmark.
 
 ---
 
@@ -105,24 +107,30 @@ stock-catalogue comparison evidence.
 | Front-end FIR, output width 8 | 0.534% / 1.7725 TFLOPS (DRAM) | 1.162% / 3.8570 TFLOPS (L1) | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1` |
 | Front-end FIR, output width 32 | 2.139% / 7.1005 TFLOPS (DRAM) | 4.605% / 15.2871 TFLOPS (L1) | `mcast1d_in1_g8x8_k2_m128_n1_b4x1_s4x1` |
 
-For contrast only, the non-representative 4096³ square matmul reaches
-58.410% / 193.9204 TFLOPS (DRAM) at fastest launch with the default
-configuration; it is not included in the representative-shape tables.
+For contrast only, the non-representative 4096³ square matmul's stored
+`achieved_tflops`/efficiency values are 58.410% / 193.9204 TFLOPS (DRAM) at
+fastest launch, not p50, with the default configuration; it is not included in
+the representative-shape tables.
 
-Explicit stock configurations help the broad shapes. For front-end FIR width
-32 in L1, the default is 4.3389 TFLOPS (1.307%) and the best explicit row is
-15.2871 TFLOPS (4.605%), a 3.52x gain. For beamspace B=16, 128 channels and
-65536 pixels, L1 improves from 3.5508 TFLOPS (1.070%) to 7.1949 TFLOPS
-(2.167%), or 2.03x; for 256 channels it improves from 4.3593 TFLOPS (1.313%)
-to 7.3298 TFLOPS (2.208%), or 1.68x. These rows and their configuration
-names are in the 0.75.0 full-sweep record cited above.
+The following stock-catalogue comparisons use stored
+`achieved_tflops`/efficiency fields: fastest-launch values, not p50. Explicit
+stock configurations help the broad shapes. For front-end FIR width 32 in L1,
+the default is 4.3389 TFLOPS (1.307%) and the best explicit row is 15.2871
+TFLOPS (4.605%), a 3.52x gain. For beamspace B=16, 128 channels and 65536
+pixels, L1 improves from 3.5508 TFLOPS (1.070%) to 7.1949 TFLOPS (2.167%), or
+2.03x; for 256 channels it improves from 4.3593 TFLOPS (1.313%) to 7.3298
+TFLOPS (2.208%), or 1.68x. These rows and their configuration names are in the
+0.75.0 full-sweep record cited above.
 
 Newton-Schulz is different. No explicit configuration beats the best default
 on a shape where the default L1 row succeeds. On DRAM-only large-batch rows,
 explicit reuse does beat the DRAM default: by 7.7% for L=16 batch 65536, 10.0%
-for L=32 batch 65536, and about 35% for L=64 batch 8192 and 65536. The largest
-of those gains reaches only 0.4251 TFLOPS (0.128%), so it does not change the
-3.024% best stock inverse denominator at L=64 batch 1024 (fastest launch).
+for L=32 batch 65536, and about 35% for L=64 batch 8192 and 65536 (each
+comparison uses stored `achieved_tflops` fastest-launch values, not p50). The
+largest stored `achieved_tflops` fastest-launch value in those rows, not p50,
+reaches only 0.4251 TFLOPS (0.128%), so it does not change the 3.024% best stock
+inverse denominator at L=64 batch 1024 (also a stored `achieved_tflops`
+fastest-launch value, not p50).
 Configuration selection alone does not close the stock-to-40% gap; the historical
 Issue #63 `achieved_tflops` headlines recover to 15.6% at L=32 and 3.24% at packed L=16
 (fastest-launch values, not p50), leaving the 30% planning target open rather
@@ -130,7 +138,7 @@ than a 13.2x stock-only statement.
 
 The two toolchains agree on the decision-driving default rows without implying
 that every row is identical. The stored stock-catalogue values below are
-fastest-launch values: the 4096-square BF16 reference is 58.687% in the
+fastest-launch values, not p50: the 4096-square BF16 reference is 58.687% in the
 0.70.1 default-only record versus 58.410% in the 0.75.0 full sweep, and
 Newton-Schulz L=32 batch 8192 in L1 is 3.026% versus 2.992%. Small,
 dispatch-bound beamspace p4096 rows differ more, by up to 0.872 percentage
@@ -145,8 +153,8 @@ with its 88-sample trace at
 ### The August L1 row does not reproduce
 
 The 2026-08-14 record contains `newton_schulz_L64_b8192`, BF16, L1 at
-10.7136 TFLOPS (3.227%), a fastest-launch stock-catalogue value. It used image
-digest
+10.7136 TFLOPS (3.227%), a stored `achieved_tflops` fastest-launch
+stock-catalogue value, not p50. It used image digest
 `ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4`, KMD
 2.8.0, and harness `112ff585f4b52f90525d23650a90b14ec6d7a55d`. Both September
 records fail that BF16 default L1 row with allocator OOM. The 0.75.0 record
@@ -168,8 +176,9 @@ semantics. Both current images fail identically, so this failure is not
 evidence of a toolchain regression. The board is powered off and no rerun is
 available.
 
-**The silicon reaches 58.410% on a shape it likes.** The 40% target remains
-plausible for the hardware: the large square matmul beats it, while the
+**The silicon's stored stock-catalogue result is 58.410% at fastest launch,
+not p50, on a shape it likes.** The 40% target remains plausible for the
+hardware: the large square matmul beats it, while the
 workload-shaped Newton-Schulz cases do not. The stock baseline leaves the
 remaining inverse gap to a hand-written kernel: packing small matrices into
 full tiles, fusing the four real matmuls of a complex one, keeping R resident
@@ -184,8 +193,9 @@ limit nor the 300 W board limit was reached.
 The same-shape batch-8192 records change the planning claim. Against the
 332 TFLOPS peak, the L=32 `block4_all_l1` row's stored `achieved_tflops` is
 51.9164 TFLOPS (15.6375%, reported here as **51.92 TFLOPS and 15.6%**), a
-fastest-launch value rather than p50, and 5.7x the same-run stock best of
-9.1096 TFLOPS. The 51.92 headline is the row in
+fastest-launch value rather than p50, and 5.7x the same-run stock best's
+stored fastest-launch value, not p50, of 9.1096 TFLOPS. The 51.92 headline is
+the row in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`.
 The requested current/history check
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-block4-l1-history-catalog-1000.json`
@@ -250,8 +260,9 @@ The evidence for that third conclusion is bounded. The steady counter record
 separates reader and writer waits but retains unclassified compute cycles and
 warns that RISC totals are overlapping. The optimization record
 `docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
-shows `fuse_s` and `batch_reads` changing throughput by only -0.09% and
-+0.13% versus baseline; the unpack diagnostic
+shows the stored `achieved_tflops` fastest-launch throughput changing by only
+-0.09% and +0.13% versus baseline; these are not p50/median values. The unpack
+diagnostic
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-unpack-diagnostic-catalog-1000.json`
 reports a variant difference but makes no causal unpack claim. The
 matrix-block record
@@ -311,7 +322,8 @@ the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 
 ---
 
-## By method (64 receive channels, 30 fps) — basis: theoretical peak
+## By method (64 receive channels, 30 fps) — budget estimates, basis:
+theoretical peak
 
 | Method | TFLOPS | % of theoretical peak |
 |---|---|---|
@@ -322,7 +334,7 @@ the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 | MV: with Newton-Schulz inverse | 49.5 | ~15% |
 | ESBMV (eigendecomposition) | 100–170 | 30–50% |
 
-## By configuration — basis: usable per card (133 TFLOPS)
+## By configuration — budget estimates, basis: usable per card (133 TFLOPS)
 
 | Configuration | Recv ch | L | TFLOPS | Cards |
 |---|---|---|---|---|
@@ -337,7 +349,8 @@ The last row follows the N⁴ law from the 256-channel volume row
 (1,650 × 16⁴ ≈ 1.08e8). An earlier revision carried 1.85e8 here, which did
 not reconcile with the law stated above; the conclusion is unchanged.
 
-## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) — basis: theoretical peak
+## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) —
+budget target, basis: theoretical peak
 
 | Mode | Beamformer | TFLOPS | % of theoretical peak |
 |---|---|---|---|

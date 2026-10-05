@@ -237,8 +237,8 @@ start from.
 
 ### What limits this workload
 
-Arithmetic is a few percent of theoretical peak. **The limits are GDDR6
-bandwidth and L1 capacity.**
+The workload estimate puts arithmetic at a few percent of theoretical peak.
+**The limits are GDDR6 bandwidth and L1 capacity.**
 
 - If channel data fits in on-chip SRAM, processing completes with almost no
   DRAM traffic
@@ -487,8 +487,9 @@ golden comparison of §15 says, not what this paragraph argues.
 
 ### Cost
 
-A 64-tap FIR × 2 (I/Q) at 30 fps ≈ 4 TFLOPS = 1.2% of theoretical peak. FIR
-lowers to matmul — the shape Tensix likes.
+**Budget estimate, not a measured throughput result:** a 64-tap FIR × 2 (I/Q)
+at 30 fps ≈ 4 TFLOPS = 1.2% of theoretical peak. FIR lowers to matmul — the
+shape Tensix likes.
 
 ### What it does to beamforming
 
@@ -954,8 +955,8 @@ scanlines:
 
 **The 9× applies only to the delay-and-sum (DAS-like) part.** In the
 compound-then-MV arrangement (§9), R formation and Newton-Schulz run once
-after compounding, so the total cost barely moves (DAS was ~0% to begin
-with).
+after compounding, so the total cost barely moves (DAS was ~0% in the §10
+budget estimates to begin with).
 
 (Note: an older revision of this document carried a table claiming an
 "effective multiplier of 2.25 because transmit count drops." That was
@@ -1059,7 +1060,8 @@ cancel signal. CF/SLSC look at coherence and are comparatively robust.
 - geometric delays stay; only a per-element scalar offset is added.
   **Delay-table translation invariance survives**
 - estimation at 1–5 Hz refresh suffices (speed/aberration are set by
-  patient and probe placement). Amortized cost under 1%
+  patient and probe placement). The design estimate for amortized cost is
+  under 1%
 
 **Why not (b)** — two rejection reasons and one expectation-setting note,
 and the reasons do not bind at the same level (§0 separates role from
@@ -1306,8 +1308,9 @@ half** (3 cm vs 6 cm), so the net is **2–3×** the 5 MHz / 30 fps case (an
 older revision said "5–7×," which ignored the depth-point reduction).
 Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
 validate the earlier plain MV (L=64) capacity assumption: the historical L=32
-`achieved_tflops` row is 15.6% at fastest launch and packed L=16 is 3.24% at
-fastest launch, both below the 30% efficiency target. The corrected current
+`achieved_tflops` row is 15.6% at fastest launch, not p50, and packed L=16 is
+3.24% at fastest launch, not p50; both are below the 30% efficiency target. The
+corrected current
 1D all-mode workload is 127.5 TFLOPS and maps to about 2 cards by the PR93
 L=32 p50 denominator, as an extrapolation from that Newton-Schulz workload
 rather than a full-system or all-mode benchmark.
@@ -1365,8 +1368,8 @@ plan is about 2 cards. This is an extrapolation using one measured
 Newton-Schulz workload row, not a full-system benchmark or an all-mode
 simultaneous benchmark. The PR93 denominator record is
 `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`,
-`performance.rows[3]`; its stored `achieved_tflops` value is fastest-launch and
-is not used in this division. The L=32 Issue #63 historical headline remains
+`performance.rows[3]`; its stored `achieved_tflops` value is fastest-launch, not
+p50, and is not used in this division. The L=32 Issue #63 historical headline remains
 in
 `docs/measurements/2026-10-01-p150a-newton-schulz-l32-b8192-per-input-memory-catalog-1000.json`;
 the current/history context is
@@ -1402,8 +1405,8 @@ separates reader and writer waits but says no unique bottleneck is established:
 RISC windows overlap and compute retains unclassified residuals. The
 optimization record
 `docs/measurements/2026-09-30-p150a-newton-schulz-l32-b8192-optimization-catalog-1000.json`
-shows `fuse_s` and `batch_reads` changing throughput only -0.09% and +0.13%
-versus baseline.
+shows stored `achieved_tflops` fastest-launch throughput changing only -0.09%
+and +0.13% versus baseline; these are not p50/median values.
 
 **R-residency attribution disposition.** PR #81's complete-provenance superseding
 record
@@ -1607,7 +1610,8 @@ stream from the same acquisition.** Same transmit events, same R, so no
 spatial or temporal registration error. The objection "adaptive processing
 breaks measurements" is structurally dissolved.
 
-This works only because DAS costs ~0% of the card.
+This works only because DAS costs ~0% of the card in the §10 budget
+estimate.
 
 ### Color Doppler split
 
@@ -1799,13 +1803,16 @@ barely touch DRAM.
 
 ### Inference compute
 
+These are workload estimates, not measured board throughput, at 30 fps:
+
 | Model | at 30 fps |
 |---|---|
 | U-Net (light, 256×256) | 1–3 TFLOPS |
 | nnU-Net class (512×512) | 10–20 TFLOPS |
 | SAM class (ViT-B) | 50–80 TFLOPS |
 
-At 30% effective, 100 TFLOPS is available — everything but SAM-class fits
+At the 30% planning-efficiency assumption, 100 TFLOPS is available —
+everything but SAM-class fits
 easily. **This is Tenstorrent's home game** (CNNs/Transformers map
 directly).
 
@@ -2241,14 +2248,16 @@ A record, so the same debates are not repeated.
   Newton-Schulz, no explicit config beats the best default where default L1
   succeeds; DRAM-only reuse gains 7.7%, 10.0%, and about 35% on the large
   L=16, L=32, and L=64 batches, but tops out at 0.128%. The stock inverse
-  denominator remains 3.024% (L=64, batch 1024, default L1; fastest launch).
-  Issue #63's hand-written anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
+  denominator remains 3.024% (L=64, batch 1024, default L1; a stored
+  `achieved_tflops` fastest-launch value, not p50). Issue #63's hand-written
+  anchors are 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS /
   3.24% at packed L=16; these are stored `achieved_tflops` fastest-launch
   values, not p50. The measured result therefore lies between 3.2% and 30%
   and does not establish the 30% efficiency target. The two toolchains agree
   on the decision-driving rows without a universal claim: square BF16 is
-  58.687% versus 58.410% (fastest-launch values), NS L=32 batch 8192 L1 is
-  3.026% versus 2.992% (fastest-launch values),
+  58.687% versus 58.410% (stored `achieved_tflops` fastest-launch values, not
+  p50), NS L=32 batch 8192 L1 is 3.026% versus 2.992% (stored
+  `achieved_tflops` fastest-launch values, not p50),
   and small beamspace p4096 defaults differ by up to 0.872 percentage points.
   Both current records fail the August L=64 batch 8192 BF16 L1 row with
   allocator OOM because the current harness explicitly places output in L1,
