@@ -266,6 +266,40 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     alias_flags = run_matmul._build_parser().parse_args(["--block-double-buffer"])
     assert alias_flags.double_buffer is True
 
+    invalid_half_sync = run_matmul._build_parser().parse_args(
+        ["--half-sync-correctness-batch", "4"]
+    )
+    with pytest.raises(SystemExit) as error:
+        run_matmul._validate(run_matmul._build_parser(), invalid_half_sync)
+    assert error.value.code == 2
+    invalid_catalogue_batch = run_matmul._build_parser().parse_args(
+        ["--half-sync-catalogue", "--half-sync-correctness-batch", "4"]
+    )
+    with pytest.raises(SystemExit) as error:
+        run_matmul._validate(run_matmul._build_parser(), invalid_catalogue_batch)
+    assert error.value.code == 2
+    valid_half_sync = run_matmul._build_parser().parse_args(
+        [
+            "--half-sync-catalogue",
+            "--half-sync-correctness-only",
+            "--half-sync-correctness-batch",
+            "4",
+        ]
+    )
+    run_matmul._validate(run_matmul._build_parser(), valid_half_sync)
+    valid_catalogue = run_matmul._build_parser().parse_args(
+        ["--half-sync-catalogue"]
+    )
+    run_matmul._validate(run_matmul._build_parser(), valid_catalogue)
+
+    from tools import newton_schulz_perf_counters
+
+    counter_parser = newton_schulz_perf_counters._build_parser()
+    with pytest.raises(SystemExit) as error:
+        counter_parser.parse_args(["--logs", "counter-logs"])
+    assert error.value.code == 2
+    assert counter_parser.parse_args(["--row", "full", "--logs", "counter-logs"]).row == "full"
+
 
 @pytest.mark.parametrize("reload_flag", ["--reload-r", "--compare-reload-r"])
 def test_acceptance_catalogue_rejects_reload_modes_before_ttnn_import(
