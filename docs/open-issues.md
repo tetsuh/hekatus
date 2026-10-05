@@ -42,8 +42,10 @@ rows now measure 51.92 TFLOPS / 15.6% at L=32 and 10.77 TFLOPS / 3.24% at
 packed L=16. The measured result is between 3.2% and 30%, so the 30%
 efficiency target is not established. Applying the measured L=32 workload
 efficiency (15.6%, about 52 TFLOPS per card) to the roughly 100 TFLOPS 1D
-all-mode estimate gives about 2 cards. This is an extrapolation from the
-Newton-Schulz workload, not a full-system or all-mode benchmark.
+all-mode estimate gave about 2 cards in that historical Issue #63 N=8
+scenario. This is an extrapolation from the Newton-Schulz workload, not a
+full-system or all-mode benchmark; the current N=12 card estimate is recorded
+in `design.md` §10.
 
 The three Scope 5 conclusions are: (1) L=32 is 5.7x the same-run stock best
 but remains below the 30% target; (2) packed L=16 is 14.5x stock and faster in
