@@ -20,10 +20,10 @@ source evidence: its stored 78.78349 TFLOPS from p50 (about 78.8) is not changed
 The post-merge ADR-0005 record
 `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
 contains the new same-device comparison and complete provenance. New-default
-L=32/batch=8,192 reaches 78.603920 TFLOPS from p50 (79.002555 from the fastest
-launch); the previous FP32-state/block-4 default reaches 66.511516 TFLOPS from
-p50 (66.881745 fastest). L=16 reaches 16.019960 TFLOPS from p50 (16.214358
-fastest) for the new default and 14.005069 TFLOPS from p50 (14.089652 fastest)
+L=32/batch=8,192 reaches 78.049989 TFLOPS from p50 (78.973501 from the fastest
+launch); the previous FP32-state/block-4 default reaches 66.050846 TFLOPS from
+p50 (66.806841 fastest). L=16 reaches 15.815110 TFLOPS from p50 (16.154105
+fastest) for the new default and 13.821636 TFLOPS from p50 (14.059518 fastest)
 for the previous default. Each row retains 1,000 launch samples and p50/p99/p99.9.
 
 All eight named L=16/L=32 batch-4/8,192 and tail correctness cases passed the
@@ -75,9 +75,9 @@ env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \
 ```
 
 For acceptance criterion 3, the L=32/batch=8,192 new-default p50 is the measured
-per-card denominator: `78.603920 TFLOPS/card`. Applying the existing bounded
-workload range gives `100 / 78.603920` through `127.5 / 78.603920`, or
-**1.2722–1.6221 cards**; rounding up to physical cards yields **2 cards**.
+per-card denominator: `78.049989 TFLOPS/card`. Applying the existing bounded
+workload range gives `100 / 78.049989` through `127.5 / 78.049989`, or
+**1.2812–1.6336 cards**; rounding up to physical cards yields **2 cards**.
 This is still a planning extrapolation, not a full-system or all-mode benchmark.
 The PR98 source row and the previous default remain separate historical and
 comparison evidence; neither is overwritten or used as the new denominator.
@@ -103,8 +103,8 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > ADV-99-1 shows that the #90 aggregate 12/8 scaling is an upper bound, not an
 > inverse-only correction. The documented N=12 range for the current 1D all-mode
 > estimate remains 100–127.5 TFLOPS. Issue #100 now supplies the measured
-> L=32/batch=8,192 new-default p50 denominator of 78.603920 TFLOPS/card, which
-> maps that range to 1.2722–1.6221 cards (2 physical cards when rounded up).
+> L=32/batch=8,192 new-default p50 denominator of 78.049989 TFLOPS/card, which
+> maps that range to 1.2812–1.6336 cards (2 physical cards when rounded up).
 > The equation and missing mode-shape assumptions remain explicit below. This is
 > an extrapolation, not a full-system benchmark or an all-mode simultaneous benchmark.
 
@@ -323,7 +323,7 @@ The three Issue #63 conclusions are direct:
    workload efficiency to the roughly 100 TFLOPS eight-iteration 1D all-mode
    estimate gave about 2 cards in that historical N=8 scenario. Issue #100's
    current N=12 denominator is now the measured new-default L=32/batch=8,192
-   p50 of 78.603920 TFLOPS/card, mapping the bounded range to 1.2722–1.6221
+   p50 of 78.049989 TFLOPS/card, mapping the bounded range to 1.2812–1.6336
    cards (2 physical cards when rounded up); both counts are extrapolations,
    not full-system or all-mode benchmarks.
 2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32
@@ -505,7 +505,7 @@ row (`1,100 × 16^4 ≈ 7.2e7`; the upper bound is `1,650 × 16^4 ≈ 1.08e8`).
 An earlier revision carried 1.85e8, which did not reconcile with the law.
 These generic cards are still the separate 40% target basis; they are not the
 historical denominator context above. Issue #100's measured denominator is the
-new-default L=32/batch=8,192 p50 of 78.603920 TFLOPS/card and is used only in
+new-default L=32/batch=8,192 p50 of 78.049989 TFLOPS/card and is used only in
 the explicit Scope 5 calculation above.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) —
@@ -550,8 +550,8 @@ This is a bounded range, not an invented aggregate point.
 
 The Issue #100 denominator is the L=32/batch=8,192 new-default p50 from
 `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`:
-`p50_tflops_per_card = 78.603920 TFLOPS/card`. The existing bounded range therefore
-maps to `100 / 78.603920` through `127.5 / 78.603920`, or **1.2722–1.6221 cards**;
+`p50_tflops_per_card = 78.049989 TFLOPS/card`. The existing bounded range therefore
+maps to `100 / 78.049989` through `127.5 / 78.049989`, or **1.2812–1.6336 cards**;
 rounding up to a deployable whole-card count gives **2 cards**. The older PR93-derived
 denominator remains historical context only and is not reused for Issue #100.
 
