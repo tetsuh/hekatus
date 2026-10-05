@@ -140,7 +140,7 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
         raise ResidentPreflightError(
             "designated_timestamp_core must equal consumer_core; all intervals use one clock"
         )
-    if ring_pages * PAGE_BYTES + 2 * PAGE_BYTES > MAX_RING_L1_BYTES:
+    if ring_pages * PAGE_BYTES + 3 * PAGE_BYTES > MAX_RING_L1_BYTES:
         raise ResidentPreflightError(
             f"ring_pages={ring_pages} exceeds the L1 preflight budget "
             f"({MAX_RING_L1_BYTES} bytes including scratch pages)"

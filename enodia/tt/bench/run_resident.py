@@ -29,9 +29,6 @@ from enodia.tt.bench.resident_harness import (
 )
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
-_READY_SEMAPHORE = 0
-_FREE_SEMAPHORE = 1
-_ERROR_SEMAPHORE = 2
 
 
 def _core(value: str) -> tuple[int, int]:
@@ -55,8 +52,8 @@ def _allocate(ttnn: Any, shape, dtype, layout, device, memory_config):
     )
 
 
-def _sharded_ring_config(ttnn: Any, config: ResidentConfig):
-    shape = (1, config.ring_pages, PAGE_WORDS)
+def _sharded_pages_config(ttnn: Any, config: ResidentConfig, pages: int):
+    shape = (1, pages, PAGE_WORDS)
     return ttnn.create_sharded_memory_config(
         shape,
         _core_range(ttnn, config.consumer_core),
@@ -90,30 +87,35 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
     producer_ranges = _core_range(ttnn, config.producer_core)
     consumer_ranges = _core_range(ttnn, config.consumer_core)
     ring = tensors["ring"]
+    control = tensors["control"]
     producer_stats = tensors["producer_stats"]
     consumer_stats = tensors["consumer_stats"]
     timestamps = tensors["timestamps"]
 
+    ring_compile = ttnn.TensorAccessorArgs(ring).get_compile_time_args()
+    control_compile = ttnn.TensorAccessorArgs(control).get_compile_time_args()
     producer_stats_compile = ttnn.TensorAccessorArgs(producer_stats).get_compile_time_args()
     timestamp_compile = ttnn.TensorAccessorArgs(timestamps).get_compile_time_args()
     consumer_stats_compile = ttnn.TensorAccessorArgs(consumer_stats).get_compile_time_args()
 
-    producer_compile = producer_stats_compile
-    consumer_compile = [*timestamp_compile, *consumer_stats_compile]
+    producer_compile = [*ring_compile, *control_compile, *producer_stats_compile]
+    consumer_compile = [
+        *ring_compile,
+        *control_compile,
+        *timestamp_compile,
+        *consumer_stats_compile,
+    ]
     producer_args = _runtime_args(
         ttnn,
         config.producer_core,
         [
             ring.buffer_address(),
+            control.buffer_address(),
             producer_stats.buffer_address(),
-            config.consumer_core[0],
-            config.consumer_core[1],
-            _READY_SEMAPHORE,
-            _FREE_SEMAPHORE,
-            _ERROR_SEMAPHORE,
             config.frame_count,
             config.frame_interval_ticks,
             config.ring_pages,
+            config.cycle_budget,
         ],
     )
     consumer_args = _runtime_args(
@@ -121,13 +123,9 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
         config.consumer_core,
         [
             ring.buffer_address(),
+            control.buffer_address(),
             timestamps.buffer_address(),
             consumer_stats.buffer_address(),
-            config.producer_core[0],
-            config.producer_core[1],
-            _READY_SEMAPHORE,
-            _FREE_SEMAPHORE,
-            _ERROR_SEMAPHORE,
             config.frame_count,
             config.ring_pages,
             config.work_per_frame,
@@ -152,34 +150,9 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
             config=ttnn.ReaderConfigDescriptor(),
         ),
     ]
-    semaphores = [
-        ttnn.SemaphoreDescriptor(
-            _READY_SEMAPHORE, ttnn.CoreType.WORKER, consumer_ranges, 0
-        ),
-        ttnn.SemaphoreDescriptor(
-            _FREE_SEMAPHORE, ttnn.CoreType.WORKER, producer_ranges, 0
-        ),
-        ttnn.SemaphoreDescriptor(
-            _ERROR_SEMAPHORE,
-            ttnn.CoreType.WORKER,
-            ttnn.CoreRangeSet(
-                [
-                    ttnn.CoreRange(
-                        ttnn.CoreCoord(*config.producer_core),
-                        ttnn.CoreCoord(*config.producer_core),
-                    ),
-                    ttnn.CoreRange(
-                        ttnn.CoreCoord(*config.consumer_core),
-                        ttnn.CoreCoord(*config.consumer_core),
-                    ),
-                ]
-            ),
-            0,
-        ),
-    ]
     return ttnn.ProgramDescriptor(
         kernels=kernels,
-        semaphores=semaphores,
+        semaphores=[],
         cbs=[
             _cb(ttnn, index=0, core_ranges=producer_ranges),
             _cb(ttnn, index=1, core_ranges=consumer_ranges),
@@ -195,6 +168,7 @@ def _download(ttnn: Any, tensor):
 
 def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
     ring_shape = (1, config.ring_pages, PAGE_WORDS)
+    control_shape = (1, 1, PAGE_WORDS)
     timestamp_shape = (config.frame_count, 1, 1, PAGE_WORDS)
     stats_shape = (1, 1, 1, PAGE_WORDS)
     ring = _allocate(
@@ -203,7 +177,14 @@ def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
         ttnn.uint32,
         ttnn.ROW_MAJOR_LAYOUT,
         device,
-        _sharded_ring_config(ttnn, config),
+        _sharded_pages_config(ttnn, config, config.ring_pages),
+    )
+    control = ttnn.zeros(
+        ttnn.Shape(control_shape),
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        device=device,
+        memory_config=_sharded_pages_config(ttnn, config, 1),
     )
     timestamps = _allocate(
         ttnn,
@@ -231,6 +212,7 @@ def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
     )
     tensors = {
         "ring": ring,
+        "control": control,
         "timestamps": timestamps,
         "producer_stats": producer_stats,
         "consumer_stats": consumer_stats,

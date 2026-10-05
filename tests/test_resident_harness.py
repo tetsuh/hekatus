@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -145,6 +146,26 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["producer_full_count"] == 2
     assert parsed["ring"]["consumer_empty_count"] == 1
     assert parsed["environment"]["image"] == "sha256:example"
+
+
+def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
+    producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
+    consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
+
+    assert "noc_async_write_page" in producer
+    assert "noc_async_read_page" in producer
+    assert "get_noc_addr" not in producer
+    assert "noc_inline_dw_write" not in producer
+    assert "noc_semaphore" not in producer
+    assert "ready_word" in producer and "free_word" in producer
+    assert "cycle_budget" in producer
+    assert "get_timestamp() - wait_start >= cycle_budget" in producer
+
+    assert "ready_word" in consumer and "free_word" in consumer
+    assert "control_local[0] = 1" in consumer
+    assert "get_timestamp() - wait_start >= cycle_budget" in consumer
+    assert "noc_inline_dw_write" not in consumer
+    assert "noc_semaphore" not in consumer
 
 
 def test_record_rejects_missing_environment_provenance():
