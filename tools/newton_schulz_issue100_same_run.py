@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 from enodia.strict_json import dumps as strict_json_dumps
@@ -10,6 +9,8 @@ from enodia.tt.bench.run_matmul import run_custom_newton_schulz
 from enodia.tt.bench.shapes import default_catalogue
 
 ISSUE100_SHAPES = ("newton_schulz_L32_b8192", "newton_schulz_L16_b8192")
+ISSUE100_DEVICE_ID = 0
+ISSUE100_LAUNCHES = 1000
 ISSUE100_COMPARISON_CONFIGS = (
     {
         "name": "new_default",
@@ -99,19 +100,12 @@ def run_issue100_comparison(ttnn, device, *, repeats: int) -> list[dict]:
     return results
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device-id", type=int, default=0)
-    parser.add_argument("--repeats", type=int, default=1000)
-    args = parser.parse_args(argv)
-    if args.repeats < 1:
-        parser.error("--repeats must be at least 1")
-
+def main() -> int:
     import ttnn
 
-    device = ttnn.open_device(device_id=args.device_id)
+    device = ttnn.open_device(device_id=ISSUE100_DEVICE_ID)
     try:
-        results = run_issue100_comparison(ttnn, device, repeats=args.repeats)
+        results = run_issue100_comparison(ttnn, device, repeats=ISSUE100_LAUNCHES)
     finally:
         ttnn.close_device(device)
 
@@ -119,8 +113,8 @@ def main(argv: list[str] | None = None) -> int:
     payload = {
         "record_schema": "adr-0005-issue100-same-run-v1",
         "configuration_mode": "issue100-new-vs-previous-default-same-run",
-        "device_id": args.device_id,
-        "launches_per_row": args.repeats,
+        "device_id": ISSUE100_DEVICE_ID,
+        "launches_per_row": ISSUE100_LAUNCHES,
         "watcher": False,
         "runner": "tools/newton_schulz_issue100_same_run.py",
         "results": results,
