@@ -105,7 +105,7 @@
   "run_history": [
     {
       "kind": "first_new_kernel_watcher_run",
-      "harness_commit": "bebafe8",
+      "harness_commit": "bebafe8c8719d422c5d8e589be566ba5f4ea00fe",
       "frame_count": 100,
       "frame_interval_ticks": 1350000,
       "ring_pages": 4,
@@ -119,7 +119,7 @@
     },
     {
       "kind": "post_reset_one_frame_debug_run",
-      "harness_commit": "8f3c014",
+      "harness_commit": "8f3c014f3ed9c4c99e22d0eb0f23e1ea7fe26605",
       "frame_count": 1,
       "frame_interval_ticks": 100,
       "ring_pages": 2,
