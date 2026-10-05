@@ -42,8 +42,12 @@ run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.
 
 Every run remains frame-count terminated; the frame interval is a harness
-parameter, not an acquisition-rate claim. This is a procedure only: it does
-not authorize a future device run by itself.
+parameter, not an acquisition-rate claim. If the ring is full, the producer
+uses drop-new: the attempted frame is counted as overflow/dropped, never waits
+and never overwrites an occupied slot. Consumer-completion histograms exclude
+dropped attempts, so their N and interval samples must be interpreted beside
+the attempted/produced/consumed/dropped counts. This is a procedure only: it
+does not authorize a future device run by itself.
 
 ## Newton-Schulz reference correction
 

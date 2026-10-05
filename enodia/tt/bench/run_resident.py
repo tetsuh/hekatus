@@ -240,9 +240,11 @@ def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
             "timestamps": raw_timestamps,
             "producer_full_count": int(producer_values[0]),
             "consumer_empty_count": int(consumer_values[0]),
-            "cycle_budget_hit": bool(consumer_values[2]),
+            "cycle_budget_hit": bool(producer_values[2] or consumer_values[2]),
             "kernel_error_flag": int(bool(producer_values[2] or consumer_values[2])),
+            "frames_attempted": int(producer_values[3]),
             "frames_produced": int(producer_values[1]),
+            "frames_dropped": int(producer_values[4]),
             "frames_consumed": int(consumer_values[1]),
         }
     finally:
@@ -309,6 +311,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--work-per-frame", type=int, default=64)
     parser.add_argument("--timestamp-core", type=_core, default=None)
     parser.add_argument("--cycle-budget", type=int, default=10_000_000)
+    parser.add_argument("--fixed-work-ticks-per-frame", type=int, default=100_000)
     parser.add_argument("--outer-timeout-seconds", type=int, default=60)
     parser.add_argument("--histogram-bin-ticks", type=int, default=1)
     parser.add_argument("--device-id", type=int, default=0)
@@ -332,6 +335,7 @@ def main(argv: list[str] | None = None) -> int:
         designated_timestamp_core=timestamp_core,
         cycle_budget=args.cycle_budget,
         outer_timeout_seconds=args.outer_timeout_seconds,
+        fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
@@ -359,6 +363,9 @@ def main(argv: list[str] | None = None) -> int:
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],
         cycle_budget_hit=result["cycle_budget_hit"],
+        attempted_frame_count=result["frames_attempted"],
+        produced_frame_count=result["frames_produced"],
+        dropped_frame_count=result["frames_dropped"],
         kernel_error_flag=result["kernel_error_flag"],
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,
@@ -366,7 +373,9 @@ def main(argv: list[str] | None = None) -> int:
         watcher=args.watcher,
         timing_evidence=(
             not args.watcher
-            and result["frames_consumed"] == config.frame_count
+            and result["frames_attempted"] == config.frame_count
+            and result["frames_consumed"] == result["frames_produced"]
+            and result["frames_dropped"] == 0
             and not result["cycle_budget_hit"]
         ),
     )

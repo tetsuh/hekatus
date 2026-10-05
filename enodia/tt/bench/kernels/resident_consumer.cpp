@@ -9,6 +9,9 @@ constexpr std::uint32_t cb_timestamp = 1;
 constexpr std::uint32_t page_words = 32 * 32;
 constexpr std::uint32_t ready_word = page_words - 3;
 constexpr std::uint32_t free_word = page_words - 2;
+constexpr std::uint32_t control_error_word = 0;
+constexpr std::uint32_t control_done_word = 1;
+constexpr std::uint32_t control_produced_word = 3;
 }
 
 void kernel_main() {
@@ -40,37 +43,52 @@ void kernel_main() {
     std::uint32_t accumulator = 0;
     const std::uint64_t run_start = get_timestamp();
 
-    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
-        const std::uint32_t required = frame + 1;
+    while (true) {
+        if (control_local[control_error_word] != 0) {
+            error_flag = 1;
+            break;
+        }
+        const std::uint32_t required = frames_consumed + 1;
         auto* payload = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
-            ring_address + (frame % ring_pages) * page_words * sizeof(std::uint32_t));
+            ring_address + (frames_consumed % ring_pages) * page_words * sizeof(std::uint32_t));
         if (payload[ready_word] < required) {
             consumer_empty_count += 1;
         }
-        while (payload[ready_word] < required && control_local[0] == 0) {
+        while (payload[ready_word] < required && control_local[control_error_word] == 0) {
             invalidate_l1_cache();
+            if (control_local[control_done_word] != 0
+                && frames_consumed >= control_local[control_produced_word]) {
+                break;
+            }
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
-                control_local[0] = 1;
+                control_local[control_error_word] = 1;
                 break;
             }
         }
-        if (error_flag != 0 || control_local[0] != 0) {
+        if (control_local[control_error_word] != 0) {
             error_flag = 1;
             break;
+        }
+        if (payload[ready_word] < required) {
+            if (control_local[control_done_word] != 0
+                && frames_consumed >= control_local[control_produced_word]) {
+                break;
+            }
+            continue;
         }
 
         const std::uint64_t start = get_timestamp();
         for (std::uint32_t work = 0; work < work_per_frame; ++work) {
             const std::uint32_t word = work % ready_word;
-            accumulator = (accumulator * 33u) ^ payload[word] ^ (work + frame);
+            accumulator = (accumulator * 33u) ^ payload[word] ^ (work + frames_consumed);
         }
         const std::uint64_t end = get_timestamp();
         const std::uint64_t elapsed = end - start;
         if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)
             || end - run_start >= run_budget_ticks) {
             error_flag = 1;
-            control_local[0] = 1;
+            control_local[control_error_word] = 1;
         }
 
         cb_reserve_back(cb_timestamp, 1);
@@ -82,13 +100,22 @@ void kernel_main() {
         timestamp_page[3] = static_cast<std::uint32_t>(elapsed);
         cb_push_back(cb_timestamp, 1);
         cb_wait_front(cb_timestamp, 1);
-        noc_async_write_page(frame, timestamps, get_read_ptr(cb_timestamp));
+        noc_async_write_page(frames_consumed, timestamps, get_read_ptr(cb_timestamp));
         noc_async_write_barrier();
         cb_pop_front(cb_timestamp, 1);
 
-        frames_consumed = frame + 1;
-        payload[free_word] = frame + 1;
+        frames_consumed += 1;
+        payload[free_word] = frames_consumed;
         if (error_flag != 0) {
+            break;
+        }
+        if (control_local[control_done_word] != 0
+            && frames_consumed >= control_local[control_produced_word]) {
+            break;
+        }
+        if (frames_consumed >= frame_count) {
+            error_flag = 1;
+            control_local[control_error_word] = 1;
             break;
         }
     }

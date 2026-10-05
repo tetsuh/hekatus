@@ -45,6 +45,7 @@ class ResidentConfig:
     cycle_budget: int
     outer_timeout_seconds: int
     histogram_bin_ticks: int = 1
+    fixed_work_ticks_per_frame: int = 100_000
 
     def as_record(self) -> dict[str, Any]:
         values = asdict(self)
@@ -56,24 +57,29 @@ class ResidentConfig:
 class RingAccounting:
     """Reference model for one producer and one consumer ring.
 
-    ``reserve_producer`` models the producer's full-ring wait and ``publish``
-    models the pointer/semaphore update after the payload is visible.
+    ``reserve_producer`` is non-blocking: a full ring drops the new attempt
+    and increments the overflow count. ``publish`` models the pointer update
+    after the payload is visible.
     """
 
     def __init__(self, capacity: int) -> None:
         if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < MIN_RING_PAGES:
             raise ValueError(f"capacity must be an integer >= {MIN_RING_PAGES}")
         self.capacity = capacity
+        self.attempted = 0
         self.produced = 0
         self.consumed = 0
+        self.dropped = 0
         self._reserved = 0
         self.producer_full_count = 0
         self.consumer_empty_count = 0
 
     def reserve_producer(self) -> int | None:
-        """Reserve the next slot, or count and report a full-ring event."""
+        """Attempt one frame without waiting; full rings drop the new frame."""
+        self.attempted += 1
         if self.produced + self._reserved - self.consumed >= self.capacity:
             self.producer_full_count += 1
+            self.dropped += 1
             return None
         slot = (self.produced + self._reserved) % self.capacity
         self._reserved += 1
@@ -84,6 +90,10 @@ class RingAccounting:
             raise RuntimeError("publish without a producer reservation")
         self._reserved -= 1
         self.produced += 1
+
+    def drain_complete(self, producer_done: bool) -> bool:
+        """Return true only after producer termination and ring drain."""
+        return bool(producer_done and self.consumed == self.produced)
 
     def consume(self) -> int | None:
         """Consume the next published slot, or count an empty-ring event."""
@@ -125,6 +135,9 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
     ring_pages = _positive_int(config.ring_pages, "ring_pages")
     work = _positive_int(config.work_per_frame, "work_per_frame")
     budget = _positive_int(config.cycle_budget, "cycle_budget")
+    fixed_work_ticks = _positive_int(
+        config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
+    )
     timeout = _positive_int(config.outer_timeout_seconds, "outer_timeout_seconds")
     bin_width = _positive_int(config.histogram_bin_ticks, "histogram_bin_ticks")
     if ring_pages < MIN_RING_PAGES:
@@ -136,6 +149,10 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
     producer = _core(config.producer_core, "producer_core")
     consumer = _core(config.consumer_core, "consumer_core")
     designated = _core(config.designated_timestamp_core, "designated_timestamp_core")
+    if fixed_work_ticks * 2 > interval:
+        raise ResidentPreflightError(
+            "fixed_work_ticks_per_frame must be <= half the frame interval in device ticks"
+        )
     if producer == consumer:
         raise ResidentPreflightError("producer and consumer must run on different cores")
     if designated != consumer:
@@ -158,6 +175,7 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
         cycle_budget=budget,
         outer_timeout_seconds=timeout,
         histogram_bin_ticks=bin_width,
+        fixed_work_ticks_per_frame=fixed_work_ticks,
     )
 
 
@@ -218,13 +236,14 @@ def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
 
     The endpoint convention deliberately charges ``N`` frame intervals, not
     ``N-1``: this covers the configured pacing interval plus the terminal
-    frame's pacing/teardown boundary.  ``cycle_budget`` is the per-frame fixed
-    work limit; it is not itself the run-wide limit.  A fixed 10% margin is
+    frame's pacing/teardown boundary. ``fixed_work_ticks_per_frame`` is the
+    conservative work estimate; ``cycle_budget`` remains the per-frame safety
+    cap and is not itself the run-wide limit. A fixed 10% margin is
     explicit and bounded, rather than hidden in the device kernel.
     """
     config = validate_configuration(config)
     pacing_ticks = config.frame_count * config.frame_interval_ticks
-    fixed_work_ticks = config.frame_count * config.cycle_budget
+    fixed_work_ticks = config.frame_count * config.fixed_work_ticks_per_frame
     base_ticks = pacing_ticks + fixed_work_ticks
     margin_ticks = (base_ticks * RUN_BUDGET_SAFETY_MARGIN_PERCENT + 99) // 100
     run_budget_ticks = base_ticks + margin_ticks
@@ -234,7 +253,8 @@ def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
         "frame_count": config.frame_count,
         "frame_interval_ticks": config.frame_interval_ticks,
         "pacing_ticks": pacing_ticks,
-        "per_frame_work_budget_ticks": config.cycle_budget,
+        "per_frame_work_budget_ticks": config.fixed_work_ticks_per_frame,
+        "cycle_budget_ticks_per_frame": config.cycle_budget,
         "fixed_work_ticks": fixed_work_ticks,
         "safety_margin_percent": RUN_BUDGET_SAFETY_MARGIN_PERCENT,
         "safety_margin_ticks": margin_ticks,
@@ -388,6 +408,9 @@ def build_measurement_record(
     harness_commit: str,
     environment: Mapping[str, Any],
     power_trace: str,
+    attempted_frame_count: int | None = None,
+    produced_frame_count: int | None = None,
+    dropped_frame_count: int | None = None,
     watcher: bool = False,
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
@@ -406,30 +429,53 @@ def build_measurement_record(
         raise ValueError("kernel_error_flag must be a boolean or 0/1")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
+    attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
+    produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
+    dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
+    if (
+        any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (attempted, produced, dropped))
+        or produced < len(timestamp_values)
+        or produced > attempted
+        or dropped != attempted - produced
+    ):
+        raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))
     ]
-    frame_count_reached = len(timestamp_values) == config.frame_count
+    frame_count_reached = attempted == config.frame_count and produced == attempted - dropped
     reason = termination_reason(
-        frame_count_reached=frame_count_reached,
+        frame_count_reached=frame_count_reached and produced == len(timestamp_values),
         cycle_budget_hit=bool(cycle_budget_hit),
         outer_timeout=False,
     )
     if reason == "running":
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
-    completed = not cycle_budget_hit and not kernel_error_flag and frame_count_reached
+    completed = (
+        not cycle_budget_hit
+        and not kernel_error_flag
+        and frame_count_reached
+        and produced == len(timestamp_values)
+    )
+    status = "ok_with_drops" if completed and dropped else ("ok" if completed else "error")
+    stats["sample_definition"] = (
+        "Intervals between consumer completion timestamps; dropped producer attempts are excluded."
+    )
     return {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
         "stage": 1,
-        "status": "ok" if completed else "error",
+        "status": status,
         "termination_reason": reason,
         "parameters": {
             **config.as_record(),
             "run_budget": run_budget_breakdown(config),
             "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+            "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+            "attempted_frame_count": attempted,
+            "produced_frame_count": produced,
+            "dropped_frame_count": dropped,
             "frame_interval_is_not_acquisition_rate_claim": True,
             "frame_interval_note": (
                 "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
@@ -450,7 +496,13 @@ def build_measurement_record(
         "ring": {
             "producer_full_count": int(producer_full_count),
             "consumer_empty_count": int(consumer_empty_count),
-            "synchronization": "ring pointers and L1 semaphores only",
+            "attempted_frame_count": attempted,
+            "produced_frame_count": produced,
+            "consumed_frame_count": len(timestamp_values),
+            "dropped_frame_count": dropped,
+            "overflow_count": int(producer_full_count),
+            "synchronization": "ring pointers and control metadata only",
+            "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
         },
         "cycle_budget": {
             "budget_ticks": config.cycle_budget,
@@ -465,7 +517,7 @@ def build_measurement_record(
         "environment": dict(environment),
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(timing_evidence and completed),
+        "timing_evidence": bool(timing_evidence and completed and dropped == 0),
     }
 
 

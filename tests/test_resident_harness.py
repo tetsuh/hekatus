@@ -38,6 +38,7 @@ def _config(**overrides) -> ResidentConfig:
         "designated_timestamp_core": (1, 0),
         "cycle_budget": 10_000,
         "outer_timeout_seconds": 60,
+        "fixed_work_ticks_per_frame": 100,
     }
     values.update(overrides)
     return ResidentConfig(**values)
@@ -52,6 +53,9 @@ def test_ring_accounting_counts_full_and_empty_transitions():
     ring.publish()
     assert ring.reserve_producer() is None
     assert ring.producer_full_count == 1
+    assert ring.attempted == 3
+    assert ring.produced == 2
+    assert ring.dropped == 1
 
     assert ring.consume() == 0
     assert ring.consume() == 1
@@ -89,17 +93,19 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
         frame_count=2_001,
         frame_interval_ticks=1_350_000,
         cycle_budget=10_000_000,
+        fixed_work_ticks_per_frame=100_000,
     )
     breakdown = run_budget_breakdown(config)
     assert breakdown == {
         "frame_count": 2_001,
         "frame_interval_ticks": 1_350_000,
         "pacing_ticks": 2_701_350_000,
-        "per_frame_work_budget_ticks": 10_000_000,
-        "fixed_work_ticks": 20_010_000_000,
+        "per_frame_work_budget_ticks": 100_000,
+        "cycle_budget_ticks_per_frame": 10_000_000,
+        "fixed_work_ticks": 200_100_000,
         "safety_margin_percent": 10,
-        "safety_margin_ticks": 2_271_135_000,
-        "run_budget_ticks": 24_982_485_000,
+        "safety_margin_ticks": 290_145_000,
+        "run_budget_ticks": 3_191_595_000,
     }
     assert not run_budget_exceeded(
         elapsed_ticks=4 * config.frame_interval_ticks + 4 * config.cycle_budget,
@@ -107,7 +113,7 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     )
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=800) == 800_000
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=1_350) == 1_350_000
-    assert split_u64(breakdown["run_budget_ticks"]) == (3_507_648_520, 5)
+    assert split_u64(breakdown["run_budget_ticks"]) == (3_191_595_000, 0)
 
 
 def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
@@ -115,10 +121,11 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
         frame_count=2_001,
         frame_interval_ticks=800_000,
         cycle_budget=10_000_000,
+        fixed_work_ticks_per_frame=100_000,
     )
     breakdown = run_budget_breakdown(config)
     assert breakdown["pacing_ticks"] == 1_600_800_000
-    assert breakdown["run_budget_ticks"] == 23_771_880_000
+    assert breakdown["run_budget_ticks"] == 1_980_990_000
     assert run_budget_exceeded(
         elapsed_ticks=breakdown["run_budget_ticks"],
         run_budget_ticks=breakdown["run_budget_ticks"],
@@ -130,6 +137,36 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
     huge = _config(frame_count=2**63, frame_interval_ticks=2**63)
     with pytest.raises(ResidentPreflightError, match="64-bit"):
         run_budget_breakdown(huge)
+
+
+def test_ring_drop_policy_drains_without_producer_wait():
+    ring = RingAccounting(capacity=2)
+    assert ring.reserve_producer() == 0
+    ring.publish()
+    assert ring.reserve_producer() == 1
+    ring.publish()
+    assert ring.reserve_producer() is None
+    assert ring.drain_complete(producer_done=False) is False
+    assert ring.consume() == 0
+    assert ring.consume() == 1
+    assert ring.drain_complete(producer_done=True) is True
+
+
+def test_fixed_work_preflight_uses_half_interval_boundary():
+    assert validate_configuration(
+        _config(frame_interval_ticks=800_000, fixed_work_ticks_per_frame=400_000)
+    )
+    assert validate_configuration(
+        _config(frame_interval_ticks=1_350_000, fixed_work_ticks_per_frame=675_000)
+    )
+    with pytest.raises(ValueError, match="half the frame interval"):
+        validate_configuration(
+            _config(frame_interval_ticks=800_000, fixed_work_ticks_per_frame=400_001)
+        )
+    with pytest.raises(ValueError, match="half the frame interval"):
+        validate_configuration(
+            _config(frame_interval_ticks=1_350_000, fixed_work_ticks_per_frame=675_001)
+        )
 
 
 def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
@@ -198,6 +235,10 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["histogram"]["N"] == 2
     assert parsed["ring"]["producer_full_count"] == 2
     assert parsed["ring"]["consumer_empty_count"] == 1
+    assert parsed["ring"]["dropped_frame_count"] == 97
+    assert parsed["ring"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
+    assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
+    assert parsed["parameters"]["attempted_frame_count"] == 100
     assert parsed["environment"]["image"] == "sha256:example"
 
 
@@ -210,12 +251,14 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "get_noc_addr" not in producer
     assert "noc_inline_dw_write" not in producer
     assert "noc_semaphore" not in producer
+    assert "while (consumed_required" not in producer
+    assert "Drop-new policy" in producer
     assert "ready_word" in producer and "free_word" in producer
     assert "run_budget_ticks" in producer
     assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
     assert "ready_word" in consumer and "free_word" in consumer
-    assert "control_local[0] = 1" in consumer
+    assert "control_local[control_error_word] = 1" in consumer
     assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
     assert "per_frame_work_budget_ticks" in consumer
     assert "noc_inline_dw_write" not in consumer
