@@ -23,12 +23,12 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > `achieved_tflops` fastest-launch values, not p50; they land between the
 > historical 3.2% floor and the 30% planning target. The earlier 3.2% figure is
 > retained as historical evidence, with its non-reproduction explained below.
-> The corrected Scope 5 calculation decomposes the 1D all-mode estimate into
-> non-Newton-Schulz work and the Newton-Schulz share before applying 12/8; the
-> detailed equation below gives roughly 127.5 TFLOPS and about 2 cards from the
-> p50 denominator. This is an extrapolation using the measured Newton-Schulz
-> workload efficiency, not a full-system benchmark or an all-mode simultaneous
-> benchmark.
+> ADV-99-1 shows that the #90 aggregate 12/8 scaling is an upper bound, not an
+> inverse-only correction. The documented N=12 range for the 1D all-mode
+> estimate is therefore 100–150 TFLOPS, or about 2–3 cards using the PR93 p50
+> denominator; the equation and missing mode-shape assumptions are explicit
+> below. This is an extrapolation, not a full-system benchmark or an all-mode
+> simultaneous benchmark.
 
 ---
 
@@ -320,72 +320,159 @@ MV cost is dominated by the inverse, `L^3` (L = subaperture size). Growing
 the element count scales `L ∝ N` and the scanline count `∝ N`, so the
 **total goes as N^4**. 64 → 128 receive channels is a 16× increase.
 
----
+## ADV-99-1: inverse-only iteration correction
+
+### History of the #90 values
+
+The pre-#90 table at `f3503c9^1` contains the historical N=8 values. Commit
+`39e2d1a` (the feature commit merged by PR #90 as `f3503c9`) changed the
+inverse-containing aggregate rows as follows:
+
+| Aggregate row | N=8 before #90 | Value in `39e2d1a` / #90 | History reading |
+|---|---:|---:|---|
+| MV with Newton-Schulz inverse | 33 | 49.5 | full 12/8 multiplication |
+| 1D B-mode beamspace MV | 25 | 37.5 | full 12/8 multiplication |
+| 1D color flow wall filter + MV | 30 | 45 | full 12/8 multiplication |
+| 2D beamspace MV | 37 | 55.5 | full 12/8 multiplication |
+
+The fixed rows `~5` (DAS + phase-screen correction) and `~40` (SLSC / CF /
+DMAS) were unchanged. The same commit also multiplied the generic inverse
+configuration rows (`35→52.5`, `560→840`, `19→28.5`, `1,100→1,650`, and
+`37→55.5`). The commit contains no per-mode fixed/inverse decomposition.
+Therefore those #90 N=12 values are retained below only as **full-scaling
+upper bounds**, not as corrected totals. The current `shapes.py` history was
+updated to account for 12 iterations by `bb85c02`; that code change does not
+supply the missing mode-level decomposition.
+
+### Source-derived inverse equation
+
+Let `P` be the number of pixels in one frame, `L` the MV matrix dimension, `r`
+the frame rate, and `n` the Newton-Schulz iteration count. The source creates a
+square `MatmulShape(batch=P, m=L, k=L, n=L, real_matmuls=4)` for one complex
+matrix multiplication. `shapes.total_flops` therefore gives
+
+```text
+M(P, L) = P × 4 × (2 × L × L × L)
+I(n, P, L, r) = r × (2 complex matmuls/iteration) × n × M(P, L) / 10^12
+              = r × 2n × P × 4 × 2L^3 / 10^12 TFLOPS.
+```
+
+The `4` is `MatmulShape.real_matmuls` in `enodia/tt/bench/shapes.py`; the
+`2 × L × L × L` is `total_flops`' multiply-plus-add count. The two complex
+matmuls per iteration are stated by `newton_schulz_shapes` and implemented as
+`COMPLEX_MATMULS_PER_INVERSE = 2 × NEWTON_SCHULZ_ITERATIONS` in
+`enodia/tt/bench/newton_schulz_reference.py`. No R formation, beamspace
+projection, wall filter, or other iteration-independent work belongs in `I`.
+
+For a mode with N=8 total `T_8` and inverse component `I_8`, the corrected
+N=12 total is
+
+```text
+T_12 = (T_8 − I_8) + (12/8)I_8 = T_8 + 0.5I_8,
+U_12 = T_8 + 0.5T_8 = 1.5T_8.
+```
+
+`U_12` is the old full-row scaling and is an upper bound because `0 ≤ I_8 ≤
+T_8`; it is not a claim that fixed work scales. The equation is numerically
+checkable for documented shape points. For the exact catalogue shape
+`newton_schulz_L16_b65536` at `r=30`, `M=2,147,483,648` FLOPs and
+`I(8,65536,16,30)=1.03079215104` TFLOPS,
+`I(12,65536,16,30)=1.54618822656` TFLOPS. If the 13 MHz geometry note is used,
+`P=434×2048=888,832` and `L=16` instead give
+`I(8,888832,16,30)=13.98011854848` and
+`I(12,888832,16,30)=20.97017782272` TFLOPS. These are shape calculations,
+not measurements and are not substituted into an aggregate mode unless its
+`P` and `L` are explicitly bound to that shape.
+
+The target table binds B-mode to beamspace dimension `B=16`, but it does not
+bind one exact pixel count to that mode. It does not state `P` or `L` for the
+color-flow MV after the 64-channel wall filter, and it does not state the 2D
+volume pixel count. The 64 wall-filter channels do not define the MV matrix
+size. Those missing bindings prevent a trustworthy single corrected point for
+every MV row; no value is invented below.
+
+### Tables: N=8 baseline and N=12 upper bound
+
+The method and configuration tables retain their N=8 source values and show
+#90's N=12 full-scaling result explicitly as an upper bound. A mode-specific
+corrected value is `T_8 + 0.5I_8` from the equation above.
 
 ## By method (64 receive channels, 30 fps) — budget estimates, basis:
 theoretical peak
 
-| Method | TFLOPS | % of theoretical peak |
-|---|---|---|
-| DAS | 0.004 | ~0% |
-| CF / PCF / F-DMAS | 0.015 | ~0% |
-| SLSC | 1 | 0.3% |
-| MV: R formation only (sliding update) | 2 | 0.6% |
-| MV: with Newton-Schulz inverse | 49.5 | ~15% |
-| ESBMV (eigendecomposition) | 100–170 | 30–50% |
+| Method | N=8 baseline TFLOPS | N=12 upper-bound TFLOPS |
+|---|---:|---:|
+| DAS | 0.004 | 0.004 |
+| CF / PCF / F-DMAS | 0.015 | 0.015 |
+| SLSC | 1 | 1 |
+| MV: R formation only (sliding update) | 2 | 2 |
+| MV: with Newton-Schulz inverse | 33 | 49.5 |
+| ESBMV (eigendecomposition) | 100–170 | 100–170 |
 
 ## By configuration — budget estimates, basis: usable per card (133 TFLOPS)
 
-| Configuration | Recv ch | L | TFLOPS | Cards |
-|---|---|---|---|---|
-| 128 elements / 64 ch receive | 64 | 32 | 52.5 | 1 (40% used) |
-| 256 elements / 128 ch receive | 128 | 64 | 840 | 7 (6.3 rounded up) |
-| 256 elements + beamspace (B=16) | 128 | 16 | 28.5 | 1 (21% used) |
-| post-μBF 256 ch, volume | 256 | 128 | 1,650 | 13 (12.4 rounded up) |
-| post-μBF 256 ch + beamspace | 256 | 16 | 55.5 | 1 (42% used) |
-| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~1.08e8 | impossible |
+| Configuration | Recv ch | L | N=8 baseline TFLOPS | N=12 upper-bound TFLOPS |
+|---|---:|---:|---:|---:|
+| 128 elements / 64 ch receive | 64 | 32 | 35 | 52.5 |
+| 256 elements / 128 ch receive | 128 | 64 | 560 | 840 |
+| 256 elements + beamspace (B=16) | 128 | 16 | 19 | 28.5 |
+| post-μBF 256 ch, volume | 256 | 128 | 1,100 | 1,650 |
+| post-μBF 256 ch + beamspace | 256 | 16 | 37 | 55.5 |
+| 2D fully digital 4096 ch full MV | 4096 | 2048 | ~7.2e7 | ~1.08e8 |
 
-The last row follows the N⁴ law from the 256-channel volume row
-(1,650 × 16⁴ ≈ 1.08e8). An earlier revision carried 1.85e8 here, which did
-not reconcile with the law stated above; the conclusion is unchanged.
+The last upper-bound row follows the N⁴ law from the N=8 256-channel volume
+row (`1,100 × 16^4 ≈ 7.2e7`; the upper bound is `1,650 × 16^4 ≈ 1.08e8`).
+An earlier revision carried 1.85e8, which did not reconcile with the law.
+These generic cards are still the separate 40% target basis; they are not the
+PR93 denominator calculation below.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) —
 budget target, basis: theoretical peak
 
-| Mode | Beamformer | TFLOPS | % of theoretical peak |
-|---|---|---|---|
-| 1D B-mode | DAS + phase-screen correction | ~5 | 2% |
-| 1D B-mode | + SLSC / CF / DMAS | ~40 | 12% |
-| 1D B-mode | + beamspace MV | ~37.5 | 11% |
-| 1D color flow | per-channel wall filter + MV | ~45 | 14% |
-| 2D volume | beamspace MV | ~55.5 | 17% |
+| Mode | Beamformer | N=8 baseline TFLOPS | N=12 corrected expression / range |
+|---|---|---:|---|
+| 1D B-mode | DAS + phase-screen correction | ~5 | ~5 (no inverse) |
+| 1D B-mode | + SLSC / CF / DMAS | ~40 | ~40 (no inverse) |
+| 1D B-mode | + beamspace MV | ~25 | `25 + 0.5I_B,8`, bounded by 25–37.5 |
+| 1D color flow | per-channel wall filter + MV | ~30 | `30 + 0.5I_C,8`, bounded by 30–45 |
+| 2D volume | beamspace MV | ~37 | `37 + 0.5I_2D,8`, bounded by 37–55.5 |
 
-**Scope 5 planning estimate (recalculated):** the target-configuration table
-provides the arithmetic. The non-Newton-Schulz share is `~5 + ~40 = ~45`
-TFLOPS from **1D B-mode / DAS + phase-screen correction** and **1D B-mode / +
-SLSC / CF / DMAS**. The Newton-Schulz share is `~37.5 + ~45 = ~82.5` TFLOPS
-from **1D B-mode / + beamspace MV** and **1D color flow / per-channel wall
-filter + MV**. The historical eight-iteration all-mode claim therefore
-recomputes as `45 + 55 = 100 TFLOPS`. The current twelve-iteration estimate is
-`45 + 82.5 = 127.5 TFLOPS` (about 130), not 150. Equivalently, the eight-
-iteration Newton-Schulz share is `82.5 × 8/12 = 55` TFLOPS and applying 12/8
-to that share gives `55 × 12/8 = 82.5`; the non-Newton-Schulz 45 TFLOPS is
-not multiplied. These values are from this table and design.md §10's matching
-target-configuration table; they are a budget calculation, not a new
-measurement.
+Here `I_B,8`, `I_C,8`, and `I_2D,8` are the source-derived inverse terms;
+R formation, projection, wall filtering, and all other fixed work remain in
+the N=8 baseline. The old #90 entries 37.5, 45, and 55.5 are the right-hand
+endpoints only.
 
-For the one-card denominator, use only the main-branch PR93 double-buffer
-record `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
-`performance.rows[3]` is `L=32`, `batch=8192`, `matrix_block=4`,
-`state_format=FP32`, `double_buffer=true`; the record's
-`performance.flops_per_launch.L32=51,539,607,552` and row
-`seconds_per_launch_p50=0.0007743085000129213`. Recompute rather than use the
-stored fastest-launch `achieved_tflops=67.06450362829192`:
-`51,539,607,552 / 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS`
-per card, or 20.0488% of the 332 TFLOPS peak. Therefore
-`127.5 / 66.5621100003 = 1.9155`, so plan for about 2 cards. This is an
-extrapolation from one kernel row, not a system-wide or all-mode benchmark.
-The PR93 record is the denominator source; PR95 and PR98 values are not used.
+### Scope 5 total and cards
+
+The historical N=8 1D all-mode total is
+`T_8 = 5 + 40 + 25 + 30 = 100 TFLOPS`. The inverse-only correction is
+
+```text
+T_12,1D = 45 + (25 + 30) + 0.5(I_B,8 + I_C,8)
+         = 100 + 0.5(I_B,8 + I_C,8) TFLOPS.
+```
+
+The documented aggregate rows do not provide `P_C`, `L_C`, or the fixed/inverse
+split needed to evaluate `I_C,8`; therefore the defensible corrected range is
+`100 ≤ T_12,1D ≤ 150 TFLOPS`. The former `150 TFLOPS` statement is the upper
+bound `U_12 = 1.5 × 100`, not the corrected point. The geometric B-mode shape
+calculation above can be used once the color-flow bindings are supplied; it
+cannot close the aggregate calculation by itself. Thus the document does not
+claim a fabricated point such as 127.5 TFLOPS.
+
+For the card denominator, use only the main-branch PR93 double-buffer record
+`docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
+`performance.rows[3]` is `L=32`, `batch=8192`, `double_buffer=true`; the
+record's `performance.flops_per_launch.L32=51,539,607,552` and
+`seconds_per_launch_p50=0.0007743085000129213` give
+`51,539,607,552 / 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS/card`.
+The stored `achieved_tflops=67.06450362829192` is fastest-launch and is not
+used; PR95 and PR98 values are not used. The range gives
+`100 / 66.5621100003 = 1.5024` to
+`150 / 66.5621100003 = 2.2535` cards: **about 2–3 cards as an integer
+range**, with **about 3 cards required by the conservative upper bound**.
+This remains an extrapolation from one kernel row, not a system-wide or
+all-mode benchmark.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
 2026-10-04 record
