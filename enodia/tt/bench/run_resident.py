@@ -8,6 +8,7 @@ both kernels once, synchronizes, and only then downloads timestamps.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from pathlib import Path
@@ -272,6 +273,30 @@ def _latest_output(prefix: str) -> Path:
     return candidates[-1]
 
 
+def _power_aiclk(power_trace: str, environment: dict[str, Any]) -> int:
+    path = Path("/out") / power_trace
+    values: list[int] = []
+    try:
+        with path.open(newline="") as handle:
+            for row in csv.DictReader(handle):
+                try:
+                    values.append(int(float(row["aiclk_mhz"])))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    except OSError:
+        pass
+    if values:
+        return max(values)
+    fallback = environment.get("aiclk_mhz")
+    try:
+        value = int(float(fallback))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("the power trace did not contain an AICLK sample") from exc
+    if value <= 0:
+        raise ValueError("AICLK must be positive")
+    return value
+
+
 def _environment(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text())
@@ -336,14 +361,13 @@ def main(argv: list[str] | None = None) -> int:
 
     device = ttnn.open_device(device_id=args.device_id)
     try:
-        device_aiclk_mhz = int(device.get_clock_rate_mhz())
         result = _run_device(ttnn, device, config)
     finally:
         ttnn.close_device(device)
 
     record = build_measurement_record(
         config=config,
-        aiclk_mhz=device_aiclk_mhz,
+        aiclk_mhz=_power_aiclk(power_trace, environment),
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],
