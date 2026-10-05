@@ -109,7 +109,6 @@ def run_issue100_comparison(ttnn, device, *, repeats: int) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--repeats", type=int, default=1000)
     args = parser.parse_args(argv)
@@ -124,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         ttnn.close_device(device)
 
+    output_path = Path("/out/issue100-same-run.json")
     payload = {
         "record_schema": "adr-0005-issue100-same-run-v1",
         "configuration_mode": "issue100-new-vs-previous-default-same-run",
@@ -134,8 +134,8 @@ def main(argv: list[str] | None = None) -> int:
         "environment": _environment_from_wrapper_output(),
         "results": results,
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
     return 0 if all(row.get("status") == "ok" for row in results) else 1
 
 

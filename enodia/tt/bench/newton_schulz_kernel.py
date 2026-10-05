@@ -554,8 +554,8 @@ def _state_dtype(ttnn, variant: str):
     return ttnn.float32 if variant == "bf16-fp32state" else ttnn.bfloat16
 
 
-def _output_memory_name(variant: str) -> str:
-    """Return the default output placement for either supported state variant."""
+def _output_memory_name() -> str:
+    """Return the default output placement for the public API."""
     return DEFAULT_OUTPUT_MEMORY
 
 
@@ -1067,7 +1067,7 @@ class NewtonSchulzKernel:
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
         if output_memory is None:
-            output_memory = _output_memory_name(variant)
+            output_memory = _output_memory_name()
         else:
             _validate_memory(output_memory, name="output_memory")
         _validate_matrix_block(
