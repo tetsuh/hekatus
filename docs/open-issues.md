@@ -231,12 +231,17 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
   reports new-default L=32/batch=8,192 p50 78.049989 TFLOPS versus previous
   default p50 66.050846 TFLOPS, with L=16 p50 values 15.815110 and 13.821636.
-  All eight named correctness cases passed the 0.01 gate.
+  The immutable correctness-only rerun
+  `docs/measurements/2026-10-05-p150a-newton-schulz-issue101-default-correctness.json`
+  re-executed all nine named correctness cases under harness
+  `4466e3bb141632cb463ac2516ae5bf47252d248a`; all passed the 0.01 gate, including
+  L=32/batch=8,192 at relative error 0.004347643. The explicit FP32-state/block-4
+  L=32/batch=8,192 test is not used as new-default evidence.
 - The reproducible device commands were:
 
   ```bash
-  TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
-    enodia/tt/bench/run_in_container.sh --pytest -m tt_device \
+  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+    enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device \
     tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
 
   env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \

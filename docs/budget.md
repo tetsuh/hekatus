@@ -26,12 +26,17 @@ p50 (66.806841 fastest). L=16 reaches 15.815110 TFLOPS from p50 (16.154105
 fastest) for the new default and 13.821636 TFLOPS from p50 (14.059518 fastest)
 for the previous default. Each row retains 1,000 launch samples and p50/p99/p99.9.
 
-All eight named L=16/L=32 batch-4/8,192 and tail correctness cases passed the
-0.01 gate against the BF16-rounded-R reference; the maximum recorded relative
-error was 0.004587267. The record identifies the p150a board, firmware 19.6.0.0,
-KMD 2.11.0, release 0.75.0, image digest, harness commit, device 0, and its
-companion power trace. No reset or health recovery was required; named-container
-cleanup was clear before and after each session.
+The immutable correctness-only rerun
+`docs/measurements/2026-10-05-p150a-newton-schulz-issue101-default-correctness.json`
+re-executed all nine named L=16/L=32 batch-4/8,192 and tail cases under harness
+`4466e3bb141632cb463ac2516ae5bf47252d248a`; every case passed the 0.01 gate
+against the BF16-rounded-R reference. The maximum recorded relative error was
+0.004587267 (the new L=32/batch=8,192 case was 0.004347643). The record identifies
+the p150a board, firmware 19.6.0.0, KMD 2.11.0, release 0.75.0, image digest,
+harness commit, device 0, and its companion power trace. No reset or health
+recovery was required; named-container cleanup was clear before and after each
+session. The old explicit FP32-state/block-4 L=32/batch=8,192 test is not used as
+new-default evidence.
 
 The policy at both DEST and L1 boundaries is **fail-fast**. `prepare` validates
 DEST usage and then L1 usage before tensor allocation; `run_newton_schulz_kernel`
@@ -63,8 +68,8 @@ The reproducible device procedure was:
 
 ```bash
 # Correctness for the default batch and tail cases.
-TT_METAL_WATCHER=1 HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
-  enodia/tt/bench/run_in_container.sh --pytest -m tt_device \
+HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device \
   tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
 
 # Same-device 1,000-launch comparison of both defaults and both shapes.
