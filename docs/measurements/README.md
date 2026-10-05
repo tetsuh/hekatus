@@ -72,6 +72,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 
 | File | What it is |
 |---|---|
+| `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
+| `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
 | `2026-08-14-p150a-effective-efficiency-power.csv` | Board power, clock, and temperature sampled through that run |
 | `2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json` | Issue #65 full stock matmul catalogue sweep: 284 rows (190 successful, 94 failed), image digest `sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621` in its environment block. The four failed `batched_dram_sharded` rows for the batch-1024 L16/L32 shapes are superseded by the 2026-09-21 record below, and the two unbatched `dram_sharded` rows for beamspace B=16, 256 channels, 4096 pixels are superseded by the 2026-09-23 record; the other 278 rows remain authoritative. |

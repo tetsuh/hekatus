@@ -21,6 +21,7 @@ closing it; the record in `design.md` is what persists.
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
+| B7 | Issue #12 resident producer/consumer ring liveness on pinned v0.75.0 | Track B | blocked after Watcher run and one-frame debug run exited 137; see `docs/measurements/2026-10-05-p150a-issue12-stage1-resident-blocked.json` |
 
 The Ethernet items above were blocked on a board without ports; that is no
 longer the constraint. Two target boards are cabled together, but no link

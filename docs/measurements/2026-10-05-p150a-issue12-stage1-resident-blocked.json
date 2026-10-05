@@ -1,0 +1,158 @@
+{
+  "schema": "issue-12-stage-1-resident-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "blocked",
+  "rejection_reason": "The Watcher first run and the post-fix one-frame debug run both exited 137 after the resident kernels remained live until the external cap. No device output was downloaded and no timing evidence is claimed.",
+  "environment": {
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "cm_fw": "0.28.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "kmd_version": "2.11.0",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "8f3c014f3ed9c4c99e22d0eb0f23e1ea7fe26605",
+    "harness_dirty": false,
+    "aiclk_mhz_observed": [800, 1350]
+  },
+  "parameters": {
+    "frame_count": 1,
+    "frame_interval_ticks": 100,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate.",
+    "producer_core": [0, 0],
+    "consumer_core": [1, 0],
+    "ring_pages": 2,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [1, 0],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 5,
+    "histogram_bin_ticks": 1,
+    "device_id": 0,
+    "watcher": true,
+    "timing_evidence": false
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK",
+    "timestamp_api": "get_timestamp()",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "designated_core": [1, 0],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "clock_source_evidence": {
+    "toolchain": "tt-metal v0.75.0",
+    "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "bundled_tt_llk_revision": "same tt-metal tree revision d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-255",
+    "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+    "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+    "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+    "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+    "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+    "cross_core_note": "Intervals use only the designated consumer core; cross-core correlation is out of scope."
+  },
+  "histogram": {
+    "N": 0,
+    "min_ticks": null,
+    "max_ticks": null,
+    "percentiles": {
+      "p50": {"status": "insufficient", "minimum_samples": 40},
+      "p99": {"status": "insufficient", "minimum_samples": 2000},
+      "p99_9": {"status": "insufficient", "minimum_samples": 20000},
+      "p99_99": {"status": "insufficient", "minimum_samples": 200000}
+    },
+    "histogram": {"bin_width_ticks": 1, "bins": []}
+  },
+  "ring": {
+    "producer_full_count": null,
+    "consumer_empty_count": null,
+    "synchronization": "ring pointers and L1 semaphores only",
+    "counts_status": "unavailable because no device output was downloaded"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "exceeded": null,
+    "error_flag": null,
+    "status": "not_observed because no device output was downloaded"
+  },
+  "raw_timestamps": {
+    "count": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "power_trace": "2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv",
+  "power_trace_provenance": {
+    "trace": "2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv",
+    "sha256": "a189d2b2f82e10e25d1bcd347273b01d45a23e72e88540f4912daf7c018071ca",
+    "sample_count": 7,
+    "columns": ["timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c"],
+    "sampling_source": "tt-smi snapshot",
+    "observed_aiclk_mhz": [800, 1350]
+  },
+  "run_history": [
+    {
+      "kind": "first_new_kernel_watcher_run",
+      "harness_commit": "bebafe8",
+      "frame_count": 100,
+      "frame_interval_ticks": 1350000,
+      "ring_pages": 4,
+      "work_per_frame": 64,
+      "outer_timeout_seconds": 60,
+      "watcher": true,
+      "timing_evidence": false,
+      "wrapper_exit_status": 137,
+      "power_trace_sample_count": 29,
+      "power_trace_sha256": "5796229230642816fe01306ef15c6fbfd5dcf10aaa26fb0eb92c2d07f9a135bb"
+    },
+    {
+      "kind": "post_reset_one_frame_debug_run",
+      "harness_commit": "8f3c014",
+      "frame_count": 1,
+      "frame_interval_ticks": 100,
+      "ring_pages": 2,
+      "work_per_frame": 64,
+      "outer_timeout_seconds": 5,
+      "watcher": true,
+      "timing_evidence": false,
+      "wrapper_exit_status": 137,
+      "power_trace_sample_count": 7,
+      "power_trace_sha256": "a189d2b2f82e10e25d1bcd347273b01d45a23e72e88540f4912daf7c018071ca"
+    }
+  ],
+  "recovery": {
+    "reset_performed": true,
+    "reset_command": "tt-smi -r /dev/tenstorrent/0",
+    "reset_status": 0,
+    "reset_count": 1,
+    "stage1_health_probe": "pass",
+    "stage1_health_probe_name": "real_one_tile",
+    "stage1_health_probe_relative_error": 0.004564372822642326,
+    "stage1_health_probe_tolerance": 0.01,
+    "stage1_health_probe_watcher": true,
+    "stage1_health_probe_timeout_seconds": 60,
+    "containers_zero_before_and_after": true,
+    "additional_reset_performed": false
+  },
+  "device_execution": {
+    "device_id": 0,
+    "first_run_watcher": true,
+    "timing_runs_attempted": false,
+    "timing_evidence": false,
+    "host_streaming_during_run": false,
+    "result": "blocked_on_resident_kernel_liveness",
+    "root_cause": "not established; the record does not claim a payload, semaphore, or clock defect"
+  }
+}
