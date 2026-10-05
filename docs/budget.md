@@ -24,11 +24,11 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > historical 3.2% floor and the 30% planning target. The earlier 3.2% figure is
 > retained as historical evidence, with its non-reproduction explained below.
 > ADV-99-1 shows that the #90 aggregate 12/8 scaling is an upper bound, not an
-> inverse-only correction. The documented N=12 range for the 1D all-mode
-> estimate is therefore 100–150 TFLOPS, or about 2–3 cards using the PR93 p50
-> denominator; the equation and missing mode-shape assumptions are explicit
-> below. This is an extrapolation, not a full-system benchmark or an all-mode
-> simultaneous benchmark.
+> inverse-only correction. The documented N=12 range for the current 1D all-mode
+> estimate is therefore 100–127.5 TFLOPS, or about 2 cards even at the upper
+> bound using the PR93 p50 denominator; the equation and missing mode-shape
+> assumptions are explicit below. This is an extrapolation, not a full-system
+> benchmark or an all-mode simultaneous benchmark.
 
 ---
 
@@ -243,9 +243,9 @@ The three Issue #63 conclusions are direct:
 1. The historical L=32 `achieved_tflops` headline is 15.6% of peak at
    fastest launch, below the 30% efficiency target. Applying that historical
    workload efficiency to the roughly 100 TFLOPS eight-iteration 1D all-mode
-   estimate gave about 2 cards; the corrected current estimate below uses the
-   N=12 p50 denominator instead. Both are extrapolations, not full-system or
-   all-mode benchmarks.
+   estimate gave about 2 cards in that historical N=8 scenario; the corrected
+   current N=12 estimate below uses the p50 denominator instead. Both are
+   extrapolations, not full-system or all-mode benchmarks.
 2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32
    only as a cost/operation-volume comparison for the diagonal fallback,
    because it uses fewer logical dimensions and less work. It is not a
@@ -453,12 +453,18 @@ T_12,1D = 45 + (25 + 30) + 0.5(I_B,8 + I_C,8)
 ```
 
 The documented aggregate rows do not provide `P_C`, `L_C`, or the fixed/inverse
-split needed to evaluate `I_C,8`; therefore the defensible corrected range is
-`100 ≤ T_12,1D ≤ 150 TFLOPS`. The former `150 TFLOPS` statement is the upper
-bound `U_12 = 1.5 × 100`, not the corrected point. The geometric B-mode shape
-calculation above can be used once the color-flow bindings are supplied; it
-cannot close the aggregate calculation by itself. Thus the document does not
-claim a fabricated point such as 127.5 TFLOPS.
+split needed to evaluate `I_C,8`. However, the mode rows bound the inverse terms:
+`0 ≤ I_B,8 ≤ 25` and `0 ≤ I_C,8 ≤ 30`. The fixed 45 TFLOPS is not scaled by
+12/8, so
+
+```text
+T_12,1D = 100 + 0.5 × (I_B,8 + I_C,8) TFLOPS
+100 ≤ T_12,1D ≤ 100 + 0.5 × (25 + 30) = 127.5 TFLOPS.
+```
+
+The geometric B-mode shape calculation above can be used once the color-flow
+bindings are supplied; it cannot close the aggregate calculation by itself.
+This is a bounded range, not an invented aggregate point.
 
 For the card denominator, use only the main-branch PR93 double-buffer record
 `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
@@ -469,10 +475,9 @@ record's `performance.flops_per_launch.L32=51,539,607,552` and
 The stored `achieved_tflops=67.06450362829192` is fastest-launch and is not
 used; PR95 and PR98 values are not used. The range gives
 `100 / 66.5621100003 = 1.5024` to
-`150 / 66.5621100003 = 2.2535` cards: **about 2–3 cards as an integer
-range**, with **about 3 cards required by the conservative upper bound**.
-This remains an extrapolation from one kernel row, not a system-wide or
-all-mode benchmark.
+`127.5 / 66.5621100003 = 1.9155` cards: **about 2 cards even at the upper
+bound**. This remains an extrapolation from one kernel row, not a system-wide
+or all-mode benchmark.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
 2026-10-04 record

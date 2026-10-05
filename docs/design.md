@@ -1327,11 +1327,17 @@ T_12,1D = 45 + (25 + 30) + 0.5(I_B,8 + I_C,8)
          = 100 + 0.5(I_B,8 + I_C,8) TFLOPS.
 ```
 
-Because `P_C`, `L_C`, and the fixed/inverse split are not specified, the
-source-supported range is `100–150 TFLOPS`: the lower end leaves the unknown
-inverse terms at zero, while the upper end is the old full-row bound
-`1.5×100=150`. This is a corrected range, not the fabricated point `127.5`;
-exact mode bindings can narrow it later.
+The mode rows bound the inverse terms: `0 ≤ I_B,8 ≤ 25` and
+`0 ≤ I_C,8 ≤ 30`. The fixed 45 TFLOPS is not scaled by 12/8, so
+
+```text
+T_12,1D = 100 + 0.5 × (I_B,8 + I_C,8) TFLOPS
+100 ≤ T_12,1D ≤ 100 + 0.5 × (25 + 30) = 127.5 TFLOPS.
+```
+
+Because `P_C`, `L_C`, and the fixed/inverse split are not specified, this is a
+bounded range rather than a fabricated aggregate point; exact mode bindings
+can narrow it later.
 
 For the one-card denominator, use only the main-branch PR93 double-buffer
 record `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
@@ -1341,10 +1347,9 @@ record's `performance.flops_per_launch.L32=51,539,607,552` and
 `51,539,607,552 / 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS/card`.
 The stored `achieved_tflops=67.06450362829192` is fastest-launch, not p50, and
 is excluded; PR95 and PR98 values are not used. The range gives
-`100/66.5621100003=1.5024` to `150/66.5621100003=2.2535` cards: **about 2–3
-cards as an integer range**, with **about 3 cards for the conservative upper
-bound**. This remains an extrapolation from one kernel row, not a system-wide
-or all-mode benchmark.
+`100/66.5621100003=1.5024` to `127.5/66.5621100003=1.9155` cards: **about 2
+cards even at the upper bound**. This remains an extrapolation from one kernel
+row, not a system-wide or all-mode benchmark.
 
 The four-card story: 2D volume with plain MV (beamspace approximation
 removed), or 3D volume-rate/resolution upgrades.
@@ -1362,11 +1367,10 @@ Beamspace MV remains the tractable planning path. The Issue #63 anchors do not
 validate the earlier plain MV (L=64) capacity assumption: the historical L=32
 `achieved_tflops` row is 15.6% at fastest launch, not p50, and packed L=16 is
 3.24% at fastest launch, not p50; both are below the 30% efficiency target. The
-corrected current 1D all-mode workload is a documented 100–150 TFLOPS range,
-which maps to about 2–3 cards by the PR93 L=32 p50 denominator; the upper end
-is the old full-scaling bound, not a settled point. This is an extrapolation
-from that Newton-Schulz workload rather than a full-system or all-mode
-benchmark.
+corrected current N=12 1D all-mode workload is a documented 100–127.5 TFLOPS
+range, which maps to about 2 cards even at the upper bound by the PR93 L=32
+p50 denominator. This is an extrapolation from that Newton-Schulz workload
+rather than a full-system or all-mode benchmark.
 
 **Table assumptions**: unless stated, 30 fps, 2048 depth points.
 **Two capacity bases appear**: "% of theoretical peak" percentages are
@@ -1413,14 +1417,14 @@ and `docs/measurements/2026-09-20-p150a-stock-matmul-default-ttnn-0.70.1.json`;
 the companion power traces use the matching result stems with a `-power.csv`
 suffix. The generic card counts in this table retain the 40% target basis; they
 are separate from the Scope 5 estimate. Scope 5's inverse-only correction is
-`T_12=100+0.5(I_B,8+I_C,8)`, with a source-supported 100–150 TFLOPS range
-because color-flow `P_C`, `L_C`, and the fixed/inverse split are unspecified.
-The PR93 L=32 p50 calculation gives `51,539,607,552 /
+`T_12=100+0.5(I_B,8+I_C,8)`, with `0 ≤ I_B,8 ≤ 25` and `0 ≤ I_C,8 ≤ 30`.
+The fixed 45 TFLOPS is not scaled by 12/8, so the source-supported range is
+`100–127.5 TFLOPS`. The PR93 L=32 p50 calculation gives `51,539,607,552 /
 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS` per card, so the range
-is `100/66.5621100003=1.5024` to `150/66.5621100003=2.2535`: about 2–3
-integer cards, with about 3 at the conservative upper bound. This is an
-extrapolation using one measured Newton-Schulz workload row, not a full-system
-benchmark or an all-mode simultaneous benchmark. The PR93 denominator record is
+is `100/66.5621100003=1.5024` to `127.5/66.5621100003=1.9155`: about 2
+cards even at the upper bound. This is an extrapolation using one measured
+Newton-Schulz workload row, not a full-system benchmark or an all-mode
+simultaneous benchmark. The PR93 denominator record is
 `docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`,
 `performance.rows[3]`; its stored `achieved_tflops` value is fastest-launch, not
 p50, and is not used in this division. The L=32 Issue #63 historical headline remains
@@ -1442,9 +1446,10 @@ The three conclusions are: (1) the historical L=32 fastest-launch
 `achieved_tflops` value recovers 5.7x the same-run stock best but reaches only
 15.6%, below the 30% efficiency target; applying that historical workload
 efficiency to the ~100 TFLOPS eight-iteration 1D all-mode estimate gave about
-2 cards, an extrapolation rather than a full-system or all-mode benchmark. The
-corrected current N=12 estimate is a source-supported 100–150 TFLOPS range,
-which maps to about 2–3 integer cards by the PR93 p50 denominator; (2) packed
+2 cards in that historical N=8 scenario, an extrapolation rather than a
+full-system or all-mode benchmark. The corrected current N=12 estimate is a
+source-supported 100–127.5 TFLOPS range, which maps to about 2 cards even at
+the upper bound by the PR93 p50 denominator; (2) packed
 L=16 reaches 14.5x stock at 3.24% (also a fastest-launch `achieved_tflops`
 value) and is faster in wall-clock than L=32
 only as a cost/operation-volume comparison for the diagonal fallback, with
@@ -1927,12 +1932,11 @@ Card-to-card Ethernet maturity is established (Galaxy: 32 chips in
 commercial operation; QuietBox: 4 cards). Two-card discovery is confirmed on
 real hardware.
 
-**The PoC starts with about 2–3 cards for the current 1D all-mode planning
-workload: 3 cards at the conservative upper bound, with 2 cards only as the
-lower-end starting point**, using the Scope 5 extrapolation from the PR93 L=32
-p50 Newton-Schulz measurement. This is not a full-system or all-mode
-benchmark. Two cards also provide failure isolation, while inference-only
-scaling remains an additional benefit.
+**The PoC starts with about 2 cards for the current N=12 1D all-mode planning
+workload, including at the upper bound**, using the Scope 5 extrapolation from
+the PR93 L=32 p50 Newton-Schulz measurement. This is not a full-system or
+all-mode benchmark. Two cards also provide failure isolation, while
+inference-only scaling remains an additional benefit.
 
 Abstract the output ring buffer so intra-card, card-to-card Ethernet, and
 via-host transports are interchangeable.
@@ -2324,9 +2328,9 @@ A record, so the same debates are not repeated.
   the historical row is in
   `docs/measurements/2026-08-14-p150a-effective-efficiency.json`. The 40%
   basis used by the generic card counts is the target that gap has to reach;
-  Scope 5's historical ~2-card 1D estimate used the measured 15.6%
-  fastest-launch efficiency; the corrected current estimate uses the PR93 p50
-  denominator.
+  Scope 5's historical N=8 ~2-card 1D estimate used the measured 15.6%
+  fastest-launch efficiency; the corrected current N=12 estimate uses the PR93
+  p50 denominator.
 - Newton-Schulz precision split and iteration count (incl. X₀ choice)
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
@@ -2349,9 +2353,10 @@ First, the historical L=32 stored `achieved_tflops` value is 51.92 TFLOPS
 (15.6%, 5.7x the same-run stock best) at fastest launch, not p50; it is
 materially above stock but below the 30% efficiency target. For the historical
 eight-iteration path, applying that measured L=32 workload efficiency to the
-~100 TFLOPS 1D all-mode estimate therefore gave about 2 cards; the corrected
-current N=12 estimate is a source-supported 100–150 TFLOPS range, or about
-2–3 integer cards by the PR93 p50 denominator. Both are extrapolations, not
+~100 TFLOPS 1D all-mode estimate therefore gave about 2 cards in that
+historical N=8 scenario; the corrected current N=12 estimate is a
+source-supported 100–127.5 TFLOPS range, or about 2 cards even at the upper
+bound by the PR93 p50 denominator. Both are extrapolations, not
 full-system or all-mode benchmarks. Second,
 packed L=16 reaches 10.77 TFLOPS (3.24%, 14.5x stock) at fastest launch, not
 p50, and is faster in wall-clock than L=32 only as a cost/operation-volume
