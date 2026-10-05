@@ -232,6 +232,16 @@ def _dest_slot_limit(*, fp32_dest_acc_en: bool, dst_full_sync_en: bool) -> int:
     return tiles
 
 
+def _dest_slots_required(matrix_block: int) -> int:
+    """Return the DEST slots retained by one matrix block."""
+    if matrix_block not in MATRIX_BLOCK_CHOICES:
+        raise ValueError(f"matrix_block must be one of {MATRIX_BLOCK_CHOICES}, got {matrix_block!r}")
+    # Blocks 1/2/4 use two DEST tiles per matrix (one for each complex half).
+    # Block 8 is executed one half at a time and therefore retains one tile per
+    # matrix.
+    return (1 if matrix_block == 8 else 2) * matrix_block
+
+
 def _validate_matrix_block(
     matrix_block: int,
     *,
@@ -252,11 +262,7 @@ def _validate_matrix_block(
         raise ValueError(f"unknown kernel variant {variant!r}")
     if variant == "bf16-fp32state" and not fp32_dest_acc_en:
         raise ValueError("bf16-fp32state requires fp32_dest_acc_en")
-    # Blocks 1/2/4 use two DEST tiles per matrix (one for each complex half).
-    # Block 8 is executed one half at a time: one DEST tile per matrix, so
-    # eight is the upper limit of the FP32/full-sync configuration.
-    dest_slots_per_matrix = 1 if matrix_block == 8 else 2
-    required_slots = dest_slots_per_matrix * matrix_block
+    required_slots = _dest_slots_required(matrix_block)
     available_slots = _dest_slot_limit(
         fp32_dest_acc_en=fp32_dest_acc_en,
         dst_full_sync_en=dst_full_sync_en,
@@ -574,6 +580,31 @@ def _matrix_queue_pages(matrix_block: int, *, double_buffer: bool) -> int:
     return single_window_pages
 
 
+def _cb_page_count(
+    index: int,
+    base_page_count: int,
+    *,
+    resident: set[int],
+    double_buffered: set[int],
+    matrix_block: int,
+    matrix_queue_pages: int,
+    state_queue_pages: int,
+    fuse_s: bool,
+) -> int:
+    """Return the page count for one CB under the selected block window."""
+    if fuse_s and index == CB_R_NEG_REAL:
+        base_page_count = max(base_page_count, 2)
+    if index in resident or matrix_block == 1:
+        return base_page_count
+    if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}:
+        return base_page_count
+    if index in {CB_STATE_REAL, CB_STATE_IMAG}:
+        return max(base_page_count, state_queue_pages)
+    if index in double_buffered:
+        return max(base_page_count, matrix_queue_pages)
+    return max(base_page_count, matrix_block)
+
+
 def _cb_definitions(
     ttnn,
     state_dtype,
@@ -602,7 +633,7 @@ def _cb_definitions(
         CB_PRODUCT_IMAG: (ttnn.float32, 1),
         CB_NEG_X_IMAG: (state_dtype, 1),
         # CB14 is a second resident R input only for fused S.
-        CB_R_NEG_REAL: (ttnn.bfloat16, 2 if fuse_s else 1),
+        CB_R_NEG_REAL: (ttnn.bfloat16, 1),
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
@@ -612,6 +643,14 @@ def _cb_definitions(
         # absent rather than renumbering any shared CB.
         definitions[CB_R_REAL] = (ttnn.bfloat16, 2)
         definitions = {CB_R_REAL: definitions.pop(CB_R_REAL), **definitions}
+    if profile:
+        definitions.update(
+            {
+                CB_PROFILE_READER: (ttnn.uint32, 1),
+                CB_PROFILE_COMPUTE: (ttnn.uint32, 1),
+                CB_PROFILE_WRITER: (ttnn.uint32, 1),
+            }
+        )
     # Identity/zero and profile pages are resident singletons.  S, product,
     # and negated-state queues are consumed within one compute block; only the
     # external R/X0 inputs and final outputs need a second producer/consumer
@@ -637,33 +676,19 @@ def _cb_definitions(
     definitions = {
         index: (
             data_format,
-            page_count
-            if index in resident or matrix_block == 1
-            else (
-                page_count
-                if fuse_s and index in {CB_PRODUCT_REAL, CB_PRODUCT_IMAG}
-                else max(
-                    page_count,
-                    state_queue_pages
-                    if index in {CB_STATE_REAL, CB_STATE_IMAG}
-                    else (
-                        matrix_queue_pages
-                        if index in double_buffered
-                        else matrix_block
-                    ),
-                )
+            _cb_page_count(
+                index,
+                page_count,
+                resident=resident,
+                double_buffered=double_buffered,
+                matrix_block=matrix_block,
+                matrix_queue_pages=matrix_queue_pages,
+                state_queue_pages=state_queue_pages,
+                fuse_s=fuse_s,
             ),
         )
         for index, (data_format, page_count) in definitions.items()
     }
-    if profile:
-        definitions.update(
-            {
-                CB_PROFILE_READER: (ttnn.uint32, 1),
-                CB_PROFILE_COMPUTE: (ttnn.uint32, 1),
-                CB_PROFILE_WRITER: (ttnn.uint32, 1),
-            }
-        )
     return definitions
 
 
@@ -837,9 +862,9 @@ def _validate_l1_preflight(
     _validate_memory(output_memory, name="output_memory")
     _validate_matrix_block(
         matrix_block,
-        variant=variant,
         fp32_dest_acc_en=fp32_dest_acc_en,
         dst_full_sync_en=dst_full_sync_en,
+        variant=variant,
     )
     definitions = _cb_definitions(
         ttnn,
@@ -1043,8 +1068,8 @@ class NewtonSchulzKernel:
             raise ValueError(f"unknown kernel variant {variant!r}")
         if output_memory is None:
             output_memory = _output_memory_name(variant)
-        elif output_memory not in INPUT_MEMORY_CHOICES:
-            raise ValueError(f"unknown output memory {output_memory!r}")
+        else:
+            _validate_memory(output_memory, name="output_memory")
         _validate_matrix_block(
             matrix_block,
             fp32_dest_acc_en=fp32_dest_acc_en,

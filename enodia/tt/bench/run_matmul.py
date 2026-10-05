@@ -53,6 +53,13 @@ from enodia.tt.bench.configs import (
     configuration_catalogue,
     executed_shape,
 )
+from enodia.tt.bench.half_sync import (
+    HALF_SYNC_BATCH,
+    HALF_SYNC_CORRECTNESS_BATCHES,
+    HALF_SYNC_LAUNCHES,
+    HALF_SYNC_MATH_FIDELITY,
+    preflight_half_sync_rows,
+)
 from enodia.tt.bench.newton_schulz_kernel import (
     DEFAULT_DOUBLE_BUFFER,
     DEFAULT_DST_FULL_SYNC_EN,
@@ -64,7 +71,6 @@ from enodia.tt.bench.newton_schulz_kernel import (
     DEFAULT_VARIANT,
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
-    _output_memory_name,
     _resolve_input_memories,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
@@ -129,6 +135,14 @@ class _DefaultMathFidelityAction(argparse.Action):
         if isinstance(current, _DefaultMathFidelity):
             current = []
         setattr(namespace, self.dest, [*current, values])
+
+
+class _TrackedBooleanOptionalAction(argparse.BooleanOptionalAction):
+    """Track whether a boolean option was explicitly supplied."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        super().__call__(parser, namespace, values, option_string)
+        setattr(namespace, f"_{self.dest}_explicit", True)
 
 
 def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
@@ -625,17 +639,15 @@ def run_custom_newton_schulz(
             state_dtype=_state_dtype(ttnn, variant),
             profile=profile,
             fuse_s=fuse_s,
-            output_memory=(
-                _output_memory_name(variant) if output_memory is None else output_memory
-            ),
-            fp32_dest_acc_en=fp32_dest_acc_en,
-            dst_full_sync_en=dst_full_sync_en,
+            output_memory=output_memory,
             input_memory=input_memory,
             r_memory=r_memory,
             x0_memory=x0_memory,
             matrix_block=matrix_block,
             double_buffer=double_buffer,
             variant=variant,
+            fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
         )
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
@@ -664,7 +676,7 @@ def run_custom_newton_schulz(
             prepare_kwargs["r_memory"] = r_memory
         if explicit_x0_memory:
             prepare_kwargs["x0_memory"] = x0_memory
-        if output_memory is not None:
+        if output_memory != DEFAULT_OUTPUT_MEMORY:
             prepare_kwargs["output_memory"] = output_memory
         if fp32_dest_acc_en != DEFAULT_FP32_DEST_ACC_EN:
             prepare_kwargs["fp32_dest_acc_en"] = fp32_dest_acc_en
@@ -782,6 +794,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-memory",
+        "--custom-output-memory",
+        dest="output_memory",
         choices=INPUT_MEMORY_CHOICES,
         default=DEFAULT_OUTPUT_MEMORY,
         help="interleaved placement for custom-kernel output tensors",
@@ -850,6 +864,31 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run the Issue #94 correctness cases without throughput sampling",
     )
     parser.add_argument(
+        "--half-sync-catalogue",
+        action="store_true",
+        help=(
+            "run the Issue #96 full/half-sync L16/L32 manifest with preflight "
+            "and BF16-rounded-reference correctness"
+        ),
+    )
+    parser.add_argument(
+        "--half-sync-row",
+        default=None,
+        help="restrict --half-sync-catalogue to one manifest row",
+    )
+    parser.add_argument(
+        "--half-sync-correctness-only",
+        action="store_true",
+        help="run selected half-sync row correctness and skip throughput",
+    )
+    parser.add_argument(
+        "--half-sync-correctness-batch",
+        type=int,
+        choices=HALF_SYNC_CORRECTNESS_BATCHES,
+        default=None,
+        help="run one correctness batch in the selected half-sync row",
+    )
+    parser.add_argument(
         "--launches-per-row",
         type=int,
         default=ACCEPTANCE_CATALOGUE_LAUNCHES,
@@ -888,9 +927,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--double-buffer",
         "--block-double-buffer",
         dest="double_buffer",
-        action=argparse.BooleanOptionalAction,
+        action=_TrackedBooleanOptionalAction,
         default=DEFAULT_DOUBLE_BUFFER,
         help="give block input/output circular buffers two windows",
+    )
+    parser.add_argument(
+        "--dst-full-sync-en",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="synchronize the complete DEST (default: enabled)",
+    )
+    parser.add_argument(
+        "--fp32-dest-acc-en",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="use FP32 DEST accumulation (default: enabled)",
     )
     parser.add_argument(
         "--compare-double-buffer",
@@ -943,6 +994,8 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         )
     if args.reload_r and args.compare_reload_r:
         parser.error("--reload-r cannot be combined with --compare-reload-r")
+    if getattr(args, "_double_buffer_explicit", False) and args.compare_double_buffer:
+        parser.error("--double-buffer cannot be combined with --compare-double-buffer")
     issue94_modes = int(args.issue94_catalogue) + int(args.issue94_correctness)
     if issue94_modes > 1:
         parser.error("--issue94-catalogue and --issue94-correctness are mutually exclusive")
@@ -951,6 +1004,39 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     if args.acceptance_catalogue and (args.reload_r or args.compare_reload_r):
         parser.error(
             "--reload-r/--compare-reload-r require the normal custom-row runner"
+        )
+    if args.acceptance_catalogue and (
+        getattr(args, "_double_buffer_explicit", False) or args.compare_double_buffer
+    ):
+        parser.error(
+            "--double-buffer/--compare-double-buffer require the normal custom-row runner"
+        )
+    if issue94_modes and args.half_sync_catalogue:
+        parser.error("Issue #94 modes cannot be combined with --half-sync-catalogue")
+    if args.acceptance_catalogue and args.half_sync_catalogue:
+        parser.error("--acceptance-catalogue and --half-sync-catalogue are exclusive")
+    if args.half_sync_catalogue:
+        if (
+            args.half_sync_correctness_batch is not None
+            and not args.half_sync_correctness_only
+        ):
+            parser.error(
+                "--half-sync-correctness-batch requires "
+                "--half-sync-correctness-only"
+            )
+        if args.reload_r or args.compare_reload_r:
+            parser.error("--reload-r modes are not part of --half-sync-catalogue")
+        if args.compare_double_buffer:
+            parser.error("--compare-double-buffer is not part of --half-sync-catalogue")
+        return
+    if (
+        args.half_sync_row
+        or args.half_sync_correctness_only
+        or args.half_sync_correctness_batch is not None
+    ):
+        parser.error(
+            "--half-sync-row/--half-sync-correctness-only/"
+            "--half-sync-correctness-batch require --half-sync-catalogue"
         )
     if args.acceptance_catalogue or issue94_modes:
         return
@@ -1096,6 +1182,149 @@ def _acceptance_measurement_metadata(args: argparse.Namespace) -> dict:
             "adr": "ADR-0005",
         },
     }
+
+
+def _half_sync_correctness(
+    ttnn,
+    device,
+    *,
+    size: int,
+    batch: int,
+    variant: str,
+    matrix_block: int,
+    fp32_dest_acc_en: bool,
+    dst_full_sync_en: bool,
+    output_memory: str,
+) -> dict:
+    """Run one opt-in measurement case against the independent reference."""
+    from tools.newton_schulz_half_sync import half_sync_correctness
+
+    return half_sync_correctness(
+        ttnn,
+        device,
+        size=size,
+        batch=batch,
+        variant=variant,
+        matrix_block=matrix_block,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+        output_memory=output_memory,
+        math_fidelity=HALF_SYNC_MATH_FIDELITY,
+        fuse_s=True,
+        double_buffer=True,
+    )
+
+
+def _run_half_sync_catalogue(
+    ttnn,
+    device,
+    *,
+    args: argparse.Namespace,
+    rows: list[dict],
+) -> list[dict]:
+    """Run only rows admitted by DEST and L1 preflight in one device session."""
+    shapes_by_name = {shape.name: shape for shape in default_catalogue()}
+    results: list[dict] = []
+    for row in rows:
+        result = dict(row)
+        if row["preflight_status"] != "admitted":
+            result.update(
+                {
+                    "status": "rejected",
+                    "not_measured_reason": row["preflight_reason"],
+                    "correctness": [],
+                }
+            )
+            results.append(result)
+            print(
+                f"{row['row']:72s} rejected: {row['preflight_reason']}",
+                flush=True,
+            )
+            continue
+
+        shape = shapes_by_name[row["shape"]]
+        correctness = []
+        correctness_batches = (
+            (args.half_sync_correctness_batch,)
+            if args.half_sync_correctness_only
+            and args.half_sync_correctness_batch is not None
+            else HALF_SYNC_CORRECTNESS_BATCHES
+        )
+        try:
+            for batch in correctness_batches:
+                correctness.append(
+                    _half_sync_correctness(
+                        ttnn,
+                        device,
+                        size=row["size"],
+                        batch=batch,
+                        variant=row["variant"],
+                        matrix_block=row["matrix_block"],
+                        fp32_dest_acc_en=row["fp32_dest_acc_en"],
+                        dst_full_sync_en=row["dst_full_sync_en"],
+                        output_memory=row["output_memory"],
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001 - retain a truthful row result
+            result.update(
+                {
+                    "status": "correctness_failed",
+                    "correctness": correctness,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+            results.append(result)
+            print(f"{row['row']:72s} correctness failed: {result['error']}", flush=True)
+            continue
+
+        result["correctness"] = correctness
+        if not all(case["passed"] for case in correctness):
+            result.update(
+                {
+                    "status": "correctness_failed",
+                    "not_measured_reason": "one or more BF16-rounded-R correctness cases exceeded 0.01",
+                }
+            )
+            results.append(result)
+            print(
+                f"{row['row']:72s} correctness failed: gate 0.01",
+                flush=True,
+            )
+            continue
+
+        if args.half_sync_correctness_only:
+            result["status"] = "correctness_ok"
+            results.append(result)
+            print(f"{row['row']:72s} correctness passed", flush=True)
+            continue
+
+        record = run_custom_newton_schulz(
+            ttnn,
+            device,
+            shape,
+            dtype_name="bfloat16",
+            memory_name="l1",
+            variant=row["variant"],
+            math_fidelity=row["math_fidelity"],
+            profile=args.profile,
+            fuse_s=row["fuse_s"],
+            batch_reads=False,
+            matrix_block=row["matrix_block"],
+            double_buffer=row["double_buffer"],
+            input_memory=row["input_memory"],
+            r_memory=row["r_memory"],
+            x0_memory=row["x0_memory"],
+            fp32_dest_acc_en=row["fp32_dest_acc_en"],
+            dst_full_sync_en=row["dst_full_sync_en"],
+            output_memory=row["output_memory"],
+            row_name=row["row"],
+            iters=1,
+            repeats=row["launches_requested"],
+        )
+        result.update(record)
+        print(_format_line(shape, "bfloat16", "l1", row["row"], result), flush=True)
+        results.append(result)
+    return results
 
 
 def _issue94_power_metadata(args: argparse.Namespace) -> dict:
@@ -1399,6 +1628,7 @@ def _run_issue94_correctness(
     return results
 
 
+
 def _run_acceptance_catalogue(
     ttnn,
     device,
@@ -1527,8 +1757,8 @@ def main(argv: list[str] | None = None) -> int:
 
     import ttnn  # imported after validation, so bad arguments need no accelerator
 
-    dtypes = args.dtype or ["bfloat16", "float32"]
-    memories = args.memory or ["dram", "l1"]
+    dtypes = ["bfloat16"] if args.half_sync_catalogue else (args.dtype or ["bfloat16", "float32"])
+    memories = [] if args.half_sync_catalogue else (args.memory or ["dram", "l1"])
     dtype_map = {name: getattr(ttnn, name) for name in dtypes if hasattr(ttnn, name)}
     missing = sorted(set(dtypes) - set(dtype_map))
     if missing:
@@ -1544,6 +1774,88 @@ def main(argv: list[str] | None = None) -> int:
     environment = {"python": platform.python_version()}
     if args.env_json and args.env_json.exists():
         environment.update(json.loads(args.env_json.read_text()))
+
+    if args.half_sync_catalogue:
+        # This host-only pass must finish before opening the device.  Rows that
+        # fail DEST or L1 accounting are retained in the result and never
+        # reach kernel preparation or launch.
+        preflight_rows = preflight_half_sync_rows(ttnn)
+        if args.half_sync_row is not None:
+            preflight_rows = [
+                row for row in preflight_rows if row["row"] == args.half_sync_row
+            ]
+            if not preflight_rows:
+                parser.error(f"unknown --half-sync-row {args.half_sync_row!r}")
+        admitted = [row for row in preflight_rows if row["preflight_status"] == "admitted"]
+        results: list[dict] = []
+        if admitted:
+            device = ttnn.open_device(device_id=args.device_id)
+            try:
+                results = _run_half_sync_catalogue(
+                    ttnn,
+                    device,
+                    args=args,
+                    rows=preflight_rows,
+                )
+            finally:
+                ttnn.close_device(device)
+        power_trace = _record_path(args.power_trace)
+        payload = {
+            "environment": environment,
+            "configuration_mode": "issue_96_half_sync",
+            "selection": {
+                "sizes": [32, 16],
+                "batch": HALF_SYNC_BATCH,
+                "iterations": 12,
+                "x0": "I/||R||inf",
+                "math_fidelity": HALF_SYNC_MATH_FIDELITY,
+                "fuse_s": True,
+                "input_memory": "l1",
+                "r_memory": "l1",
+                "x0_memory": "l1",
+                "output_memory": "dram",
+                "double_buffer": True,
+                "variants": ["bf16-fp32state", "bf16"],
+                "fp32_dest_acc_en": True,
+                "dst_full_sync_en": [True, False],
+                "matrix_blocks": list(MATRIX_BLOCK_CHOICES),
+                "correctness_batches": list(
+                    (args.half_sync_correctness_batch,)
+                    if args.half_sync_correctness_batch is not None
+                    else HALF_SYNC_CORRECTNESS_BATCHES
+                ),
+                "correctness_only": args.half_sync_correctness_only,
+                "row_filter": args.half_sync_row,
+                "launches_per_row": HALF_SYNC_LAUNCHES,
+                "device_id": args.device_id,
+            },
+            "measurement": {
+                "row_manifest": preflight_rows,
+                "preflight_before_device_open": True,
+                "preflight_core_count": 110,
+                "power_trace": power_trace,
+                "power_clock_provenance": {
+                    "trace": power_trace,
+                    "columns": list(POWER_TRACE_COLUMNS),
+                    "power_column": "power_w",
+                    "clock_column": "aiclk_mhz",
+                    "temperature_column": "asic_temp_c",
+                    "sampling_source": POWER_TRACE_SAMPLING_SOURCE,
+                },
+                "environment_provenance": {
+                    "source": "--env-json",
+                    "record_field": "environment",
+                    "adr": "ADR-0005",
+                },
+            },
+            "peak_tflops": args.peak_tflops,
+            "peak_note": args.peak_note,
+            "results": results,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(strict_json_dumps(payload, indent=2) + "\n")
+        print(f"\nwrote {args.out}")
+        return 0
 
     device = ttnn.open_device(device_id=args.device_id)
     if args.issue94_catalogue:
