@@ -816,6 +816,11 @@ def test_device_issue100_defaults_match_bf16_rounded_reference(batch, size):
         )
         actual = run_newton_schulz_kernel(ttnn, device, matrices)
         relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        print(
+            "issue100_default_correctness "
+            f"case=batch{batch}-L{size} relative_error={relative_error:.10e}",
+            flush=True,
+        )
         assert actual.shape == (batch, size, size)
         assert relative_error <= 1e-2
     finally:
