@@ -205,33 +205,49 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   provisional 0.7 with no source (design.md §4, ADR-0008); a sourced value
   replaces it through a reviewed profile update
 
-## Issue #100 host-default draft (measurement pending)
+## Issue #100 measured defaults (device validation pending)
 
-- Defaults are `variant=bf16`, `fp32_dest_acc_en=true`, `matrix_block=8`,
-  `double_buffer=true`, and full-sync DEST, with R/X0 inputs in L1 and output
-  in DRAM. The compatibility input shorthand and resident identity/zero
-  buffers remain in L1; legacy placement configurations require explicit
-  arguments.
+- Defaults exactly match the read-only PR98/#96 row
+  `L32_b8192_bf16_full_sync_block8`: `variant=bf16`, `math_fidelity=HiFi3`,
+  `fuse_s=true`, `fp32_dest_acc_en=true`, `matrix_block=8`,
+  `double_buffer=true`, and full-sync DEST, with R/X0 in L1 and output in
+  DRAM. Legacy state, fidelity, fusion, block, sync, and placement choices
+  remain explicit overrides.
 - DEST and L1 boundaries use fail-fast semantics. `prepare` raises a
   `ValueError` before tensor allocation, and the bench runner records the same
   selected configuration and error. No block or placement fallback is allowed.
-- Host preflight for the default non-fused path fits L=16 batch=4 (652,032
-  bytes), L=16 batch=8,192 (979,712 bytes), L=32 batch=4 (652,032 bytes), and
-  L=32 batch=8,192 (1,389,312 bytes). Tails batch 1/3/5/31/63 fit for both
-  L=16 (padded tiles 8/8/8/16/32) and L=32 (8/8/8/32/64), at 652,032 bytes
-  each. An explicit legacy `output_memory=l1` keeps the L=32 batch-8,192
-  non-fused row at 1,716,992 bytes and fails fast.
-- The existing partial/tail device parametrization names 1,024 explicit rows
-  (`batch=1..64`, blocks 1/2/4/8, L=16/32, fused/non-fused); its explicit
-  BF16-state/DRAM-output placement passes host preflight. PR98's read-only
-  fused/HiFi3 L=32 batch-8,192 block-8 row records 1,295,104 bytes and about
-  78.8 TFLOPS from p50; that is evidence for the placement, not a changed
-  Issue #100 algorithm default. No measurement file is changed.
-- Tomorrow's unknowns are the same-run device-0 p50/p99/p99.9, power/clock,
-  and duration for L=16/L=32 batch-4 and batch-8,192 plus tails. The card
-  denominator and resulting `100..127.5 TFLOPS` card range are unmeasured
-  placeholders until that ADR-0005 record lands. No board/container/SSH or
-  measurement rerun was performed for this draft.
+- Board-free preflight under the measured defaults is: L=16 batch=4
+  557,824 bytes; L=16 batch=8,192 885,504 bytes; L=32 batch=4 557,824 bytes;
+  and L=32 batch=8,192 **1,295,104 bytes**. Tails batch 1/3/5/31/63 fit for
+  both L=16 (padded tiles 8/8/8/16/32) and L=32 (8/8/8/32/64), at 557,824
+  bytes each. An explicit legacy `fuse_s=false`, HiFi4,
+  `output_memory=l1` keeps the L=32 batch-8,192 row at 1,716,992 bytes and
+  fails fast.
+- Under the measured defaults, all 128 batch-1..64 partial cases for L=16/32
+  at block 8 fit; the existing 1,024-case explicit block/fusion inventory
+  remains covered by board-free preflight tests. The PR98/#96 row's stored
+  78.78349 TFLOPS from p50 (about 78.8) is historical evidence only: this
+  change makes no new performance claim, no measurement JSON/CSV changes, and
+  device status remains **UNMEASURED** because no board, container, SSH, or
+  measurement rerun was performed.
+- Tomorrow's device-only commands intentionally omit measured fuse, fidelity,
+  and placement flags so defaults exercise the measured row:
+
+  ```bash
+  enodia/tt/bench/run_in_container.sh --pytest \
+    -m tt_device \
+    tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
+
+  enodia/tt/bench/run_in_container.sh out/issue100-defaults -- \
+    --device-id 0 \
+    --only newton_schulz_L32_b8192 \
+    --only newton_schulz_L16_b8192 \
+    --dtype bfloat16 --memory l1 --kind custom_newton_schulz \
+    --iters 1 --repeats 1000
+  ```
+- The card denominator and resulting `100..127.5 TFLOPS` card range remain
+  unmeasured placeholders until that ADR-0005 record lands; power, clock,
+  duration, and new-default device performance are also unmeasured.
 
 ## Settled (recorded; reflected in design.md)
 

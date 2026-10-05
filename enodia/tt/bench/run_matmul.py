@@ -57,6 +57,8 @@ from enodia.tt.bench.newton_schulz_kernel import (
     DEFAULT_DOUBLE_BUFFER,
     DEFAULT_DST_FULL_SYNC_EN,
     DEFAULT_FP32_DEST_ACC_EN,
+    DEFAULT_FUSE_S,
+    DEFAULT_MATH_FIDELITY,
     DEFAULT_MATRIX_BLOCK,
     DEFAULT_OUTPUT_MEMORY,
     DEFAULT_VARIANT,
@@ -113,6 +115,20 @@ ISSUE94_CONFIGS = (
 )
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 POWER_TRACE_SAMPLING_SOURCE = "tt-smi snapshot"
+
+
+class _DefaultMathFidelity(list[str]):
+    """Mark the parser's implicit fidelity so an explicit value replaces it."""
+
+
+class _DefaultMathFidelityAction(argparse.Action):
+    """Append explicit fidelity values without retaining the implicit default."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        current = getattr(namespace, self.dest)
+        if isinstance(current, _DefaultMathFidelity):
+            current = []
+        setattr(namespace, self.dest, [*current, values])
 
 
 def _stock_math_fidelity(dtype_name: str, program_spec: ProgramConfigSpec | None) -> dict:
@@ -517,9 +533,9 @@ def run_custom_newton_schulz(
     variant: str = DEFAULT_VARIANT,
     iters: int = 20,
     repeats: int = 3,
-    math_fidelity: str = "HiFi4",
+    math_fidelity: str = DEFAULT_MATH_FIDELITY,
     profile: bool = False,
-    fuse_s: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
     batch_reads: bool = False,
     reload_r: bool = False,
     matrix_block: int = DEFAULT_MATRIX_BLOCK,
@@ -779,10 +795,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--custom-math-fidelity",
-        action="append",
+        action=_DefaultMathFidelityAction,
         choices=list(CUSTOM_MATH_FIDELITIES),
-        default=None,
-        help="repeatable custom math fidelity; default is HiFi4",
+        default=_DefaultMathFidelity([DEFAULT_MATH_FIDELITY]),
+        help=(
+            "repeatable custom math fidelity; default is "
+            f"{DEFAULT_MATH_FIDELITY}"
+        ),
     )
     parser.add_argument("--iters", type=int, default=20)
     parser.add_argument("--repeats", type=int, default=3)
@@ -846,7 +865,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--fuse-s",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_FUSE_S,
         help="fuse S = 2I - R @ X into BF16/FP32 DEST accumulation",
     )
     parser.add_argument(
@@ -1641,7 +1661,7 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     run_stock = args.kind is None or STOCK_KIND in args.kind
     run_custom = args.kind is None or CUSTOM_KIND in args.kind
-    custom_fidelities = args.custom_math_fidelity or ["HiFi4"]
+    custom_fidelities = list(args.custom_math_fidelity or [DEFAULT_MATH_FIDELITY])
     try:
         for shape in catalogue:
             for dtype_name, dtype in dtype_map.items():

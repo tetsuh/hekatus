@@ -30,6 +30,8 @@ INPUT_MEMORY_CHOICES = ("l1", "dram")
 # Issue #100 selects the fastest measured host configuration.  These are
 # defaults only: callers can still select every prior variant explicitly.
 DEFAULT_VARIANT = "bf16"
+DEFAULT_MATH_FIDELITY = "HiFi3"
+DEFAULT_FUSE_S = True
 DEFAULT_FP32_DEST_ACC_EN = True
 DEFAULT_MATRIX_BLOCK = 8
 DEFAULT_DOUBLE_BUFFER = True
@@ -811,7 +813,7 @@ def _validate_l1_preflight(
     core_count: int,
     state_dtype,
     profile: bool = False,
-    fuse_s: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
     output_memory: str = DEFAULT_OUTPUT_MEMORY,
     input_memory: str = "l1",
     r_memory: str | None = None,
@@ -1018,9 +1020,9 @@ class NewtonSchulzKernel:
         matrices: np.ndarray,
         *,
         variant: str = DEFAULT_VARIANT,
-        math_fidelity: str = "HiFi4",
+        math_fidelity: str = DEFAULT_MATH_FIDELITY,
         profile: bool = False,
-        fuse_s: bool = False,
+        fuse_s: bool = DEFAULT_FUSE_S,
         batch_reads: bool = False,
         reload_r: bool = False,
         matrix_block: int = DEFAULT_MATRIX_BLOCK,
@@ -1391,9 +1393,9 @@ def run_newton_schulz_kernel(
     matrices: np.ndarray,
     *,
     variant: str = DEFAULT_VARIANT,
-    math_fidelity: str = "HiFi4",
+    math_fidelity: str = DEFAULT_MATH_FIDELITY,
     profile: bool = False,
-    fuse_s: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
     batch_reads: bool = False,
     reload_r: bool = False,
     matrix_block: int = DEFAULT_MATRIX_BLOCK,

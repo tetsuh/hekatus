@@ -5,16 +5,24 @@ changes here, fix design.md too.
 
 **Assumptions for every table**: 30 fps and 2048 depth points unless stated.
 
-## Issue #100 fastest-default draft (host-only, measurement pending)
+## Issue #100 measured-default configuration (host-only update; device validation pending)
 
-The Issue #100 host defaults are `variant=bf16`,
+The Issue #100 defaults now exactly match the PR98/#96 measured row:
+`variant=bf16`, `math_fidelity=HiFi3`, `fuse_s=true`,
 `fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
-`dst_full_sync_en=true`. The default placement is R/X0 inputs in L1 and output
-in DRAM; the compatibility input shorthand and its resident identity/zero
-buffers remain in L1. Explicit `output_memory=l1` and per-tensor placement
-arguments remain available. This draft does not import a denominator from
-PR99, PR95, or PR98; no board, container, or measurement rerun was performed
-for this issue.
+`dst_full_sync_en=true`. R and X0 are in L1 and output tensors are in DRAM;
+the compatibility input shorthand and its resident identity/zero buffers remain
+in L1. Every previous state, fusion, fidelity, block, synchronization, and
+placement choice remains selectable explicitly.
+
+The read-only source is the PR98/#96 measurement record row
+`L32_b8192_bf16_full_sync_block8` (`performance.rows`): L=32, batch=8,192,
+BF16 state, HiFi3, fused S, FP32 DEST, block 8, full-sync, double buffering,
+R/X0 in L1, DRAM output, and `preflight_bytes=1,295,104`. Its stored
+78.78349 TFLOPS from p50 (about 78.8) remains historical user evidence only;
+this change makes no new performance claim. Device status for this branch is
+**UNMEASURED**: no board, container, SSH, or measurement rerun was performed,
+and no measurement JSON/CSV is changed.
 
 The policy at both DEST and L1 boundaries is **fail-fast**. `prepare` validates
 DEST usage and then L1 usage before tensor allocation; `run_newton_schulz_kernel`
@@ -22,42 +30,50 @@ propagates the `ValueError`, while the bench runner records the same error in a
 failed row. Neither path silently changes `matrix_block`, memory placement, or
 synchronization mode.
 
-Board-free L1 preflight for the new defaults (R/X0 L1, DRAM output, BF16
-state, non-fused path, block 8, double buffer, full-sync DEST, and the 110-core
+Board-free L1 preflight for the measured defaults (R/X0 L1, DRAM output, BF16
+state, fused S, HiFi3, block 8, double buffer, full-sync DEST, and the 110-core
 host model) is:
 
 | Case | Padded 32x32 tile count | Host preflight result |
 |---|---:|---|
-| L=16, batch=4 | 8 | fits, 652,032 bytes |
-| L=16, batch=8,192 | 4,096 | fits, 979,712 bytes |
-| L=32, batch=4 | 8 | fits, 652,032 bytes |
-| L=32, batch=8,192 | 8,192 | fits, 1,389,312 bytes |
-| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fits, 652,032 bytes in each case |
-| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fits, 652,032 bytes in each case |
+| L=16, batch=4 | 8 | fits, 557,824 bytes |
+| L=16, batch=8,192 | 4,096 | fits, 885,504 bytes |
+| L=32, batch=4 | 8 | fits, 557,824 bytes |
+| L=32, batch=8,192 | 8,192 | fits, 1,295,104 bytes |
+| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fits, 557,824 bytes in each case |
+| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fits, 557,824 bytes in each case |
 
-The legacy explicit `output_memory=l1` override remains fail-fast for the
-non-fused L=32 batch=8,192 row at 1,716,992 bytes (144,128 over the
-1,572,864-byte budget); there is no implicit fallback. The existing
-partial-block device parametrization names 1,024 cases:
-`batch=1..64 × matrix_block={1,2,4,8} × L={16,32} × fuse_s={false,true}`.
-Its explicit BF16-state/DRAM-output placement passes this host preflight for
-all 1,024 cases.
+The explicit legacy `fuse_s=false`, HiFi4, `output_memory=l1` L=32
+batch-8,192 row remains fail-fast at 1,716,992 bytes (144,128 over the
+1,572,864-byte budget); there is no implicit fallback. Under the measured
+defaults, all 128 existing batch-1..64 partial cases (L=16/32, block 8) fit;
+the existing 1,024-case explicit block/fusion inventory remains covered by
+board-free preflight tests.
 
-PR98's read-only measurement record provides a separate placement reference:
-its `L32_b8192_bf16_full_sync_block8` row uses `fuse_s=true`, `HiFi3`,
-R/X0 in L1, DRAM output, and records 1,295,104 bytes plus 78.78349 TFLOPS
-from p50 (about 78.8). Issue #100 changes placement only; its current
-non-fused/HiFi4 defaults therefore retain the independently recalculated
-1,389,312-byte preflight above rather than claiming the PR98 row's fused
-configuration. No measurement file is changed.
+Tomorrow's device-only commands intentionally omit fuse, fidelity, and
+placement overrides so the defaults exercise the measured configuration:
+
+```bash
+# Correctness for the default batch and tail cases.
+enodia/tt/bench/run_in_container.sh --pytest \
+  -m tt_device \
+  tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
+
+# Same-run 1,000-launch record for both default shapes.
+enodia/tt/bench/run_in_container.sh out/issue100-defaults -- \
+  --device-id 0 \
+  --only newton_schulz_L32_b8192 \
+  --only newton_schulz_L16_b8192 \
+  --dtype bfloat16 --memory l1 --kind custom_newton_schulz \
+  --iters 1 --repeats 1000
+```
 
 The Issue #100 card denominator is **UNMEASURED** on this branch:
 `p50_tflops_per_card = <tomorrow's ADR-0005 record>`. The resulting card range
 must be filled from that same-run p50, without inventing a value:
-`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card` cards. The
-measurement slot is tomorrow's device-0 run with 1,000 launches per row and
-p50/p99/p99.9 retained for L=16/L=32 batch 4 and 8,192 plus the named tail
-cases. Power, clock, and duration are also **UNMEASURED** until that run.
+`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card` cards.
+Power, clock, duration, and new-default device performance remain unmeasured
+until those commands are run.
 
 **Two capacity bases appear in this document; each table names the one it
 uses.**

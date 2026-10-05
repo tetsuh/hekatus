@@ -237,7 +237,7 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     )
     assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
     default_flags = run_matmul._build_parser().parse_args([])
-    assert default_flags.fuse_s is False
+    assert default_flags.fuse_s is True
     assert default_flags.batch_reads is False
     assert default_flags.input_memory == "l1"
     assert default_flags.output_memory == "dram"
@@ -762,12 +762,12 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
     assert payload["selection"] == {
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
-        "custom_math_fidelity": ["HiFi4"],
+        "custom_math_fidelity": ["HiFi3"],
         "input_memory": "l1",
         "r_memory": "l1",
         "x0_memory": "l1",
         "output_memory": "dram",
-        "fuse_s": False,
+        "fuse_s": True,
         "batch_reads": False,
         "reload_r": False,
         "compare_reload_r": False,
@@ -1122,9 +1122,9 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
             **kwargs,
         ):
             assert variant == "bf16-fp32state"
-            assert math_fidelity == "HiFi4"
+            assert math_fidelity == "HiFi3"
             assert profile is False
-            assert fuse_s is False
+            assert fuse_s is True
             assert batch_reads is False
             assert kwargs["matrix_block"] == 4
             assert kwargs["double_buffer"] is False
@@ -1172,7 +1172,8 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert record["status"] == "ok"
     assert record["kind"] == "custom_newton_schulz"
     assert record["variant"] == "bf16-fp32state"
-    assert record["fuse_s"] is False
+    assert record["fuse_s"] is True
+    assert record["math_fidelity"] == "HiFi3"
     assert record["batch_reads"] is False
     assert record["output_memory"] == "dram"
     assert len(record["seconds_per_launch_samples"]) == 4

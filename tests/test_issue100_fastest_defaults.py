@@ -20,6 +20,8 @@ def test_public_kernel_defaults_select_the_issue100_configuration():
 
     for signature in (prepare, run, runner):
         assert signature.parameters["variant"].default == "bf16"
+        assert signature.parameters["math_fidelity"].default == "HiFi3"
+        assert signature.parameters["fuse_s"].default is True
         assert signature.parameters["matrix_block"].default == 8
         assert signature.parameters["double_buffer"].default is True
         assert signature.parameters["fp32_dest_acc_en"].default is True
@@ -31,6 +33,8 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
     parser = run_matmul._build_parser()
     defaults = parser.parse_args([])
     assert defaults.custom_variant == "bf16"
+    assert defaults.custom_math_fidelity == ["HiFi3"]
+    assert defaults.fuse_s is True
     assert defaults.matrix_block == 8
     assert defaults.double_buffer is True
     assert defaults.fp32_dest_acc_en is True
@@ -46,6 +50,9 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
             "--no-double-buffer",
             "--no-fp32-dest-acc",
             "--no-dst-full-sync",
+            "--no-fuse-s",
+            "--custom-math-fidelity",
+            "HiFi4",
             "--output-memory",
             "l1",
         ]
@@ -55,26 +62,28 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
     assert legacy.double_buffer is False
     assert legacy.fp32_dest_acc_en is False
     assert legacy.dst_full_sync_en is False
+    assert legacy.fuse_s is False
+    assert legacy.custom_math_fidelity == ["HiFi4"]
     assert legacy.output_memory == "l1"
 
 
 @pytest.mark.parametrize(
     ("size", "logical_batch", "expected"),
     [
-        (16, 1, 652032),
-        (16, 3, 652032),
-        (16, 4, 652032),
-        (16, 5, 652032),
-        (16, 31, 652032),
-        (16, 63, 652032),
-        (16, 8192, 979712),
-        (32, 1, 652032),
-        (32, 3, 652032),
-        (32, 4, 652032),
-        (32, 5, 652032),
-        (32, 31, 652032),
-        (32, 63, 652032),
-        (32, 8192, 1389312),
+        (16, 1, 557824),
+        (16, 3, 557824),
+        (16, 4, 557824),
+        (16, 5, 557824),
+        (16, 31, 557824),
+        (16, 63, 557824),
+        (16, 8192, 885504),
+        (32, 1, 557824),
+        (32, 3, 557824),
+        (32, 4, 557824),
+        (32, 5, 557824),
+        (32, 31, 557824),
+        (32, 63, 557824),
+        (32, 8192, 1295104),
     ],
 )
 def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(
@@ -88,10 +97,6 @@ def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(
         batch=tile_count,
         core_count=110,
         state_dtype=TTNN.bfloat16,
-        variant="bf16",
-        fp32_dest_acc_en=True,
-        dst_full_sync_en=True,
-        fuse_s=False,
         input_memory="l1",
         output_memory="dram",
     )
@@ -100,25 +105,37 @@ def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(
     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
-def test_pr98_fused_block8_placement_reference_matches_read_only_preflight():
+def test_measured_default_preflight_matches_pr98_read_only_row():
     total = newton_schulz_kernel._validate_l1_preflight(
         TTNN,
         batch=8192,
         core_count=110,
         state_dtype=TTNN.bfloat16,
-        variant="bf16",
-        fp32_dest_acc_en=True,
-        dst_full_sync_en=True,
-        fuse_s=True,
         input_memory="l1",
         r_memory="l1",
         x0_memory="l1",
         output_memory="dram",
-        matrix_block=8,
-        double_buffer=True,
     )
 
     assert total == 1295104
+
+
+def test_measured_defaults_fit_all_existing_partial_batch_cases():
+    for logical_batch in range(1, 65):
+        for size in (16, 32):
+            physical_tiles = newton_schulz_kernel._physical_tile_count(logical_batch, size)
+            tile_count = newton_schulz_kernel._padded_tile_count(physical_tiles, 8)
+            total = newton_schulz_kernel._validate_l1_preflight(
+                TTNN,
+                batch=tile_count,
+                core_count=110,
+                state_dtype=TTNN.bfloat16,
+                input_memory="l1",
+                r_memory="l1",
+                x0_memory="l1",
+                output_memory="dram",
+            )
+            assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
 def test_existing_partial_device_cases_fit_host_preflight_with_explicit_legacy_placement():
@@ -164,6 +181,8 @@ def test_issue100_explicit_legacy_l1_output_fails_fast_without_fallback():
             fuse_s=False,
             input_memory="l1",
             output_memory="l1",
+            matrix_block=8,
+            double_buffer=True,
         )
 
     message = str(excinfo.value)
@@ -201,6 +220,8 @@ def test_runner_reports_default_l32_l1_failure_before_kernel_prepare():
         dtype_name="bfloat16",
         memory_name="l1",
         output_memory="l1",
+        fuse_s=False,
+        math_fidelity="HiFi4",
         iters=1,
         repeats=1,
     )

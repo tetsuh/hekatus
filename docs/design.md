@@ -1190,23 +1190,30 @@ fixed-iteration oracle in
 `enodia/tt/bench/newton_schulz_reference.py`; it is not an `enodia/spec`
 reference.
 
-### Issue #100 fastest defaults (host-only draft; measurement pending)
+### Issue #100 measured defaults (host-only update; device validation pending)
 
-The host API and bench runner now default to `variant=bf16`,
+The host API and bench runner now default to the exact PR98/#96 measured
+configuration: `variant=bf16`, `math_fidelity=HiFi3`, `fuse_s=true`,
 `fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
-`dst_full_sync_en=true`. The default placement is R/X0 inputs in L1 and output
-in DRAM; the compatibility input shorthand and its resident identity/zero
-buffers remain in L1. Every prior placement remains selectable with explicit
-arguments. This is a host-only change: no board, container, SSH, or
-measurement rerun was performed.
+`dst_full_sync_en=true`. R and X0 inputs are in L1 and output tensors are in
+DRAM; the compatibility input shorthand and its resident identity/zero buffers
+remain in L1. Every prior configuration remains selectable with explicit
+arguments.
+
+The read-only PR98/#96 row is `L32_b8192_bf16_full_sync_block8` in the
+measurement record's `performance.rows`: L=32, batch=8,192, BF16 state, HiFi3,
+fused S, FP32 DEST, block 8, full-sync, double buffering, R/X0 L1, DRAM output,
+and `preflight_bytes=1,295,104`. Its stored 78.78349 TFLOPS from p50 (about
+78.8) is historical evidence only. This implementation makes no new
+performance claim; its device status is **UNMEASURED** because no board,
+container, SSH, or measurement rerun was performed, and no measurement JSON or
+CSV is changed.
 
 BF16 state is selected because the BF16-rounded-R input already bounds the
 solver error against the true inverse in the Issue #94 record
 `docs/measurements/2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck.json`;
 carrying FP32 state does not remove that input-representation bound. The R
-representation itself remains open in #88. This is the Issue #100
-implementation default; the new default's throughput denominator is still
-unmeasured.
+representation itself remains open in #88.
 
 The boundary rule is **fail-fast, never fallback**. `prepare` checks the DEST
 slot limit and then L1 preflight before device tensor allocation. A DEST or L1
@@ -1214,39 +1221,54 @@ failure raises `ValueError` with the selected block and accounting; the runner
 records that same failure. No call silently changes block size, memory
 placement, or synchronization mode to make a row pass.
 
-The board-free L1 ledger for the new defaults (R/X0 L1, DRAM output, BF16
-state, non-fused path, block 8, double buffer, full-sync DEST, and the 110-core
+The board-free L1 ledger for the measured defaults (R/X0 L1, DRAM output, BF16
+state, fused S, HiFi3, block 8, double buffer, full-sync DEST, and the 110-core
 host model) is:
 
 | Case | Padded 32x32 tiles | Result |
 |---|---:|---|
-| L=16, batch=4 | 8 | fits, 652,032 bytes |
-| L=16, batch=8,192 | 4,096 | fits, 979,712 bytes |
-| L=32, batch=4 | 8 | fits, 652,032 bytes |
-| L=32, batch=8,192 | 8,192 | fits, 1,389,312 bytes |
-| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fit, 652,032 bytes each |
-| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fit, 652,032 bytes each |
+| L=16, batch=4 | 8 | fits, 557,824 bytes |
+| L=16, batch=8,192 | 4,096 | fits, 885,504 bytes |
+| L=32, batch=4 | 8 | fits, 557,824 bytes |
+| L=32, batch=8,192 | 8,192 | fits, 1,295,104 bytes |
+| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fit, 557,824 bytes each |
+| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fit, 557,824 bytes each |
 
-An explicit legacy `output_memory=l1` override keeps the previous non-fused
-L=32 batch-8,192 boundary at 1,716,992 bytes, which is 144,128 over the
-1,572,864-byte budget and fails before allocation. The existing partial-block
-device inventory contains 1,024 explicit cases:
-`batch=1..64 × matrix_block={1,2,4,8} × L={16,32} × fuse_s={false,true}`.
-Their explicit BF16-state/DRAM-output placement passes host preflight.
+An explicit legacy `fuse_s=false`, HiFi4, `output_memory=l1` override keeps the
+L=32 batch-8,192 boundary at 1,716,992 bytes, 144,128 over the 1,572,864-byte
+budget, and fails before allocation. Under the measured defaults, all 128
+batch-1..64 partial cases for L=16/32 at block 8 fit. The existing 1,024-case
+explicit block/fusion inventory remains covered by board-free preflight tests.
 
-PR98's read-only `L32_b8192_bf16_full_sync_block8` measurement row is a
-separate fused (`fuse_s=true`, `HiFi3`) placement reference: R/X0 are in L1,
-output is in DRAM, and its recorded preflight is 1,295,104 bytes with 78.78349
-TFLOPS from p50. The Issue #100 default changes placement only, so its
-non-fused/HiFi4 host preflight is the 1,389,312-byte result above; no measured
-value or measurement file is changed.
+Tomorrow's device-only commands intentionally omit fuse, fidelity, and
+placement overrides so the defaults exercise the measured configuration:
+
+```bash
+# Correctness for the default batch and tail cases.
+enodia/tt/bench/run_in_container.sh --pytest \
+  -m tt_device \
+  tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
+
+# Same-run 1,000-launch record for both default shapes.
+enodia/tt/bench/run_in_container.sh out/issue100-defaults -- \
+  --device-id 0 \
+  --only newton_schulz_L32_b8192 \
+  --only newton_schulz_L16_b8192 \
+  --dtype bfloat16 --memory l1 --kind custom_newton_schulz \
+  --iters 1 --repeats 1000
+```
+
+The read-only PR98/#96 row is historical evidence, not a new performance
+claim: it records the same fused/HiFi3 measured configuration and
+`preflight_bytes=1,295,104` (78.78349 TFLOPS from p50, about 78.8). This branch
+has no device result and does not change any measurement JSON or CSV.
 
 The one-card denominator is **UNMEASURED** until tomorrow's same-run ADR-0005
 record reports the new-default L=16/L=32 batch-4 and batch-8,192 rows, tails,
 and 1,000-launch p50/p99/p99.9. Until then the card range is only the symbolic
 `100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card`; power, clock,
-and duration remain unknown. Historical denominator values are not reused for
-this draft.
+duration, and new-default device performance remain unmeasured. Historical
+denominator values are not reused.
 
 ### Historical eight-iteration precision split hypothesis (not current N=12 production)
 

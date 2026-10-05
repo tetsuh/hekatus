@@ -109,7 +109,7 @@ class ReferenceTests(unittest.TestCase):
         self.assertFalse(newton_schulz_kernel._VARIANTS["bf16"])
         self.assertTrue(newton_schulz_kernel._VARIANTS["bf16-fp32state"])
 
-    def test_math_fidelity_names_map_to_pinned_enum_and_default_is_hifi4(self):
+    def test_math_fidelity_names_map_to_pinned_enum_and_default_is_hifi3(self):
         ttnn = SimpleNamespace(
             MathFidelity=SimpleNamespace(
                 LoFi="lofi",
@@ -133,7 +133,7 @@ class ReferenceTests(unittest.TestCase):
             / "bench"
             / "newton_schulz_kernel.py"
         ).read_text()
-        self.assertIn('math_fidelity: str = "HiFi4"', source)
+        self.assertIn('math_fidelity: str = DEFAULT_MATH_FIDELITY', source)
         self.assertIn("math_fidelity=math_fidelity_value", source)
 
     def test_fp32_state_selects_fp32_state_and_output_descriptors(self):
@@ -700,7 +700,7 @@ def test_prepare_deallocates_inputs_when_a_later_input_allocation_fails(monkeypa
     class _Ttnn:
         bfloat16 = "bf16"
         float32 = "fp32"
-        MathFidelity = SimpleNamespace(HiFi4="hifi4")
+        MathFidelity = SimpleNamespace(HiFi3="hifi3", HiFi4="hifi4")
 
         def __init__(self):
             self.deallocated = []
