@@ -5,6 +5,48 @@ changes here, fix design.md too.
 
 **Assumptions for every table**: 30 fps and 2048 depth points unless stated.
 
+## Issue #100 fastest-default draft (host-only, measurement pending)
+
+The Issue #100 host defaults are `variant=bf16`,
+`fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
+`dst_full_sync_en=true`. Existing input, R, X0, and BF16-output memory
+placements remain unchanged. This draft does not import a denominator from
+PR99, PR95, or PR98; no board, container, or measurement rerun was performed
+for this issue.
+
+The policy at both DEST and L1 boundaries is **fail-fast**. `prepare` validates
+DEST usage and then L1 usage before tensor allocation; `run_newton_schulz_kernel`
+propagates the `ValueError`, while the bench runner records the same error in a
+failed row. Neither path silently changes `matrix_block`, memory placement, or
+synchronization mode.
+
+Board-free L1 preflight for the new defaults (existing placement, BF16 state,
+non-fused path, 110-core host model) is:
+
+| Case | Padded 32x32 tile count | Host preflight result |
+|---|---:|---|
+| L=16, batch=4 | 8 | fits, 684,800 bytes |
+| L=16, batch=8,192 | 4,096 | fits, 1,143,552 bytes |
+| L=32, batch=4 | 8 | fits, 684,800 bytes |
+| L=32, batch=8,192 | 8,192 | **fails, 1,716,992 bytes** (144,128 over 1,572,864) |
+| L=16, batch=1/3/5/31/63 tails | 8/8/8/16/32 | fits |
+| L=32, batch=1/3/5/31/63 tails | 8/8/8/32/64 | fits |
+
+The existing partial-block device parametrization names 1,024 cases:
+`batch=1..64 × matrix_block={1,2,4,8} × L={16,32} × fuse_s={false,true}`.
+Its explicit BF16-state/DRAM-output placement passes this host preflight for
+all 1,024 cases. The new-default device regression separately names the
+fitting batch-4, batch-8,192 L=16, batch-4 L=32, and L=16/L=32 tail cases;
+the L=32 batch-8,192 default case is the intentional fail-fast case above.
+
+The Issue #100 card denominator is **UNMEASURED** on this branch:
+`p50_tflops_per_card = <tomorrow's ADR-0005 record>`. The resulting card range
+must be filled from that same-run p50, without inventing a value:
+`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card` cards. The
+measurement slot is tomorrow's device-0 run with 1,000 launches per row and
+p50/p99/p99.9 retained for L=16/L=32 batch 4 and 8,192 plus the named tail
+cases. Power, clock, and duration are also **UNMEASURED** until that run.
+
 **Two capacity bases appear in this document; each table names the one it
 uses.**
 
@@ -25,9 +67,10 @@ another without converting: peak % × 2.5 gives the share of usable capacity.
 > retained as historical evidence, with its non-reproduction explained below.
 > ADV-99-1 shows that the #90 aggregate 12/8 scaling is an upper bound, not an
 > inverse-only correction. The documented N=12 range for the current 1D all-mode
-> estimate is therefore 100–127.5 TFLOPS, or about 2 cards even at the upper
-> bound using the PR93 p50 denominator; the equation and missing mode-shape
-> assumptions are explicit below. This is an extrapolation, not a full-system
+> estimate remains 100–127.5 TFLOPS, but Issue #100 leaves the per-card
+> denominator and card count **UNMEASURED** until tomorrow's same-run p50 record;
+> the equation and missing mode-shape assumptions are explicit below. This is an
+> extrapolation, not a full-system
 > benchmark or an all-mode simultaneous benchmark.
 
 ---
@@ -243,9 +286,10 @@ The three Issue #63 conclusions are direct:
 1. The historical L=32 `achieved_tflops` headline is 15.6% of peak at
    fastest launch, below the 30% efficiency target. Applying that historical
    workload efficiency to the roughly 100 TFLOPS eight-iteration 1D all-mode
-   estimate gave about 2 cards in that historical N=8 scenario; the corrected
-   current N=12 estimate below uses the p50 denominator instead. Both are
-   extrapolations, not full-system or all-mode benchmarks.
+   estimate gave about 2 cards in that historical N=8 scenario. Issue #100's
+   current N=12 denominator remains unmeasured until tomorrow's same-run p50
+   record; both the historical count and the pending count are extrapolations,
+   not full-system or all-mode benchmarks.
 2. Packed L=16 is 3.24% and 14.5x stock, yet faster in wall-clock than L=32
    only as a cost/operation-volume comparison for the diagonal fallback,
    because it uses fewer logical dimensions and less work. It is not a
@@ -424,7 +468,7 @@ The last upper-bound row follows the N⁴ law from the N=8 256-channel volume
 row (`1,100 × 16^4 ≈ 7.2e7`; the upper bound is `1,650 × 16^4 ≈ 1.08e8`).
 An earlier revision carried 1.85e8, which did not reconcile with the law.
 These generic cards are still the separate 40% target basis; they are not the
-PR93 denominator calculation below.
+the historical denominator context above; Issue #100's denominator is pending.
 
 ## Target configuration (1D 256 elements / 128 ch receive + post-μBF 2D) —
 budget target, basis: theoretical peak
@@ -466,18 +510,14 @@ The geometric B-mode shape calculation above can be used once the color-flow
 bindings are supplied; it cannot close the aggregate calculation by itself.
 This is a bounded range, not an invented aggregate point.
 
-For the card denominator, use only the main-branch PR93 double-buffer record
-`docs/measurements/2026-10-04-p150a-newton-schulz-block-double-buffer-l16-l32.json`:
-`performance.rows[3]` is `L=32`, `batch=8192`, `double_buffer=true`; the
-record's `performance.flops_per_launch.L32=51,539,607,552` and
-`seconds_per_launch_p50=0.0007743085000129213` give
-`51,539,607,552 / 0.0007743085000129213 / 10^12 = 66.5621100003 TFLOPS/card`.
-The stored `achieved_tflops=67.06450362829192` is fastest-launch and is not
-used; PR95 and PR98 values are not used. The range gives
-`100 / 66.5621100003 = 1.5024` to
-`127.5 / 66.5621100003 = 1.9155` cards: **about 2 cards even at the upper
-bound**. This remains an extrapolation from one kernel row, not a system-wide
-or all-mode benchmark.
+The Issue #100 card denominator is reserved for tomorrow's same-run device
+record and is **UNMEASURED** on this branch. The record must provide the
+L=32/batch=8,192 new-default p50 and retain p99/p99.9 beside the L=16 and
+batch-4/tail rows. Until then, write
+`p50_tflops_per_card = <tomorrow's ADR-0005 record>` and
+`100 / p50_tflops_per_card` through `127.5 / p50_tflops_per_card` cards; no
+numeric card count is asserted here. The older PR93-derived denominator remains
+historical context only and is not reused for Issue #100.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
 2026-10-04 record

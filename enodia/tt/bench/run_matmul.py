@@ -19,7 +19,9 @@ inside memory and because reusing buffers is what a real implementation
 does.
 
 **Failures are results.** A shape that will not fit in L1 fails here, and
-that failure is recorded rather than aborting the run. Where the boundary
+that failure is recorded rather than aborting the run. Issue #100's block-8
+configuration never falls back to another block or placement; the recorded
+L1 preflight error is the required explicit outcome. Where the boundary
 falls is the answer to the question design.md §2 calls paramount — whether
 the data fits on-chip — so it is data, not an error.
 
@@ -52,6 +54,11 @@ from enodia.tt.bench.configs import (
     executed_shape,
 )
 from enodia.tt.bench.newton_schulz_kernel import (
+    DEFAULT_DOUBLE_BUFFER,
+    DEFAULT_DST_FULL_SYNC_EN,
+    DEFAULT_FP32_DEST_ACC_EN,
+    DEFAULT_MATRIX_BLOCK,
+    DEFAULT_VARIANT,
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
     _output_memory_name,
@@ -506,21 +513,22 @@ def run_custom_newton_schulz(
     *,
     dtype_name: str,
     memory_name: str,
-    variant: str,
-    iters: int,
-    repeats: int,
+    variant: str = DEFAULT_VARIANT,
+    iters: int = 20,
+    repeats: int = 3,
     math_fidelity: str = "HiFi4",
     profile: bool = False,
     fuse_s: bool = False,
     batch_reads: bool = False,
     reload_r: bool = False,
-    matrix_block: int = 1,
-    double_buffer: bool = False,
+    matrix_block: int = DEFAULT_MATRIX_BLOCK,
+    double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
     output_memory: str | None = None,
-    fp32_dest_acc_en: bool = True,
+    fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+    dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
     row_name: str | None = None,
 ) -> dict:
     """Run one prepared fixed-count custom inverse and retain launch samples."""
@@ -563,6 +571,7 @@ def run_custom_newton_schulz(
             matrix_block,
             variant=variant,
             fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
         )
     except ValueError as exc:
         return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
@@ -592,6 +601,7 @@ def run_custom_newton_schulz(
                 _output_memory_name(variant) if output_memory is None else output_memory
             ),
             fp32_dest_acc_en=fp32_dest_acc_en,
+            dst_full_sync_en=dst_full_sync_en,
             input_memory=input_memory,
             r_memory=r_memory,
             x0_memory=x0_memory,
@@ -628,14 +638,17 @@ def run_custom_newton_schulz(
             prepare_kwargs["x0_memory"] = x0_memory
         if output_memory is not None:
             prepare_kwargs["output_memory"] = output_memory
-        if not fp32_dest_acc_en:
-            prepare_kwargs["fp32_dest_acc_en"] = False
+        if fp32_dest_acc_en != DEFAULT_FP32_DEST_ACC_EN:
+            prepare_kwargs["fp32_dest_acc_en"] = fp32_dest_acc_en
+        if dst_full_sync_en != DEFAULT_DST_FULL_SYNC_EN:
+            prepare_kwargs["dst_full_sync_en"] = dst_full_sync_en
         # Keep the baseline dispatch signature intact for callers that provide
-        # a legacy host stub; non-default blocks must be explicit.
-        if matrix_block != 1:
+        # a legacy host stub; non-default controls must be explicit.  The real
+        # host API owns the Issue #100 defaults when these keys are omitted.
+        if matrix_block != DEFAULT_MATRIX_BLOCK:
             prepare_kwargs["matrix_block"] = matrix_block
-        if double_buffer:
-            prepare_kwargs["double_buffer"] = True
+        if double_buffer != DEFAULT_DOUBLE_BUFFER:
+            prepare_kwargs["double_buffer"] = double_buffer
         kernel = NewtonSchulzKernel.prepare(ttnn, device, matrices, **prepare_kwargs)
         kernel.launch()
         ttnn.synchronize_device(device)
@@ -674,6 +687,7 @@ def run_custom_newton_schulz(
             "r_memory": r_memory,
             "x0_memory": x0_memory,
             "fp32_dest_acc_en": fp32_dest_acc_en,
+            "dst_full_sync_en": dst_full_sync_en,
             "l1_preflight_bytes": l1_preflight_bytes,
             "output_memory": kernel.output_memory,
             "seconds_per_iteration": best,
@@ -742,7 +756,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--custom-variant",
         choices=["bf16", "bf16-fp32state"],
-        default="bf16",
+        default=DEFAULT_VARIANT,
         help="state precision for custom_newton_schulz rows",
     )
     parser.add_argument(
@@ -836,7 +850,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--double-buffer",
         "--block-double-buffer",
         dest="double_buffer",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_DOUBLE_BUFFER,
         help="give block input/output circular buffers two windows",
     )
     parser.add_argument(
@@ -848,8 +863,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--matrix-block",
         type=int,
         choices=MATRIX_BLOCK_CHOICES,
-        default=1,
+        default=DEFAULT_MATRIX_BLOCK,
         help="number of independent matrices processed per compute block",
+    )
+    parser.add_argument(
+        "--fp32-dest-acc",
+        dest="fp32_dest_acc_en",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_FP32_DEST_ACC_EN,
+        help="accumulate DEST tiles in FP32",
+    )
+    parser.add_argument(
+        "--dst-full-sync",
+        dest="dst_full_sync_en",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_DST_FULL_SYNC_EN,
+        help="use full DEST synchronization",
     )
     parser.add_argument(
         "--profile-csv",
@@ -879,17 +908,11 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
     issue94_modes = int(args.issue94_catalogue) + int(args.issue94_correctness)
     if issue94_modes > 1:
         parser.error("--issue94-catalogue and --issue94-correctness are mutually exclusive")
-    if args.double_buffer and args.compare_double_buffer:
-        parser.error("--double-buffer cannot be combined with --compare-double-buffer")
     if issue94_modes and args.acceptance_catalogue:
         parser.error("Issue #94 modes cannot be combined with --acceptance-catalogue")
     if args.acceptance_catalogue and (args.reload_r or args.compare_reload_r):
         parser.error(
             "--reload-r/--compare-reload-r require the normal custom-row runner"
-        )
-    if args.acceptance_catalogue and (args.double_buffer or args.compare_double_buffer):
-        parser.error(
-            "--double-buffer/--compare-double-buffer require the normal custom-row runner"
         )
     if args.acceptance_catalogue or issue94_modes:
         return
@@ -1139,6 +1162,8 @@ def _run_issue94_catalogue(
                     x0_memory="l1",
                     output_memory="dram",
                     fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                    dst_full_sync_en=True,
+                    double_buffer=False,
                     row_name=config["name"],
                     iters=1,
                     repeats=args.launches_per_row,
@@ -1285,6 +1310,8 @@ def _run_issue94_correctness(
                     x0_memory="l1",
                     output_memory="dram",
                     fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                    dst_full_sync_en=True,
+                    double_buffer=False,
                 )
                 finite = bool(np.all(np.isfinite(actual)))
                 rounded_error = _relative_frobenius_error(actual, rounded_reference)
@@ -1437,6 +1464,8 @@ def _run_acceptance_catalogue(
                             r_memory="l1",
                             x0_memory="l1",
                             row_name=row_name,
+                            double_buffer=False,
+                            dst_full_sync_en=True,
                             iters=1,
                             repeats=launches,
                         )
@@ -1698,6 +1727,8 @@ def main(argv: list[str] | None = None) -> int:
                                             "reload_r": reload_r,
                                             "matrix_block": args.matrix_block,
                                             "double_buffer": double_buffer,
+                                            "fp32_dest_acc_en": args.fp32_dest_acc_en,
+                                            "dst_full_sync_en": args.dst_full_sync_en,
                                             "input_memory": input_memory,
                                             "r_memory": r_memory,
                                             "x0_memory": x0_memory,
@@ -1734,6 +1765,8 @@ def main(argv: list[str] | None = None) -> int:
                                             reload_r=reload_r,
                                             matrix_block=args.matrix_block,
                                             double_buffer=double_buffer,
+                                            fp32_dest_acc_en=args.fp32_dest_acc_en,
+                                            dst_full_sync_en=args.dst_full_sync_en,
                                             row_name=custom_record["row"],
                                             input_memory=input_memory,
                                             r_memory=r_memory,
@@ -1773,6 +1806,8 @@ def main(argv: list[str] | None = None) -> int:
             "compare_reload_r": args.compare_reload_r,
             "double_buffer": args.double_buffer,
             "compare_double_buffer": args.compare_double_buffer,
+            "fp32_dest_acc_en": args.fp32_dest_acc_en,
+            "dst_full_sync_en": args.dst_full_sync_en,
         },
         "peak_tflops": args.peak_tflops,
         "peak_note": args.peak_note,

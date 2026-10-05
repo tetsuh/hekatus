@@ -54,6 +54,7 @@ def test_block8_preflight_passes_with_r_l1_and_x0_dram():
         r_memory="l1",
         x0_memory="dram",
         matrix_block=8,
+        double_buffer=False,
         variant="bf16-fp32state",
     )
     expected_total = (

@@ -42,6 +42,19 @@ PARTIAL_BLOCK_CASE_IDS = [
     f"batch{batch}-block{matrix_block}-L{size}-fuse_s_{str(fuse_s).lower()}"
     for batch, matrix_block, size, fuse_s in PARTIAL_BLOCK_CASES
 ]
+ISSUE100_DEFAULT_DEVICE_CASES = (
+    (4, 16),
+    (8192, 16),
+    (4, 32),
+    (1, 16),
+    (3, 16),
+    (5, 32),
+    (31, 32),
+    (63, 32),
+)
+ISSUE100_DEFAULT_DEVICE_CASE_IDS = [
+    f"batch{batch}-L{size}" for batch, size in ISSUE100_DEFAULT_DEVICE_CASES
+]
 
 
 class ReferenceTests(unittest.TestCase):
@@ -776,6 +789,34 @@ def test_device_partial_block_padding_matches_numpy(
         )
         assert actual.shape == (batch, size, size)
         relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        assert relative_error <= 1e-2
+    finally:
+        ttnn.close_device(device)
+
+
+@pytest.mark.tt_device
+@pytest.mark.skipif(
+    not (DEVICE_TEST and HAS_TTNN),
+    reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
+)
+@pytest.mark.parametrize(
+    ("batch", "size"),
+    ISSUE100_DEFAULT_DEVICE_CASES,
+    ids=ISSUE100_DEFAULT_DEVICE_CASE_IDS,
+)
+def test_device_issue100_defaults_match_bf16_rounded_reference(batch, size):
+    """Run fitting batch and tail cases through the new public defaults."""
+    import ttnn
+
+    device = ttnn.open_device(device_id=0)
+    try:
+        matrices = random_hpd_batch(batch, size, seed=100 + batch + size)
+        expected = newton_schulz_reference(
+            bf16_round_complex(matrices), x0=initial_value(matrices)
+        )
+        actual = run_newton_schulz_kernel(ttnn, device, matrices)
+        relative_error = np.linalg.norm(actual - expected) / np.linalg.norm(expected)
+        assert actual.shape == (batch, size, size)
         assert relative_error <= 1e-2
     finally:
         ttnn.close_device(device)

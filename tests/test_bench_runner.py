@@ -242,8 +242,10 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert default_flags.input_memory == "l1"
     assert default_flags.r_memory is None
     assert default_flags.x0_memory is None
-    assert default_flags.double_buffer is False
+    assert default_flags.double_buffer is True
     assert default_flags.compare_double_buffer is False
+    assert default_flags.fp32_dest_acc_en is True
+    assert default_flags.dst_full_sync_en is True
     enabled_flags = run_matmul._build_parser().parse_args(
         [
             "--fuse-s",
@@ -757,8 +759,10 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "batch_reads": False,
         "reload_r": False,
         "compare_reload_r": False,
-        "double_buffer": False,
+        "double_buffer": True,
         "compare_double_buffer": False,
+        "fp32_dest_acc_en": True,
+        "dst_full_sync_en": True,
     }
     assert len(payload["results"]) == 4
     assert all(
@@ -1103,12 +1107,15 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
             profile,
             fuse_s,
             batch_reads,
+            **kwargs,
         ):
             assert variant == "bf16-fp32state"
             assert math_fidelity == "HiFi4"
             assert profile is False
             assert fuse_s is False
             assert batch_reads is False
+            assert kwargs["matrix_block"] == 4
+            assert kwargs["double_buffer"] is False
             assert matrices is not None
             return cls()
 
@@ -1144,6 +1151,8 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
         dtype_name="bfloat16",
         memory_name="l1",
         variant="bf16-fp32state",
+        matrix_block=4,
+        double_buffer=False,
         iters=2,
         repeats=2,
     )
@@ -1274,6 +1283,7 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
         variant="bf16-fp32state",
         fuse_s=True,
         matrix_block=8,
+        double_buffer=False,
         iters=1,
         repeats=1,
     )
@@ -1330,6 +1340,7 @@ def test_custom_block8_per_input_placement_dispatches_with_passing_preflight(mon
         matrix_block=8,
         r_memory="l1",
         x0_memory="dram",
+        double_buffer=False,
         iters=1,
         repeats=1,
     )
@@ -1355,6 +1366,7 @@ def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
         output_memory="dram",
         input_memory="l1",
         matrix_block=4,
+        double_buffer=False,
         variant="bf16-fp32state",
     )
 
