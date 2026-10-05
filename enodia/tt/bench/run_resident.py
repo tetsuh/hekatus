@@ -94,12 +94,11 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
     consumer_stats = tensors["consumer_stats"]
     timestamps = tensors["timestamps"]
 
-    ring_compile = ttnn.TensorAccessorArgs(ring).get_compile_time_args()
     producer_stats_compile = ttnn.TensorAccessorArgs(producer_stats).get_compile_time_args()
     timestamp_compile = ttnn.TensorAccessorArgs(timestamps).get_compile_time_args()
     consumer_stats_compile = ttnn.TensorAccessorArgs(consumer_stats).get_compile_time_args()
 
-    producer_compile = [*ring_compile, *producer_stats_compile]
+    producer_compile = producer_stats_compile
     consumer_compile = [*timestamp_compile, *consumer_stats_compile]
     producer_args = _runtime_args(
         ttnn,

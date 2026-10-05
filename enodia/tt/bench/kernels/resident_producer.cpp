@@ -22,9 +22,7 @@ void kernel_main() {
     const std::uint32_t frame_interval_ticks = get_arg_val<std::uint32_t>(8);
     const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(9);
 
-    constexpr auto ring_args = TensorAccessorArgs<0>();
-    constexpr auto stats_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
-    const auto ring = TensorAccessor(ring_args, ring_address);
+    constexpr auto stats_args = TensorAccessorArgs<0>();
     const auto stats = TensorAccessor(stats_args, stats_address);
 
     auto* free_semaphore = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
@@ -82,7 +80,11 @@ void kernel_main() {
         }
         cb_push_back(cb_scratch, 1);
         cb_wait_front(cb_scratch, 1);
-        noc_async_write_page(frame % ring_pages, ring, get_read_ptr(cb_scratch));
+        const std::uint64_t ring_noc_address = get_noc_addr(
+            consumer_x,
+            consumer_y,
+            ring_address + (frame % ring_pages) * page_bytes);
+        noc_async_write(get_read_ptr(cb_scratch), ring_noc_address, page_bytes);
         noc_async_write_barrier();
         cb_pop_front(cb_scratch, 1);
 
