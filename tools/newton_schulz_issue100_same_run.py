@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from enodia.strict_json import dumps as strict_json_dumps
@@ -33,13 +32,6 @@ ISSUE100_COMPARISON_CONFIGS = (
         "dst_full_sync_en": True,
     },
 )
-
-
-def _environment_from_wrapper_output() -> dict:
-    env_files = sorted(Path("/out").glob("env-*.json"))
-    if not env_files:
-        return {}
-    return json.loads(env_files[-1].read_text())
 
 
 def run_issue100_comparison(ttnn, device, *, repeats: int) -> list[dict]:
@@ -131,7 +123,6 @@ def main(argv: list[str] | None = None) -> int:
         "launches_per_row": args.repeats,
         "watcher": False,
         "runner": "tools/newton_schulz_issue100_same_run.py",
-        "environment": _environment_from_wrapper_output(),
         "results": results,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
