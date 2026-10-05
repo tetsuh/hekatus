@@ -56,13 +56,13 @@ def _allocate(ttnn: Any, shape, dtype, layout, device, memory_config):
 
 
 def _sharded_ring_config(ttnn: Any, config: ResidentConfig):
-    shape = (config.ring_pages, 1, 1, PAGE_WORDS)
+    shape = (1, config.ring_pages, PAGE_WORDS)
     return ttnn.create_sharded_memory_config(
         shape,
         _core_range(ttnn, config.consumer_core),
         ttnn.ShardStrategy.HEIGHT,
         ttnn.ShardOrientation.ROW_MAJOR,
-        use_height_and_width_as_shard_shape=False,
+        use_height_and_width_as_shard_shape=True,
     )
 
 
@@ -195,7 +195,7 @@ def _download(ttnn: Any, tensor):
 
 
 def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
-    ring_shape = (config.ring_pages, 1, 1, PAGE_WORDS)
+    ring_shape = (1, config.ring_pages, PAGE_WORDS)
     timestamp_shape = (config.frame_count, 1, 1, PAGE_WORDS)
     stats_shape = (1, 1, 1, PAGE_WORDS)
     ring = _allocate(
