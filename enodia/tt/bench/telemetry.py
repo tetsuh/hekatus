@@ -17,6 +17,7 @@ import argparse
 import datetime
 import json
 import math
+import os
 import subprocess
 import sys
 import time
@@ -141,7 +142,25 @@ def harness_identity() -> dict:
     reproduced or compared against a later one. A modified tree is recorded
     as modified rather than silently attributed to its last commit, and a
     tree git could not read at all is recorded as unknown rather than clean.
+    A transferred source tree may deliberately omit ``.git``; the wrapper can
+    then provide the already-verified source revision explicitly.
     """
+    override_commit = os.environ.get("HEKATUS_TT_HARNESS_COMMIT")
+    if override_commit:
+        override_dirty = os.environ.get("HEKATUS_TT_HARNESS_DIRTY", "")
+        if override_dirty not in {"0", "1", "false", "true"}:
+            return {
+                "harness_commit": None,
+                "harness_dirty": None,
+                "harness_identity_error": (
+                    "HEKATUS_TT_HARNESS_DIRTY must be one of 0, 1, false, true"
+                ),
+            }
+        return {
+            "harness_commit": override_commit,
+            "harness_dirty": override_dirty in {"1", "true"},
+            "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+        }
     repo = Path(__file__).resolve().parents[3]
     commit, commit_ok = _git(repo, "rev-parse", "HEAD")
     # Tracked changes only. The toolchain writes its build output into the

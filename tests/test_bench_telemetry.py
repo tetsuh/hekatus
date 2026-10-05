@@ -141,6 +141,22 @@ def test_the_environment_names_the_harness_that_produced_it(monkeypatch):
     assert identity["harness_dirty"] is False
 
 
+def test_transferred_tree_can_record_verified_harness_identity_without_git(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+
+    def fail_git(*args, **kwargs):
+        raise AssertionError("explicit transferred-tree identity should bypass git")
+
+    monkeypatch.setattr(telemetry, "_git", fail_git)
+
+    assert telemetry.harness_identity() == {
+        "harness_commit": "416a7fc",
+        "harness_dirty": False,
+        "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    }
+
+
 def test_a_modified_tree_is_recorded_as_such(monkeypatch):
     monkeypatch.setattr(telemetry, "_git", _fake_git(" M enodia/tt/bench/run_matmul.py"))
 
