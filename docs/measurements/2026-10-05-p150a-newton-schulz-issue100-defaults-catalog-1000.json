@@ -7,9 +7,11 @@
   "harness_revision": "ea69489a1c50b91ab137f6e3659e2e0b599e8d41",
   "environment": {
     "captured_at": "2026-10-05T22:23:10.033416+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
     "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
     "image_pinned": true,
     "toolchain_release": "0.75.0",
+    "tt_env_active_release": "0.75.0",
     "host_kernel": "Linux 6.8.0-138-generic",
     "kernel_driver_version": "2.11.0",
     "kmd_version": "2.11.0",
