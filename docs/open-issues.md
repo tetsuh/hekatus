@@ -229,8 +229,8 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   78.78349 TFLOPS from p50 (about 78.8) remains historical evidence only. The
   post-merge ADR-0005 record
   `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
-  reports new-default L=32/batch=8,192 p50 78.644100 TFLOPS versus previous
-  default p50 66.474414 TFLOPS, with L=16 p50 values 15.956476 and 13.953926.
+  reports new-default L=32/batch=8,192 p50 78.543726 TFLOPS versus previous
+  default p50 66.494869 TFLOPS, with L=16 p50 values 15.948141 and 13.979284.
   All eight named correctness cases passed the 0.01 gate.
 - The reproducible device commands were:
 
@@ -242,11 +242,11 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \
     HEKATUS_TT_RUNNER=tools/newton_schulz_issue100_same_run.py \
     enodia/tt/bench/run_in_container.sh <out-dir> -- \
-    --out /out/issue100-same-run.json --device-id 0 --repeats 1000
+    --device-id 0 --repeats 1000
   ```
 - The measured L=32/batch=8,192 new-default p50 denominator is
-  **78.644100 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
-  therefore **1.2716–1.6212 cards**, or 2 physical cards when rounded up.
+  **78.543726 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
+  therefore **1.2732–1.6233 cards**, or 2 physical cards when rounded up.
   This remains an extrapolation rather than a full-system benchmark; the R
   representation remains open in #88.
 
