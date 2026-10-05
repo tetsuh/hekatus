@@ -26,7 +26,14 @@ def test_public_kernel_defaults_select_the_issue100_configuration():
         assert signature.parameters["double_buffer"].default is True
         assert signature.parameters["fp32_dest_acc_en"].default is True
         assert signature.parameters["dst_full_sync_en"].default is True
+        assert signature.parameters["input_memory"].default == "l1"
+        assert signature.parameters["r_memory"].default is None
+        assert signature.parameters["x0_memory"].default is None
         assert signature.parameters["output_memory"].default == "dram"
+
+    assert newton_schulz_kernel._resolve_input_memories(
+        "l1", r_memory=None, x0_memory=None
+    ) == ("l1", "l1", "l1")
 
 
 def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
@@ -39,6 +46,12 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
     assert defaults.double_buffer is True
     assert defaults.fp32_dest_acc_en is True
     assert defaults.dst_full_sync_en is True
+    assert defaults.input_memory == "l1"
+    assert defaults.r_memory is None
+    assert defaults.x0_memory is None
+    assert run_matmul._resolve_input_memories(
+        defaults.input_memory, r_memory=defaults.r_memory, x0_memory=defaults.x0_memory
+    ) == ("l1", "l1", "l1")
     assert defaults.output_memory == "dram"
 
     legacy = parser.parse_args(
