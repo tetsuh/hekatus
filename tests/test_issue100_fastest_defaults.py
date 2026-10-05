@@ -24,6 +24,7 @@ def test_public_kernel_defaults_select_the_issue100_configuration():
         assert signature.parameters["double_buffer"].default is True
         assert signature.parameters["fp32_dest_acc_en"].default is True
         assert signature.parameters["dst_full_sync_en"].default is True
+        assert signature.parameters["output_memory"].default == "dram"
 
 
 def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
@@ -34,6 +35,7 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
     assert defaults.double_buffer is True
     assert defaults.fp32_dest_acc_en is True
     assert defaults.dst_full_sync_en is True
+    assert defaults.output_memory == "dram"
 
     legacy = parser.parse_args(
         [
@@ -44,6 +46,8 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
             "--no-double-buffer",
             "--no-fp32-dest-acc",
             "--no-dst-full-sync",
+            "--output-memory",
+            "l1",
         ]
     )
     assert legacy.custom_variant == "bf16-fp32state"
@@ -51,13 +55,31 @@ def test_bench_runner_defaults_and_explicit_legacy_overrides_are_visible():
     assert legacy.double_buffer is False
     assert legacy.fp32_dest_acc_en is False
     assert legacy.dst_full_sync_en is False
+    assert legacy.output_memory == "l1"
 
 
 @pytest.mark.parametrize(
-    ("size", "logical_batch"),
-    [(16, 1), (16, 3), (16, 4), (16, 8192), (32, 4), (32, 5)],
+    ("size", "logical_batch", "expected"),
+    [
+        (16, 1, 652032),
+        (16, 3, 652032),
+        (16, 4, 652032),
+        (16, 5, 652032),
+        (16, 31, 652032),
+        (16, 63, 652032),
+        (16, 8192, 979712),
+        (32, 1, 652032),
+        (32, 3, 652032),
+        (32, 4, 652032),
+        (32, 5, 652032),
+        (32, 31, 652032),
+        (32, 63, 652032),
+        (32, 8192, 1389312),
+    ],
 )
-def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(size, logical_batch):
+def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(
+    size, logical_batch, expected
+):
     physical_tiles = newton_schulz_kernel._physical_tile_count(logical_batch, size)
     tile_count = newton_schulz_kernel._padded_tile_count(physical_tiles, 8)
 
@@ -71,10 +93,32 @@ def test_issue100_default_preflight_accepts_batch4_and_partial_tail_cases(size, 
         dst_full_sync_en=True,
         fuse_s=False,
         input_memory="l1",
-        output_memory="l1",
+        output_memory="dram",
     )
 
+    assert total == expected
     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
+
+
+def test_pr98_fused_block8_placement_reference_matches_read_only_preflight():
+    total = newton_schulz_kernel._validate_l1_preflight(
+        TTNN,
+        batch=8192,
+        core_count=110,
+        state_dtype=TTNN.bfloat16,
+        variant="bf16",
+        fp32_dest_acc_en=True,
+        dst_full_sync_en=True,
+        fuse_s=True,
+        input_memory="l1",
+        r_memory="l1",
+        x0_memory="l1",
+        output_memory="dram",
+        matrix_block=8,
+        double_buffer=True,
+    )
+
+    assert total == 1295104
 
 
 def test_existing_partial_device_cases_fit_host_preflight_with_explicit_legacy_placement():
@@ -107,7 +151,7 @@ def test_existing_partial_device_cases_fit_host_preflight_with_explicit_legacy_p
                     assert total <= newton_schulz_kernel._L1_TOTAL_BUDGET_BYTES
 
 
-def test_issue100_default_preflight_fails_fast_for_l32_batch8192_without_fallback():
+def test_issue100_explicit_legacy_l1_output_fails_fast_without_fallback():
     with pytest.raises(ValueError, match=r"matrix_block=8 L1 preflight failed") as excinfo:
         newton_schulz_kernel._validate_l1_preflight(
             TTNN,
@@ -156,6 +200,7 @@ def test_runner_reports_default_l32_l1_failure_before_kernel_prepare():
         shape=shape,
         dtype_name="bfloat16",
         memory_name="l1",
+        output_memory="l1",
         iters=1,
         repeats=1,
     )

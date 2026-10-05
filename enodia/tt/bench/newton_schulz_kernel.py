@@ -34,6 +34,7 @@ DEFAULT_FP32_DEST_ACC_EN = True
 DEFAULT_MATRIX_BLOCK = 8
 DEFAULT_DOUBLE_BUFFER = True
 DEFAULT_DST_FULL_SYNC_EN = True
+DEFAULT_OUTPUT_MEMORY = "dram"
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
@@ -546,8 +547,8 @@ def _state_dtype(ttnn, variant: str):
 
 
 def _output_memory_name(variant: str) -> str:
-    """Return the output placement; FP32 fallback outputs live in DRAM."""
-    return "dram" if variant == "bf16-fp32state" else "l1"
+    """Return the default output placement for either supported state variant."""
+    return DEFAULT_OUTPUT_MEMORY
 
 
 def _cb_page_size(ttnn, data_format) -> int:
@@ -720,6 +721,7 @@ def _tensor_l1_bytes(
     if input_memory == "l1":
         identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
         resident_bytes = _cb_page_size(ttnn, identity_dtype) + _cb_page_size(ttnn, ttnn.float32)
+    _validate_memory(output_memory, name="output_memory")
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
@@ -810,7 +812,7 @@ def _validate_l1_preflight(
     state_dtype,
     profile: bool = False,
     fuse_s: bool = False,
-    output_memory: str = "l1",
+    output_memory: str = DEFAULT_OUTPUT_MEMORY,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
@@ -828,6 +830,9 @@ def _validate_l1_preflight(
     input_memory, r_memory, x0_memory = _resolve_input_memories(
         input_memory, r_memory=r_memory, x0_memory=x0_memory
     )
+    if output_memory is None:
+        output_memory = DEFAULT_OUTPUT_MEMORY
+    _validate_memory(output_memory, name="output_memory")
     _validate_matrix_block(
         matrix_block,
         variant=variant,
@@ -1023,7 +1028,7 @@ class NewtonSchulzKernel:
         input_memory: str = "l1",
         r_memory: str | None = None,
         x0_memory: str | None = None,
-        output_memory: str | None = None,
+        output_memory: str | None = DEFAULT_OUTPUT_MEMORY,
         fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
         dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
@@ -1396,7 +1401,7 @@ def run_newton_schulz_kernel(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
-    output_memory: str | None = None,
+    output_memory: str | None = DEFAULT_OUTPUT_MEMORY,
     fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
     dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
 ) -> np.ndarray:

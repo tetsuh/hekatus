@@ -58,6 +58,7 @@ from enodia.tt.bench.newton_schulz_kernel import (
     DEFAULT_DST_FULL_SYNC_EN,
     DEFAULT_FP32_DEST_ACC_EN,
     DEFAULT_MATRIX_BLOCK,
+    DEFAULT_OUTPUT_MEMORY,
     DEFAULT_VARIANT,
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
@@ -526,7 +527,7 @@ def run_custom_newton_schulz(
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
-    output_memory: str | None = None,
+    output_memory: str | None = DEFAULT_OUTPUT_MEMORY,
     fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
     dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
     row_name: str | None = None,
@@ -586,6 +587,17 @@ def run_custom_newton_schulz(
             "status": "failed",
             "kind": CUSTOM_KIND,
             "error": "custom input/compute memory must be l1",
+        }
+    if output_memory is None:
+        output_memory = DEFAULT_OUTPUT_MEMORY
+    if output_memory not in INPUT_MEMORY_CHOICES:
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "error": (
+                f"output_memory must be one of {INPUT_MEMORY_CHOICES}, "
+                f"got {output_memory!r}"
+            ),
         }
     try:
         l1_preflight_bytes = _validate_l1_preflight(
@@ -751,6 +763,12 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=INPUT_MEMORY_CHOICES,
         default=None,
         help="interleaved placement for both X0 reader tensors",
+    )
+    parser.add_argument(
+        "--output-memory",
+        choices=INPUT_MEMORY_CHOICES,
+        default=DEFAULT_OUTPUT_MEMORY,
+        help="interleaved placement for custom-kernel output tensors",
     )
     parser.add_argument("--kind", action="append", choices=[STOCK_KIND, CUSTOM_KIND], default=None)
     parser.add_argument(
@@ -1715,6 +1733,7 @@ def main(argv: list[str] | None = None) -> int:
                                             "input": input_memory,
                                             "r": r_memory,
                                             "x0": x0_memory,
+                                            "output": args.output_memory,
                                             "compute": "l1",
                                         },
                                         "program_config": {
@@ -1732,6 +1751,7 @@ def main(argv: list[str] | None = None) -> int:
                                             "input_memory": input_memory,
                                             "r_memory": r_memory,
                                             "x0_memory": x0_memory,
+                                            "output_memory": args.output_memory,
                                         },
                                         "iterations": args.iters,
                                         "repeats": args.repeats,
@@ -1771,6 +1791,7 @@ def main(argv: list[str] | None = None) -> int:
                                             input_memory=input_memory,
                                             r_memory=r_memory,
                                             x0_memory=x0_memory,
+                                            output_memory=args.output_memory,
                                             iters=args.iters,
                                             repeats=args.repeats,
                                         )
@@ -1800,6 +1821,7 @@ def main(argv: list[str] | None = None) -> int:
             "input_memory": input_memory,
             "r_memory": r_memory,
             "x0_memory": x0_memory,
+            "output_memory": args.output_memory,
             "fuse_s": args.fuse_s,
             "batch_reads": args.batch_reads,
             "reload_r": args.reload_r,

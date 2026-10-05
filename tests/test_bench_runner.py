@@ -240,6 +240,7 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert default_flags.fuse_s is False
     assert default_flags.batch_reads is False
     assert default_flags.input_memory == "l1"
+    assert default_flags.output_memory == "dram"
     assert default_flags.r_memory is None
     assert default_flags.x0_memory is None
     assert default_flags.double_buffer is True
@@ -256,6 +257,8 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
             "l1",
             "--x0-memory",
             "dram",
+            "--output-memory",
+            "l1",
             "--double-buffer",
         ]
     )
@@ -264,6 +267,7 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert enabled_flags.input_memory == "dram"
     assert enabled_flags.r_memory == "l1"
     assert enabled_flags.x0_memory == "dram"
+    assert enabled_flags.output_memory == "l1"
     assert enabled_flags.double_buffer is True
     alias_flags = run_matmul._build_parser().parse_args(["--block-double-buffer"])
     assert alias_flags.double_buffer is True
@@ -338,7 +342,10 @@ def test_normal_reload_r_runner_remains_accepted(monkeypatch, tmp_path):
     )
     assert len(calls) == 1
     assert calls[0]["reload_r"] is True
-    assert json.loads(output.read_text())["selection"]["reload_r"] is True
+    assert calls[0]["output_memory"] == "dram"
+    payload = json.loads(output.read_text())
+    assert payload["selection"]["reload_r"] is True
+    assert payload["selection"]["output_memory"] == "dram"
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -480,6 +487,8 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
             "l1",
             "--x0-memory",
             "dram",
+            "--output-memory",
+            "l1",
             "--out",
             str(output),
         ]
@@ -491,8 +500,10 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     assert calls[0]["batch_reads"] is True
     assert calls[0]["r_memory"] == "l1"
     assert calls[0]["x0_memory"] == "dram"
+    assert calls[0]["output_memory"] == "l1"
     assert payload["selection"]["r_memory"] == "l1"
     assert payload["selection"]["x0_memory"] == "dram"
+    assert payload["selection"]["output_memory"] == "l1"
     assert payload["results"][0]["program_config"]["r_memory"] == "l1"
     assert payload["results"][0]["program_config"]["x0_memory"] == "dram"
     assert payload["results"][0]["program_config"]["fuse_s"] is True
@@ -755,6 +766,7 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
         "input_memory": "l1",
         "r_memory": "l1",
         "x0_memory": "l1",
+        "output_memory": "dram",
         "fuse_s": False,
         "batch_reads": False,
         "reload_r": False,

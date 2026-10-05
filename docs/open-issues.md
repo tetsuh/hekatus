@@ -208,22 +208,25 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 ## Issue #100 host-default draft (measurement pending)
 
 - Defaults are `variant=bf16`, `fp32_dest_acc_en=true`, `matrix_block=8`,
-  `double_buffer=true`, and full-sync DEST. Existing input/R/X0/output
-  placements remain unchanged; legacy configurations require explicit
+  `double_buffer=true`, and full-sync DEST, with R/X0 inputs in L1 and output
+  in DRAM. The compatibility input shorthand and resident identity/zero
+  buffers remain in L1; legacy placement configurations require explicit
   arguments.
 - DEST and L1 boundaries use fail-fast semantics. `prepare` raises a
   `ValueError` before tensor allocation, and the bench runner records the same
   selected configuration and error. No block or placement fallback is allowed.
-- Host preflight fits L=16 batch=4 (684,800 bytes), L=16 batch=8,192
-  (1,143,552 bytes), and L=32 batch=4 (684,800 bytes). L=32 batch=8,192
-  fails at 1,716,992 bytes, 144,128 over the 1,572,864-byte budget, with the
-  unchanged all-L1 placement.
+- Host preflight for the default non-fused path fits L=16 batch=4 (652,032
+  bytes), L=16 batch=8,192 (979,712 bytes), L=32 batch=4 (652,032 bytes), and
+  L=32 batch=8,192 (1,389,312 bytes). Tails batch 1/3/5/31/63 fit for both
+  L=16 (padded tiles 8/8/8/16/32) and L=32 (8/8/8/32/64), at 652,032 bytes
+  each. An explicit legacy `output_memory=l1` keeps the L=32 batch-8,192
+  non-fused row at 1,716,992 bytes and fails fast.
 - The existing partial/tail device parametrization names 1,024 explicit rows
   (`batch=1..64`, blocks 1/2/4/8, L=16/32, fused/non-fused); its explicit
-  BF16-state/DRAM-output placement passes host preflight. The new-default
-  regression covers fitting batch-4, batch-8,192 L=16, batch-4 L=32, and
-  named tails. The L=32 batch-8,192 all-L1 default remains an intentional
-  fail-fast case.
+  BF16-state/DRAM-output placement passes host preflight. PR98's read-only
+  fused/HiFi3 L=32 batch-8,192 block-8 row records 1,295,104 bytes and about
+  78.8 TFLOPS from p50; that is evidence for the placement, not a changed
+  Issue #100 algorithm default. No measurement file is changed.
 - Tomorrow's unknowns are the same-run device-0 p50/p99/p99.9, power/clock,
   and duration for L=16/L=32 batch-4 and batch-8,192 plus tails. The card
   denominator and resulting `100..127.5 TFLOPS` card range are unmeasured

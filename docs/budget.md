@@ -9,8 +9,10 @@ changes here, fix design.md too.
 
 The Issue #100 host defaults are `variant=bf16`,
 `fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
-`dst_full_sync_en=true`. Existing input, R, X0, and BF16-output memory
-placements remain unchanged. This draft does not import a denominator from
+`dst_full_sync_en=true`. The default placement is R/X0 inputs in L1 and output
+in DRAM; the compatibility input shorthand and its resident identity/zero
+buffers remain in L1. Explicit `output_memory=l1` and per-tensor placement
+arguments remain available. This draft does not import a denominator from
 PR99, PR95, or PR98; no board, container, or measurement rerun was performed
 for this issue.
 
@@ -20,24 +22,34 @@ propagates the `ValueError`, while the bench runner records the same error in a
 failed row. Neither path silently changes `matrix_block`, memory placement, or
 synchronization mode.
 
-Board-free L1 preflight for the new defaults (existing placement, BF16 state,
-non-fused path, 110-core host model) is:
+Board-free L1 preflight for the new defaults (R/X0 L1, DRAM output, BF16
+state, non-fused path, block 8, double buffer, full-sync DEST, and the 110-core
+host model) is:
 
 | Case | Padded 32x32 tile count | Host preflight result |
 |---|---:|---|
-| L=16, batch=4 | 8 | fits, 684,800 bytes |
-| L=16, batch=8,192 | 4,096 | fits, 1,143,552 bytes |
-| L=32, batch=4 | 8 | fits, 684,800 bytes |
-| L=32, batch=8,192 | 8,192 | **fails, 1,716,992 bytes** (144,128 over 1,572,864) |
-| L=16, batch=1/3/5/31/63 tails | 8/8/8/16/32 | fits |
-| L=32, batch=1/3/5/31/63 tails | 8/8/8/32/64 | fits |
+| L=16, batch=4 | 8 | fits, 652,032 bytes |
+| L=16, batch=8,192 | 4,096 | fits, 979,712 bytes |
+| L=32, batch=4 | 8 | fits, 652,032 bytes |
+| L=32, batch=8,192 | 8,192 | fits, 1,389,312 bytes |
+| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fits, 652,032 bytes in each case |
+| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fits, 652,032 bytes in each case |
 
-The existing partial-block device parametrization names 1,024 cases:
+The legacy explicit `output_memory=l1` override remains fail-fast for the
+non-fused L=32 batch=8,192 row at 1,716,992 bytes (144,128 over the
+1,572,864-byte budget); there is no implicit fallback. The existing
+partial-block device parametrization names 1,024 cases:
 `batch=1..64 × matrix_block={1,2,4,8} × L={16,32} × fuse_s={false,true}`.
 Its explicit BF16-state/DRAM-output placement passes this host preflight for
-all 1,024 cases. The new-default device regression separately names the
-fitting batch-4, batch-8,192 L=16, batch-4 L=32, and L=16/L=32 tail cases;
-the L=32 batch-8,192 default case is the intentional fail-fast case above.
+all 1,024 cases.
+
+PR98's read-only measurement record provides a separate placement reference:
+its `L32_b8192_bf16_full_sync_block8` row uses `fuse_s=true`, `HiFi3`,
+R/X0 in L1, DRAM output, and records 1,295,104 bytes plus 78.78349 TFLOPS
+from p50 (about 78.8). Issue #100 changes placement only; its current
+non-fused/HiFi4 defaults therefore retain the independently recalculated
+1,389,312-byte preflight above rather than claiming the PR98 row's fused
+configuration. No measurement file is changed.
 
 The Issue #100 card denominator is **UNMEASURED** on this branch:
 `p50_tflops_per_card = <tomorrow's ADR-0005 record>`. The resulting card range

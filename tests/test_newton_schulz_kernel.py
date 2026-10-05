@@ -143,7 +143,7 @@ class ReferenceTests(unittest.TestCase):
 
         self.assertEqual(newton_schulz_kernel._state_dtype(ttnn, "bf16"), "bf16")
         self.assertEqual(newton_schulz_kernel._state_dtype(ttnn, "bf16-fp32state"), "fp32")
-        self.assertEqual(newton_schulz_kernel._output_memory_name("bf16"), "l1")
+        self.assertEqual(newton_schulz_kernel._output_memory_name("bf16"), "dram")
         self.assertEqual(newton_schulz_kernel._output_memory_name("bf16-fp32state"), "dram")
         self.assertEqual(bf16_defs[newton_schulz_kernel.CB_OUTPUT_REAL], ("bf16", 2))
         self.assertEqual(bf16_defs[newton_schulz_kernel.CB_OUTPUT_IMAG], ("bf16", 2))

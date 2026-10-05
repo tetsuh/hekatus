@@ -1194,10 +1194,11 @@ reference.
 
 The host API and bench runner now default to `variant=bf16`,
 `fp32_dest_acc_en=true`, `matrix_block=8`, `double_buffer=true`, and
-`dst_full_sync_en=true`. Existing input, R, X0, and BF16-output memory
-placements remain unchanged, and every prior configuration remains selectable
-with explicit arguments. This is a host-only change: no board, container, SSH,
-or measurement rerun was performed.
+`dst_full_sync_en=true`. The default placement is R/X0 inputs in L1 and output
+in DRAM; the compatibility input shorthand and its resident identity/zero
+buffers remain in L1. Every prior placement remains selectable with explicit
+arguments. This is a host-only change: no board, container, SSH, or
+measurement rerun was performed.
 
 BF16 state is selected because the BF16-rounded-R input already bounds the
 solver error against the true inverse in the Issue #94 record
@@ -1213,24 +1214,32 @@ failure raises `ValueError` with the selected block and accounting; the runner
 records that same failure. No call silently changes block size, memory
 placement, or synchronization mode to make a row pass.
 
-The board-free L1 ledger for the new defaults (existing all-L1 placement,
-BF16 state, non-fused path, 110-core host model) is:
+The board-free L1 ledger for the new defaults (R/X0 L1, DRAM output, BF16
+state, non-fused path, block 8, double buffer, full-sync DEST, and the 110-core
+host model) is:
 
 | Case | Padded 32x32 tiles | Result |
 |---|---:|---|
-| L=16, batch=4 | 8 | fits, 684,800 bytes |
-| L=16, batch=8,192 | 4,096 | fits, 1,143,552 bytes |
-| L=32, batch=4 | 8 | fits, 684,800 bytes |
-| L=32, batch=8,192 | 8,192 | fails at 1,716,992 bytes (144,128 over budget) |
-| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fit |
-| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fit |
+| L=16, batch=4 | 8 | fits, 652,032 bytes |
+| L=16, batch=8,192 | 4,096 | fits, 979,712 bytes |
+| L=32, batch=4 | 8 | fits, 652,032 bytes |
+| L=32, batch=8,192 | 8,192 | fits, 1,389,312 bytes |
+| L=16 tails batch=1/3/5/31/63 | 8/8/8/16/32 | fit, 652,032 bytes each |
+| L=32 tails batch=1/3/5/31/63 | 8/8/8/32/64 | fit, 652,032 bytes each |
 
-The existing partial-block device inventory contains 1,024 explicit cases:
+An explicit legacy `output_memory=l1` override keeps the previous non-fused
+L=32 batch-8,192 boundary at 1,716,992 bytes, which is 144,128 over the
+1,572,864-byte budget and fails before allocation. The existing partial-block
+device inventory contains 1,024 explicit cases:
 `batch=1..64 × matrix_block={1,2,4,8} × L={16,32} × fuse_s={false,true}`.
-Their explicit BF16-state/DRAM-output placement passes host preflight, while the
-new-default device regression covers the fitting batch-4, batch-8,192 L=16,
-batch-4 L=32, and named tail cases. L=32 batch=8,192 with the unchanged
-all-L1 placement is intentionally the fail-fast case above.
+Their explicit BF16-state/DRAM-output placement passes host preflight.
+
+PR98's read-only `L32_b8192_bf16_full_sync_block8` measurement row is a
+separate fused (`fuse_s=true`, `HiFi3`) placement reference: R/X0 are in L1,
+output is in DRAM, and its recorded preflight is 1,295,104 bytes with 78.78349
+TFLOPS from p50. The Issue #100 default changes placement only, so its
+non-fused/HiFi4 host preflight is the 1,389,312-byte result above; no measured
+value or measurement file is changed.
 
 The one-card denominator is **UNMEASURED** until tomorrow's same-run ADR-0005
 record reports the new-default L=16/L=32 batch-4 and batch-8,192 rows, tails,
