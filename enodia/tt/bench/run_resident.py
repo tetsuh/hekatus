@@ -265,6 +265,13 @@ def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
                 pass
 
 
+def _latest_output(prefix: str) -> Path:
+    candidates = sorted(Path("/out").glob(f"{prefix}*.json" if prefix == "env-" else f"{prefix}*.csv"))
+    if not candidates:
+        raise ValueError(f"wrapper output {prefix!r} was not found")
+    return candidates[-1]
+
+
 def _environment(path: Path) -> dict[str, Any]:
     try:
         return json.loads(path.read_text())
@@ -280,8 +287,8 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--env-json", type=Path, required=True)
-    parser.add_argument("--power-trace", default="resident-power.csv")
+    parser.add_argument("--env-json", type=Path, default=None)
+    parser.add_argument("--power-trace", default=None)
     parser.add_argument("--frame-count", type=int, default=100)
     parser.add_argument("--frame-interval-ticks", type=int, default=1_350_000)
     parser.add_argument("--producer-core", type=_core, default=(0, 0))
@@ -299,7 +306,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    environment = _environment(args.env_json)
+    environment_path = args.env_json or _latest_output("env-")
+    power_trace = args.power_trace or _latest_output("power-").name
+    environment = _environment(environment_path)
     timestamp_core = args.timestamp_core or args.consumer_core
     config = ResidentConfig(
         frame_count=args.frame_count,
@@ -342,7 +351,7 @@ def main(argv: list[str] | None = None) -> int:
         kernel_error_flag=result["kernel_error_flag"],
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,
-        power_trace=args.power_trace,
+        power_trace=power_trace,
         watcher=args.watcher,
         timing_evidence=not args.watcher,
     )
