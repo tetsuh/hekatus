@@ -19,7 +19,10 @@ void kernel_main() {
     const std::uint32_t frame_count = get_arg_val<std::uint32_t>(4);
     const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(5);
     const std::uint32_t work_per_frame = get_arg_val<std::uint32_t>(6);
-    const std::uint32_t cycle_budget = get_arg_val<std::uint32_t>(7);
+    const std::uint32_t per_frame_work_budget_ticks = get_arg_val<std::uint32_t>(7);
+    const std::uint64_t run_budget_ticks =
+        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(8))
+        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(9)) << 32);
 
     constexpr auto ring_args = TensorAccessorArgs<0>();
     constexpr auto control_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
@@ -35,10 +38,10 @@ void kernel_main() {
     std::uint32_t frames_consumed = 0;
     std::uint32_t error_flag = 0;
     std::uint32_t accumulator = 0;
+    const std::uint64_t run_start = get_timestamp();
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
         const std::uint32_t required = frame + 1;
-        const std::uint64_t wait_start = get_timestamp();
         auto* payload = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
             ring_address + (frame % ring_pages) * page_words * sizeof(std::uint32_t));
         if (payload[ready_word] < required) {
@@ -46,7 +49,7 @@ void kernel_main() {
         }
         while (payload[ready_word] < required && control_local[0] == 0) {
             invalidate_l1_cache();
-            if (get_timestamp() - wait_start >= cycle_budget) {
+            if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 control_local[0] = 1;
                 break;
@@ -64,7 +67,8 @@ void kernel_main() {
         }
         const std::uint64_t end = get_timestamp();
         const std::uint64_t elapsed = end - start;
-        if (elapsed >= static_cast<std::uint64_t>(cycle_budget)) {
+        if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)
+            || end - run_start >= run_budget_ticks) {
             error_flag = 1;
             control_local[0] = 1;
         }

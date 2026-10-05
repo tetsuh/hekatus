@@ -10,11 +10,16 @@ import pytest
 
 from enodia.tt.bench.resident_harness import (
     ResidentConfig,
+    ResidentPreflightError,
     RingAccounting,
     build_measurement_record,
     cycle_budget_exceeded,
     frame_interval_statistics,
+    interval_ticks_for_microseconds,
     required_samples_for_percentile,
+    run_budget_breakdown,
+    run_budget_exceeded,
+    split_u64,
     termination_reason,
     timestamp_digest,
     validate_configuration,
@@ -77,6 +82,54 @@ def test_cycle_budget_and_termination_are_explicit():
     assert termination_reason(frame_count_reached=False, cycle_budget_hit=False, outer_timeout=True) == (
         "outer_timeout"
     )
+
+
+def test_run_budget_covers_n_frames_interval_work_and_margin():
+    config = _config(
+        frame_count=2_001,
+        frame_interval_ticks=1_350_000,
+        cycle_budget=10_000_000,
+    )
+    breakdown = run_budget_breakdown(config)
+    assert breakdown == {
+        "frame_count": 2_001,
+        "frame_interval_ticks": 1_350_000,
+        "pacing_ticks": 2_701_350_000,
+        "per_frame_work_budget_ticks": 10_000_000,
+        "fixed_work_ticks": 20_010_000_000,
+        "safety_margin_percent": 10,
+        "safety_margin_ticks": 2_271_135_000,
+        "run_budget_ticks": 24_982_485_000,
+    }
+    assert not run_budget_exceeded(
+        elapsed_ticks=4 * config.frame_interval_ticks + 4 * config.cycle_budget,
+        run_budget_ticks=breakdown["run_budget_ticks"],
+    )
+    assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=800) == 800_000
+    assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=1_350) == 1_350_000
+    assert split_u64(breakdown["run_budget_ticks"]) == (3_507_648_520, 5)
+
+
+def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
+    config = _config(
+        frame_count=2_001,
+        frame_interval_ticks=800_000,
+        cycle_budget=10_000_000,
+    )
+    breakdown = run_budget_breakdown(config)
+    assert breakdown["pacing_ticks"] == 1_600_800_000
+    assert breakdown["run_budget_ticks"] == 23_771_880_000
+    assert run_budget_exceeded(
+        elapsed_ticks=breakdown["run_budget_ticks"],
+        run_budget_ticks=breakdown["run_budget_ticks"],
+    )
+    with pytest.raises(ValueError):
+        split_u64(1 << 64)
+    with pytest.raises(ValueError):
+        interval_ticks_for_microseconds(microseconds=0, aiclk_mhz=1_350)
+    huge = _config(frame_count=2**63, frame_interval_ticks=2**63)
+    with pytest.raises(ResidentPreflightError, match="64-bit"):
+        run_budget_breakdown(huge)
 
 
 def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
@@ -158,12 +211,13 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "noc_inline_dw_write" not in producer
     assert "noc_semaphore" not in producer
     assert "ready_word" in producer and "free_word" in producer
-    assert "cycle_budget" in producer
-    assert "get_timestamp() - wait_start >= cycle_budget" in producer
+    assert "run_budget_ticks" in producer
+    assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
     assert "ready_word" in consumer and "free_word" in consumer
     assert "control_local[0] = 1" in consumer
-    assert "get_timestamp() - wait_start >= cycle_budget" in consumer
+    assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
+    assert "per_frame_work_budget_ticks" in consumer
     assert "noc_inline_dw_write" not in consumer
     assert "noc_semaphore" not in consumer
 

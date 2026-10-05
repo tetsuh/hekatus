@@ -24,6 +24,27 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #12 recovery runbook (owner approval required)
+
+The resident harness must not return to hardware without a new owner approval.
+When approved, the next procedure is bounded and uses device 0 through the
+named-container wrapper:
+
+1. Before and after each invocation, run `docker ps --format '{{.Names}}'
+and require zero running containers. Never stop another container.
+2. Run one Watcher-enabled, one-frame validation with the 60-second outer cap;
+it is not timing evidence.
+3. If it passes, run one no-Watcher 60-second timing attempt. If that passes,
+the owner may separately authorize one no-Watcher frame-count run capped at
+ten minutes, with the outer timeout explicitly raised for that run.
+4. On an abnormal exit or timeout, perform at most one device-0 reset, then
+run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
+probe fails or after the one recovery attempt.
+
+Every run remains frame-count terminated; the frame interval is a harness
+parameter, not an acquisition-rate claim. This is a procedure only: it does
+not authorize a future device run by itself.
+
 ## Newton-Schulz reference correction
 
 Six landed Issue #63 JSON records retain the historical correctness wording

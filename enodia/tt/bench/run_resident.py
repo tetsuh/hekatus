@@ -25,6 +25,8 @@ from enodia.tt.bench.resident_harness import (
     ResidentPreflightError,
     build_measurement_record,
     build_rejection_record,
+    run_budget_breakdown,
+    split_u64,
     validate_configuration,
 )
 
@@ -105,6 +107,7 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
         *timestamp_compile,
         *consumer_stats_compile,
     ]
+    run_budget_low, run_budget_high = split_u64(run_budget_breakdown(config)["run_budget_ticks"])
     producer_args = _runtime_args(
         ttnn,
         config.producer_core,
@@ -115,7 +118,8 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
             config.frame_count,
             config.frame_interval_ticks,
             config.ring_pages,
-            config.cycle_budget,
+            run_budget_low,
+            run_budget_high,
         ],
     )
     consumer_args = _runtime_args(
@@ -130,6 +134,8 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
             config.ring_pages,
             config.work_per_frame,
             config.cycle_budget,
+            run_budget_low,
+            run_budget_high,
         ],
     )
     kernels = [
@@ -358,7 +364,11 @@ def main(argv: list[str] | None = None) -> int:
         environment=environment,
         power_trace=power_trace,
         watcher=args.watcher,
-        timing_evidence=not args.watcher,
+        timing_evidence=(
+            not args.watcher
+            and result["frames_consumed"] == config.frame_count
+            and not result["cycle_budget_hit"]
+        ),
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]

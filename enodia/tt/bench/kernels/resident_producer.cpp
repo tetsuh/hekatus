@@ -19,7 +19,9 @@ void kernel_main() {
     const std::uint32_t frame_count = get_arg_val<std::uint32_t>(3);
     const std::uint32_t frame_interval_ticks = get_arg_val<std::uint32_t>(4);
     const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(5);
-    const std::uint32_t cycle_budget = get_arg_val<std::uint32_t>(6);
+    const std::uint64_t run_budget_ticks =
+        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(6))
+        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(7)) << 32);
 
     constexpr auto ring_args = TensorAccessorArgs<0>();
     constexpr auto control_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
@@ -31,15 +33,15 @@ void kernel_main() {
     std::uint32_t producer_full_count = 0;
     std::uint32_t frames_produced = 0;
     std::uint32_t error_flag = 0;
-    std::uint64_t next_release = get_timestamp();
+    const std::uint64_t run_start = get_timestamp();
+    std::uint64_t next_release = run_start;
 
     for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
         if (frame != 0) {
             next_release += static_cast<std::uint64_t>(frame_interval_ticks);
         }
-        const std::uint64_t wait_start = get_timestamp();
         while (static_cast<std::int64_t>(get_timestamp() - next_release) < 0) {
-            if (get_timestamp() - wait_start >= cycle_budget) {
+            if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 break;
             }
@@ -88,7 +90,7 @@ void kernel_main() {
             if (consumed >= consumed_required) {
                 break;
             }
-            if (get_timestamp() - wait_start >= cycle_budget) {
+            if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 break;
             }

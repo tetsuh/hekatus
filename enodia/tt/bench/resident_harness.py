@@ -21,6 +21,8 @@ PAGE_BYTES = PAGE_WORDS * 4
 MAX_OUTER_TIMEOUT_SECONDS = 600
 MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
+UINT64_MAX = (1 << 64) - 1
+RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -177,10 +179,74 @@ def wrap_delta(end: int, start: int, *, bits: int = 64) -> int:
 
 
 def cycle_budget_exceeded(*, elapsed_ticks: int, cycle_budget: int) -> bool:
-    """The in-kernel budget is inclusive: reaching it is an error."""
+    """The per-frame fixed-work budget is inclusive: reaching it is an error."""
     if elapsed_ticks < 0 or cycle_budget <= 0:
         raise ValueError("elapsed_ticks must be non-negative and cycle_budget positive")
     return elapsed_ticks >= cycle_budget
+
+
+def run_budget_exceeded(*, elapsed_ticks: int, run_budget_ticks: int) -> bool:
+    """Return whether the run-wide budget has been reached."""
+    if elapsed_ticks < 0 or run_budget_ticks <= 0:
+        raise ValueError("elapsed_ticks must be non-negative and run_budget_ticks positive")
+    return elapsed_ticks >= run_budget_ticks
+
+
+def interval_ticks_for_microseconds(*, microseconds: int, aiclk_mhz: int) -> int:
+    """Convert an integer wall-time interval to AICLK ticks.
+
+    AICLK in MHz is cycles per microsecond, so this conversion is exact for
+    integer microseconds and avoids mixing nanoseconds with device ticks.
+    """
+    if (
+        isinstance(microseconds, bool)
+        or not isinstance(microseconds, int)
+        or microseconds <= 0
+        or isinstance(aiclk_mhz, bool)
+        or not isinstance(aiclk_mhz, int)
+        or aiclk_mhz <= 0
+    ):
+        raise ValueError("microseconds and aiclk_mhz must be positive integers")
+    ticks = microseconds * aiclk_mhz
+    if ticks > UINT64_MAX:
+        raise ResidentPreflightError("interval conversion exceeds the 64-bit tick range")
+    return ticks
+
+
+def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
+    """Compute the conservative run-wide budget in AICLK ticks.
+
+    The endpoint convention deliberately charges ``N`` frame intervals, not
+    ``N-1``: this covers the configured pacing interval plus the terminal
+    frame's pacing/teardown boundary.  ``cycle_budget`` is the per-frame fixed
+    work limit; it is not itself the run-wide limit.  A fixed 10% margin is
+    explicit and bounded, rather than hidden in the device kernel.
+    """
+    config = validate_configuration(config)
+    pacing_ticks = config.frame_count * config.frame_interval_ticks
+    fixed_work_ticks = config.frame_count * config.cycle_budget
+    base_ticks = pacing_ticks + fixed_work_ticks
+    margin_ticks = (base_ticks * RUN_BUDGET_SAFETY_MARGIN_PERCENT + 99) // 100
+    run_budget_ticks = base_ticks + margin_ticks
+    if run_budget_ticks > UINT64_MAX:
+        raise ResidentPreflightError("run-wide cycle budget exceeds the 64-bit tick range")
+    return {
+        "frame_count": config.frame_count,
+        "frame_interval_ticks": config.frame_interval_ticks,
+        "pacing_ticks": pacing_ticks,
+        "per_frame_work_budget_ticks": config.cycle_budget,
+        "fixed_work_ticks": fixed_work_ticks,
+        "safety_margin_percent": RUN_BUDGET_SAFETY_MARGIN_PERCENT,
+        "safety_margin_ticks": margin_ticks,
+        "run_budget_ticks": run_budget_ticks,
+    }
+
+
+def split_u64(value: int) -> tuple[int, int]:
+    """Split a non-negative 64-bit tick value into runtime-argument words."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= UINT64_MAX:
+        raise ValueError("value must be an unsigned 64-bit integer")
+    return value & 0xFFFFFFFF, value >> 32
 
 
 def termination_reason(
@@ -353,14 +419,17 @@ def build_measurement_record(
     if reason == "running":
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
+    completed = not cycle_budget_hit and not kernel_error_flag and frame_count_reached
     return {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
         "stage": 1,
-        "status": "ok" if not cycle_budget_hit and not kernel_error_flag and frame_count_reached else "error",
+        "status": "ok" if completed else "error",
         "termination_reason": reason,
         "parameters": {
             **config.as_record(),
+            "run_budget": run_budget_breakdown(config),
+            "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
             "frame_interval_is_not_acquisition_rate_claim": True,
             "frame_interval_note": (
                 "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
@@ -385,6 +454,9 @@ def build_measurement_record(
         },
         "cycle_budget": {
             "budget_ticks": config.cycle_budget,
+            "unit": "device_clock_ticks",
+            "scope": "per_frame_fixed_work",
+            "run_budget_ticks": run_budget_breakdown(config)["run_budget_ticks"],
             "exceeded": bool(cycle_budget_hit),
             "error_flag": int(bool(kernel_error_flag)),
         },
@@ -393,7 +465,7 @@ def build_measurement_record(
         "environment": dict(environment),
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(timing_evidence),
+        "timing_evidence": bool(timing_evidence and completed),
     }
 
 
@@ -428,7 +500,11 @@ __all__ = [
     "build_rejection_record",
     "cycle_budget_exceeded",
     "frame_interval_statistics",
+    "interval_ticks_for_microseconds",
     "required_samples_for_percentile",
+    "run_budget_breakdown",
+    "run_budget_exceeded",
+    "split_u64",
     "termination_reason",
     "timestamp_digest",
     "validate_configuration",
