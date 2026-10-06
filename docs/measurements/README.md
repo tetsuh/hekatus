@@ -49,7 +49,9 @@ parameter, not an acquisition-rate claim. For no-Watcher timing under the
 600-second cap, the explicit startup, overlap, and 10% margin formula gives a
 maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
 corresponding 1 ms tick conversion; 545,355 is rejected. The separate first
-Watcher validation remains capped at 60 seconds. The owner-requested
+Watcher validation remains capped at 60 seconds. The next approved timing rerun
+must stay within 545,354 frames at 1 ms and must copy raw timestamps back to the
+development machine for retention before analysis. The owner-requested
 60,000-frame, 1 ms, 60 s configuration is preserved as a historical rejection
 record with its 54,445-frame boundary. If a future 60,000-frame run is approved
 with a suitable cap, P99.9 has sufficient N
@@ -130,7 +132,7 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-power.csv` | Power, AICLK, and temperature trace for the semaphore 600,000-frame run. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005.json` | ADR-0005 record for the corrected semaphore 60,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 60,000-frame record. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. It ran with configured outer timeout 660s, exceeding the approved 600s by about 4s; cap correction commit `7fda4a1` is recorded separately, and owner decision on accepting this record as timing evidence is pending. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. Owner decision 2026-10-07: not timing evidence (ran beyond the approved 600 s cap); retained as a historical record. The configured timeout was 660s; cap correction commit `7fda4a1` is recorded separately. This README disposition takes precedence over the JSON `timing_evidence=true` field. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 600,000-frame record. |
 
 Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
