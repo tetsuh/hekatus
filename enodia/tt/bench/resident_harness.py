@@ -25,6 +25,22 @@ UINT64_MAX = (1 << 64) - 1
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
+FAILURE_CODES = {
+    0: "none",
+    1: "run_wide_budget",
+    2: "producer_pacing_wait",
+    3: "consumer_empty_wait",
+    4: "consumer_fixed_work_budget",
+    5: "other_check",
+}
+FAILURE_PRIORITY = {
+    "consumer_fixed_work_budget": 0,
+    "producer_pacing_wait": 1,
+    "consumer_empty_wait": 2,
+    "run_wide_budget": 3,
+    "other_check": 4,
+    "none": 5,
+}
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -283,6 +299,20 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
     }
 
 
+def failure_name(code: int) -> str:
+    if isinstance(code, bool) or not isinstance(code, int) or code not in FAILURE_CODES:
+        raise ValueError("unknown resident failure code")
+    return FAILURE_CODES[code]
+
+
+def select_failure_check(*failures: dict[str, Any] | None) -> dict[str, Any]:
+    """Select one deterministic failure when producer/consumer report together."""
+    candidates = [failure for failure in failures if failure and failure["name"] != "none"]
+    if not candidates:
+        return {"code": 0, "name": "none", "source": "none"}
+    return min(candidates, key=lambda failure: FAILURE_PRIORITY[failure["name"]])
+
+
 def split_u64(value: int) -> tuple[int, int]:
     """Split a non-negative 64-bit tick value into runtime-argument words."""
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= UINT64_MAX:
@@ -432,6 +462,7 @@ def build_measurement_record(
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
+    failure_check: Mapping[str, Any] | None = None,
     startup_ticks: int | None = None,
     startup_ticks_valid: bool = False,
     watcher: bool = False,
@@ -485,6 +516,15 @@ def build_measurement_record(
     stats["sample_definition"] = (
         "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
     )
+    selected_failure = dict(failure_check) if failure_check is not None else select_failure_check()
+    if "name" not in selected_failure or "code" not in selected_failure:
+        raise ValueError("failure_check must contain code and name")
+    if failure_name(selected_failure["code"]) != selected_failure["name"]:
+        raise ValueError("failure_check code/name mismatch")
+    if selected_failure["name"] != "none" and any(
+        field not in selected_failure for field in ("elapsed_ticks", "limit_ticks", "unit")
+    ):
+        raise ValueError("failure_check must serialize elapsed and limit units")
     if startup_ticks is not None and (
         isinstance(startup_ticks, bool) or not isinstance(startup_ticks, int) or startup_ticks < 0
     ):
@@ -541,6 +581,7 @@ def build_measurement_record(
             "synchronization": "ring pointers and control metadata only",
             "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
         },
+        "failure_check": selected_failure,
         "cycle_budget": {
             "budget_ticks": config.cycle_budget,
             "unit": "device_clock_ticks",
@@ -588,11 +629,13 @@ __all__ = [
     "build_measurement_record",
     "build_rejection_record",
     "cycle_budget_exceeded",
+    "failure_name",
     "frame_interval_statistics",
     "interval_ticks_for_microseconds",
     "required_samples_for_percentile",
     "run_budget_breakdown",
     "run_budget_exceeded",
+    "select_failure_check",
     "split_u64",
     "startup_allowance_ticks",
     "termination_reason",

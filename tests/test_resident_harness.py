@@ -14,11 +14,13 @@ from enodia.tt.bench.resident_harness import (
     RingAccounting,
     build_measurement_record,
     cycle_budget_exceeded,
+    failure_name,
     frame_interval_statistics,
     interval_ticks_for_microseconds,
     required_samples_for_percentile,
     run_budget_breakdown,
     run_budget_exceeded,
+    select_failure_check,
     split_u64,
     startup_allowance_ticks,
     termination_reason,
@@ -73,6 +75,29 @@ def test_wrap_delta_is_unsigned_and_wrap_safe():
     assert wrap_delta(0x0000000000000005, 0xFFFFFFFFFFFFFFFE, bits=64) == 7
     with pytest.raises(ValueError):
         wrap_delta(1, 0, bits=31)
+
+
+def test_failure_codes_and_precedence_are_explicit():
+    assert failure_name(0) == "none"
+    assert failure_name(2) == "producer_pacing_wait"
+    producer = {
+        "code": 2,
+        "name": "producer_pacing_wait",
+        "source": "producer",
+        "elapsed_ticks": 12,
+        "limit_ticks": 10,
+    }
+    consumer = {
+        "code": 4,
+        "name": "consumer_fixed_work_budget",
+        "source": "consumer",
+        "elapsed_ticks": 100,
+        "limit_ticks": 90,
+    }
+    assert select_failure_check(producer, consumer)["name"] == "consumer_fixed_work_budget"
+    assert select_failure_check()["name"] == "none"
+    with pytest.raises(ValueError):
+        failure_name(99)
 
 
 def test_cycle_budget_and_termination_are_explicit():
@@ -233,6 +258,14 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         consumer_empty_count=1,
         startup_ticks=123,
         startup_ticks_valid=True,
+        failure_check={
+            "code": 4,
+            "name": "consumer_fixed_work_budget",
+            "source": "consumer",
+            "elapsed_ticks": 123,
+            "limit_ticks": 100,
+            "unit": "device_clock_ticks",
+        },
         cycle_budget_hit=False,
         kernel_error_flag=0,
         harness_commit="0123456789abcdef",
@@ -256,6 +289,9 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["dropped_frame_count"] == 97
     assert parsed["startup"]["observed_ticks"] == 123
     assert parsed["startup"]["observed_valid"] is True
+    assert parsed["failure_check"]["name"] == "consumer_fixed_work_budget"
+    assert parsed["failure_check"]["elapsed_ticks"] == 123
+    assert parsed["failure_check"]["limit_ticks"] == 100
     assert parsed["timing_evidence"] is False
     assert parsed["ring"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
@@ -276,11 +312,18 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "Drop-new policy" in producer
     assert "ready_word" in producer and "free_word" in producer
     assert "run_budget_ticks" in producer
+    assert "failure_producer_pacing_wait" in producer
+    assert "failure_run_wide_budget" in producer
+    assert "failure_elapsed_ticks" in producer
     assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
     assert "ready_word" in consumer and "free_word" in consumer
     assert "control_local[control_error_word] = 1" in consumer
     assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
+    assert "failure_consumer_empty_wait" in consumer
+    assert "failure_consumer_fixed_work_budget" in consumer
+    assert "failure_run_wide_budget" in consumer
+    assert "failure_elapsed_ticks" in consumer
     assert "per_frame_work_budget_ticks" in consumer
     assert "noc_inline_dw_write" not in consumer
     assert "noc_semaphore" not in consumer

@@ -25,7 +25,9 @@ from enodia.tt.bench.resident_harness import (
     ResidentPreflightError,
     build_measurement_record,
     build_rejection_record,
+    failure_name,
     run_budget_breakdown,
+    select_failure_check,
     split_u64,
     validate_configuration,
 )
@@ -170,6 +172,19 @@ def _program(
     )
 
 
+def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
+    code = int(values[base])
+    return {
+        "code": code,
+        "name": failure_name(code),
+        "source": source,
+        "elapsed_ticks": int(values[base + 1]) | (int(values[base + 2]) << 32),
+        "limit_ticks": int(values[base + 3]) | (int(values[base + 4]) << 32),
+        "unit": "device_clock_ticks",
+        "valid": bool(values[base + 5]),
+    }
+
+
 def _download(ttnn: Any, tensor):
     host = ttnn.from_device(tensor)
     row_major = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
@@ -236,6 +251,8 @@ def _run_device(
         timestamp_values = _download(ttnn, timestamps)
         producer_values = _download(ttnn, producer_stats).reshape(-1)
         consumer_values = _download(ttnn, consumer_stats).reshape(-1)
+        producer_failure = _decode_failure(producer_values, base=6, source="producer")
+        consumer_failure = _decode_failure(consumer_values, base=7, source="consumer")
         frames_consumed = min(int(consumer_values[1]), config.frame_count)
         raw_timestamps = [
             int(timestamp_values[index, 0, 0, 0])
@@ -255,6 +272,9 @@ def _run_device(
             "startup_ticks": int(consumer_values[4])
             | (int(consumer_values[5]) << 32),
             "startup_ticks_valid": bool(consumer_values[6]),
+            "producer_failure": producer_failure,
+            "consumer_failure": consumer_failure,
+            "failure_check": select_failure_check(producer_failure, consumer_failure),
         }
     finally:
         for tensor in tensors.values():
@@ -379,6 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         dropped_frame_count=result["frames_dropped"],
         startup_ticks=result["startup_ticks"],
         startup_ticks_valid=result["startup_ticks_valid"],
+        failure_check=result["failure_check"],
         kernel_error_flag=result["kernel_error_flag"],
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,

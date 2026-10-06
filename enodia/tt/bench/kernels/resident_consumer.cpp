@@ -12,6 +12,10 @@ constexpr std::uint32_t free_word = page_words - 2;
 constexpr std::uint32_t control_error_word = 0;
 constexpr std::uint32_t control_done_word = 1;
 constexpr std::uint32_t control_produced_word = 3;
+constexpr std::uint32_t failure_run_wide_budget = 1;
+constexpr std::uint32_t failure_consumer_empty_wait = 3;
+constexpr std::uint32_t failure_consumer_fixed_work_budget = 4;
+constexpr std::uint32_t failure_other_check = 5;
 }
 
 void kernel_main() {
@@ -41,6 +45,9 @@ void kernel_main() {
     std::uint32_t frames_consumed = 0;
     std::uint32_t error_flag = 0;
     std::uint32_t accumulator = 0;
+    std::uint32_t failure_code = 0;
+    std::uint64_t failure_elapsed_ticks = 0;
+    std::uint64_t failure_limit_ticks = 0;
     std::uint64_t startup_ticks = 0;
     std::uint32_t startup_valid = 0;
     const std::uint64_t run_start = get_timestamp();
@@ -48,6 +55,9 @@ void kernel_main() {
     while (true) {
         if (control_local[control_error_word] != 0) {
             error_flag = 1;
+            failure_code = failure_other_check;
+            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_limit_ticks = run_budget_ticks;
             break;
         }
         const std::uint32_t required = frames_consumed + 1;
@@ -64,12 +74,20 @@ void kernel_main() {
             }
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
+                failure_code = failure_consumer_empty_wait;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
                 control_local[control_error_word] = 1;
                 break;
             }
         }
         if (control_local[control_error_word] != 0) {
             error_flag = 1;
+            if (failure_code == 0) {
+                failure_code = failure_other_check;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
+            }
             break;
         }
         if (payload[ready_word] < required) {
@@ -87,9 +105,17 @@ void kernel_main() {
         }
         const std::uint64_t end = get_timestamp();
         const std::uint64_t elapsed = end - start;
-        if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)
-            || end - run_start >= run_budget_ticks) {
+        if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)) {
             error_flag = 1;
+            failure_code = failure_consumer_fixed_work_budget;
+            failure_elapsed_ticks = elapsed;
+            failure_limit_ticks = per_frame_work_budget_ticks;
+            control_local[control_error_word] = 1;
+        } else if (end - run_start >= run_budget_ticks) {
+            error_flag = 1;
+            failure_code = failure_run_wide_budget;
+            failure_elapsed_ticks = end - run_start;
+            failure_limit_ticks = run_budget_ticks;
             control_local[control_error_word] = 1;
         }
 
@@ -121,6 +147,9 @@ void kernel_main() {
         }
         if (frames_consumed >= frame_count) {
             error_flag = 1;
+            failure_code = failure_other_check;
+            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_limit_ticks = run_budget_ticks;
             control_local[control_error_word] = 1;
             break;
         }
@@ -136,6 +165,18 @@ void kernel_main() {
     summary[4] = static_cast<std::uint32_t>(startup_ticks);
     summary[5] = static_cast<std::uint32_t>(startup_ticks >> 32);
     summary[6] = startup_valid;
+    summary[7] = failure_code;
+    summary[8] = static_cast<std::uint32_t>(failure_elapsed_ticks);
+    summary[9] = static_cast<std::uint32_t>(failure_elapsed_ticks >> 32);
+    summary[10] = static_cast<std::uint32_t>(failure_limit_ticks);
+    summary[11] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
+    summary[12] = failure_code != 0;
+    summary[7] = failure_code;
+    summary[8] = static_cast<std::uint32_t>(failure_elapsed_ticks);
+    summary[9] = static_cast<std::uint32_t>(failure_elapsed_ticks >> 32);
+    summary[10] = static_cast<std::uint32_t>(failure_limit_ticks);
+    summary[11] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
+    summary[12] = failure_code != 0;
     cb_push_back(cb_timestamp, 1);
     cb_wait_front(cb_timestamp, 1);
     noc_async_write_page(0, stats, get_read_ptr(cb_timestamp));

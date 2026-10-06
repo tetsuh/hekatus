@@ -15,6 +15,9 @@ constexpr std::uint32_t control_done_word = 1;
 constexpr std::uint32_t control_attempted_word = 2;
 constexpr std::uint32_t control_produced_word = 3;
 constexpr std::uint32_t control_dropped_word = 4;
+constexpr std::uint32_t failure_run_wide_budget = 1;
+constexpr std::uint32_t failure_producer_pacing_wait = 2;
+constexpr std::uint32_t failure_other_check = 5;
 }
 
 void kernel_main() {
@@ -40,6 +43,9 @@ void kernel_main() {
     std::uint32_t frames_dropped = 0;
     std::uint32_t attempts_started = 0;
     std::uint32_t error_flag = 0;
+    std::uint32_t failure_code = 0;
+    std::uint64_t failure_elapsed_ticks = 0;
+    std::uint64_t failure_limit_ticks = 0;
     const std::uint64_t run_start = get_timestamp();
     std::uint64_t next_release = run_start;
 
@@ -51,6 +57,9 @@ void kernel_main() {
         while (static_cast<std::int64_t>(get_timestamp() - next_release) < 0) {
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
+                failure_code = failure_producer_pacing_wait;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
                 break;
             }
             cb_reserve_back(cb_scratch, 1);
@@ -62,6 +71,11 @@ void kernel_main() {
             cb_wait_front(cb_scratch, 1);
             error_flag = probe[control_error_word];
             cb_pop_front(cb_scratch, 1);
+            if (error_flag != 0 && failure_code == 0) {
+                failure_code = failure_other_check;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
+            }
             if (error_flag != 0) {
                 break;
             }
@@ -85,6 +99,9 @@ void kernel_main() {
             cb_pop_front(cb_scratch, 1);
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
+                failure_code = failure_run_wide_budget;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
             }
         }
         if (error_flag != 0) {
@@ -139,6 +156,12 @@ void kernel_main() {
     summary[3] = attempts_started;
     summary[4] = frames_dropped;
     summary[5] = 1;
+    summary[6] = failure_code;
+    summary[7] = static_cast<std::uint32_t>(failure_elapsed_ticks);
+    summary[8] = static_cast<std::uint32_t>(failure_elapsed_ticks >> 32);
+    summary[9] = static_cast<std::uint32_t>(failure_limit_ticks);
+    summary[10] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
+    summary[11] = failure_code != 0;
     cb_push_back(cb_scratch, 1);
     cb_wait_front(cb_scratch, 1);
     noc_async_write_page(0, stats, get_read_ptr(cb_scratch));
