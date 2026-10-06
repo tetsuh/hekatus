@@ -106,7 +106,7 @@ short-first; no long-first or order-mismatched event pair was observed. The
 `other` counts in the last column are phase-window candidates that do not form a
 qualifying pair, not silently discarded pairs.
 
-## Source inspection and torn-read status
+## Source inspection and PR #103 correction
 
 The pinned v0.75.0 tt-metal source revision used for the board-free inspection
 was `d9a68815f5fcf08a5bfbffb6f1f811823fba8edd`; only relative source paths and
@@ -119,28 +119,48 @@ line ranges are recorded here:
 - `tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510`
   implements `read_wall_clock()` with the same low-then-high ordering and the
   explicit comment `low` “latches high”.
-- The resident producer and consumer call `get_timestamp()` locally on their
-  respective cores (`enodia/tt/bench/kernels/resident_producer.cpp:60-121`
+- The pre-PR #103 resident producer and consumer called `get_timestamp()` locally
+  on their respective cores (`enodia/tt/bench/kernels/resident_producer.cpp:60-121`
   and `enodia/tt/bench/kernels/resident_consumer.cpp:64-150`). The committed
-  timestamp is the designated consumer completion timestamp; producer-write
-  attribution remains open because the producer uses a different core.
+  timestamp is the designated consumer completion timestamp; there is no direct
+  same-clock producer-write stamp because the producer uses a different core.
+  The controlled PR #103 comparison nevertheless resolves attribution enough for
+  this experiment.
 
-This source evidence supports the register's low-then-high latch ordering, so
-no `hi, lo, hi` kernel correction was made. A torn-read mechanism is therefore
-not supported by the inspected source; this analysis did not run an experiment
-that independently proves or disproves it, and makes no causal claim. No
-kernel functionality or benchmark default changed.
+The source's low-then-high details and the controlled experiment now have
+separate roles. The old measurement-clock read path could let the producer read
+a timestamp 2^32 ticks too large and release a frame early. PR #103 replaced
+that path with a low-word-only 32-bit read plus software wrap tracking. Its
+current 500,000-frame record,
+`docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`,
+records `pair_count=0`, `min_ticks=1,349,924`, and `max_ticks=1,350,068`,
+versus 27 pairs in the prior record. This controlled change is the causal
+evidence for the measurement-clock read path; it is already the mitigation in
+PR #103, not a new fix prescribed by this PR. A shared latch within a tile
+being overwritten between reads is a possible mechanism inferred from the
+observation and PR #103 evidence only, not an established hardware fact. The
+producer-versus-consumer attribution is resolved enough for this experiment:
+the producer's measurement read path produced the early timestamp, without a
+broader firmware or consumer claim. No kernel functionality or benchmark
+default changed.
 
 ## Conclusion and device status
 
 The three Issue #104 runs and the available Issue #12 500k run all show the
-paired event starts phase-locked to the `2^32` wall-clock wrap, with measured
-`R` values above and widths below 0.1 ms. The same phase lock is present with
-the sampler off. The supported conclusion is therefore: **the paired outliers
-are phase-fixed to the `2^32`-tick wall-clock wrap; because the pattern remains
-with sampler-off, a host telemetry sampler is not a necessary condition.**
-This does not identify firmware housekeeping, harness pacing, or producer
-versus consumer attribution as the cause.
+paired event starts phase-locked to the `2^32`-tick wall-clock wrap, with
+measured `R` values above and widths below 0.1 ms. The event order is short
+interval first, followed by the long catch-up interval. The same phase lock is
+present with the sampler off, so a host telemetry sampler is not a necessary
+condition. The causal conclusion is supported by PR #103's controlled
+clock-path change:
+`docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
+reports 500,000 frames, `pair_count=0`, and `min_ticks=1,349,924` through
+`max_ticks=1,350,068`, versus the prior 27 pairs. The producer's old
+measurement-clock read path read a timestamp 2^32 ticks too large and sent a
+frame early; low-word-only 32-bit reads with software wrap tracking removed the
+pairs. A shared tile latch being overwritten remains a hypothesis, not a
+proven mechanism. PR #103 already contains the mitigation, and no additional
+hardware run or new fix was performed in this follow-up.
 
 No SSH, Docker, device run, reset, or health probe was performed in this
 follow-up because the board was unavailable. The previously authorized runs

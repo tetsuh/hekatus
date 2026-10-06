@@ -42,10 +42,16 @@ placeholder trace. The resident record's frame timestamps remain on the
 development machine as a count and SHA-256 only.
 
 The resident harness timestamps consumer completion on its designated consumer
-core. The producer currently calls `get_timestamp()` on a different producer
-core, and the source has no same-designated-core producer-write stamp without
-changing the pacing kernel. Records therefore keep producer-versus-consumer
-attribution open rather than claiming a cause for an outlier.
+core. The prior producer pacing path used the low-then-high 64-bit measurement
+clock read, and the controlled PR #103 replacement uses a low-word-only 32-bit
+read with software wrap tracking. The replacement removed the paired events in
+the 500,000-frame record: `pair_count=0`, min/max `1,349,924..1,350,068` ticks,
+versus 27 pairs in the prior record. The supported causal conclusion for #104
+is that the old producer read path produced a timestamp 2^32 ticks too large
+and sent a frame early. A shared tile latch being overwritten is a plausible
+mechanism inferred from the evidence only, not an established fact. Producer-
+versus-consumer attribution is resolved enough for this experiment; no broader
+firmware or consumer claim is made. The mitigation is already in PR #103.
 
 ## Issue #12 recovery runbook (owner approval required)
 
@@ -165,14 +171,16 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-final-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the superseded historical 500,000-frame timing record. |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005.json` | Current semaphore+barrier+wrap-tracked 100-frame Watcher validation: N=99, timing evidence false, work ticks 1,063–1,073, zero overflow/cycle error. |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005-power.csv` | Companion power trace for the current wrap-tracked Watcher validation. |
-| `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` | Current accepted in-cap 500,000-frame timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,033/1,350,059/1,350,061 ticks, min/max 1,349,924/1,350,068, work ticks 1,063–1,087, zero overflow, and zero paired short/long outliers. |
+| `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` | Current accepted in-cap 500,000-frame timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,033/1,350,059/1,350,061 ticks, min/max 1,349,924/1,350,068, work ticks 1,063–1,087, zero overflow, and `pair_count=0` (versus 27 in the prior record). |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current wrap-tracked 500,000-frame timing record. |
 
-Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
+Historical outlier note: the minimum and maximum in the earlier 60,000- and 600,000-frame records are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks. Those records remain immutable; the corrected cause is documented below.
 
-Current wrap-tracked runs observed zero paired short/long outliers in both the Watcher validation and 500,000-frame timing run, versus 27 pairs in the prior 2616f96 record (with 6363-frame phase analysis). This is an observation only with no causal claim.
+PR #103's current wrap-tracked Watcher and 500,000-frame runs observed zero paired short/long outliers, versus 27 pairs in the prior 2616f96 record (with 6363-frame phase analysis). The 500,000-frame record is
+`docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`:
+500,000 frames, `pair_count=0`, and min/max `1,349,924..1,350,068` ticks. PR #103 replaced the old low-then-high measurement-clock read with a low-word-only 32-bit read and software wrap tracking. The evidence supports the causal conclusion that the producer previously read a timestamp 2^32 ticks too large and sent a frame early; the replacement removed the pairs. A shared tile latch being overwritten remains a hypothesis inferred from the evidence, not a proven mechanism. The mitigation is already in PR #103; this follow-up prescribes no new fix.
 
-Final 500,000-frame outlier observation: 27 adjacent short/long pairs were found with pair sums 2,699,967–2,700,034 ticks (target 2,700,000); full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363 are in the ADR-0005 record. The aggregate keys are `1,0`=11, `3,6362`=4, `0,3182`=2, `1,3182`=2, `2,0`=1, `5,0`=1, `11,3180`=1, `7,3181`=2, `5,6362`=1, and `2,3181`=1; 352,863→359,226 and 457,851→464,214→470,577 appear as q=1,r=0. This is an observation only with no causal claim; no single exact period was detected (6363 was the most common gap, 11/26, gcd 1).
+The prior final 500,000-frame record retains its 27 adjacent short/long pairs and all original event data, including pair sums 2,699,967–2,700,034 ticks (target 2,700,000), full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363. Its historical `observation_only_no_causal_claim` status is unchanged; the PR #103 controlled comparison supplies the causal conclusion above. No additional hardware run was performed in this follow-up.
 
 Issue #104 paired-outlier records (all 400,000 frames, device 0, 1 ms,
 no Watcher, 600-second outer cap) are:
@@ -194,11 +202,17 @@ their JSON records. The wrap supplement corrects the earlier gcd reading:
 1-ms frames, so a frame-gap gcd of 1 does not reject a strict wall-clock
 period. Across the three Issue #104 runs, pair starts have measured
 Rayleigh R `0.9999999999999996`–`0.9999999999999998` and circular widths
-`0.0000296296`–`0.0000422222 ms` immediately after the wrap. The same phase
+`0.0000296296`–`0.0000422222 ms` immediately after the wrap. The event order
+is short interval first, followed by the long catch-up interval. The same phase
 lock is present in sampler-off data, so a host sampler is not a necessary
-condition. This remains an observation with no causal attribution;
-producer-write versus consumer completion remains open because the two kernel
-sides do not stamp a shared designated clock.
+condition. The wrap supplement and PR #103 record
+`docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
+now provide the causal conclusion: the producer's old measurement-clock read
+path read a timestamp 2^32 ticks too large and sent a frame early; the
+low-word-only 32-bit read with software wrap tracking reduced the 500,000-frame
+run from 27 pairs to `pair_count=0` with min/max `1,349,924..1,350,068` ticks.
+A shared tile latch overwrite is a hypothesis only. The mitigation is already
+in PR #103, and no additional hardware run occurred in this follow-up.
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |

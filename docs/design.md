@@ -1953,10 +1953,16 @@ sampler-off run has the same phase lock, so a host sampler is not a necessary
 condition. A frame-gap gcd of 1 does not reject this period because it is
 3,181.4572563 configured 1-ms frames, not an integer frame count.
 The off run is diagnostic-only because it intentionally has no power trace.
-This evidence does not establish firmware, harness, or producer/consumer
-causality. The producer writes no timestamp on the consumer's designated
-clock: its local `get_timestamp()` is on a different core, so
-producer-versus-consumer attribution remains open.
+Together with PR #103's controlled clock-path experiment, this evidence resolves
+Issue #104's cause for the resident harness: the old producer measurement-clock
+read path read a timestamp 2^32 ticks too large and sent a frame early. The PR
+#103 record `docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
+reports 500,000 frames, zero pairs, and min/max 1,349,924..1,350,068 ticks,
+versus 27 pairs before the low-word-only 32-bit read with software wrap tracking.
+A shared tile latch being overwritten remains a hypothesis inferred from the
+evidence, not a proven mechanism. There is still no direct same-clock
+producer-write stamp, so this attribution is resolved only to the level supported
+by the PR #103 experiment; it makes no broader firmware or consumer claim.
 
 ---
 
