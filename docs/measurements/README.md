@@ -176,14 +176,21 @@ no Watcher, 600-second outer cap) are:
 | `2026-10-06-p150a-issue104-sampler-default-power.csv` | Companion power/AICLK/temperature trace for the existing-interval run. |
 | `2026-10-06-p150a-issue104-sampler-5s.json` | Explicit 5-second sampler run: 9 pairs, N=399,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 27,285/2,672,693, and 77 power samples. |
 | `2026-10-06-p150a-issue104-sampler-5s-power.csv` | Companion power/AICLK/temperature trace for the explicit-interval run. |
+| `2026-10-06-p150a-issue104-wrap-analysis.md` | Board-free supplement: folds first-interval endpoints by the exact `2^32`-tick wall-clock period, reports measured Rayleigh R/phase width, verifies raw format and pair endpoints, and analyzes the available Issue #12 500k artifact without changing any JSON/CSV leaf. |
 
 The three records preserve the same board/toolchain/harness provenance and
 leave the existing Issue #12 records unchanged. The event-gap histograms,
-pair endpoints, elapsed seconds, and sampler-interval comparison are in each
-JSON record. Pair counts vary (22/18/9) and no strict sampler-period lock was
-observed; this is bounded observation, not a causal attribution. Producer
-write versus consumer completion remains open because the two kernel sides do
-not stamp a shared designated clock.
+pair endpoints, elapsed seconds, and sampler-interval comparison remain in
+their JSON records. The wrap supplement corrects the earlier gcd reading:
+`2^32 / 1,350,000,000 = 3.1814572563 s`, or 3,181.4572563 configured
+1-ms frames, so a frame-gap gcd of 1 does not reject a strict wall-clock
+period. Across the three Issue #104 runs, pair starts have measured
+Rayleigh R `0.9999999999999996`–`0.9999999999999998` and circular widths
+`0.0000296296`–`0.0000422222 ms` immediately after the wrap. The same phase
+lock is present in sampler-off data, so a host sampler is not a necessary
+condition. This remains an observation with no causal attribution;
+producer-write versus consumer completion remains open because the two kernel
+sides do not stamp a shared designated clock.
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |

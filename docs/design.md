@@ -1943,12 +1943,20 @@ interval. The ADR-0005 records are
 All three runs retain the same P50/P99/P99.9/P99.99 body (1,349,988 / 1,350,048
 / 1,350,050 / 1,350,050 ticks) and fixed consumer work (1,072–1,098 ticks).
 The paired short/long observations count 22 with sampling off, 18 at 2 s, and
-9 at 5 s; adjacent event gaps have no strict period or sampler-interval lock.
+9 at 5 s. The board-free follow-up in
+`docs/measurements/2026-10-06-p150a-issue104-wrap-analysis.md` folds the first
+interval endpoints by the exact `2^32`-tick period
+(`2^32 / 1,350,000,000 = 3.1814572563 s`): all pair starts are immediately
+after a wall-clock wrap, with measured Rayleigh R 0.9999999999999996–
+0.9999999999999998 and circular width 0.0000296296–0.0000422222 ms. The
+sampler-off run has the same phase lock, so a host sampler is not a necessary
+condition. A frame-gap gcd of 1 does not reject this period because it is
+3,181.4572563 configured 1-ms frames, not an integer frame count.
 The off run is diagnostic-only because it intentionally has no power trace.
-This evidence does not establish a causal hypothesis or a mitigation. The
-producer writes no timestamp on the consumer's designated clock: its local
-`get_timestamp()` is on a different core, so producer-versus-consumer
-attribution remains open.
+This evidence does not establish firmware, harness, or producer/consumer
+causality. The producer writes no timestamp on the consumer's designated
+clock: its local `get_timestamp()` is on a different core, so
+producer-versus-consumer attribution remains open.
 
 ---
 
