@@ -35,23 +35,24 @@ and require zero running containers. Never stop another container.
 Prior cycle-budget records collapsed producer/consumer causes and did not
 serialize elapsed/limit ticks, so their startup attribution remains uncertain;
 new runs serialize named failure checks and diagnostics.
-2. Run one Watcher-enabled, one-frame validation with the 60-second outer cap;
-it is not timing evidence.
-3. If it passes, run one no-Watcher 60-second timing attempt. If that passes,
-the owner may separately authorize one no-Watcher frame-count run capped at
-ten minutes, with the outer timeout explicitly raised for that run and the
-explicit approved budget-margin-over-cap flag only when the schedule itself
-fits the approved cap.
+2. Run one Watcher-enabled, one-frame validation with the separate 60-second
+outer cap; it is not timing evidence.
+3. If it passes, run one no-Watcher timing attempt with the 600-second outer
+cap. The margin-inclusive run budget must fit that cap; there is no override
+for a schedule that exceeds it.
 4. On an abnormal exit or timeout, perform at most one device-0 reset, then
 run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.
 
 Every run remains frame-count terminated; the frame interval is a harness
-parameter, not an acquisition-rate claim. The owner-requested 60,000-frame,
-1 ms, 60 s configuration is rejected by preflight under the explicit startup,
-work, overlap, and margin formula: the minimum safe count is 54,445 frames at
-both 800 and 1350 MHz for the corresponding 1 ms tick conversion. If a future
-60,000-frame run is approved with a suitable cap, P99.9 has sufficient N
+parameter, not an acquisition-rate claim. For no-Watcher timing under the
+600-second cap, the explicit startup, overlap, and 10% margin formula gives a
+maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
+corresponding 1 ms tick conversion; 545,355 is rejected. The separate first
+Watcher validation remains capped at 60 seconds. The owner-requested
+60,000-frame, 1 ms, 60 s configuration is preserved as a historical rejection
+record with its 54,445-frame boundary. If a future 60,000-frame run is approved
+with a suitable cap, P99.9 has sufficient N
 (>=20,000) while P99.99 remains insufficient (N < 200,000). The run budget includes an explicit
 100 ms startup allowance converted at the configured AICLK; Watcher validation
 also has its separate explicit overhead margin. If the ring is full, the producer
@@ -129,8 +130,10 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-power.csv` | Power, AICLK, and temperature trace for the semaphore 600,000-frame run. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005.json` | ADR-0005 record for the corrected semaphore 60,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 60,000-frame record. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. It ran with configured outer timeout 660s, exceeding the approved 600s by about 4s; cap correction commit `7fda4a1` is recorded separately, and owner decision on accepting this record as timing evidence is pending. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 600,000-frame record. |
+
+Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
