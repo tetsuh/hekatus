@@ -275,8 +275,9 @@ def test_issue101_record_construction_exception_preserves_raw_failure_metadata(
         ),
     )
 
+    run = _passing_run()
     with pytest.raises(RuntimeError, match="record construction injected"):
-        issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
+        issue101.persist_raw_and_build(run, output_dir=output_dir, repeats=3)
 
     raw = _raw(output_dir)
     assert raw["run_id"] == raw["run"]["run_id"]

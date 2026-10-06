@@ -58,6 +58,10 @@ ISSUE101_RAW_OUTPUT_GLOB = "issue101-combined-raw*.json"
 ISSUE101_RUN_ID_ENV = "HEKATUS_TT_RUN_ID"
 ISSUE101_RAW_SCHEMA = "adr-0005-issue101-combined-raw-v1"
 ISSUE101_POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+ISSUE101_ENVIRONMENT_GLOB = "env-*.json"
+ISSUE101_POWER_GLOB = "power-*.csv"
+ISSUE101_RUN_ID_SOURCE = "run.run_id"
+ISSUE101_CORRECTNESS_REFERENCE = "BF16-rounded-R fixed-N=12 reference"
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 ISSUE101_FAILURE_STAGES = (
     "open",
@@ -258,7 +262,7 @@ def _correctness_case(ttnn: Any, device: Any, batch: int, size: int) -> dict:
             "case": case,
             "batch": batch,
             "size": size,
-            "reference": "BF16-rounded-R fixed-N=12 reference",
+            "reference": ISSUE101_CORRECTNESS_REFERENCE,
             "threshold": ISSUE101_CORRECTNESS_THRESHOLD,
             "status": "failed",
             "error": f"{type(exc).__name__}: {exc}",
@@ -271,7 +275,7 @@ def _correctness_case(ttnn: Any, device: Any, batch: int, size: int) -> dict:
         "case": case,
         "batch": batch,
         "size": size,
-        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "reference": ISSUE101_CORRECTNESS_REFERENCE,
         "threshold": ISSUE101_CORRECTNESS_THRESHOLD,
         "relative_error": relative_error,
         "status": status,
@@ -333,7 +337,7 @@ def run_issue101_combined(ttnn: Any, device: Any, *, repeats: int = ISSUE100_LAU
         correctness_result = _run_correctness_with_capture(ttnn, device, correctness)
         if correctness_result is not correctness:
             correctness = list(correctness_result)
-    except BaseException as exc:  # noqa: BLE001 - preserve completed rows
+    except Exception as exc:  # noqa: BLE001 - preserve completed rows
         return _mark_run_failed(
             {
                 "status": "failed",
@@ -368,7 +372,7 @@ def run_issue101_combined(ttnn: Any, device: Any, *, repeats: int = ISSUE100_LAU
         )
         if performance_result is not performance:
             performance = list(performance_result)
-    except BaseException as exc:  # noqa: BLE001 - preserve completed rows
+    except Exception as exc:  # noqa: BLE001 - preserve completed rows
         partial = getattr(exc, "partial_results", None)
         if isinstance(partial, list) and partial is not performance:
             performance = list(partial)
@@ -512,8 +516,8 @@ def _infer_output_run_id(output_dir: Path) -> str | None:
     """Infer the sole legacy identity, or fail before mixed artifacts are used."""
     identities: set[str] = set()
     for pattern, kind in (
-        ("env-*.json", "environment"),
-        ("power-*.csv", "power"),
+        (ISSUE101_ENVIRONMENT_GLOB, "environment"),
+        (ISSUE101_POWER_GLOB, "power"),
     ):
         for path in sorted(output_dir.glob(pattern)):
             identities.update(_artifact_run_ids(path, kind))
@@ -529,7 +533,7 @@ def _session_run_id(run: dict, output_dir: Path) -> str:
     """Resolve the session identity before selecting environment or power data."""
     supplied = []
     if run.get("run_id") is not None:
-        supplied.append(_validate_run_id(run["run_id"], source="run.run_id"))
+        supplied.append(_validate_run_id(run["run_id"], source=ISSUE101_RUN_ID_SOURCE))
     environment_run_id = os.environ.get(ISSUE101_RUN_ID_ENV)
     if environment_run_id:
         supplied.append(
@@ -546,7 +550,7 @@ def _session_run_id(run: dict, output_dir: Path) -> str:
 def _set_run_id(run: dict, run_id: str) -> dict:
     """Return a run copy carrying the identity without changing injected input."""
     current = run.get("run_id")
-    if current is not None and _validate_run_id(current, source="run.run_id") != run_id:
+    if current is not None and _validate_run_id(current, source=ISSUE101_RUN_ID_SOURCE) != run_id:
         raise ValueError("run.run_id does not match the session run_id")
     if current == run_id:
         return run
@@ -685,7 +689,7 @@ def _environment_artifact(
     """Read and normalize a live environment artifact for one session."""
     environment_path = _single_artifact(
         output_dir,
-        "env-*.json",
+        ISSUE101_ENVIRONMENT_GLOB,
         run_id=run_id,
         artifact_kind="environment",
     )
@@ -738,6 +742,100 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
     }
 
 
+def _load_environment_for_telemetry(
+    output_dir: Path, *, run_id: str | None
+) -> tuple[Path, dict, dict]:
+    """Load environment data while retaining one-argument test seams."""
+    environment_loader = _environment_artifact
+    if run_id is not None and _supports_keyword(environment_loader, "run_id"):
+        return environment_loader(output_dir, run_id=run_id)
+    # Keep injected one-argument seams working while making production
+    # selection explicit whenever the real helper is used.
+    return environment_loader(output_dir)
+
+
+def _retain_raw_environment(
+    output_dir: Path, *, run_id: str | None, telemetry: dict[str, Any]
+) -> None:
+    """Retain the wrapper snapshot when environment normalization fails."""
+    try:
+        environment_path = _single_artifact(
+            output_dir,
+            ISSUE101_ENVIRONMENT_GLOB,
+            run_id=run_id,
+            artifact_kind="environment",
+        )
+        raw_environment = json.loads(environment_path.read_text())
+    except Exception as fallback_exc:  # noqa: BLE001 - retain first failure
+        telemetry["failures"].append(
+            _failure_details("telemetry.environment_raw", fallback_exc)
+        )
+    else:
+        telemetry["environment_file"] = environment_path.name
+        telemetry["environment"] = raw_environment
+
+
+def _capture_environment_telemetry(
+    output_dir: Path, *, run_id: str | None, telemetry: dict[str, Any]
+) -> None:
+    """Capture environment data and preserve raw data on normalization failure."""
+    try:
+        environment_path, raw_environment, normalized_environment = (
+            _load_environment_for_telemetry(output_dir, run_id=run_id)
+        )
+    except Exception as exc:  # noqa: BLE001 - raw output must still be published
+        telemetry["failures"].append(_failure_details("telemetry.environment", exc))
+        # Normalization can fail after the wrapper JSON was read.  Retain that
+        # actual snapshot without inventing aliases or record fields.
+        _retain_raw_environment(output_dir, run_id=run_id, telemetry=telemetry)
+    else:
+        captured_environment = dict(raw_environment)
+        captured_environment.setdefault("run_id", normalized_environment.get("run_id"))
+        telemetry["environment_file"] = environment_path.name
+        telemetry["environment"] = captured_environment
+        telemetry["normalized_environment"] = normalized_environment
+        telemetry["run_id"] = normalized_environment.get("run_id", run_id)
+
+
+def _attach_power_telemetry(power_trace: dict, telemetry: dict[str, Any]) -> None:
+    """Associate a captured power trace with environment identity."""
+    if telemetry.get("run_id") is None:
+        telemetry["run_id"] = power_trace.get("run_id")
+    if power_trace.get("run_id") is None:
+        power_trace["run_id"] = telemetry.get("run_id")
+    if (
+        telemetry.get("run_id") is not None
+        and power_trace.get("run_id") is not None
+        and telemetry["run_id"] != power_trace["run_id"]
+    ):
+        telemetry["failures"].append(
+            _failure_details(
+                "telemetry.association",
+                "environment and power artifacts have different run_id values",
+            )
+        )
+    telemetry["power_trace"] = power_trace
+
+
+def _capture_power_telemetry(
+    output_dir: Path, *, run_id: str | None, telemetry: dict[str, Any]
+) -> None:
+    """Capture power data while retaining environment data on power failure."""
+    try:
+        selected_run_id = run_id or telemetry.get("run_id")
+        power_path = _single_artifact(
+            output_dir,
+            ISSUE101_POWER_GLOB,
+            run_id=selected_run_id,
+            artifact_kind="power",
+        )
+        power_trace = _power_trace_artifact(power_path, run_id=selected_run_id)
+    except Exception as exc:  # noqa: BLE001 - preserve environment when available
+        telemetry["failures"].append(_failure_details("telemetry.power", exc))
+    else:
+        _attach_power_telemetry(power_trace, telemetry)
+
+
 def _capture_telemetry(output_dir: Path, *, run_id: str | None = None) -> dict:
     """Collect only artifacts associated with the selected session."""
     telemetry: dict[str, Any] = {
@@ -749,91 +847,24 @@ def _capture_telemetry(output_dir: Path, *, run_id: str | None = None) -> dict:
         "power_trace": None,
         "failures": [],
     }
-    try:
-        environment_loader = _environment_artifact
-        if run_id is not None and _supports_keyword(environment_loader, "run_id"):
-            environment_path, raw_environment, normalized_environment = environment_loader(
-                output_dir, run_id=run_id
-            )
-        else:
-            # Keep injected one-argument seams working while making production
-            # selection explicit whenever the real helper is used.
-            environment_path, raw_environment, normalized_environment = environment_loader(
-                output_dir
-            )
-    except Exception as exc:  # noqa: BLE001 - raw output must still be published
-        telemetry["failures"].append(_failure_details("telemetry.environment", exc))
-        # Normalization can fail after the wrapper JSON has been read.  Retain
-        # that actual snapshot without inventing aliases or record fields.
-        try:
-            environment_path = _single_artifact(
-                output_dir,
-                "env-*.json",
-                run_id=run_id,
-                artifact_kind="environment",
-            )
-            raw_environment = json.loads(environment_path.read_text())
-        except Exception as fallback_exc:  # noqa: BLE001 - retain first failure
-            telemetry["failures"].append(
-                _failure_details("telemetry.environment_raw", fallback_exc)
-            )
-        else:
-            telemetry["environment_file"] = environment_path.name
-            telemetry["environment"] = raw_environment
-    else:
-        captured_environment = dict(raw_environment)
-        captured_environment.setdefault("run_id", normalized_environment.get("run_id"))
-        telemetry["environment_file"] = environment_path.name
-        telemetry["environment"] = captured_environment
-        telemetry["normalized_environment"] = normalized_environment
-        telemetry["run_id"] = normalized_environment.get("run_id", run_id)
-
-    try:
-        power_path = _single_artifact(
-            output_dir,
-            "power-*.csv",
-            run_id=run_id or telemetry.get("run_id"),
-            artifact_kind="power",
-        )
-        power_trace = _power_trace_artifact(
-            power_path, run_id=run_id or telemetry.get("run_id")
-        )
-    except Exception as exc:  # noqa: BLE001 - preserve environment when available
-        telemetry["failures"].append(_failure_details("telemetry.power", exc))
-    else:
-        if telemetry.get("run_id") is None:
-            telemetry["run_id"] = power_trace.get("run_id")
-        if power_trace.get("run_id") is None:
-            power_trace["run_id"] = telemetry.get("run_id")
-        if (
-            telemetry.get("run_id") is not None
-            and power_trace.get("run_id") is not None
-            and telemetry["run_id"] != power_trace["run_id"]
-        ):
-            telemetry["failures"].append(
-                _failure_details(
-                    "telemetry.association",
-                    "environment and power artifacts have different run_id values",
-                )
-            )
-        telemetry["power_trace"] = power_trace
-
+    _capture_environment_telemetry(output_dir, run_id=run_id, telemetry=telemetry)
+    _capture_power_telemetry(output_dir, run_id=run_id, telemetry=telemetry)
     if not telemetry["failures"]:
         telemetry["status"] = "complete"
     return telemetry
 
 
-def _validate_complete_run(run: dict, *, repeats: int) -> None:
-    """Reject a record that would silently omit a requested raw result."""
-    if run.get("status") != "pass":
-        raise ValueError("a combined record requires all correctness and performance rows to pass")
-    correctness = run.get("correctness_cases")
+def _validate_correctness_rows(correctness: Any) -> None:
+    """Validate the ordered correctness rows required by a combined record."""
     if not isinstance(correctness, list) or len(correctness) != len(ISSUE101_CORRECTNESS_CASES):
         raise ValueError("the combined record requires all nine correctness rows")
     for row, (batch, size) in zip(correctness, ISSUE101_CORRECTNESS_CASES, strict=True):
         if row.get("batch") != batch or row.get("size") != size or row.get("status") != "pass":
             raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
-    performance = run.get("performance_rows")
+
+
+def _validate_performance_rows(performance: Any, *, repeats: int) -> None:
+    """Validate the complete ordered performance rows required by a record."""
     expected_performance = len(ISSUE100_SHAPES) * len(ISSUE100_COMPARISON_CONFIGS)
     if not isinstance(performance, list) or len(performance) != expected_performance:
         raise ValueError("the combined record requires all four performance rows")
@@ -852,10 +883,16 @@ def _validate_complete_run(run: dict, *, repeats: int) -> None:
                 raise ValueError(f"performance row {index} lacks {field}")
 
 
-def _validate_captured_environment(
-    environment: dict, *, run_id: str | None = None
-) -> str:
-    """Validate an already-captured environment without deriving any field."""
+def _validate_complete_run(run: dict, *, repeats: int) -> None:
+    """Reject a record that would silently omit a requested raw result."""
+    if run.get("status") != "pass":
+        raise ValueError("a combined record requires all correctness and performance rows to pass")
+    _validate_correctness_rows(run.get("correctness_cases"))
+    _validate_performance_rows(run.get("performance_rows"), repeats=repeats)
+
+
+def _validate_environment_shape(environment: Any) -> None:
+    """Validate required captured-environment fields and path sanitization."""
     if not isinstance(environment, dict):
         raise TypeError("captured normalized_environment must be an object")
     missing = [
@@ -869,6 +906,10 @@ def _validate_captured_environment(
         )
     if _ABSOLUTE_PATH_RE.search(json.dumps(environment, sort_keys=True)):
         raise ValueError("captured normalized_environment contains an unsanitized host path")
+
+
+def _validate_environment_metadata(environment: dict) -> None:
+    """Validate the immutable metadata fields required for a captured record."""
     for field in (
         "captured_at",
         "image",
@@ -890,6 +931,10 @@ def _validate_captured_environment(
         raise ValueError("the combined record requires a digest-pinned captured image")
     if environment["harness_dirty"] is not False:
         raise ValueError("the combined record requires a clean captured harness")
+
+
+def _validate_environment_identity(environment: dict, *, run_id: str | None) -> str:
+    """Validate run and board identities without deriving replacement values."""
     captured_run_id = _validate_run_id(
         environment["run_id"], source="captured normalized_environment run_id"
     )
@@ -908,9 +953,24 @@ def _validate_captured_environment(
         raise TypeError("captured board serial identity is missing")
     if identity.get("serial") != board["serial"] or identity.get("board_id") != board["board_id"]:
         raise ValueError("captured board serial identity does not match captured board")
+    return captured_run_id
+
+
+def _validate_environment_firmware(environment: dict) -> None:
+    """Validate the firmware identity required for a captured record."""
     firmware = environment["firmware"]
     if not isinstance(firmware, dict) or not firmware.get("fw_bundle_version"):
         raise ValueError("the combined record requires captured firmware bundle version")
+
+
+def _validate_captured_environment(
+    environment: dict, *, run_id: str | None = None
+) -> str:
+    """Validate an already-captured environment without deriving any field."""
+    _validate_environment_shape(environment)
+    _validate_environment_metadata(environment)
+    captured_run_id = _validate_environment_identity(environment, run_id=run_id)
+    _validate_environment_firmware(environment)
     return captured_run_id
 
 
@@ -952,7 +1012,7 @@ def _record_from_parts(
     _validate_complete_run(run, repeats=repeats)
     captured_run_id = _validate_captured_environment(environment, run_id=run_id)
     run_id = captured_run_id
-    if run.get("run_id") is not None and _validate_run_id(run["run_id"], source="run.run_id") != run_id:
+    if run.get("run_id") is not None and _validate_run_id(run["run_id"], source=ISSUE101_RUN_ID_SOURCE) != run_id:
         raise ValueError("run data is associated with a different run_id")
     _validate_captured_power_trace(power_trace, run_id=run_id)
     harness_commit = environment["harness_commit"]
@@ -985,7 +1045,7 @@ def _record_from_parts(
             "same_python_process": True,
             "watcher": False,
             "container_timeout_s": ISSUE101_CONTAINER_TIMEOUT_S,
-            "correctness_reference": "BF16-rounded-R fixed-N=12 reference",
+            "correctness_reference": ISSUE101_CORRECTNESS_REFERENCE,
             "correctness_threshold_relative_error": ISSUE101_CORRECTNESS_THRESHOLD,
             "new_default": dict(ISSUE101_NEW_DEFAULT),
             "previous_default": dict(ISSUE101_PREVIOUS_DEFAULT),
@@ -1062,7 +1122,7 @@ def build_combined_record(
     _, _, environment = _environment_artifact(output_dir, run_id=selected_run_id)
     power_path = _single_artifact(
         output_dir,
-        "power-*.csv",
+        ISSUE101_POWER_GLOB,
         run_id=selected_run_id,
         artifact_kind="power",
     )
@@ -1346,14 +1406,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         device = ttnn.open_device(device_id=ISSUE100_DEVICE_ID)
         device_opened = True
-    except BaseException as exc:  # noqa: BLE001 - persist open failures
+    except Exception as exc:  # noqa: BLE001 - persist open failures
         run = _initial_failed_run("open", exc)
     else:
         try:
             run = run_issue101_combined(
                 ttnn, device, repeats=ISSUE100_LAUNCHES
             )
-        except BaseException as exc:  # noqa: BLE001 - preserve the session result
+        except Exception as exc:  # noqa: BLE001 - preserve the session result
             run = _initial_failed_run("device_session", exc)
         finally:
             cleanup = dict(run.get("cleanup", {})) if "run" in locals() else {}
@@ -1365,7 +1425,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             try:
                 ttnn.close_device(device)
-            except BaseException as exc:  # noqa: BLE001 - persist before re-raise
+            except Exception as exc:  # noqa: BLE001 - persist before re-raise
                 close_error = exc
                 run = _mark_run_failed(
                     run,

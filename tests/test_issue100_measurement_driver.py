@@ -236,12 +236,11 @@ def test_issue101_explicit_serial_wins_and_mismatch_fails_fast():
     assert environment["board"]["serial"] == "explicit"
     assert environment["board_serial_identity"]["source"] == "explicit_serial"
 
+    invalid_environment = _raw_environment(
+        {"board_type": "p150a", "serial": "explicit", "board_id": "different"}
+    )
     with pytest.raises(ValueError, match="serial and board_id"):
-        normalize_environment(
-            _raw_environment(
-                {"board_type": "p150a", "serial": "explicit", "board_id": "different"}
-            )
-        )
+        normalize_environment(invalid_environment)
 
 
 def _dummy_combined_run(repeats: int = 3) -> dict:
@@ -280,6 +279,91 @@ def _dummy_combined_run(repeats: int = 3) -> dict:
         "correctness_cases": correctness,
         "performance_rows": performance,
     }
+
+
+def test_issue101_dummy_record_projection_is_stable_without_device():
+    run_id = "fixture-run"
+    run = _dummy_combined_run(repeats=3)
+    run["run_id"] = run_id
+    environment = {
+        "captured_at": "2026-10-01T00:00:00+00:00",
+        "image": "ghcr.io/example/image@sha256:" + "b" * 64,
+        "image_digest": "sha256:" + "b" * 64,
+        "image_pinned": True,
+        "kernel": "Linux 6.8.0-fixture",
+        "host_kernel": "Linux 6.8.0-fixture",
+        "kmd_version": "2.11.0",
+        "kernel_driver_version": "2.11.0",
+        "tt_env_active_release": "0.75.0",
+        "toolchain_release": "0.75.0",
+        "python": "3.11.0",
+        "harness_commit": "c" * 40,
+        "harness_dirty": False,
+        "run_id": run_id,
+        "board": {
+            "board_type": "p150a",
+            "board_id": "fixture-board",
+            "serial": "fixture-board",
+        },
+        "board_serial_identity": {
+            "serial": "fixture-board",
+            "board_id": "fixture-board",
+        },
+        "firmware": {"fw_bundle_version": "19.6.0.0"},
+    }
+    power_trace = {
+        "file": "power-fixture.csv",
+        "run_id": run_id,
+        "samples": [{"timestamp_utc": "2026-10-01T00:00:00+00:00", "power_w": "75"}],
+    }
+
+    record = issue101._record_from_parts(
+        run,
+        environment=environment,
+        power_trace=power_trace,
+        repeats=3,
+        raw_artifact_name="issue101-combined-raw-fixture.json",
+        run_id=run_id,
+    )
+    expected_projection = {
+        "record_schema": "adr-0005-issue101-combined-catalog-1000-v1",
+        "status": "pass",
+        "issue": "#100",
+        "adr": "ADR-0005",
+        "captured_at": "2026-10-01T00:00:00+00:00",
+        "run_id": run_id,
+        "harness_commit": "c" * 40,
+        "correctness_reference": "BF16-rounded-R fixed-N=12 reference",
+        "correctness_cases": run["correctness_cases"],
+        "performance_rows": run["performance_rows"],
+        "power_trace": "power-fixture.csv",
+        "raw_artifact": {
+            "schema": "adr-0005-issue101-combined-raw-v1",
+            "file": "issue101-combined-raw-fixture.json",
+            "run_id": run_id,
+            "external_temporary": True,
+            "not_committed": True,
+        },
+    }
+    actual_projection = {
+        "record_schema": record["record_schema"],
+        "status": record["status"],
+        "issue": record["issue"],
+        "adr": record["adr"],
+        "captured_at": record["captured_at"],
+        "run_id": record["run_id"],
+        "harness_commit": record["harness_commit"],
+        "correctness_reference": record["measurement"]["correctness_reference"],
+        "correctness_cases": record["measurement"]["correctness_cases"],
+        "performance_rows": record["measurement"]["performance_rows"],
+        "power_trace": record["power_trace"],
+        "raw_artifact": record["raw_artifact"],
+    }
+
+    assert actual_projection == expected_projection
+    assert json.dumps(actual_projection, sort_keys=True, separators=(",", ":")) == json.dumps(
+        expected_projection, sort_keys=True, separators=(",", ":")
+    )
 
 
 def test_issue101_raw_artifact_survives_builder_failure(tmp_path, monkeypatch):
