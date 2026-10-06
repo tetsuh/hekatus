@@ -265,12 +265,17 @@ def test_runtime_uint32_bounds_cover_kernel_arguments():
     assert validate_configuration(
         _config(frame_interval_ticks=UINT32_MAX)
     ).frame_interval_ticks == UINT32_MAX
+    invalid_interval = _config(frame_interval_ticks=UINT32_MAX + 1)
     with pytest.raises(ResidentPreflightError, match="frame_interval_ticks.*uint32"):
-        validate_configuration(_config(frame_interval_ticks=UINT32_MAX + 1))
+        validate_configuration(invalid_interval)
 
-    for field in ("frame_count", "ring_pages", "work_per_frame", "cycle_budget"):
+    invalid_configs = {
+        field: _config(**{field: UINT32_MAX + 1})
+        for field in ("frame_count", "ring_pages", "work_per_frame", "cycle_budget")
+    }
+    for field, invalid_config in invalid_configs.items():
         with pytest.raises(ResidentPreflightError, match=f"{field}.*uint32"):
-            validate_configuration(_config(**{field: UINT32_MAX + 1}))
+            validate_configuration(invalid_config)
 
 
 def test_runtime_addresses_are_checked_at_uint32_boundary():
@@ -299,27 +304,29 @@ def test_fixed_work_preflight_uses_half_interval_boundary():
     assert validate_configuration(
         _config(frame_interval_ticks=1_350_000, fixed_work_ticks_per_frame=675_000)
     )
+    too_much_work_at_800 = _config(frame_interval_ticks=800_000, fixed_work_ticks_per_frame=400_001)
     with pytest.raises(ValueError, match="half the frame interval"):
-        validate_configuration(
-            _config(frame_interval_ticks=800_000, fixed_work_ticks_per_frame=400_001)
-        )
+        validate_configuration(too_much_work_at_800)
+    too_much_work_at_1350 = _config(frame_interval_ticks=1_350_000, fixed_work_ticks_per_frame=675_001)
     with pytest.raises(ValueError, match="half the frame interval"):
-        validate_configuration(
-            _config(frame_interval_ticks=1_350_000, fixed_work_ticks_per_frame=675_001)
-        )
+        validate_configuration(too_much_work_at_1350)
 
 
 def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
+    overlong_timing = _config(outer_timeout_seconds=601)
     with pytest.raises(ValueError, match="600"):
-        validate_configuration(_config(outer_timeout_seconds=601))
+        validate_configuration(overlong_timing)
     assert validate_configuration(_config(outer_timeout_seconds=600))
+    overlong_watcher = _config(outer_timeout_seconds=61)
     with pytest.raises(ValueError, match="60"):
-        validate_configuration(_config(outer_timeout_seconds=61), watcher=True)
+        validate_configuration(overlong_watcher, watcher=True)
     assert validate_configuration(_config(outer_timeout_seconds=60), watcher=True)
+    mismatched_timestamp_core = _config(designated_timestamp_core=(0, 0))
     with pytest.raises(ValueError, match="designated_timestamp_core"):
-        validate_configuration(_config(designated_timestamp_core=(0, 0)))
+        validate_configuration(mismatched_timestamp_core)
+    same_cores = _config(consumer_core=(0, 0))
     with pytest.raises(ValueError, match="different cores"):
-        validate_configuration(_config(consumer_core=(0, 0)))
+        validate_configuration(same_cores)
 
 
 def test_histogram_percentiles_have_exact_sample_thresholds():
@@ -459,9 +466,10 @@ def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
 
 
 def test_record_rejects_missing_environment_provenance():
+    config = _config()
     with pytest.raises(ValueError, match="environment"):
         build_measurement_record(
-            config=_config(),
+            config=config,
             aiclk_mhz=1_350,
             timestamps=[1, 2],
             producer_full_count=0,

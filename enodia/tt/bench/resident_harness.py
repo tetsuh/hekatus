@@ -594,7 +594,12 @@ def build_measurement_record(
         and frame_count_reached
         and produced == len(timestamp_values)
     )
-    status = "ok_with_drops" if completed and dropped else ("ok" if completed else "error")
+    if completed and dropped:
+        status = "ok_with_drops"
+    elif completed:
+        status = "ok"
+    else:
+        status = "error"
     stats["sample_definition"] = (
         "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
     )

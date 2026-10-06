@@ -99,7 +99,7 @@ def _runtime_u32(value: Any, name: str) -> int:
 
 
 def _program(
-    ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any], *, watcher: bool
+    ttnn: Any, config: ResidentConfig, tensors: dict[str, Any], *, watcher: bool
 ):
     producer_ranges = _core_range(ttnn, config.producer_core)
     consumer_ranges = _core_range(ttnn, config.consumer_core)
@@ -283,7 +283,7 @@ def _run_device(
         "consumer_stats": consumer_stats,
     }
     try:
-        program = _program(ttnn, device, config, tensors, watcher=watcher)
+        program = _program(ttnn, config, tensors, watcher=watcher)
         ttnn.generic_op(list(tensors.values()), program)
         ttnn.synchronize_device(device)
         timestamp_values = _download(ttnn, timestamps)
@@ -419,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = validate_configuration(config, watcher=args.watcher)
         validate_run_budget_fits_outer_cap(config, watcher=args.watcher)
-    except (ResidentPreflightError, TypeError, ValueError) as exc:
+    except (TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
         print(f"resident configuration rejected: {exc}", file=sys.stderr)
         return 2
