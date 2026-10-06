@@ -136,6 +136,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 600,000-frame record. |
 | `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005.json` | Final 100-frame Watcher validation: 100/100 produced/consumed, zero overflow/cycle error, work ticks 1,073–1,084, and explicitly non-timing evidence. |
 | `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the final Watcher validation. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-final-watcher-abnormal-adr0005.json` | Truthful semaphore-protocol Watcher failure: Watcher stopped the producer for pending NOC transactions before a resident result; one reset and a passing fixed-image Stage-1 health probe followed; no timing evidence or 500,000-frame run was performed. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-final-watcher-abnormal-adr0005-power.csv` | Companion power trace for the semaphore-protocol Watcher failure above. |
 | `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` | Final in-cap 500,000-frame no-Watcher timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 111,119/2,588,915, work ticks 1,074–1,098, and zero overflow. |
 | `2026-10-06-p150a-issue12-stage1-final-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the final 500,000-frame timing record. |
 
