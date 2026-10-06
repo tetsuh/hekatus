@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import inspect
 import json
 import os
 import platform
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -49,6 +51,37 @@ ISSUE101_OUTPUT_NAME = "issue101-combined.json"
 ISSUE101_RAW_OUTPUT_NAME = "issue101-combined-raw.json"
 ISSUE101_RAW_SCHEMA = "adr-0005-issue101-combined-raw-v1"
 ISSUE101_POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+ISSUE101_FAILURE_STAGES = (
+    "open",
+    "correctness",
+    "performance",
+    "telemetry",
+    "close",
+    "record_construction",
+)
+_METADATA_PRIVATE_KEYS = frozenset(
+    {
+        "hostname",
+        "host_name",
+        "host_hostname",
+        "username",
+        "user_name",
+        "user",
+        "home",
+        "home_directory",
+        "cwd",
+        "working_directory",
+        "password",
+        "secret",
+        "token",
+        "access_token",
+        "api_key",
+        "private_key",
+    }
+)
+_ABSOLUTE_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9:])/(?:home|Users|tmp|var/tmp|workspace|workspaces|mnt|opt|root|run/user)/[^\s,;\"']+"
+)
 ISSUE101_NEW_DEFAULT = {
     "variant": "bf16",
     "state_format": "BF16",
@@ -103,6 +136,79 @@ ISSUE101_SUPERSEDED_RECORDS = (
 )
 
 
+def _sanitize_metadata(value: Any, *, key: str | None = None) -> Any:
+    """Keep raw diagnostics useful without copying host or credential metadata."""
+    if key is not None and key.lower() in _METADATA_PRIVATE_KEYS:
+        return None
+    if isinstance(value, dict):
+        sanitized = {}
+        for child_key, child_value in value.items():
+            if str(child_key).lower() in _METADATA_PRIVATE_KEYS:
+                continue
+            sanitized[child_key] = _sanitize_metadata(
+                child_value, key=str(child_key)
+            )
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_metadata(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_metadata(item) for item in value]
+    if isinstance(value, str):
+        return _ABSOLUTE_PATH_RE.sub("<redacted-path>", value)
+    return value
+
+
+def _error_text(error: BaseException | str) -> str:
+    """Format an exception without exposing an absolute user-specific path."""
+    if isinstance(error, BaseException):
+        detail = f"{type(error).__name__}: {error}"
+    else:
+        detail = str(error)
+    return _sanitize_metadata(detail)
+
+
+def _failure_details(stage: str, error: BaseException | str) -> dict[str, str]:
+    """Return stable, machine-readable failure metadata for a raw artifact."""
+    return {"stage": stage, "error": _error_text(error)}
+
+
+def _mark_run_failed(
+    run: dict,
+    stage: str,
+    error: BaseException | str,
+    *,
+    replace_existing: bool = False,
+) -> dict:
+    """Add a failure without discarding rows already collected by the run."""
+    updated = dict(run)
+    details = _failure_details(stage, error)
+    existing = updated.get("failure")
+    if existing and not replace_existing:
+        secondary = list(updated.get("secondary_failures", []))
+        secondary.append(details)
+        updated["secondary_failures"] = secondary
+        return updated
+    if existing:
+        details["prior_failure"] = existing
+    updated["status"] = "failed"
+    updated["failure_stage"] = stage
+    updated["error"] = details["error"]
+    updated["failure"] = details
+    return updated
+
+
+def _supports_keyword(function: Any, keyword: str) -> bool:
+    """Check optional capture seams without constraining injected test runners."""
+    try:
+        parameters = inspect.signature(function).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        parameter.name == keyword or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters
+    )
+
+
 def _correctness_case(ttnn: Any, device: Any, batch: int, size: int) -> dict:
     """Execute one new-default correctness case without retrying failures."""
     case = f"batch{batch}-L{size}"
@@ -151,45 +257,121 @@ def _correctness_case(ttnn: Any, device: Any, batch: int, size: int) -> dict:
     return row
 
 
-def run_issue101_correctness(ttnn: Any, device: Any) -> list[dict]:
-    """Run the nine correctness cases on the already-open device."""
-    rows: list[dict] = []
+def run_issue101_correctness(
+    ttnn: Any, device: Any, *, rows: list[dict] | None = None
+) -> list[dict]:
+    """Run the nine correctness cases on the already-open device.
+
+    ``rows`` is an execution sink rather than a second source of truth.  It lets
+    the combined driver retain completed rows if an injected or unexpected
+    exception escapes between cases.
+    """
+    collected = rows if rows is not None else []
     for batch, size in ISSUE101_CORRECTNESS_CASES:
         row = _correctness_case(ttnn, device, batch, size)
-        rows.append(row)
+        collected.append(row)
         if row["status"] != "pass":
             break
-    return rows
+    return collected
+
+
+def _run_correctness_with_capture(
+    ttnn: Any, device: Any, rows: list[dict]
+) -> list[dict]:
+    runner = run_issue101_correctness
+    if _supports_keyword(runner, "rows"):
+        return runner(ttnn, device, rows=rows)
+    return runner(ttnn, device)
+
+
+def _run_performance_with_capture(
+    ttnn: Any, device: Any, *, repeats: int, rows: list[dict]
+) -> list[dict]:
+    runner = run_issue100_comparison
+    if _supports_keyword(runner, "results_sink"):
+        return runner(
+            ttnn,
+            device,
+            repeats=repeats,
+            stop_on_failure=True,
+            results_sink=rows,
+        )
+    return runner(ttnn, device, repeats=repeats, stop_on_failure=True)
 
 
 def run_issue101_combined(ttnn: Any, device: Any, *, repeats: int = ISSUE100_LAUNCHES) -> dict:
     """Run correctness first, then the four performance rows on one device."""
-    correctness = run_issue101_correctness(ttnn, device)
+    correctness: list[dict] = []
+    try:
+        correctness_result = _run_correctness_with_capture(ttnn, device, correctness)
+        if correctness_result is not correctness:
+            correctness = list(correctness_result)
+    except BaseException as exc:  # noqa: BLE001 - preserve completed rows
+        return _mark_run_failed(
+            {
+                "status": "failed",
+                "correctness_cases": correctness,
+                "performance_rows": [],
+            },
+            "correctness",
+            exc,
+        )
+
     if len(correctness) != len(ISSUE101_CORRECTNESS_CASES) or any(
         row["status"] != "pass" for row in correctness
     ):
-        return {
-            "status": "failed",
-            "failure_stage": "correctness",
-            "correctness_cases": correctness,
-            "performance_rows": [],
-        }
+        failed_row = next(
+            (row for row in correctness if row.get("status") != "pass"),
+            None,
+        )
+        return _mark_run_failed(
+            {
+                "status": "failed",
+                "correctness_cases": correctness,
+                "performance_rows": [],
+            },
+            "correctness",
+            (failed_row or {}).get("error", "correctness did not pass"),
+        )
 
-    performance = run_issue100_comparison(
-        ttnn,
-        device,
-        repeats=repeats,
-        stop_on_failure=True,
-    )
-    if len(performance) != len(ISSUE100_SHAPES) * len(ISSUE100_COMPARISON_CONFIGS) or any(
+    performance: list[dict] = []
+    try:
+        performance_result = _run_performance_with_capture(
+            ttnn, device, repeats=repeats, rows=performance
+        )
+        if performance_result is not performance:
+            performance = list(performance_result)
+    except BaseException as exc:  # noqa: BLE001 - preserve completed rows
+        partial = getattr(exc, "partial_results", None)
+        if isinstance(partial, list) and partial is not performance:
+            performance = list(partial)
+        return _mark_run_failed(
+            {
+                "status": "failed",
+                "correctness_cases": correctness,
+                "performance_rows": performance,
+            },
+            "performance",
+            exc,
+        )
+
+    expected_performance = len(ISSUE100_SHAPES) * len(ISSUE100_COMPARISON_CONFIGS)
+    if len(performance) != expected_performance or any(
         row.get("status") != "ok" for row in performance
     ):
-        return {
-            "status": "failed",
-            "failure_stage": "performance",
-            "correctness_cases": correctness,
-            "performance_rows": performance,
-        }
+        failed_row = next(
+            (row for row in performance if row.get("status") != "ok"),
+            None,
+        )
+        return _mark_run_failed(
+            {
+                "status": "failed",
+                "correctness_cases": correctness,
+                "performance_rows": performance,
+            },
+            "performance",
+            (failed_row or {}).get("error", "performance did not pass"),
+        )
     return {
         "status": "pass",
         "correctness_cases": correctness,
@@ -329,6 +511,53 @@ def _power_trace_artifact(path: Path) -> dict:
         "samples": samples,
         "sampling_source": "tt-smi snapshot",
     }
+
+
+def _capture_telemetry(output_dir: Path) -> dict:
+    """Collect available wrapper artifacts without hiding a collection failure."""
+    telemetry: dict[str, Any] = {
+        "status": "failed",
+        "environment_file": None,
+        "environment": None,
+        "normalized_environment": None,
+        "power_trace": None,
+        "failures": [],
+    }
+    try:
+        environment_path, raw_environment, normalized_environment = _environment_artifact(
+            output_dir
+        )
+    except Exception as exc:  # noqa: BLE001 - raw output must still be published
+        telemetry["failures"].append(_failure_details("telemetry.environment", exc))
+        # Normalization can fail after the wrapper JSON has been read.  Retain
+        # that actual snapshot without inventing aliases or record fields.
+        try:
+            environment_path = _single_artifact(output_dir, "env-*.json")
+            raw_environment = json.loads(environment_path.read_text())
+        except Exception as fallback_exc:  # noqa: BLE001 - retain first failure
+            telemetry["failures"].append(
+                _failure_details("telemetry.environment_raw", fallback_exc)
+            )
+        else:
+            telemetry["environment_file"] = environment_path.name
+            telemetry["environment"] = raw_environment
+    else:
+        telemetry["environment_file"] = environment_path.name
+        telemetry["environment"] = raw_environment
+        telemetry["normalized_environment"] = normalized_environment
+
+    try:
+        power_trace = _power_trace_artifact(
+            _single_artifact(output_dir, "power-*.csv")
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve environment when available
+        telemetry["failures"].append(_failure_details("telemetry.power", exc))
+    else:
+        telemetry["power_trace"] = power_trace
+
+    if not telemetry["failures"]:
+        telemetry["status"] = "complete"
+    return telemetry
 
 
 def _validate_complete_run(run: dict, *, repeats: int) -> None:
@@ -524,16 +753,25 @@ def _atomic_json_write(path: Path, payload: dict) -> None:
         temporary_path.unlink(missing_ok=True)
 
 
-def _raw_artifact_payload(run: dict, *, output_dir: Path, repeats: int) -> dict:
+def _raw_artifact_payload(
+    run: dict,
+    *,
+    output_dir: Path,
+    repeats: int,
+    telemetry: dict | None = None,
+    artifact_failure: dict | None = None,
+    recovery_run: dict | None = None,
+) -> dict:
     """Capture every builder input before any record construction is attempted."""
-    environment_path, raw_environment, normalized_environment = _environment_artifact(output_dir)
-    power_trace = _power_trace_artifact(_single_artifact(output_dir, "power-*.csv"))
-    return {
+    captured_telemetry = telemetry if telemetry is not None else _capture_telemetry(output_dir)
+    safe_run = _sanitize_metadata(run)
+    payload = {
         "raw_schema": ISSUE101_RAW_SCHEMA,
         "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
-        "run": run,
-        "correctness_results": run.get("correctness_cases", []),
-        "performance_results": run.get("performance_rows", []),
+        "artifact_status": "failed" if artifact_failure else run.get("status"),
+        "run": safe_run,
+        "correctness_results": safe_run.get("correctness_cases", []),
+        "performance_results": safe_run.get("performance_rows", []),
         "configs": {
             "correctness_cases": [
                 {"batch": batch, "size": size}
@@ -546,21 +784,40 @@ def _raw_artifact_payload(run: dict, *, output_dir: Path, repeats: int) -> dict:
             "shapes": list(ISSUE100_SHAPES),
             "launches_per_row": repeats,
         },
-        "telemetry": {
-            "environment_file": environment_path.name,
-            "environment": raw_environment,
-            "normalized_environment": normalized_environment,
-            "power_trace": power_trace,
-        },
+        "telemetry": _sanitize_metadata(captured_telemetry),
     }
+    if artifact_failure is not None:
+        payload["failure"] = _sanitize_metadata(artifact_failure)
+    elif run.get("failure") is not None:
+        payload["failure"] = _sanitize_metadata(run["failure"])
+    if run.get("secondary_failures"):
+        payload["secondary_failures"] = _sanitize_metadata(run["secondary_failures"])
+    if recovery_run is not None:
+        payload["recovery_run"] = _sanitize_metadata(recovery_run)
+    return payload
 
 
-def write_raw_artifact(run: dict, *, output_dir: Path, repeats: int) -> Path:
+def write_raw_artifact(
+    run: dict,
+    *,
+    output_dir: Path,
+    repeats: int = ISSUE100_LAUNCHES,
+    telemetry: dict | None = None,
+    artifact_failure: dict | None = None,
+    recovery_run: dict | None = None,
+) -> Path:
     """Persist the complete device-session result before invoking the builder."""
     artifact_path = output_dir / ISSUE101_RAW_OUTPUT_NAME
     _atomic_json_write(
         artifact_path,
-        _raw_artifact_payload(run, output_dir=output_dir, repeats=repeats),
+        _raw_artifact_payload(
+            run,
+            output_dir=output_dir,
+            repeats=repeats,
+            telemetry=telemetry,
+            artifact_failure=artifact_failure,
+            recovery_run=recovery_run,
+        ),
     )
     return artifact_path
 
@@ -569,20 +826,57 @@ def persist_raw_and_build(
     run: dict, *, output_dir: Path, repeats: int = ISSUE100_LAUNCHES
 ) -> tuple[Path, dict | None]:
     """Write raw data first, then build; preserve the raw path on builder failure."""
-    raw_path = write_raw_artifact(run, output_dir=output_dir, repeats=repeats)
-    if run.get("status") != "pass":
+    telemetry = _capture_telemetry(output_dir)
+    prepared_run = run
+    if prepared_run.get("status") == "failed" and not prepared_run.get("failure"):
+        prepared_run = dict(prepared_run)
+        stage = prepared_run.get("failure_stage", "unknown")
+        prepared_run["failure"] = _failure_details(
+            stage, prepared_run.get("error", "run failed")
+        )
+    if telemetry["status"] != "complete":
+        telemetry_error = telemetry["failures"][0]["error"]
+        prepared_run = _mark_run_failed(prepared_run, "telemetry", telemetry_error)
+    raw_path = write_raw_artifact(
+        prepared_run,
+        output_dir=output_dir,
+        repeats=repeats,
+        telemetry=telemetry,
+    )
+    if prepared_run.get("status") != "pass":
         return raw_path, None
     try:
         record = build_combined_record(
-            run,
+            prepared_run,
             output_dir=output_dir,
             repeats=repeats,
             raw_artifact_path=raw_path,
         )
     except Exception as exc:
+        failure = _failure_details("record_construction", exc)
+        failed_run = _mark_run_failed(
+            prepared_run, "record_construction", exc
+        )
+        try:
+            # Keep a clean copy for host recovery while marking the run itself
+            # failed so the artifact explains why no record was published.
+            write_raw_artifact(
+                failed_run,
+                output_dir=output_dir,
+                repeats=repeats,
+                telemetry=telemetry,
+                artifact_failure=failure,
+                recovery_run=prepared_run,
+            )
+        except Exception as persist_exc:  # noqa: BLE001 - preserve builder error
+            raise RuntimeError(
+                "combined record builder failed after raw artifact "
+                f"{raw_path}: {_error_text(exc)}; failed to update failure metadata: "
+                f"{_error_text(persist_exc)}"
+            ) from exc
         raise RuntimeError(
             f"combined record builder failed after raw artifact {raw_path}: "
-            f"{type(exc).__name__}: {exc}"
+            f"{_error_text(exc)}"
         ) from exc
     return raw_path, record
 
@@ -600,12 +894,30 @@ def recover_combined_record(raw_path: Path) -> dict:
     if not isinstance(raw_environment, dict) or not isinstance(power_trace, dict):
         raise TypeError("raw artifact is missing environment or power data")
     environment = normalize_environment(raw_environment)
+    recovery_run = payload.get("recovery_run", payload["run"])
+    if recovery_run.get("status") != "pass":
+        stage = recovery_run.get("failure_stage", "unknown")
+        raise ValueError(
+            f"raw artifact failed at stage {stage}; no complete record is recoverable"
+        )
     return _record_from_parts(
-        payload["run"],
+        recovery_run,
         environment=environment,
         power_trace=power_trace,
         repeats=int(payload["configs"]["launches_per_row"]),
         raw_artifact_name=raw_path.name,
+    )
+
+
+def _initial_failed_run(stage: str, error: BaseException | str) -> dict:
+    return _mark_run_failed(
+        {
+            "status": "failed",
+            "correctness_cases": [],
+            "performance_rows": [],
+        },
+        stage,
+        error,
     )
 
 
@@ -623,27 +935,81 @@ def main(argv: list[str] | None = None) -> int:
         print(f"recovered combined record -> {args.output}", flush=True)
         return 0
 
-    import ttnn
-
     output_dir = Path(os.environ.get("HEKATUS_TT_OUTPUT_DIR", "/out"))
-    device = ttnn.open_device(device_id=ISSUE100_DEVICE_ID)
     try:
+        import ttnn
+    except Exception as exc:  # noqa: BLE001 - publish an open-stage artifact
+        run = _initial_failed_run("open", exc)
+        run["cleanup"] = {
+            "device_opened": False,
+            "close_attempted": False,
+            "close_succeeded": False,
+        }
+        raw_path, _ = persist_raw_and_build(
+            run, output_dir=output_dir, repeats=ISSUE100_LAUNCHES
+        )
+        print(
+            "issue101_combined status=failed "
+            f"stage=open raw_artifact={raw_path}",
+            flush=True,
+        )
+        return 1
+
+    run: dict
+    close_error: BaseException | None = None
+    device_opened = False
+    try:
+        device = ttnn.open_device(device_id=ISSUE100_DEVICE_ID)
+        device_opened = True
+    except BaseException as exc:  # noqa: BLE001 - persist open failures
+        run = _initial_failed_run("open", exc)
+    else:
         try:
-            run = run_issue101_combined(ttnn, device, repeats=ISSUE100_LAUNCHES)
-        except Exception as exc:  # noqa: BLE001 - retain partial raw device results
-            run = {
-                "status": "failed",
-                "failure_stage": "device_session",
-                "error": f"{type(exc).__name__}: {exc}",
-                "correctness_cases": [],
-                "performance_rows": [],
-            }
-    finally:
-        ttnn.close_device(device)
+            run = run_issue101_combined(
+                ttnn, device, repeats=ISSUE100_LAUNCHES
+            )
+        except BaseException as exc:  # noqa: BLE001 - preserve the session result
+            run = _initial_failed_run("device_session", exc)
+        finally:
+            cleanup = dict(run.get("cleanup", {})) if "run" in locals() else {}
+            cleanup.update(
+                {
+                    "device_opened": True,
+                    "close_attempted": True,
+                }
+            )
+            try:
+                ttnn.close_device(device)
+            except BaseException as exc:  # noqa: BLE001 - persist before re-raise
+                close_error = exc
+                run = _mark_run_failed(
+                    run,
+                    "close",
+                    exc,
+                    replace_existing=True,
+                )
+                cleanup.update(
+                    {
+                        "close_succeeded": False,
+                        "close_error": _error_text(exc),
+                    }
+                )
+            else:
+                cleanup["close_succeeded"] = True
+            run["cleanup"] = cleanup
+
+    if not device_opened:
+        run["cleanup"] = {
+            "device_opened": False,
+            "close_attempted": False,
+            "close_succeeded": False,
+        }
 
     raw_path, record = persist_raw_and_build(
         run, output_dir=output_dir, repeats=ISSUE100_LAUNCHES
     )
+    if close_error is not None:
+        raise close_error
     if record is None:
         print(
             "issue101_combined status=failed "

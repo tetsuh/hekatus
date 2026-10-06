@@ -36,7 +36,12 @@ ISSUE100_COMPARISON_CONFIGS = (
 
 
 def run_issue100_comparison(
-    ttnn, device, *, repeats: int, stop_on_failure: bool = False
+    ttnn,
+    device,
+    *,
+    repeats: int,
+    stop_on_failure: bool = False,
+    results_sink: list[dict] | None = None,
 ) -> list[dict]:
     """Run both Issue #100 configurations for both requested shapes.
 
@@ -50,33 +55,37 @@ def run_issue100_comparison(
         for shape in default_catalogue()
         if shape.name in ISSUE100_SHAPES
     }
-    results: list[dict] = []
+    results: list[dict] = results_sink if results_sink is not None else []
     for shape_name in ISSUE100_SHAPES:
         shape = shapes[shape_name]
         for config in ISSUE100_COMPARISON_CONFIGS:
-            row = run_custom_newton_schulz(
-                ttnn,
-                device,
-                shape,
-                dtype_name="bfloat16",
-                memory_name="l1",
-                variant=config["variant"],
-                iters=1,
-                repeats=repeats,
-                math_fidelity=config["math_fidelity"],
-                fuse_s=config["fuse_s"],
-                batch_reads=False,
-                reload_r=False,
-                matrix_block=config["matrix_block"],
-                double_buffer=config["double_buffer"],
-                input_memory="l1",
-                r_memory="l1",
-                x0_memory="l1",
-                output_memory="dram",
-                fp32_dest_acc_en=config["fp32_dest_acc_en"],
-                dst_full_sync_en=config["dst_full_sync_en"],
-                row_name=f"{shape_name}_{config['name']}",
-            )
+            try:
+                row = run_custom_newton_schulz(
+                    ttnn,
+                    device,
+                    shape,
+                    dtype_name="bfloat16",
+                    memory_name="l1",
+                    variant=config["variant"],
+                    iters=1,
+                    repeats=repeats,
+                    math_fidelity=config["math_fidelity"],
+                    fuse_s=config["fuse_s"],
+                    batch_reads=False,
+                    reload_r=False,
+                    matrix_block=config["matrix_block"],
+                    double_buffer=config["double_buffer"],
+                    input_memory="l1",
+                    r_memory="l1",
+                    x0_memory="l1",
+                    output_memory="dram",
+                    fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                    dst_full_sync_en=config["dst_full_sync_en"],
+                    row_name=f"{shape_name}_{config['name']}",
+                )
+            except BaseException as exc:
+                exc.partial_results = list(results)
+                raise
             row["shape_name"] = shape_name
             row["comparison_config"] = dict(config)
             if row["status"] == "ok":
