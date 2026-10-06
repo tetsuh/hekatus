@@ -30,6 +30,7 @@ from enodia.tt.bench.resident_harness import (
     select_failure_check,
     split_u64,
     validate_configuration,
+    validate_run_budget_fits_outer_cap,
 )
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
@@ -371,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         config = validate_configuration(config)
+        validate_run_budget_fits_outer_cap(config, watcher=args.watcher)
     except (ResidentPreflightError, TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
         print(f"resident configuration rejected: {exc}", file=sys.stderr)

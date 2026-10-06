@@ -26,6 +26,7 @@ from enodia.tt.bench.resident_harness import (
     termination_reason,
     timestamp_digest,
     validate_configuration,
+    validate_run_budget_fits_outer_cap,
     wrap_delta,
 )
 
@@ -129,14 +130,16 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
         "per_frame_work_budget_ticks": 100_000,
         "cycle_budget_ticks_per_frame": 10_000_000,
         "fixed_work_ticks": 200_100_000,
+        "critical_path_ticks": 2_701_350_000,
+        "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
         "startup_allowance_ms": 100,
         "budget_aiclk_mhz": 1_350,
         "startup_allowance_ticks": 135_000_000,
         "safety_margin_percent": 10,
         "watcher_overhead_margin_percent": 0,
         "total_margin_percent": 10,
-        "safety_margin_ticks": 303_645_000,
-        "run_budget_ticks": 3_340_095_000,
+        "safety_margin_ticks": 283_635_000,
+        "run_budget_ticks": 3_119_985_000,
     }
     assert not run_budget_exceeded(
         elapsed_ticks=4 * config.frame_interval_ticks + 4 * config.cycle_budget,
@@ -144,11 +147,11 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     )
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=800) == 800_000
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=1_350) == 1_350_000
-    assert split_u64(breakdown["run_budget_ticks"]) == (3_340_095_000, 0)
+    assert split_u64(breakdown["run_budget_ticks"]) == (3_119_985_000, 0)
     watcher_breakdown = run_budget_breakdown(config, watcher=True)
     assert watcher_breakdown["watcher_overhead_margin_percent"] == 100
     assert watcher_breakdown["total_margin_percent"] == 110
-    assert watcher_breakdown["run_budget_ticks"] == 6_376_545_000
+    assert watcher_breakdown["run_budget_ticks"] == 5_956_335_000
 
 
 def test_startup_allowance_is_100_ms_at_both_supported_clocks():
@@ -166,7 +169,7 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
     )
     breakdown = run_budget_breakdown(config)
     assert breakdown["pacing_ticks"] == 1_600_800_000
-    assert breakdown["run_budget_ticks"] == 2_068_990_000
+    assert breakdown["run_budget_ticks"] == 1_848_880_000
     assert run_budget_exceeded(
         elapsed_ticks=breakdown["run_budget_ticks"],
         run_budget_ticks=breakdown["run_budget_ticks"],
@@ -178,6 +181,29 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
     huge = _config(frame_count=2**63, frame_interval_ticks=2**63)
     with pytest.raises(ResidentPreflightError, match="64-bit"):
         run_budget_breakdown(huge)
+
+
+def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
+    config = _config(
+        frame_count=60_000,
+        frame_interval_ticks=1_350_000,
+        cycle_budget=10_000_000,
+        fixed_work_ticks_per_frame=100_000,
+        outer_timeout_seconds=60,
+        budget_aiclk_mhz=1_350,
+    )
+    with pytest.raises(ResidentPreflightError, match="outer cap"):
+        validate_run_budget_fits_outer_cap(config, watcher=False)
+    safe = _config(
+        frame_count=54_445,
+        frame_interval_ticks=1_350_000,
+        cycle_budget=10_000_000,
+        fixed_work_ticks_per_frame=100_000,
+        outer_timeout_seconds=60,
+        budget_aiclk_mhz=1_350,
+    )
+    breakdown = validate_run_budget_fits_outer_cap(safe, watcher=False)
+    assert breakdown["run_budget_ticks"] == 80_999_325_000
 
 
 def test_ring_drop_policy_drains_without_producer_wait():

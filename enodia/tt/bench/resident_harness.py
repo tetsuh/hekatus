@@ -274,7 +274,8 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
     pacing_ticks = config.frame_count * config.frame_interval_ticks
     fixed_work_ticks = config.frame_count * config.fixed_work_ticks_per_frame
     startup_ticks = startup_allowance_ticks(aiclk_mhz=config.budget_aiclk_mhz)
-    base_ticks = pacing_ticks + fixed_work_ticks + startup_ticks
+    critical_path_ticks = max(pacing_ticks, fixed_work_ticks)
+    base_ticks = critical_path_ticks + startup_ticks
     watcher_overhead_percent = WATCHER_OVERHEAD_MARGIN_PERCENT if watcher else 0
     margin_percent = RUN_BUDGET_SAFETY_MARGIN_PERCENT + watcher_overhead_percent
     margin_ticks = (base_ticks * margin_percent + 99) // 100
@@ -288,6 +289,8 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
         "per_frame_work_budget_ticks": config.fixed_work_ticks_per_frame,
         "cycle_budget_ticks_per_frame": config.cycle_budget,
         "fixed_work_ticks": fixed_work_ticks,
+        "critical_path_ticks": critical_path_ticks,
+        "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
         "startup_allowance_ms": STARTUP_ALLOWANCE_MICROSECONDS // 1_000,
         "budget_aiclk_mhz": config.budget_aiclk_mhz,
         "startup_allowance_ticks": startup_ticks,
@@ -297,6 +300,22 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
         "safety_margin_ticks": margin_ticks,
         "run_budget_ticks": run_budget_ticks,
     }
+
+
+def validate_run_budget_fits_outer_cap(
+    config: ResidentConfig, *, watcher: bool = False
+) -> dict[str, int]:
+    """Reject a run whose conservative tick budget exceeds its host cap."""
+    config = validate_configuration(config)
+    breakdown = run_budget_breakdown(config, watcher=watcher)
+    cap_ticks = config.outer_timeout_seconds * config.budget_aiclk_mhz * 1_000_000
+    if breakdown["run_budget_ticks"] > cap_ticks:
+        raise ResidentPreflightError(
+            "run budget exceeds outer cap: "
+            f"{breakdown['run_budget_ticks']} ticks > {cap_ticks} ticks "
+            f"at {config.budget_aiclk_mhz} MHz"
+        )
+    return breakdown
 
 
 def failure_name(code: int) -> str:
@@ -641,5 +660,6 @@ __all__ = [
     "termination_reason",
     "timestamp_digest",
     "validate_configuration",
+    "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]
