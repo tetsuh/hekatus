@@ -104,6 +104,8 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
         "cycle_budget_ticks_per_frame": 10_000_000,
         "fixed_work_ticks": 200_100_000,
         "safety_margin_percent": 10,
+        "watcher_overhead_margin_percent": 0,
+        "total_margin_percent": 10,
         "safety_margin_ticks": 290_145_000,
         "run_budget_ticks": 3_191_595_000,
     }
@@ -114,6 +116,10 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=800) == 800_000
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=1_350) == 1_350_000
     assert split_u64(breakdown["run_budget_ticks"]) == (3_191_595_000, 0)
+    watcher_breakdown = run_budget_breakdown(config, watcher=True)
+    assert watcher_breakdown["watcher_overhead_margin_percent"] == 100
+    assert watcher_breakdown["total_margin_percent"] == 110
+    assert watcher_breakdown["run_budget_ticks"] == 6_093_045_000
 
 
 def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():

@@ -23,6 +23,7 @@ MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
 UINT64_MAX = (1 << 64) - 1
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
+WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -231,7 +232,7 @@ def interval_ticks_for_microseconds(*, microseconds: int, aiclk_mhz: int) -> int
     return ticks
 
 
-def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
+def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> dict[str, int]:
     """Compute the conservative run-wide budget in AICLK ticks.
 
     The endpoint convention deliberately charges ``N`` frame intervals, not
@@ -245,7 +246,9 @@ def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
     pacing_ticks = config.frame_count * config.frame_interval_ticks
     fixed_work_ticks = config.frame_count * config.fixed_work_ticks_per_frame
     base_ticks = pacing_ticks + fixed_work_ticks
-    margin_ticks = (base_ticks * RUN_BUDGET_SAFETY_MARGIN_PERCENT + 99) // 100
+    watcher_overhead_percent = WATCHER_OVERHEAD_MARGIN_PERCENT if watcher else 0
+    margin_percent = RUN_BUDGET_SAFETY_MARGIN_PERCENT + watcher_overhead_percent
+    margin_ticks = (base_ticks * margin_percent + 99) // 100
     run_budget_ticks = base_ticks + margin_ticks
     if run_budget_ticks > UINT64_MAX:
         raise ResidentPreflightError("run-wide cycle budget exceeds the 64-bit tick range")
@@ -257,6 +260,8 @@ def run_budget_breakdown(config: ResidentConfig) -> dict[str, int]:
         "cycle_budget_ticks_per_frame": config.cycle_budget,
         "fixed_work_ticks": fixed_work_ticks,
         "safety_margin_percent": RUN_BUDGET_SAFETY_MARGIN_PERCENT,
+        "watcher_overhead_margin_percent": watcher_overhead_percent,
+        "total_margin_percent": margin_percent,
         "safety_margin_ticks": margin_ticks,
         "run_budget_ticks": run_budget_ticks,
     }
@@ -470,7 +475,7 @@ def build_measurement_record(
         "termination_reason": reason,
         "parameters": {
             **config.as_record(),
-            "run_budget": run_budget_breakdown(config),
+            "run_budget": run_budget_breakdown(config, watcher=watcher),
             "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
             "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
             "attempted_frame_count": attempted,
@@ -508,7 +513,7 @@ def build_measurement_record(
             "budget_ticks": config.cycle_budget,
             "unit": "device_clock_ticks",
             "scope": "per_frame_fixed_work",
-            "run_budget_ticks": run_budget_breakdown(config)["run_budget_ticks"],
+            "run_budget_ticks": run_budget_breakdown(config, watcher=watcher)["run_budget_ticks"],
             "exceeded": bool(cycle_budget_hit),
             "error_flag": int(bool(kernel_error_flag)),
         },

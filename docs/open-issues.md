@@ -21,7 +21,7 @@ closing it; the record in `design.md` is what persists.
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
-| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | one-frame Watcher validation passes after ring fix; the single timing attempt hit the in-kernel cycle budget, so timing evidence remains blocked; see `docs/measurements/2026-10-05-p150a-issue12-stage1-resident-recovery.json` |
+| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | main-integrated one-frame Watcher attempt hit the pre-correction run-wide cycle budget; board work stopped, and a board-free explicit Watcher-margin fix is pushed; see `docs/measurements/2026-10-06-p150a-issue12-stage1-watcher-cycle-budget.json` |
 
 The Ethernet items above were blocked on a board without ports; that is no
 longer the constraint. Two target boards are cabled together, but no link

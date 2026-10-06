@@ -85,7 +85,9 @@ def _runtime_args(ttnn: Any, core: tuple[int, int], values: list[int]):
     return args
 
 
-def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any]):
+def _program(
+    ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any], *, watcher: bool
+):
     producer_ranges = _core_range(ttnn, config.producer_core)
     consumer_ranges = _core_range(ttnn, config.consumer_core)
     ring = tensors["ring"]
@@ -107,7 +109,9 @@ def _program(ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any])
         *timestamp_compile,
         *consumer_stats_compile,
     ]
-    run_budget_low, run_budget_high = split_u64(run_budget_breakdown(config)["run_budget_ticks"])
+    run_budget_low, run_budget_high = split_u64(
+        run_budget_breakdown(config, watcher=watcher)["run_budget_ticks"]
+    )
     producer_args = _runtime_args(
         ttnn,
         config.producer_core,
@@ -172,7 +176,9 @@ def _download(ttnn: Any, tensor):
     return row_major.to_numpy()
 
 
-def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
+def _run_device(
+    ttnn: Any, device, config: ResidentConfig, *, watcher: bool
+) -> dict[str, Any]:
     ring_shape = (1, config.ring_pages, PAGE_WORDS)
     control_shape = (1, 1, PAGE_WORDS)
     timestamp_shape = (config.frame_count, 1, 1, PAGE_WORDS)
@@ -224,7 +230,7 @@ def _run_device(ttnn: Any, device, config: ResidentConfig) -> dict[str, Any]:
         "consumer_stats": consumer_stats,
     }
     try:
-        program = _program(ttnn, device, config, tensors)
+        program = _program(ttnn, device, config, tensors, watcher=watcher)
         ttnn.generic_op(list(tensors.values()), program)
         ttnn.synchronize_device(device)
         timestamp_values = _download(ttnn, timestamps)
@@ -352,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
 
     device = ttnn.open_device(device_id=args.device_id)
     try:
-        result = _run_device(ttnn, device, config)
+        result = _run_device(ttnn, device, config, watcher=args.watcher)
     finally:
         ttnn.close_device(device)
 
