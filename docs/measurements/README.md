@@ -165,6 +165,25 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
 
 Final 500,000-frame outlier observation: 27 adjacent short/long pairs were found with pair sums 2,699,967–2,700,034 ticks (target 2,700,000); full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363 are in the ADR-0005 record. The aggregate keys are `1,0`=11, `3,6362`=4, `0,3182`=2, `1,3182`=2, `2,0`=1, `5,0`=1, `11,3180`=1, `7,3181`=2, `5,6362`=1, and `2,3181`=1; 352,863→359,226 and 457,851→464,214→470,577 appear as q=1,r=0. This is an observation only with no causal claim; no single exact period was detected (6363 was the most common gap, 11/26, gcd 1).
+
+Issue #104 paired-outlier records (all 400,000 frames, device 0, 1 ms,
+no Watcher, 600-second outer cap) are:
+
+| File | What it is |
+|---|---|
+| `2026-10-06-p150a-issue104-sampler-off.json` | Sampler-off diagnostic run: 22 pairs, no power trace by design, and `timing_evidence=false`; raw timestamps count/hash and all event positions remain recorded. |
+| `2026-10-06-p150a-issue104-sampler-default.json` | Existing 2-second sampler run: 18 pairs, N=399,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 26,829/2,673,133, and 181 power samples. |
+| `2026-10-06-p150a-issue104-sampler-default-power.csv` | Companion power/AICLK/temperature trace for the existing-interval run. |
+| `2026-10-06-p150a-issue104-sampler-5s.json` | Explicit 5-second sampler run: 9 pairs, N=399,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 27,285/2,672,693, and 77 power samples. |
+| `2026-10-06-p150a-issue104-sampler-5s-power.csv` | Companion power/AICLK/temperature trace for the explicit-interval run. |
+
+The three records preserve the same board/toolchain/harness provenance and
+leave the existing Issue #12 records unchanged. The event-gap histograms,
+pair endpoints, elapsed seconds, and sampler-interval comparison are in each
+JSON record. Pair counts vary (22/18/9) and no strict sampler-period lock was
+observed; this is bounded observation, not a causal attribution. Producer
+write versus consumer completion remains open because the two kernel sides do
+not stamp a shared designated clock.
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |

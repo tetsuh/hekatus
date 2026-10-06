@@ -1,0 +1,1469 @@
+{
+  "schema": "adr-0005-issue-104-paired-outliers-v1",
+  "issue": 104,
+  "related_issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "summary": "Resident run completed at the Issue #12 final configuration with the existing 2-second telemetry sampler.",
+  "environment": {
+    "captured_at": "2026-10-06T22:38:57.708090+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "telemetry_sampler": {
+      "mode": "default",
+      "interval_seconds": 2.0,
+      "power_trace": "required",
+      "timing_evidence": "available"
+    },
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "487bc36fa30e870b6cd9b2a62199275397cde004",
+    "harness_dirty": false,
+    "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16",
+      "serial": "000004033191411c",
+      "serial_source": "board_id_alias_because_serial_field_was_absent"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ],
+    "run_id": "20261006T223857683145807720915014Z",
+    "aiclk_observation": "power trace samples, including loaded clock"
+  },
+  "parameters": {
+    "frame_count": 400000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "run_budget": {
+      "frame_count": 400000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 540000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 40000000000,
+      "critical_path_ticks": 540000000000,
+      "schedule_ticks": 540135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 54013500000,
+      "run_budget_ticks": 594148500000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 400000,
+    "produced_frame_count": 400000,
+    "dropped_frame_count": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK",
+    "timestamp_api": "get_timestamp()",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "aiclk_observation": "maximum loaded AICLK in companion power trace",
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "timestamp_attribution": {
+    "status": "open",
+    "consumer_completion": {
+      "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        1,
+        0
+      ]
+    },
+    "producer_write": {
+      "available": false,
+      "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        0,
+        0
+      ],
+      "reason": "The producer and consumer call get_timestamp() on different cores. The source has no same-designated-core producer stamp without changing the pacing kernel, so producer-versus-consumer attribution remains open."
+    }
+  },
+  "clock_source_evidence": {
+    "toolchain": "tt-metal v0.75.0",
+    "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-255",
+    "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+    "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+    "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+    "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+    "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+    "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope"
+  },
+  "work_ticks": {
+    "minimum": 1074,
+    "maximum": 1098,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "histogram": {
+    "N": 399999,
+    "min_ticks": 26829,
+    "max_ticks": 2673133,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349988.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350048.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350050.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350050.0
+      }
+    },
+    "histogram": {
+      "bin_width_ticks": 1,
+      "bins": [
+        {
+          "start_ticks": 26829,
+          "end_ticks": 26830,
+          "count": 1
+        },
+        {
+          "start_ticks": 42948,
+          "end_ticks": 42949,
+          "count": 1
+        },
+        {
+          "start_ticks": 67091,
+          "end_ticks": 67092,
+          "count": 1
+        },
+        {
+          "start_ticks": 233423,
+          "end_ticks": 233424,
+          "count": 1
+        },
+        {
+          "start_ticks": 348931,
+          "end_ticks": 348932,
+          "count": 1
+        },
+        {
+          "start_ticks": 453540,
+          "end_ticks": 453541,
+          "count": 1
+        },
+        {
+          "start_ticks": 469660,
+          "end_ticks": 469661,
+          "count": 1
+        },
+        {
+          "start_ticks": 499195,
+          "end_ticks": 499196,
+          "count": 1
+        },
+        {
+          "start_ticks": 534128,
+          "end_ticks": 534129,
+          "count": 1
+        },
+        {
+          "start_ticks": 539517,
+          "end_ticks": 539518,
+          "count": 1
+        },
+        {
+          "start_ticks": 609263,
+          "end_ticks": 609264,
+          "count": 1
+        },
+        {
+          "start_ticks": 654860,
+          "end_ticks": 654861,
+          "count": 1
+        },
+        {
+          "start_ticks": 684450,
+          "end_ticks": 684451,
+          "count": 1
+        },
+        {
+          "start_ticks": 724658,
+          "end_ticks": 724659,
+          "count": 1
+        },
+        {
+          "start_ticks": 840054,
+          "end_ticks": 840055,
+          "count": 1
+        },
+        {
+          "start_ticks": 1030631,
+          "end_ticks": 1030632,
+          "count": 1
+        },
+        {
+          "start_ticks": 1070902,
+          "end_ticks": 1070903,
+          "count": 1
+        },
+        {
+          "start_ticks": 1202360,
+          "end_ticks": 1202361,
+          "count": 1
+        },
+        {
+          "start_ticks": 1266767,
+          "end_ticks": 1266768,
+          "count": 1
+        },
+        {
+          "start_ticks": 1317758,
+          "end_ticks": 1317759,
+          "count": 1
+        },
+        {
+          "start_ticks": 1347293,
+          "end_ticks": 1347294,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349914,
+          "end_ticks": 1349915,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349915,
+          "end_ticks": 1349916,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349916,
+          "end_ticks": 1349917,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349918,
+          "end_ticks": 1349919,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349919,
+          "end_ticks": 1349920,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349920,
+          "end_ticks": 1349921,
+          "count": 7
+        },
+        {
+          "start_ticks": 1349921,
+          "end_ticks": 1349922,
+          "count": 113
+        },
+        {
+          "start_ticks": 1349922,
+          "end_ticks": 1349923,
+          "count": 42
+        },
+        {
+          "start_ticks": 1349923,
+          "end_ticks": 1349924,
+          "count": 45
+        },
+        {
+          "start_ticks": 1349924,
+          "end_ticks": 1349925,
+          "count": 305
+        },
+        {
+          "start_ticks": 1349925,
+          "end_ticks": 1349926,
+          "count": 2955
+        },
+        {
+          "start_ticks": 1349926,
+          "end_ticks": 1349927,
+          "count": 8020
+        },
+        {
+          "start_ticks": 1349927,
+          "end_ticks": 1349928,
+          "count": 486
+        },
+        {
+          "start_ticks": 1349928,
+          "end_ticks": 1349929,
+          "count": 2196
+        },
+        {
+          "start_ticks": 1349929,
+          "end_ticks": 1349930,
+          "count": 13462
+        },
+        {
+          "start_ticks": 1349930,
+          "end_ticks": 1349931,
+          "count": 4290
+        },
+        {
+          "start_ticks": 1349931,
+          "end_ticks": 1349932,
+          "count": 8215
+        },
+        {
+          "start_ticks": 1349932,
+          "end_ticks": 1349933,
+          "count": 2006
+        },
+        {
+          "start_ticks": 1349933,
+          "end_ticks": 1349934,
+          "count": 4152
+        },
+        {
+          "start_ticks": 1349934,
+          "end_ticks": 1349935,
+          "count": 4184
+        },
+        {
+          "start_ticks": 1349935,
+          "end_ticks": 1349936,
+          "count": 6002
+        },
+        {
+          "start_ticks": 1349936,
+          "end_ticks": 1349937,
+          "count": 951
+        },
+        {
+          "start_ticks": 1349937,
+          "end_ticks": 1349938,
+          "count": 1721
+        },
+        {
+          "start_ticks": 1349938,
+          "end_ticks": 1349939,
+          "count": 761
+        },
+        {
+          "start_ticks": 1349939,
+          "end_ticks": 1349940,
+          "count": 1103
+        },
+        {
+          "start_ticks": 1349940,
+          "end_ticks": 1349941,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349941,
+          "end_ticks": 1349942,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349969,
+          "end_ticks": 1349970,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349970,
+          "end_ticks": 1349971,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349971,
+          "end_ticks": 1349972,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349972,
+          "end_ticks": 1349973,
+          "count": 14
+        },
+        {
+          "start_ticks": 1349973,
+          "end_ticks": 1349974,
+          "count": 12
+        },
+        {
+          "start_ticks": 1349974,
+          "end_ticks": 1349975,
+          "count": 23
+        },
+        {
+          "start_ticks": 1349975,
+          "end_ticks": 1349976,
+          "count": 64
+        },
+        {
+          "start_ticks": 1349976,
+          "end_ticks": 1349977,
+          "count": 83
+        },
+        {
+          "start_ticks": 1349977,
+          "end_ticks": 1349978,
+          "count": 81
+        },
+        {
+          "start_ticks": 1349978,
+          "end_ticks": 1349979,
+          "count": 1861
+        },
+        {
+          "start_ticks": 1349979,
+          "end_ticks": 1349980,
+          "count": 319
+        },
+        {
+          "start_ticks": 1349980,
+          "end_ticks": 1349981,
+          "count": 3673
+        },
+        {
+          "start_ticks": 1349981,
+          "end_ticks": 1349982,
+          "count": 3788
+        },
+        {
+          "start_ticks": 1349982,
+          "end_ticks": 1349983,
+          "count": 6330
+        },
+        {
+          "start_ticks": 1349983,
+          "end_ticks": 1349984,
+          "count": 378
+        },
+        {
+          "start_ticks": 1349984,
+          "end_ticks": 1349985,
+          "count": 6015
+        },
+        {
+          "start_ticks": 1349985,
+          "end_ticks": 1349986,
+          "count": 16940
+        },
+        {
+          "start_ticks": 1349986,
+          "end_ticks": 1349987,
+          "count": 43802
+        },
+        {
+          "start_ticks": 1349987,
+          "end_ticks": 1349988,
+          "count": 50828
+        },
+        {
+          "start_ticks": 1349988,
+          "end_ticks": 1349989,
+          "count": 14024
+        },
+        {
+          "start_ticks": 1349989,
+          "end_ticks": 1349990,
+          "count": 5533
+        },
+        {
+          "start_ticks": 1349990,
+          "end_ticks": 1349991,
+          "count": 7886
+        },
+        {
+          "start_ticks": 1349991,
+          "end_ticks": 1349992,
+          "count": 4633
+        },
+        {
+          "start_ticks": 1349992,
+          "end_ticks": 1349993,
+          "count": 5932
+        },
+        {
+          "start_ticks": 1349993,
+          "end_ticks": 1349994,
+          "count": 3185
+        },
+        {
+          "start_ticks": 1349994,
+          "end_ticks": 1349995,
+          "count": 436
+        },
+        {
+          "start_ticks": 1349995,
+          "end_ticks": 1349996,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349996,
+          "end_ticks": 1349997,
+          "count": 1468
+        },
+        {
+          "start_ticks": 1349997,
+          "end_ticks": 1349998,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349998,
+          "end_ticks": 1349999,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350023,
+          "end_ticks": 1350024,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350024,
+          "end_ticks": 1350025,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350025,
+          "end_ticks": 1350026,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350026,
+          "end_ticks": 1350027,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350027,
+          "end_ticks": 1350028,
+          "count": 15
+        },
+        {
+          "start_ticks": 1350028,
+          "end_ticks": 1350029,
+          "count": 32
+        },
+        {
+          "start_ticks": 1350029,
+          "end_ticks": 1350030,
+          "count": 70
+        },
+        {
+          "start_ticks": 1350030,
+          "end_ticks": 1350031,
+          "count": 58
+        },
+        {
+          "start_ticks": 1350031,
+          "end_ticks": 1350032,
+          "count": 136
+        },
+        {
+          "start_ticks": 1350032,
+          "end_ticks": 1350033,
+          "count": 1554
+        },
+        {
+          "start_ticks": 1350033,
+          "end_ticks": 1350034,
+          "count": 2151
+        },
+        {
+          "start_ticks": 1350034,
+          "end_ticks": 1350035,
+          "count": 3472
+        },
+        {
+          "start_ticks": 1350035,
+          "end_ticks": 1350036,
+          "count": 1826
+        },
+        {
+          "start_ticks": 1350036,
+          "end_ticks": 1350037,
+          "count": 10536
+        },
+        {
+          "start_ticks": 1350037,
+          "end_ticks": 1350038,
+          "count": 5581
+        },
+        {
+          "start_ticks": 1350038,
+          "end_ticks": 1350039,
+          "count": 4541
+        },
+        {
+          "start_ticks": 1350039,
+          "end_ticks": 1350040,
+          "count": 20028
+        },
+        {
+          "start_ticks": 1350040,
+          "end_ticks": 1350041,
+          "count": 21923
+        },
+        {
+          "start_ticks": 1350041,
+          "end_ticks": 1350042,
+          "count": 30344
+        },
+        {
+          "start_ticks": 1350042,
+          "end_ticks": 1350043,
+          "count": 6664
+        },
+        {
+          "start_ticks": 1350043,
+          "end_ticks": 1350044,
+          "count": 19368
+        },
+        {
+          "start_ticks": 1350044,
+          "end_ticks": 1350045,
+          "count": 10845
+        },
+        {
+          "start_ticks": 1350045,
+          "end_ticks": 1350046,
+          "count": 7861
+        },
+        {
+          "start_ticks": 1350046,
+          "end_ticks": 1350047,
+          "count": 5583
+        },
+        {
+          "start_ticks": 1350047,
+          "end_ticks": 1350048,
+          "count": 87
+        },
+        {
+          "start_ticks": 1350048,
+          "end_ticks": 1350049,
+          "count": 6245
+        },
+        {
+          "start_ticks": 1350049,
+          "end_ticks": 1350050,
+          "count": 1004
+        },
+        {
+          "start_ticks": 1350050,
+          "end_ticks": 1350051,
+          "count": 1664
+        },
+        {
+          "start_ticks": 1350051,
+          "end_ticks": 1350052,
+          "count": 7
+        },
+        {
+          "start_ticks": 1350053,
+          "end_ticks": 1350054,
+          "count": 1
+        },
+        {
+          "start_ticks": 1352686,
+          "end_ticks": 1352687,
+          "count": 1
+        },
+        {
+          "start_ticks": 1382221,
+          "end_ticks": 1382222,
+          "count": 1
+        },
+        {
+          "start_ticks": 1433206,
+          "end_ticks": 1433207,
+          "count": 1
+        },
+        {
+          "start_ticks": 1497670,
+          "end_ticks": 1497671,
+          "count": 1
+        },
+        {
+          "start_ticks": 1629180,
+          "end_ticks": 1629181,
+          "count": 1
+        },
+        {
+          "start_ticks": 1669384,
+          "end_ticks": 1669385,
+          "count": 1
+        },
+        {
+          "start_ticks": 1859914,
+          "end_ticks": 1859915,
+          "count": 1
+        },
+        {
+          "start_ticks": 1975318,
+          "end_ticks": 1975319,
+          "count": 1
+        },
+        {
+          "start_ticks": 2015626,
+          "end_ticks": 2015627,
+          "count": 1
+        },
+        {
+          "start_ticks": 2045114,
+          "end_ticks": 2045115,
+          "count": 1
+        },
+        {
+          "start_ticks": 2090709,
+          "end_ticks": 2090710,
+          "count": 1
+        },
+        {
+          "start_ticks": 2160566,
+          "end_ticks": 2160567,
+          "count": 1
+        },
+        {
+          "start_ticks": 2165904,
+          "end_ticks": 2165905,
+          "count": 1
+        },
+        {
+          "start_ticks": 2200777,
+          "end_ticks": 2200778,
+          "count": 1
+        },
+        {
+          "start_ticks": 2230311,
+          "end_ticks": 2230312,
+          "count": 1
+        },
+        {
+          "start_ticks": 2246421,
+          "end_ticks": 2246422,
+          "count": 1
+        },
+        {
+          "start_ticks": 2351044,
+          "end_ticks": 2351045,
+          "count": 1
+        },
+        {
+          "start_ticks": 2466546,
+          "end_ticks": 2466547,
+          "count": 1
+        },
+        {
+          "start_ticks": 2632929,
+          "end_ticks": 2632930,
+          "count": 1
+        },
+        {
+          "start_ticks": 2657083,
+          "end_ticks": 2657084,
+          "count": 1
+        },
+        {
+          "start_ticks": 2673133,
+          "end_ticks": 2673134,
+          "count": 1
+        }
+      ]
+    },
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 400000,
+    "attempted_frame_count": 400000,
+    "produced_frame_count": 400000,
+    "consumed_frame_count": 400000,
+    "dropped_frame_count": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers and control metadata only",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "failure_check": {
+    "code": 0,
+    "name": "none",
+    "source": "none"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 594148500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "raw_timestamps": {
+    "count": 400000,
+    "file": "raw-timestamps.bin",
+    "sha256": "56655e1de97c7151443480306347e1c4f413161bd43c2b9a959ef152e5070d0f",
+    "retained_outside_repository": true
+  },
+  "power_trace": "2026-10-06-p150a-issue104-sampler-default-power.csv",
+  "power_trace_sample_count": 181,
+  "power_trace_sha256": "0c3b8f1893bc329004c4c0a5a59a76d572ff479d04f686c03effb6b110f41b7b",
+  "power_trace_absent_reason": null,
+  "telemetry_sampler": {
+    "mode": "default",
+    "interval_seconds": 2.0,
+    "power_trace": "required",
+    "timing_evidence": "available"
+  },
+  "watcher": false,
+  "timing_evidence": true,
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "status": "observation_only_no_causal_claim",
+    "pair_count": 18,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sum_min_ticks": 2699961,
+    "pair_sum_max_ticks": 2700083,
+    "pair_sum_mean_ticks": 2700003.8333333335,
+    "sum_delta_min_ticks": -39,
+    "sum_delta_max_ticks": 83,
+    "frame_start_indices": [
+      8139,
+      27227,
+      43135,
+      46316,
+      59042,
+      62223,
+      74949,
+      81312,
+      87675,
+      129034,
+      205389,
+      234022,
+      240385,
+      288107,
+      294470,
+      342192,
+      389913,
+      393095
+    ],
+    "event_frame_positions": [
+      8139,
+      8140,
+      27227,
+      27228,
+      43135,
+      43136,
+      46316,
+      46317,
+      59042,
+      59043,
+      62223,
+      62224,
+      74949,
+      74950,
+      81312,
+      81313,
+      87675,
+      87676,
+      129034,
+      129035,
+      205389,
+      205390,
+      234022,
+      234023,
+      240385,
+      240386,
+      288107,
+      288108,
+      294470,
+      294471,
+      342192,
+      342193,
+      389913,
+      389914,
+      393095,
+      393096
+    ],
+    "event_elapsed_seconds": [
+      8.138019892592592,
+      8.139999991111111,
+      27.226763436296295,
+      27.228000017037036,
+      43.13404970444444,
+      43.13600002222222,
+      46.31550698518519,
+      46.31700004148148,
+      59.04133598888889,
+      59.043000004444444,
+      62.222793242222224,
+      62.22400004222222,
+      74.94862228592592,
+      74.95,
+      81.31153679703704,
+      81.31299999555556,
+      87.6744513162963,
+      87.67599998962963,
+      129.03339565925927,
+      129.0350000325926,
+      205.3883697911111,
+      205.3899999962963,
+      234.02148509925925,
+      234.02299999851851,
+      240.38439962518518,
+      240.38600004444444,
+      288.10625846296296,
+      288.107999977037,
+      294.4691729518519,
+      294.471000022963,
+      342.19103180518516,
+      342.1930000148148,
+      389.9128906407407,
+      389.91400002592593,
+      393.09434793185187,
+      393.0960000140741
+    ],
+    "pair_start_elapsed_seconds": [
+      8.138019892592592,
+      27.226763436296295,
+      43.13404970444444,
+      46.31550698518519,
+      59.04133598888889,
+      62.222793242222224,
+      74.94862228592592,
+      81.31153679703704,
+      87.6744513162963,
+      129.03339565925927,
+      205.3883697911111,
+      234.02148509925925,
+      240.38439962518518,
+      288.10625846296296,
+      294.4691729518519,
+      342.19103180518516,
+      389.9128906407407,
+      393.09434793185187
+    ],
+    "frame_gaps": [
+      19088,
+      15908,
+      3181,
+      12726,
+      3181,
+      12726,
+      6363,
+      6363,
+      41359,
+      76355,
+      28633,
+      6363,
+      47722,
+      6363,
+      47722,
+      47721,
+      3182
+    ],
+    "gap_counts": {
+      "3181": 2,
+      "3182": 1,
+      "6363": 4,
+      "12726": 2,
+      "15908": 1,
+      "19088": 1,
+      "28633": 1,
+      "41359": 1,
+      "47721": 1,
+      "47722": 2,
+      "76355": 1
+    },
+    "gcd_frame_gap": 1,
+    "periodicity": "No single exact period detected; the most common gap is 6363 frames (4 of 17 gaps), and the gap gcd is 1.",
+    "pairs": [
+      {
+        "first_interval_end_elapsed_seconds": 8.138019892592592,
+        "first_interval_end_elapsed_ticks": 10986326855,
+        "interval_end_frame_indices": [
+          8139,
+          8140
+        ],
+        "long_ticks": 2673133,
+        "pair_sum_ticks": 2699962,
+        "short_ticks": 26829,
+        "sum_delta_ticks": -38
+      },
+      {
+        "first_interval_end_elapsed_seconds": 27.226763436296295,
+        "first_interval_end_elapsed_ticks": 36756130639,
+        "interval_end_frame_indices": [
+          27227,
+          27228
+        ],
+        "long_ticks": 1669384,
+        "pair_sum_ticks": 2700015,
+        "short_ticks": 1030631,
+        "sum_delta_ticks": 15
+      },
+      {
+        "first_interval_end_elapsed_seconds": 43.13404970444444,
+        "first_interval_end_elapsed_ticks": 58230967101,
+        "interval_end_frame_indices": [
+          43135,
+          43136
+        ],
+        "long_ticks": 2632929,
+        "pair_sum_ticks": 2700020,
+        "short_ticks": 67091,
+        "sum_delta_ticks": 20
+      },
+      {
+        "first_interval_end_elapsed_seconds": 46.31550698518519,
+        "first_interval_end_elapsed_ticks": 62525934430,
+        "interval_end_frame_indices": [
+          46316,
+          46317
+        ],
+        "long_ticks": 2015626,
+        "pair_sum_ticks": 2700076,
+        "short_ticks": 684450,
+        "sum_delta_ticks": 76
+      },
+      {
+        "first_interval_end_elapsed_seconds": 59.04133598888889,
+        "first_interval_end_elapsed_ticks": 79705803585,
+        "interval_end_frame_indices": [
+          59042,
+          59043
+        ],
+        "long_ticks": 2246421,
+        "pair_sum_ticks": 2699961,
+        "short_ticks": 453540,
+        "sum_delta_ticks": -39
+      },
+      {
+        "first_interval_end_elapsed_seconds": 62.222793242222224,
+        "first_interval_end_elapsed_ticks": 84000770877,
+        "interval_end_frame_indices": [
+          62223,
+          62224
+        ],
+        "long_ticks": 1629180,
+        "pair_sum_ticks": 2700082,
+        "short_ticks": 1070902,
+        "sum_delta_ticks": 82
+      },
+      {
+        "first_interval_end_elapsed_seconds": 74.94862228592592,
+        "first_interval_end_elapsed_ticks": 101180640086,
+        "interval_end_frame_indices": [
+          74949,
+          74950
+        ],
+        "long_ticks": 1859914,
+        "pair_sum_ticks": 2699968,
+        "short_ticks": 840054,
+        "sum_delta_ticks": -32
+      },
+      {
+        "first_interval_end_elapsed_seconds": 81.31153679703704,
+        "first_interval_end_elapsed_ticks": 109770574676,
+        "interval_end_frame_indices": [
+          81312,
+          81313
+        ],
+        "long_ticks": 1975318,
+        "pair_sum_ticks": 2699976,
+        "short_ticks": 724658,
+        "sum_delta_ticks": -24
+      },
+      {
+        "first_interval_end_elapsed_seconds": 87.6744513162963,
+        "first_interval_end_elapsed_ticks": 118360509277,
+        "interval_end_frame_indices": [
+          87675,
+          87676
+        ],
+        "long_ticks": 2090709,
+        "pair_sum_ticks": 2699972,
+        "short_ticks": 609263,
+        "sum_delta_ticks": -28
+      },
+      {
+        "first_interval_end_elapsed_seconds": 129.03339565925927,
+        "first_interval_end_elapsed_ticks": 174195084140,
+        "interval_end_frame_indices": [
+          129034,
+          129035
+        ],
+        "long_ticks": 2165904,
+        "pair_sum_ticks": 2700032,
+        "short_ticks": 534128,
+        "sum_delta_ticks": 32
+      },
+      {
+        "first_interval_end_elapsed_seconds": 205.3883697911111,
+        "first_interval_end_elapsed_ticks": 277274299218,
+        "interval_end_frame_indices": [
+          205389,
+          205390
+        ],
+        "long_ticks": 2200777,
+        "pair_sum_ticks": 2699972,
+        "short_ticks": 499195,
+        "sum_delta_ticks": -28
+      },
+      {
+        "first_interval_end_elapsed_seconds": 234.02148509925925,
+        "first_interval_end_elapsed_ticks": 315929004884,
+        "interval_end_frame_indices": [
+          234022,
+          234023
+        ],
+        "long_ticks": 2045114,
+        "pair_sum_ticks": 2699974,
+        "short_ticks": 654860,
+        "sum_delta_ticks": -26
+      },
+      {
+        "first_interval_end_elapsed_seconds": 240.38439962518518,
+        "first_interval_end_elapsed_ticks": 324518939494,
+        "interval_end_frame_indices": [
+          240385,
+          240386
+        ],
+        "long_ticks": 2160566,
+        "pair_sum_ticks": 2700083,
+        "short_ticks": 539517,
+        "sum_delta_ticks": 83
+      },
+      {
+        "first_interval_end_elapsed_seconds": 288.10625846296296,
+        "first_interval_end_elapsed_ticks": 388943448925,
+        "interval_end_frame_indices": [
+          288107,
+          288108
+        ],
+        "long_ticks": 2351044,
+        "pair_sum_ticks": 2699975,
+        "short_ticks": 348931,
+        "sum_delta_ticks": -25
+      },
+      {
+        "first_interval_end_elapsed_seconds": 294.4691729518519,
+        "first_interval_end_elapsed_ticks": 397533383485,
+        "interval_end_frame_indices": [
+          294470,
+          294471
+        ],
+        "long_ticks": 2466546,
+        "pair_sum_ticks": 2699969,
+        "short_ticks": 233423,
+        "sum_delta_ticks": -31
+      },
+      {
+        "first_interval_end_elapsed_seconds": 342.19103180518516,
+        "first_interval_end_elapsed_ticks": 461957892937,
+        "interval_end_frame_indices": [
+          342192,
+          342193
+        ],
+        "long_ticks": 2657083,
+        "pair_sum_ticks": 2700031,
+        "short_ticks": 42948,
+        "sum_delta_ticks": 31
+      },
+      {
+        "first_interval_end_elapsed_seconds": 389.9128906407407,
+        "first_interval_end_elapsed_ticks": 526382402365,
+        "interval_end_frame_indices": [
+          389913,
+          389914
+        ],
+        "long_ticks": 1497670,
+        "pair_sum_ticks": 2700030,
+        "short_ticks": 1202360,
+        "sum_delta_ticks": 30
+      },
+      {
+        "first_interval_end_elapsed_seconds": 393.09434793185187,
+        "first_interval_end_elapsed_ticks": 530677369708,
+        "interval_end_frame_indices": [
+          393095,
+          393096
+        ],
+        "long_ticks": 2230311,
+        "pair_sum_ticks": 2699971,
+        "short_ticks": 469660,
+        "sum_delta_ticks": -29
+      }
+    ],
+    "elapsed_time_unit": "seconds",
+    "device_tick_unit": "device_clock_ticks",
+    "aiclk_mhz_for_elapsed_seconds": 1350,
+    "run_elapsed_ticks": 539998649994,
+    "run_elapsed_seconds": 399.99899999555555,
+    "sampler_interval_comparison": {
+      "status": "no_strict_alignment_observed",
+      "sampler_interval_seconds": 2.0,
+      "adjacent_gaps": [
+        {
+          "from_pair_start_frame": 8139,
+          "gap_elapsed_seconds": 19.088743543703703,
+          "gap_frames": 19088,
+          "nearest_integer_sampler_intervals": 10,
+          "residual_to_nearest_sampler_multiple_seconds": -0.9112564562962966,
+          "sampler_intervals": 9.544371771851852,
+          "to_pair_start_frame": 27227
+        },
+        {
+          "from_pair_start_frame": 27227,
+          "gap_elapsed_seconds": 15.907286268148148,
+          "gap_frames": 15908,
+          "nearest_integer_sampler_intervals": 8,
+          "residual_to_nearest_sampler_multiple_seconds": -0.09271373185185183,
+          "sampler_intervals": 7.953643134074074,
+          "to_pair_start_frame": 43135
+        },
+        {
+          "from_pair_start_frame": 43135,
+          "gap_elapsed_seconds": 3.181457280740741,
+          "gap_frames": 3181,
+          "nearest_integer_sampler_intervals": 2,
+          "residual_to_nearest_sampler_multiple_seconds": -0.8185427192592591,
+          "sampler_intervals": 1.5907286403703704,
+          "to_pair_start_frame": 46316
+        },
+        {
+          "from_pair_start_frame": 46316,
+          "gap_elapsed_seconds": 12.725829003703703,
+          "gap_frames": 12726,
+          "nearest_integer_sampler_intervals": 6,
+          "residual_to_nearest_sampler_multiple_seconds": 0.7258290037037032,
+          "sampler_intervals": 6.362914501851852,
+          "to_pair_start_frame": 59042
+        },
+        {
+          "from_pair_start_frame": 59042,
+          "gap_elapsed_seconds": 3.1814572533333334,
+          "gap_frames": 3181,
+          "nearest_integer_sampler_intervals": 2,
+          "residual_to_nearest_sampler_multiple_seconds": -0.8185427466666666,
+          "sampler_intervals": 1.5907286266666667,
+          "to_pair_start_frame": 62223
+        },
+        {
+          "from_pair_start_frame": 62223,
+          "gap_elapsed_seconds": 12.725829043703703,
+          "gap_frames": 12726,
+          "nearest_integer_sampler_intervals": 6,
+          "residual_to_nearest_sampler_multiple_seconds": 0.7258290437037029,
+          "sampler_intervals": 6.3629145218518515,
+          "to_pair_start_frame": 74949
+        },
+        {
+          "from_pair_start_frame": 74949,
+          "gap_elapsed_seconds": 6.362914511111111,
+          "gap_frames": 6363,
+          "nearest_integer_sampler_intervals": 3,
+          "residual_to_nearest_sampler_multiple_seconds": 0.3629145111111107,
+          "sampler_intervals": 3.1814572555555554,
+          "to_pair_start_frame": 81312
+        },
+        {
+          "from_pair_start_frame": 81312,
+          "gap_elapsed_seconds": 6.3629145192592595,
+          "gap_frames": 6363,
+          "nearest_integer_sampler_intervals": 3,
+          "residual_to_nearest_sampler_multiple_seconds": 0.36291451925925955,
+          "sampler_intervals": 3.1814572596296298,
+          "to_pair_start_frame": 87675
+        },
+        {
+          "from_pair_start_frame": 87675,
+          "gap_elapsed_seconds": 41.358944342962964,
+          "gap_frames": 41359,
+          "nearest_integer_sampler_intervals": 21,
+          "residual_to_nearest_sampler_multiple_seconds": -0.641055657037036,
+          "sampler_intervals": 20.679472171481482,
+          "to_pair_start_frame": 129034
+        },
+        {
+          "from_pair_start_frame": 129034,
+          "gap_elapsed_seconds": 76.35497413185185,
+          "gap_frames": 76355,
+          "nearest_integer_sampler_intervals": 38,
+          "residual_to_nearest_sampler_multiple_seconds": 0.3549741318518471,
+          "sampler_intervals": 38.177487065925924,
+          "to_pair_start_frame": 205389
+        },
+        {
+          "from_pair_start_frame": 205389,
+          "gap_elapsed_seconds": 28.63311530814815,
+          "gap_frames": 28633,
+          "nearest_integer_sampler_intervals": 14,
+          "residual_to_nearest_sampler_multiple_seconds": 0.6331153081481489,
+          "sampler_intervals": 14.316557654074074,
+          "to_pair_start_frame": 234022
+        },
+        {
+          "from_pair_start_frame": 234022,
+          "gap_elapsed_seconds": 6.362914525925926,
+          "gap_frames": 6363,
+          "nearest_integer_sampler_intervals": 3,
+          "residual_to_nearest_sampler_multiple_seconds": 0.3629145259259259,
+          "sampler_intervals": 3.181457262962963,
+          "to_pair_start_frame": 240385
+        },
+        {
+          "from_pair_start_frame": 240385,
+          "gap_elapsed_seconds": 47.72185883777778,
+          "gap_frames": 47722,
+          "nearest_integer_sampler_intervals": 24,
+          "residual_to_nearest_sampler_multiple_seconds": -0.2781411622222194,
+          "sampler_intervals": 23.86092941888889,
+          "to_pair_start_frame": 288107
+        },
+        {
+          "from_pair_start_frame": 288107,
+          "gap_elapsed_seconds": 6.362914488888889,
+          "gap_frames": 6363,
+          "nearest_integer_sampler_intervals": 3,
+          "residual_to_nearest_sampler_multiple_seconds": 0.36291448888888933,
+          "sampler_intervals": 3.1814572444444447,
+          "to_pair_start_frame": 294470
+        },
+        {
+          "from_pair_start_frame": 294470,
+          "gap_elapsed_seconds": 47.72185885333333,
+          "gap_frames": 47722,
+          "nearest_integer_sampler_intervals": 24,
+          "residual_to_nearest_sampler_multiple_seconds": -0.27814114666666967,
+          "sampler_intervals": 23.860929426666665,
+          "to_pair_start_frame": 342192
+        },
+        {
+          "from_pair_start_frame": 342192,
+          "gap_elapsed_seconds": 47.72185883555556,
+          "gap_frames": 47721,
+          "nearest_integer_sampler_intervals": 24,
+          "residual_to_nearest_sampler_multiple_seconds": -0.2781411644444418,
+          "sampler_intervals": 23.86092941777778,
+          "to_pair_start_frame": 389913
+        },
+        {
+          "from_pair_start_frame": 389913,
+          "gap_elapsed_seconds": 3.181457291111111,
+          "gap_frames": 3182,
+          "nearest_integer_sampler_intervals": 2,
+          "residual_to_nearest_sampler_multiple_seconds": -0.8185427088888888,
+          "sampler_intervals": 1.5907286455555556,
+          "to_pair_start_frame": 393095
+        }
+      ]
+    }
+  },
+  "hardware": {
+    "device_id": 0,
+    "device_node": "/dev/tenstorrent/0",
+    "named_wrapper": "enodia/tt/bench/run_in_container.sh",
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": false,
+    "health_probe": "not run",
+    "outer_timeout_seconds": 600,
+    "frame_count_termination": true
+  },
+  "producer_timestamp_attribution": {
+    "status": "open",
+    "available": false,
+    "reason": "Producer and consumer get_timestamp() calls execute on different cores. No same-designated-core producer-write stamp was added because it would change the pacing kernel; producer-versus-consumer attribution remains open."
+  },
+  "conclusion": "The sampled run retains the paired short/long event pattern. Its common event gaps do not form a strict sampler-interval period; this run alone supports no causal hypothesis. Producer-versus-consumer attribution remains open.",
+  "historical_records": {
+    "existing_issue12_records_unchanged": true,
+    "supersedes": []
+  },
+  "harness_commit": "487bc36fa30e870b6cd9b2a62199275397cde004"
+}

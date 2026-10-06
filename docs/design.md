@@ -1930,6 +1930,26 @@ card (host-side timestamps would mix in host jitter).
 **Build the timestamp mechanism in from the start. Retrofitting it is
 painful.**
 
+### Issue #104 paired-outlier measurement (2026-10-06)
+
+The pinned resident harness was run for 400,000 frames at the Issue #12 final
+configuration (1 ms, no Watcher, device 0, 600-second outer cap) with telemetry
+sampling off, at the existing 2-second interval, and at an explicit 5-second
+interval. The ADR-0005 records are
+`docs/measurements/2026-10-06-p150a-issue104-sampler-off.json`,
+`docs/measurements/2026-10-06-p150a-issue104-sampler-default.json`, and
+`docs/measurements/2026-10-06-p150a-issue104-sampler-5s.json`.
+
+All three runs retain the same P50/P99/P99.9/P99.99 body (1,349,988 / 1,350,048
+/ 1,350,050 / 1,350,050 ticks) and fixed consumer work (1,072–1,098 ticks).
+The paired short/long observations count 22 with sampling off, 18 at 2 s, and
+9 at 5 s; adjacent event gaps have no strict period or sampler-interval lock.
+The off run is diagnostic-only because it intentionally has no power trace.
+This evidence does not establish a causal hypothesis or a mitigation. The
+producer writes no timestamp on the consumer's designated clock: its local
+`get_timestamp()` is on a different core, so producer-versus-consumer
+attribution remains open.
+
 ---
 
 ## 13. Core partitioning and organ recognition
