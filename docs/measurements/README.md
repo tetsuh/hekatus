@@ -106,6 +106,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-watcher-cycle-budget-power.csv` | Power, AICLK, and temperature trace for the Watcher cycle-budget attempt above. |
 | `2026-10-06-p150a-issue12-stage1-watcher-margin-retry.json` | Retry with the explicit Watcher overhead margin: one-frame validation still reported a cycle-budget error; no timing run, reset, or health probe followed. |
 | `2026-10-06-p150a-issue12-stage1-watcher-margin-retry-power.csv` | Power, AICLK, and temperature trace for the Watcher-margin retry above. |
+| `2026-10-06-p150a-issue12-stage1-startup-allowance-retry.json` | Startup-allowance validation: observed startup ticks were recorded, but the one-frame Watcher run still reported cycle-budget error; no timing run followed. |
+| `2026-10-06-p150a-issue12-stage1-startup-allowance-retry-power.csv` | Power, AICLK, and temperature trace for the startup-allowance validation above. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
