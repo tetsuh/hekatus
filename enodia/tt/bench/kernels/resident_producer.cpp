@@ -8,13 +8,13 @@ namespace {
 constexpr std::uint32_t cb_scratch = 0;
 constexpr std::uint32_t page_words = 32 * 32;
 constexpr std::uint32_t page_bytes = page_words * sizeof(std::uint32_t);
-constexpr std::uint32_t ready_word = page_words - 3;
-constexpr std::uint32_t free_word = page_words - 2;
 constexpr std::uint32_t control_error_word = 0;
 constexpr std::uint32_t control_done_word = 1;
 constexpr std::uint32_t control_attempted_word = 2;
 constexpr std::uint32_t control_produced_word = 3;
 constexpr std::uint32_t control_dropped_word = 4;
+constexpr std::uint32_t ready_semaphore_id = 0;
+constexpr std::uint32_t free_semaphore_id = 1;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_producer_pacing_wait = 2;
 constexpr std::uint32_t failure_other_check = 5;
@@ -37,6 +37,12 @@ void kernel_main() {
     const auto ring = TensorAccessor(ring_args, ring_address);
     const auto control = TensorAccessor(control_args, control_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
+
+    const std::uint64_t control_noc = control.get_noc_addr(0);
+    const std::uint64_t noc_coord_mask = ~((std::uint64_t(1) << NOC_ADDR_COORD_SHIFT) - 1);
+    const std::uint64_t ready_noc = (control_noc & noc_coord_mask) | get_semaphore(ready_semaphore_id);
+    auto* free_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
+        get_semaphore(free_semaphore_id));
 
     std::uint32_t producer_full_count = 0;
     std::uint32_t frames_produced = 0;
@@ -62,23 +68,7 @@ void kernel_main() {
                 failure_limit_ticks = run_budget_ticks;
                 break;
             }
-            cb_reserve_back(cb_scratch, 1);
-            auto* probe = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
-                get_write_ptr(cb_scratch));
-            noc_async_read_page(0, control, get_write_ptr(cb_scratch));
-            noc_async_read_barrier();
-            cb_push_back(cb_scratch, 1);
-            cb_wait_front(cb_scratch, 1);
-            error_flag = probe[control_error_word];
-            cb_pop_front(cb_scratch, 1);
-            if (error_flag != 0 && failure_code == 0) {
-                failure_code = failure_other_check;
-                failure_elapsed_ticks = get_timestamp() - run_start;
-                failure_limit_ticks = run_budget_ticks;
-            }
-            if (error_flag != 0) {
-                break;
-            }
+            invalidate_l1_cache();
         }
         if (error_flag != 0) {
             break;
@@ -88,15 +78,8 @@ void kernel_main() {
             frames_produced + 1 > ring_pages ? frames_produced + 1 - ring_pages : 0;
         bool slot_full = false;
         if (consumed_required != 0) {
-            cb_reserve_back(cb_scratch, 1);
-            auto* probe = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
-                get_write_ptr(cb_scratch));
-            noc_async_read_page(frames_produced % ring_pages, ring, get_write_ptr(cb_scratch));
-            noc_async_read_barrier();
-            cb_push_back(cb_scratch, 1);
-            cb_wait_front(cb_scratch, 1);
-            slot_full = probe[free_word] < consumed_required;
-            cb_pop_front(cb_scratch, 1);
+            invalidate_l1_cache();
+            slot_full = *free_sem < consumed_required;
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 failure_code = failure_run_wide_budget;
@@ -117,23 +100,20 @@ void kernel_main() {
         cb_reserve_back(cb_scratch, 1);
         auto* source = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
             get_write_ptr(cb_scratch));
-        for (std::uint32_t word = 0; word < ready_word; ++word) {
-            // Two packed int16 values (I in the low half, Q in the high half).
+        for (std::uint32_t word = 0; word < page_words; ++word) {
             const std::uint16_t i = static_cast<std::uint16_t>((attempted + word) & 0x07FFu);
             const std::uint16_t q = static_cast<std::uint16_t>((3 * attempted + 5 * word) & 0x07FFu);
             source[word] = static_cast<std::uint32_t>(i) | (static_cast<std::uint32_t>(q) << 16);
         }
-        source[ready_word] = frames_produced + 1;
-        source[free_word] = 0;
         cb_push_back(cb_scratch, 1);
         cb_wait_front(cb_scratch, 1);
         noc_async_write_page(frames_produced % ring_pages, ring, get_read_ptr(cb_scratch));
         noc_async_write_barrier();
         cb_pop_front(cb_scratch, 1);
+        noc_semaphore_inc(ready_noc, 1);
         frames_produced += 1;
     }
 
-    std::uint32_t consumer_error = 0;
     cb_reserve_back(cb_scratch, 1);
     auto* control_probe = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_write_ptr(cb_scratch));
@@ -141,9 +121,8 @@ void kernel_main() {
     noc_async_read_barrier();
     cb_push_back(cb_scratch, 1);
     cb_wait_front(cb_scratch, 1);
-    consumer_error = control_probe[control_error_word];
+    error_flag = error_flag | control_probe[control_error_word];
     cb_pop_front(cb_scratch, 1);
-    error_flag = error_flag | consumer_error;
 
     cb_reserve_back(cb_scratch, 1);
     auto* control_page = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(

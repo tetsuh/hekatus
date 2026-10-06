@@ -7,11 +7,11 @@
 namespace {
 constexpr std::uint32_t cb_timestamp = 1;
 constexpr std::uint32_t page_words = 32 * 32;
-constexpr std::uint32_t ready_word = page_words - 3;
-constexpr std::uint32_t free_word = page_words - 2;
 constexpr std::uint32_t control_error_word = 0;
 constexpr std::uint32_t control_done_word = 1;
 constexpr std::uint32_t control_produced_word = 3;
+constexpr std::uint32_t ready_semaphore_id = 0;
+constexpr std::uint32_t free_semaphore_id = 1;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_consumer_empty_wait = 3;
 constexpr std::uint32_t failure_consumer_fixed_work_budget = 4;
@@ -21,25 +21,33 @@ constexpr std::uint32_t failure_other_check = 5;
 void kernel_main() {
     const std::uint32_t ring_address = get_arg_val<std::uint32_t>(0);
     const std::uint32_t control_address = get_arg_val<std::uint32_t>(1);
-    const std::uint32_t timestamp_address = get_arg_val<std::uint32_t>(2);
-    const std::uint32_t stats_address = get_arg_val<std::uint32_t>(3);
-    const std::uint32_t frame_count = get_arg_val<std::uint32_t>(4);
-    const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(5);
-    const std::uint32_t work_per_frame = get_arg_val<std::uint32_t>(6);
-    const std::uint32_t per_frame_work_budget_ticks = get_arg_val<std::uint32_t>(7);
+    const std::uint32_t producer_anchor_address = get_arg_val<std::uint32_t>(2);
+    const std::uint32_t timestamp_address = get_arg_val<std::uint32_t>(3);
+    const std::uint32_t stats_address = get_arg_val<std::uint32_t>(4);
+    const std::uint32_t frame_count = get_arg_val<std::uint32_t>(5);
+    const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(6);
+    const std::uint32_t work_per_frame = get_arg_val<std::uint32_t>(7);
+    const std::uint32_t per_frame_work_budget_ticks = get_arg_val<std::uint32_t>(8);
     const std::uint64_t run_budget_ticks =
-        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(8))
-        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(9)) << 32);
+        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(9))
+        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(10)) << 32);
 
     constexpr auto ring_args = TensorAccessorArgs<0>();
     constexpr auto control_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
-    constexpr auto timestamp_args = TensorAccessorArgs<control_args.next_compile_time_args_offset()>();
+    constexpr auto producer_anchor_args = TensorAccessorArgs<control_args.next_compile_time_args_offset()>();
+    constexpr auto timestamp_args = TensorAccessorArgs<producer_anchor_args.next_compile_time_args_offset()>();
     constexpr auto stats_args = TensorAccessorArgs<timestamp_args.next_compile_time_args_offset()>();
     const auto ring = TensorAccessor(ring_args, ring_address);
     const auto control = TensorAccessor(control_args, control_address);
+    const auto producer_anchor = TensorAccessor(producer_anchor_args, producer_anchor_address);
     const auto timestamps = TensorAccessor(timestamp_args, timestamp_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
 
+    const std::uint64_t producer_anchor_noc = producer_anchor.get_noc_addr(0);
+    const std::uint64_t noc_coord_mask = ~((std::uint64_t(1) << NOC_ADDR_COORD_SHIFT) - 1);
+    const std::uint64_t free_noc = (producer_anchor_noc & noc_coord_mask) | get_semaphore(free_semaphore_id);
+    auto* ready_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
+        get_semaphore(ready_semaphore_id));
     auto* control_local = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(control_address);
     std::uint32_t consumer_empty_count = 0;
     std::uint32_t frames_consumed = 0;
@@ -53,6 +61,7 @@ void kernel_main() {
     const std::uint64_t run_start = get_timestamp();
 
     while (true) {
+        invalidate_l1_cache();
         if (control_local[control_error_word] != 0) {
             error_flag = 1;
             failure_code = failure_other_check;
@@ -63,10 +72,10 @@ void kernel_main() {
         const std::uint32_t required = frames_consumed + 1;
         auto* payload = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
             ring_address + (frames_consumed % ring_pages) * page_words * sizeof(std::uint32_t));
-        if (payload[ready_word] < required) {
+        if (*ready_sem < required) {
             consumer_empty_count += 1;
         }
-        while (payload[ready_word] < required && control_local[control_error_word] == 0) {
+        while (*ready_sem < required && control_local[control_error_word] == 0) {
             invalidate_l1_cache();
             if (control_local[control_done_word] != 0
                 && frames_consumed >= control_local[control_produced_word]) {
@@ -90,7 +99,7 @@ void kernel_main() {
             }
             break;
         }
-        if (payload[ready_word] < required) {
+        if (*ready_sem < required) {
             if (control_local[control_done_word] != 0
                 && frames_consumed >= control_local[control_produced_word]) {
                 break;
@@ -100,7 +109,7 @@ void kernel_main() {
 
         const std::uint64_t start = get_timestamp();
         for (std::uint32_t work = 0; work < work_per_frame; ++work) {
-            const std::uint32_t word = work % ready_word;
+            const std::uint32_t word = work % page_words;
             accumulator = (accumulator * 33u) ^ payload[word] ^ (work + frames_consumed);
         }
         const std::uint64_t end = get_timestamp();
@@ -137,7 +146,7 @@ void kernel_main() {
             startup_valid = 1;
         }
         frames_consumed += 1;
-        payload[free_word] = frames_consumed;
+        noc_semaphore_inc(free_noc, 1);
         if (error_flag != 0) {
             break;
         }

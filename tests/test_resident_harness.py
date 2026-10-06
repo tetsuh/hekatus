@@ -345,20 +345,22 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
 
     assert "noc_async_write_page" in producer
     assert "noc_async_read_page" in producer
-    assert "get_noc_addr" not in producer
+    assert "control.get_noc_addr(0)" in producer
+    assert "consumer_x" not in producer
     assert "noc_inline_dw_write" not in producer
-    assert "noc_semaphore" not in producer
+    assert "noc_semaphore_inc" in producer
+    assert "get_semaphore(free_semaphore_id)" in producer
     assert "while (consumed_required" not in producer
     assert "Drop-new policy" in producer
-    assert "ready_word" in producer and "free_word" in producer
     assert "run_budget_ticks" in producer
     assert "failure_producer_pacing_wait" in producer
     assert "failure_run_wide_budget" in producer
     assert "failure_elapsed_ticks" in producer
-    assert "consumer_error = control_probe[control_error_word]" in producer
+    assert "error_flag = error_flag | control_probe[control_error_word]" in producer
     assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
-    assert "ready_word" in consumer and "free_word" in consumer
+    assert "noc_semaphore_inc" in consumer
+    assert "get_semaphore(ready_semaphore_id)" in consumer
     assert "control_local[control_error_word] = 1" in consumer
     assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
     assert "failure_consumer_empty_wait" in consumer
@@ -369,7 +371,7 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "failure_elapsed_ticks" in consumer
     assert "per_frame_work_budget_ticks" in consumer
     assert "noc_inline_dw_write" not in consumer
-    assert "noc_semaphore" not in consumer
+    assert "invalidate_l1_cache" in consumer
 
 
 def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
@@ -378,6 +380,9 @@ def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
     assert "memory_config=_sharded_pages_config(ttnn, config, 1)" in runner
     assert "control.buffer_address()" in runner
     assert "control_compile" in runner
+    assert "producer_anchor" in runner
+    assert "SemaphoreDescriptor(0" in runner
+    assert "SemaphoreDescriptor(1" in runner
 
 
 def test_record_rejects_missing_environment_provenance():

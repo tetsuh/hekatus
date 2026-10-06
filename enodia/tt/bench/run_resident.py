@@ -58,11 +58,14 @@ def _allocate(ttnn: Any, shape, dtype, layout, device, memory_config):
     )
 
 
-def _sharded_pages_config(ttnn: Any, config: ResidentConfig, pages: int):
+def _sharded_pages_config(
+    ttnn: Any, config: ResidentConfig, pages: int, *, core: tuple[int, int] | None = None
+):
     shape = (1, pages, PAGE_WORDS)
+    core = config.consumer_core if core is None else core
     return ttnn.create_sharded_memory_config(
         shape,
-        _core_range(ttnn, config.consumer_core),
+        _core_range(ttnn, core),
         ttnn.ShardStrategy.HEIGHT,
         ttnn.ShardOrientation.ROW_MAJOR,
         use_height_and_width_as_shard_shape=True,
@@ -96,6 +99,7 @@ def _program(
     consumer_ranges = _core_range(ttnn, config.consumer_core)
     ring = tensors["ring"]
     control = tensors["control"]
+    producer_anchor = tensors["producer_anchor"]
     producer_stats = tensors["producer_stats"]
     consumer_stats = tensors["consumer_stats"]
     timestamps = tensors["timestamps"]
@@ -103,6 +107,7 @@ def _program(
     ring_compile = ttnn.TensorAccessorArgs(ring).get_compile_time_args()
     control_compile = ttnn.TensorAccessorArgs(control).get_compile_time_args()
     producer_stats_compile = ttnn.TensorAccessorArgs(producer_stats).get_compile_time_args()
+    producer_anchor_compile = ttnn.TensorAccessorArgs(producer_anchor).get_compile_time_args()
     timestamp_compile = ttnn.TensorAccessorArgs(timestamps).get_compile_time_args()
     consumer_stats_compile = ttnn.TensorAccessorArgs(consumer_stats).get_compile_time_args()
 
@@ -110,6 +115,7 @@ def _program(
     consumer_compile = [
         *ring_compile,
         *control_compile,
+        *producer_anchor_compile,
         *timestamp_compile,
         *consumer_stats_compile,
     ]
@@ -136,6 +142,7 @@ def _program(
         [
             ring.buffer_address(),
             control.buffer_address(),
+            producer_anchor.buffer_address(),
             timestamps.buffer_address(),
             consumer_stats.buffer_address(),
             config.frame_count,
@@ -166,7 +173,10 @@ def _program(
     ]
     return ttnn.ProgramDescriptor(
         kernels=kernels,
-        semaphores=[],
+        semaphores=[
+            ttnn.SemaphoreDescriptor(0, ttnn.CoreType.WORKER, consumer_ranges, 0),
+            ttnn.SemaphoreDescriptor(1, ttnn.CoreType.WORKER, producer_ranges, 0),
+        ],
         cbs=[
             _cb(ttnn, index=0, core_ranges=producer_ranges),
             _cb(ttnn, index=1, core_ranges=consumer_ranges),
@@ -215,6 +225,13 @@ def _run_device(
         device=device,
         memory_config=_sharded_pages_config(ttnn, config, 1),
     )
+    producer_anchor = ttnn.zeros(
+        ttnn.Shape(control_shape),
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        device=device,
+        memory_config=_sharded_pages_config(ttnn, config, 1, core=config.producer_core),
+    )
     timestamps = _allocate(
         ttnn,
         timestamp_shape,
@@ -242,6 +259,7 @@ def _run_device(
     tensors = {
         "ring": ring,
         "control": control,
+        "producer_anchor": producer_anchor,
         "timestamps": timestamps,
         "producer_stats": producer_stats,
         "consumer_stats": consumer_stats,
