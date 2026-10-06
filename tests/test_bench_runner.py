@@ -7,6 +7,7 @@ toolchain so they run anywhere.
 """
 
 import builtins
+import io
 import json
 import sys
 from pathlib import Path
@@ -126,6 +127,42 @@ class _StubDevice:
     def get_optimal_dram_bank_to_logical_worker_assignment(self, noc):
         self.assignment_calls += 1
         return [object()] * self.worker_count
+
+
+def test_custom_bringup_runner_writes_the_wrapper_result_path(monkeypatch, tmp_path):
+    from tools import newton_schulz_bringup
+
+    result_path = tmp_path / "runner-result.json"
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
+    stream = io.StringIO()
+
+    newton_schulz_bringup._emit_json({"status": "pass"}, stream=stream)
+
+    assert json.loads(result_path.read_text()) == {"status": "pass"}
+    assert json.loads(stream.getvalue()) == {"status": "pass"}
+
+
+def test_perf_counter_runner_passes_the_wrapper_result_path_to_run_matmul(
+    monkeypatch, tmp_path
+):
+    from tools import newton_schulz_perf_counters
+
+    calls = []
+    profiler = type(sys)("tools.tracy.process_model_log")
+    profiler.run_device_profiler = lambda command, *args, **kwargs: calls.append(command)
+    tracy = type(sys)("tools.tracy")
+    tracy.__path__ = []
+    monkeypatch.setitem(sys.modules, "tools.tracy", tracy)
+    monkeypatch.setitem(sys.modules, "tools.tracy.process_model_log", profiler)
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", "/out/runner-result.json")
+
+    newton_schulz_perf_counters.main(
+        ["--row", "full", "--logs", str(tmp_path / "logs"), "--target-out", "/out/other.json"]
+    )
+
+    assert len(calls) == 1
+    assert "--out /out/runner-result.json" in calls[0]
+    assert "--out /out/other.json" not in calls[0]
 
 
 def test_issue94_modes_and_rows_preserve_fixed_selection_metadata_without_a_device():

@@ -75,10 +75,12 @@ def _fake_ttnn(open_device, close_device):
     return SimpleNamespace(open_device=open_device, close_device=close_device)
 
 
-def _run_main(tmp_path, monkeypatch, *, open_device, close_device):
+def _run_main(tmp_path, monkeypatch, *, open_device, close_device, result_path=None):
     output_dir = tmp_path / "device-output"
     _write_telemetry(output_dir)
     monkeypatch.setenv("HEKATUS_TT_OUTPUT_DIR", str(output_dir))
+    if result_path is not None:
+        monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
     monkeypatch.setitem(
         sys.modules,
         "ttnn",
@@ -89,6 +91,25 @@ def _run_main(tmp_path, monkeypatch, *, open_device, close_device):
 
 def _raw(output_dir):
     return json.loads((output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME).read_text())
+
+
+def test_issue101_result_env_path_is_the_primary_output(monkeypatch, tmp_path):
+    result_path = tmp_path / "runner-result.json"
+    monkeypatch.setattr(
+        issue101, "run_issue101_combined", lambda *args, **kwargs: _passing_run(1000)
+    )
+
+    output_dir, result = _run_main(
+        tmp_path,
+        monkeypatch,
+        open_device=lambda **kwargs: object(),
+        close_device=lambda device: None,
+        result_path=result_path,
+    )
+
+    assert result == 0
+    assert json.loads(result_path.read_text())["status"] == "pass"
+    assert not (output_dir / issue101.ISSUE101_OUTPUT_NAME).exists()
 
 
 def test_issue101_open_exception_publishes_raw_failure_without_cleanup(monkeypatch, tmp_path):

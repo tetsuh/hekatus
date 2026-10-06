@@ -44,6 +44,10 @@ mkdir -p "${OUT_DIR}"
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
 RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
+CUSTOM_RUNNER=0
+if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
+  CUSTOM_RUNNER=1
+fi
 CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-900}"
 if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
   echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be a positive integer" >&2
@@ -83,16 +87,27 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
 POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
 RESULTS="${OUT_DIR}/results-${STAMP}.json"
+RESULTS_CONTAINER="/out/$(basename "${RESULTS}")"
 RESULT_PATH="${RESULTS}"
-# This comparison runner writes its fixed result under the container's /out
-# mount, so report the corresponding host path instead of an unused timestamp.
-if [[ "${RUNNER##*/}" == "newton_schulz_issue100_same_run.py" ]]; then
-  RESULT_PATH="${OUT_DIR}/issue100-same-run.json"
+RUNNER_RESULT_CONTAINER_PATH=""
+RUNNER_RESULT_HOST_PATH=""
+if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
+  # Every custom runner gets one stable result path inside the mount.  The
+  # host-side path is only for the final wrapper status line; it is never
+  # passed into the container or embedded in a runner record.
+  RUNNER_RESULT_CONTAINER_PATH="/out/runner-result.json"
+  RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result.json"
+  RESULTS_CONTAINER="${RUNNER_RESULT_CONTAINER_PATH}"
+  RESULT_PATH="${RUNNER_RESULT_HOST_PATH}"
 fi
 
 TELEMETRY="${REPO_ROOT}/enodia/tt/bench/telemetry.py"
 PINNED_FLAG=()
 [[ "${IMAGE_PINNED}" == "1" ]] && PINNED_FLAG=(--image-pinned)
+RUNNER_RESULT_ENV=()
+if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
+  RUNNER_RESULT_ENV=(-e "HEKATUS_TT_RESULT_PATH=${RUNNER_RESULT_CONTAINER_PATH}")
+fi
 
 python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
@@ -179,10 +194,11 @@ elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     -w /work \
     -e PYTHONPATH=/work \
     "${WATCHER_ENV[@]}" \
+    "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
     "${RUNNER}" \
-    "/out/$(basename "${RESULTS}")" \
+    "${RESULTS_CONTAINER}" \
     "/out/$(basename "${ENV_JSON}")" \
     "${RUNNER_ARGS[@]}" &
 else
@@ -195,6 +211,7 @@ else
     -w /work \
     -e PYTHONPATH=/work \
     "${WATCHER_ENV[@]}" \
+    "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "$@" &
 fi

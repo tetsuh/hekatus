@@ -1,5 +1,7 @@
 import json
 import subprocess
+import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -8,6 +10,7 @@ from enodia.tt.bench.newton_schulz_reference import (
     initial_value,
     newton_schulz_reference,
 )
+from tools import newton_schulz_issue100_same_run as issue100
 from tools import newton_schulz_issue101_combined as issue101
 from tools.newton_schulz_issue100_same_run import (
     ISSUE100_COMPARISON_CONFIGS,
@@ -48,6 +51,27 @@ def test_issue100_same_run_driver_pins_both_default_configurations():
             "dst_full_sync_en": True,
         },
     )
+
+
+def test_issue100_result_env_path_is_the_primary_output(monkeypatch, tmp_path):
+    result_path = tmp_path / "runner-result.json"
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(
+            open_device=lambda device_id: object(),
+            close_device=lambda device: None,
+        ),
+    )
+    monkeypatch.setattr(
+        issue100,
+        "run_issue100_comparison",
+        lambda *args, **kwargs: [{"status": "ok"}],
+    )
+
+    assert issue100.main() == 0
+    assert json.loads(result_path.read_text())["results"] == [{"status": "ok"}]
 
 
 def test_issue101_combined_driver_pins_all_requested_cases_and_defaults():

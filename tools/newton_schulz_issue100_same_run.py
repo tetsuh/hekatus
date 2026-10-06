@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from enodia.strict_json import dumps as strict_json_dumps
@@ -128,7 +129,10 @@ def main() -> int:
     finally:
         ttnn.close_device(device)
 
-    output_path = Path("/out/issue100-same-run.json")
+    result_path = (
+        os.environ.get("HEKATUS_TT_RESULT_PATH") or "/out/issue100-same-run.json"
+    )
+    output_path = Path(result_path)
     payload = {
         "record_schema": "adr-0005-issue100-same-run-v1",
         "configuration_mode": "issue100-new-vs-previous-default-same-run",

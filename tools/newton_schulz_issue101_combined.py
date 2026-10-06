@@ -1018,7 +1018,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    output_path = output_dir / ISSUE101_OUTPUT_NAME
+    result_path = os.environ.get("HEKATUS_TT_RESULT_PATH")
+    output_path = Path(result_path) if result_path else output_dir / ISSUE101_OUTPUT_NAME
     _atomic_json_write(output_path, record)
     print(f"combined record -> {output_path}", flush=True)
     return 0

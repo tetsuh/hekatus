@@ -2497,8 +2497,15 @@ def run_build_only_jit_probe(
 
 
 def _emit_json(record: object, *, stream: Any = None) -> None:
+    """Emit one diagnostic record and publish it to the wrapper result path."""
+    serialized = strict_json_dumps(record, sort_keys=True) + "\n"
+    result_path = os.environ.get("HEKATUS_TT_RESULT_PATH")
+    if result_path:
+        output = Path(result_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(serialized, encoding="utf-8")
     target = sys.stdout if stream is None else stream
-    target.write(strict_json_dumps(record, sort_keys=True) + "\n")
+    target.write(serialized)
     target.flush()
 
 
