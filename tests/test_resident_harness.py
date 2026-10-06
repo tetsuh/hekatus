@@ -161,6 +161,16 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     assert watcher_breakdown["run_budget_ticks"] == 5_956_335_000
 
 
+def test_wrap_tracked_low_word_extension_is_monotonic_across_wrap():
+    extended = 0xFFFFFFFE
+    values = []
+    for low in (0xFFFFFFFF, 0x00000000, 0x00000001, 0x00000010):
+        extended += (low - (extended & 0xFFFFFFFF)) & 0xFFFFFFFF
+        values.append(extended)
+    assert values == [0xFFFFFFFF, 0x1_0000_0000, 0x1_0000_0001, 0x1_0000_0010]
+    assert values == sorted(values)
+
+
 def test_ticks_to_seconds_uses_aiclk_hz_conversion():
     assert ticks_to_seconds(ticks=1_350_000, aiclk_mhz=1_350) == pytest.approx(0.001)
     assert ticks_to_seconds(ticks=80_000_000, aiclk_mhz=800) == pytest.approx(0.1)
@@ -420,6 +430,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     parsed = json.loads(encoded)
     assert parsed["schema"] == "issue-12-stage-1-resident-v1"
     assert parsed["parameters"]["frame_interval_is_not_acquisition_rate_claim"] is True
+    assert parsed["clock"]["timestamp_api"] == "get_timestamp_32b"
+    assert parsed["clock"]["timestamp_semantics"] == "32-bit low word, software-extended (wrap-tracked)"
     assert parsed["raw_timestamps"]["count"] == 3
     assert '"timestamps":' not in encoded
     assert parsed["histogram"]["N"] == 2
@@ -483,6 +495,10 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
     consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
 
+    assert "get_timestamp()" not in producer
+    assert "WALL_CLOCK_H" not in producer
+    assert "get_timestamp_32b()" in producer
+    assert "extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended))" in producer
     assert "noc_async_write_page" in producer
     assert "noc_async_read_page" not in producer
     assert "control.get_noc_addr(0)" in producer
@@ -501,8 +517,12 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "error_semaphore_id" in producer
     assert "*error_sem" in producer
     assert "noc_semaphore_inc(done_noc, 1)" in producer
-    assert "get_timestamp() - run_start >= run_budget_ticks" in producer
+    assert "clock.read() - run_start >= run_budget_ticks" in producer
 
+    assert "get_timestamp()" not in consumer
+    assert "WALL_CLOCK_H" not in consumer
+    assert "get_timestamp_32b()" in consumer
+    assert "extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended))" in consumer
     assert "noc_semaphore_inc" in consumer
     assert "get_semaphore(ready_semaphore_id)" in consumer
     assert "get_semaphore(done_semaphore_id)" in consumer
@@ -512,7 +532,7 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "control_local" not in consumer
     assert "control_done_word" not in consumer
     assert "control_produced_word" not in consumer
-    assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
+    assert "clock.read() - run_start >= run_budget_ticks" in consumer
     assert "failure_consumer_empty_wait" in consumer
     assert "failure_consumer_fixed_work_budget" in consumer
     assert "failure_run_wide_budget" in consumer
@@ -548,6 +568,53 @@ def test_consumer_budget_failure_cancels_producer_without_control_sync():
     assert "attempts_started = attempted + 1" in producer
     assert "ready_count += 1" in producer
     assert "frames_dropped += 1" in producer
+
+
+def test_every_resident_noc_signal_and_write_has_a_matching_barrier():
+    producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
+    consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
+
+    def assert_signal_barriers(source, signal_count):
+        assert source.count("noc_semaphore_inc(") == signal_count
+        positions = []
+        cursor = 0
+        while (position := source.find("noc_semaphore_inc(", cursor)) >= 0:
+            positions.append(position)
+            cursor = position + 1
+        for position in positions:
+            barrier = source.find("noc_async_atomic_barrier()", position)
+            assert barrier >= 0
+            next_signal = source.find("noc_semaphore_inc(", position + 1)
+            assert next_signal < 0 or barrier < next_signal
+
+    def assert_write_barriers(source, write_count):
+        assert source.count("noc_async_write_page(") == write_count
+        positions = []
+        cursor = 0
+        while (position := source.find("noc_async_write_page(", cursor)) >= 0:
+            positions.append(position)
+            cursor = position + 1
+        for position in positions:
+            barrier = source.find("noc_async_write_barrier()", position)
+            assert barrier >= 0
+            next_write = source.find("noc_async_write_page(", position + 1)
+            assert next_write < 0 or barrier < next_write
+
+    assert "noc_async_read_page(" not in producer + consumer
+    assert_signal_barriers(producer, 2)
+    assert_signal_barriers(consumer, 4)
+    assert_write_barriers(producer, 3)
+    assert_write_barriers(consumer, 2)
+    assert producer.index("noc_async_write_page(ready_count") < producer.index(
+        "noc_semaphore_inc(ready_noc"
+    )
+    assert producer.index("noc_async_write_page(0, stats") < producer.index(
+        "noc_semaphore_inc(done_noc"
+    )
+    assert "failure_consumer_empty_wait" in consumer
+    assert "failure_consumer_fixed_work_budget" in consumer
+    assert "failure_run_wide_budget" in consumer
+    assert "Drop-new policy" in producer
 
 
 def test_record_rejects_missing_environment_provenance():

@@ -14,6 +14,18 @@ constexpr std::uint32_t error_semaphore_id = 3;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_consumer_empty_wait = 3;
 constexpr std::uint32_t failure_consumer_fixed_work_budget = 4;
+
+struct WrapTrackedClock {
+    std::uint64_t extended = 0;
+
+    void initialize() { extended = get_timestamp_32b(); }
+
+    std::uint64_t read() {
+        const std::uint32_t low = get_timestamp_32b();
+        extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended));
+        return extended;
+    }
+};
 }
 
 void kernel_main() {
@@ -61,7 +73,9 @@ void kernel_main() {
     std::uint32_t work_valid = 0;
     std::uint32_t startup_valid = 0;
     bool error_sent = false;
-    const std::uint64_t run_start = get_timestamp();
+    WrapTrackedClock clock;
+    clock.initialize();
+    const std::uint64_t run_start = clock.read();
 
     while (true) {
         invalidate_l1_cache();
@@ -80,13 +94,14 @@ void kernel_main() {
             if (*done_sem != 0 && *ready_sem == frames_consumed) {
                 break;
             }
-            if (get_timestamp() - run_start >= run_budget_ticks) {
+            if (clock.read() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 failure_code = failure_consumer_empty_wait;
-                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_elapsed_ticks = clock.read() - run_start;
                 failure_limit_ticks = run_budget_ticks;
                 if (!error_sent) {
                     noc_semaphore_inc(error_noc, 1);
+                    noc_async_atomic_barrier();
                     error_sent = true;
                 }
                 break;
@@ -103,12 +118,12 @@ void kernel_main() {
             continue;
         }
 
-        const std::uint64_t start = get_timestamp();
+        const std::uint64_t start = clock.read();
         for (std::uint32_t work = 0; work < work_per_frame; ++work) {
             const std::uint32_t word = work % page_words;
             accumulator = (accumulator * 33u) ^ payload[word] ^ (work + frames_consumed);
         }
-        const std::uint64_t end = get_timestamp();
+        const std::uint64_t end = clock.read();
         const std::uint64_t elapsed = end - start;
         work_min_ticks = elapsed < work_min_ticks ? elapsed : work_min_ticks;
         work_max_ticks = elapsed > work_max_ticks ? elapsed : work_max_ticks;
@@ -120,6 +135,7 @@ void kernel_main() {
             failure_limit_ticks = per_frame_work_budget_ticks;
             if (!error_sent) {
                 noc_semaphore_inc(error_noc, 1);
+                noc_async_atomic_barrier();
                 error_sent = true;
             }
         } else if (end - run_start >= run_budget_ticks) {
@@ -129,6 +145,7 @@ void kernel_main() {
             failure_limit_ticks = run_budget_ticks;
             if (!error_sent) {
                 noc_semaphore_inc(error_noc, 1);
+                noc_async_atomic_barrier();
                 error_sent = true;
             }
         }
@@ -152,6 +169,7 @@ void kernel_main() {
         }
         frames_consumed += 1;
         noc_semaphore_inc(free_noc, 1);
+        noc_async_atomic_barrier();
         if (error_flag != 0) {
             break;
         }

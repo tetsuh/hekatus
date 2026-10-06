@@ -1,0 +1,77 @@
+{
+  "schema": "issue-12-stage-1-resident-failure-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "abnormal_exit",
+  "summary": "The 100-frame Watcher validation stopped before a resident result because Watcher detected the producer kernel completed with pending NOC transactions; the approved single reset and fixed-image Stage-1 health probe then passed. No timing run followed.",
+  "environment": {
+    "captured_at": "2026-10-06T23:04:04.029575+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "86024ab91cd655c712d6fe149876a6cd7c1733c9",
+    "harness_dirty": false,
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ]
+  },
+  "parameters": {
+    "frame_count_requested": 100,
+    "frame_interval_ticks": 1350000,
+    "outer_timeout_seconds": 60,
+    "watcher": true,
+    "timing_evidence": false,
+    "device_id": 0,
+    "protocol": "semaphore IDs 0 ready, 1 free, 2 done, 3 error/cancel"
+  },
+  "failure": {
+    "wrapper_exit_status": 139,
+    "classification": "watcher_assert",
+    "diagnostic": "Watcher detected producer completion with pending NOC transactions (missing non-posted NOC atomic flush barrier).",
+    "resident_result_produced": false,
+    "raw_timestamps_produced": false
+  },
+  "raw_timestamps": {
+    "status": "not_produced",
+    "count": 0,
+    "sha256": null
+  },
+  "power_trace": "2026-10-06-p150a-issue12-stage1-semaphore-final-watcher-abnormal-adr0005-power.csv",
+  "power_trace_sample_count": 2,
+  "power_trace_sha256": "01310fe9ff1eb2e0457ab580421ff4ee992a4b0a8679c952e6ae62903ebadd42",
+  "hardware": {
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": true,
+    "health_probe": "fixed-image Stage-1 real_one_tile passed after one reset",
+    "additional_resets": 0
+  },
+  "timing_evidence": false,
+  "first_frame_exclusion": true,
+  "frame_interval_note": "The device-clock frame interval is a harness parameter, not a real acquisition-rate claim.",
+  "watcher_artifacts": {
+    "watcher_log_sha256": "93d34fb7256f79f31bdfb9e7d825390e4247b2c665b1d27c32dd468f9f88b548",
+    "retained_outside_repository": true
+  }
+}
