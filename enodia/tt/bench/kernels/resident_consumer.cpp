@@ -146,11 +146,7 @@ void kernel_main() {
             break;
         }
         if (frames_consumed >= frame_count) {
-            error_flag = 1;
-            failure_code = failure_other_check;
-            failure_elapsed_ticks = get_timestamp() - run_start;
-            failure_limit_ticks = run_budget_ticks;
-            control_local[control_error_word] = 1;
+            // Normal completion: producer-done/drain state owns termination status.
             break;
         }
     }

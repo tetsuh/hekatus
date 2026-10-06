@@ -348,6 +348,8 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "control_local[control_error_word] = 1" in consumer
     assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
     assert "failure_consumer_empty_wait" in consumer
+    assert "Normal completion: producer-done/drain state owns termination status." in consumer
+    assert "frames_consumed >= frame_count) {\n            error_flag" not in consumer
     assert "failure_consumer_fixed_work_budget" in consumer
     assert "failure_run_wide_budget" in consumer
     assert "failure_elapsed_ticks" in consumer
