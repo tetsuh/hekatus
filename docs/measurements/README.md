@@ -123,6 +123,10 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-timing-60000-power.csv` | Power, AICLK, and temperature trace for the 60,000-frame run above. |
 | `2026-10-06-p150a-issue12-stage1-timing-600000.json` | No-Watcher longest frame-count run: no cycle error, but 599,996 producer drops leave only N=3 completion intervals; no timing evidence is claimed. |
 | `2026-10-06-p150a-issue12-stage1-timing-600000-power.csv` | Power, AICLK, and temperature trace for the 600,000-frame run above. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000.json` | Semaphore-protocol 60,000-frame run: zero overflow and valid N=59,999 histogram, but fixed-work extrema were not serialized by the run harness, so no timing claim/PR is made. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-power.csv` | Power, AICLK, and temperature trace for the semaphore 60,000-frame run. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000.json` | Semaphore-protocol 600,000-frame run: zero overflow and valid N=599,999 histogram, but fixed-work extrema were not serialized by the run harness, so no timing claim/PR is made. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-power.csv` | Power, AICLK, and temperature trace for the semaphore 600,000-frame run. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |

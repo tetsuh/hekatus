@@ -1,0 +1,21 @@
+{
+  "schema": "issue-12-stage-1-resident-semaphore-timing-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok_incomplete_work_extrema",
+  "summary": "The semaphore protocol longest run completed all 600,000 frames with zero overflow. The harness revision used did not yet serialize fixed-work extrema, so no timing evidence is claimed and no PR is opened.",
+  "environment": {"board": {"board_type": "p150a", "serial": "000004033191411c", "dram_status": true, "dram_speed": "16G", "pcie_speed": 4, "pcie_width": "16"}, "firmware": {"fw_bundle_version": "19.6.0.0", "cm_fw": "0.28.0.0", "dm_app_fw": "0.22.0.0", "gddr_fw": "2.12"}, "kmd_version": "2.11.0", "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621", "tt_env_active_release": "0.75.0", "harness_commit": "c4275e6c0b213fb25bc2ed451e655c010a4ceb98", "aiclk_mhz_observed": [800, 1350]},
+  "parameters": {"frame_count_requested": 600000, "frame_interval_ticks": 1350000, "fixed_work_ticks_per_frame": 100000, "cycle_budget_ticks_per_frame": 10000000, "outer_timeout_seconds": 660, "watcher": false, "timing_evidence": false, "budget_margin_over_cap_allowed": true, "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting", "frame_interval_is_not_acquisition_rate_claim": true, "first_frame_excluded": true},
+  "clock": {"name": "RISCV_DEBUG_REG_WALL_CLOCK", "width_bits": 64, "frequency_source": "AICLK", "aiclk_mhz": 1350, "designated_core": [1, 0], "unit": "device_clock_ticks"},
+  "semaphore_protocol": {"ready_semaphore_id": 0, "ready_core": "consumer", "free_semaphore_id": 1, "free_core": "producer", "remote_signaling": "noc_semaphore_inc", "local_observation": "invalidate_l1_cache before local semaphore reads"},
+  "startup": {"configured_allowance_ms": 100, "configured_allowance_ticks": 135000000, "observed_ticks": 11941, "observed_valid": true},
+  "failure_check": {"code": 0, "name": "none", "source": "none"},
+  "counts": {"attempted": 600000, "produced": 600000, "consumed": 600000, "dropped": 0, "producer_full": 0, "overflow": 0, "consumer_empty": 600000},
+  "cycle_budget": {"status": "ok", "error_flag": 0, "failure_check": "none"},
+  "work_ticks": {"minimum": null, "maximum": null, "status": "not_serialized_by_harness_commit_c4275e6"},
+  "raw_timestamps": {"count": 600000, "sha256": "025f6543ffa1ff3747f033596a22a6f816b2950cbd7ed294da02f1dbae61c9723"},
+  "histogram": {"sample_definition": "Completion intervals only; first frame and dropped attempts are excluded.", "N": 599999, "min_ticks": 34344, "max_ticks": 2665658, "percentiles": {"p50": {"status": "ok", "value_ticks": 1350023.0, "minimum_samples": 40}, "p99": {"status": "ok", "value_ticks": 1350034.0, "minimum_samples": 2000}, "p99_9": {"status": "ok", "value_ticks": 1350036.0, "minimum_samples": 20000}, "p99_99": {"status": "ok", "value_ticks": 1350036.0, "minimum_samples": 200000}}, "fine_bin_width_ticks": 1},
+  "power_trace": "2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-power.csv",
+  "power_trace_sha256": "ab98b86f6cdc93d093ff6d1ef57c8806bb5bc3de627bf2b5ffb0c8a3b61d10d2",
+  "hardware": {"device_id": 0, "docker_running_before": 0, "docker_running_after": 0, "reset_performed": false, "health_probe": "not run"}
+}
