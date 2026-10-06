@@ -1,3 +1,6 @@
+import json
+import subprocess
+
 import pytest
 
 from enodia.tt.bench.newton_schulz_reference import (
@@ -5,6 +8,7 @@ from enodia.tt.bench.newton_schulz_reference import (
     initial_value,
     newton_schulz_reference,
 )
+from tools import newton_schulz_issue101_combined as issue101
 from tools.newton_schulz_issue100_same_run import (
     ISSUE100_COMPARISON_CONFIGS,
     ISSUE100_SHAPES,
@@ -164,3 +168,156 @@ def test_issue101_combined_environment_uses_measurement_names():
     assert environment["board"]["board_id"] == "serial"
     assert environment["board"]["device_id"] == 0
     assert environment["firmware"]["fw_bundle_version"] == "19.6.0.0"
+
+
+def _raw_environment(board: dict) -> dict:
+    return {
+        "image": "ghcr.io/example/image@sha256:" + "a" * 64,
+        "image_pinned": True,
+        "kernel": "Linux 6.8.0-test",
+        "kmd_version": "2.11.0",
+        "tt_env_active_release": "0.75.0",
+        "harness_commit": "a" * 40,
+        "harness_dirty": False,
+        "board_info": board,
+        "firmwares": {"fw_bundle_version": "19.6.0.0"},
+    }
+
+
+def test_issue101_board_id_only_is_a_deterministic_serial_alias():
+    environment = normalize_environment(
+        _raw_environment({"board_type": "p150a", "board_id": "board-only"})
+    )
+
+    assert environment["board"]["serial"] == "board-only"
+    assert environment["board"]["board_id"] == "board-only"
+    assert environment["board"]["serial_identity_source"] == "board_id_alias"
+    assert environment["board_serial_identity"] == {
+        "serial": "board-only",
+        "board_id": "board-only",
+        "source": "board_id_alias",
+        "alias_applied": True,
+        "rule": (
+            "board_id is accepted as serial identity only when telemetry has no "
+            "explicit serial; an explicit serial takes precedence and must match board_id."
+        ),
+    }
+
+
+def test_issue101_explicit_serial_wins_and_mismatch_fails_fast():
+    environment = normalize_environment(
+        _raw_environment(
+            {"board_type": "p150a", "serial": "explicit", "board_id": "explicit"}
+        )
+    )
+    assert environment["board"]["serial"] == "explicit"
+    assert environment["board_serial_identity"]["source"] == "explicit_serial"
+
+    with pytest.raises(ValueError, match="serial and board_id"):
+        normalize_environment(
+            _raw_environment(
+                {"board_type": "p150a", "serial": "explicit", "board_id": "different"}
+            )
+        )
+
+
+def _dummy_combined_run(repeats: int = 3) -> dict:
+    correctness = [
+        {
+            "case": f"batch{batch}-L{size}",
+            "batch": batch,
+            "size": size,
+            "reference": "BF16-rounded-R fixed-N=12 reference",
+            "threshold": 0.01,
+            "relative_error": 0.001,
+            "status": "pass",
+        }
+        for batch, size in ISSUE101_CORRECTNESS_CASES
+    ]
+    performance = []
+    for shape in issue101.ISSUE100_SHAPES:
+        for config in issue101.ISSUE100_COMPARISON_CONFIGS:
+            samples = [0.001 + index * 0.000001 for index in range(repeats)]
+            performance.append(
+                {
+                    "status": "ok",
+                    "shape_name": shape,
+                    "comparison_config": dict(config),
+                    "seconds_per_launch_samples": samples,
+                    "seconds_per_launch_p50": samples[1],
+                    "seconds_per_launch_p99": samples[-1],
+                    "seconds_per_launch_p99_9": samples[-1],
+                    "flops_per_iteration": 1.0,
+                    "tflops_p50_derived": 0.001,
+                    "tflops_fastest_launch_derived": 0.001,
+                }
+            )
+    return {
+        "status": "pass",
+        "correctness_cases": correctness,
+        "performance_rows": performance,
+    }
+
+
+def test_issue101_raw_artifact_survives_builder_failure_and_recovers(tmp_path, monkeypatch):
+    output_dir = tmp_path / "device-output"
+    output_dir.mkdir()
+    (output_dir / "env-1.json").write_text(
+        json.dumps(_raw_environment({"board_type": "p150a", "board_id": "board-only"}))
+    )
+    (output_dir / "power-1.csv").write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00+00:00,75,1350,60.0\n"
+    )
+    run = _dummy_combined_run()
+
+    def fail_builder(*args, **kwargs):
+        raise ValueError("synthetic builder failure")
+
+    monkeypatch.setattr(issue101, "build_combined_record", fail_builder)
+    with pytest.raises(RuntimeError, match="issue101-combined-raw.json"):
+        issue101.persist_raw_and_build(run, output_dir=output_dir, repeats=3)
+
+    raw_path = output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
+    assert raw_path.exists()
+    raw = json.loads(raw_path.read_text())
+    assert len(raw["correctness_results"]) == 9
+    assert len(raw["performance_results"]) == 4
+    assert len(raw["performance_results"][0]["seconds_per_launch_samples"]) == 3
+    assert raw["telemetry"]["environment"]["board_info"]["board_id"] == "board-only"
+    assert len(raw["telemetry"]["power_trace"]["samples"]) == 1
+    assert subprocess.run(
+        ["git", "ls-files", "--error-unmatch", str(raw_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    ).returncode != 0
+
+    recovered = issue101.recover_combined_record(raw_path)
+    assert recovered["environment"]["board"]["serial"] == "board-only"
+    assert recovered["environment"]["board_serial_identity"]["alias_applied"] is True
+    assert len(recovered["measurement"]["correctness_cases"]) == 9
+    assert len(recovered["measurement"]["performance_rows"]) == 4
+    assert len(recovered["measurement"]["performance_rows"][0]["seconds_per_launch_samples"]) == 3
+    assert recovered["measurement"]["power_clock_provenance"]["samples"] == 1
+
+
+def test_issue101_recovery_cli_writes_host_only_record(tmp_path):
+    output_dir = tmp_path / "device-output"
+    output_dir.mkdir()
+    (output_dir / "env-1.json").write_text(
+        json.dumps(_raw_environment({"board_type": "p150a", "board_id": "board-only"}))
+    )
+    (output_dir / "power-1.csv").write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00+00:00,75,1350,60.0\n"
+    )
+    raw_path = issue101.write_raw_artifact(
+        _dummy_combined_run(), output_dir=output_dir, repeats=3
+    )
+    output_path = tmp_path / "recovered.json"
+
+    assert issue101.main(["--recover-raw", str(raw_path), "--output", str(output_path)]) == 0
+    recovered = json.loads(output_path.read_text())
+    assert recovered["status"] == "pass"
+    assert recovered["raw_artifact"]["file"] == raw_path.name
