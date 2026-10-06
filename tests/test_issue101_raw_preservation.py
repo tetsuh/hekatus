@@ -248,6 +248,100 @@ def test_issue101_close_exception_persists_rows_before_reraise(monkeypatch, tmp_
     assert raw["run"]["cleanup"]["close_succeeded"] is False
 
 
+def _write_run_artifacts(
+    output_dir, *, run_id, board_id, captured_at="2026-01-01T00:00:00+00:00", python="3.12.12"
+):
+    environment = _raw_environment()
+    environment.update(
+        {
+            "captured_at": captured_at,
+            "python": python,
+            "run_id": run_id,
+        }
+    )
+    environment["board_info"] = {"board_type": "p150a", "board_id": board_id}
+    (output_dir / f"env-{run_id}.json").write_text(json.dumps(environment))
+    (output_dir / f"power-{run_id}.csv").write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00+00:00,75,1350,60.0\n"
+    )
+    telemetry = issue101._capture_telemetry(output_dir, run_id=run_id)
+    raw_path = issue101.write_raw_artifact(
+        _passing_run(3),
+        output_dir=output_dir,
+        repeats=3,
+        telemetry=telemetry,
+        run_id=run_id,
+    )
+    return raw_path, telemetry
+
+
+def test_issue101_recovery_uses_stored_normalized_environment_without_host_fill(
+    monkeypatch, tmp_path
+):
+    output_dir = tmp_path / "device-output"
+    output_dir.mkdir()
+    raw_path, telemetry = _write_run_artifacts(
+        output_dir,
+        run_id="captured-run",
+        board_id="captured-board",
+        captured_at="2020-02-03T04:05:06+00:00",
+        python="3.9.7",
+    )
+    expected_environment = json.loads(
+        json.dumps(telemetry["normalized_environment"])
+    )
+
+    def fail_normalization(_raw):
+        raise AssertionError("recovery must not normalize on the host")
+
+    monkeypatch.setattr(issue101, "normalize_environment", fail_normalization)
+    recovered = issue101.recover_combined_record(raw_path)
+
+    assert recovered["environment"] == expected_environment
+    assert recovered["captured_at"] == "2020-02-03T04:05:06+00:00"
+    assert recovered["run_id"] == "captured-run"
+    assert recovered["harness_commit"] == expected_environment["harness_commit"]
+    assert recovered["environment"]["python"] == "3.9.7"
+    assert recovered["environment"]["board"]["serial"] == "captured-board"
+    assert recovered["environment"]["board_serial_identity"]["alias_applied"] is True
+    assert recovered["raw_artifact"]["file"] == raw_path.name
+    assert "captured-board" in json.dumps(recovered)
+    assert "/home/private/source" not in json.dumps(recovered)
+
+
+def test_issue101_recovery_directory_requires_run_id_and_selects_associated_artifacts(
+    tmp_path,
+):
+    output_dir = tmp_path / "device-output"
+    output_dir.mkdir()
+    _write_run_artifacts(output_dir, run_id="run-a", board_id="board-a")
+    raw_b, _ = _write_run_artifacts(output_dir, run_id="run-b", board_id="board-b")
+
+    selected = issue101.recover_combined_record(output_dir, run_id="run-b")
+    assert selected["run_id"] == "run-b"
+    assert selected["environment"]["board"]["serial"] == "board-b"
+    assert selected["measurement"]["power_trace"] == "power-run-b.csv"
+    assert selected["raw_artifact"]["file"] == raw_b.name
+
+    with pytest.raises(RuntimeError, match="explicit run_id"):
+        issue101.recover_combined_record(output_dir)
+    with pytest.raises(RuntimeError, match="run_id"):
+        issue101.recover_combined_record(output_dir, run_id="unknown")
+
+    duplicate = output_dir / "issue101-combined-raw-duplicate.json"
+    duplicate.write_text(raw_b.read_text())
+    with pytest.raises(RuntimeError, match="ambiguous association"):
+        issue101.recover_combined_record(output_dir, run_id="run-b")
+
+    built = issue101.build_combined_record(
+        _passing_run(3), output_dir=output_dir, repeats=3, run_id="run-b"
+    )
+    assert built["run_id"] == "run-b"
+    assert built["environment"]["board"]["serial"] == "board-b"
+    assert built["measurement"]["power_trace"] == "power-run-b.csv"
+
+
 def test_issue101_record_construction_exception_marks_raw_and_keeps_recovery(
     monkeypatch, tmp_path
 ):
@@ -265,6 +359,10 @@ def test_issue101_record_construction_exception_marks_raw_and_keeps_recovery(
         issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
 
     raw = _raw(output_dir)
+    assert raw["run_id"] == raw["run"]["run_id"]
+    assert raw["telemetry"]["run_id"] == raw["run_id"]
+    assert raw["telemetry"]["normalized_environment"]["run_id"] == raw["run_id"]
+    assert raw["telemetry"]["power_trace"]["run_id"] == raw["run_id"]
     assert raw["artifact_status"] == "failed"
     assert raw["failure"]["stage"] == "record_construction"
     assert raw["run"]["failure_stage"] == "record_construction"

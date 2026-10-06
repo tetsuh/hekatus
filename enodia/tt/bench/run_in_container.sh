@@ -83,20 +83,29 @@ if [[ "${TEST_MODE}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   exit 2
 fi
 
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
-POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
-RESULTS="${OUT_DIR}/results-${STAMP}.json"
+# One identity is generated before any artifact is opened.  The nanosecond,
+# process, and shell-random suffix make reuse collisions fail-safe rather than
+# silently overwriting a prior session's provenance.
+RUN_ID="$(date -u +%Y%m%dT%H%M%S%N)$$${RANDOM}Z"
+export HEKATUS_TT_RUN_ID="${RUN_ID}"
+ENV_JSON="${OUT_DIR}/env-${RUN_ID}.json"
+POWER_CSV="${OUT_DIR}/power-${RUN_ID}.csv"
+RESULTS="${OUT_DIR}/results-${RUN_ID}.json"
 RESULTS_CONTAINER="/out/$(basename "${RESULTS}")"
 RESULT_PATH="${RESULTS}"
 RUNNER_RESULT_CONTAINER_PATH=""
 RUNNER_RESULT_HOST_PATH=""
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
-  # Every custom runner gets one stable result path inside the mount.  The
-  # host-side path is only for the final wrapper status line; it is never
-  # passed into the container or embedded in a runner record.
-  RUNNER_RESULT_CONTAINER_PATH="/out/runner-result.json"
-  RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result.json"
+  # Keep the historical one-run path, but never overwrite it when an output
+  # directory is reused.  The run-specific fallback is passed into the
+  # container and is not embedded as a host path in the runner record.
+  if [[ -e "${OUT_DIR}/runner-result.json" ]]; then
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
+  else
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result.json"
+  fi
   RESULTS_CONTAINER="${RUNNER_RESULT_CONTAINER_PATH}"
   RESULT_PATH="${RUNNER_RESULT_HOST_PATH}"
 fi
@@ -179,6 +188,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     -e HEKATUS_TT_DEVICE_TEST=1 \
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
@@ -193,6 +203,7 @@ elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint /bin/bash \
@@ -210,6 +221,7 @@ else
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint python3 \
