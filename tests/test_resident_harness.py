@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench.resident_harness import (
+    UINT32_MAX,
     ResidentConfig,
     ResidentPreflightError,
     RingAccounting,
@@ -29,6 +30,7 @@ from enodia.tt.bench.resident_harness import (
     validate_run_budget_fits_outer_cap,
     wrap_delta,
 )
+from enodia.tt.bench.run_resident import _runtime_u32
 
 
 def _config(**overrides) -> ResidentConfig:
@@ -179,7 +181,7 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
         split_u64(1 << 64)
     with pytest.raises(ValueError):
         interval_ticks_for_microseconds(microseconds=0, aiclk_mhz=1_350)
-    huge = _config(frame_count=2**63, frame_interval_ticks=2**63)
+    huge = _config(frame_count=UINT32_MAX, frame_interval_ticks=UINT32_MAX)
     with pytest.raises(ResidentPreflightError, match="64-bit"):
         run_budget_breakdown(huge)
 
@@ -210,14 +212,54 @@ def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
         frame_interval_ticks=1_350_000,
         cycle_budget=10_000_000,
         fixed_work_ticks_per_frame=100_000,
-        outer_timeout_seconds=660,
+        outer_timeout_seconds=600,
         budget_aiclk_mhz=1_350,
     )
     with pytest.raises(ResidentPreflightError, match="outer cap"):
         validate_run_budget_fits_outer_cap(longest, watcher=False)
-    assert validate_run_budget_fits_outer_cap(
-        longest, watcher=False, allow_margin_over_cap=True
-    )["schedule_ticks"] <= 660 * 1_350 * 1_000_000
+
+
+@pytest.mark.parametrize("aiclk_mhz", [800, 1_350])
+def test_600_second_timing_cap_maximum_safe_frame_boundary(aiclk_mhz):
+    interval_ticks = aiclk_mhz * 1_000
+    safe = _config(
+        frame_count=545_354,
+        frame_interval_ticks=interval_ticks,
+        outer_timeout_seconds=600,
+        budget_aiclk_mhz=aiclk_mhz,
+    )
+    breakdown = validate_run_budget_fits_outer_cap(safe)
+    cap_ticks = 600 * aiclk_mhz * 1_000_000
+    assert breakdown["run_budget_ticks"] <= cap_ticks
+    expected = 479_999_520_000 if aiclk_mhz == 800 else 809_999_190_000
+    assert breakdown["run_budget_ticks"] == expected
+
+    rejected = _config(
+        frame_count=545_355,
+        frame_interval_ticks=interval_ticks,
+        outer_timeout_seconds=600,
+        budget_aiclk_mhz=aiclk_mhz,
+    )
+    with pytest.raises(ResidentPreflightError, match="outer cap"):
+        validate_run_budget_fits_outer_cap(rejected)
+
+
+def test_runtime_uint32_bounds_cover_kernel_arguments():
+    assert validate_configuration(
+        _config(frame_interval_ticks=UINT32_MAX)
+    ).frame_interval_ticks == UINT32_MAX
+    with pytest.raises(ResidentPreflightError, match="frame_interval_ticks.*uint32"):
+        validate_configuration(_config(frame_interval_ticks=UINT32_MAX + 1))
+
+    for field in ("frame_count", "ring_pages", "work_per_frame", "cycle_budget"):
+        with pytest.raises(ResidentPreflightError, match=f"{field}.*uint32"):
+            validate_configuration(_config(**{field: UINT32_MAX + 1}))
+
+
+def test_runtime_addresses_are_checked_at_uint32_boundary():
+    assert _runtime_u32(UINT32_MAX, "address") == UINT32_MAX
+    with pytest.raises(ResidentPreflightError, match="address.*uint32"):
+        _runtime_u32(UINT32_MAX + 1, "address")
 
 
 def test_ring_drop_policy_drains_without_producer_wait():
@@ -251,8 +293,12 @@ def test_fixed_work_preflight_uses_half_interval_boundary():
 
 
 def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
-    with pytest.raises(ValueError, match="660"):
-        validate_configuration(_config(outer_timeout_seconds=661))
+    with pytest.raises(ValueError, match="600"):
+        validate_configuration(_config(outer_timeout_seconds=601))
+    assert validate_configuration(_config(outer_timeout_seconds=600))
+    with pytest.raises(ValueError, match="60"):
+        validate_configuration(_config(outer_timeout_seconds=61), watcher=True)
+    assert validate_configuration(_config(outer_timeout_seconds=60), watcher=True)
     with pytest.raises(ValueError, match="designated_timestamp_core"):
         validate_configuration(_config(designated_timestamp_core=(0, 0)))
     with pytest.raises(ValueError, match="different cores"):
@@ -391,6 +437,8 @@ def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
     assert "producer_anchor" in runner
     assert "SemaphoreDescriptor(0" in runner
     assert "SemaphoreDescriptor(1" in runner
+    assert "allow-budget-margin-over-cap" not in runner
+    assert "validate_configuration(config, watcher=args.watcher)" in runner
 
 
 def test_record_rejects_missing_environment_provenance():

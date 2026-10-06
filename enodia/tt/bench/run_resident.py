@@ -92,6 +92,12 @@ def _runtime_args(ttnn: Any, core: tuple[int, int], values: list[int]):
     return args
 
 
+def _runtime_u32(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFFFFFF:
+        raise ResidentPreflightError(f"{name} must fit uint32 runtime argument")
+    return int(value)
+
+
 def _program(
     ttnn: Any, device, config: ResidentConfig, tensors: dict[str, Any], *, watcher: bool
 ):
@@ -103,6 +109,18 @@ def _program(
     producer_stats = tensors["producer_stats"]
     consumer_stats = tensors["consumer_stats"]
     timestamps = tensors["timestamps"]
+    ring_address = _runtime_u32(ring.buffer_address(), "ring buffer address")
+    control_address = _runtime_u32(control.buffer_address(), "control buffer address")
+    producer_anchor_address = _runtime_u32(
+        producer_anchor.buffer_address(), "producer anchor buffer address"
+    )
+    producer_stats_address = _runtime_u32(
+        producer_stats.buffer_address(), "producer stats buffer address"
+    )
+    consumer_stats_address = _runtime_u32(
+        consumer_stats.buffer_address(), "consumer stats buffer address"
+    )
+    timestamp_address = _runtime_u32(timestamps.buffer_address(), "timestamp buffer address")
 
     ring_compile = ttnn.TensorAccessorArgs(ring).get_compile_time_args()
     control_compile = ttnn.TensorAccessorArgs(control).get_compile_time_args()
@@ -126,9 +144,9 @@ def _program(
         ttnn,
         config.producer_core,
         [
-            ring.buffer_address(),
-            control.buffer_address(),
-            producer_stats.buffer_address(),
+            ring_address,
+            control_address,
+            producer_stats_address,
             config.frame_count,
             config.frame_interval_ticks,
             config.ring_pages,
@@ -140,11 +158,11 @@ def _program(
         ttnn,
         config.consumer_core,
         [
-            ring.buffer_address(),
-            control.buffer_address(),
-            producer_anchor.buffer_address(),
-            timestamps.buffer_address(),
-            consumer_stats.buffer_address(),
+            ring_address,
+            control_address,
+            producer_anchor_address,
+            timestamp_address,
+            consumer_stats_address,
             config.frame_count,
             config.ring_pages,
             config.work_per_frame,
@@ -361,7 +379,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", default=None)
     parser.add_argument("--raw-timestamps-out", type=Path, default=None)
-    parser.add_argument("--allow-budget-margin-over-cap", action="store_true")
     parser.add_argument("--frame-count", type=int, default=100)
     parser.add_argument("--frame-interval-ticks", type=int, default=1_350_000)
     parser.add_argument("--producer-core", type=_core, default=(0, 0))
@@ -400,12 +417,8 @@ def main(argv: list[str] | None = None) -> int:
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
-        config = validate_configuration(config)
-        validate_run_budget_fits_outer_cap(
-            config,
-            watcher=args.watcher,
-            allow_margin_over_cap=args.allow_budget_margin_over_cap,
-        )
+        config = validate_configuration(config, watcher=args.watcher)
+        validate_run_budget_fits_outer_cap(config, watcher=args.watcher)
     except (ResidentPreflightError, TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
         print(f"resident configuration rejected: {exc}", file=sys.stderr)
@@ -455,7 +468,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
-    record["budget_margin_over_cap_allowed"] = args.allow_budget_margin_over_cap
     _write(args.out, record)
     print(f"resident record -> {args.out.name}")
     return 0

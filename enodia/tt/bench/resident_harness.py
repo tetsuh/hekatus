@@ -18,9 +18,14 @@ from typing import Any
 
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
-MAX_OUTER_TIMEOUT_SECONDS = 660
+MAX_TIMING_TIMEOUT_SECONDS = 600
+MAX_WATCHER_TIMEOUT_SECONDS = 60
+# Retain the old symbol for callers that imported it; timing runs now use the
+# approved 600-second ceiling.
+MAX_OUTER_TIMEOUT_SECONDS = MAX_TIMING_TIMEOUT_SECONDS
 MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
+UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
@@ -145,15 +150,24 @@ def _positive_int(value: Any, name: str) -> int:
     return int(value)
 
 
-def validate_configuration(config: ResidentConfig) -> ResidentConfig:
+def _uint32_positive_int(value: Any, name: str) -> int:
+    value = _positive_int(value, name)
+    if value > UINT32_MAX:
+        raise ResidentPreflightError(f"{name} must fit uint32 runtime argument")
+    return value
+
+
+def validate_configuration(
+    config: ResidentConfig, *, watcher: bool = False
+) -> ResidentConfig:
     """Reject unsafe or unbounded configurations before device work."""
     if not isinstance(config, ResidentConfig):
         raise TypeError("config must be ResidentConfig")
-    frame_count = _positive_int(config.frame_count, "frame_count")
-    interval = _positive_int(config.frame_interval_ticks, "frame_interval_ticks")
-    ring_pages = _positive_int(config.ring_pages, "ring_pages")
-    work = _positive_int(config.work_per_frame, "work_per_frame")
-    budget = _positive_int(config.cycle_budget, "cycle_budget")
+    frame_count = _uint32_positive_int(config.frame_count, "frame_count")
+    interval = _uint32_positive_int(config.frame_interval_ticks, "frame_interval_ticks")
+    ring_pages = _uint32_positive_int(config.ring_pages, "ring_pages")
+    work = _uint32_positive_int(config.work_per_frame, "work_per_frame")
+    budget = _uint32_positive_int(config.cycle_budget, "cycle_budget")
     fixed_work_ticks = _positive_int(
         config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
     )
@@ -162,9 +176,11 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
     bin_width = _positive_int(config.histogram_bin_ticks, "histogram_bin_ticks")
     if ring_pages < MIN_RING_PAGES:
         raise ResidentPreflightError(f"ring_pages must be >= {MIN_RING_PAGES}")
-    if timeout > MAX_OUTER_TIMEOUT_SECONDS:
+    timeout_cap = MAX_WATCHER_TIMEOUT_SECONDS if watcher else MAX_TIMING_TIMEOUT_SECONDS
+    if timeout > timeout_cap:
+        mode = "Watcher" if watcher else "timing"
         raise ResidentPreflightError(
-            f"outer_timeout_seconds={timeout} exceeds the {MAX_OUTER_TIMEOUT_SECONDS}s Stage 1 cap"
+            f"outer_timeout_seconds={timeout} exceeds the {timeout_cap}s Stage 1 {mode} cap"
         )
     producer = _core(config.producer_core, "producer_core")
     consumer = _core(config.consumer_core, "consumer_core")
@@ -270,7 +286,7 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
     cap and is not itself the run-wide limit. A fixed 10% margin is
     explicit and bounded, rather than hidden in the device kernel.
     """
-    config = validate_configuration(config)
+    config = validate_configuration(config, watcher=watcher)
     pacing_ticks = config.frame_count * config.frame_interval_ticks
     fixed_work_ticks = config.frame_count * config.fixed_work_ticks_per_frame
     startup_ticks = startup_allowance_ticks(aiclk_mhz=config.budget_aiclk_mhz)
@@ -307,15 +323,12 @@ def validate_run_budget_fits_outer_cap(
     config: ResidentConfig,
     *,
     watcher: bool = False,
-    allow_margin_over_cap: bool = False,
 ) -> dict[str, int]:
-    """Reject a run whose conservative tick budget exceeds its host cap."""
-    config = validate_configuration(config)
+    """Reject a margin-inclusive schedule that exceeds its approved cap."""
+    config = validate_configuration(config, watcher=watcher)
     breakdown = run_budget_breakdown(config, watcher=watcher)
     cap_ticks = config.outer_timeout_seconds * config.budget_aiclk_mhz * 1_000_000
     if breakdown["run_budget_ticks"] > cap_ticks:
-        if allow_margin_over_cap and breakdown["schedule_ticks"] <= cap_ticks:
-            return breakdown
         raise ResidentPreflightError(
             "run budget exceeds outer cap: "
             f"{breakdown['run_budget_ticks']} ticks > {cap_ticks} ticks "
@@ -496,7 +509,7 @@ def build_measurement_record(
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
     """Build the committed-schema record without retaining raw timestamps."""
-    config = validate_configuration(config)
+    config = validate_configuration(config, watcher=watcher)
     if isinstance(aiclk_mhz, bool) or not isinstance(aiclk_mhz, int) or aiclk_mhz <= 0:
         raise ValueError("aiclk_mhz must be a positive integer")
     if not isinstance(harness_commit, str) or not harness_commit.strip():
@@ -665,8 +678,12 @@ def build_rejection_record(
 
 
 __all__ = [
+    "MAX_OUTER_TIMEOUT_SECONDS",
+    "MAX_TIMING_TIMEOUT_SECONDS",
+    "MAX_WATCHER_TIMEOUT_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
+    "UINT32_MAX",
     "ResidentConfig",
     "ResidentPreflightError",
     "RingAccounting",

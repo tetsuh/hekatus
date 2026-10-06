@@ -165,6 +165,19 @@ SAMPLER_PID=$!
 # path, so its JSON record names the same provenance that the wrapper writes.
 # A custom probe is responsible for its own argument contract.
 RUNNER_ARGS=("$@")
+if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
+  RESIDENT_TIMEOUT_CAP_S=600
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${argument}" == "--watcher" ]]; then
+      RESIDENT_TIMEOUT_CAP_S=60
+      break
+    fi
+  done
+  if (( CONTAINER_TIMEOUT_S > RESIDENT_TIMEOUT_CAP_S )); then
+    echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
+    exit 2
+  fi
+fi
 if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   HAS_POWER_TRACE_ARG=0
   for argument in "${RUNNER_ARGS[@]}"; do

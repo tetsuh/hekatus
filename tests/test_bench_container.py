@@ -109,6 +109,37 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
         assert json.loads(env_files[-1].read_text()) == {"fake": True}
 
 
+@pytest.mark.parametrize(
+    ("container_timeout", "runner_args", "cap"),
+    [("601", ["--outer-timeout-seconds", "600"], "600"), ("61", ["--watcher"], "60")],
+)
+def test_resident_wrapper_enforces_approved_timeout_caps(
+    tmp_path, container_timeout, runner_args, cap
+):
+    bindir = _fake_tools(tmp_path)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", *runner_args],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+            "HEKATUS_TT_CONTAINER_TIMEOUT_S": container_timeout,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 2
+    assert "approved cap" in completed.stderr
+    assert cap in completed.stderr
+
+
 def test_wrapper_fails_when_sampler_exits_before_docker(tmp_path):
     """A prematurely dead sampler cannot produce a successful benchmark."""
     bindir = _fake_tools(tmp_path, sampler_exit=23)
