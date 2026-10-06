@@ -24,6 +24,29 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Telemetry sampler modes
+
+`enodia/tt/bench/run_in_container.sh` keeps the existing 2-second `tt-smi`
+sampler by default. For a controlled run, set
+`HEKATUS_TT_TELEMETRY_MODE` to one of:
+
+- `default` (the unchanged 2-second interval)
+- `explicit`, together with `HEKATUS_TT_TELEMETRY_INTERVAL_S=<positive seconds>`
+- `off` (no sampler and no power CSV; the result records this as
+  diagnostic-only, not timing evidence)
+
+The wrapper records the selected mode and interval in the environment/result
+metadata and passes the mode into custom runners. A sampled run must retain the
+companion power CSV; an off run must represent its absence rather than create a
+placeholder trace. The resident record's frame timestamps remain on the
+development machine as a count and SHA-256 only.
+
+The resident harness timestamps consumer completion on its designated consumer
+core. The producer currently calls `get_timestamp()` on a different producer
+core, and the source has no same-designated-core producer-write stamp without
+changing the pacing kernel. Records therefore keep producer-versus-consumer
+attribution open rather than claiming a cause for an outlier.
+
 ## Issue #12 recovery runbook (owner approval required)
 
 The resident harness must not return to hardware without a new owner approval.

@@ -30,6 +30,8 @@ from enodia.strict_json import dumps as strict_json_dumps
 
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
+DEFAULT_SAMPLER_INTERVAL_SECONDS = 2.0
+SAMPLER_MODES = ("off", "default", "explicit")
 
 
 def _device_info(snapshot: str) -> dict | None:
@@ -78,12 +80,46 @@ def parse_environment(snapshot: str) -> dict:
     device = _device_info(snapshot)
     if device is None:
         return {"board_snapshot_error": "no device information in the snapshot"}
-    return {
+    environment = {
         key: device[key] for key in ("board_info", "firmwares", "limits") if key in device
     } | {
         "board": device.get("board_info"),
         "firmware": device.get("firmwares"),
         "limits": device.get("limits"),
+    }
+    reading = parse_telemetry(snapshot)
+    if reading is not None:
+        try:
+            environment["aiclk_mhz_observed"] = [int(float(reading["aiclk_mhz"]))]
+        except (TypeError, ValueError):
+            pass
+    return environment
+
+
+def sampler_metadata(mode: str, interval: float | None = None) -> dict[str, object]:
+    """Validate and describe the wrapper's telemetry-sampler mode."""
+    if mode not in SAMPLER_MODES:
+        raise ValueError(f"sampler mode must be one of {SAMPLER_MODES}, got {mode!r}")
+    if mode == "off":
+        if interval is not None:
+            raise ValueError("sampler-off mode cannot carry an interval")
+        return {
+            "mode": "off",
+            "interval_seconds": None,
+            "power_trace": "absent_by_design",
+            "timing_evidence": "diagnostic_only",
+        }
+    if interval is None:
+        interval = DEFAULT_SAMPLER_INTERVAL_SECONDS
+    if not (math.isfinite(interval) and interval > 0):
+        raise ValueError(f"sampler interval must be positive and finite, got {interval}")
+    if mode == "default" and interval != DEFAULT_SAMPLER_INTERVAL_SECONDS:
+        raise ValueError("default sampler mode must use the existing 2-second interval")
+    return {
+        "mode": mode,
+        "interval_seconds": interval,
+        "power_trace": "required",
+        "timing_evidence": "available",
     }
 
 
@@ -176,12 +212,19 @@ def harness_identity() -> dict:
     return {"harness_commit": commit, "harness_dirty": bool(status)}
 
 
-def capture_environment(image: str, image_pinned: bool) -> dict:
+def capture_environment(
+    image: str,
+    image_pinned: bool,
+    *,
+    sampler_mode: str = "default",
+    sampler_interval: float | None = None,
+) -> dict:
     """Everything needed to name the environment a measurement came from."""
     environment = {
         "captured_at": _now(),
         "image": image,
         "image_pinned": image_pinned,
+        "telemetry_sampler": sampler_metadata(sampler_mode, sampler_interval),
         "kernel": _run("uname -sr").strip(),
         "kmd_version": _run("modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'").strip(),
         "tt_env_active_release": _run(
@@ -237,10 +280,12 @@ def main(argv: list[str] | None = None) -> None:
     capture.add_argument("--out", type=Path, required=True)
     capture.add_argument("--image", required=True)
     capture.add_argument("--image-pinned", action="store_true")
+    capture.add_argument("--sampler-mode", choices=SAMPLER_MODES, default="default")
+    capture.add_argument("--sampler-interval", type=float, default=None)
 
     sample = sub.add_parser("sample", help="append telemetry rows until terminated")
     sample.add_argument("--out", type=Path, required=True)
-    sample.add_argument("--interval", type=float, default=2.0)
+    sample.add_argument("--interval", type=float, default=DEFAULT_SAMPLER_INTERVAL_SECONDS)
 
     args = parser.parse_args(argv)
     if args.mode == "sample" and not (math.isfinite(args.interval) and args.interval > 0):
@@ -250,9 +295,21 @@ def main(argv: list[str] | None = None) -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "capture-env":
-        args.out.write_text(
-            strict_json_dumps(capture_environment(args.image, args.image_pinned), indent=2) + "\n"
-        )
+        try:
+            if args.sampler_mode == "default" and args.sampler_interval is None:
+                # Keep the two-argument call compatible with board-free callers
+                # that replace capture_environment in tests.
+                environment = capture_environment(args.image, args.image_pinned)
+            else:
+                environment = capture_environment(
+                    args.image,
+                    args.image_pinned,
+                    sampler_mode=args.sampler_mode,
+                    sampler_interval=args.sampler_interval,
+                )
+        except ValueError as exc:
+            parser.error(str(exc))
+        args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
         print(f"environment -> {args.out}")
         return
 

@@ -415,6 +415,41 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["attempted_frame_count"] == 100
     assert parsed["environment"]["image"] == "sha256:example"
+    assert parsed["telemetry_sampler"]["mode"] == "default"
+    assert parsed["timestamp_attribution"]["status"] == "open"
+    assert parsed["timestamp_attribution"]["producer_write"]["available"] is False
+
+
+def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
+    config = _config()
+    record = build_measurement_record(
+        config=config,
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        cycle_budget_hit=False,
+        kernel_error_flag=0,
+        harness_commit="0123456789abcdef",
+        environment={
+            "telemetry_sampler": {
+                "mode": "off",
+                "interval_seconds": None,
+                "power_trace": "absent_by_design",
+                "timing_evidence": "diagnostic_only",
+            },
+            "board": {"serial": "redacted-board-serial"},
+            "firmware": {"bundle": "19.6.0.0"},
+            "kmd_version": "2.11.0",
+            "image": "sha256:example",
+        },
+        power_trace=None,
+    )
+
+    assert record["power_trace"] is None
+    assert record["power_trace_absent_reason"] == "sampler_off_by_design"
+    assert record["telemetry_sampler"]["mode"] == "off"
+    assert record["timing_evidence"] is False
 
 
 def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():

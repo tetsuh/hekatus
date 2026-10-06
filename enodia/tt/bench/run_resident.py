@@ -332,28 +332,50 @@ def _latest_output(prefix: str) -> Path:
     return candidates[-1]
 
 
-def _power_aiclk(power_trace: str, environment: dict[str, Any]) -> int:
+def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:
+    if power_trace is None:
+        return []
     path = Path("/out") / power_trace
     values: list[int] = []
     try:
         with path.open(newline="") as handle:
             for row in csv.DictReader(handle):
                 try:
-                    values.append(int(float(row["aiclk_mhz"])))
+                    value = int(float(row["aiclk_mhz"]))
                 except (KeyError, TypeError, ValueError):
                     continue
+                if value > 0:
+                    values.append(value)
     except OSError:
         pass
+    return values
+
+
+def _environment_aiclk_values(environment: dict[str, Any]) -> list[int]:
+    observed = environment.get("aiclk_mhz_observed")
+    if isinstance(observed, list):
+        values = observed
+    else:
+        values = [observed, environment.get("aiclk_mhz")]
+    result: list[int] = []
+    for value in values:
+        try:
+            parsed = int(float(value))
+        except (TypeError, ValueError):
+            continue
+        if parsed > 0:
+            result.append(parsed)
+    return result
+
+
+def _power_aiclk(power_trace: str | None, environment: dict[str, Any]) -> int:
+    values = _power_trace_aiclk_values(power_trace)
     if values:
         return max(values)
-    fallback = environment.get("aiclk_mhz")
-    try:
-        value = int(float(fallback))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("the power trace did not contain an AICLK sample") from exc
-    if value <= 0:
-        raise ValueError("AICLK must be positive")
-    return value
+    fallback = _environment_aiclk_values(environment)
+    if fallback:
+        return max(fallback)
+    raise ValueError("no AICLK sample was available from the power trace or environment")
 
 
 def _environment(path: Path) -> dict[str, Any]:
@@ -399,8 +421,16 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     environment_path = args.env_json or _latest_output("env-")
-    power_trace = args.power_trace or _latest_output("power-").name
     environment = _environment(environment_path)
+    if args.power_trace is not None:
+        power_trace = args.power_trace
+    else:
+        power_outputs = sorted(Path("/out").glob("power-*.csv"))
+        power_trace = power_outputs[-1].name if power_outputs else None
+    trace_aiclk = _power_trace_aiclk_values(power_trace)
+    if trace_aiclk:
+        environment["aiclk_mhz_observed"] = sorted(set(trace_aiclk))
+    aiclk_mhz = _power_aiclk(power_trace, environment)
     timestamp_core = args.timestamp_core or args.consumer_core
     config = ResidentConfig(
         frame_count=args.frame_count,
@@ -440,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
 
     record = build_measurement_record(
         config=config,
-        aiclk_mhz=_power_aiclk(power_trace, environment),
+        aiclk_mhz=aiclk_mhz,
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],
@@ -459,7 +489,8 @@ def main(argv: list[str] | None = None) -> int:
         power_trace=power_trace,
         watcher=args.watcher,
         timing_evidence=(
-            not args.watcher
+            environment.get("telemetry_sampler", {}).get("mode") != "off"
+            and not args.watcher
             and result["frames_attempted"] == config.frame_count
             and result["frames_consumed"] == result["frames_produced"]
             and result["frames_dropped"] == 0

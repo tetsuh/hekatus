@@ -506,7 +506,9 @@ def _require_environment(environment: Mapping[str, Any]) -> None:
         raise ValueError("environment is missing required fields: " + ", ".join(missing))
 
 
-def _safe_trace_name(power_trace: str) -> str:
+def _safe_trace_name(power_trace: str | None) -> str | None:
+    if power_trace is None:
+        return None
     path = PurePath(power_trace)
     if path.is_absolute() or len(path.parts) != 1 or path.name != power_trace:
         raise ValueError("power_trace must be a repository-relative filename")
@@ -538,7 +540,7 @@ def build_measurement_record(
     kernel_error_flag: int,
     harness_commit: str,
     environment: Mapping[str, Any],
-    power_trace: str,
+    power_trace: str | None,
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
@@ -557,6 +559,13 @@ def build_measurement_record(
     if not isinstance(harness_commit, str) or not harness_commit.strip():
         raise ValueError("harness_commit is required")
     _require_environment(environment)
+    sampler = environment.get("telemetry_sampler", {"mode": "default", "interval_seconds": 2.0})
+    if not isinstance(sampler, Mapping) or sampler.get("mode") not in {"off", "default", "explicit"}:
+        raise ValueError("environment telemetry_sampler mode is required")
+    sampler = dict(sampler)
+    sampler_off = sampler["mode"] == "off"
+    if sampler_off != (power_trace is None):
+        raise ValueError("sampler-off records must omit the power trace, and sampled records must name it")
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
         raise ValueError("producer_full_count must be non-negative")
     if isinstance(consumer_empty_count, bool) or consumer_empty_count < 0:
@@ -656,6 +665,23 @@ def build_measurement_record(
             "designated_core": list(config.designated_timestamp_core),
             "cross_core_correlation": "out_of_scope",
         },
+        "timestamp_attribution": {
+            "status": "open",
+            "consumer_completion": {
+                "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+                "core": list(config.designated_timestamp_core),
+            },
+            "producer_write": {
+                "available": False,
+                "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+                "core": list(config.producer_core),
+                "reason": (
+                    "The producer and consumer call get_timestamp() on different cores. "
+                    "The source has no same-designated-core producer stamp without changing "
+                    "the pacing kernel, so producer-versus-consumer attribution remains open."
+                ),
+            },
+        },
         "clock_source_evidence": _source_evidence(),
         "work_ticks": {
             "minimum": work_min_ticks,
@@ -696,10 +722,14 @@ def build_measurement_record(
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
+        "power_trace_absent_reason": "sampler_off_by_design" if sampler_off else None,
+        "telemetry_sampler": sampler,
         "environment": dict(environment),
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(timing_evidence and completed and dropped == 0),
+        "timing_evidence": bool(
+            timing_evidence and not sampler_off and completed and dropped == 0
+        ),
     }
 
 

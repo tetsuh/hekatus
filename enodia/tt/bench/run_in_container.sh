@@ -41,6 +41,37 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
+# The existing sampler is the default. Issue #104 can disable it for a
+# diagnostic-only run or select a different positive interval without changing
+# the benchmark or its kernel.
+TELEMETRY_MODE="${HEKATUS_TT_TELEMETRY_MODE:-default}"
+TELEMETRY_INTERVAL_S="${HEKATUS_TT_TELEMETRY_INTERVAL_S:-}"
+case "${TELEMETRY_MODE}" in
+  off)
+    if [[ -n "${TELEMETRY_INTERVAL_S}" ]]; then
+      echo "HEKATUS_TT_TELEMETRY_INTERVAL_S is not valid with sampler mode off" >&2
+      exit 2
+    fi
+    ;;
+  default)
+    if [[ -n "${TELEMETRY_INTERVAL_S}" ]]; then
+      echo "HEKATUS_TT_TELEMETRY_INTERVAL_S requires HEKATUS_TT_TELEMETRY_MODE=explicit" >&2
+      exit 2
+    fi
+    TELEMETRY_INTERVAL_S=2
+    ;;
+  explicit)
+    if [[ -z "${TELEMETRY_INTERVAL_S}" ]]; then
+      echo "explicit sampler mode requires HEKATUS_TT_TELEMETRY_INTERVAL_S" >&2
+      exit 2
+    fi
+    ;;
+  *)
+    echo "HEKATUS_TT_TELEMETRY_MODE must be off, default, or explicit" >&2
+    exit 2
+    ;;
+esac
+
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
 RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
@@ -118,7 +149,16 @@ if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
   RUNNER_RESULT_ENV=(-e "HEKATUS_TT_RESULT_PATH=${RUNNER_RESULT_CONTAINER_PATH}")
 fi
 
-python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
+CAPTURE_SAMPLER_ARGS=(--sampler-mode "${TELEMETRY_MODE}")
+if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+  CAPTURE_SAMPLER_ARGS+=(--sampler-interval "${TELEMETRY_INTERVAL_S}")
+fi
+python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" \
+  "${PINNED_FLAG[@]}" "${CAPTURE_SAMPLER_ARGS[@]}"
+TELEMETRY_ENV=(-e "HEKATUS_TT_TELEMETRY_MODE=${TELEMETRY_MODE}")
+if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+  TELEMETRY_ENV+=(-e "HEKATUS_TT_TELEMETRY_INTERVAL_S=${TELEMETRY_INTERVAL_S}")
+fi
 
 # Own the children and the daemon-side container from before either is
 # launched. Killing only the Docker client is insufficient: Docker can keep
@@ -156,9 +196,13 @@ trap 'exit 130' INT
 trap 'exit 129' HUP
 
 # Board power and clock while the run proceeds. This is what settles which
-# power limit the board actually enforces under sustained load.
-python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval 2 &
-SAMPLER_PID=$!
+# power limit the board actually enforces under sustained load. Sampler-off is
+# intentionally trace-free and is used only as a diagnostic run.
+SAMPLER_PID=""
+if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+  python3 "${TELEMETRY}" sample --out "${POWER_CSV}" --interval "${TELEMETRY_INTERVAL_S}" &
+  SAMPLER_PID=$!
+fi
 
 # Runner arguments are passed as separate arguments, never interpolated into
 # a shell string. The default runner also receives the sibling power trace
@@ -186,7 +230,7 @@ if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
       break
     fi
   done
-  if [[ "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+  if [[ "${HAS_POWER_TRACE_ARG}" == "0" && "${TELEMETRY_MODE}" != "off" ]]; then
     RUNNER_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
   fi
 fi
@@ -202,6 +246,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -w /work \
     -e PYTHONPATH=/work \
     -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
+    "${TELEMETRY_ENV[@]}" \
     -e HEKATUS_TT_DEVICE_TEST=1 \
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
@@ -218,6 +263,7 @@ elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     -e PYTHONPATH=/work \
     -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
+    "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
@@ -236,6 +282,7 @@ else
     -e PYTHONPATH=/work \
     -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
+    "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "$@" &
@@ -248,23 +295,29 @@ DOCKER_PID=$!
 # Each status is captured on the line after its own `wait`: any command in
 # between — an assignment included — replaces $? with its own success.
 set +e
-wait -n -p FINISHED "${SAMPLER_PID}" "${DOCKER_PID}"
-FIRST_STATUS=$?
-
-if [[ "${FINISHED}" == "${SAMPLER_PID}" ]]; then
-  # The sampler stopped while the benchmark was still running, so the trace is
-  # incomplete however the benchmark itself ends.
-  SAMPLER_STATUS="${FIRST_STATUS}"
-  echo "telemetry sampler exited before benchmark completion" >&2
+if [[ "${TELEMETRY_MODE}" == "off" ]]; then
   wait "${DOCKER_PID}"
   DOCKER_STATUS=$?
-else
-  DOCKER_STATUS="${FIRST_STATUS}"
-  # The intentional shutdown: the benchmark finished, so the sampler has done
-  # its job and is asked to stop.
   SAMPLER_STATUS=intentional
-  kill "${SAMPLER_PID}" 2>/dev/null || true
-  wait "${SAMPLER_PID}"
+else
+  wait -n -p FINISHED "${SAMPLER_PID}" "${DOCKER_PID}"
+  FIRST_STATUS=$?
+
+  if [[ "${FINISHED}" == "${SAMPLER_PID}" ]]; then
+    # The sampler stopped while the benchmark was still running, so the trace is
+    # incomplete however the benchmark itself ends.
+    SAMPLER_STATUS="${FIRST_STATUS}"
+    echo "telemetry sampler exited before benchmark completion" >&2
+    wait "${DOCKER_PID}"
+    DOCKER_STATUS=$?
+  else
+    DOCKER_STATUS="${FIRST_STATUS}"
+    # The intentional shutdown: the benchmark finished, so the sampler has done
+    # its job and is asked to stop.
+    SAMPLER_STATUS=intentional
+    kill "${SAMPLER_PID}" 2>/dev/null || true
+    wait "${SAMPLER_PID}"
+  fi
 fi
 set -e
 trap - EXIT INT TERM HUP
@@ -287,4 +340,9 @@ fi
 
 echo
 echo "results     -> ${RESULT_PATH}"
-echo "power trace -> ${POWER_CSV}"
+if [[ "${TELEMETRY_MODE}" == "off" ]]; then
+  echo "telemetry sampler -> off (diagnostic-only; no power trace by design)"
+else
+  echo "telemetry sampler -> ${TELEMETRY_MODE} (${TELEMETRY_INTERVAL_S}s)"
+  echo "power trace -> ${POWER_CSV}"
+fi
