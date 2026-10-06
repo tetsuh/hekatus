@@ -20,6 +20,18 @@ constexpr std::uint32_t error_semaphore_id = 3;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_producer_pacing_wait = 2;
 constexpr std::uint32_t failure_other_check = 5;
+
+struct WrapTrackedClock {
+    std::uint64_t extended = 0;
+
+    void initialize() { extended = get_timestamp_32b(); }
+
+    std::uint64_t read() {
+        const std::uint32_t low = get_timestamp_32b();
+        extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended));
+        return extended;
+    }
+};
 }
 
 void kernel_main() {
@@ -57,7 +69,9 @@ void kernel_main() {
     std::uint32_t failure_code = 0;
     std::uint64_t failure_elapsed_ticks = 0;
     std::uint64_t failure_limit_ticks = 0;
-    const std::uint64_t run_start = get_timestamp();
+    WrapTrackedClock clock;
+    clock.initialize();
+    const std::uint64_t run_start = clock.read();
     std::uint64_t next_release = run_start;
 
     for (std::uint32_t attempted = 0; attempted < frame_count; ++attempted) {
@@ -65,7 +79,7 @@ void kernel_main() {
         if (*error_sem != 0) {
             error_flag = 1;
             failure_code = failure_other_check;
-            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_elapsed_ticks = clock.read() - run_start;
             failure_limit_ticks = run_budget_ticks;
             break;
         }
@@ -73,19 +87,19 @@ void kernel_main() {
         if (attempted != 0) {
             next_release += static_cast<std::uint64_t>(frame_interval_ticks);
         }
-        while (static_cast<std::int64_t>(get_timestamp() - next_release) < 0) {
+        while (static_cast<std::int64_t>(clock.read() - next_release) < 0) {
             invalidate_l1_cache();
             if (*error_sem != 0) {
                 error_flag = 1;
                 failure_code = failure_other_check;
-                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_elapsed_ticks = clock.read() - run_start;
                 failure_limit_ticks = run_budget_ticks;
                 break;
             }
-            if (get_timestamp() - run_start >= run_budget_ticks) {
+            if (clock.read() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 failure_code = failure_producer_pacing_wait;
-                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_elapsed_ticks = clock.read() - run_start;
                 failure_limit_ticks = run_budget_ticks;
                 break;
             }
@@ -98,7 +112,7 @@ void kernel_main() {
         if (*error_sem != 0) {
             error_flag = 1;
             failure_code = failure_other_check;
-            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_elapsed_ticks = clock.read() - run_start;
             failure_limit_ticks = run_budget_ticks;
             break;
         }
@@ -110,15 +124,15 @@ void kernel_main() {
             if (*error_sem != 0) {
                 error_flag = 1;
                 failure_code = failure_other_check;
-                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_elapsed_ticks = clock.read() - run_start;
                 failure_limit_ticks = run_budget_ticks;
                 break;
             }
             slot_full = *free_sem < consumed_required;
-            if (get_timestamp() - run_start >= run_budget_ticks) {
+            if (clock.read() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 failure_code = failure_run_wide_budget;
-                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_elapsed_ticks = clock.read() - run_start;
                 failure_limit_ticks = run_budget_ticks;
             }
         }

@@ -520,7 +520,7 @@ def _source_evidence() -> dict[str, Any]:
     return {
         "toolchain": "tt-metal v0.75.0",
         "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
-        "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-255",
+        "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
         "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
         "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
         "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
@@ -650,8 +650,9 @@ def build_measurement_record(
             ),
         },
         "clock": {
-            "name": "RISCV_DEBUG_REG_WALL_CLOCK",
-            "timestamp_api": "get_timestamp()",
+            "name": "RISCV_DEBUG_REG_WALL_CLOCK_L",
+            "timestamp_api": "get_timestamp_32b",
+            "timestamp_semantics": "32-bit low word, software-extended (wrap-tracked)",
             "width_bits": 64,
             "interval_unit": "device_clock_ticks",
             "frequency_source": "AICLK",
@@ -674,7 +675,7 @@ def build_measurement_record(
             "budget_aiclk_mhz": config.budget_aiclk_mhz,
             "observed_ticks": startup_ticks if startup_ticks_valid else None,
             "observed_valid": bool(startup_ticks_valid and startup_ticks is not None),
-            "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+            "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK_L; 32-bit low word, software-extended (wrap-tracked)",
         },
         "histogram": stats,
         "ring": {
