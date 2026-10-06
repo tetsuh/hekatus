@@ -21,7 +21,7 @@ closing it; the record in `design.md` is what persists.
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
-| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | ADR-0005 records capture corrected semaphore runs with zero overflow; Issue #104 adds three 400,000-frame sampler-mode comparisons, but producer-versus-consumer attribution remains open |
+| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | Final in-cap ADR-0005 record `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` reports N=499,999, work min/max 1,074–1,098 ticks, zero overflow, and complete timing statistics; PR103 supplies the semaphore cancellation/control-sync remediation, while Issue #104 adds three 400,000-frame sampler-mode comparisons and leaves producer-versus-consumer attribution open |
 
 The Ethernet items above were blocked on a board without ports; that is no
 longer the constraint. Two target boards are cabled together, but no link

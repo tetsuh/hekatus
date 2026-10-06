@@ -15,6 +15,8 @@ constexpr std::uint32_t control_produced_word = 3;
 constexpr std::uint32_t control_dropped_word = 4;
 constexpr std::uint32_t ready_semaphore_id = 0;
 constexpr std::uint32_t free_semaphore_id = 1;
+constexpr std::uint32_t done_semaphore_id = 2;
+constexpr std::uint32_t error_semaphore_id = 3;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_producer_pacing_wait = 2;
 constexpr std::uint32_t failure_other_check = 5;
@@ -38,14 +40,17 @@ void kernel_main() {
     const auto control = TensorAccessor(control_args, control_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
 
-    const std::uint64_t control_noc = control.get_noc_addr(0);
+    const std::uint64_t consumer_noc = control.get_noc_addr(0);
     const std::uint64_t noc_coord_mask = ~((std::uint64_t(1) << NOC_ADDR_COORD_SHIFT) - 1);
-    const std::uint64_t ready_noc = (control_noc & noc_coord_mask) | get_semaphore(ready_semaphore_id);
+    const std::uint64_t ready_noc = (consumer_noc & noc_coord_mask) | get_semaphore(ready_semaphore_id);
+    const std::uint64_t done_noc = (consumer_noc & noc_coord_mask) | get_semaphore(done_semaphore_id);
     auto* free_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_semaphore(free_semaphore_id));
+    auto* error_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
+        get_semaphore(error_semaphore_id));
 
     std::uint32_t producer_full_count = 0;
-    std::uint32_t frames_produced = 0;
+    std::uint32_t ready_count = 0;
     std::uint32_t frames_dropped = 0;
     std::uint32_t attempts_started = 0;
     std::uint32_t error_flag = 0;
@@ -56,11 +61,27 @@ void kernel_main() {
     std::uint64_t next_release = run_start;
 
     for (std::uint32_t attempted = 0; attempted < frame_count; ++attempted) {
+        invalidate_l1_cache();
+        if (*error_sem != 0) {
+            error_flag = 1;
+            failure_code = failure_other_check;
+            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_limit_ticks = run_budget_ticks;
+            break;
+        }
         attempts_started = attempted + 1;
         if (attempted != 0) {
             next_release += static_cast<std::uint64_t>(frame_interval_ticks);
         }
         while (static_cast<std::int64_t>(get_timestamp() - next_release) < 0) {
+            invalidate_l1_cache();
+            if (*error_sem != 0) {
+                error_flag = 1;
+                failure_code = failure_other_check;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
+                break;
+            }
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
                 failure_code = failure_producer_pacing_wait;
@@ -68,17 +89,31 @@ void kernel_main() {
                 failure_limit_ticks = run_budget_ticks;
                 break;
             }
-            invalidate_l1_cache();
         }
         if (error_flag != 0) {
             break;
         }
 
+        invalidate_l1_cache();
+        if (*error_sem != 0) {
+            error_flag = 1;
+            failure_code = failure_other_check;
+            failure_elapsed_ticks = get_timestamp() - run_start;
+            failure_limit_ticks = run_budget_ticks;
+            break;
+        }
         const std::uint32_t consumed_required =
-            frames_produced + 1 > ring_pages ? frames_produced + 1 - ring_pages : 0;
+            ready_count + 1 > ring_pages ? ready_count + 1 - ring_pages : 0;
         bool slot_full = false;
         if (consumed_required != 0) {
             invalidate_l1_cache();
+            if (*error_sem != 0) {
+                error_flag = 1;
+                failure_code = failure_other_check;
+                failure_elapsed_ticks = get_timestamp() - run_start;
+                failure_limit_ticks = run_budget_ticks;
+                break;
+            }
             slot_full = *free_sem < consumed_required;
             if (get_timestamp() - run_start >= run_budget_ticks) {
                 error_flag = 1;
@@ -107,22 +142,12 @@ void kernel_main() {
         }
         cb_push_back(cb_scratch, 1);
         cb_wait_front(cb_scratch, 1);
-        noc_async_write_page(frames_produced % ring_pages, ring, get_read_ptr(cb_scratch));
+        noc_async_write_page(ready_count % ring_pages, ring, get_read_ptr(cb_scratch));
         noc_async_write_barrier();
         cb_pop_front(cb_scratch, 1);
         noc_semaphore_inc(ready_noc, 1);
-        frames_produced += 1;
+        ready_count += 1;
     }
-
-    cb_reserve_back(cb_scratch, 1);
-    auto* control_probe = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
-        get_write_ptr(cb_scratch));
-    noc_async_read_page(0, control, get_write_ptr(cb_scratch));
-    noc_async_read_barrier();
-    cb_push_back(cb_scratch, 1);
-    cb_wait_front(cb_scratch, 1);
-    error_flag = error_flag | control_probe[control_error_word];
-    cb_pop_front(cb_scratch, 1);
 
     cb_reserve_back(cb_scratch, 1);
     auto* control_page = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
@@ -130,7 +155,7 @@ void kernel_main() {
     control_page[control_error_word] = error_flag;
     control_page[control_done_word] = 1;
     control_page[control_attempted_word] = attempts_started;
-    control_page[control_produced_word] = frames_produced;
+    control_page[control_produced_word] = ready_count;
     control_page[control_dropped_word] = frames_dropped;
     cb_push_back(cb_scratch, 1);
     cb_wait_front(cb_scratch, 1);
@@ -142,7 +167,7 @@ void kernel_main() {
     auto* summary = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_write_ptr(cb_scratch));
     summary[0] = producer_full_count;
-    summary[1] = frames_produced;
+    summary[1] = ready_count;
     summary[2] = error_flag;
     summary[3] = attempts_started;
     summary[4] = frames_dropped;
@@ -158,4 +183,5 @@ void kernel_main() {
     noc_async_write_page(0, stats, get_read_ptr(cb_scratch));
     noc_async_write_barrier();
     cb_pop_front(cb_scratch, 1);
+    noc_semaphore_inc(done_noc, 1);
 }
