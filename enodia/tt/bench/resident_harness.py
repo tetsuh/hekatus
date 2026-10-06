@@ -247,6 +247,48 @@ def run_budget_exceeded(*, elapsed_ticks: int, run_budget_ticks: int) -> bool:
     return elapsed_ticks >= run_budget_ticks
 
 
+def ticks_to_seconds(*, ticks: int, aiclk_mhz: int) -> float:
+    """Convert device-clock ticks to seconds using the observed AICLK."""
+    if (
+        isinstance(ticks, bool)
+        or not isinstance(ticks, int)
+        or ticks < 0
+        or isinstance(aiclk_mhz, bool)
+        or not isinstance(aiclk_mhz, int)
+        or aiclk_mhz <= 0
+    ):
+        raise ValueError("ticks must be non-negative and aiclk_mhz must be positive integers")
+    return ticks / (aiclk_mhz * 1_000_000)
+
+
+def periodic_gap_decomposition(
+    gaps: Iterable[int], *, period_frames: int
+) -> dict[str, Any]:
+    """Return sanitized quotient/remainder entries and aggregate counts."""
+    if isinstance(period_frames, bool) or not isinstance(period_frames, int) or period_frames <= 0:
+        raise ValueError("period_frames must be a positive integer")
+    entries = []
+    aggregate: dict[str, int] = {}
+    for gap in gaps:
+        if isinstance(gap, bool) or not isinstance(gap, int) or gap < 0:
+            raise ValueError("gaps must contain non-negative integers")
+        quotient, remainder = divmod(gap, period_frames)
+        entries.append(
+            {
+                "gap_frames": gap,
+                "quotient": quotient,
+                "remainder": remainder,
+            }
+        )
+        key = f"{quotient},{remainder}"
+        aggregate[key] = aggregate.get(key, 0) + 1
+    return {
+        "period_frames": period_frames,
+        "entries": entries,
+        "aggregate_by_quotient_remainder": aggregate,
+    }
+
+
 def interval_ticks_for_microseconds(*, microseconds: int, aiclk_mhz: int) -> int:
     """Convert an integer wall-time interval to AICLK ticks.
 
@@ -693,6 +735,7 @@ __all__ = [
     "failure_name",
     "frame_interval_statistics",
     "interval_ticks_for_microseconds",
+    "periodic_gap_decomposition",
     "required_samples_for_percentile",
     "run_budget_breakdown",
     "run_budget_exceeded",
@@ -700,6 +743,7 @@ __all__ = [
     "split_u64",
     "startup_allowance_ticks",
     "termination_reason",
+    "ticks_to_seconds",
     "timestamp_digest",
     "validate_configuration",
     "validate_run_budget_fits_outer_cap",

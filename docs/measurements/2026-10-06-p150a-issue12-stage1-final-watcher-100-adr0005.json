@@ -1,0 +1,418 @@
+{
+  "schema": "issue-12-stage-1-resident-final-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "summary": "Watcher validation completed normally as non-timing evidence.",
+  "environment": {
+    "captured_at": "2026-10-06T21:45:35.102633+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "91e0948c20c9e361682e7b7083202f798ed11c1a",
+    "harness_dirty": false,
+    "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ]
+  },
+  "parameters": {
+    "frame_count": 100,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 60,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "run_budget": {
+      "frame_count": 100,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 135000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 10000000,
+      "critical_path_ticks": 135000000,
+      "schedule_ticks": 270000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 100,
+      "total_margin_percent": 110,
+      "safety_margin_ticks": 297000000,
+      "run_budget_ticks": 567000000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 100,
+    "produced_frame_count": 100,
+    "dropped_frame_count": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK",
+    "timestamp_api": "get_timestamp()",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "semaphore_protocol": {
+    "ready_semaphore_id": 0,
+    "ready_core": "consumer",
+    "free_semaphore_id": 1,
+    "free_core": "producer",
+    "remote_signaling": "noc_semaphore_inc",
+    "local_observation": "invalidate_l1_cache before local semaphore reads"
+  },
+  "startup": {
+    "configured_allowance_ms": 100,
+    "configured_allowance_ticks": 135000000,
+    "budget_aiclk_mhz": 1350,
+    "observed_ticks": 11954,
+    "observed_valid": true,
+    "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK"
+  },
+  "termination": {
+    "reason": "frame_count",
+    "cycle_budget_error": false,
+    "kernel_error_flag": 0,
+    "failure_check": {
+      "code": 0,
+      "name": "none",
+      "source": "none"
+    }
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 100,
+    "attempted_frame_count": 100,
+    "produced_frame_count": 100,
+    "consumed_frame_count": 100,
+    "dropped_frame_count": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers plus receiving-core standard semaphores and control metadata",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 567000000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "work_ticks": {
+    "minimum": 1073,
+    "maximum": 1084,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "histogram": {
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded.",
+    "N": 99,
+    "min_ticks": 1349944,
+    "max_ticks": 1350053,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349992.0
+      },
+      "p99": {
+        "status": "insufficient",
+        "minimum_samples": 2000
+      },
+      "p99_9": {
+        "status": "insufficient",
+        "minimum_samples": 20000
+      },
+      "p99_99": {
+        "status": "insufficient",
+        "minimum_samples": 200000
+      }
+    },
+    "fine_bin_width_ticks": 1,
+    "fine_bins": [
+      {
+        "start_ticks": 1349944,
+        "end_ticks": 1349945,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349952,
+        "end_ticks": 1349953,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349953,
+        "end_ticks": 1349954,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349957,
+        "end_ticks": 1349958,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349960,
+        "end_ticks": 1349961,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349962,
+        "end_ticks": 1349963,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349969,
+        "end_ticks": 1349970,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349980,
+        "end_ticks": 1349981,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349981,
+        "end_ticks": 1349982,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349982,
+        "end_ticks": 1349983,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349983,
+        "end_ticks": 1349984,
+        "count": 6
+      },
+      {
+        "start_ticks": 1349985,
+        "end_ticks": 1349986,
+        "count": 6
+      },
+      {
+        "start_ticks": 1349986,
+        "end_ticks": 1349987,
+        "count": 7
+      },
+      {
+        "start_ticks": 1349987,
+        "end_ticks": 1349988,
+        "count": 4
+      },
+      {
+        "start_ticks": 1349988,
+        "end_ticks": 1349989,
+        "count": 5
+      },
+      {
+        "start_ticks": 1349990,
+        "end_ticks": 1349991,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349991,
+        "end_ticks": 1349992,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349992,
+        "end_ticks": 1349993,
+        "count": 6
+      },
+      {
+        "start_ticks": 1349993,
+        "end_ticks": 1349994,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349995,
+        "end_ticks": 1349996,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349997,
+        "end_ticks": 1349998,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349999,
+        "end_ticks": 1350000,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350000,
+        "end_ticks": 1350001,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350003,
+        "end_ticks": 1350004,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350006,
+        "end_ticks": 1350007,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350008,
+        "end_ticks": 1350009,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350009,
+        "end_ticks": 1350010,
+        "count": 7
+      },
+      {
+        "start_ticks": 1350011,
+        "end_ticks": 1350012,
+        "count": 3
+      },
+      {
+        "start_ticks": 1350012,
+        "end_ticks": 1350013,
+        "count": 8
+      },
+      {
+        "start_ticks": 1350013,
+        "end_ticks": 1350014,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350018,
+        "end_ticks": 1350019,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350021,
+        "end_ticks": 1350022,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350030,
+        "end_ticks": 1350031,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350042,
+        "end_ticks": 1350043,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350044,
+        "end_ticks": 1350045,
+        "count": 2
+      },
+      {
+        "start_ticks": 1350046,
+        "end_ticks": 1350047,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350047,
+        "end_ticks": 1350048,
+        "count": 3
+      },
+      {
+        "start_ticks": 1350048,
+        "end_ticks": 1350049,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350049,
+        "end_ticks": 1350050,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350050,
+        "end_ticks": 1350051,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350052,
+        "end_ticks": 1350053,
+        "count": 3
+      },
+      {
+        "start_ticks": 1350053,
+        "end_ticks": 1350054,
+        "count": 2
+      }
+    ]
+  },
+  "raw_timestamps": {
+    "count": 100,
+    "sha256": "ecba1f56f0050107d111a25da48a17078c31f50195592f86c99b7037f850d079",
+    "retained_outside_repository": true
+  },
+  "power_trace": "2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005-power.csv",
+  "power_trace_sample_count": 2,
+  "power_trace_sha256": "a28fda9b99ea7b7c9642b2e7231711b39fecbf691a28705ef1ac3061d09326f1",
+  "hardware": {
+    "device_id": 0,
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": false,
+    "health_probe": "not run"
+  },
+  "first_frame_exclusion": true,
+  "frame_interval_note": "The device-clock frame interval is a harness parameter, not a real acquisition-rate claim.",
+  "timing_evidence": false,
+  "harness_commit": "91e0948c20c9e361682e7b7083202f798ed11c1a",
+  "historical_correction": {
+    "completion_condition": "The prior consumer frame-count branch falsely reported normal completion as failure_other_check; reaching frame_count is normal completion and is fixed.",
+    "semaphore_visibility_addressing": "Ad-hoc free/ready words were replaced with receiving-core v0.75.0 semaphore signaling and local cache invalidation.",
+    "prior_watcher_startup_margin_attribution": "Previous Watcher/startup-margin attributions are incorrect or uncertain because the old records lacked guard-source diagnostics; those records remain preserved and are not timing evidence."
+  },
+  "outlier_analysis": {
+    "status": "not_applicable_for_100_frame_watcher_validation"
+  }
+}

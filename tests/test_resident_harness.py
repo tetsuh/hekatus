@@ -18,6 +18,7 @@ from enodia.tt.bench.resident_harness import (
     failure_name,
     frame_interval_statistics,
     interval_ticks_for_microseconds,
+    periodic_gap_decomposition,
     required_samples_for_percentile,
     run_budget_breakdown,
     run_budget_exceeded,
@@ -25,6 +26,7 @@ from enodia.tt.bench.resident_harness import (
     split_u64,
     startup_allowance_ticks,
     termination_reason,
+    ticks_to_seconds,
     timestamp_digest,
     validate_configuration,
     validate_run_budget_fits_outer_cap,
@@ -155,6 +157,21 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     assert watcher_breakdown["watcher_overhead_margin_percent"] == 100
     assert watcher_breakdown["total_margin_percent"] == 110
     assert watcher_breakdown["run_budget_ticks"] == 5_956_335_000
+
+
+def test_ticks_to_seconds_uses_aiclk_hz_conversion():
+    assert ticks_to_seconds(ticks=1_350_000, aiclk_mhz=1_350) == pytest.approx(0.001)
+    assert ticks_to_seconds(ticks=80_000_000, aiclk_mhz=800) == pytest.approx(0.1)
+
+
+def test_periodic_gap_decomposition_preserves_quotients_and_remainders():
+    result = periodic_gap_decomposition([6_363, 3_182, 6_363], period_frames=6_363)
+    assert result["entries"] == [
+        {"gap_frames": 6_363, "quotient": 1, "remainder": 0},
+        {"gap_frames": 3_182, "quotient": 0, "remainder": 3_182},
+        {"gap_frames": 6_363, "quotient": 1, "remainder": 0},
+    ]
+    assert result["aggregate_by_quotient_remainder"] == {"1,0": 2, "0,3182": 1}
 
 
 def test_startup_allowance_is_100_ms_at_both_supported_clocks():

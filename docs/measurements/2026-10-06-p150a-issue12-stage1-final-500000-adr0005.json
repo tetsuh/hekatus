@@ -1,0 +1,1482 @@
+{
+  "schema": "issue-12-stage-1-resident-final-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "summary": "The in-cap no-Watcher 500,000-frame semaphore run completed normally with complete production/consumption and zero overflow.",
+  "environment": {
+    "captured_at": "2026-10-06T21:46:03.608520+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "91e0948c20c9e361682e7b7083202f798ed11c1a",
+    "harness_dirty": false,
+    "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ]
+  },
+  "parameters": {
+    "frame_count": 500000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "run_budget": {
+      "frame_count": 500000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 675000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 50000000000,
+      "critical_path_ticks": 675000000000,
+      "schedule_ticks": 675135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 67513500000,
+      "run_budget_ticks": 742648500000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK",
+    "timestamp_api": "get_timestamp()",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "semaphore_protocol": {
+    "ready_semaphore_id": 0,
+    "ready_core": "consumer",
+    "free_semaphore_id": 1,
+    "free_core": "producer",
+    "remote_signaling": "noc_semaphore_inc",
+    "local_observation": "invalidate_l1_cache before local semaphore reads"
+  },
+  "startup": {
+    "configured_allowance_ms": 100,
+    "configured_allowance_ticks": 135000000,
+    "budget_aiclk_mhz": 1350,
+    "observed_ticks": 11949,
+    "observed_valid": true,
+    "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK"
+  },
+  "termination": {
+    "reason": "frame_count",
+    "cycle_budget_error": false,
+    "kernel_error_flag": 0,
+    "failure_check": {
+      "code": 0,
+      "name": "none",
+      "source": "none"
+    }
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 500000,
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "consumed_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers plus receiving-core standard semaphores and control metadata",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 742648500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "work_ticks": {
+    "minimum": 1074,
+    "maximum": 1098,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "histogram": {
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded.",
+    "N": 499999,
+    "min_ticks": 111119,
+    "max_ticks": 2588915,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349988.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350048.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350050.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350050.0
+      }
+    },
+    "fine_bin_width_ticks": 1,
+    "fine_bins": [
+      {
+        "start_ticks": 111119,
+        "end_ticks": 111120,
+        "count": 1
+      },
+      {
+        "start_ticks": 175530,
+        "end_ticks": 175531,
+        "count": 1
+      },
+      {
+        "start_ticks": 180872,
+        "end_ticks": 180873,
+        "count": 1
+      },
+      {
+        "start_ticks": 221182,
+        "end_ticks": 221183,
+        "count": 1
+      },
+      {
+        "start_ticks": 250659,
+        "end_ticks": 250660,
+        "count": 1
+      },
+      {
+        "start_ticks": 296266,
+        "end_ticks": 296267,
+        "count": 1
+      },
+      {
+        "start_ticks": 336522,
+        "end_ticks": 336523,
+        "count": 1
+      },
+      {
+        "start_ticks": 366062,
+        "end_ticks": 366063,
+        "count": 1
+      },
+      {
+        "start_ticks": 411658,
+        "end_ticks": 411659,
+        "count": 1
+      },
+      {
+        "start_ticks": 516383,
+        "end_ticks": 516384,
+        "count": 1
+      },
+      {
+        "start_ticks": 602247,
+        "end_ticks": 602248,
+        "count": 1
+      },
+      {
+        "start_ticks": 717582,
+        "end_ticks": 717583,
+        "count": 1
+      },
+      {
+        "start_ticks": 763233,
+        "end_ticks": 763234,
+        "count": 1
+      },
+      {
+        "start_ticks": 768574,
+        "end_ticks": 768575,
+        "count": 1
+      },
+      {
+        "start_ticks": 878632,
+        "end_ticks": 878633,
+        "count": 1
+      },
+      {
+        "start_ticks": 884015,
+        "end_ticks": 884016,
+        "count": 1
+      },
+      {
+        "start_ticks": 948485,
+        "end_ticks": 948486,
+        "count": 1
+      },
+      {
+        "start_ticks": 959155,
+        "end_ticks": 959156,
+        "count": 1
+      },
+      {
+        "start_ticks": 999425,
+        "end_ticks": 999426,
+        "count": 1
+      },
+      {
+        "start_ticks": 1023572,
+        "end_ticks": 1023573,
+        "count": 1
+      },
+      {
+        "start_ticks": 1063879,
+        "end_ticks": 1063880,
+        "count": 1
+      },
+      {
+        "start_ticks": 1069215,
+        "end_ticks": 1069216,
+        "count": 1
+      },
+      {
+        "start_ticks": 1093414,
+        "end_ticks": 1093415,
+        "count": 1
+      },
+      {
+        "start_ticks": 1098754,
+        "end_ticks": 1098755,
+        "count": 1
+      },
+      {
+        "start_ticks": 1139019,
+        "end_ticks": 1139020,
+        "count": 1
+      },
+      {
+        "start_ticks": 1149744,
+        "end_ticks": 1149745,
+        "count": 1
+      },
+      {
+        "start_ticks": 1214151,
+        "end_ticks": 1214152,
+        "count": 1
+      },
+      {
+        "start_ticks": 1265137,
+        "end_ticks": 1265138,
+        "count": 1
+      },
+      {
+        "start_ticks": 1329603,
+        "end_ticks": 1329604,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349914,
+        "end_ticks": 1349915,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349915,
+        "end_ticks": 1349916,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349916,
+        "end_ticks": 1349917,
+        "count": 4
+      },
+      {
+        "start_ticks": 1349917,
+        "end_ticks": 1349918,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349918,
+        "end_ticks": 1349919,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349919,
+        "end_ticks": 1349920,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349920,
+        "end_ticks": 1349921,
+        "count": 15
+      },
+      {
+        "start_ticks": 1349921,
+        "end_ticks": 1349922,
+        "count": 127
+      },
+      {
+        "start_ticks": 1349922,
+        "end_ticks": 1349923,
+        "count": 67
+      },
+      {
+        "start_ticks": 1349923,
+        "end_ticks": 1349924,
+        "count": 39
+      },
+      {
+        "start_ticks": 1349924,
+        "end_ticks": 1349925,
+        "count": 286
+      },
+      {
+        "start_ticks": 1349925,
+        "end_ticks": 1349926,
+        "count": 3317
+      },
+      {
+        "start_ticks": 1349926,
+        "end_ticks": 1349927,
+        "count": 5818
+      },
+      {
+        "start_ticks": 1349927,
+        "end_ticks": 1349928,
+        "count": 564
+      },
+      {
+        "start_ticks": 1349928,
+        "end_ticks": 1349929,
+        "count": 2787
+      },
+      {
+        "start_ticks": 1349929,
+        "end_ticks": 1349930,
+        "count": 17397
+      },
+      {
+        "start_ticks": 1349930,
+        "end_ticks": 1349931,
+        "count": 5490
+      },
+      {
+        "start_ticks": 1349931,
+        "end_ticks": 1349932,
+        "count": 10535
+      },
+      {
+        "start_ticks": 1349932,
+        "end_ticks": 1349933,
+        "count": 2578
+      },
+      {
+        "start_ticks": 1349933,
+        "end_ticks": 1349934,
+        "count": 5445
+      },
+      {
+        "start_ticks": 1349934,
+        "end_ticks": 1349935,
+        "count": 5500
+      },
+      {
+        "start_ticks": 1349935,
+        "end_ticks": 1349936,
+        "count": 7774
+      },
+      {
+        "start_ticks": 1349936,
+        "end_ticks": 1349937,
+        "count": 1193
+      },
+      {
+        "start_ticks": 1349937,
+        "end_ticks": 1349938,
+        "count": 2226
+      },
+      {
+        "start_ticks": 1349938,
+        "end_ticks": 1349939,
+        "count": 938
+      },
+      {
+        "start_ticks": 1349939,
+        "end_ticks": 1349940,
+        "count": 1449
+      },
+      {
+        "start_ticks": 1349940,
+        "end_ticks": 1349941,
+        "count": 5
+      },
+      {
+        "start_ticks": 1349941,
+        "end_ticks": 1349942,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349969,
+        "end_ticks": 1349970,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349970,
+        "end_ticks": 1349971,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349971,
+        "end_ticks": 1349972,
+        "count": 4
+      },
+      {
+        "start_ticks": 1349972,
+        "end_ticks": 1349973,
+        "count": 16
+      },
+      {
+        "start_ticks": 1349973,
+        "end_ticks": 1349974,
+        "count": 11
+      },
+      {
+        "start_ticks": 1349974,
+        "end_ticks": 1349975,
+        "count": 20
+      },
+      {
+        "start_ticks": 1349975,
+        "end_ticks": 1349976,
+        "count": 82
+      },
+      {
+        "start_ticks": 1349976,
+        "end_ticks": 1349977,
+        "count": 58
+      },
+      {
+        "start_ticks": 1349977,
+        "end_ticks": 1349978,
+        "count": 78
+      },
+      {
+        "start_ticks": 1349978,
+        "end_ticks": 1349979,
+        "count": 1557
+      },
+      {
+        "start_ticks": 1349979,
+        "end_ticks": 1349980,
+        "count": 409
+      },
+      {
+        "start_ticks": 1349980,
+        "end_ticks": 1349981,
+        "count": 5870
+      },
+      {
+        "start_ticks": 1349981,
+        "end_ticks": 1349982,
+        "count": 4486
+      },
+      {
+        "start_ticks": 1349982,
+        "end_ticks": 1349983,
+        "count": 8230
+      },
+      {
+        "start_ticks": 1349983,
+        "end_ticks": 1349984,
+        "count": 390
+      },
+      {
+        "start_ticks": 1349984,
+        "end_ticks": 1349985,
+        "count": 8104
+      },
+      {
+        "start_ticks": 1349985,
+        "end_ticks": 1349986,
+        "count": 20546
+      },
+      {
+        "start_ticks": 1349986,
+        "end_ticks": 1349987,
+        "count": 57043
+      },
+      {
+        "start_ticks": 1349987,
+        "end_ticks": 1349988,
+        "count": 65731
+      },
+      {
+        "start_ticks": 1349988,
+        "end_ticks": 1349989,
+        "count": 18296
+      },
+      {
+        "start_ticks": 1349989,
+        "end_ticks": 1349990,
+        "count": 7107
+      },
+      {
+        "start_ticks": 1349990,
+        "end_ticks": 1349991,
+        "count": 10300
+      },
+      {
+        "start_ticks": 1349991,
+        "end_ticks": 1349992,
+        "count": 5852
+      },
+      {
+        "start_ticks": 1349992,
+        "end_ticks": 1349993,
+        "count": 7819
+      },
+      {
+        "start_ticks": 1349993,
+        "end_ticks": 1349994,
+        "count": 4188
+      },
+      {
+        "start_ticks": 1349994,
+        "end_ticks": 1349995,
+        "count": 552
+      },
+      {
+        "start_ticks": 1349995,
+        "end_ticks": 1349996,
+        "count": 7
+      },
+      {
+        "start_ticks": 1349996,
+        "end_ticks": 1349997,
+        "count": 1950
+      },
+      {
+        "start_ticks": 1349997,
+        "end_ticks": 1349998,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349998,
+        "end_ticks": 1349999,
+        "count": 6
+      },
+      {
+        "start_ticks": 1350025,
+        "end_ticks": 1350026,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350026,
+        "end_ticks": 1350027,
+        "count": 2
+      },
+      {
+        "start_ticks": 1350027,
+        "end_ticks": 1350028,
+        "count": 20
+      },
+      {
+        "start_ticks": 1350028,
+        "end_ticks": 1350029,
+        "count": 27
+      },
+      {
+        "start_ticks": 1350029,
+        "end_ticks": 1350030,
+        "count": 76
+      },
+      {
+        "start_ticks": 1350030,
+        "end_ticks": 1350031,
+        "count": 60
+      },
+      {
+        "start_ticks": 1350031,
+        "end_ticks": 1350032,
+        "count": 103
+      },
+      {
+        "start_ticks": 1350032,
+        "end_ticks": 1350033,
+        "count": 1862
+      },
+      {
+        "start_ticks": 1350033,
+        "end_ticks": 1350034,
+        "count": 3214
+      },
+      {
+        "start_ticks": 1350034,
+        "end_ticks": 1350035,
+        "count": 3278
+      },
+      {
+        "start_ticks": 1350035,
+        "end_ticks": 1350036,
+        "count": 1925
+      },
+      {
+        "start_ticks": 1350036,
+        "end_ticks": 1350037,
+        "count": 8563
+      },
+      {
+        "start_ticks": 1350037,
+        "end_ticks": 1350038,
+        "count": 4281
+      },
+      {
+        "start_ticks": 1350038,
+        "end_ticks": 1350039,
+        "count": 5782
+      },
+      {
+        "start_ticks": 1350039,
+        "end_ticks": 1350040,
+        "count": 23598
+      },
+      {
+        "start_ticks": 1350040,
+        "end_ticks": 1350041,
+        "count": 28299
+      },
+      {
+        "start_ticks": 1350041,
+        "end_ticks": 1350042,
+        "count": 39489
+      },
+      {
+        "start_ticks": 1350042,
+        "end_ticks": 1350043,
+        "count": 9164
+      },
+      {
+        "start_ticks": 1350043,
+        "end_ticks": 1350044,
+        "count": 24978
+      },
+      {
+        "start_ticks": 1350044,
+        "end_ticks": 1350045,
+        "count": 13632
+      },
+      {
+        "start_ticks": 1350045,
+        "end_ticks": 1350046,
+        "count": 10249
+      },
+      {
+        "start_ticks": 1350046,
+        "end_ticks": 1350047,
+        "count": 7246
+      },
+      {
+        "start_ticks": 1350047,
+        "end_ticks": 1350048,
+        "count": 122
+      },
+      {
+        "start_ticks": 1350048,
+        "end_ticks": 1350049,
+        "count": 8122
+      },
+      {
+        "start_ticks": 1350049,
+        "end_ticks": 1350050,
+        "count": 1358
+      },
+      {
+        "start_ticks": 1350050,
+        "end_ticks": 1350051,
+        "count": 2202
+      },
+      {
+        "start_ticks": 1350051,
+        "end_ticks": 1350052,
+        "count": 4
+      },
+      {
+        "start_ticks": 1370482,
+        "end_ticks": 1370483,
+        "count": 1
+      },
+      {
+        "start_ticks": 1434891,
+        "end_ticks": 1434892,
+        "count": 1
+      },
+      {
+        "start_ticks": 1485825,
+        "end_ticks": 1485826,
+        "count": 1
+      },
+      {
+        "start_ticks": 1550237,
+        "end_ticks": 1550238,
+        "count": 1
+      },
+      {
+        "start_ticks": 1560956,
+        "end_ticks": 1560957,
+        "count": 1
+      },
+      {
+        "start_ticks": 1601220,
+        "end_ticks": 1601221,
+        "count": 1
+      },
+      {
+        "start_ticks": 1606604,
+        "end_ticks": 1606605,
+        "count": 1
+      },
+      {
+        "start_ticks": 1630757,
+        "end_ticks": 1630758,
+        "count": 1
+      },
+      {
+        "start_ticks": 1636088,
+        "end_ticks": 1636089,
+        "count": 1
+      },
+      {
+        "start_ticks": 1676412,
+        "end_ticks": 1676413,
+        "count": 1
+      },
+      {
+        "start_ticks": 1700549,
+        "end_ticks": 1700550,
+        "count": 1
+      },
+      {
+        "start_ticks": 1740817,
+        "end_ticks": 1740818,
+        "count": 1
+      },
+      {
+        "start_ticks": 1751493,
+        "end_ticks": 1751494,
+        "count": 1
+      },
+      {
+        "start_ticks": 1816007,
+        "end_ticks": 1816008,
+        "count": 1
+      },
+      {
+        "start_ticks": 1821349,
+        "end_ticks": 1821350,
+        "count": 1
+      },
+      {
+        "start_ticks": 1931406,
+        "end_ticks": 1931407,
+        "count": 1
+      },
+      {
+        "start_ticks": 1936736,
+        "end_ticks": 1936737,
+        "count": 1
+      },
+      {
+        "start_ticks": 1982396,
+        "end_ticks": 1982397,
+        "count": 1
+      },
+      {
+        "start_ticks": 2097732,
+        "end_ticks": 2097733,
+        "count": 1
+      },
+      {
+        "start_ticks": 2183598,
+        "end_ticks": 2183599,
+        "count": 1
+      },
+      {
+        "start_ticks": 2288319,
+        "end_ticks": 2288320,
+        "count": 1
+      },
+      {
+        "start_ticks": 2333971,
+        "end_ticks": 2333972,
+        "count": 1
+      },
+      {
+        "start_ticks": 2363512,
+        "end_ticks": 2363513,
+        "count": 1
+      },
+      {
+        "start_ticks": 2403767,
+        "end_ticks": 2403768,
+        "count": 1
+      },
+      {
+        "start_ticks": 2449367,
+        "end_ticks": 2449368,
+        "count": 1
+      },
+      {
+        "start_ticks": 2478849,
+        "end_ticks": 2478850,
+        "count": 1
+      },
+      {
+        "start_ticks": 2519110,
+        "end_ticks": 2519111,
+        "count": 1
+      },
+      {
+        "start_ticks": 2524447,
+        "end_ticks": 2524448,
+        "count": 1
+      },
+      {
+        "start_ticks": 2588915,
+        "end_ticks": 2588916,
+        "count": 1
+      }
+    ]
+  },
+  "raw_timestamps": {
+    "count": 500000,
+    "sha256": "6a7baa6660de45ede2b6f752c7623ae6d25787a8c4613c13a81b2faca4480dec",
+    "retained_outside_repository": true
+  },
+  "power_trace": "2026-10-06-p150a-issue12-stage1-final-500000-adr0005-power.csv",
+  "power_trace_sample_count": 226,
+  "power_trace_sha256": "6d9b6b7b3c01708732069f1238b001ad4862411f3713a4ee411b144f0488a1c4",
+  "hardware": {
+    "device_id": 0,
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": false,
+    "health_probe": "not run"
+  },
+  "first_frame_exclusion": true,
+  "frame_interval_note": "The device-clock frame interval is a harness parameter, not a real acquisition-rate claim.",
+  "timing_evidence": true,
+  "harness_commit": "91e0948c20c9e361682e7b7083202f798ed11c1a",
+  "historical_correction": {
+    "completion_condition": "The prior consumer frame-count branch falsely reported normal completion as failure_other_check; reaching frame_count is normal completion and is fixed.",
+    "semaphore_visibility_addressing": "Ad-hoc free/ready words were replaced with receiving-core v0.75.0 semaphore signaling and local cache invalidation.",
+    "prior_watcher_startup_margin_attribution": "Previous Watcher/startup-margin attributions are incorrect or uncertain because the old records lacked guard-source diagnostics; those records remain preserved and are not timing evidence."
+  },
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "status": "observation_only_no_causal_claim",
+    "pair_count": 27,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sum_min_ticks": 2699967,
+    "pair_sum_max_ticks": 2700034,
+    "pair_sum_mean_ticks": 2699992.1481481483,
+    "sum_delta_min_ticks": -33,
+    "sum_delta_max_ticks": 34,
+    "frame_start_indices": [
+      6084,
+      37899,
+      111072,
+      117435,
+      120617,
+      126980,
+      152431,
+      158794,
+      168339,
+      193790,
+      200153,
+      212879,
+      219242,
+      266964,
+      273327,
+      279690,
+      305141,
+      308323,
+      314686,
+      352863,
+      359226,
+      375133,
+      422855,
+      432400,
+      457851,
+      464214,
+      470577
+    ],
+    "frame_gaps": [
+      31815,
+      73173,
+      6363,
+      3182,
+      6363,
+      25451,
+      6363,
+      9545,
+      25451,
+      6363,
+      12726,
+      6363,
+      47722,
+      6363,
+      6363,
+      25451,
+      3182,
+      6363,
+      38177,
+      6363,
+      15907,
+      47722,
+      9545,
+      25451,
+      6363,
+      6363
+    ],
+    "gap_counts": {
+      "3182": 2,
+      "6363": 11,
+      "9545": 2,
+      "12726": 1,
+      "15907": 1,
+      "25451": 4,
+      "31815": 1,
+      "38177": 1,
+      "47722": 2,
+      "73173": 1
+    },
+    "gcd_frame_gap": 1,
+    "periodicity": "No single exact period detected; the most common gap is 6363 frames (11 of 26 gaps), and the gap gcd is 1.",
+    "pairs": [
+      {
+        "interval_end_frame_indices": [
+          6084,
+          6085
+        ],
+        "short_ticks": 1093414,
+        "long_ticks": 1606604,
+        "pair_sum_ticks": 2700018,
+        "sum_delta_ticks": 18,
+        "first_interval_end_elapsed_ticks": 8213143396,
+        "first_interval_end_elapsed_seconds": 6.083809923
+      },
+      {
+        "interval_end_frame_indices": [
+          37899,
+          37900
+        ],
+        "short_ticks": 516383,
+        "long_ticks": 2183598,
+        "pair_sum_ticks": 2699981,
+        "sum_delta_ticks": -19,
+        "first_interval_end_elapsed_ticks": 51162816379,
+        "first_interval_end_elapsed_seconds": 37.898382503
+      },
+      {
+        "interval_end_frame_indices": [
+          111072,
+          111073
+        ],
+        "short_ticks": 1214151,
+        "long_ticks": 1485825,
+        "pair_sum_ticks": 2699976,
+        "sum_delta_ticks": -24,
+        "first_interval_end_elapsed_ticks": 149947064207,
+        "first_interval_end_elapsed_seconds": 111.071899413
+      },
+      {
+        "interval_end_frame_indices": [
+          117435,
+          117436
+        ],
+        "short_ticks": 1098754,
+        "long_ticks": 1601220,
+        "pair_sum_ticks": 2699974,
+        "sum_delta_ticks": -26,
+        "first_interval_end_elapsed_ticks": 158536998793,
+        "first_interval_end_elapsed_seconds": 117.434813921
+      },
+      {
+        "interval_end_frame_indices": [
+          120617,
+          120618
+        ],
+        "short_ticks": 366062,
+        "long_ticks": 2333971,
+        "pair_sum_ticks": 2700033,
+        "sum_delta_ticks": 33,
+        "first_interval_end_elapsed_ticks": 162831966071,
+        "first_interval_end_elapsed_seconds": 120.616271164
+      },
+      {
+        "interval_end_frame_indices": [
+          126980,
+          126981
+        ],
+        "short_ticks": 250659,
+        "long_ticks": 2449367,
+        "pair_sum_ticks": 2700026,
+        "sum_delta_ticks": 26,
+        "first_interval_end_elapsed_ticks": 171421900679,
+        "first_interval_end_elapsed_seconds": 126.979185688
+      },
+      {
+        "interval_end_frame_indices": [
+          152431,
+          152432
+        ],
+        "short_ticks": 1139019,
+        "long_ticks": 1560956,
+        "pair_sum_ticks": 2699975,
+        "sum_delta_ticks": -25,
+        "first_interval_end_elapsed_ticks": 205781639017,
+        "first_interval_end_elapsed_seconds": 152.430843716
+      },
+      {
+        "interval_end_frame_indices": [
+          158794,
+          158795
+        ],
+        "short_ticks": 1023572,
+        "long_ticks": 1676412,
+        "pair_sum_ticks": 2699984,
+        "sum_delta_ticks": -16,
+        "first_interval_end_elapsed_ticks": 214371573613,
+        "first_interval_end_elapsed_seconds": 158.793758232
+      },
+      {
+        "interval_end_frame_indices": [
+          168339,
+          168340
+        ],
+        "short_ticks": 175530,
+        "long_ticks": 2524447,
+        "pair_sum_ticks": 2699977,
+        "sum_delta_ticks": -23,
+        "first_interval_end_elapsed_ticks": 227256475518,
+        "first_interval_end_elapsed_seconds": 168.338130013
+      },
+      {
+        "interval_end_frame_indices": [
+          193790,
+          193791
+        ],
+        "short_ticks": 1063879,
+        "long_ticks": 1636088,
+        "pair_sum_ticks": 2699967,
+        "sum_delta_ticks": -33,
+        "first_interval_end_elapsed_ticks": 261616213890,
+        "first_interval_end_elapsed_seconds": 193.789788067
+      },
+      {
+        "interval_end_frame_indices": [
+          200153,
+          200154
+        ],
+        "short_ticks": 948485,
+        "long_ticks": 1751493,
+        "pair_sum_ticks": 2699978,
+        "sum_delta_ticks": -22,
+        "first_interval_end_elapsed_ticks": 270206148483,
+        "first_interval_end_elapsed_seconds": 200.15270258
+      },
+      {
+        "interval_end_frame_indices": [
+          212879,
+          212880
+        ],
+        "short_ticks": 717582,
+        "long_ticks": 1982396,
+        "pair_sum_ticks": 2699978,
+        "sum_delta_ticks": -22,
+        "first_interval_end_elapsed_ticks": 287386017648,
+        "first_interval_end_elapsed_seconds": 212.878531591
+      },
+      {
+        "interval_end_frame_indices": [
+          219242,
+          219243
+        ],
+        "short_ticks": 602247,
+        "long_ticks": 2097732,
+        "pair_sum_ticks": 2699979,
+        "sum_delta_ticks": -21,
+        "first_interval_end_elapsed_ticks": 295975952278,
+        "first_interval_end_elapsed_seconds": 219.241446132
+      },
+      {
+        "interval_end_frame_indices": [
+          266964,
+          266965
+        ],
+        "short_ticks": 411658,
+        "long_ticks": 2288319,
+        "pair_sum_ticks": 2699977,
+        "sum_delta_ticks": -23,
+        "first_interval_end_elapsed_ticks": 360400461687,
+        "first_interval_end_elapsed_seconds": 266.963304953
+      },
+      {
+        "interval_end_frame_indices": [
+          273327,
+          273328
+        ],
+        "short_ticks": 296266,
+        "long_ticks": 2403767,
+        "pair_sum_ticks": 2700033,
+        "sum_delta_ticks": 33,
+        "first_interval_end_elapsed_ticks": 368990396267,
+        "first_interval_end_elapsed_seconds": 273.326219457
+      },
+      {
+        "interval_end_frame_indices": [
+          279690,
+          279691
+        ],
+        "short_ticks": 180872,
+        "long_ticks": 2519110,
+        "pair_sum_ticks": 2699982,
+        "sum_delta_ticks": -18,
+        "first_interval_end_elapsed_ticks": 377580330894,
+        "first_interval_end_elapsed_seconds": 279.689133996
+      },
+      {
+        "interval_end_frame_indices": [
+          305141,
+          305142
+        ],
+        "short_ticks": 1069215,
+        "long_ticks": 1630757,
+        "pair_sum_ticks": 2699972,
+        "sum_delta_ticks": -28,
+        "first_interval_end_elapsed_ticks": 411940069265,
+        "first_interval_end_elapsed_seconds": 305.140792048
+      },
+      {
+        "interval_end_frame_indices": [
+          308323,
+          308324
+        ],
+        "short_ticks": 336522,
+        "long_ticks": 2363512,
+        "pair_sum_ticks": 2700034,
+        "sum_delta_ticks": 34,
+        "first_interval_end_elapsed_ticks": 416235036537,
+        "first_interval_end_elapsed_seconds": 308.322249287
+      },
+      {
+        "interval_end_frame_indices": [
+          314686,
+          314687
+        ],
+        "short_ticks": 221182,
+        "long_ticks": 2478849,
+        "pair_sum_ticks": 2700031,
+        "sum_delta_ticks": 31,
+        "first_interval_end_elapsed_ticks": 424824971160,
+        "first_interval_end_elapsed_seconds": 314.685163822
+      },
+      {
+        "interval_end_frame_indices": [
+          352863,
+          352864
+        ],
+        "short_ticks": 878632,
+        "long_ticks": 1821349,
+        "pair_sum_ticks": 2699981,
+        "sum_delta_ticks": -19,
+        "first_interval_end_elapsed_ticks": 476364578679,
+        "first_interval_end_elapsed_seconds": 352.862650873
+      },
+      {
+        "interval_end_frame_indices": [
+          359226,
+          359227
+        ],
+        "short_ticks": 763233,
+        "long_ticks": 1936736,
+        "pair_sum_ticks": 2699969,
+        "sum_delta_ticks": -31,
+        "first_interval_end_elapsed_ticks": 484954513264,
+        "first_interval_end_elapsed_seconds": 359.225565381
+      },
+      {
+        "interval_end_frame_indices": [
+          375133,
+          375134
+        ],
+        "short_ticks": 1149744,
+        "long_ticks": 1550237,
+        "pair_sum_ticks": 2699981,
+        "sum_delta_ticks": -19,
+        "first_interval_end_elapsed_ticks": 506429349754,
+        "first_interval_end_elapsed_seconds": 375.13285167
+      },
+      {
+        "interval_end_frame_indices": [
+          422855,
+          422856
+        ],
+        "short_ticks": 959155,
+        "long_ticks": 1740817,
+        "pair_sum_ticks": 2699972,
+        "sum_delta_ticks": -28,
+        "first_interval_end_elapsed_ticks": 570853859206,
+        "first_interval_end_elapsed_seconds": 422.854710523
+      },
+      {
+        "interval_end_frame_indices": [
+          432400,
+          432401
+        ],
+        "short_ticks": 111119,
+        "long_ticks": 2588915,
+        "pair_sum_ticks": 2700034,
+        "sum_delta_ticks": 34,
+        "first_interval_end_elapsed_ticks": 583738761098,
+        "first_interval_end_elapsed_seconds": 432.399082295
+      },
+      {
+        "interval_end_frame_indices": [
+          457851,
+          457852
+        ],
+        "short_ticks": 999425,
+        "long_ticks": 1700549,
+        "pair_sum_ticks": 2699974,
+        "sum_delta_ticks": -26,
+        "first_interval_end_elapsed_ticks": 618098499438,
+        "first_interval_end_elapsed_seconds": 457.850740324
+      },
+      {
+        "interval_end_frame_indices": [
+          464214,
+          464215
+        ],
+        "short_ticks": 884015,
+        "long_ticks": 1816007,
+        "pair_sum_ticks": 2700022,
+        "sum_delta_ticks": 22,
+        "first_interval_end_elapsed_ticks": 626688434034,
+        "first_interval_end_elapsed_seconds": 464.21365484
+      },
+      {
+        "interval_end_frame_indices": [
+          470577,
+          470578
+        ],
+        "short_ticks": 768574,
+        "long_ticks": 1931406,
+        "pair_sum_ticks": 2699980,
+        "sum_delta_ticks": -20,
+        "first_interval_end_elapsed_ticks": 635278368632,
+        "first_interval_end_elapsed_seconds": 470.576569357
+      }
+    ],
+    "elapsed_time_unit": "seconds",
+    "device_tick_unit": "device_clock_ticks",
+    "run_elapsed_ticks": 674998650044,
+    "run_elapsed_seconds": 499.999000033,
+    "periodic_gap_decomposition": {
+      "period_frames": 6363,
+      "entries": [
+        {
+          "gap_frames": 31815,
+          "quotient": 5,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 73173,
+          "quotient": 11,
+          "remainder": 3180
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 3182,
+          "quotient": 0,
+          "remainder": 3182
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 25451,
+          "quotient": 3,
+          "remainder": 6362
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 9545,
+          "quotient": 1,
+          "remainder": 3182
+        },
+        {
+          "gap_frames": 25451,
+          "quotient": 3,
+          "remainder": 6362
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 12726,
+          "quotient": 2,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 47722,
+          "quotient": 7,
+          "remainder": 3181
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 25451,
+          "quotient": 3,
+          "remainder": 6362
+        },
+        {
+          "gap_frames": 3182,
+          "quotient": 0,
+          "remainder": 3182
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 38177,
+          "quotient": 5,
+          "remainder": 6362
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 15907,
+          "quotient": 2,
+          "remainder": 3181
+        },
+        {
+          "gap_frames": 47722,
+          "quotient": 7,
+          "remainder": 3181
+        },
+        {
+          "gap_frames": 9545,
+          "quotient": 1,
+          "remainder": 3182
+        },
+        {
+          "gap_frames": 25451,
+          "quotient": 3,
+          "remainder": 6362
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        },
+        {
+          "gap_frames": 6363,
+          "quotient": 1,
+          "remainder": 0
+        }
+      ],
+      "aggregate_by_quotient_remainder": {
+        "5,0": 1,
+        "11,3180": 1,
+        "1,0": 11,
+        "0,3182": 2,
+        "3,6362": 4,
+        "1,3182": 2,
+        "2,0": 1,
+        "7,3181": 2,
+        "5,6362": 1,
+        "2,3181": 1
+      }
+    }
+  }
+}
