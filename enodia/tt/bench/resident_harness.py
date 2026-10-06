@@ -24,6 +24,7 @@ MAX_RING_L1_BYTES = 900 * 1024
 UINT64_MAX = (1 << 64) - 1
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
+STARTUP_ALLOWANCE_MICROSECONDS = 100_000
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -47,6 +48,7 @@ class ResidentConfig:
     outer_timeout_seconds: int
     histogram_bin_ticks: int = 1
     fixed_work_ticks_per_frame: int = 100_000
+    budget_aiclk_mhz: int = 1_350
 
     def as_record(self) -> dict[str, Any]:
         values = asdict(self)
@@ -139,6 +141,7 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
     fixed_work_ticks = _positive_int(
         config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
     )
+    budget_aiclk_mhz = _positive_int(config.budget_aiclk_mhz, "budget_aiclk_mhz")
     timeout = _positive_int(config.outer_timeout_seconds, "outer_timeout_seconds")
     bin_width = _positive_int(config.histogram_bin_ticks, "histogram_bin_ticks")
     if ring_pages < MIN_RING_PAGES:
@@ -177,6 +180,7 @@ def validate_configuration(config: ResidentConfig) -> ResidentConfig:
         outer_timeout_seconds=timeout,
         histogram_bin_ticks=bin_width,
         fixed_work_ticks_per_frame=fixed_work_ticks,
+        budget_aiclk_mhz=budget_aiclk_mhz,
     )
 
 
@@ -232,6 +236,14 @@ def interval_ticks_for_microseconds(*, microseconds: int, aiclk_mhz: int) -> int
     return ticks
 
 
+def startup_allowance_ticks(*, aiclk_mhz: int) -> int:
+    """Return the explicit 100 ms startup allowance in device ticks."""
+    return interval_ticks_for_microseconds(
+        microseconds=STARTUP_ALLOWANCE_MICROSECONDS,
+        aiclk_mhz=aiclk_mhz,
+    )
+
+
 def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> dict[str, int]:
     """Compute the conservative run-wide budget in AICLK ticks.
 
@@ -245,7 +257,8 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
     config = validate_configuration(config)
     pacing_ticks = config.frame_count * config.frame_interval_ticks
     fixed_work_ticks = config.frame_count * config.fixed_work_ticks_per_frame
-    base_ticks = pacing_ticks + fixed_work_ticks
+    startup_ticks = startup_allowance_ticks(aiclk_mhz=config.budget_aiclk_mhz)
+    base_ticks = pacing_ticks + fixed_work_ticks + startup_ticks
     watcher_overhead_percent = WATCHER_OVERHEAD_MARGIN_PERCENT if watcher else 0
     margin_percent = RUN_BUDGET_SAFETY_MARGIN_PERCENT + watcher_overhead_percent
     margin_ticks = (base_ticks * margin_percent + 99) // 100
@@ -259,6 +272,9 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
         "per_frame_work_budget_ticks": config.fixed_work_ticks_per_frame,
         "cycle_budget_ticks_per_frame": config.cycle_budget,
         "fixed_work_ticks": fixed_work_ticks,
+        "startup_allowance_ms": STARTUP_ALLOWANCE_MICROSECONDS // 1_000,
+        "budget_aiclk_mhz": config.budget_aiclk_mhz,
+        "startup_allowance_ticks": startup_ticks,
         "safety_margin_percent": RUN_BUDGET_SAFETY_MARGIN_PERCENT,
         "watcher_overhead_margin_percent": watcher_overhead_percent,
         "total_margin_percent": margin_percent,
@@ -416,6 +432,8 @@ def build_measurement_record(
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
+    startup_ticks: int | None = None,
+    startup_ticks_valid: bool = False,
     watcher: bool = False,
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
@@ -465,8 +483,12 @@ def build_measurement_record(
     )
     status = "ok_with_drops" if completed and dropped else ("ok" if completed else "error")
     stats["sample_definition"] = (
-        "Intervals between consumer completion timestamps; dropped producer attempts are excluded."
+        "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
     )
+    if startup_ticks is not None and (
+        isinstance(startup_ticks, bool) or not isinstance(startup_ticks, int) or startup_ticks < 0
+    ):
+        raise ValueError("startup_ticks must be a non-negative integer or None")
     return {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
@@ -497,6 +519,16 @@ def build_measurement_record(
             "cross_core_correlation": "out_of_scope",
         },
         "clock_source_evidence": _source_evidence(),
+        "startup": {
+            "configured_allowance_ms": STARTUP_ALLOWANCE_MICROSECONDS // 1_000,
+            "configured_allowance_ticks": run_budget_breakdown(config, watcher=watcher)[
+                "startup_allowance_ticks"
+            ],
+            "budget_aiclk_mhz": config.budget_aiclk_mhz,
+            "observed_ticks": startup_ticks if startup_ticks_valid else None,
+            "observed_valid": bool(startup_ticks_valid and startup_ticks is not None),
+            "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+        },
         "histogram": stats,
         "ring": {
             "producer_full_count": int(producer_full_count),
@@ -562,6 +594,7 @@ __all__ = [
     "run_budget_breakdown",
     "run_budget_exceeded",
     "split_u64",
+    "startup_allowance_ticks",
     "termination_reason",
     "timestamp_digest",
     "validate_configuration",

@@ -42,7 +42,9 @@ run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.
 
 Every run remains frame-count terminated; the frame interval is a harness
-parameter, not an acquisition-rate claim. If the ring is full, the producer
+parameter, not an acquisition-rate claim. The run budget includes an explicit
+100 ms startup allowance converted at the configured AICLK; Watcher validation
+also has its separate explicit overhead margin. If the ring is full, the producer
 uses drop-new: the attempted frame is counted as overflow/dropped, never waits
 and never overwrites an occupied slot. Consumer-completion histograms exclude
 dropped attempts, so their N and interval samples must be interpreted beside

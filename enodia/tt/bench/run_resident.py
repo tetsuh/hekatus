@@ -252,6 +252,9 @@ def _run_device(
             "frames_produced": int(producer_values[1]),
             "frames_dropped": int(producer_values[4]),
             "frames_consumed": int(consumer_values[1]),
+            "startup_ticks": int(consumer_values[4])
+            | (int(consumer_values[5]) << 32),
+            "startup_ticks_valid": bool(consumer_values[6]),
         }
     finally:
         for tensor in tensors.values():
@@ -318,6 +321,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--timestamp-core", type=_core, default=None)
     parser.add_argument("--cycle-budget", type=int, default=10_000_000)
     parser.add_argument("--fixed-work-ticks-per-frame", type=int, default=100_000)
+    parser.add_argument("--budget-aiclk-mhz", type=int, default=1_350)
     parser.add_argument("--outer-timeout-seconds", type=int, default=60)
     parser.add_argument("--histogram-bin-ticks", type=int, default=1)
     parser.add_argument("--device-id", type=int, default=0)
@@ -342,6 +346,7 @@ def main(argv: list[str] | None = None) -> int:
         cycle_budget=args.cycle_budget,
         outer_timeout_seconds=args.outer_timeout_seconds,
         fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
+        budget_aiclk_mhz=args.budget_aiclk_mhz,
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
@@ -372,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
         attempted_frame_count=result["frames_attempted"],
         produced_frame_count=result["frames_produced"],
         dropped_frame_count=result["frames_dropped"],
+        startup_ticks=result["startup_ticks"],
+        startup_ticks_valid=result["startup_ticks_valid"],
         kernel_error_flag=result["kernel_error_flag"],
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,

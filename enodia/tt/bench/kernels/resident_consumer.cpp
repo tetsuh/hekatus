@@ -41,6 +41,8 @@ void kernel_main() {
     std::uint32_t frames_consumed = 0;
     std::uint32_t error_flag = 0;
     std::uint32_t accumulator = 0;
+    std::uint64_t startup_ticks = 0;
+    std::uint32_t startup_valid = 0;
     const std::uint64_t run_start = get_timestamp();
 
     while (true) {
@@ -104,6 +106,10 @@ void kernel_main() {
         noc_async_write_barrier();
         cb_pop_front(cb_timestamp, 1);
 
+        if (frames_consumed == 0) {
+            startup_ticks = end - run_start;
+            startup_valid = 1;
+        }
         frames_consumed += 1;
         payload[free_word] = frames_consumed;
         if (error_flag != 0) {
@@ -127,6 +133,9 @@ void kernel_main() {
     summary[1] = frames_consumed;
     summary[2] = error_flag;
     summary[3] = accumulator;
+    summary[4] = static_cast<std::uint32_t>(startup_ticks);
+    summary[5] = static_cast<std::uint32_t>(startup_ticks >> 32);
+    summary[6] = startup_valid;
     cb_push_back(cb_timestamp, 1);
     cb_wait_front(cb_timestamp, 1);
     noc_async_write_page(0, stats, get_read_ptr(cb_timestamp));

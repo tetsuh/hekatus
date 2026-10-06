@@ -20,6 +20,7 @@ from enodia.tt.bench.resident_harness import (
     run_budget_breakdown,
     run_budget_exceeded,
     split_u64,
+    startup_allowance_ticks,
     termination_reason,
     timestamp_digest,
     validate_configuration,
@@ -103,11 +104,14 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
         "per_frame_work_budget_ticks": 100_000,
         "cycle_budget_ticks_per_frame": 10_000_000,
         "fixed_work_ticks": 200_100_000,
+        "startup_allowance_ms": 100,
+        "budget_aiclk_mhz": 1_350,
+        "startup_allowance_ticks": 135_000_000,
         "safety_margin_percent": 10,
         "watcher_overhead_margin_percent": 0,
         "total_margin_percent": 10,
-        "safety_margin_ticks": 290_145_000,
-        "run_budget_ticks": 3_191_595_000,
+        "safety_margin_ticks": 303_645_000,
+        "run_budget_ticks": 3_340_095_000,
     }
     assert not run_budget_exceeded(
         elapsed_ticks=4 * config.frame_interval_ticks + 4 * config.cycle_budget,
@@ -115,11 +119,16 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
     )
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=800) == 800_000
     assert interval_ticks_for_microseconds(microseconds=1_000, aiclk_mhz=1_350) == 1_350_000
-    assert split_u64(breakdown["run_budget_ticks"]) == (3_191_595_000, 0)
+    assert split_u64(breakdown["run_budget_ticks"]) == (3_340_095_000, 0)
     watcher_breakdown = run_budget_breakdown(config, watcher=True)
     assert watcher_breakdown["watcher_overhead_margin_percent"] == 100
     assert watcher_breakdown["total_margin_percent"] == 110
-    assert watcher_breakdown["run_budget_ticks"] == 6_093_045_000
+    assert watcher_breakdown["run_budget_ticks"] == 6_376_545_000
+
+
+def test_startup_allowance_is_100_ms_at_both_supported_clocks():
+    assert startup_allowance_ticks(aiclk_mhz=800) == 80_000_000
+    assert startup_allowance_ticks(aiclk_mhz=1_350) == 135_000_000
 
 
 def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
@@ -128,10 +137,11 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
         frame_interval_ticks=800_000,
         cycle_budget=10_000_000,
         fixed_work_ticks_per_frame=100_000,
+        budget_aiclk_mhz=800,
     )
     breakdown = run_budget_breakdown(config)
     assert breakdown["pacing_ticks"] == 1_600_800_000
-    assert breakdown["run_budget_ticks"] == 1_980_990_000
+    assert breakdown["run_budget_ticks"] == 2_068_990_000
     assert run_budget_exceeded(
         elapsed_ticks=breakdown["run_budget_ticks"],
         run_budget_ticks=breakdown["run_budget_ticks"],
@@ -221,6 +231,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         timestamps=[1_000, 2_000, 3_000],
         producer_full_count=2,
         consumer_empty_count=1,
+        startup_ticks=123,
+        startup_ticks_valid=True,
         cycle_budget_hit=False,
         kernel_error_flag=0,
         harness_commit="0123456789abcdef",
@@ -242,6 +254,9 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["producer_full_count"] == 2
     assert parsed["ring"]["consumer_empty_count"] == 1
     assert parsed["ring"]["dropped_frame_count"] == 97
+    assert parsed["startup"]["observed_ticks"] == 123
+    assert parsed["startup"]["observed_valid"] is True
+    assert parsed["timing_evidence"] is False
     assert parsed["ring"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["attempted_frame_count"] == 100
