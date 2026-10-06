@@ -131,6 +131,7 @@ def test_run_budget_covers_n_frames_interval_work_and_margin():
         "cycle_budget_ticks_per_frame": 10_000_000,
         "fixed_work_ticks": 200_100_000,
         "critical_path_ticks": 2_701_350_000,
+        "schedule_ticks": 2_836_350_000,
         "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
         "startup_allowance_ms": 100,
         "budget_aiclk_mhz": 1_350,
@@ -204,6 +205,19 @@ def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
     )
     breakdown = validate_run_budget_fits_outer_cap(safe, watcher=False)
     assert breakdown["run_budget_ticks"] == 80_999_325_000
+    longest = _config(
+        frame_count=600_000,
+        frame_interval_ticks=1_350_000,
+        cycle_budget=10_000_000,
+        fixed_work_ticks_per_frame=100_000,
+        outer_timeout_seconds=660,
+        budget_aiclk_mhz=1_350,
+    )
+    with pytest.raises(ResidentPreflightError, match="outer cap"):
+        validate_run_budget_fits_outer_cap(longest, watcher=False)
+    assert validate_run_budget_fits_outer_cap(
+        longest, watcher=False, allow_margin_over_cap=True
+    )["schedule_ticks"] <= 660 * 1_350 * 1_000_000
 
 
 def test_ring_drop_policy_drains_without_producer_wait():
@@ -237,8 +251,8 @@ def test_fixed_work_preflight_uses_half_interval_boundary():
 
 
 def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
-    with pytest.raises(ValueError, match="600"):
-        validate_configuration(_config(outer_timeout_seconds=601))
+    with pytest.raises(ValueError, match="660"):
+        validate_configuration(_config(outer_timeout_seconds=661))
     with pytest.raises(ValueError, match="designated_timestamp_core"):
         validate_configuration(_config(designated_timestamp_core=(0, 0)))
     with pytest.raises(ValueError, match="different cores"):

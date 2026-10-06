@@ -39,7 +39,9 @@ new runs serialize named failure checks and diagnostics.
 it is not timing evidence.
 3. If it passes, run one no-Watcher 60-second timing attempt. If that passes,
 the owner may separately authorize one no-Watcher frame-count run capped at
-ten minutes, with the outer timeout explicitly raised for that run.
+ten minutes, with the outer timeout explicitly raised for that run and the
+explicit approved budget-margin-over-cap flag only when the schedule itself
+fits the approved cap.
 4. On an abnormal exit or timeout, perform at most one device-0 reset, then
 run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.

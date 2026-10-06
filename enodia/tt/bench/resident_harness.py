@@ -18,7 +18,7 @@ from typing import Any
 
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
-MAX_OUTER_TIMEOUT_SECONDS = 600
+MAX_OUTER_TIMEOUT_SECONDS = 660
 MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
 UINT64_MAX = (1 << 64) - 1
@@ -290,6 +290,7 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
         "cycle_budget_ticks_per_frame": config.cycle_budget,
         "fixed_work_ticks": fixed_work_ticks,
         "critical_path_ticks": critical_path_ticks,
+        "schedule_ticks": critical_path_ticks + startup_ticks,
         "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
         "startup_allowance_ms": STARTUP_ALLOWANCE_MICROSECONDS // 1_000,
         "budget_aiclk_mhz": config.budget_aiclk_mhz,
@@ -303,13 +304,18 @@ def run_budget_breakdown(config: ResidentConfig, *, watcher: bool = False) -> di
 
 
 def validate_run_budget_fits_outer_cap(
-    config: ResidentConfig, *, watcher: bool = False
+    config: ResidentConfig,
+    *,
+    watcher: bool = False,
+    allow_margin_over_cap: bool = False,
 ) -> dict[str, int]:
     """Reject a run whose conservative tick budget exceeds its host cap."""
     config = validate_configuration(config)
     breakdown = run_budget_breakdown(config, watcher=watcher)
     cap_ticks = config.outer_timeout_seconds * config.budget_aiclk_mhz * 1_000_000
     if breakdown["run_budget_ticks"] > cap_ticks:
+        if allow_margin_over_cap and breakdown["schedule_ticks"] <= cap_ticks:
+            return breakdown
         raise ResidentPreflightError(
             "run budget exceeds outer cap: "
             f"{breakdown['run_budget_ticks']} ticks > {cap_ticks} ticks "

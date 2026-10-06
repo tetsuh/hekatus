@@ -340,6 +340,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", default=None)
     parser.add_argument("--raw-timestamps-out", type=Path, default=None)
+    parser.add_argument("--allow-budget-margin-over-cap", action="store_true")
     parser.add_argument("--frame-count", type=int, default=100)
     parser.add_argument("--frame-interval-ticks", type=int, default=1_350_000)
     parser.add_argument("--producer-core", type=_core, default=(0, 0))
@@ -379,7 +380,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         config = validate_configuration(config)
-        validate_run_budget_fits_outer_cap(config, watcher=args.watcher)
+        validate_run_budget_fits_outer_cap(
+            config,
+            watcher=args.watcher,
+            allow_margin_over_cap=args.allow_budget_margin_over_cap,
+        )
     except (ResidentPreflightError, TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
         print(f"resident configuration rejected: {exc}", file=sys.stderr)
@@ -427,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
+    record["budget_margin_over_cap_allowed"] = args.allow_budget_margin_over_cap
     _write(args.out, record)
     print(f"resident record -> {args.out.name}")
     return 0
