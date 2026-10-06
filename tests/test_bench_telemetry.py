@@ -64,6 +64,20 @@ def test_environment_survives_a_snapshot_it_cannot_read():
     assert "board" not in env
 
 
+def test_environment_capture_carries_the_wrapper_run_id(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "captured-run")
+    monkeypatch.setattr(telemetry, "_run", lambda command: "")
+    monkeypatch.setattr(
+        telemetry,
+        "harness_identity",
+        lambda: {"harness_commit": "a" * 40, "harness_dirty": False},
+    )
+
+    environment = telemetry.capture_environment("image@sha256:" + "a" * 64, True)
+
+    assert environment["run_id"] == "captured-run"
+
+
 @pytest.mark.parametrize(
     "snapshot",
     [

@@ -7,6 +7,7 @@ toolchain so they run anywhere.
 """
 
 import builtins
+import io
 import json
 import sys
 from pathlib import Path
@@ -128,6 +129,42 @@ class _StubDevice:
         return [object()] * self.worker_count
 
 
+def test_custom_bringup_runner_writes_the_wrapper_result_path(monkeypatch, tmp_path):
+    from tools import newton_schulz_bringup
+
+    result_path = tmp_path / "runner-result.json"
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(result_path))
+    stream = io.StringIO()
+
+    newton_schulz_bringup._emit_json({"status": "pass"}, stream=stream)
+
+    assert json.loads(result_path.read_text()) == {"status": "pass"}
+    assert json.loads(stream.getvalue()) == {"status": "pass"}
+
+
+def test_perf_counter_runner_passes_the_wrapper_result_path_to_run_matmul(
+    monkeypatch, tmp_path
+):
+    from tools import newton_schulz_perf_counters
+
+    calls = []
+    profiler = type(sys)("tools.tracy.process_model_log")
+    profiler.run_device_profiler = lambda command, *args, **kwargs: calls.append(command)
+    tracy = type(sys)("tools.tracy")
+    tracy.__path__ = []
+    monkeypatch.setitem(sys.modules, "tools.tracy", tracy)
+    monkeypatch.setitem(sys.modules, "tools.tracy.process_model_log", profiler)
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", "/out/runner-result.json")
+
+    newton_schulz_perf_counters.main(
+        ["--row", "full", "--logs", str(tmp_path / "logs"), "--target-out", "/out/other.json"]
+    )
+
+    assert len(calls) == 1
+    assert "--out /out/runner-result.json" in calls[0]
+    assert "--out /out/other.json" not in calls[0]
+
+
 def test_issue94_modes_and_rows_preserve_fixed_selection_metadata_without_a_device():
     parser = run_matmul._build_parser()
     assert parser.parse_args(["--issue94-catalogue"]).issue94_catalogue is True
@@ -237,13 +274,16 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     )
     assert fidelity_args.custom_math_fidelity == ["LoFi", "HiFi3"]
     default_flags = run_matmul._build_parser().parse_args([])
-    assert default_flags.fuse_s is False
+    assert default_flags.fuse_s is True
     assert default_flags.batch_reads is False
     assert default_flags.input_memory == "l1"
+    assert default_flags.output_memory == "dram"
     assert default_flags.r_memory is None
     assert default_flags.x0_memory is None
-    assert default_flags.double_buffer is False
+    assert default_flags.double_buffer is True
     assert default_flags.compare_double_buffer is False
+    assert default_flags.fp32_dest_acc_en is True
+    assert default_flags.dst_full_sync_en is True
     enabled_flags = run_matmul._build_parser().parse_args(
         [
             "--fuse-s",
@@ -254,6 +294,8 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
             "l1",
             "--x0-memory",
             "dram",
+            "--output-memory",
+            "l1",
             "--double-buffer",
         ]
     )
@@ -262,6 +304,7 @@ def test_repeatable_shape_and_config_filters_parse_without_a_device():
     assert enabled_flags.input_memory == "dram"
     assert enabled_flags.r_memory == "l1"
     assert enabled_flags.x0_memory == "dram"
+    assert enabled_flags.output_memory == "l1"
     assert enabled_flags.double_buffer is True
     alias_flags = run_matmul._build_parser().parse_args(["--block-double-buffer"])
     assert alias_flags.double_buffer is True
@@ -370,7 +413,10 @@ def test_normal_reload_r_runner_remains_accepted(monkeypatch, tmp_path):
     )
     assert len(calls) == 1
     assert calls[0]["reload_r"] is True
-    assert json.loads(output.read_text())["selection"]["reload_r"] is True
+    assert calls[0]["output_memory"] == "dram"
+    payload = json.loads(output.read_text())
+    assert payload["selection"]["reload_r"] is True
+    assert payload["selection"]["output_memory"] == "dram"
 
 
 def test_repeatable_shape_filters_use_or_substring_semantics():
@@ -512,6 +558,8 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
             "l1",
             "--x0-memory",
             "dram",
+            "--output-memory",
+            "l1",
             "--out",
             str(output),
         ]
@@ -523,8 +571,10 @@ def test_custom_flags_reach_dispatch_and_result_metadata(monkeypatch, tmp_path):
     assert calls[0]["batch_reads"] is True
     assert calls[0]["r_memory"] == "l1"
     assert calls[0]["x0_memory"] == "dram"
+    assert calls[0]["output_memory"] == "l1"
     assert payload["selection"]["r_memory"] == "l1"
     assert payload["selection"]["x0_memory"] == "dram"
+    assert payload["selection"]["output_memory"] == "l1"
     assert payload["results"][0]["program_config"]["r_memory"] == "l1"
     assert payload["results"][0]["program_config"]["x0_memory"] == "dram"
     assert payload["results"][0]["program_config"]["fuse_s"] is True
@@ -783,16 +833,19 @@ def test_main_serializes_selection_metadata_for_partial_runs(monkeypatch, tmp_pa
     assert payload["selection"] == {
         "shape_filters": ["newton_schulz_L16_b1024", "newton_schulz_L32_b1024"],
         "program_config_kind_filters": ["batched_dram_sharded"],
-        "custom_math_fidelity": ["HiFi4"],
+        "custom_math_fidelity": ["HiFi3"],
         "input_memory": "l1",
         "r_memory": "l1",
         "x0_memory": "l1",
-        "fuse_s": False,
+        "output_memory": "dram",
+        "fuse_s": True,
         "batch_reads": False,
         "reload_r": False,
         "compare_reload_r": False,
-        "double_buffer": False,
+        "double_buffer": True,
         "compare_double_buffer": False,
+        "fp32_dest_acc_en": True,
+        "dst_full_sync_en": True,
     }
     assert len(payload["results"]) == 4
     assert all(
@@ -1137,12 +1190,15 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
             profile,
             fuse_s,
             batch_reads,
+            **kwargs,
         ):
             assert variant == "bf16-fp32state"
-            assert math_fidelity == "HiFi4"
+            assert math_fidelity == "HiFi3"
             assert profile is False
-            assert fuse_s is False
+            assert fuse_s is True
             assert batch_reads is False
+            assert kwargs["matrix_block"] == 4
+            assert kwargs["double_buffer"] is False
             assert matrices is not None
             return cls()
 
@@ -1178,6 +1234,8 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
         dtype_name="bfloat16",
         memory_name="l1",
         variant="bf16-fp32state",
+        matrix_block=4,
+        double_buffer=False,
         iters=2,
         repeats=2,
     )
@@ -1185,7 +1243,8 @@ def test_custom_row_retains_launch_samples_and_percentiles(monkeypatch):
     assert record["status"] == "ok"
     assert record["kind"] == "custom_newton_schulz"
     assert record["variant"] == "bf16-fp32state"
-    assert record["fuse_s"] is False
+    assert record["fuse_s"] is True
+    assert record["math_fidelity"] == "HiFi3"
     assert record["batch_reads"] is False
     assert record["output_memory"] == "dram"
     assert len(record["seconds_per_launch_samples"]) == 4
@@ -1308,6 +1367,7 @@ def test_custom_block8_l1_preflight_rejects_before_kernel_prepare():
         variant="bf16-fp32state",
         fuse_s=True,
         matrix_block=8,
+        double_buffer=False,
         iters=1,
         repeats=1,
     )
@@ -1364,6 +1424,7 @@ def test_custom_block8_per_input_placement_dispatches_with_passing_preflight(mon
         matrix_block=8,
         r_memory="l1",
         x0_memory="dram",
+        double_buffer=False,
         iters=1,
         repeats=1,
     )
@@ -1389,6 +1450,7 @@ def test_custom_block4_l1_preflight_accepts_the_ledger_minimum():
         output_memory="dram",
         input_memory="l1",
         matrix_block=4,
+        double_buffer=False,
         variant="bf16-fp32state",
     )
 

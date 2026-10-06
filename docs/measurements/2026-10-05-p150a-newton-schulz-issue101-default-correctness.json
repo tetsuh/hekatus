@@ -1,0 +1,239 @@
+{
+  "record_schema": "adr-0005-issue101-default-correctness-v1",
+  "status": "pass",
+  "issue": "#100",
+  "adr": "ADR-0005",
+  "captured_at": "2026-10-05T23:26:01.921837+00:00",
+  "run_id": "20261005T232601Z",
+  "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+  "environment": {
+    "captured_at": "2026-10-05T23:26:01.921837+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "toolchain_release": "0.75.0",
+    "tt_env_active_release": "0.75.0",
+    "host_kernel": "Linux 6.8.0-138-generic",
+    "kernel_driver_version": "2.11.0",
+    "kmd_version": "2.11.0",
+    "python": "3.12.12",
+    "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+    "harness_dirty": false,
+    "harness_capture_note": "The synchronized source tree was clean at the recorded revision; git metadata was excluded from the temporary device staging copy.",
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "board_id": "000004033191411c",
+      "device_id": 0,
+      "bus_id": "0000:06:00.0",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "compiler": null,
+    "tt_metal_source_commit": null,
+    "kernel_compiler_note": "The pinned release image did not expose a source compiler commit."
+  },
+  "measurement": {
+    "description": "Issue #100 new-default device correctness catalogue, including the missing L=32 batch-8192 case.",
+    "device_id": 0,
+    "watcher": false,
+    "container_timeout_s": 60,
+    "correctness_reference": "BF16-rounded-R fixed-N=12 reference",
+    "correctness_threshold_relative_error": 0.01,
+    "new_default": {
+      "variant": "bf16",
+      "state_format": "BF16",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "fp32_dest_acc_en": true,
+      "matrix_block": 8,
+      "double_buffer": true,
+      "dst_full_sync_en": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "initial_value": "I/||R||inf",
+      "iterations": 12
+    },
+    "commands": {
+      "correctness": "HEKATUS_TT_CONTAINER_TIMEOUT_S=60 ./enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference",
+      "device_node": "/dev/tenstorrent/0",
+      "selection": [
+        "batch4-L16",
+        "batch8192-L16",
+        "batch4-L32",
+        "batch8192-L32",
+        "batch1-L16",
+        "batch3-L16",
+        "batch5-L32",
+        "batch31-L32",
+        "batch63-L32"
+      ],
+      "stdout_capture": "stdout.log",
+      "stderr_capture": "stderr.log",
+      "environment_capture": "env-20261005T232601Z.json",
+      "power_trace": "2026-10-05-p150a-newton-schulz-issue101-default-correctness-power.csv"
+    },
+    "correctness_cases": [
+      {
+        "case": "batch4-L16",
+        "batch": 4,
+        "size": 16,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0043349508196,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch8192-L16",
+        "batch": 8192,
+        "size": 16,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0044448589906,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch4-L32",
+        "batch": 4,
+        "size": 32,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0045872670598,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch8192-L32",
+        "batch": 8192,
+        "size": 32,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0043476428837,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch1-L16",
+        "batch": 1,
+        "size": 16,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0044834362343,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch3-L16",
+        "batch": 3,
+        "size": 16,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0040519027971,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch5-L32",
+        "batch": 5,
+        "size": 32,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0042704637162,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch31-L32",
+        "batch": 31,
+        "size": 32,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0044490778819,
+        "threshold": 0.01,
+        "status": "pass"
+      },
+      {
+        "case": "batch63-L32",
+        "batch": 63,
+        "size": 32,
+        "source_run": "20261005T232601Z",
+        "harness_commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+        "relative_error": 0.0043110405095,
+        "threshold": 0.01,
+        "status": "pass"
+      }
+    ],
+    "case_reconciliation": {
+      "mode": "all_nine_reexecuted_in_one_new_run",
+      "source_run": "20261005T232601Z",
+      "prior_record": "docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json",
+      "prior_eight_cases": "Retained historical evidence only; all eight were rerun here and this record uses the new run as their source.",
+      "explicit_legacy_control": "tests/test_newton_schulz_kernel.py::DeviceEquivalenceTests::test_batch_8192_matches_numpy_at_l32_block4_fused_hifi3_fp32_state was not used as evidence for the new default."
+    }
+  },
+  "harness": {
+    "commit": "4466e3bb141632cb463ac2516ae5bf47252d248a",
+    "dirty": false,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "device_id": 0,
+    "watcher": false,
+    "container_timeout_s": 60,
+    "selection": [
+      "batch4-L16",
+      "batch8192-L16",
+      "batch4-L32",
+      "batch8192-L32",
+      "batch1-L16",
+      "batch3-L16",
+      "batch5-L32",
+      "batch31-L32",
+      "batch63-L32"
+    ],
+    "relative_error_capture": "The test emitted one measured relative error per case under pytest -s; stdout and stderr were captured for this run.",
+    "container_cleanup_verified": true
+  },
+  "recovery": {
+    "timeout": false,
+    "abnormal_exit": false,
+    "reset_performed": false,
+    "stage1_health_probe": "not needed after normal closure",
+    "docker_ps_before_each_run": "empty",
+    "docker_ps_after_each_run": "empty",
+    "docker_ps_final": "empty"
+  },
+  "power_trace": "2026-10-05-p150a-newton-schulz-issue101-default-correctness-power.csv",
+  "notes": [
+    "All nine Issue #100 acceptance criterion 2 cases passed on device 0 with the new public defaults and relative error below 0.01.",
+    "This correctness-only run makes no throughput claim; the companion CSV is raw wrapper telemetry and is not used as a performance result.",
+    "No reset or health recovery was required, and no existing measurement JSON or CSV was modified.",
+    "No host name or user-specific absolute path is included in this record."
+  ]
+}

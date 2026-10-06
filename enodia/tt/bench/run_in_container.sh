@@ -44,6 +44,10 @@ mkdir -p "${OUT_DIR}"
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
 RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
+CUSTOM_RUNNER=0
+if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
+  CUSTOM_RUNNER=1
+fi
 CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-900}"
 if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
   echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be a positive integer" >&2
@@ -79,14 +83,40 @@ if [[ "${TEST_MODE}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   exit 2
 fi
 
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
-POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
-RESULTS="${OUT_DIR}/results-${STAMP}.json"
+# One identity is generated before any artifact is opened.  The nanosecond,
+# process, and shell-random suffix make reuse collisions fail-safe rather than
+# silently overwriting a prior session's provenance.
+RUN_ID="$(date -u +%Y%m%dT%H%M%S%N)$$${RANDOM}Z"
+export HEKATUS_TT_RUN_ID="${RUN_ID}"
+ENV_JSON="${OUT_DIR}/env-${RUN_ID}.json"
+POWER_CSV="${OUT_DIR}/power-${RUN_ID}.csv"
+RESULTS="${OUT_DIR}/results-${RUN_ID}.json"
+RESULTS_CONTAINER="/out/$(basename "${RESULTS}")"
+RESULT_PATH="${RESULTS}"
+RUNNER_RESULT_CONTAINER_PATH=""
+RUNNER_RESULT_HOST_PATH=""
+if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
+  # Keep the historical one-run path, but never overwrite it when an output
+  # directory is reused.  The run-specific fallback is passed into the
+  # container and is not embedded as a host path in the runner record.
+  if [[ -e "${OUT_DIR}/runner-result.json" ]]; then
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
+  else
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result.json"
+  fi
+  RESULTS_CONTAINER="${RUNNER_RESULT_CONTAINER_PATH}"
+  RESULT_PATH="${RUNNER_RESULT_HOST_PATH}"
+fi
 
 TELEMETRY="${REPO_ROOT}/enodia/tt/bench/telemetry.py"
 PINNED_FLAG=()
 [[ "${IMAGE_PINNED}" == "1" ]] && PINNED_FLAG=(--image-pinned)
+RUNNER_RESULT_ENV=()
+if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
+  RUNNER_RESULT_ENV=(-e "HEKATUS_TT_RESULT_PATH=${RUNNER_RESULT_CONTAINER_PATH}")
+fi
 
 python3 "${TELEMETRY}" capture-env --out "${ENV_JSON}" --image "${IMAGE}" "${PINNED_FLAG[@]}"
 
@@ -158,6 +188,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     -e HEKATUS_TT_DEVICE_TEST=1 \
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
@@ -172,11 +203,13 @@ elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
+    "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
     "${RUNNER}" \
-    "/out/$(basename "${RESULTS}")" \
+    "${RESULTS_CONTAINER}" \
     "/out/$(basename "${ENV_JSON}")" \
     "${RUNNER_ARGS[@]}" &
 else
@@ -188,7 +221,9 @@ else
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
+    -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${WATCHER_ENV[@]}" \
+    "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "$@" &
 fi
@@ -238,5 +273,5 @@ if [[ "${SAMPLER_STATUS}" != intentional ]]; then
 fi
 
 echo
-echo "results     -> ${RESULTS}"
+echo "results     -> ${RESULT_PATH}"
 echo "power trace -> ${POWER_CSV}"

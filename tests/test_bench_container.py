@@ -52,6 +52,15 @@ if [ "${1:-}" = kill ]; then
   exit 0
 fi
 printf '%s\\n' "$@" > "$DOCKER_ARGS"
+result_path=""
+for argument in "$@"; do
+  case "$argument" in
+    HEKATUS_TT_RESULT_PATH=*) result_path="${argument#*=}" ;;
+  esac
+done
+if [ -n "${RUNNER_RESULT_HOST:-}" ] && [ -n "$result_path" ]; then
+  printf '%s\\n' '{"fake_runner_result": true}' > "$RUNNER_RESULT_HOST"
+fi
 sleep "${DOCKER_DELAY:-0}"
 exit "${DOCKER_EXIT:-0}"
 """
@@ -526,6 +535,8 @@ def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     power_trace = docker_args[docker_args.index("--power-trace") + 1]
     assert power_trace.startswith("/out/power-")
     assert power_trace.endswith(".csv")
+    assert "HEKATUS_TT_RESULT_PATH=/out/runner-result.json" not in docker_args
+    assert re.search(r"results     -> .*/results-[0-9TZ]+\.json", completed.stdout)
 
 
 def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):
@@ -592,6 +603,51 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
         "1",
         "--no-watcher",
     ]
+
+
+CUSTOM_RUNNERS = (
+    "tools/newton_schulz_bringup.py",
+    "tools/newton_schulz_perf_counters.py",
+    "tools/newton_schulz_issue100_same_run.py",
+    "tools/newton_schulz_issue101_combined.py",
+)
+
+
+@pytest.mark.parametrize("runner", CUSTOM_RUNNERS)
+def test_wrapper_uses_one_result_contract_for_every_custom_runner(tmp_path, runner):
+    """Every discovered custom runner gets and writes the stable result path."""
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "comparison"
+    result_path = output_dir / "runner-result.json"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "RUNNER_RESULT_HOST": str(result_path),
+            "HEKATUS_TT_RUNNER": runner,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    assert runner in docker_args
+    assert "HEKATUS_TT_RESULT_PATH=/out/runner-result.json" in docker_args
+    assert f"results     -> {result_path}" in completed.stdout
+    assert "results-" not in completed.stdout
+    assert json.loads(result_path.read_text()) == {"fake_runner_result": True}
 
 
 def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):

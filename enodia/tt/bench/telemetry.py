@@ -190,6 +190,13 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
     }
     environment.update(harness_identity())
     environment.update(parse_environment(_run(SNAPSHOT_COMMAND)))
+    run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    if run_id:
+        # The outer wrapper creates this identity once and exports it to both
+        # environment capture and the benchmark process.  Do not invent one
+        # here: an unset value is useful to callers that only exercise this
+        # parser module.
+        environment["run_id"] = run_id
     return environment
 
 

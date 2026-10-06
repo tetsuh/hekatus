@@ -50,11 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     from tools.tracy.process_model_log import run_device_profiler
 
     row = _ROWS[args.row]
+    result_path = os.environ.get("HEKATUS_TT_RESULT_PATH") or args.target_out
     os.environ.pop("TT_METAL_WATCHER", None)
     os.environ["TT_METAL_LOGS_PATH"] = "/out"
     args.logs.mkdir(parents=True, exist_ok=True)
     run_device_profiler(
-        _build_target_command(row, args.target_out),
+        _build_target_command(row, result_path),
         str(args.logs),
         check_test_return_code=True,
         python_post_process=True,
