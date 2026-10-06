@@ -3,6 +3,8 @@
 The accelerator module is passed in rather than imported here.  Host-only
 accounting and reference tests therefore do not acquire a toolchain dependency.
 The throughput variants use 32x32 tiles and a fixed twelve-iteration inverse.
+Issue #100's block-8 default is fail-fast when DEST or L1 preflight rejects it;
+no implicit block or memory fallback is performed.
 L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
 keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
 products, state, and outputs.
@@ -24,6 +26,17 @@ _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
 INPUT_MEMORY_CHOICES = ("l1", "dram")
+
+# Issue #100 selects the fastest measured host configuration.  These are
+# defaults only: callers can still select every prior variant explicitly.
+DEFAULT_VARIANT = "bf16"
+DEFAULT_MATH_FIDELITY = "HiFi3"
+DEFAULT_FUSE_S = True
+DEFAULT_FP32_DEST_ACC_EN = True
+DEFAULT_MATRIX_BLOCK = 8
+DEFAULT_DOUBLE_BUFFER = True
+DEFAULT_DST_FULL_SYNC_EN = True
+DEFAULT_OUTPUT_MEMORY = "dram"
 _TILE = 32
 _TILE_BYTES_BFLOAT16 = _TILE * _TILE * 2
 _TILE_BYTES_FLOAT32 = _TILE * _TILE * 4
@@ -541,9 +554,9 @@ def _state_dtype(ttnn, variant: str):
     return ttnn.float32 if variant == "bf16-fp32state" else ttnn.bfloat16
 
 
-def _output_memory_name(variant: str) -> str:
-    """Return the output placement; FP32 fallback outputs live in DRAM."""
-    return "dram" if variant == "bf16-fp32state" else "l1"
+def _output_memory_name() -> str:
+    """Return the default output placement for the public API."""
+    return DEFAULT_OUTPUT_MEMORY
 
 
 def _cb_page_size(ttnn, data_format) -> int:
@@ -735,6 +748,7 @@ def _tensor_l1_bytes(
     if input_memory == "l1":
         identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
         resident_bytes = _cb_page_size(ttnn, identity_dtype) + _cb_page_size(ttnn, ttnn.float32)
+    _validate_memory(output_memory, name="output_memory")
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
@@ -824,21 +838,28 @@ def _validate_l1_preflight(
     core_count: int,
     state_dtype,
     profile: bool = False,
-    fuse_s: bool = False,
-    output_memory: str = "l1",
+    fuse_s: bool = DEFAULT_FUSE_S,
+    output_memory: str = DEFAULT_OUTPUT_MEMORY,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
-    matrix_block: int = 1,
-    double_buffer: bool = False,
-    variant: str | None = None,
-    fp32_dest_acc_en: bool = True,
-    dst_full_sync_en: bool = True,
+    matrix_block: int = DEFAULT_MATRIX_BLOCK,
+    double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
+    variant: str | None = DEFAULT_VARIANT,
+    fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+    dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
 ) -> int:
-    """Validate L1 usage without touching a device or allocating tensors."""
+    """Validate L1 usage without touching a device or allocating tensors.
+
+    The Issue #100 defaults fail fast when this budget is exceeded; callers must
+    select an explicit block or memory placement rather than receiving a fallback.
+    """
     input_memory, r_memory, x0_memory = _resolve_input_memories(
         input_memory, r_memory=r_memory, x0_memory=x0_memory
     )
+    if output_memory is None:
+        output_memory = DEFAULT_OUTPUT_MEMORY
+    _validate_memory(output_memory, name="output_memory")
     _validate_matrix_block(
         matrix_block,
         fp32_dest_acc_en=fp32_dest_acc_en,
@@ -1023,20 +1044,20 @@ class NewtonSchulzKernel:
         device,
         matrices: np.ndarray,
         *,
-        variant: str = "bf16",
-        math_fidelity: str = "HiFi4",
+        variant: str = DEFAULT_VARIANT,
+        math_fidelity: str = DEFAULT_MATH_FIDELITY,
         profile: bool = False,
-        fuse_s: bool = False,
+        fuse_s: bool = DEFAULT_FUSE_S,
         batch_reads: bool = False,
         reload_r: bool = False,
-        matrix_block: int = 1,
-        double_buffer: bool = False,
+        matrix_block: int = DEFAULT_MATRIX_BLOCK,
+        double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
         input_memory: str = "l1",
         r_memory: str | None = None,
         x0_memory: str | None = None,
-        fp32_dest_acc_en: bool = True,
-        dst_full_sync_en: bool = True,
-        output_memory: str | None = None,
+        output_memory: str | None = DEFAULT_OUTPUT_MEMORY,
+        fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+        dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
     ) -> NewtonSchulzKernel:
         input_memory, r_memory, x0_memory = _resolve_input_memories(
@@ -1046,7 +1067,7 @@ class NewtonSchulzKernel:
         if variant not in _SUPPORTED_VARIANTS:
             raise ValueError(f"unknown kernel variant {variant!r}")
         if output_memory is None:
-            output_memory = _output_memory_name(variant)
+            output_memory = _output_memory_name()
         else:
             _validate_memory(output_memory, name="output_memory")
         _validate_matrix_block(
@@ -1396,20 +1417,20 @@ def run_newton_schulz_kernel(
     device,
     matrices: np.ndarray,
     *,
-    variant: str = "bf16",
-    math_fidelity: str = "HiFi4",
+    variant: str = DEFAULT_VARIANT,
+    math_fidelity: str = DEFAULT_MATH_FIDELITY,
     profile: bool = False,
-    fuse_s: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
     batch_reads: bool = False,
     reload_r: bool = False,
-    matrix_block: int = 1,
-    double_buffer: bool = False,
+    matrix_block: int = DEFAULT_MATRIX_BLOCK,
+    double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
     input_memory: str = "l1",
     r_memory: str | None = None,
     x0_memory: str | None = None,
-    fp32_dest_acc_en: bool = True,
-    dst_full_sync_en: bool = True,
-    output_memory: str | None = None,
+    output_memory: str | None = DEFAULT_OUTPUT_MEMORY,
+    fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+    dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
 ) -> np.ndarray:
     """Prepare, launch, download, and release one correctness run."""
     kernel = NewtonSchulzKernel.prepare(
@@ -1427,9 +1448,9 @@ def run_newton_schulz_kernel(
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,
+        output_memory=output_memory,
         fp32_dest_acc_en=fp32_dest_acc_en,
         dst_full_sync_en=dst_full_sync_en,
-        output_memory=output_memory,
     )
     try:
         kernel.launch()

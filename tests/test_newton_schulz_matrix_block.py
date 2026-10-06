@@ -42,6 +42,7 @@ def test_issue94_all_l1_inputs_and_dram_outputs_fit_every_required_row():
         "x0_memory": "l1",
         "output_memory": "dram",
         "matrix_block": 4,
+        "double_buffer": False,
     }
     rows = (
         ("bf16", True, "bf16", 1_008_384),
@@ -374,6 +375,7 @@ def test_cb_l1_accounting_matches_state_ledger_and_dram_inputs_fit(matrix_block)
         output_memory="dram",
         input_memory="dram",
         matrix_block=matrix_block,
+        double_buffer=False,
         variant="bf16-fp32state",
     )
     assert total == expected_total_bytes[matrix_block]
@@ -395,6 +397,7 @@ def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inpu
             fuse_s=True,
             output_memory="dram",
             matrix_block=matrix_block,
+            double_buffer=False,
             variant="bf16-fp32state",
         )
         assert total == expected_total
@@ -409,6 +412,7 @@ def test_l1_preflight_accepts_fitting_blocks_and_rejects_only_block8_for_l1_inpu
             fuse_s=True,
             output_memory="dram",
             matrix_block=8,
+            double_buffer=False,
             variant="bf16-fp32state",
         )
     assert "L1 budget over by 115456 bytes" in str(excinfo.value)
@@ -687,6 +691,7 @@ def test_dram_inputs_remove_tensor_l1_bytes_but_keep_static_cb_accounting():
         output_memory="dram",
         input_memory="dram",
         matrix_block=8,
+        double_buffer=False,
         variant="bf16-fp32state",
     )
     assert total == (
@@ -1048,11 +1053,13 @@ def test_reader_writer_stream_groups_and_pop_bulk():
     assert "fused_s_matmul_block" in compute
 
 
-def test_cli_exposes_matrix_block_with_baseline_default():
+def test_cli_exposes_matrix_block_with_issue100_default():
     parser = run_matmul._build_parser()
-    assert parser.parse_args([]).matrix_block == 1
+    assert parser.parse_args([]).matrix_block == 8
     assert parser.parse_args([]).input_memory == "l1"
+    assert parser.parse_args([]).output_memory == "dram"
     assert parser.parse_args(["--input-memory", "dram"]).input_memory == "dram"
+    assert parser.parse_args(["--output-memory", "l1"]).output_memory == "l1"
     per_tensor = parser.parse_args(["--r-memory", "l1", "--x0-memory", "dram"])
     assert per_tensor.r_memory == "l1"
     assert per_tensor.x0_memory == "dram"
