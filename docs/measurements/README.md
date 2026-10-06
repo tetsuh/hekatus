@@ -32,6 +32,9 @@ named-container wrapper:
 
 1. Before and after each invocation, run `docker ps --format '{{.Names}}'
 and require zero running containers. Never stop another container.
+Prior cycle-budget records collapsed producer/consumer causes and did not
+serialize elapsed/limit ticks, so their startup attribution remains uncertain;
+new runs serialize named failure checks and diagnostics.
 2. Run one Watcher-enabled, one-frame validation with the 60-second outer cap;
 it is not timing evidence.
 3. If it passes, run one no-Watcher 60-second timing attempt. If that passes,
@@ -42,7 +45,9 @@ run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.
 
 Every run remains frame-count terminated; the frame interval is a harness
-parameter, not an acquisition-rate claim. The run budget includes an explicit
+parameter, not an acquisition-rate claim. For the planned 60,000-frame, 1 ms
+run, P99.9 has sufficient N (>=20,000) while P99.99 remains insufficient
+(N < 200,000). The run budget includes an explicit
 100 ms startup allowance converted at the configured AICLK; Watcher validation
 also has its separate explicit overhead margin. If the ring is full, the producer
 uses drop-new: the attempted frame is counted as overflow/dropped, never waits

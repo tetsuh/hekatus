@@ -171,12 +171,6 @@ void kernel_main() {
     summary[10] = static_cast<std::uint32_t>(failure_limit_ticks);
     summary[11] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
     summary[12] = failure_code != 0;
-    summary[7] = failure_code;
-    summary[8] = static_cast<std::uint32_t>(failure_elapsed_ticks);
-    summary[9] = static_cast<std::uint32_t>(failure_elapsed_ticks >> 32);
-    summary[10] = static_cast<std::uint32_t>(failure_limit_ticks);
-    summary[11] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
-    summary[12] = failure_code != 0;
     cb_push_back(cb_timestamp, 1);
     cb_wait_front(cb_timestamp, 1);
     noc_async_write_page(0, stats, get_read_ptr(cb_timestamp));
