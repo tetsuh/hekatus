@@ -1,5 +1,4 @@
 import json
-import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -283,7 +282,7 @@ def _dummy_combined_run(repeats: int = 3) -> dict:
     }
 
 
-def test_issue101_raw_artifact_survives_builder_failure_and_recovers(tmp_path, monkeypatch):
+def test_issue101_raw_artifact_survives_builder_failure(tmp_path, monkeypatch):
     output_dir = tmp_path / "device-output"
     output_dir.mkdir()
     (output_dir / "env-1.json").write_text(
@@ -305,43 +304,21 @@ def test_issue101_raw_artifact_survives_builder_failure_and_recovers(tmp_path, m
     raw_path = output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
     assert raw_path.exists()
     raw = json.loads(raw_path.read_text())
+    assert raw["raw_schema"] == issue101.ISSUE101_RAW_SCHEMA
+    assert raw["artifact_file"] == raw_path.name
+    assert isinstance(raw["run_id"], str)
+    assert raw["run"]["run_id"] == raw["run_id"]
     assert len(raw["correctness_results"]) == 9
     assert len(raw["performance_results"]) == 4
     assert len(raw["performance_results"][0]["seconds_per_launch_samples"]) == 3
     assert raw["telemetry"]["environment"]["board_info"]["board_id"] == "board-only"
+    assert raw["telemetry"]["run_id"] == raw["run_id"]
+    assert raw["telemetry"]["normalized_environment"] is not None
+    assert raw["telemetry"]["power_trace"]["run_id"] == raw["run_id"]
     assert len(raw["telemetry"]["power_trace"]["samples"]) == 1
-    assert subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(raw_path)],
-        check=False,
-        capture_output=True,
-        text=True,
-    ).returncode != 0
-
-    recovered = issue101.recover_combined_record(raw_path)
-    assert recovered["environment"]["board"]["serial"] == "board-only"
-    assert recovered["environment"]["board_serial_identity"]["alias_applied"] is True
-    assert len(recovered["measurement"]["correctness_cases"]) == 9
-    assert len(recovered["measurement"]["performance_rows"]) == 4
-    assert len(recovered["measurement"]["performance_rows"][0]["seconds_per_launch_samples"]) == 3
-    assert recovered["measurement"]["power_clock_provenance"]["samples"] == 1
-
-
-def test_issue101_recovery_cli_writes_host_only_record(tmp_path):
-    output_dir = tmp_path / "device-output"
-    output_dir.mkdir()
-    (output_dir / "env-1.json").write_text(
-        json.dumps(_raw_environment({"board_type": "p150a", "board_id": "board-only"}))
-    )
-    (output_dir / "power-1.csv").write_text(
-        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
-        "2026-01-01T00:00:00+00:00,75,1350,60.0\n"
-    )
-    raw_path = issue101.write_raw_artifact(
-        _dummy_combined_run(), output_dir=output_dir, repeats=3
-    )
-    output_path = tmp_path / "recovered.json"
-
-    assert issue101.main(["--recover-raw", str(raw_path), "--output", str(output_path)]) == 0
-    recovered = json.loads(output_path.read_text())
-    assert recovered["status"] == "pass"
-    assert recovered["raw_artifact"]["file"] == raw_path.name
+    assert raw["artifact_status"] == "failed"
+    assert raw["failure"]["stage"] == "record_construction"
+    assert raw["run"]["failure_stage"] == "record_construction"
+    assert "/home/private/source" not in json.dumps(raw)
+    assert "hostname" not in json.dumps(raw)
+    assert "username" not in json.dumps(raw)

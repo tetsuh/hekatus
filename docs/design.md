@@ -1227,7 +1227,8 @@ the 0.01 gate. Relative errors are 0.004334951, 0.004444859, 0.004587267,
 0.004311041 in the recorded case order. It carries the p150a board identity,
 firmware 19.6.0.0, KMD 2.11.0, release 0.75.0, image digest, pre-run harness
 commit, raw pre-builder artifact provenance, power trace, and cleanup evidence.
-No reset or health recovery was required. The prior explicit FP32-state/block-4
+No reset or post-run health probe was required. The raw artifact is retained for
+audit; rebuilding is deferred to Issue #102. The prior explicit FP32-state/block-4
 L=32/batch=8,192 test remains a comparison row, not new-default evidence.
 
 BF16 state is selected because the BF16-rounded-R input already bounds the

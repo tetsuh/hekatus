@@ -252,7 +252,7 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   clear docker state before and after. The power trace is
   `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv`;
   complete pre-builder raw JSON was written atomically outside the repository,
-  and host recovery was validated without a second device session.
+  and the raw artifact is retained for audit; rebuilding is deferred to Issue #102.
 - The measured L=32/batch=8,192 new-default p50 denominator is
   **78.810716 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
   therefore **1.2689–1.6178 cards**, or 2 physical cards when rounded up.

@@ -31,8 +31,9 @@ BF16-rounded-R correctness rows, each below the 0.01 gate, and the companion
 power trace `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv`.
 The recorded board exposed only `board_id`; the named alias rule records it as
 serial identity after validating the absence of an explicit serial. No reset or
-health recovery was required, and docker cleanup was zero before and after the
-single wrapper invocation.
+post-run health probe was required, and docker cleanup was zero before and after the
+single wrapper invocation. The raw artifact is retained for audit; rebuilding is
+deferred to Issue #102.
 
 The policy at both DEST and L1 boundaries is **fail-fast**. `prepare` validates
 DEST usage and then L1 usage before tensor allocation; `run_newton_schulz_kernel`

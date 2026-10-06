@@ -423,7 +423,6 @@ def _filename_run_id(path: Path, artifact_kind: str) -> str | None:
     prefixes = {
         "environment": ("env-", ".json"),
         "power": ("power-", ".csv"),
-        "raw": (ISSUE101_RAW_OUTPUT_PREFIX, ".json"),
     }
     try:
         prefix, suffix = prefixes[artifact_kind]
@@ -473,16 +472,10 @@ def _single_artifact(
     pattern: str,
     *,
     run_id: str | None = None,
-    artifact_kind: str | None = None,
+    artifact_kind: str,
 ) -> Path:
     """Select one artifact, never guessing among runs in a reused directory."""
     matches = sorted(output_dir.glob(pattern))
-    if artifact_kind is None:
-        artifact_kind = {
-            "env-*.json": "environment",
-            "power-*.csv": "power",
-            ISSUE101_RAW_OUTPUT_GLOB: "raw",
-        }.get(pattern)
     if run_id is not None:
         run_id = _validate_run_id(run_id)
     if len(matches) == 0:
@@ -503,16 +496,7 @@ def _single_artifact(
 
     selected = []
     for path in matches:
-        if artifact_kind is None:
-            # A caller that does not describe the artifact can only use the
-            # filename token.  All production callers provide a kind.
-            identities = {
-                identity
-                for identity in (_filename_run_id(path, "raw"),)
-                if identity is not None
-            }
-        else:
-            identities = _artifact_run_ids(path, artifact_kind)
+        identities = _artifact_run_ids(path, artifact_kind)
         if run_id in identities:
             selected.append(path)
     if len(selected) != 1:
@@ -669,7 +653,7 @@ def normalize_environment(raw: dict) -> dict:
 def _captured_environment_snapshot(
     raw: dict, normalized: dict, *, run_id: str | None
 ) -> dict:
-    """Complete a live snapshot once; recovery never calls this helper."""
+    """Complete a live snapshot once for record construction."""
     environment = _sanitize_metadata(normalized)
     captured_at = environment.get("captured_at") or raw.get("captured_at")
     if captured_at is None:
@@ -1034,12 +1018,11 @@ def _record_from_parts(
                 },
             },
         },
-        "recovery": {
-            "run_id": run_id,
+        "run_protocol": {
             "timeout": False,
             "abnormal_exit": False,
             "reset_performed": False,
-            "stage1_health_probe": "not needed after normal closure",
+            "stage1_health_probe": "not required after normal closure",
             "docker_ps_before_each_run": "recorded by the outer device protocol",
             "docker_ps_after_each_run": "recorded by the outer device protocol",
         },
@@ -1049,6 +1032,7 @@ def _record_from_parts(
             "Raw 1,000-launch samples and p50/p99/p99.9 values are retained per performance row.",
             "TFLOPS fields are explicitly p50-derived and fastest-launch-derived.",
             "The raw artifact retains the complete pre-builder environment and power samples.",
+            "The raw artifact is persisted for audit; rebuilding is deferred to Issue #102.",
             "No host name or user-specific absolute path is included in this record.",
         ],
     }
@@ -1152,7 +1136,6 @@ def _raw_artifact_payload(
     artifact_file: str,
     telemetry: dict | None = None,
     artifact_failure: dict | None = None,
-    recovery_run: dict | None = None,
 ) -> dict:
     """Capture every builder input before any record construction is attempted."""
     captured_telemetry = telemetry if telemetry is not None else _capture_telemetry(
@@ -1189,10 +1172,6 @@ def _raw_artifact_payload(
         payload["failure"] = _sanitize_metadata(run["failure"])
     if run.get("secondary_failures"):
         payload["secondary_failures"] = _sanitize_metadata(run["secondary_failures"])
-    if recovery_run is not None:
-        payload["recovery_run"] = _sanitize_metadata(
-            _set_run_id(recovery_run, run_id)
-        )
     return payload
 
 
@@ -1215,7 +1194,6 @@ def write_raw_artifact(
     repeats: int = ISSUE100_LAUNCHES,
     telemetry: dict | None = None,
     artifact_failure: dict | None = None,
-    recovery_run: dict | None = None,
     run_id: str | None = None,
     raw_artifact_path: Path | None = None,
     legacy_name: bool = False,
@@ -1254,7 +1232,6 @@ def write_raw_artifact(
             artifact_file=artifact_path.name,
             telemetry=telemetry,
             artifact_failure=artifact_failure,
-            recovery_run=recovery_run,
         ),
     )
     return artifact_path
@@ -1302,15 +1279,14 @@ def persist_raw_and_build(
             prepared_run, "record_construction", exc
         )
         try:
-            # Keep the same raw basename so host recovery sees one coherent
-            # artifact whose run_id and failure metadata agree.
+            # Keep the same raw basename so the persisted artifact remains
+            # coherent with the run_id and failure metadata.
             write_raw_artifact(
                 failed_run,
                 output_dir=output_dir,
                 repeats=repeats,
                 telemetry=telemetry,
                 artifact_failure=failure,
-                recovery_run=prepared_run,
                 run_id=run_id,
                 raw_artifact_path=raw_path,
                 overwrite=True,
@@ -1328,192 +1304,6 @@ def persist_raw_and_build(
     return raw_path, record
 
 
-def _load_selected_raw_artifact(
-    source: Path, *, run_id: str | None = None
-) -> tuple[Path, dict]:
-    """Select a raw artifact by its embedded identity, not directory order."""
-    source = Path(source)
-    requested = _validate_run_id(run_id, source="run_id") if run_id else None
-    if source.is_dir():
-        candidates = sorted(source.glob(ISSUE101_RAW_OUTPUT_GLOB))
-        if not candidates:
-            raise RuntimeError(
-                f"no raw artifacts in {source}; an explicit run_id cannot be resolved"
-            )
-        if requested is None and len(candidates) != 1:
-            raise RuntimeError(
-                f"ambiguous raw artifacts in {source}: found {len(candidates)}; "
-                "explicit run_id is required"
-            )
-        selected: list[tuple[Path, dict]] = []
-        for candidate in candidates:
-            try:
-                candidate_payload = json.loads(candidate.read_text())
-            except (OSError, TypeError, ValueError) as exc:
-                raise ValueError(
-                    f"cannot validate raw artifact {candidate.name}: {exc}"
-                ) from exc
-            if not isinstance(candidate_payload, dict):
-                raise TypeError(f"raw artifact {candidate.name} is not an object")
-            candidate_id = candidate_payload.get("run_id")
-            if candidate_id is None:
-                raise ValueError(f"raw artifact {candidate.name} has no run_id")
-            try:
-                candidate_id = _validate_run_id(
-                    candidate_id, source=f"raw artifact {candidate.name} run_id"
-                )
-            except ValueError:
-                if requested is None:
-                    raise
-                continue
-            if requested is None or candidate_id == requested:
-                selected.append((candidate, candidate_payload))
-        if len(selected) != 1:
-            match_text = "none" if not selected else str(len(selected))
-            identity_text = requested or "<missing>"
-            raise RuntimeError(
-                f"expected exactly one raw artifact for explicit run_id {identity_text!r} "
-                f"in {source}, found {match_text}; refusing ambiguous association"
-            )
-        return selected[0]
-    if not source.is_file():
-        raise FileNotFoundError(f"raw artifact does not exist: {source}")
-    payload = json.loads(source.read_text())
-    if not isinstance(payload, dict):
-        raise TypeError(f"raw artifact {source.name} is not an object")
-    payload_id = payload.get("run_id")
-    if payload_id is None:
-        if requested is not None:
-            raise ValueError(f"raw artifact {source.name} has no run_id")
-    else:
-        payload_id = _validate_run_id(payload_id, source="raw artifact run_id")
-        if requested is not None and payload_id != requested:
-            raise ValueError(
-                f"raw artifact {source.name} has run_id {payload_id!r}, "
-                f"not requested run_id {requested!r}"
-            )
-    return source, payload
-
-
-def _validate_sanitized_basename(value: Any, *, field: str) -> str:
-    """Ensure provenance stores a basename rather than a recovery-host path."""
-    if (
-        not isinstance(value, str)
-        or not value
-        or Path(value).name != value
-        or "/" in value
-        or "\\\\" in value
-    ):
-        raise ValueError(f"{field} must be a sanitized artifact basename")
-    return value
-
-
-def _validate_raw_payload(
-    raw_path: Path, payload: dict, *, run_id: str | None = None
-) -> tuple[str, dict, dict, dict, int, dict]:
-    """Validate all captured associations before recovery can build a record."""
-    if payload.get("raw_schema") != ISSUE101_RAW_SCHEMA:
-        raise ValueError(f"unsupported raw artifact schema in {raw_path.name}")
-    payload_run_id = _validate_run_id(payload.get("run_id"), source="raw artifact run_id")
-    if run_id is not None and payload_run_id != _validate_run_id(run_id):
-        raise ValueError("raw artifact run_id does not match requested run_id")
-    artifact_file = _validate_sanitized_basename(
-        payload.get("artifact_file"), field="raw artifact file"
-    )
-    telemetry = payload.get("telemetry")
-    if not isinstance(telemetry, dict):
-        raise TypeError("raw artifact is missing telemetry")
-    telemetry_run_id = _validate_run_id(
-        telemetry.get("run_id"), source="raw telemetry run_id"
-    )
-    if telemetry_run_id != payload_run_id:
-        raise ValueError("raw telemetry and artifact have different run_id values")
-    environment_file = _validate_sanitized_basename(
-        telemetry.get("environment_file"), field="raw environment file"
-    )
-    power_trace = telemetry.get("power_trace")
-    if not isinstance(power_trace, dict):
-        raise TypeError("raw artifact is missing power data")
-    _validate_captured_power_trace(power_trace, run_id=payload_run_id)
-    power_file = _validate_sanitized_basename(
-        power_trace.get("file"), field="raw power trace file"
-    )
-    for filename, kind in ((environment_file, "environment"), (power_file, "power")):
-        token = _filename_run_id(Path(filename), kind)
-        if token is not None and token != payload_run_id:
-            raise ValueError(
-                f"raw {kind} artifact {filename} is associated with run_id {token!r}, "
-                f"not {payload_run_id!r}"
-            )
-    normalized_environment = telemetry.get("normalized_environment")
-    if not isinstance(normalized_environment, dict):
-        raise TypeError(
-            "raw artifact is missing captured telemetry.normalized_environment"
-        )
-    _validate_captured_environment(normalized_environment, run_id=payload_run_id)
-    raw_environment = telemetry.get("environment")
-    if not isinstance(raw_environment, dict):
-        raise TypeError("raw artifact is missing captured environment")
-    raw_environment_run_id = raw_environment.get("run_id")
-    if raw_environment_run_id is not None and _validate_run_id(
-        raw_environment_run_id, source="raw environment run_id"
-    ) != payload_run_id:
-        raise ValueError("raw environment and artifact have different run_id values")
-    recovery_run = payload.get("recovery_run", payload.get("run"))
-    if not isinstance(recovery_run, dict):
-        raise TypeError("raw artifact is missing run data")
-    recovery_run_id = _validate_run_id(
-        recovery_run.get("run_id"), source="raw run data run_id"
-    )
-    if recovery_run_id != payload_run_id:
-        raise ValueError("raw run data and artifact have different run_id values")
-    if recovery_run.get("status") != "pass":
-        stage = recovery_run.get("failure_stage", "unknown")
-        raise ValueError(
-            f"raw artifact failed at stage {stage}; no complete record is recoverable"
-        )
-    configs = payload.get("configs")
-    if not isinstance(configs, dict):
-        raise TypeError("raw artifact is missing configs")
-    try:
-        repeats = int(configs["launches_per_row"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError("raw artifact has invalid launches_per_row") from exc
-    if repeats <= 0:
-        raise ValueError("raw artifact launches_per_row must be positive")
-    return (
-        payload_run_id,
-        normalized_environment,
-        power_trace,
-        recovery_run,
-        repeats,
-        {"file": artifact_file},
-    )
-
-
-def recover_combined_record(
-    raw_path: Path, *, run_id: str | None = None
-) -> dict:
-    """Rebuild a record from captured provenance without reading recovery-host state."""
-    selected_path, payload = _load_selected_raw_artifact(raw_path, run_id=run_id)
-    (
-        captured_run_id,
-        normalized_environment,
-        power_trace,
-        recovery_run,
-        repeats,
-        raw_artifact,
-    ) = _validate_raw_payload(selected_path, payload, run_id=run_id)
-    return _record_from_parts(
-        recovery_run,
-        environment=normalized_environment,
-        power_trace=power_trace,
-        repeats=repeats,
-        raw_artifact_name=raw_artifact["file"],
-        run_id=captured_run_id,
-    )
-
-
 def _initial_failed_run(stage: str, error: BaseException | str) -> dict:
     return _mark_run_failed(
         {
@@ -1527,32 +1317,9 @@ def _initial_failed_run(stage: str, error: BaseException | str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the device session, or recover its record without importing ttnn."""
+    """Run the device session and persist its raw artifact before building."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--recover-raw", type=Path)
-    parser.add_argument(
-        "--run-id",
-        help="select this run_id when --recover-raw names a reused output directory",
-    )
-    parser.add_argument("--output", type=Path)
-    args = parser.parse_args(argv)
-    if args.recover_raw is not None:
-        if args.output is None:
-            parser.error("--output is required with --recover-raw")
-        record = recover_combined_record(args.recover_raw, run_id=args.run_id)
-        destination = args.output.resolve()
-        source = args.recover_raw.resolve()
-        captured_raw_name = record.get("raw_artifact", {}).get("file")
-        if destination == source or (
-            source.is_dir()
-            and destination.parent == source
-            and destination.name == captured_raw_name
-        ):
-            parser.error("--output must not overwrite the captured raw artifact")
-        _atomic_json_write(args.output, record)
-        print(f"recovered combined record -> {args.output}", flush=True)
-        return 0
-
+    parser.parse_args(argv)
     output_dir = Path(os.environ.get("HEKATUS_TT_OUTPUT_DIR", "/out"))
     try:
         import ttnn

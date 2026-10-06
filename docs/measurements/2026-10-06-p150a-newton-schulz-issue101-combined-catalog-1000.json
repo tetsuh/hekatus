@@ -10241,11 +10241,11 @@
       }
     }
   },
-  "recovery": {
+  "run_protocol": {
     "timeout": false,
     "abnormal_exit": false,
     "reset_performed": false,
-    "stage1_health_probe": "not needed after normal closure",
+    "stage1_health_probe": "not required after normal closure",
     "docker_ps_before_entry": 0,
     "docker_ps_before_wrapper": 0,
     "docker_ps_after_wrapper": 0,
@@ -10260,7 +10260,8 @@
     "The raw artifact retains the complete pre-builder environment and power samples.",
     "No host name or user-specific absolute path is included in this record.",
     "Telemetry exposed board_id without serial; the recorded board serial uses the named board_id alias rule.",
-    "The raw pre-builder artifact was captured atomically outside the repository and is not committed."
+    "The raw pre-builder artifact was captured atomically outside the repository and is not committed.",
+    "The raw artifact is persisted for audit; rebuilding is deferred to Issue #102."
   ],
   "raw_artifact": {
     "schema": "adr-0005-issue101-combined-raw-v1",
