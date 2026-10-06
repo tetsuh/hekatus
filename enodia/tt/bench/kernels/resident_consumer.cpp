@@ -87,6 +87,7 @@ void kernel_main() {
                 failure_limit_ticks = run_budget_ticks;
                 if (!error_sent) {
                     noc_semaphore_inc(error_noc, 1);
+                    noc_async_atomic_barrier();
                     error_sent = true;
                 }
                 break;
@@ -120,6 +121,7 @@ void kernel_main() {
             failure_limit_ticks = per_frame_work_budget_ticks;
             if (!error_sent) {
                 noc_semaphore_inc(error_noc, 1);
+                noc_async_atomic_barrier();
                 error_sent = true;
             }
         } else if (end - run_start >= run_budget_ticks) {
@@ -129,6 +131,7 @@ void kernel_main() {
             failure_limit_ticks = run_budget_ticks;
             if (!error_sent) {
                 noc_semaphore_inc(error_noc, 1);
+                noc_async_atomic_barrier();
                 error_sent = true;
             }
         }
@@ -152,6 +155,7 @@ void kernel_main() {
         }
         frames_consumed += 1;
         noc_semaphore_inc(free_noc, 1);
+        noc_async_atomic_barrier();
         if (error_flag != 0) {
             break;
         }

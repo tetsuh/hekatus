@@ -515,6 +515,53 @@ def test_consumer_budget_failure_cancels_producer_without_control_sync():
     assert "frames_dropped += 1" in producer
 
 
+def test_every_resident_noc_signal_and_write_has_a_matching_barrier():
+    producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
+    consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
+
+    def assert_signal_barriers(source, signal_count):
+        assert source.count("noc_semaphore_inc(") == signal_count
+        positions = []
+        cursor = 0
+        while (position := source.find("noc_semaphore_inc(", cursor)) >= 0:
+            positions.append(position)
+            cursor = position + 1
+        for position in positions:
+            barrier = source.find("noc_async_atomic_barrier()", position)
+            assert barrier >= 0
+            next_signal = source.find("noc_semaphore_inc(", position + 1)
+            assert next_signal < 0 or barrier < next_signal
+
+    def assert_write_barriers(source, write_count):
+        assert source.count("noc_async_write_page(") == write_count
+        positions = []
+        cursor = 0
+        while (position := source.find("noc_async_write_page(", cursor)) >= 0:
+            positions.append(position)
+            cursor = position + 1
+        for position in positions:
+            barrier = source.find("noc_async_write_barrier()", position)
+            assert barrier >= 0
+            next_write = source.find("noc_async_write_page(", position + 1)
+            assert next_write < 0 or barrier < next_write
+
+    assert "noc_async_read_page(" not in producer + consumer
+    assert_signal_barriers(producer, 2)
+    assert_signal_barriers(consumer, 4)
+    assert_write_barriers(producer, 3)
+    assert_write_barriers(consumer, 2)
+    assert producer.index("noc_async_write_page(ready_count") < producer.index(
+        "noc_semaphore_inc(ready_noc"
+    )
+    assert producer.index("noc_async_write_page(0, stats") < producer.index(
+        "noc_semaphore_inc(done_noc"
+    )
+    assert "failure_consumer_empty_wait" in consumer
+    assert "failure_consumer_fixed_work_budget" in consumer
+    assert "failure_run_wide_budget" in consumer
+    assert "Drop-new policy" in producer
+
+
 def test_record_rejects_missing_environment_provenance():
     config = _config()
     with pytest.raises(ValueError, match="environment"):

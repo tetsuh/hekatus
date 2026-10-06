@@ -146,6 +146,7 @@ void kernel_main() {
         noc_async_write_barrier();
         cb_pop_front(cb_scratch, 1);
         noc_semaphore_inc(ready_noc, 1);
+        noc_async_atomic_barrier();
         ready_count += 1;
     }
 
@@ -184,4 +185,5 @@ void kernel_main() {
     noc_async_write_barrier();
     cb_pop_front(cb_scratch, 1);
     noc_semaphore_inc(done_noc, 1);
+    noc_async_atomic_barrier();
 }
