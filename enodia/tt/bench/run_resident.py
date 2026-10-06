@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import struct
 import sys
 from pathlib import Path
 from typing import Any
@@ -323,6 +324,11 @@ def _environment(path: Path) -> dict[str, Any]:
         raise ValueError(f"cannot read environment JSON: {path.name}: {exc}") from exc
 
 
+def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
+
+
 def _write(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(strict_json_dumps(payload, indent=2) + "\n")
@@ -333,6 +339,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", default=None)
+    parser.add_argument("--raw-timestamps-out", type=Path, default=None)
     parser.add_argument("--frame-count", type=int, default=100)
     parser.add_argument("--frame-interval-ticks", type=int, default=1_350_000)
     parser.add_argument("--producer-core", type=_core, default=(0, 0))
@@ -388,6 +395,9 @@ def main(argv: list[str] | None = None) -> int:
         result = _run_device(ttnn, device, config, watcher=args.watcher)
     finally:
         ttnn.close_device(device)
+
+    if args.raw_timestamps_out is not None:
+        _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
     record = build_measurement_record(
         config=config,
