@@ -108,9 +108,9 @@ qualifying pair, not silently discarded pairs.
 
 ## Source inspection and torn-read status
 
-The fixed v0.75.0 tt-metal source checkout used for the board-free inspection
-was revision `901dd9ce93816ffd1fd185b801fc727065e9ae07`; only relative source
-paths and line ranges are recorded here:
+The pinned v0.75.0 tt-metal source revision used for the board-free inspection
+was `d9a68815f5fcf08a5bfbffb6f1f811823fba8edd`; only relative source paths and
+line ranges are recorded here:
 
 - `tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-250` implements
   `get_timestamp()` as low-register read followed by high-register read. The
