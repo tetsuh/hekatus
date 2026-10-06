@@ -594,6 +594,36 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
     ]
 
 
+def test_wrapper_reports_issue100_comparison_output_path(tmp_path):
+    """The comparison runner's fixed output path is visible to callers."""
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "comparison"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--", "--device-id", "0", "--repeats", "1"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue100_same_run.py",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert f"results     -> {output_dir / 'issue100-same-run.json'}" in completed.stdout
+    assert "results-" not in completed.stdout
+
+
 def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):
     """The default invocation records the exact immutable image provenance."""
     expected_image = (

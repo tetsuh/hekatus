@@ -1240,7 +1240,8 @@ The boundary rule is **fail-fast, never fallback**. `prepare` checks the DEST
 slot limit and then L1 preflight before device tensor allocation. A DEST or L1
 failure raises `ValueError` with the selected block and accounting; the runner
 records that same failure. No call silently changes block size, memory
-placement, or synchronization mode to make a row pass.
+placement, or synchronization mode to make a row pass. This public default and
+fail-fast contract is recorded in [ADR-0013](adr/0013-newton-schulz-default-configuration.md).
 
 The board-free L1 ledger for the measured defaults (R/X0 L1, DRAM output, BF16
 state, fused S, HiFi3, block 8, double buffer, full-sync DEST, and the 110-core

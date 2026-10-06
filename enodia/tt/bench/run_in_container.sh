@@ -83,6 +83,12 @@ STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 ENV_JSON="${OUT_DIR}/env-${STAMP}.json"
 POWER_CSV="${OUT_DIR}/power-${STAMP}.csv"
 RESULTS="${OUT_DIR}/results-${STAMP}.json"
+RESULT_PATH="${RESULTS}"
+# This comparison runner writes its fixed result under the container's /out
+# mount, so report the corresponding host path instead of an unused timestamp.
+if [[ "${RUNNER##*/}" == "newton_schulz_issue100_same_run.py" ]]; then
+  RESULT_PATH="${OUT_DIR}/issue100-same-run.json"
+fi
 
 TELEMETRY="${REPO_ROOT}/enodia/tt/bench/telemetry.py"
 PINNED_FLAG=()
@@ -238,5 +244,5 @@ if [[ "${SAMPLER_STATUS}" != intentional ]]; then
 fi
 
 echo
-echo "results     -> ${RESULTS}"
+echo "results     -> ${RESULT_PATH}"
 echo "power trace -> ${POWER_CSV}"
