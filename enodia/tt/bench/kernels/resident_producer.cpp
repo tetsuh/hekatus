@@ -133,6 +133,18 @@ void kernel_main() {
         frames_produced += 1;
     }
 
+    std::uint32_t consumer_error = 0;
+    cb_reserve_back(cb_scratch, 1);
+    auto* control_probe = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
+        get_write_ptr(cb_scratch));
+    noc_async_read_page(0, control, get_write_ptr(cb_scratch));
+    noc_async_read_barrier();
+    cb_push_back(cb_scratch, 1);
+    cb_wait_front(cb_scratch, 1);
+    consumer_error = control_probe[control_error_word];
+    cb_pop_front(cb_scratch, 1);
+    error_flag = error_flag | consumer_error;
+
     cb_reserve_back(cb_scratch, 1);
     auto* control_page = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_write_ptr(cb_scratch));

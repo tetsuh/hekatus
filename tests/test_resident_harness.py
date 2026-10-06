@@ -341,6 +341,7 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "failure_producer_pacing_wait" in producer
     assert "failure_run_wide_budget" in producer
     assert "failure_elapsed_ticks" in producer
+    assert "consumer_error = control_probe[control_error_word]" in producer
     assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
     assert "ready_word" in consumer and "free_word" in consumer
@@ -353,6 +354,14 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "per_frame_work_budget_ticks" in consumer
     assert "noc_inline_dw_write" not in consumer
     assert "noc_semaphore" not in consumer
+
+
+def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
+    runner = Path("enodia/tt/bench/run_resident.py").read_text()
+    assert "control = ttnn.zeros" in runner
+    assert "memory_config=_sharded_pages_config(ttnn, config, 1)" in runner
+    assert "control.buffer_address()" in runner
+    assert "control_compile" in runner
 
 
 def test_record_rejects_missing_environment_provenance():
