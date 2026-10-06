@@ -25,6 +25,8 @@ MAX_WATCHER_TIMEOUT_SECONDS = 60
 MAX_OUTER_TIMEOUT_SECONDS = MAX_TIMING_TIMEOUT_SECONDS
 MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
+RESIDENT_SEMAPHORE_COUNT = 4
+SEMAPHORE_BYTES = 4
 UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
@@ -195,10 +197,11 @@ def validate_configuration(
         raise ResidentPreflightError(
             "designated_timestamp_core must equal consumer_core; all intervals use one clock"
         )
-    if ring_pages * PAGE_BYTES + 3 * PAGE_BYTES > MAX_RING_L1_BYTES:
+    l1_bytes = ring_pages * PAGE_BYTES + 3 * PAGE_BYTES + RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES
+    if l1_bytes > MAX_RING_L1_BYTES:
         raise ResidentPreflightError(
             f"ring_pages={ring_pages} exceeds the L1 preflight budget "
-            f"({MAX_RING_L1_BYTES} bytes including scratch pages)"
+            f"({MAX_RING_L1_BYTES} bytes including scratch pages and semaphores)"
         )
     return ResidentConfig(
         frame_count=frame_count,
@@ -730,6 +733,8 @@ __all__ = [
     "MAX_WATCHER_TIMEOUT_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
+    "RESIDENT_SEMAPHORE_COUNT",
+    "SEMAPHORE_BYTES",
     "UINT32_MAX",
     "ResidentConfig",
     "ResidentPreflightError",

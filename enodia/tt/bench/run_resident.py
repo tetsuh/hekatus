@@ -146,7 +146,6 @@ def _program(
     producer_compile = [*ring_compile, *control_compile, *producer_stats_compile]
     consumer_compile = [
         *ring_compile,
-        *control_compile,
         *producer_anchor_compile,
         *timestamp_compile,
         *consumer_stats_compile,
@@ -173,7 +172,6 @@ def _program(
         config.consumer_core,
         [
             ring_address,
-            control_address,
             producer_anchor_address,
             timestamp_address,
             consumer_stats_address,
@@ -208,6 +206,8 @@ def _program(
         semaphores=[
             ttnn.SemaphoreDescriptor(0, ttnn.CoreType.WORKER, consumer_ranges, 0),
             ttnn.SemaphoreDescriptor(1, ttnn.CoreType.WORKER, producer_ranges, 0),
+            ttnn.SemaphoreDescriptor(2, ttnn.CoreType.WORKER, consumer_ranges, 0),
+            ttnn.SemaphoreDescriptor(3, ttnn.CoreType.WORKER, producer_ranges, 0),
         ],
         cbs=[
             _cb(ttnn, index=0, core_ranges=producer_ranges),

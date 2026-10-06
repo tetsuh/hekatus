@@ -7,48 +7,47 @@
 namespace {
 constexpr std::uint32_t cb_timestamp = 1;
 constexpr std::uint32_t page_words = 32 * 32;
-constexpr std::uint32_t control_error_word = 0;
-constexpr std::uint32_t control_done_word = 1;
-constexpr std::uint32_t control_produced_word = 3;
 constexpr std::uint32_t ready_semaphore_id = 0;
 constexpr std::uint32_t free_semaphore_id = 1;
+constexpr std::uint32_t done_semaphore_id = 2;
+constexpr std::uint32_t error_semaphore_id = 3;
 constexpr std::uint32_t failure_run_wide_budget = 1;
 constexpr std::uint32_t failure_consumer_empty_wait = 3;
 constexpr std::uint32_t failure_consumer_fixed_work_budget = 4;
-constexpr std::uint32_t failure_other_check = 5;
 }
 
 void kernel_main() {
     const std::uint32_t ring_address = get_arg_val<std::uint32_t>(0);
-    const std::uint32_t control_address = get_arg_val<std::uint32_t>(1);
-    const std::uint32_t producer_anchor_address = get_arg_val<std::uint32_t>(2);
-    const std::uint32_t timestamp_address = get_arg_val<std::uint32_t>(3);
-    const std::uint32_t stats_address = get_arg_val<std::uint32_t>(4);
-    const std::uint32_t frame_count = get_arg_val<std::uint32_t>(5);
-    const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(6);
-    const std::uint32_t work_per_frame = get_arg_val<std::uint32_t>(7);
-    const std::uint32_t per_frame_work_budget_ticks = get_arg_val<std::uint32_t>(8);
+    const std::uint32_t producer_anchor_address = get_arg_val<std::uint32_t>(1);
+    const std::uint32_t timestamp_address = get_arg_val<std::uint32_t>(2);
+    const std::uint32_t stats_address = get_arg_val<std::uint32_t>(3);
+    const std::uint32_t frame_count = get_arg_val<std::uint32_t>(4);
+    const std::uint32_t ring_pages = get_arg_val<std::uint32_t>(5);
+    const std::uint32_t work_per_frame = get_arg_val<std::uint32_t>(6);
+    const std::uint32_t per_frame_work_budget_ticks = get_arg_val<std::uint32_t>(7);
     const std::uint64_t run_budget_ticks =
-        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(9))
-        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(10)) << 32);
+        static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(8))
+        | (static_cast<std::uint64_t>(get_arg_val<std::uint32_t>(9)) << 32);
 
     constexpr auto ring_args = TensorAccessorArgs<0>();
-    constexpr auto control_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
-    constexpr auto producer_anchor_args = TensorAccessorArgs<control_args.next_compile_time_args_offset()>();
+    constexpr auto producer_anchor_args = TensorAccessorArgs<ring_args.next_compile_time_args_offset()>();
     constexpr auto timestamp_args = TensorAccessorArgs<producer_anchor_args.next_compile_time_args_offset()>();
     constexpr auto stats_args = TensorAccessorArgs<timestamp_args.next_compile_time_args_offset()>();
     const auto ring = TensorAccessor(ring_args, ring_address);
-    const auto control = TensorAccessor(control_args, control_address);
     const auto producer_anchor = TensorAccessor(producer_anchor_args, producer_anchor_address);
     const auto timestamps = TensorAccessor(timestamp_args, timestamp_address);
     const auto stats = TensorAccessor(stats_args, stats_address);
 
     const std::uint64_t producer_anchor_noc = producer_anchor.get_noc_addr(0);
     const std::uint64_t noc_coord_mask = ~((std::uint64_t(1) << NOC_ADDR_COORD_SHIFT) - 1);
-    const std::uint64_t free_noc = (producer_anchor_noc & noc_coord_mask) | get_semaphore(free_semaphore_id);
+    const std::uint64_t free_noc =
+        (producer_anchor_noc & noc_coord_mask) | get_semaphore(free_semaphore_id);
+    const std::uint64_t error_noc =
+        (producer_anchor_noc & noc_coord_mask) | get_semaphore(error_semaphore_id);
     auto* ready_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
         get_semaphore(ready_semaphore_id));
-    auto* control_local = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(control_address);
+    auto* done_sem = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
+        get_semaphore(done_semaphore_id));
     std::uint32_t consumer_empty_count = 0;
     std::uint32_t frames_consumed = 0;
     std::uint32_t error_flag = 0;
@@ -61,27 +60,24 @@ void kernel_main() {
     std::uint64_t work_max_ticks = 0;
     std::uint32_t work_valid = 0;
     std::uint32_t startup_valid = 0;
+    bool error_sent = false;
     const std::uint64_t run_start = get_timestamp();
 
     while (true) {
         invalidate_l1_cache();
-        if (control_local[control_error_word] != 0) {
-            error_flag = 1;
-            failure_code = failure_other_check;
-            failure_elapsed_ticks = get_timestamp() - run_start;
-            failure_limit_ticks = run_budget_ticks;
+        const std::uint32_t required = frames_consumed + 1;
+        const std::uint32_t ready_count = *ready_sem;
+        if (*done_sem != 0 && ready_count == frames_consumed) {
             break;
         }
-        const std::uint32_t required = frames_consumed + 1;
         auto* payload = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
             ring_address + (frames_consumed % ring_pages) * page_words * sizeof(std::uint32_t));
-        if (*ready_sem < required) {
+        if (ready_count < required) {
             consumer_empty_count += 1;
         }
-        while (*ready_sem < required && control_local[control_error_word] == 0) {
+        while (*ready_sem < required) {
             invalidate_l1_cache();
-            if (control_local[control_done_word] != 0
-                && frames_consumed >= control_local[control_produced_word]) {
+            if (*done_sem != 0 && *ready_sem == frames_consumed) {
                 break;
             }
             if (get_timestamp() - run_start >= run_budget_ticks) {
@@ -89,22 +85,19 @@ void kernel_main() {
                 failure_code = failure_consumer_empty_wait;
                 failure_elapsed_ticks = get_timestamp() - run_start;
                 failure_limit_ticks = run_budget_ticks;
-                control_local[control_error_word] = 1;
+                if (!error_sent) {
+                    noc_semaphore_inc(error_noc, 1);
+                    error_sent = true;
+                }
                 break;
             }
         }
-        if (control_local[control_error_word] != 0) {
-            error_flag = 1;
-            if (failure_code == 0) {
-                failure_code = failure_other_check;
-                failure_elapsed_ticks = get_timestamp() - run_start;
-                failure_limit_ticks = run_budget_ticks;
-            }
-            break;
-        }
+        invalidate_l1_cache();
         if (*ready_sem < required) {
-            if (control_local[control_done_word] != 0
-                && frames_consumed >= control_local[control_produced_word]) {
+            if (*done_sem != 0 && *ready_sem == frames_consumed) {
+                break;
+            }
+            if (error_flag != 0) {
                 break;
             }
             continue;
@@ -125,13 +118,19 @@ void kernel_main() {
             failure_code = failure_consumer_fixed_work_budget;
             failure_elapsed_ticks = elapsed;
             failure_limit_ticks = per_frame_work_budget_ticks;
-            control_local[control_error_word] = 1;
+            if (!error_sent) {
+                noc_semaphore_inc(error_noc, 1);
+                error_sent = true;
+            }
         } else if (end - run_start >= run_budget_ticks) {
             error_flag = 1;
             failure_code = failure_run_wide_budget;
             failure_elapsed_ticks = end - run_start;
             failure_limit_ticks = run_budget_ticks;
-            control_local[control_error_word] = 1;
+            if (!error_sent) {
+                noc_semaphore_inc(error_noc, 1);
+                error_sent = true;
+            }
         }
 
         cb_reserve_back(cb_timestamp, 1);
@@ -154,14 +153,6 @@ void kernel_main() {
         frames_consumed += 1;
         noc_semaphore_inc(free_noc, 1);
         if (error_flag != 0) {
-            break;
-        }
-        if (control_local[control_done_word] != 0
-            && frames_consumed >= control_local[control_produced_word]) {
-            break;
-        }
-        if (frames_consumed >= frame_count) {
-            // Normal completion: producer-done/drain state owns termination status.
             break;
         }
     }

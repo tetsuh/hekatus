@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench.resident_harness import (
+    RESIDENT_SEMAPHORE_COUNT,
+    SEMAPHORE_BYTES,
     UINT32_MAX,
     ResidentConfig,
     ResidentPreflightError,
@@ -236,6 +238,13 @@ def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
         validate_run_budget_fits_outer_cap(longest, watcher=False)
 
 
+def test_resident_semaphore_l1_bytes_are_in_preflight_accounting():
+    source = Path("enodia/tt/bench/resident_harness.py").read_text()
+    assert RESIDENT_SEMAPHORE_COUNT == 4
+    assert SEMAPHORE_BYTES == 4
+    assert "RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES" in source
+
+
 @pytest.mark.parametrize("aiclk_mhz", [800, 1_350])
 def test_600_second_timing_cap_maximum_safe_frame_boundary(aiclk_mhz):
     interval_ticks = aiclk_mhz * 1_000
@@ -440,7 +449,7 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
 
     assert "noc_async_write_page" in producer
-    assert "noc_async_read_page" in producer
+    assert "noc_async_read_page" not in producer
     assert "control.get_noc_addr(0)" in producer
     assert "consumer_x" not in producer
     assert "noc_inline_dw_write" not in producer
@@ -452,16 +461,24 @@ def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     assert "failure_producer_pacing_wait" in producer
     assert "failure_run_wide_budget" in producer
     assert "failure_elapsed_ticks" in producer
-    assert "error_flag = error_flag | control_probe[control_error_word]" in producer
+    assert "control_probe" not in producer
+    assert "noc_async_read_page(0, control" not in producer
+    assert "error_semaphore_id" in producer
+    assert "*error_sem" in producer
+    assert "noc_semaphore_inc(done_noc, 1)" in producer
     assert "get_timestamp() - run_start >= run_budget_ticks" in producer
 
     assert "noc_semaphore_inc" in consumer
     assert "get_semaphore(ready_semaphore_id)" in consumer
-    assert "control_local[control_error_word] = 1" in consumer
+    assert "get_semaphore(done_semaphore_id)" in consumer
+    assert "error_semaphore_id" in consumer
+    assert "noc_semaphore_inc(error_noc, 1)" in consumer
+    assert "*done_sem" in consumer
+    assert "control_local" not in consumer
+    assert "control_done_word" not in consumer
+    assert "control_produced_word" not in consumer
     assert "get_timestamp() - run_start >= run_budget_ticks" in consumer
     assert "failure_consumer_empty_wait" in consumer
-    assert "Normal completion: producer-done/drain state owns termination status." in consumer
-    assert "frames_consumed >= frame_count) {\n            error_flag" not in consumer
     assert "failure_consumer_fixed_work_budget" in consumer
     assert "failure_run_wide_budget" in consumer
     assert "failure_elapsed_ticks" in consumer
@@ -479,9 +496,23 @@ def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
     assert "producer_anchor" in runner
     assert "SemaphoreDescriptor(0" in runner
     assert "SemaphoreDescriptor(1" in runner
+    assert "SemaphoreDescriptor(2" in runner
+    assert "SemaphoreDescriptor(3" in runner
+    assert "consumer_compile = [\n        *ring_compile,\n        *producer_anchor_compile" in runner
     assert "allow-budget-margin-over-cap" not in runner
     assert "_resolve_watcher_mode(args.watcher" in runner
     assert "validate_configuration(config, watcher=watcher)" in runner
+
+
+def test_consumer_budget_failure_cancels_producer_without_control_sync():
+    consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()
+    producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
+    assert "error_sent" in consumer
+    assert "if (error_flag != 0)" in consumer
+    assert "*error_sem != 0" in producer
+    assert "attempts_started = attempted + 1" in producer
+    assert "ready_count += 1" in producer
+    assert "frames_dropped += 1" in producer
 
 
 def test_record_rejects_missing_environment_provenance():
