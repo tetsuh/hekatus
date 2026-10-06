@@ -227,31 +227,35 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   at block 8 fit; the existing 1,024-case explicit block/fusion inventory
   remains covered by board-free preflight tests. The PR98/#96 row's stored
   78.78349 TFLOPS from p50 (about 78.8) remains historical evidence only. The
-  post-merge ADR-0005 record
-  `docs/measurements/2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json`
-  reports new-default L=32/batch=8,192 p50 78.049989 TFLOPS versus previous
-  default p50 66.050846 TFLOPS, with L=16 p50 values 15.815110 and 13.821636.
-  The immutable correctness-only rerun
-  `docs/measurements/2026-10-05-p150a-newton-schulz-issue101-default-correctness.json`
-  re-executed all nine named correctness cases under harness
-  `4466e3bb141632cb463ac2516ae5bf47252d248a`; all passed the 0.01 gate, including
-  L=32/batch=8,192 at relative error 0.004347643. The explicit FP32-state/block-4
-  L=32/batch=8,192 test is not used as new-default evidence.
-- The reproducible device commands were:
+  authoritative combined ADR-0005 record
+  `docs/measurements/2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json`
+  supersedes the earlier Issue #100 performance record and PR #101
+  correctness-only record; both remain immutable historical evidence. The
+  combined record uses harness `9f3db481fe555bc6d174831c166515aca32a3c43`,
+  reports new-default L=32/batch=8,192 p50 78.810716 TFLOPS versus previous
+  default p50 66.493968 TFLOPS, with L=16 p50 values 15.900200 and 13.819664,
+  and retains all four rows' p50/p99/p99.9 and 1,000 raw launches. All nine
+  correctness cases passed the 0.01 gate; the maximum relative error is
+  0.004587267, including L=32/batch=8,192 at 0.004347643. Telemetry exposed
+  board_id without serial, and the record names and validates the board-id
+  serial alias. The explicit FP32-state/block-4 row remains a comparison, not
+  new-default evidence.
+- The single-session reproducible device command was:
 
   ```bash
-  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
-    enodia/tt/bench/run_in_container.sh --pytest -s -m tt_device \
-    tests/test_newton_schulz_kernel.py::test_device_issue100_defaults_match_bf16_rounded_reference
-
-  env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=900 \
-    HEKATUS_TT_RUNNER=tools/newton_schulz_issue100_same_run.py \
-    enodia/tt/bench/run_in_container.sh <out-dir> -- \
-    --device-id 0 --repeats 1000
+  env -u TT_METAL_WATCHER HEKATUS_TT_CONTAINER_TIMEOUT_S=600 \
+    HEKATUS_TT_RUNNER=tools/newton_schulz_issue101_combined.py \
+    enodia/tt/bench/run_in_container.sh <out-dir> --
   ```
+
+  The run used device 0, one wrapper invocation, a digest-pinned image, and
+  clear docker state before and after. The power trace is
+  `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv`;
+  complete pre-builder raw JSON was written atomically outside the repository,
+  and host recovery was validated without a second device session.
 - The measured L=32/batch=8,192 new-default p50 denominator is
-  **78.049989 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
-  therefore **1.2812–1.6336 cards**, or 2 physical cards when rounded up.
+  **78.810716 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
+  therefore **1.2689–1.6178 cards**, or 2 physical cards when rounded up.
   This remains an extrapolation rather than a full-system benchmark; the R
   representation remains open in #88.
 
