@@ -298,6 +298,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         consumer_empty_count=1,
         startup_ticks=123,
         startup_ticks_valid=True,
+        work_min_ticks=10,
+        work_max_ticks=20,
         failure_check={
             "code": 4,
             "name": "consumer_fixed_work_budget",
@@ -329,6 +331,12 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["dropped_frame_count"] == 97
     assert parsed["startup"]["observed_ticks"] == 123
     assert parsed["startup"]["observed_valid"] is True
+    assert parsed["work_ticks"] == {
+        "minimum": 10,
+        "maximum": 20,
+        "valid": True,
+        "unit": "device_clock_ticks",
+    }
     assert parsed["failure_check"]["name"] == "consumer_fixed_work_budget"
     assert parsed["failure_check"]["elapsed_ticks"] == 123
     assert parsed["failure_check"]["limit_ticks"] == 100

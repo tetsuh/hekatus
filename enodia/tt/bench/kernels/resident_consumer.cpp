@@ -57,6 +57,9 @@ void kernel_main() {
     std::uint64_t failure_elapsed_ticks = 0;
     std::uint64_t failure_limit_ticks = 0;
     std::uint64_t startup_ticks = 0;
+    std::uint64_t work_min_ticks = UINT64_MAX;
+    std::uint64_t work_max_ticks = 0;
+    std::uint32_t work_valid = 0;
     std::uint32_t startup_valid = 0;
     const std::uint64_t run_start = get_timestamp();
 
@@ -114,6 +117,9 @@ void kernel_main() {
         }
         const std::uint64_t end = get_timestamp();
         const std::uint64_t elapsed = end - start;
+        work_min_ticks = elapsed < work_min_ticks ? elapsed : work_min_ticks;
+        work_max_ticks = elapsed > work_max_ticks ? elapsed : work_max_ticks;
+        work_valid = 1;
         if (elapsed >= static_cast<std::uint64_t>(per_frame_work_budget_ticks)) {
             error_flag = 1;
             failure_code = failure_consumer_fixed_work_budget;
@@ -176,6 +182,11 @@ void kernel_main() {
     summary[10] = static_cast<std::uint32_t>(failure_limit_ticks);
     summary[11] = static_cast<std::uint32_t>(failure_limit_ticks >> 32);
     summary[12] = failure_code != 0;
+    summary[13] = static_cast<std::uint32_t>(work_min_ticks);
+    summary[14] = static_cast<std::uint32_t>(work_min_ticks >> 32);
+    summary[15] = static_cast<std::uint32_t>(work_max_ticks);
+    summary[16] = static_cast<std::uint32_t>(work_max_ticks >> 32);
+    summary[17] = work_valid;
     cb_push_back(cb_timestamp, 1);
     cb_wait_front(cb_timestamp, 1);
     noc_async_write_page(0, stats, get_read_ptr(cb_timestamp));

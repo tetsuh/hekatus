@@ -490,6 +490,8 @@ def build_measurement_record(
     failure_check: Mapping[str, Any] | None = None,
     startup_ticks: int | None = None,
     startup_ticks_valid: bool = False,
+    work_min_ticks: int | None = None,
+    work_max_ticks: int | None = None,
     watcher: bool = False,
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
@@ -554,6 +556,17 @@ def build_measurement_record(
         isinstance(startup_ticks, bool) or not isinstance(startup_ticks, int) or startup_ticks < 0
     ):
         raise ValueError("startup_ticks must be a non-negative integer or None")
+    if (work_min_ticks is None) != (work_max_ticks is None):
+        raise ValueError("work minimum and maximum must be provided together")
+    if work_min_ticks is not None and (
+        isinstance(work_min_ticks, bool)
+        or isinstance(work_max_ticks, bool)
+        or not isinstance(work_min_ticks, int)
+        or not isinstance(work_max_ticks, int)
+        or work_min_ticks < 0
+        or work_max_ticks < work_min_ticks
+    ):
+        raise ValueError("work minimum/maximum ticks are invalid")
     return {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
@@ -584,6 +597,12 @@ def build_measurement_record(
             "cross_core_correlation": "out_of_scope",
         },
         "clock_source_evidence": _source_evidence(),
+        "work_ticks": {
+            "minimum": work_min_ticks,
+            "maximum": work_max_ticks,
+            "valid": work_min_ticks is not None,
+            "unit": "device_clock_ticks",
+        },
         "startup": {
             "configured_allowance_ms": STARTUP_ALLOWANCE_MICROSECONDS // 1_000,
             "configured_allowance_ticks": run_budget_breakdown(config, watcher=watcher)[

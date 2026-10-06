@@ -292,6 +292,9 @@ def _run_device(
             "startup_ticks": int(consumer_values[4])
             | (int(consumer_values[5]) << 32),
             "startup_ticks_valid": bool(consumer_values[6]),
+            "work_min_ticks": int(consumer_values[13]) | (int(consumer_values[14]) << 32),
+            "work_max_ticks": int(consumer_values[15]) | (int(consumer_values[16]) << 32),
+            "work_ticks_valid": bool(consumer_values[17]),
             "producer_failure": producer_failure,
             "consumer_failure": consumer_failure,
             "failure_check": select_failure_check(producer_failure, consumer_failure),
@@ -434,6 +437,8 @@ def main(argv: list[str] | None = None) -> int:
         dropped_frame_count=result["frames_dropped"],
         startup_ticks=result["startup_ticks"],
         startup_ticks_valid=result["startup_ticks_valid"],
+        work_min_ticks=result["work_min_ticks"] if result["work_ticks_valid"] else None,
+        work_max_ticks=result["work_max_ticks"] if result["work_ticks_valid"] else None,
         failure_check=result["failure_check"],
         kernel_error_flag=result["kernel_error_flag"],
         harness_commit=str(environment.get("harness_commit") or ""),
