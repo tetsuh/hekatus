@@ -119,6 +119,10 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-startup-allowance-retry.json` | Startup-allowance validation: observed startup ticks were recorded, but the one-frame Watcher run still reported cycle-budget error; no timing run followed. |
 | `2026-10-06-p150a-issue12-stage1-startup-allowance-retry-power.csv` | Power, AICLK, and temperature trace for the startup-allowance validation above. |
 | `2026-10-06-p150a-issue12-stage1-60000-preflight-rejected.json` | Board-free rejection of the owner-requested 60,000-frame/1 ms/60 s configuration; explicit calculations show a safe 54,445-frame maximum under the current cap. |
+| `2026-10-06-p150a-issue12-stage1-timing-60000.json` | No-Watcher 60-second frame-count run: no cycle error, but 59,996 producer drops leave only N=3 completion intervals; no timing evidence is claimed. |
+| `2026-10-06-p150a-issue12-stage1-timing-60000-power.csv` | Power, AICLK, and temperature trace for the 60,000-frame run above. |
+| `2026-10-06-p150a-issue12-stage1-timing-600000.json` | No-Watcher longest frame-count run: no cycle error, but 599,996 producer drops leave only N=3 completion intervals; no timing evidence is claimed. |
+| `2026-10-06-p150a-issue12-stage1-timing-600000-power.csv` | Power, AICLK, and temperature trace for the 600,000-frame run above. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
