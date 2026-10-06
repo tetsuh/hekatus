@@ -32,7 +32,7 @@ from enodia.tt.bench.resident_harness import (
     validate_run_budget_fits_outer_cap,
     wrap_delta,
 )
-from enodia.tt.bench.run_resident import _runtime_u32
+from enodia.tt.bench.run_resident import _parser, _resolve_watcher_mode, _runtime_u32
 
 
 def _config(**overrides) -> ResidentConfig:
@@ -278,6 +278,24 @@ def test_runtime_uint32_bounds_cover_kernel_arguments():
             validate_configuration(invalid_config)
 
 
+def test_watcher_mode_requires_matching_cli_and_environment():
+    assert _resolve_watcher_mode(False, None) is False
+    assert _resolve_watcher_mode(True, "1") is True
+    with pytest.raises(ResidentPreflightError, match="same mode"):
+        _resolve_watcher_mode(True, None)
+    with pytest.raises(ResidentPreflightError, match="same mode"):
+        _resolve_watcher_mode(False, "1")
+    with pytest.raises(ResidentPreflightError, match="unset or exactly 1"):
+        _resolve_watcher_mode(False, "0")
+    with pytest.raises(ResidentPreflightError, match="unset or exactly 1"):
+        _resolve_watcher_mode(False, "")
+
+
+def test_resident_parser_rejects_abbreviated_watcher_flag():
+    with pytest.raises(SystemExit):
+        _parser().parse_args(["--out", "record.json", "--wat"])
+
+
 def test_runtime_addresses_are_checked_at_uint32_boundary():
     assert _runtime_u32(UINT32_MAX, "address") == UINT32_MAX
     with pytest.raises(ResidentPreflightError, match="address.*uint32"):
@@ -462,7 +480,8 @@ def test_control_page_is_consumer_l1_and_passed_to_both_accessors():
     assert "SemaphoreDescriptor(0" in runner
     assert "SemaphoreDescriptor(1" in runner
     assert "allow-budget-margin-over-cap" not in runner
-    assert "validate_configuration(config, watcher=args.watcher)" in runner
+    assert "_resolve_watcher_mode(args.watcher" in runner
+    assert "validate_configuration(config, watcher=watcher)" in runner
 
 
 def test_record_rejects_missing_environment_provenance():

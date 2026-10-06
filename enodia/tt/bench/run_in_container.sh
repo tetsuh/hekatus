@@ -39,8 +39,6 @@ else
   [[ "${1:-}" == "--" ]] && shift
 fi
 
-mkdir -p "${OUT_DIR}"
-
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
 RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
@@ -48,11 +46,61 @@ CUSTOM_RUNNER=0
 if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
   CUSTOM_RUNNER=1
 fi
-CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S:-900}"
-if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be a positive integer" >&2
-  exit 2
+RUNNER_ARGS=("$@")
+CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S-900}"
+
+validate_decimal_timeout() {
+  local value="$1"
+  local max_digits="$2"
+  if [[ -z "${value}" || ! "${value}" =~ ^[0-9]+$ || "${value:0:1}" == "0" ]]; then
+    echo "HEKATUS_TT_CONTAINER_TIMEOUT_S must be nonempty decimal digits with no leading zero" >&2
+    exit 2
+  fi
+  if [[ "${#value}" -gt "${max_digits}" ]]; then
+    echo "HEKATUS_TT_CONTAINER_TIMEOUT_S has too many digits" >&2
+    exit 2
+  fi
+}
+
+RESIDENT_WATCHER_MODE=0
+RESIDENT_TIMEOUT_CAP_S="600"
+if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
+  CLI_WATCHER_MODE=0
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${argument}" == "--watcher" ]]; then
+      CLI_WATCHER_MODE=1
+      break
+    fi
+  done
+  ENV_WATCHER_MODE=0
+  if [[ -v TT_METAL_WATCHER ]]; then
+    if [[ "${TT_METAL_WATCHER}" != "1" ]]; then
+      echo "TT_METAL_WATCHER must be unset or exactly 1 for resident runs" >&2
+      exit 2
+    fi
+    ENV_WATCHER_MODE=1
+  fi
+  if [[ "${CLI_WATCHER_MODE}" != "${ENV_WATCHER_MODE}" ]]; then
+    echo "resident --watcher and TT_METAL_WATCHER must select the same mode" >&2
+    exit 2
+  fi
+  RESIDENT_WATCHER_MODE="${CLI_WATCHER_MODE}"
+  if [[ "${RESIDENT_WATCHER_MODE}" == "1" ]]; then
+    RESIDENT_TIMEOUT_CAP_S="60"
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "${#RESIDENT_TIMEOUT_CAP_S}"
+  if [[ "${#CONTAINER_TIMEOUT_S}" == "${#RESIDENT_TIMEOUT_CAP_S}" \
+        && "${CONTAINER_TIMEOUT_S}" > "${RESIDENT_TIMEOUT_CAP_S}" ]]; then
+    echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
+    exit 2
+  fi
+else
+  # Non-resident wrapper users retain their historical timeout range, but the
+  # input is still bounded before GNU timeout or any shell arithmetic sees it.
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "9"
 fi
+
+mkdir -p "${OUT_DIR}"
 CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
 DEVICE_NODE="${HEKATUS_TT_DEVICE_NODE:-/dev/tenstorrent/0}"
 WATCHER_ENV=()
@@ -164,20 +212,6 @@ SAMPLER_PID=$!
 # a shell string. The default runner also receives the sibling power trace
 # path, so its JSON record names the same provenance that the wrapper writes.
 # A custom probe is responsible for its own argument contract.
-RUNNER_ARGS=("$@")
-if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
-  RESIDENT_TIMEOUT_CAP_S=600
-  for argument in "${RUNNER_ARGS[@]}"; do
-    if [[ "${argument}" == "--watcher" ]]; then
-      RESIDENT_TIMEOUT_CAP_S=60
-      break
-    fi
-  done
-  if (( CONTAINER_TIMEOUT_S > RESIDENT_TIMEOUT_CAP_S )); then
-    echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
-    exit 2
-  fi
-fi
 if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   HAS_POWER_TRACE_ARG=0
   for argument in "${RUNNER_ARGS[@]}"; do

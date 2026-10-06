@@ -109,35 +109,91 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
         assert json.loads(env_files[-1].read_text()) == {"fake": True}
 
 
-@pytest.mark.parametrize(
-    ("container_timeout", "runner_args", "cap"),
-    [("601", ["--outer-timeout-seconds", "600"], "600"), ("61", ["--watcher"], "60")],
-)
-def test_resident_wrapper_enforces_approved_timeout_caps(
-    tmp_path, container_timeout, runner_args, cap
-):
+def _run_resident_wrapper(tmp_path, *, container_timeout, runner_args, watcher_env=None):
     bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
     shutil.copy2(WRAPPER, copied_wrapper)
     shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
-    completed = subprocess.run(
+    env = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "DOCKER_ARGS": str(args_log),
+        "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+        "HEKATUS_TT_CONTAINER_TIMEOUT_S": container_timeout,
+    }
+    env.pop("TT_METAL_WATCHER", None)
+    if watcher_env is not None:
+        env["TT_METAL_WATCHER"] = watcher_env
+    return subprocess.run(
         [str(copied_wrapper), "--", *runner_args],
         cwd=copied_wrapper.parents[3],
-        env={
-            **os.environ,
-            "PATH": f"{bindir}:{os.environ['PATH']}",
-            "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
-            "HEKATUS_TT_CONTAINER_TIMEOUT_S": container_timeout,
-        },
+        env=env,
         capture_output=True,
         text=True,
         check=False,
         timeout=10,
     )
+
+
+@pytest.mark.parametrize(
+    ("container_timeout", "runner_args", "watcher_env", "error"),
+    [
+        ("601", [], None, "approved cap"),
+        ("61", ["--watcher"], "1", "approved cap"),
+        ("-1", [], None, "decimal digits"),
+        ("", [], None, "decimal digits"),
+        ("abc", [], None, "decimal digits"),
+        ("+600", [], None, "decimal digits"),
+        ("0", [], None, "decimal digits"),
+        ("999999999999999999999", [], None, "too many digits"),
+        ("0600", [], None, "decimal digits"),
+    ],
+)
+def test_resident_wrapper_rejects_unsafe_timeout_strings(
+    tmp_path, container_timeout, runner_args, watcher_env, error
+):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout=container_timeout,
+        runner_args=runner_args,
+        watcher_env=watcher_env,
+    )
     assert completed.returncode == 2
-    assert "approved cap" in completed.stderr
-    assert cap in completed.stderr
+    assert error in completed.stderr
+    assert not list((tmp_path / "repo/out").glob("env-*.json"))
+
+
+@pytest.mark.parametrize(
+    ("container_timeout", "runner_args", "watcher_env"),
+    [("600", [], None), ("60", ["--watcher"], "1")],
+)
+def test_resident_wrapper_accepts_exact_timeout_boundaries(
+    tmp_path, container_timeout, runner_args, watcher_env
+):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout=container_timeout,
+        runner_args=runner_args,
+        watcher_env=watcher_env,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("runner_args", "watcher_env"),
+    [(["--watcher"], None), ([], "1")],
+)
+def test_resident_wrapper_rejects_watcher_mode_mismatch(tmp_path, runner_args, watcher_env):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout="60",
+        runner_args=runner_args,
+        watcher_env=watcher_env,
+    )
+    assert completed.returncode == 2
+    assert "same mode" in completed.stderr
 
 
 def test_wrapper_fails_when_sampler_exits_before_docker(tmp_path):

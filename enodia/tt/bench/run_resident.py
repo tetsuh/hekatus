@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import struct
 import sys
 from pathlib import Path
@@ -96,6 +97,19 @@ def _runtime_u32(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0xFFFFFFFF:
         raise ResidentPreflightError(f"{name} must fit uint32 runtime argument")
     return int(value)
+
+
+def _resolve_watcher_mode(watcher_flag: bool, env_value: str | None) -> bool:
+    """Require the CLI flag and TT_METAL_WATCHER to select one mode."""
+    if env_value is None:
+        env_watcher = False
+    elif env_value == "1":
+        env_watcher = True
+    else:
+        raise ResidentPreflightError("TT_METAL_WATCHER must be unset or exactly 1")
+    if bool(watcher_flag) != env_watcher:
+        raise ResidentPreflightError("--watcher and TT_METAL_WATCHER must select the same mode")
+    return env_watcher
 
 
 def _program(
@@ -374,7 +388,7 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", default=None)
@@ -417,8 +431,9 @@ def main(argv: list[str] | None = None) -> int:
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
-        config = validate_configuration(config, watcher=args.watcher)
-        validate_run_budget_fits_outer_cap(config, watcher=args.watcher)
+        watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
+        config = validate_configuration(config, watcher=watcher)
+        validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
         print(f"resident configuration rejected: {exc}", file=sys.stderr)
@@ -431,7 +446,7 @@ def main(argv: list[str] | None = None) -> int:
 
     device = ttnn.open_device(device_id=args.device_id)
     try:
-        result = _run_device(ttnn, device, config, watcher=args.watcher)
+        result = _run_device(ttnn, device, config, watcher=watcher)
     finally:
         ttnn.close_device(device)
 
@@ -457,9 +472,9 @@ def main(argv: list[str] | None = None) -> int:
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,
         power_trace=power_trace,
-        watcher=args.watcher,
+        watcher=watcher,
         timing_evidence=(
-            not args.watcher
+            not watcher
             and result["frames_attempted"] == config.frame_count
             and result["frames_consumed"] == result["frames_produced"]
             and result["frames_dropped"] == 0
