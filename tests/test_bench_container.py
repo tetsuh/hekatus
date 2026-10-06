@@ -599,6 +599,8 @@ def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
     assert completed.returncode == 0, completed.stderr
     docker_args = args_log.read_text().splitlines()
     assert "HEKATUS_TT_TELEMETRY_MODE=off" in docker_args
+    assert "--out" in docker_args
+    assert docker_args[docker_args.index("--out") + 1] == "/out/runner-result.json"
     assert "--power-trace" not in docker_args
     assert not list(output_dir.glob("power-*.csv"))
     assert "sampler -> off (diagnostic-only; no power trace by design)" in completed.stdout

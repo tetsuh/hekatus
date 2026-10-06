@@ -233,6 +233,19 @@ if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   if [[ "${HAS_POWER_TRACE_ARG}" == "0" && "${TELEMETRY_MODE}" != "off" ]]; then
     RUNNER_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
   fi
+elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
+  # Resident runner output is required by its Python contract; use the same
+  # collision-safe path exposed through HEKATUS_TT_RESULT_PATH.
+  HAS_RESULT_PATH_ARG=0
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${argument}" == "--out" ]]; then
+      HAS_RESULT_PATH_ARG=1
+      break
+    fi
+  done
+  if [[ "${HAS_RESULT_PATH_ARG}" == "0" ]]; then
+    RUNNER_ARGS=(--out "/out/$(basename "${RUNNER_RESULT_CONTAINER_PATH}")" "${RUNNER_ARGS[@]}")
+  fi
 fi
 # `timeout` is inside the wrapper, so losing an SSH session cannot leave the
 # Docker client or the board-side container unbounded.
@@ -285,7 +298,7 @@ else
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
     --entrypoint python3 \
-    "${IMAGE}" "${RUNNER}" "$@" &
+    "${IMAGE}" "${RUNNER}" "${RUNNER_ARGS[@]}" &
 fi
 DOCKER_PID=$!
 
