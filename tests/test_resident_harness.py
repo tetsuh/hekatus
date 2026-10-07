@@ -26,6 +26,8 @@ from enodia.tt.bench.resident_harness import (
     interval_ticks_for_microseconds,
     periodic_gap_decomposition,
     required_samples_for_percentile,
+    resident_l1_allocation_bytes,
+    resident_l1_allocation_table,
     run_budget_breakdown,
     run_budget_exceeded,
     select_failure_check,
@@ -262,11 +264,37 @@ def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
         validate_run_budget_fits_outer_cap(longest, watcher=False)
 
 
+def test_resident_l1_allocation_ledger_matches_formula_and_cores():
+    table = resident_l1_allocation_table(ring_pages=220)
+    assert sum(row["bytes"] for row in table) == 917_520
+    assert resident_l1_allocation_bytes(ring_pages=220) == 917_520
+    assert sum(row["bytes"] for row in table if row["scope"] == "producer_core") == 8_200
+    assert sum(row["bytes"] for row in table if row["scope"] == "consumer_core") == 909_320
+    assert sum(row["bytes"] for row in table if row["scope"] == "shared") == 0
+    assert {row["component"] for row in table} == {
+        "ring_storage",
+        "control_page",
+        "consumer_cb_page",
+        "ready_done_semaphores",
+        "producer_anchor_page",
+        "producer_cb_page",
+        "free_error_semaphores",
+        "timestamps_DRAM",
+        "producer_consumer_stats_DRAM",
+        "watcher_extra_resident_allocation",
+    }
+    assert resident_l1_allocation_bytes(ring_pages=220, watcher=True) == 917_520
+    assert validate_configuration(_config(ring_pages=220))
+    with pytest.raises(ResidentPreflightError, match="L1 preflight budget"):
+        validate_configuration(_config(ring_pages=221))
+
+
 def test_resident_semaphore_l1_bytes_are_in_preflight_accounting():
     source = Path("enodia/tt/bench/resident_harness.py").read_text()
     assert RESIDENT_SEMAPHORE_COUNT == 4
     assert SEMAPHORE_BYTES == 4
-    assert "RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES" in source
+    assert "ready_done_semaphores" in source
+    assert "free_error_semaphores" in source
 
 
 def test_wrap_tracked_single_gap_bounds_and_work_formula():

@@ -170,6 +170,98 @@ def _uint32_positive_int(value: Any, name: str) -> int:
     return value
 
 
+def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> list[dict[str, Any]]:
+    """Return the authoritative resident L1 allocation ledger.
+
+    Per-core rows: producer has one producer-anchor page, one producer CB page,
+    and two semaphore words; consumer has the shared ring storage in its L1,
+    one control page, one consumer CB page, and two semaphore words. Shared
+    timestamp and producer/consumer stats tensors are DRAM allocations (zero
+    L1 bytes). Watcher adds no resident tensor/CB/semaphore allocation.
+    Total bytes are the row sum: ``(ring_pages + 4) * PAGE_BYTES + 4 * 4``.
+    """
+    rows = [
+        {
+            "scope": "consumer_core",
+            "component": "ring_storage",
+            "pages": ring_pages,
+            "bytes": ring_pages * PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "control_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "consumer_cb_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "ready_done_semaphores",
+            "pages": 0,
+            "bytes": 2 * SEMAPHORE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "producer_anchor_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "producer_cb_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "free_error_semaphores",
+            "pages": 0,
+            "bytes": 2 * SEMAPHORE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "shared",
+            "component": "timestamps_DRAM",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "DRAM",
+        },
+        {
+            "scope": "shared",
+            "component": "producer_consumer_stats_DRAM",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "DRAM",
+        },
+        {
+            "scope": "shared",
+            "component": "watcher_extra_resident_allocation",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "none",
+        },
+    ]
+    if watcher:
+        rows[-1]["note"] = "Watcher instrumentation adds no host-accounted resident L1 allocation."
+    return rows
+
+
+def resident_l1_allocation_bytes(*, ring_pages: int, watcher: bool = False) -> int:
+    """Return the sum of :func:`resident_l1_allocation_table` bytes."""
+    return sum(row["bytes"] for row in resident_l1_allocation_table(ring_pages=ring_pages, watcher=watcher))
+
+
 def validate_configuration(
     config: ResidentConfig, *, watcher: bool = False
 ) -> ResidentConfig:
@@ -232,7 +324,7 @@ def validate_configuration(
         raise ResidentPreflightError(
             "designated_timestamp_core must equal consumer_core; all intervals use one clock"
         )
-    l1_bytes = ring_pages * PAGE_BYTES + 3 * PAGE_BYTES + RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES
+    l1_bytes = resident_l1_allocation_bytes(ring_pages=ring_pages, watcher=watcher)
     if l1_bytes > MAX_RING_L1_BYTES:
         raise ResidentPreflightError(
             f"ring_pages={ring_pages} exceeds the L1 preflight budget "
@@ -838,6 +930,8 @@ __all__ = [
     "interval_ticks_for_microseconds",
     "periodic_gap_decomposition",
     "required_samples_for_percentile",
+    "resident_l1_allocation_bytes",
+    "resident_l1_allocation_table",
     "run_budget_breakdown",
     "run_budget_exceeded",
     "select_failure_check",
