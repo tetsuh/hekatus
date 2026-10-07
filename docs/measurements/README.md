@@ -30,7 +30,7 @@ The resident harness must not return to hardware without a new owner approval.
 When approved, the next procedure is bounded and uses device 0 through the
 named-container wrapper:
 
-1. Before and after each invocation, run `docker ps --format '{{.Names}}'
+1. Before and after each invocation, run `docker ps --format '{{.Names}}'`
 and require zero running containers. Never stop another container.
 Prior cycle-budget records collapsed producer/consumer causes and did not
 serialize elapsed/limit ticks, so their startup attribution remains uncertain;
