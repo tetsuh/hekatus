@@ -32,6 +32,7 @@ from enodia.tt.bench.resident_harness import (
     select_failure_check,
     split_u64,
     validate_configuration,
+    validate_post_run_aiclk,
     validate_record_inputs,
     validate_run_budget_fits_outer_cap,
 )
@@ -469,9 +470,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.raw_timestamps_out is not None:
         _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
+    aiclk_mhz = _power_aiclk(power_trace, environment)
+    validate_post_run_aiclk(aiclk_mhz)
     record = build_measurement_record(
         config=config,
-        aiclk_mhz=_power_aiclk(power_trace, environment),
+        aiclk_mhz=aiclk_mhz,
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],

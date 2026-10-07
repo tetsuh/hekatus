@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
 import shlex
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
+from enodia.tt.bench import run_resident
 from enodia.tt.bench.resident_harness import (
     CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS,
     CURRENT_WRAP_WORK_PER_FRAME,
+    PROVENANCE_PHASE_POST_RUN,
+    PROVENANCE_PHASE_PREFLIGHT,
+    REQUIRED_PROVENANCE_FIELDS,
     RESIDENT_SEMAPHORE_COUNT,
     SEMAPHORE_BYTES,
     TIMESTAMP_GAP_LIMIT_TICKS,
@@ -41,6 +48,7 @@ from enodia.tt.bench.resident_harness import (
     timestamp_digest,
     validate_configuration,
     validate_pinned_environment,
+    validate_post_run_provenance,
     validate_record_inputs,
     validate_run_budget_fits_outer_cap,
     wrap_delta,
@@ -228,11 +236,13 @@ def _readme_shell_blocks(section: str) -> list[str]:
 
 def _environment() -> dict:
     return {
-        "board": {"serial": "redacted-board-serial"},
-        "firmware": {"bundle": "19.6.0.0"},
+        "board": {"serial": "redacted-board-serial", "board_type": "p150a"},
+        "firmware": {"fw_bundle_version": "19.6.0.0"},
         "kmd_version": "2.11.0",
         "image": "registry.example/tt@sha256:" + "a" * 64,
         "image_pinned": True,
+        "harness_commit": "0123456789abcdef",
+        "tt_env_active_release": "0.75.0",
     }
 
 
@@ -1090,13 +1100,7 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         cycle_budget_hit=False,
         kernel_error_flag=0,
         harness_commit="0123456789abcdef",
-        environment={
-            "board": {"serial": "redacted-board-serial"},
-            "firmware": {"bundle": "19.6.0.0"},
-            "kmd_version": "2.11.0",
-            "image": "registry.example/tt@sha256:" + "a" * 64,
-            "image_pinned": True,
-        },
+        environment=_environment(),
         power_trace="resident-power.csv",
     )
     encoded = json.dumps(record, allow_nan=False)
@@ -1538,16 +1542,134 @@ def test_resident_environment_requires_verified_digest_image():
         validate_pinned_environment({"image": "registry.example/tt@sha256:" + "A" * 64, "image_pinned": True})
 
 
-@pytest.mark.parametrize("field", ["board", "firmware", "kmd_version", "image"])
-def test_record_preflight_rejects_empty_environment_fields(field):
-    environment = _environment()
-    environment[field] = {} if field in {"board", "firmware"} else ""
-    with pytest.raises(ValueError, match="environment"):
+class TestResidentProvenance:
+    """Board-free tests generated from the production provenance table."""
+
+    PREFLIGHT_FIELDS = tuple(
+        field
+        for field in REQUIRED_PROVENANCE_FIELDS
+        if field.phase == PROVENANCE_PHASE_PREFLIGHT
+    )
+    POST_RUN_FIELDS = tuple(
+        field
+        for field in REQUIRED_PROVENANCE_FIELDS
+        if field.phase == PROVENANCE_PHASE_POST_RUN
+    )
+
+    @staticmethod
+    def _set_field(environment: dict, field_path: str, value, *, missing: bool = False) -> None:
+        components = field_path.split(".")
+        assert components[0] == "environment"
+        target = environment
+        for component in components[1:-1]:
+            target = target[component]
+        if missing:
+            target.pop(components[-1])
+        else:
+            target[components[-1]] = value
+
+    @staticmethod
+    def _record_value(record: dict, field_path: str):
+        value = record
+        for component in field_path.split("."):
+            assert isinstance(value, dict), field_path
+            assert component in value, field_path
+            value = value[component]
+        return value
+
+    @staticmethod
+    def _post_run_record(field_path: str, value, *, missing: bool = False) -> dict:
+        record: dict = {}
+        target = record
+        components = field_path.split(".")
+        for component in components[:-1]:
+            target[component] = {}
+            target = target[component]
+        if not missing:
+            target[components[-1]] = value
+        return record
+
+    def test_valid_complete_environment_passes_preflight(self):
+        environment = _environment()
         validate_record_inputs(
-            harness_commit="0123456789abcdef",
+            harness_commit=environment["harness_commit"],
             environment=environment,
             power_trace="resident-power.csv",
         )
+
+    @pytest.mark.parametrize("field", PREFLIGHT_FIELDS, ids=lambda field: field.path)
+    @pytest.mark.parametrize("bad_kind", ["missing", "blank", "wrong_type"])
+    def test_preflight_rejects_every_table_field_before_device_opening(self, field, bad_kind):
+        environment = copy.deepcopy(_environment())
+        value = " " if bad_kind == "blank" else 123
+        if field.path == "harness_commit":
+            harness_commit = None if bad_kind == "missing" else value
+        else:
+            self._set_field(environment, field.path, value, missing=bad_kind == "missing")
+            harness_commit = "0123456789abcdef"
+        with pytest.raises(ValueError, match=re.escape(field.path)):
+            validate_record_inputs(
+                harness_commit=harness_commit,
+                environment=environment,
+                power_trace="resident-power.csv",
+            )
+
+    def test_preflight_rejection_is_written_without_opening_device(self, tmp_path, monkeypatch):
+        environment = _environment()
+        del environment["board"]["serial"]
+        environment_path = tmp_path / "environment.json"
+        output_path = tmp_path / "rejection.json"
+        environment_path.write_text(json.dumps(environment))
+        opened = []
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs)),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                "resident-power.csv",
+            ]
+        )
+
+        assert result == 2
+        assert opened == []
+        rejection = json.loads(output_path.read_text())
+        assert rejection["status"] == "rejected"
+        assert "environment.board.serial" in rejection["rejection_reason"]
+
+    def test_accepted_current_wrap_record_satisfies_every_table_entry(self):
+        record = json.loads(
+            (
+                ROOT
+                / "docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json"
+            ).read_text()
+        )
+        for field in REQUIRED_PROVENANCE_FIELDS:
+            value = self._record_value(record, field.path)
+            assert field.validator(value), field.path
+
+    @pytest.mark.parametrize("field", POST_RUN_FIELDS, ids=lambda field: field.path)
+    @pytest.mark.parametrize("bad_kind", ["missing", "blank", "wrong_type"])
+    def test_post_run_rejects_missing_blank_and_wrong_type_aiclk(self, field, bad_kind):
+        value = " " if bad_kind == "blank" else "1350"
+        record = self._post_run_record(
+            field.path, value, missing=bad_kind == "missing"
+        )
+        with pytest.raises(ValueError, match=re.escape(field.path)):
+            validate_post_run_provenance(record)
+
+    @pytest.mark.parametrize("field", POST_RUN_FIELDS, ids=lambda field: field.path)
+    @pytest.mark.parametrize("value", [0, -1])
+    def test_post_run_rejects_non_positive_aiclk(self, field, value):
+        with pytest.raises(ValueError, match=re.escape(field.path)):
+            validate_post_run_provenance(self._post_run_record(field.path, value))
 
 
 def test_record_preflight_rejects_empty_commit_and_non_filename_trace():

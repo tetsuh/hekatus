@@ -11,7 +11,7 @@ import hashlib
 import math
 import re
 import struct
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import PurePath
@@ -629,25 +629,174 @@ def timestamp_digest(timestamps: Iterable[int]) -> dict[str, Any]:
     return {"count": count, "sha256": digest.hexdigest()}
 
 
+@dataclass(frozen=True)
+class RequiredProvenanceField:
+    """One field in the resident record provenance contract."""
+
+    path: str
+    phase: str
+    expected_type: str
+    validator: Callable[[Any], bool]
+
+
+PROVENANCE_PHASE_PREFLIGHT = "preflight"
+PROVENANCE_PHASE_POST_RUN = "post_run"
+
+
+def _is_nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_pinned_image(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and re.search(r"@sha256:[0-9a-f]{64}$", value) is not None
+    )
+
+
+def _is_true_boolean(value: Any) -> bool:
+    return value is True
+
+
+def _is_positive_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+# This table is the single source of truth for the fields required to identify
+# a resident run.  Its paths are the paths in the accepted measurement record;
+# the top-level harness_commit entry is also the argument supplied to the run.
+REQUIRED_PROVENANCE_FIELDS: tuple[RequiredProvenanceField, ...] = (
+    RequiredProvenanceField(
+        path="environment.board.serial",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.board.board_type",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.firmware.fw_bundle_version",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.kmd_version",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.image",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type=(
+            "a digest-pinned image string with image_pinned=true and lowercase "
+            "@sha256:<64 hex>"
+        ),
+        validator=_is_pinned_image,
+    ),
+    RequiredProvenanceField(
+        path="environment.image_pinned",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="the boolean true",
+        validator=_is_true_boolean,
+    ),
+    RequiredProvenanceField(
+        path="environment.harness_commit",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.tt_env_active_release",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="harness_commit",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="clock.aiclk_mhz",
+        phase=PROVENANCE_PHASE_POST_RUN,
+        expected_type="a positive integer",
+        validator=_is_positive_integer,
+    ),
+)
+
+_MISSING_PROVENANCE_VALUE = object()
+
+
+def _provenance_value(record: Mapping[str, Any], path: str) -> Any:
+    value: Any = record
+    for component in path.split("."):
+        if not isinstance(value, Mapping) or component not in value:
+            return _MISSING_PROVENANCE_VALUE
+        value = value[component]
+    return value
+
+
+def _validate_provenance_fields(
+    record: Mapping[str, Any],
+    *,
+    phase: str,
+    fields: Iterable[RequiredProvenanceField] | None = None,
+) -> None:
+    """Validate one phase by iterating the authoritative provenance table."""
+    if not isinstance(record, Mapping):
+        raise TypeError("record must be an object")
+    selected = REQUIRED_PROVENANCE_FIELDS if fields is None else fields
+    for field in selected:
+        if field.phase != phase:
+            continue
+        value = _provenance_value(record, field.path)
+        if value is _MISSING_PROVENANCE_VALUE or not field.validator(value):
+            raise ResidentPreflightError(
+                f"{field.path} is required and must be {field.expected_type}"
+            )
+
+
+def validate_preflight_provenance(*, harness_commit: Any, environment: Mapping[str, Any]) -> None:
+    """Validate all provenance available before opening a device."""
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    _validate_provenance_fields(
+        {"harness_commit": harness_commit, "environment": environment},
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+    )
+
+
+def validate_post_run_provenance(record: Mapping[str, Any]) -> None:
+    """Validate provenance that is available only after a run completes."""
+    _validate_provenance_fields(record, phase=PROVENANCE_PHASE_POST_RUN)
+
+
+def validate_post_run_aiclk(aiclk_mhz: Any) -> None:
+    """Validate the observed AICLK before constructing a final record."""
+    validate_post_run_provenance({"clock": {"aiclk_mhz": aiclk_mhz}})
+
+
 def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
-    """Require the exact immutable image identity before resident execution."""
-    image = environment.get("image")
-    if (
-        environment.get("image_pinned") is not True
-        or not isinstance(image, str)
-        or re.search(r"@sha256:[0-9a-f]{64}$", image) is None
-    ):
-        raise ResidentPreflightError(
-            "resident execution requires image_pinned=true and image @sha256:<64 lowercase hex>"
-        )
-
-
-def _require_environment(environment: Mapping[str, Any]) -> None:
-    required = ("board", "firmware", "kmd_version", "image")
-    missing = [name for name in required if not environment.get(name)]
-    if missing:
-        raise ValueError("environment is missing required fields: " + ", ".join(missing))
-    validate_pinned_environment(environment)
+    """Require the immutable image identity using the table's image validators."""
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    _validate_provenance_fields(
+        {"environment": environment},
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        fields=(
+            field
+            for field in REQUIRED_PROVENANCE_FIELDS
+            if field.path.startswith("environment.image")
+        ),
+    )
 
 
 def _safe_trace_name(power_trace: str) -> str:
@@ -661,11 +810,7 @@ def validate_record_inputs(
     *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str
 ) -> None:
     """Validate record provenance before resident device execution."""
-    if not isinstance(harness_commit, str) or not harness_commit.strip():
-        raise ValueError("harness_commit is required")
-    if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
-    _require_environment(environment)
+    validate_preflight_provenance(harness_commit=harness_commit, environment=environment)
     _safe_trace_name(power_trace)
 
 
@@ -725,11 +870,8 @@ def build_measurement_record(
     ``dropped`` and never overwrite ring data.
     """
     config = validate_configuration(config, watcher=watcher)
-    if isinstance(aiclk_mhz, bool) or not isinstance(aiclk_mhz, int) or aiclk_mhz <= 0:
-        raise ValueError("aiclk_mhz must be a positive integer")
-    if not isinstance(harness_commit, str) or not harness_commit.strip():
-        raise ValueError("harness_commit is required")
-    _require_environment(environment)
+    validate_preflight_provenance(harness_commit=harness_commit, environment=environment)
+    validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
         raise ValueError("producer_full_count must be non-negative")
     if isinstance(consumer_empty_count, bool) or consumer_empty_count < 0:
@@ -915,7 +1057,9 @@ def build_rejection_record(
         "clock_source_evidence": _source_evidence(),
     }
     if environment:
-        result["environment"] = dict(environment)
+        result["environment"] = (
+            dict(environment) if isinstance(environment, Mapping) else environment
+        )
     return result
 
 
@@ -927,12 +1071,16 @@ __all__ = [
     "MAX_WATCHER_TIMEOUT_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
+    "PROVENANCE_PHASE_POST_RUN",
+    "PROVENANCE_PHASE_PREFLIGHT",
+    "REQUIRED_PROVENANCE_FIELDS",
     "RESIDENT_SEMAPHORE_COUNT",
     "SEMAPHORE_BYTES",
     "TIMESTAMP_GAP_LIMIT_TICKS",
     "UINT32_MAX",
     "WORK_TICKS_MARGIN_PERCENT",
     "WORK_TICKS_PER_UNIT_UPPER_BOUND",
+    "RequiredProvenanceField",
     "ResidentConfig",
     "ResidentPreflightError",
     "RingAccounting",
@@ -956,6 +1104,9 @@ __all__ = [
     "timestamp_digest",
     "validate_configuration",
     "validate_pinned_environment",
+    "validate_post_run_aiclk",
+    "validate_post_run_provenance",
+    "validate_preflight_provenance",
     "validate_record_inputs",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
