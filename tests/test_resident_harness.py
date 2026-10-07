@@ -73,10 +73,51 @@ def _shell_tokens(command: str) -> list[str]:
     return shlex.split(command, comments=True, posix=True)
 
 
-def _extract_resident_invocations(text: str) -> list[list[str]]:
-    """Extract runner argv vectors from shell commands containing run_resident.py."""
+_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+
+
+def _shell_environment(tokens: list[str]) -> tuple[dict[str, str], set[str]]:
+    """Return environment assignments and explicit unsets before a shell command."""
+    assignments: dict[str, str] = {}
+    unset: set[str] = set()
+    index = 0
+    if tokens and tokens[0] == "env":
+        index = 1
+        while index < len(tokens):
+            token = tokens[index]
+            if token in {"-u", "--unset"}:
+                if index + 1 >= len(tokens):
+                    raise AssertionError(f"env unset option has no variable: {tokens!r}")
+                unset.add(tokens[index + 1])
+                index += 2
+                continue
+            if token.startswith("--unset="):
+                unset.add(token.split("=", 1)[1])
+                index += 1
+                continue
+            if token == "--":
+                index += 1
+                break
+            match = _ENV_ASSIGNMENT.fullmatch(token)
+            if match is None:
+                break
+            name, value = token.split("=", 1)
+            assignments[name] = value
+            index += 1
+    while index < len(tokens):
+        match = _ENV_ASSIGNMENT.fullmatch(tokens[index])
+        if match is None:
+            break
+        name, value = tokens[index].split("=", 1)
+        assignments[name] = value
+        index += 1
+    return assignments, unset
+
+
+def _extract_resident_command_records(text: str) -> list[dict[str, object]]:
+    """Extract resident commands with shell environment metadata from README text."""
     lines = text.splitlines()
-    invocations: list[list[str]] = []
+    records: list[dict[str, object]] = []
     seen_spans: set[tuple[int, int]] = set()
     for index, line in enumerate(lines):
         if "run_resident.py" not in line:
@@ -91,7 +132,8 @@ def _extract_resident_invocations(text: str) -> list[list[str]]:
         if span in seen_spans:
             continue
         seen_spans.add(span)
-        tokens = _shell_tokens("\n".join(lines[start : end + 1]))
+        command = "\n".join(lines[start : end + 1])
+        tokens = _shell_tokens(command)
         runner_indexes = [
             token_index
             for token_index, token in enumerate(tokens)
@@ -123,8 +165,20 @@ def _extract_resident_invocations(text: str) -> list[list[str]]:
             ),
             len(tokens),
         )
-        invocations.append(tokens[runner_start:command_end])
-    return invocations
+        records.append(
+            {
+                "command": command,
+                "tokens": tokens,
+                "argv": tokens[runner_start:command_end],
+                "environment": _shell_environment(tokens),
+            }
+        )
+    return records
+
+
+def _extract_resident_invocations(text: str) -> list[list[str]]:
+    """Extract runner argv vectors from shell commands containing run_resident.py."""
+    return [record["argv"] for record in _extract_resident_command_records(text)]
 
 
 def _parse_documented_resident_args(argv: list[str]):
@@ -149,7 +203,27 @@ def _parse_documented_resident_args(argv: list[str]):
     relative_out = out.relative_to(Path("/out"))
     assert relative_out.parts and ".." not in relative_out.parts
     assert out.suffix == ".json"
+    if args.raw_timestamps_out is not None:
+        raw_timestamps = args.raw_timestamps_out
+        assert raw_timestamps.is_absolute()
+        assert raw_timestamps.parts[:2] == ("/", "out")
+        assert raw_timestamps.relative_to(Path("/out")).parts
+        assert raw_timestamps.suffix == ".bin"
     return args
+
+
+def _readme_subsections(text: str) -> dict[str, str]:
+    headings = list(re.finditer(r"^### (?P<title>.+?)\s*$", text, flags=re.MULTILINE))
+    sections: dict[str, str] = {}
+    for index, heading in enumerate(headings):
+        start = heading.end()
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        sections[heading.group("title").strip()] = text[start:end]
+    return sections
+
+
+def _readme_shell_blocks(section: str) -> list[str]:
+    return re.findall(r"```(?:bash|sh|shell)\s*\r?\n(.*?)```", section, flags=re.DOTALL)
 
 
 def _environment() -> dict:
@@ -570,16 +644,146 @@ class TestResidentDefaults:
             with pytest.raises(ResidentPreflightError, match=reason):
                 validate_run_budget_fits_outer_cap(config, watcher=watcher)
 
+
+class TestIssue12Runbook:
+    RUNBOOK_PROCEDURES: ClassVar[tuple[dict[str, object], ...]] = (
+        {
+            "name": "cleanup-gate",
+            "heading": "Cleanup gate",
+            "values": (("Before and after each invocation", "docker ps --format '{{.Names}}'"),),
+        },
+        {
+            "name": "watcher-validation",
+            "heading": "Watcher validation",
+            "values": (
+                ("Watcher-enabled", "TT_METAL_WATCHER=1"),
+                ("one-frame", "--frame-count 1"),
+                ("device 0", "--device-id 0"),
+                ("1 ms", "--frame-interval-ticks 1350000"),
+                ("60-second", "--outer-timeout-seconds 60"),
+                ("run_resident.py", "run_resident.py"),
+                (
+                    "/out/issue12-watcher-validation.json",
+                    "--out /out/issue12-watcher-validation.json",
+                ),
+            ),
+        },
+        {
+            "name": "no-watcher-timing",
+            "heading": "No-Watcher timing",
+            "values": (
+                ("no-Watcher", "env -u TT_METAL_WATCHER"),
+                ("500,000 frames", "--frame-count 500000"),
+                ("device 0", "--device-id 0"),
+                ("1 ms", "--frame-interval-ticks 1350000"),
+                ("1,350 MHz", "--budget-aiclk-mhz 1350"),
+                ("600-second", "--outer-timeout-seconds 600"),
+                ("run_resident.py", "run_resident.py"),
+                (
+                    "/out/issue12-timing-500000.json",
+                    "--out /out/issue12-timing-500000.json",
+                ),
+                (
+                    "/out/issue12-timing-500000.bin",
+                    "--raw-timestamps-out /out/issue12-timing-500000.bin",
+                ),
+            ),
+        },
+        {
+            "name": "record-retention",
+            "heading": "Record creation and output retention (host-side shell commands)",
+            "values": (
+                (
+                    "out/bench/issue12-watcher-validation.json",
+                    "out/bench/issue12-watcher-validation.json",
+                ),
+                (
+                    "out/bench/issue12-timing-500000.json",
+                    "out/bench/issue12-timing-500000.json",
+                ),
+                (
+                    "out/bench/issue12-timing-500000.bin",
+                    "out/bench/issue12-timing-500000.bin",
+                ),
+                ("issue12-retained/", "issue12-retained/"),
+                ("Retain the", "cp out/bench/issue12-watcher-validation.json"),
+                ("environment and power provenance", "'env-*.json'"),
+                ("before any analysis", "sha256sum"),
+            ),
+        },
+        {
+            "name": "abnormal-recovery",
+            "heading": "Abnormal exit or timeout: one-reset recovery",
+            "values": (
+                ("at most one reset", "tt-smi -r /dev/tenstorrent/0"),
+                ("device 0", "--device-id 0"),
+                ("fixed-image", "HEKATUS_TT_IMAGE="),
+                ("Stage-1", "--stage 1"),
+                ("Watcher mode", "TT_METAL_WATCHER=1"),
+                ("60-second", "HEKATUS_TT_CONTAINER_TIMEOUT_S=60"),
+                ("health probe", "tools/newton_schulz_bringup.py"),
+            ),
+        },
+    )
+
+    def test_expected_runbook_procedures_have_commands_and_explicit_values(self):
+        text = README_PATH.read_text()
+        sections = _readme_subsections(text)
+        assert self.RUNBOOK_PROCEDURES
+        for procedure in self.RUNBOOK_PROCEDURES:
+            name = str(procedure["name"])
+            heading = str(procedure["heading"])
+            section = sections.get(heading)
+            assert section is not None, f"runbook procedure {name} is missing"
+            blocks = _readme_shell_blocks(section)
+            assert blocks, f"runbook procedure {name} has no shell command"
+            command_text = "\n".join(blocks)
+            assert any(
+                line.strip() and not line.lstrip().startswith("#")
+                for block in blocks
+                for line in block.splitlines()
+            ), f"runbook procedure {name} has no executable command"
+            for prose_value, command_value in procedure["values"]:
+                assert prose_value in section, (
+                    f"runbook procedure {name} no longer states {prose_value!r}"
+                )
+                assert command_value in command_text, (
+                    f"runbook procedure {name} does not pass {command_value!r} explicitly"
+                )
+
     def test_every_readme_resident_invocation_reaches_preflight_without_device(self):
-        invocations = _extract_resident_invocations(README_PATH.read_text())
-        assert invocations, "the measurement runbook must retain a resident invocation"
-        for argv in invocations:
+        records = _extract_resident_command_records(README_PATH.read_text())
+        assert records, "the measurement runbook must retain a resident invocation"
+        for record in records:
+            argv = record["argv"]
             args = _parse_documented_resident_args(argv)
             config = _config_from_args(args)
-            watcher = args.watcher
+            assignments, unset = record["environment"]
+            environment_value = assignments.get("TT_METAL_WATCHER")
+            assert _resolve_watcher_mode(args.watcher, environment_value) == args.watcher
+            if args.watcher:
+                assert environment_value == "1"
+                assert "TT_METAL_WATCHER" not in unset
+            else:
+                assert environment_value is None
+                assert "TT_METAL_WATCHER" in unset
             assert validate_run_budget_fits_outer_cap(
-                validate_configuration(config, watcher=watcher), watcher=watcher
+                validate_configuration(config, watcher=args.watcher), watcher=args.watcher
             )
+
+    def test_timing_invocation_is_explicitly_no_watcher(self):
+        records = _extract_resident_command_records(README_PATH.read_text())
+        timing_records = [
+            record
+            for record in records
+            if "--frame-count" in record["argv"] and "500000" in record["argv"]
+        ]
+        assert len(timing_records) == 1
+        timing = timing_records[0]
+        assignments, unset = timing["environment"]
+        assert "TT_METAL_WATCHER" in unset
+        assert "TT_METAL_WATCHER" not in assignments
+        assert "--watcher" not in timing["argv"]
 
 
 def test_resident_invocation_extractor_handles_continuations_and_quoted_paths():

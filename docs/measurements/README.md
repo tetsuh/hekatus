@@ -27,46 +27,148 @@ trace beside it under the same stem.
 ## Issue #12 recovery runbook (owner approval required)
 
 The resident harness must not return to hardware without a new owner approval.
-When approved, the next procedure is bounded and uses device 0 through the
-named-container wrapper:
+When approved, the bounded procedure below uses device 0 through the
+named-container wrapper. Each resident invocation has an explicit result path
+inside the container; the wrapper's mounted output directory is retained on
+the development machine.
 
-1. Before and after each invocation, run `docker ps --format '{{.Names}}'`
-and require zero running containers. Never stop another container.
+### Cleanup gate
+
+Before and after each invocation, run the following shell inspection command and
+require zero running containers. Never stop another container:
+
+```bash
+docker ps --format '{{.Names}}'
+```
+
 Prior cycle-budget records collapsed producer/consumer causes and did not
 serialize elapsed/limit ticks, so their startup attribution remains uncertain;
 new runs serialize named failure checks and diagnostics.
-2. Run one Watcher-enabled, one-frame validation with the separate 60-second
-outer cap; it is not timing evidence. The standard invocation is:
 
-   ```bash
-   TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
-     enodia/tt/bench/run_in_container.sh -- --out /out/runner-result.json --frame-count 1 --watcher
-   ```
+### Watcher validation
 
-   Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
-   mode-specific cap and supplies its default output, device, and image.
-3. If it passes, run one no-Watcher timing attempt with the 600-second outer
-cap. The margin-inclusive run budget must fit that cap; there is no override
-for a schedule that exceeds it.
-4. On an abnormal exit or timeout, perform at most one device-0 reset, then
-run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
-probe fails or after the one recovery attempt.
+After the owner approval and a clean cleanup gate, run one Watcher-enabled,
+one-frame validation on device 0 with a 1 ms harness interval and a separate
+60-second outer cap. It is not timing evidence. The explicit invocation is:
 
-Successful non-error runs are frame-count terminated; a cycle-budget error or outer timeout may terminate earlier. The frame interval is a harness parameter, not an acquisition-rate claim. For no-Watcher timing under the
-600-second cap, the explicit startup, overlap, and 10% margin formula gives a
-maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
+```bash
+TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
+  enodia/tt/bench/run_in_container.sh -- \
+  --out /out/issue12-watcher-validation.json \
+  --device-id 0 \
+  --frame-count 1 \
+  --frame-interval-ticks 1350000 \
+  --budget-aiclk-mhz 1350 \
+  --outer-timeout-seconds 60 \
+  --watcher
+```
+
+Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
+mode-specific 60-second cap. The command names the runner, result path, device,
+frame count, interval, clock used for the conversion, outer cap, and Watcher
+mode instead of relying on runner defaults.
+
+### No-Watcher timing
+
+Only if the Watcher validation passes, and still under the owner approval, run
+one no-Watcher timing attempt on device 0. It uses 500,000 frames, a 1 ms
+harness interval at the documented 1,350 MHz clock, and a 600-second outer cap.
+It writes the result and raw timestamps to container-internal `/out` paths:
+
+```bash
+env -u TT_METAL_WATCHER HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
+  enodia/tt/bench/run_in_container.sh -- \
+  --out /out/issue12-timing-500000.json \
+  --device-id 0 \
+  --frame-count 500000 \
+  --frame-interval-ticks 1350000 \
+  --budget-aiclk-mhz 1350 \
+  --outer-timeout-seconds 600 \
+  --raw-timestamps-out /out/issue12-timing-500000.bin
+```
+
+The margin-inclusive run budget must fit the 600-second cap; there is no
+override for a schedule that exceeds it. `env -u TT_METAL_WATCHER` and the
+absence of `--watcher` are both intentional: this is the no-Watcher timing
+run, not a second Watcher validation.
+
+### Record creation and output retention (host-side shell commands)
+
+The wrapper bind-mounts its output directory at container `/out`. On the
+development machine, verify the resident JSON records, raw timestamp bytes,
+and the wrapper's environment and power provenance before analysis. Retain the
+`out/bench/issue12-watcher-validation.json`,
+`out/bench/issue12-timing-500000.json`, and
+`out/bench/issue12-timing-500000.bin` files:
+
+```bash
+find out/bench -maxdepth 1 -type f \
+  \( -name 'issue12-watcher-validation.json' \
+     -o -name 'issue12-timing-500000.json' \
+     -o -name 'issue12-timing-500000.bin' \
+     -o -name 'env-*.json' \
+     -o -name 'power-*.csv' \) -print
+mkdir -p issue12-retained
+cp out/bench/issue12-watcher-validation.json \
+  out/bench/issue12-timing-500000.json \
+  out/bench/issue12-timing-500000.bin \
+  issue12-retained/
+sha256sum issue12-retained/issue12-timing-500000.json \
+  issue12-retained/issue12-timing-500000.bin
+```
+
+The raw timestamp file is a companion to the result with the same stem and is
+copied to the development machine before any analysis. Keep the JSON, matching
+`env-*.json`, matching `power-*.csv`, and raw timestamp companion together;
+these outputs are evidence only when their provenance remains together.
+
+### Abnormal exit or timeout: one-reset recovery
+
+On an abnormal exit or timeout, stop the planned run and do not start another
+hardware run. After the owner approves recovery, perform at most one reset of
+device 0, then run exactly one fixed-image Stage-1 health probe. Inspect the
+container state before and after recovery as well:
+
+```bash
+docker ps --format '{{.Names}}'
+tt-smi -r /dev/tenstorrent/0
+env \
+  TT_METAL_WATCHER=1 \
+  HEKATUS_TT_RUNNER=tools/newton_schulz_bringup.py \
+  HEKATUS_TT_IMAGE=ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621 \
+  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  enodia/tt/bench/run_in_container.sh -- \
+  --stage 1 \
+  --device-id 0 \
+  --watcher \
+  --timeout 60
+docker ps --format '{{.Names}}'
+```
+
+The health command explicitly selects the fixed image, Stage 1, device 0,
+Watcher mode, and its 60-second runner and container caps. If the health probe
+fails, stop hardware work; after this one recovery attempt, stop hardware work
+even if it passes. Do not perform a second reset. A cycle-budget error or outer
+timeout may terminate a resident run earlier than its frame count, and those
+runs are not timing evidence unless the recorded counters and raw timestamps
+support the claim.
+
+Successful non-error runs are frame-count terminated. The frame interval is a
+harness parameter, not an acquisition-rate claim. For no-Watcher timing under
+the 600-second cap, the explicit startup, overlap, and 10% margin formula gives
+a maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
 corresponding 1 ms tick conversion; 545,355 is rejected. The separate first
 Watcher validation remains capped at 60 seconds. The next approved timing rerun
 must stay within 545,354 frames at 1 ms and must copy raw timestamps back to the
 development machine for retention before analysis. The owner-requested
 60,000-frame, 1 ms, 60 s configuration is preserved as a historical rejection
 record with its 54,445-frame boundary. If a future 60,000-frame run is approved
-with a suitable cap, P99.9 has sufficient N
-(>=20,000) while P99.99 remains insufficient (N < 200,000). The run budget includes an explicit
-100 ms startup allowance converted at the configured AICLK; Watcher validation
-also has its separate explicit overhead margin. If the ring is full, the producer
-uses drop-new: the attempted frame is counted as overflow/dropped, never waits
-and never overwrites an occupied slot. Consumer-completion histograms exclude
+with a suitable cap, P99.9 has sufficient N (>=20,000) while P99.99 remains
+insufficient (N < 200,000). The run budget includes an explicit 100 ms startup
+allowance converted at the configured AICLK; Watcher validation also has its
+separate explicit overhead margin. If the ring is full, the producer uses
+drop-new: the attempted frame is counted as overflow/dropped, never waits and
+never overwrites an occupied slot. Consumer-completion histograms exclude
 dropped attempts, so their N and interval samples must be interpreted beside
 the attempted/produced/consumed/dropped counts. This is a procedure only: it
 does not authorize a future device run by itself.
