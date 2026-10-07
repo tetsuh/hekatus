@@ -1131,6 +1131,275 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["environment"]["image"] == "registry.example/tt@sha256:" + "a" * 64
 
 
+class TestResidentSemaphoreDecisionAudit:
+    """Board-free inventory and interleaving checks for shared kernel decisions."""
+
+    DECISION_INVENTORY: ClassVar[tuple[tuple[str, str, str, int], ...]] = (
+        (
+            "consumer",
+            "initial-ready-requirement",
+            "if (ready_count < required) {",
+            0,
+        ),
+        (
+            "consumer",
+            "initial-done-drain",
+            "if (*done_sem != 0) {",
+            0,
+        ),
+        (
+            "consumer",
+            "wait-ready-requirement",
+            "while (*ready_sem < required) {",
+            0,
+        ),
+        (
+            "consumer",
+            "wait-done-drain",
+            "if (*done_sem != 0) {",
+            1,
+        ),
+        (
+            "consumer",
+            "after-wait-ready-requirement",
+            "if (*ready_sem < required) {",
+            0,
+        ),
+        (
+            "consumer",
+            "after-wait-done-drain",
+            "if (*done_sem != 0) {",
+            2,
+        ),
+        (
+            "producer",
+            "cancel-before-attempt",
+            "if (*error_sem != 0) {",
+            0,
+        ),
+        (
+            "producer",
+            "cancel-during-pacing",
+            "if (*error_sem != 0) {",
+            1,
+        ),
+        (
+            "producer",
+            "cancel-before-slot-check",
+            "if (*error_sem != 0) {",
+            2,
+        ),
+        (
+            "producer",
+            "cancel-before-free-observation",
+            "if (*error_sem != 0) {",
+            3,
+        ),
+        (
+            "producer",
+            "free-slot-requirement",
+            "slot_full = *free_sem < consumed_required;",
+            0,
+        ),
+    )
+    PRODUCER_CANCEL_CHECKPOINTS: ClassVar[tuple[str, ...]] = (
+        "cancel-before-attempt",
+        "cancel-during-pacing",
+        "cancel-before-slot-check",
+        "cancel-before-free-observation",
+    )
+
+    @staticmethod
+    def _source(kernel: str) -> str:
+        return (ROOT / "enodia/tt/bench/kernels" / f"resident_{kernel}.cpp").read_text()
+
+    @staticmethod
+    def _positions(source: str, marker: str) -> list[int]:
+        return [match.start() for match in re.finditer(re.escape(marker), source)]
+
+    @classmethod
+    def _block_at(cls, source: str, marker: str, occurrence: int) -> str:
+        position = cls._positions(source, marker)[occurrence]
+        opening = source.index("{", position)
+        depth = 0
+        for index in range(opening, len(source)):
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    return source[position : index + 1]
+        raise AssertionError(f"unclosed block for {marker!r}")
+
+    def test_decision_inventory_is_complete(self):
+        assert len(self.DECISION_INVENTORY) == 11
+        labels = [entry[1] for entry in self.DECISION_INVENTORY]
+        assert len(labels) == len(set(labels))
+
+        expected = {
+            (kernel, marker, occurrence)
+            for kernel, _label, marker, occurrence in self.DECISION_INVENTORY
+        }
+        observed = set()
+        for kernel in ("consumer", "producer"):
+            source = self._source(kernel)
+            markers = {entry[2] for entry in self.DECISION_INVENTORY if entry[0] == kernel}
+            for marker in markers:
+                positions = self._positions(source, marker)
+                for occurrence in range(len(positions)):
+                    observed.add((kernel, marker, occurrence))
+
+        assert observed == expected
+        for kernel in ("consumer", "producer"):
+            source = self._source(kernel)
+            expected_conditions = sorted(
+                marker
+                for entry_kernel, _label, marker, _occurrence in self.DECISION_INVENTORY
+                if entry_kernel == kernel and marker.startswith(("if (", "while ("))
+            )
+            observed_conditions = sorted(
+                line.strip()
+                for line in source.splitlines()
+                if line.strip().startswith(("if (", "while ("))
+                and (
+                    "ready_count <" in line
+                    or any(
+                        semaphore in line
+                        for semaphore in ("*ready_sem", "*done_sem", "*free_sem", "*error_sem")
+                    )
+                )
+            )
+            assert observed_conditions == expected_conditions
+
+        consumer = self._source("consumer")
+        producer = self._source("producer")
+        assert consumer.count("if (*done_sem != 0) {") == 3
+        assert consumer.count("if (ready_count < required) {") == 1
+        assert consumer.count("while (*ready_sem < required) {") == 1
+        assert consumer.count("if (*ready_sem < required) {") == 1
+        assert producer.count("if (*error_sem != 0) {") == 4
+        assert producer.count("slot_full = *free_sem < consumed_required;") == 1
+
+    def test_shared_observations_have_required_freshness_ordering(self):
+        consumer = self._source("consumer")
+        producer = self._source("producer")
+
+        done_blocks = [
+            self._block_at(consumer, "if (*done_sem != 0) {", occurrence)
+            for occurrence in range(3)
+        ]
+        for block in done_blocks:
+            done = block.index("if (*done_sem != 0) {")
+            invalidate = block.index("invalidate_l1_cache();", done)
+            fresh_ready = block.index(
+                "const std::uint32_t fresh_ready_count = *ready_sem;", invalidate
+            )
+            fresh_decision = block.index(
+                "if (fresh_ready_count == frames_consumed) {", fresh_ready
+            )
+            assert done < invalidate < fresh_ready < fresh_decision
+            assert block.count("fresh_ready_count == frames_consumed") == 1
+            assert "if (ready_count == frames_consumed)" not in block
+            assert "*ready_sem == frames_consumed" not in block
+
+        assert re.search(
+            r"invalidate_l1_cache\(\);\s*"
+            r"const std::uint32_t required = frames_consumed \+ 1;\s*"
+            r"const std::uint32_t ready_count = \*ready_sem;",
+            consumer,
+        )
+        wait_block = self._block_at(consumer, "while (*ready_sem < required) {", 0)
+        assert wait_block.lstrip().startswith("while (*ready_sem < required) {")
+        assert re.search(r"\{\s*invalidate_l1_cache\(\);", wait_block)
+        assert re.search(
+            r"invalidate_l1_cache\(\);\s*if \(\*ready_sem < required\) \{", consumer
+        )
+
+        error_checks = [
+            self._block_at(producer, "if (*error_sem != 0) {", occurrence)
+            for occurrence in range(4)
+        ]
+        assert len(
+            re.findall(r"invalidate_l1_cache\(\);\s*if \(\*error_sem != 0\) \{", producer)
+        ) == len(error_checks)
+        for block in error_checks:
+            assert "error_flag = 1;" in block
+            assert "break;" in block
+
+        free_position = producer.index("slot_full = *free_sem < consumed_required;")
+        slot_gate = producer.index("if (consumed_required != 0) {")
+        free_invalidation = producer.rfind("invalidate_l1_cache();", slot_gate, free_position)
+        assert slot_gate < free_invalidation < free_position
+
+    @staticmethod
+    def _stale_consumer_step(done: bool, consumed: int, original_ready: int) -> str:
+        if done and original_ready == consumed:
+            return "terminate"
+        return "consume" if original_ready > consumed else "wait"
+
+    @staticmethod
+    def _corrected_consumer_step(
+        done: bool, consumed: int, ready: int
+    ) -> tuple[str, int]:
+        if done:
+            fresh_ready = ready
+            if fresh_ready == consumed:
+                return "terminate", consumed
+        if ready > consumed:
+            return "consume", consumed + 1
+        return "wait", consumed
+
+    def test_final_ready_publication_between_ready_and_done_reads_is_not_dropped(self):
+        ready = 0
+        done = False
+        consumed = 0
+        events = []
+
+        original_ready = ready
+        events.append("consumer-original-ready-read")
+        events.append("producer-final-frame-write")
+        ready += 1
+        events.append("producer-ready-publication")
+        done = True
+        events.append("producer-done-publication")
+        done_observed = done
+        events.append("consumer-done-observation")
+
+        stale_decision = self._stale_consumer_step(done_observed, consumed, original_ready)
+        corrected_decision, corrected_consumed = self._corrected_consumer_step(
+            done_observed, consumed, ready
+        )
+        original_read = events.index("consumer-original-ready-read")
+        ready_publication = events.index("producer-ready-publication")
+        done_publication = events.index("producer-done-publication")
+        done_observation = events.index("consumer-done-observation")
+        assert original_read < ready_publication < done_publication < done_observation
+        assert stale_decision == "terminate"
+        assert corrected_decision == "consume"
+        assert corrected_consumed == 1
+        assert corrected_consumed == ready
+
+    @pytest.mark.parametrize("checkpoint", PRODUCER_CANCEL_CHECKPOINTS)
+    def test_producer_cancel_publication_is_seen_at_each_checkpoint(self, checkpoint):
+        error_sem = 0
+        ready_count = 0
+        checked: list[str] = []
+        canceled = False
+        for stage in self.PRODUCER_CANCEL_CHECKPOINTS:
+            if stage == checkpoint:
+                error_sem = 1
+            checked.append(stage)
+            if error_sem != 0:
+                canceled = True
+                break
+        if not canceled:
+            ready_count += 1
+
+        assert canceled
+        assert checked[-1] == checkpoint
+        assert ready_count == 0
+
+
 def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
     producer = Path("enodia/tt/bench/kernels/resident_producer.cpp").read_text()
     consumer = Path("enodia/tt/bench/kernels/resident_consumer.cpp").read_text()

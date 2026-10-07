@@ -364,6 +364,8 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json` | Authoritative combined Issue #100/PR #101 record: one device-0 session with all nine correctness rows, four 1,000-launch performance rows, p50/p99/p99.9 and both TFLOPS derivations, board-id serial alias provenance, complete environment, cleanup evidence, and external raw-artifact provenance. The raw artifact is persisted for audit; rebuilding is deferred to Issue #102. This record supersedes both 2026-10-05 records above; those predecessors remain immutable. |
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv` | Power, clock, and temperature trace for the authoritative combined record above. |
 
+Historical discrepancy: the 2026-10-05 recovery record's `watcher_log_sha256` has 61 hex characters and is unusable for verification; it is historical and non-authoritative.
+
 Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
 
 Current wrap-tracked runs observed zero paired short/long outliers in both the Watcher validation and 500,000-frame timing run, versus 27 pairs in the prior 2616f96 record (with 6363-frame phase analysis). This is an observation only with no causal claim.
