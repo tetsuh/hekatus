@@ -29,6 +29,7 @@ def test_issue88_catalogue_pins_every_execution_control_and_placement():
         ("bf16", 32, "l1"),
         ("bf16", 32, "dram"),
         ("fp32-r", 32, "dram"),
+        ("fp32-r", 32, "l1"),
     ]
     assert {
         key: rows[0][key]

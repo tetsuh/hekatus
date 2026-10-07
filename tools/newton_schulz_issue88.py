@@ -19,6 +19,8 @@ import collections
 import csv
 import datetime
 import hashlib
+import io
+import itertools
 import json
 import math
 import os
@@ -45,6 +47,10 @@ from enodia.tt.bench.newton_schulz_reference import (
 DEVICE_ID = 0
 LAUNCHES_PER_ROW = 1_000
 ROW_TIMEOUT_S = 60.0
+# The sibling sampler remains alive until the wrapper observes the runner exit.
+# Polling is deliberately bounded below the existing 60-second row cap.
+POWER_TRACE_POLL_TIMEOUT_S = 30.0
+POWER_TRACE_POLL_INTERVAL_S = 0.5
 CONDITION_NUMBER = 100.0
 INPUT_SEED = 6300
 FIXED_ITERATIONS = NEWTON_SCHULZ_ITERATIONS
@@ -56,7 +62,9 @@ ISSUE88_SEED = INPUT_SEED
 ISSUE88_ITERATIONS = FIXED_ITERATIONS
 DEVICE_TEST_RELATIVE_ERROR_GATE = 1e-2
 FP32_R_L32_L1_PREFLIGHT_BYTES = 1_884_928
+FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES = 312_064
 FP32_R_L32_L1_PREFLIGHT_STATUS = "rejected_before_allocation"
+SUCCESSFUL_ROW_STATUSES = frozenset({"ok", "correctness_only", "preflight_rejected"})
 
 LOOK_DIRECTIONS_DEG = (-30.0, -15.0, 0.0, 15.0, 30.0)
 PATTERN_DIRECTIONS_DEG = (
@@ -74,6 +82,28 @@ PATTERN_DIRECTIONS_DEG = (
 ISSUE88_RECORD_SCHEMA = "adr-0005-issue88-fp32-r-v1"
 ISSUE88_RAW_SCHEMA = "adr-0005-issue88-fp32-r-raw-v1"
 ISSUE88_RUNNER = "tools/newton_schulz_issue88.py"
+POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+_PCI_BUS_ID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
+_IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
+_HARNESS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+
+# This is the one source of truth for the publication gate.  The builder
+# iterates this table when it emits status_components, and board-free tests
+# iterate it rather than maintaining a second list of required checks.
+ISSUE88_STATUS_COMPONENTS = (
+    ("rows", "every selected comparison row succeeds"),
+    (
+        "board_selection",
+        "telemetry board selection is verifiable and has board type, serial, PCI identity, and firmware",
+    ),
+    (
+        "image_toolchain",
+        "the image is digest-pinned and kernel-driver/toolchain fields are present",
+    ),
+    ("harness", "harness_commit is valid and harness_dirty is false"),
+    ("power_trace", "the power trace is readable, nonempty, and covers the device run"),
+    ("device_close", "device close succeeds"),
+)
 _PRIVATE_METADATA_KEYS = frozenset(
     {
         "hostname",
@@ -175,6 +205,23 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
                 "R in DRAM is explicit because the selected block-8 R-in-L1 "
                 "preflight rejects before allocation."
             ),
+        },
+        {
+            **common,
+            "name": "fp32-r-L32",
+            "variant": "fp32-r",
+            "r_format": "FP32",
+            "size": 32,
+            "packing": "native_32x32",
+            "r_memory": "l1",
+            "configuration_note": (
+                "Expected host-only preflight rejection; block 8 R-in-L1 exceeds "
+                "the L1 budget and no placement fallback is performed."
+            ),
+            "preflight_status": FP32_R_L32_L1_PREFLIGHT_STATUS,
+            "preflight_bytes": FP32_R_L32_L1_PREFLIGHT_BYTES,
+            "preflight_over_budget_bytes": FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES,
+            "expected_preflight_rejection": True,
         },
     )
     return tuple(dict(row) for row in rows)
@@ -637,17 +684,289 @@ def _normalize_environment(raw: dict[str, Any], run_id: str) -> dict[str, Any]:
     return _sanitize_metadata(environment)
 
 
+def _utc_now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
+
+
+def _parse_utc_timestamp(value: Any, *, field: str) -> datetime.datetime:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty ISO-8601 timestamp")
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field} must include a timezone")
+    return parsed.astimezone(datetime.UTC)
+
+
+def _timestamp_text(value: datetime.datetime | str | None, *, field: str) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        parsed = value
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError(f"{field} must include a timezone")
+        return parsed.astimezone(datetime.UTC).isoformat()
+    return _parse_utc_timestamp(value, field=field).isoformat()
+
+
+def _power_trace_base(
+    path: Path | None,
+    *,
+    run_id: str,
+    run_start: str | None,
+    run_end: str | None,
+) -> dict[str, Any]:
+    return {
+        "file": path.name if path is not None else None,
+        "run_id": run_id,
+        "columns": list(POWER_TRACE_COLUMNS),
+        "samples": [],
+        "sampling_source": "board snapshot captured by run_in_container.sh",
+        "sample_count": 0,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "run_start": run_start,
+        "run_end": run_end,
+        "readable": False,
+        "nonempty": False,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "poll_complete": False,
+        "coverage": {
+            "nonempty": False,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_at_or_before_run_start": False,
+            "last_at_or_after_run_end": False,
+            "readable": False,
+            "complete": False,
+        },
+    }
+
+
+def _read_power_trace(
+    path: Path,
+    *,
+    run_id: str,
+    run_start: str | None,
+    run_end: str | None,
+    read_text_fn: Callable[[Path], str] | None = None,
+) -> dict[str, Any]:
+    """Read one sibling CSV and retain honest coverage metadata.
+
+    A partially written sampler file is represented as an incomplete trace
+    rather than being promoted to a successful artifact.  That distinction is
+    what lets the bounded poll retry while the wrapper is still appending.
+    """
+    trace = _power_trace_base(
+        path,
+        run_id=run_id,
+        run_start=run_start,
+        run_end=run_end,
+    )
+    try:
+        text = path.read_text() if read_text_fn is None else read_text_fn(path)
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = tuple(reader.fieldnames or ())
+        if fieldnames != POWER_TRACE_COLUMNS:
+            raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
+        samples = [dict(row) for row in reader]
+    except Exception as exc:  # noqa: BLE001 - expose unreadable traces as failures
+        trace["error"] = _sanitize_text(exc)
+        return trace
+
+    trace["readable"] = True
+    trace["samples"] = _sanitize_metadata(samples)
+    trace["sample_count"] = len(samples)
+    trace["nonempty"] = bool(samples)
+    if samples:
+        trace["first_timestamp"] = _sanitize_text(samples[0].get("timestamp_utc"))
+        trace["last_timestamp"] = _sanitize_text(samples[-1].get("timestamp_utc"))
+
+    parsed_timestamps: list[datetime.datetime] = []
+    try:
+        parsed_timestamps = [
+            _parse_utc_timestamp(
+                sample.get("timestamp_utc"),
+                field=f"power sample {index} timestamp_utc",
+            )
+            for index, sample in enumerate(samples)
+        ]
+    except ValueError as exc:
+        trace["error"] = _sanitize_text(exc)
+    else:
+        trace["timestamps_parse"] = True
+        if parsed_timestamps:
+            trace["first_timestamp"] = parsed_timestamps[0].isoformat()
+            trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
+            trace["timestamps_ordered"] = all(
+                left <= right
+                for left, right in itertools.pairwise(parsed_timestamps)
+            )
+            trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
+        try:
+            start = _parse_utc_timestamp(run_start, field="run_start")
+            end = _parse_utc_timestamp(run_end, field="run_end")
+        except ValueError as exc:
+            trace["error"] = _sanitize_text(exc)
+        else:
+            if parsed_timestamps:
+                trace["covers_run_start"] = (
+                    parsed_timestamps[0] <= start <= end
+                )
+                trace["covers_run_end"] = parsed_timestamps[-1] >= end
+                trace["coverage_complete"] = all(
+                    (
+                        trace["readable"],
+                        trace["nonempty"],
+                        trace["timestamps_parse"],
+                        trace["timestamps_ordered"],
+                        parsed_timestamps[0] <= start,
+                        start <= end,
+                        end <= parsed_timestamps[-1],
+                    )
+                )
+
+    trace["coverage"] = {
+        "nonempty": trace["nonempty"],
+        "timestamps_parse": trace["timestamps_parse"],
+        "timestamps_ordered": trace["timestamps_ordered"],
+        "first_at_or_before_run_start": trace["covers_run_start"],
+        "last_at_or_after_run_end": trace["covers_run_end"],
+        "readable": trace["readable"],
+        "complete": trace["coverage_complete"],
+    }
+    return trace
+
+
+def _public_power_trace(trace: dict[str, Any]) -> dict[str, Any]:
+    public = dict(trace)
+    public.pop("_last_timestamp_datetime", None)
+    return _sanitize_metadata(public)
+
+
+def _wait_for_power_trace(
+    output_dir: Path,
+    *,
+    run_id: str,
+    run_end: datetime.datetime | str,
+    run_start: datetime.datetime | str | None = None,
+    explicit: Path | None = None,
+    timeout_s: float = POWER_TRACE_POLL_TIMEOUT_S,
+    interval_s: float = POWER_TRACE_POLL_INTERVAL_S,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    read_text_fn: Callable[[Path], str] | None = None,
+) -> dict[str, Any]:
+    """Poll the sibling sampler until its final sample covers ``run_end``."""
+    if not math.isfinite(timeout_s) or timeout_s <= 0.0 or timeout_s > ROW_TIMEOUT_S:
+        raise ValueError("power trace poll timeout must be between 0 and 60 seconds")
+    if not math.isfinite(interval_s) or interval_s <= 0.0:
+        raise ValueError("power trace poll interval must be finite and positive")
+    start_text = _timestamp_text(run_start, field="run_start")
+    end_text = _timestamp_text(run_end, field="run_end")
+    end_value = _parse_utc_timestamp(end_text, field="run_end")
+    poll_started = monotonic_fn()
+    deadline = poll_started + timeout_s
+    poll_count = 0
+    max_polls = max(1, math.ceil(timeout_s / interval_s) + 1)
+    last_trace: dict[str, Any] | None = None
+    last_error = "no power trace was readable"
+
+    while poll_count < max_polls:
+        poll_count += 1
+        try:
+            selected = _read_one_artifact(
+                output_dir,
+                "power-{run_id}.csv",
+                run_id=run_id,
+                explicit=explicit,
+            )
+        except Exception as exc:  # noqa: BLE001 - sampler may not have created it yet
+            last_error = _sanitize_text(exc)
+        else:
+            trace = _read_power_trace(
+                selected,
+                run_id=run_id,
+                run_start=start_text,
+                run_end=end_text,
+                read_text_fn=read_text_fn,
+            )
+            trace["poll_count"] = poll_count
+            last_trace = trace
+            final_timestamp = trace.get("_last_timestamp_datetime")
+            if isinstance(final_timestamp, datetime.datetime) and final_timestamp >= end_value:
+                trace["poll_complete"] = True
+                return _public_power_trace(trace)
+            last_error = trace.get("error") or "power trace final sample is before run_end"
+
+        remaining = deadline - monotonic_fn()
+        if remaining <= 0.0:
+            break
+        sleep_fn(min(interval_s, remaining))
+
+    if last_trace is None:
+        last_trace = _power_trace_base(
+            explicit,
+            run_id=run_id,
+            run_start=start_text,
+            run_end=end_text,
+        )
+    last_trace["poll_count"] = poll_count
+    last_trace["poll_error"] = _sanitize_text(
+        f"power trace did not reach run_end within {timeout_s:g} seconds: {last_error}"
+    )
+    return _public_power_trace(last_trace)
+
+
+def _power_trace_failure_reason(trace: Any) -> str:
+    if not isinstance(trace, dict):
+        return "power trace is missing"
+    if not trace.get("readable"):
+        return trace.get("error") or "power trace is not readable"
+    if not trace.get("nonempty"):
+        return "power trace contains no samples"
+    if not trace.get("timestamps_parse"):
+        return trace.get("error") or "power trace timestamps do not parse"
+    if not trace.get("timestamps_ordered"):
+        return "power trace timestamps are not ordered"
+    if not trace.get("covers_run_start"):
+        return "power trace starts after run_start"
+    if not trace.get("covers_run_end"):
+        return trace.get("poll_error") or "power trace ends before run_end"
+    if not trace.get("coverage_complete"):
+        return "power trace coverage is incomplete"
+    return "power trace coverage is complete"
+
+
 def _read_telemetry(
     output_dir: Path,
     *,
     run_id: str,
     environment_path: Path | None = None,
     power_path: Path | None = None,
+    run_start: datetime.datetime | str | None = None,
+    run_end: datetime.datetime | str | None = None,
+    monotonic_fn: Callable[[], float] = time.monotonic,
+    sleep_fn: Callable[[float], None] = time.sleep,
+    read_text_fn: Callable[[Path], str] | None = None,
 ) -> dict[str, Any]:
-    """Read the wrapper's sibling artifacts, retaining raw samples for audit."""
+    """Read environment and, after the device run, a complete power trace."""
+    start_text = _timestamp_text(run_start, field="run_start") if run_start is not None else None
+    end_text = _timestamp_text(run_end, field="run_end") if run_end is not None else None
     telemetry: dict[str, Any] = {
         "status": "failed",
         "run_id": run_id,
+        "run_start": start_text,
+        "run_end": end_text,
         "environment_file": None,
         "environment": None,
         "normalized_environment": None,
@@ -661,7 +980,12 @@ def _read_telemetry(
             run_id=run_id,
             explicit=environment_path,
         )
-        raw_environment = json.loads(selected_environment.read_text())
+        environment_text = (
+            selected_environment.read_text()
+            if read_text_fn is None
+            else read_text_fn(selected_environment)
+        )
+        raw_environment = json.loads(environment_text)
         if not isinstance(raw_environment, dict):
             raise TypeError("environment artifact must contain an object")
         telemetry["environment_file"] = selected_environment.name
@@ -671,28 +995,28 @@ def _read_telemetry(
         telemetry["failures"].append(
             {"stage": "telemetry.environment", "error": _sanitize_text(exc)}
         )
+
     try:
-        selected_power = _read_one_artifact(
+        if end_text is None:
+            raise ValueError("run_end is required before reading power telemetry")
+        power_trace = _wait_for_power_trace(
             output_dir,
-            "power-{run_id}.csv",
             run_id=run_id,
+            run_start=start_text,
+            run_end=end_text,
             explicit=power_path,
+            monotonic_fn=monotonic_fn,
+            sleep_fn=sleep_fn,
+            read_text_fn=read_text_fn,
         )
-        with selected_power.open(newline="") as handle:
-            reader = csv.DictReader(handle)
-            expected = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
-            if tuple(reader.fieldnames or ()) != expected:
-                raise ValueError(f"power trace has unexpected columns {reader.fieldnames!r}")
-            samples = [dict(row) for row in reader]
-        if not samples:
-            raise ValueError("power trace contains no samples")
-        telemetry["power_trace"] = {
-            "file": selected_power.name,
-            "run_id": run_id,
-            "columns": list(expected),
-            "samples": _sanitize_metadata(samples),
-            "sampling_source": "board snapshot captured by run_in_container.sh",
-        }
+        telemetry["power_trace"] = power_trace
+        if not power_trace.get("coverage_complete"):
+            telemetry["failures"].append(
+                {
+                    "stage": "telemetry.power",
+                    "error": _power_trace_failure_reason(power_trace),
+                }
+            )
     except Exception as exc:  # noqa: BLE001 - preserve environment failure separately
         telemetry["failures"].append(
             {"stage": "telemetry.power", "error": _sanitize_text(exc)}
@@ -719,6 +1043,36 @@ def _failed_row(
     if samples and flops_per_launch is not None:
         row.update(timing_summary(samples, flops_per_launch))
     return row
+
+
+def _preflight_rejected_row(config: dict[str, Any]) -> dict[str, Any]:
+    """Represent the expected FP32-R L=32 L1 rejection without a launch."""
+    if not config.get("expected_preflight_rejection"):
+        raise ValueError("row is not an expected preflight rejection")
+    result = dict(config)
+    result.update(
+        {
+            "row": config["name"],
+            "shape_name": shape_name(config),
+            "status": "preflight_rejected",
+            "failure_stage": None,
+            "launches_requested": 0,
+            "launches_measured": 0,
+            "preflight": {
+                "status": config["preflight_status"],
+                "bytes": config["preflight_bytes"],
+                "over_budget_bytes": config["preflight_over_budget_bytes"],
+                "variant": config["variant"],
+                "size": config["size"],
+                "matrix_block": config["matrix_block"],
+                "r_memory": config["r_memory"],
+                "fallback": False,
+                "allocation_attempted": False,
+                "launches": 0,
+            },
+        }
+    )
+    return result
 
 
 def _run_row(
@@ -960,6 +1314,9 @@ def run_comparison(
     comparison: list[dict[str, Any]] = []
     stopped = False
     for config in selected:
+        if config.get("expected_preflight_rejection"):
+            comparison.append(_preflight_rejected_row(config))
+            continue
         try:
             size, matrices, reference = _prepare_comparison_input(
                 config,
@@ -1001,14 +1358,14 @@ def run_comparison(
             matrices_by_size.pop(size, None)
             x0_by_size.pop(size, None)
             true_inverse_by_size.pop(size, None)
-        if row.get("status") not in {"ok", "correctness_only"}:
+        if row.get("status") not in SUCCESSFUL_ROW_STATUSES:
             stopped = True
             break
         if first_launch:
             break
 
-    passed = bool(comparison) and all(
-        row.get("status") in {"ok", "correctness_only"} for row in comparison
+    passed = bool(comparison) and len(comparison) == len(selected) and all(
+        row.get("status") in SUCCESSFUL_ROW_STATUSES for row in comparison
     )
     return {
         "status": "pass" if passed and not stopped else "failed",
@@ -1026,6 +1383,7 @@ def run_comparison(
             "fp32_r_l32_default_l1_preflight": {
                 "status": FP32_R_L32_L1_PREFLIGHT_STATUS,
                 "bytes": FP32_R_L32_L1_PREFLIGHT_BYTES,
+                "over_budget_bytes": FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES,
                 "variant": "fp32-r",
                 "size": 32,
                 "matrix_block": 8,
@@ -1060,6 +1418,185 @@ def _raw_path(result_path: Path, run_id: str) -> Path:
     return result_path.parent / f"issue88-fp32-r-raw-{run_id}.json"
 
 
+def _status_components(
+    run: dict[str, Any],
+    *,
+    telemetry: dict[str, Any],
+    cleanup: dict[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Evaluate every publication gate without deriving missing provenance."""
+    rows = run.get("comparison_rows")
+    requested = run.get("rows_requested")
+    successful_statuses = SUCCESSFUL_ROW_STATUSES
+    row_failures: list[str] = []
+    if not isinstance(rows, list) or not rows:
+        row_failures.append("no selected rows completed")
+    else:
+        if run.get("status") != "pass":
+            row_failures.append(f"run status is {run.get('status')!r}")
+        if not isinstance(requested, int) or len(rows) != requested:
+            row_failures.append(
+                f"completed {len(rows)} of {requested!r} selected rows"
+            )
+        for row in rows:
+            if row.get("status") not in successful_statuses:
+                row_failures.append(
+                    f"{row.get('row', row.get('name', '<unknown>'))} status is "
+                    f"{row.get('status')!r}: {row.get('error', 'row did not succeed')}"
+                )
+        if run.get("stopped_on_failure"):
+            row_failures.append("run stopped on a row failure")
+    row_ok = not row_failures
+
+    environment = telemetry.get("normalized_environment")
+    board_failures: list[str] = []
+    board = environment.get("board") if isinstance(environment, dict) else None
+    if not isinstance(board, dict):
+        board_failures.append("normalized telemetry board is missing")
+    else:
+        board_type = board.get("board_type")
+        if not isinstance(board_type, str) or not board_type.strip():
+            board_failures.append("board_type is missing")
+        elif board_type.lower() != "p150a":
+            board_failures.append(f"board_type is not p150a: {board_type!r}")
+        serial = board.get("serial")
+        board_id = board.get("board_id")
+        if not isinstance(serial, str) or not serial.strip():
+            board_failures.append("board serial is missing")
+        if not isinstance(board_id, str) or not board_id.strip():
+            board_failures.append("board_id is missing")
+        pci = next(
+            (
+                board.get(key)
+                for key in ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+                if board.get(key) is not None
+            ),
+            None,
+        )
+        if not isinstance(pci, str) or _PCI_BUS_ID_RE.fullmatch(pci.strip()) is None:
+            board_failures.append("verifiable PCI identity is missing")
+        serial_identity = (
+            environment.get("board_serial_identity")
+            if isinstance(environment, dict)
+            else None
+        )
+        if not isinstance(serial_identity, dict):
+            board_failures.append("board serial identity provenance is missing")
+        elif serial_identity.get("serial") != serial or serial_identity.get("board_id") != board_id:
+            board_failures.append("board serial identity does not match board metadata")
+        firmware = environment.get("firmware") if isinstance(environment, dict) else None
+        if not isinstance(firmware, dict) or not isinstance(
+            firmware.get("fw_bundle_version"), str
+        ) or not firmware.get("fw_bundle_version", "").strip():
+            board_failures.append("firmware bundle version is missing")
+
+    image_failures: list[str] = []
+    if not isinstance(environment, dict):
+        image_failures.append("normalized environment is missing")
+    else:
+        image = environment.get("image")
+        if not isinstance(image, str) or not image.strip():
+            image_failures.append("image is missing")
+        if environment.get("image_pinned") is not True:
+            image_failures.append("image_pinned is not true")
+        digest = environment.get("image_digest")
+        if not isinstance(digest, str) or _IMAGE_DIGEST_RE.fullmatch(digest.strip()) is None:
+            image_failures.append("image_digest is not a valid sha256 digest")
+        for field in ("kernel_driver_version", "toolchain_release"):
+            if not isinstance(environment.get(field), str) or not environment[field].strip():
+                image_failures.append(f"{field} is missing")
+
+    harness_failures: list[str] = []
+    if not isinstance(environment, dict):
+        harness_failures.append("normalized environment is missing")
+    else:
+        commit = environment.get("harness_commit")
+        if not isinstance(commit, str) or _HARNESS_COMMIT_RE.fullmatch(commit.strip()) is None:
+            harness_failures.append("harness_commit is not a full hexadecimal commit")
+        if environment.get("harness_dirty") is not False:
+            harness_failures.append("harness_dirty is not false")
+
+    power_trace = telemetry.get("power_trace")
+    power_failures: list[str] = []
+    if not isinstance(power_trace, dict):
+        power_failures.append("power trace is missing")
+    else:
+        if not isinstance(power_trace.get("samples"), list) or not power_trace["samples"]:
+            power_failures.append("power trace contains no samples")
+        if power_trace.get("sample_count") != len(power_trace.get("samples", [])):
+            power_failures.append("power trace sample count is inconsistent")
+        for field in ("readable", "timestamps_parse", "timestamps_ordered", "poll_complete"):
+            if power_trace.get(field) is not True:
+                power_failures.append(f"power trace {field} is not true")
+        try:
+            first = _parse_utc_timestamp(
+                power_trace.get("first_timestamp"), field="power first_timestamp"
+            )
+            start = _parse_utc_timestamp(power_trace.get("run_start"), field="power run_start")
+            end = _parse_utc_timestamp(power_trace.get("run_end"), field="power run_end")
+            last = _parse_utc_timestamp(
+                power_trace.get("last_timestamp"), field="power last_timestamp"
+            )
+        except ValueError as exc:
+            power_failures.append(_sanitize_text(exc))
+        else:
+            if not first <= start <= end <= last:
+                power_failures.append(
+                    "power timestamps do not satisfy first <= run_start <= run_end <= last"
+                )
+        if power_trace.get("coverage_complete") is not True:
+            power_failures.append("power trace coverage_complete is not true")
+    power_ok = not power_failures
+    power_reason = (
+        "power trace coverage is complete"
+        if power_ok
+        else "; ".join(power_failures)
+    )
+    close_ok = cleanup.get("close_succeeded") is True
+    close_reason = (
+        "device close returned normally"
+        if close_ok
+        else "device close was not completed successfully"
+    )
+    checks = {
+        "rows": (
+            row_ok,
+            "all selected rows succeeded" if row_ok else "; ".join(row_failures),
+        ),
+        "board_selection": (
+            not board_failures,
+            "board selection and firmware are verifiable"
+            if not board_failures
+            else "; ".join(board_failures),
+        ),
+        "image_toolchain": (
+            not image_failures,
+            "digest-pinned image and toolchain metadata are present"
+            if not image_failures
+            else "; ".join(image_failures),
+        ),
+        "harness": (
+            not harness_failures,
+            "harness commit is valid and the tree is clean"
+            if not harness_failures
+            else "; ".join(harness_failures),
+        ),
+        "power_trace": (power_ok, power_reason),
+        "device_close": (close_ok, close_reason),
+    }
+    return {
+        name: {"ok": bool(checks[name][0]), "reason": _sanitize_text(checks[name][1])}
+        for name, _description in ISSUE88_STATUS_COMPONENTS
+    }
+
+
+def _status_components_pass(status_components: dict[str, dict[str, Any]]) -> bool:
+    return all(
+        status_components.get(name, {}).get("ok") is True
+        for name, _description in ISSUE88_STATUS_COMPONENTS
+    )
+
+
 def _record_payload(
     run: dict[str, Any],
     *,
@@ -1067,20 +1604,38 @@ def _record_payload(
     run_id: str,
     raw_path: Path,
     cleanup: dict[str, Any],
+    status_components: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     environment = telemetry.get("normalized_environment")
     power_trace = telemetry.get("power_trace") or {}
     rows = run.get("comparison_rows", [])
-    overall_pass = run.get("status") == "pass" and telemetry.get("status") == "complete"
+    if status_components is None:
+        status_components = _status_components(run, telemetry=telemetry, cleanup=cleanup)
+    overall_pass = _status_components_pass(status_components)
     timed_out = any(row.get("failure_stage") == "row_timeout" for row in rows)
     failure = None
     if run.get("failure") is not None:
         failure = run["failure"]
     elif telemetry.get("failures"):
         failure = telemetry["failures"][0]
+    elif not overall_pass:
+        failed_component = next(
+            (
+                (name, component)
+                for name, component in status_components.items()
+                if not component.get("ok")
+            ),
+            ("unknown", {"reason": "record publication gate failed"}),
+        )
+        failure = {
+            "stage": "status_component",
+            "component": failed_component[0],
+            "error": failed_component[1].get("reason", "component failed"),
+        }
     record: dict[str, Any] = {
         "record_schema": ISSUE88_RECORD_SCHEMA,
         "status": "pass" if overall_pass else "failed",
+        "status_components": status_components,
         "issue": "#88",
         "adr": "ADR-0005",
         "captured_at": (environment or {}).get(
@@ -1129,7 +1684,16 @@ def _record_payload(
             "power_clock_provenance": {
                 "trace": power_trace.get("file"),
                 "columns": power_trace.get("columns"),
-                "samples": len(power_trace.get("samples", [])),
+                "samples": power_trace.get("sample_count", len(power_trace.get("samples", []))),
+                "sample_count": power_trace.get(
+                    "sample_count", len(power_trace.get("samples", []))
+                ),
+                "first_timestamp": power_trace.get("first_timestamp"),
+                "last_timestamp": power_trace.get("last_timestamp"),
+                "run_start": power_trace.get("run_start"),
+                "run_end": power_trace.get("run_end"),
+                "coverage": power_trace.get("coverage"),
+                "coverage_complete": power_trace.get("coverage_complete", False),
                 "sampling_source": power_trace.get("sampling_source"),
             },
             "commands": {
@@ -1172,7 +1736,7 @@ def _record_payload(
         },
         "run_protocol": {
             "timeout": timed_out,
-            "abnormal_exit": run.get("status") != "pass",
+            "abnormal_exit": not overall_pass,
             "reset_performed": False,
             "cleanup": cleanup,
             "partial_rows_retained": True,
@@ -1197,14 +1761,19 @@ def _raw_payload(
     run_id: str,
     raw_path: Path,
     cleanup: dict[str, Any],
+    status_components: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Capture all result-builder inputs while retaining only safe metadata."""
+    if status_components is None:
+        status_components = _status_components(run, telemetry=telemetry, cleanup=cleanup)
+    record_status = "pass" if _status_components_pass(status_components) else "failed"
     payload = {
         "raw_schema": ISSUE88_RAW_SCHEMA,
-        "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "captured_at": _utc_now().isoformat(),
         "run_id": run_id,
         "artifact_file": raw_path.name,
-        "artifact_status": run.get("status"),
+        "artifact_status": record_status,
+        "status_components": status_components,
         "run": run,
         "comparison_results": run.get("comparison_rows", []),
         "rows": run.get("comparison_rows", []),
@@ -1215,6 +1784,7 @@ def _raw_payload(
             "fp32_r_l32_default_l1_preflight": {
                 "status": FP32_R_L32_L1_PREFLIGHT_STATUS,
                 "bytes": FP32_R_L32_L1_PREFLIGHT_BYTES,
+                "over_budget_bytes": FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES,
                 "matrix_block": 8,
                 "r_memory": "l1",
             },
@@ -1228,6 +1798,20 @@ def _raw_payload(
     }
     if run.get("failure") is not None:
         payload["failure"] = run["failure"]
+    elif record_status != "pass":
+        failed_component = next(
+            (
+                (name, component)
+                for name, component in status_components.items()
+                if not component.get("ok")
+            ),
+            ("unknown", {"reason": "record publication gate failed"}),
+        )
+        payload["failure"] = {
+            "stage": "status_component",
+            "component": failed_component[0],
+            "error": failed_component[1].get("reason", "component failed"),
+        }
     return _sanitize_metadata(payload)
 
 
@@ -1349,7 +1933,14 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("--x0-memory changes a requested row placement")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(
+    argv: list[str] | None = None,
+    *,
+    now_fn: Callable[[], datetime.datetime] | None = None,
+    monotonic_fn: Callable[[], float] | None = None,
+    sleep_fn: Callable[[float], None] | None = None,
+    read_text_fn: Callable[[Path], str] | None = None,
+) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     _validate_args(parser, args)
@@ -1361,12 +1952,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     run_id = _new_run_id()
     output_dir = result_path.parent
-    telemetry = _read_telemetry(
-        output_dir,
-        run_id=run_id,
-        environment_path=args.env_json,
-        power_path=args.power_trace,
-    )
+    now = _utc_now if now_fn is None else now_fn
+    monotonic = time.monotonic if monotonic_fn is None else monotonic_fn
+    sleep = time.sleep if sleep_fn is None else sleep_fn
+    run_start = now()
     run: dict[str, Any] = {
         "status": "failed",
         "comparison_rows": [],
@@ -1396,7 +1985,9 @@ def main(argv: list[str] | None = None) -> int:
                 run = _mark_failed(run, "open", exc)
             else:
                 try:
-                    run = run_comparison(ttnn, device, rows=selected_rows, first_launch=args.first_launch)
+                    run = run_comparison(
+                        ttnn, device, rows=selected_rows, first_launch=args.first_launch
+                    )
                 except Exception as exc:  # noqa: BLE001 - preserve device-session failures
                     partial = getattr(exc, "partial_rows", None)
                     if isinstance(partial, list):
@@ -1407,13 +1998,15 @@ def main(argv: list[str] | None = None) -> int:
         cleanup = {
             "device_opened": device_opened,
             "close_attempted": device_opened,
-            "close_succeeded": not device_opened,
+            "close_succeeded": False,
         }
         if device_opened:
+            cleanup["close_attempted"] = True
             try:
                 import ttnn
 
                 ttnn.close_device(device)
+                cleanup["close_succeeded"] = True
             except Exception as exc:  # noqa: BLE001 - retain rows before returning failure
                 close_error = exc
                 run = _mark_failed(run, "close", exc)
@@ -1421,18 +2014,44 @@ def main(argv: list[str] | None = None) -> int:
                 cleanup["close_error"] = _sanitize_text(exc)
         run["cleanup"] = cleanup
 
+    run_end = now()
+    run["run_start"] = _timestamp_text(run_start, field="run_start")
+    run["run_end"] = _timestamp_text(run_end, field="run_end")
     if close_error is not None:
         # The failure is represented in JSON; do not discard the completed rows.
         run["stopped_on_failure"] = True
 
+    # The sampler is still alive at this point.  Reading power telemetry here,
+    # after every row and device close operation, lets the poll wait for a
+    # final sample at or beyond run_end instead of freezing a partial trace.
+    telemetry = _read_telemetry(
+        output_dir,
+        run_id=run_id,
+        environment_path=args.env_json,
+        power_path=args.power_trace,
+        run_start=run_start,
+        run_end=run_end,
+        monotonic_fn=monotonic,
+        sleep_fn=sleep,
+        read_text_fn=read_text_fn,
+    )
+    status_components = _status_components(run, telemetry=telemetry, cleanup=run["cleanup"])
     raw_path = _raw_path(result_path, run_id)
-    raw = _raw_payload(run, telemetry=telemetry, run_id=run_id, raw_path=raw_path, cleanup=run["cleanup"])
+    raw = _raw_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=raw_path,
+        cleanup=run["cleanup"],
+        status_components=status_components,
+    )
     record = _record_payload(
         run,
         telemetry=telemetry,
         run_id=run_id,
         raw_path=raw_path,
         cleanup=run["cleanup"],
+        status_components=status_components,
     )
     _atomic_json_write(raw_path, raw)
     _atomic_json_write(result_path, record)
