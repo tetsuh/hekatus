@@ -143,23 +143,6 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005-power.csv` | Companion power trace for the current wrap-tracked Watcher validation. |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` | Current accepted in-cap 500,000-frame timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,033/1,350,059/1,350,061 ticks, min/max 1,349,924/1,350,068, work ticks 1,063–1,087, zero overflow, and zero paired short/long outliers. |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current wrap-tracked 500,000-frame timing record. |
-
-Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
-
-Current wrap-tracked runs observed zero paired short/long outliers in both the Watcher validation and 500,000-frame timing run, versus 27 pairs in the prior 2616f96 record (with 6363-frame phase analysis). This is an observation only with no causal claim.
-
-Final 500,000-frame outlier observation: 27 adjacent short/long pairs were found with pair sums 2,699,967–2,700,034 ticks (target 2,700,000); full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363 are in the ADR-0005 record. The aggregate keys are `1,0`=11, `3,6362`=4, `0,3182`=2, `1,3182`=2, `2,0`=1, `5,0`=1, `11,3180`=1, `7,3181`=2, `5,6362`=1, and `2,3181`=1; 352,863→359,226 and 457,851→464,214→470,577 appear as q=1,r=0. This is an observation only with no causal claim; no single exact period was detected (6363 was the most common gap, 11/26, gcd 1).
-
-### Issue #12 Stage 1 numeric provenance map
-
-Every resident timing number in the README, open-issues table, and PR #103 maps to exactly one record here:
-
-- **Accepted current-wrap record:** `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,033/1,350,059/1,350,061` ticks; min/max=`1,349,924/1,350,068`; work min/max=`1,063/1,087`; paired outliers=`0`; companion power trace is the same-stem CSV.
-- **Current Watcher validation:** `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005.json` — N=99, timing evidence false; work min/max=`1,063/1,073`; P50=`1,350,007` ticks; P99/P99.9/P99.99 insufficient; companion power trace is the same-stem CSV.
-- **Historical superseded final record:** `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,048/1,350,050/1,350,050` ticks; min/max=`111,119/2,588,915`; work min/max=`1,074/1,098`; paired outliers=`27`; retained unchanged for provenance only.
-- **Historical 660-second exclusion:** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` — N=599,999; it is not timing evidence because its configured timeout exceeded the approved 600-second cap.
-
-The preceding numeric sets are historical or current exactly as labeled; no number is silently transferred between records.
 | `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
 | `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
@@ -265,7 +248,6 @@ The preceding numeric sets are historical or current exactly as labeled; no numb
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-risc-profiler-diagnostic.json` | Issue #92/PR #93 diagnostic-only Tracy profile of L=32, batch 8192, block 4, fused-S, HiFi3, FP32-state one-window versus two-window runs. Reader/writer waits are primarily waits on compute; two-buffering shortens the full interval by about 15%, and compute-side instruction supply plus unpack/math/pack handoff remain cautious, non-exclusive candidates. Counter definitions do not establish pack-side causality. The recorded NoC bytes and approximately 0.774 ms launch interval derive approximately 240 GB/s aggregate and 2 GB/s/core (not a new measurement); two-window counters remain unavailable. Existing HiFi3/HiFi4, full/half-sync, and BF16/FP32-state comparisons are cited with their confounds. Not a throughput headline or replacement for prior records. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-counter-decomposition.json` | Issue #92/PR #93 diagnostic-only official Tracy all-counter multipass decomposition for both one-window and two-window L=32/batch-8192 runs. Tag-local definitions distinguish semaphore waits, instruction availability versus distinct issue-rate fields, packer efficiency/handoff, and destination-read backpressure; no distinct THREAD_INSTRUCTIONS_N-derived issue-rate field was present, and both modes retain raw replay values plus unavailable formula-branch inputs. Not a throughput headline or replacement for prior records. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-profile-compute-decomposition.json` | Issue #92/PR #93 diagnostic-only fixed-release-image profile-only compute decomposition: eight Watcher-enabled batch-4/batch-8192 L16/L32 one/two-window captures with per-TRISC external-CB polling intervals, RISC-V-side enqueue/dispatch brackets around DEST semaphore-wait instructions, and explicitly unclassified residual work. Exact v0.75.0 source audit and official semaphore waits are recorded; no Tracy profiler or new throughput claim. |
-
 | `2026-10-05-p150a-newton-schulz-half-sync-l16-l32-catalog-1000.json` | Issue #96 same-device L16/L32 full-sync versus half-sync DEST catalogue: both state variants, admitted DEST blocks, L1 preflight rejections, BF16-rounded-R batch-4/batch-8192 correctness, 1,000-launch p50/p99/p99.9, p50/fastest TFLOPS, and official semaphore/pack counters. |
 | `2026-10-05-p150a-newton-schulz-half-sync-l16-l32-catalog-1000-power.csv` | Power, clock, and temperature trace for the Issue #96 half-sync catalogue. |
 | `2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json` | Historical Issue #100 same-device new-default versus previous-default comparison; superseded for the combined acceptance claim by the 2026-10-06 record below and retained unchanged. |
@@ -274,6 +256,29 @@ The preceding numeric sets are historical or current exactly as labeled; no numb
 | `2026-10-05-p150a-newton-schulz-issue101-default-correctness-power.csv` | Historical power, clock, and temperature trace for the superseded correctness-only rerun above. |
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json` | Authoritative combined Issue #100/PR #101 record: one device-0 session with all nine correctness rows, four 1,000-launch performance rows, p50/p99/p99.9 and both TFLOPS derivations, board-id serial alias provenance, complete environment, cleanup evidence, and external raw-artifact provenance. The raw artifact is persisted for audit; rebuilding is deferred to Issue #102. This record supersedes both 2026-10-05 records above; those predecessors remain immutable. |
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv` | Power, clock, and temperature trace for the authoritative combined record above. |
+
+Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
+
+Current wrap-tracked runs observed zero paired short/long outliers in both the Watcher validation and 500,000-frame timing run, versus 27 pairs in the prior 2616f96 record (with 6363-frame phase analysis). This is an observation only with no causal claim.
+
+Final 500,000-frame outlier observation: 27 adjacent short/long pairs were found with pair sums 2,699,967–2,700,034 ticks (target 2,700,000); full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363 are in the ADR-0005 record. The aggregate keys are `1,0`=11, `3,6362`=4, `0,3182`=2, `1,3182`=2, `2,0`=1, `5,0`=1, `11,3180`=1, `7,3181`=2, `5,6362`=1, and `2,3181`=1; 352,863→359,226 and 457,851→464,214→470,577 appear as q=1,r=0. This is an observation only with no causal claim; no single exact period was detected (6363 was the most common gap, 11/26, gcd 1).
+
+### Issue #12 Stage 1 numeric provenance map
+
+Every resident timing number in the README, open-issues table, and PR #103 maps to exactly one record here:
+
+- **Accepted current-wrap record:** `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,033/1,350,059/1,350,061` ticks; min/max=`1,349,924/1,350,068`; work min/max=`1,063/1,087`; paired outliers=`0`; companion power trace is the same-stem CSV.
+- **Current Watcher validation:** `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005.json` — N=99, timing evidence false; work min/max=`1,063/1,073`; P50=`1,350,007` ticks; P99/P99.9/P99.99 insufficient; companion power trace is the same-stem CSV.
+- **Historical superseded final record:** `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,048/1,350,050/1,350,050` ticks; min/max=`111,119/2,588,915`; work min/max=`1,074/1,098`; paired outliers=`27`; retained unchanged for provenance only.
+- **Historical 660-second exclusion:** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` — N=599,999; it is not timing evidence because its configured timeout exceeded the approved 600-second cap.
+
+The preceding numeric sets are historical or current exactly as labeled; no number is silently transferred between records.
+
+**Correction (2026-10-07, resident recovery record).** `2026-10-05-p150a-issue12-stage1-resident-recovery.json` retains a `timing_attempt.histogram` bin of 2000–2001 while `min_ticks` is 2017; the retained record is unchanged, and the conflicting histogram field is not authoritative.
+
+**Correction (2026-10-07, semaphore timing record).** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000.json` retains a 65-character `raw_timestamps.sha256`, while the matching ADR-0005 record has the 64-character digest without the trailing `3`; the retained record is unchanged, and the conflicting hash field is not authoritative.
+
+**Correction (2026-10-07, startup-allowance record).** `2026-10-06-p150a-issue12-stage1-startup-allowance-retry.json` retains `safety_margin_ticks` as 1,595,000, while schedule 136,450,000 with 110% implies 150,095,000 and a run budget of 286,545,000; the retained record is unchanged, and the conflicting margin field is not authoritative.
 
 **Correction (peak fidelity, 2026-10-03).** `2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json` associates the 332 TFLOPS BF16 peak with LoFi and derives HiFi2/HiFi3/HiFi4 reference peaks of 166.0/110.7/83.0 TFLOPS from it. The record states that association as an inference; it does not hold. tt-metal's `tech_reports/GEMM_FLOPS/GEMM_FLOPS.md` gives the ideal cycles per tile product as 16 (LoFi), 32 (HiFi2), 48 (HiFi3) and 64 (HiFi4), or about 5.4 TFLOPS per matrix engine at LoFi and 1.35 GHz, and `docs/design.md` §2 lists Block FP8 at 664 TFLOPS beside BF16 at 332. The 332 figure is therefore the HiFi2-rate BF16 peak, and the LoFi rate is about twice it. The record is not rewritten; its efficiency figures remain correct against the 332 denominator, while its derived per-fidelity reference peaks should be read as half their true values.
 

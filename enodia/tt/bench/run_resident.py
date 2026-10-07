@@ -32,7 +32,7 @@ from enodia.tt.bench.resident_harness import (
     select_failure_check,
     split_u64,
     validate_configuration,
-    validate_pinned_environment,
+    validate_record_inputs,
     validate_run_budget_fits_outer_cap,
 )
 
@@ -230,6 +230,10 @@ def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
     }
 
 
+def _is_consumer_fixed_work_budget(failure: dict[str, Any]) -> bool:
+    return failure.get("code") == 4 and failure.get("name") == "consumer_fixed_work_budget"
+
+
 def _download(ttnn: Any, tensor):
     host = ttnn.from_device(tensor)
     row_major = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
@@ -316,7 +320,7 @@ def _run_device(
             "timestamps": raw_timestamps,
             "producer_full_count": int(producer_values[0]),
             "consumer_empty_count": int(consumer_values[0]),
-            "cycle_budget_hit": bool(producer_values[2] or consumer_values[2]),
+            "cycle_budget_hit": _is_consumer_fixed_work_budget(consumer_failure),
             "kernel_error_flag": int(bool(producer_values[2] or consumer_values[2])),
             "frames_attempted": int(producer_values[3]),
             "frames_produced": int(producer_values[1]),
@@ -433,7 +437,11 @@ def main(argv: list[str] | None = None) -> int:
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
-        validate_pinned_environment(environment)
+        validate_record_inputs(
+            harness_commit=environment.get("harness_commit"),
+            environment=environment,
+            power_trace=power_trace,
+        )
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)

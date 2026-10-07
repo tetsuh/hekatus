@@ -38,10 +38,16 @@ from enodia.tt.bench.resident_harness import (
     timestamp_digest,
     validate_configuration,
     validate_pinned_environment,
+    validate_record_inputs,
     validate_run_budget_fits_outer_cap,
     wrap_delta,
 )
-from enodia.tt.bench.run_resident import _parser, _resolve_watcher_mode, _runtime_u32
+from enodia.tt.bench.run_resident import (
+    _is_consumer_fixed_work_budget,
+    _parser,
+    _resolve_watcher_mode,
+    _runtime_u32,
+)
 
 
 def _environment() -> dict:
@@ -122,6 +128,14 @@ def test_failure_codes_and_precedence_are_explicit():
     assert select_failure_check()["name"] == "none"
     with pytest.raises(ValueError):
         failure_name(99)
+
+
+def test_cycle_budget_hit_only_tracks_consumer_fixed_work_failure():
+    assert _is_consumer_fixed_work_budget(
+        {"code": 4, "name": "consumer_fixed_work_budget"}
+    ) is True
+    assert _is_consumer_fixed_work_budget({"code": 4, "name": "other_check"}) is False
+    assert _is_consumer_fixed_work_budget({"code": 1, "name": "run_wide_budget"}) is False
 
 
 def test_cycle_budget_and_termination_are_explicit():
@@ -823,6 +837,34 @@ def test_resident_environment_requires_verified_digest_image():
         validate_pinned_environment({"image": "registry.example/tt:latest", "image_pinned": False})
     with pytest.raises(ResidentPreflightError, match="image_pinned"):
         validate_pinned_environment({"image": "registry.example/tt@sha256:" + "A" * 64, "image_pinned": True})
+
+
+@pytest.mark.parametrize("field", ["board", "firmware", "kmd_version", "image"])
+def test_record_preflight_rejects_empty_environment_fields(field):
+    environment = _environment()
+    environment[field] = {} if field in {"board", "firmware"} else ""
+    with pytest.raises(ValueError, match="environment"):
+        validate_record_inputs(
+            harness_commit="0123456789abcdef",
+            environment=environment,
+            power_trace="resident-power.csv",
+        )
+
+
+def test_record_preflight_rejects_empty_commit_and_non_filename_trace():
+    environment = _environment()
+    with pytest.raises(ValueError, match="harness_commit"):
+        validate_record_inputs(
+            harness_commit=" ",
+            environment=environment,
+            power_trace="resident-power.csv",
+        )
+    with pytest.raises(ValueError, match="power_trace"):
+        validate_record_inputs(
+            harness_commit="0123456789abcdef",
+            environment=environment,
+            power_trace="nested/resident-power.csv",
+        )
 
 
 def test_record_rejects_missing_environment_provenance():

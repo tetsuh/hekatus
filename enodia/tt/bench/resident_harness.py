@@ -657,6 +657,18 @@ def _safe_trace_name(power_trace: str) -> str:
     return power_trace
 
 
+def validate_record_inputs(
+    *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str
+) -> None:
+    """Validate record provenance before resident device execution."""
+    if not isinstance(harness_commit, str) or not harness_commit.strip():
+        raise ValueError("harness_commit is required")
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    _require_environment(environment)
+    _safe_trace_name(power_trace)
+
+
 def _source_evidence() -> dict[str, Any]:
     return {
         "toolchain": "tt-metal v0.75.0",
@@ -944,6 +956,7 @@ __all__ = [
     "timestamp_digest",
     "validate_configuration",
     "validate_pinned_environment",
+    "validate_record_inputs",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]
