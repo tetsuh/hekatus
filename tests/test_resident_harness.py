@@ -49,6 +49,7 @@ from enodia.tt.bench.resident_harness import (
     validate_configuration,
     validate_pinned_environment,
     validate_post_run_provenance,
+    validate_preflight_provenance,
     validate_record_inputs,
     validate_run_budget_fits_outer_cap,
     wrap_delta,
@@ -1596,6 +1597,77 @@ class TestResidentProvenance:
             environment=environment,
             power_trace="resident-power.csv",
         )
+
+    @pytest.mark.parametrize(
+        ("board", "canonical_serial"),
+        [
+            ({"board_type": "p150a", "board_id": "board-id-only"}, "board-id-only"),
+            ({"board_type": "p150a", "serial": "serial-only"}, "serial-only"),
+            (
+                {"board_type": "p150a", "serial": "matching", "board_id": "matching"},
+                "matching",
+            ),
+        ],
+        ids=["board-id-only", "serial-only", "matching-identities"],
+    )
+    def test_preflight_accepts_telemetry_board_identity_shapes(self, board, canonical_serial):
+        environment = _environment()
+        environment["board"] = board
+        original = copy.deepcopy(environment)
+
+        normalized = validate_preflight_provenance(
+            harness_commit=environment["harness_commit"], environment=environment
+        )
+
+        assert normalized["board"]["serial"] == canonical_serial
+        assert environment == original
+
+    def test_preflight_rejects_conflicting_telemetry_board_identity(self):
+        environment = _environment()
+        environment["board"] = {
+            "board_type": "p150a",
+            "serial": "serial",
+            "board_id": "different",
+        }
+        original = copy.deepcopy(environment)
+
+        with pytest.raises(ValueError, match="serial and environment.board.board_id"):
+            validate_preflight_provenance(
+                harness_commit=environment["harness_commit"], environment=environment
+            )
+
+        assert environment == original
+
+    def test_preflight_preserves_required_serial_rejection_when_identity_is_absent(self):
+        environment = _environment()
+        environment["board"] = {"board_type": "p150a"}
+
+        with pytest.raises(ValueError, match="environment.board.serial"):
+            validate_preflight_provenance(
+                harness_commit=environment["harness_commit"], environment=environment
+            )
+
+    def test_record_builder_stores_a_normalized_environment_copy(self):
+        environment = _environment()
+        environment["board"] = {"board_type": "p150a", "board_id": "board-id-only"}
+        original = copy.deepcopy(environment)
+
+        record = build_measurement_record(
+            config=_config(frame_count=2),
+            aiclk_mhz=1_350,
+            timestamps=[1_000, 2_000],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            cycle_budget_hit=False,
+            kernel_error_flag=0,
+            harness_commit=environment["harness_commit"],
+            environment=environment,
+            power_trace="resident-power.csv",
+        )
+
+        assert record["environment"]["board"]["serial"] == "board-id-only"
+        assert environment == original
+        assert "serial" not in environment["board"]
 
     @pytest.mark.parametrize("field", PREFLIGHT_FIELDS, ids=lambda field: field.path)
     @pytest.mark.parametrize("bad_kind", ["missing", "blank", "wrong_type"])

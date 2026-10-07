@@ -744,6 +744,34 @@ def _provenance_value(record: Mapping[str, Any], path: str) -> Any:
     return value
 
 
+def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a canonical environment copy without mutating the input.
+
+    Telemetry names the board serial as ``board_id``.  A present serial is
+    authoritative only when it agrees with a present board ID; a board ID is
+    copied to the canonical ``serial`` field only when that field is absent.
+    Non-mapping board values are left for the required-field table to reject.
+    """
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    normalized = dict(environment)
+    board = normalized.get("board")
+    if not isinstance(board, Mapping):
+        return normalized
+
+    normalized_board = dict(board)
+    has_serial = "serial" in normalized_board
+    has_board_id = "board_id" in normalized_board
+    if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
+        raise ResidentPreflightError(
+            "environment.board.serial and environment.board.board_id must match"
+        )
+    if not has_serial and has_board_id:
+        normalized_board["serial"] = normalized_board["board_id"]
+    normalized["board"] = normalized_board
+    return normalized
+
+
 def _validate_provenance_fields(
     record: Mapping[str, Any],
     *,
@@ -764,14 +792,16 @@ def _validate_provenance_fields(
             )
 
 
-def validate_preflight_provenance(*, harness_commit: Any, environment: Mapping[str, Any]) -> None:
-    """Validate all provenance available before opening a device."""
-    if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+def validate_preflight_provenance(
+    *, harness_commit: Any, environment: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Normalize and validate all provenance available before opening a device."""
+    normalized_environment = normalize_environment(environment)
     _validate_provenance_fields(
-        {"harness_commit": harness_commit, "environment": environment},
+        {"harness_commit": harness_commit, "environment": normalized_environment},
         phase=PROVENANCE_PHASE_PREFLIGHT,
     )
+    return normalized_environment
 
 
 def validate_post_run_provenance(record: Mapping[str, Any]) -> None:
@@ -870,7 +900,9 @@ def build_measurement_record(
     ``dropped`` and never overwrite ring data.
     """
     config = validate_configuration(config, watcher=watcher)
-    validate_preflight_provenance(harness_commit=harness_commit, environment=environment)
+    normalized_environment = validate_preflight_provenance(
+        harness_commit=harness_commit, environment=environment
+    )
     validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
         raise ValueError("producer_full_count must be non-negative")
@@ -1033,7 +1065,7 @@ def build_measurement_record(
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
-        "environment": dict(environment),
+        "environment": normalized_environment,
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
         "timing_evidence": bool(not watcher and timing_evidence and completed and dropped == 0),
@@ -1090,6 +1122,7 @@ __all__ = [
     "failure_name",
     "frame_interval_statistics",
     "interval_ticks_for_microseconds",
+    "normalize_environment",
     "periodic_gap_decomposition",
     "required_samples_for_percentile",
     "resident_l1_allocation_bytes",
