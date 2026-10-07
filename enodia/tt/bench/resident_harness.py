@@ -30,6 +30,16 @@ RESIDENT_SEMAPHORE_COUNT = 4
 SEMAPHORE_BYTES = 4
 UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
+TIMESTAMP_GAP_LIMIT_TICKS = 1 << 31
+CURRENT_WRAP_WORK_PER_FRAME = 64
+CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS = 1_087
+WORK_TICKS_MARGIN_PERCENT = 10
+WORK_TICKS_PER_UNIT_UPPER_BOUND = (
+    (CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS + CURRENT_WRAP_WORK_PER_FRAME - 1)
+    // CURRENT_WRAP_WORK_PER_FRAME
+    * (100 + WORK_TICKS_MARGIN_PERCENT)
+    + 99
+) // 100
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
@@ -163,7 +173,19 @@ def _uint32_positive_int(value: Any, name: str) -> int:
 def validate_configuration(
     config: ResidentConfig, *, watcher: bool = False
 ) -> ResidentConfig:
-    """Reject unsafe or unbounded configurations before device work."""
+    """Reject unsafe or unbounded configurations before device work.
+
+    The wrap-tracked low-word clock requires every single read gap to remain
+    below ``TIMESTAMP_GAP_LIMIT_TICKS`` (2**31 ticks). Producer pacing and
+    consumer ready-wait loops poll at each configured frame interval; the
+    per-frame budget is also a single-interval bound. The fixed-work loop is
+    bounded using the current-wrap record
+    ``2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json``:
+    observed work max is 1,087 ticks for 64 units, so
+    ``ceil(1087 / 64) * 1.10`` is conservatively rounded to
+    ``WORK_TICKS_PER_UNIT_UPPER_BOUND = 19`` ticks/unit. Finalization adds no
+    timestamp-read gap after the last bounded work/read checkpoint.
+    """
     if not isinstance(config, ResidentConfig):
         raise TypeError("config must be ResidentConfig")
     frame_count = _uint32_positive_int(config.frame_count, "frame_count")
@@ -171,6 +193,18 @@ def validate_configuration(
     ring_pages = _uint32_positive_int(config.ring_pages, "ring_pages")
     work = _uint32_positive_int(config.work_per_frame, "work_per_frame")
     budget = _uint32_positive_int(config.cycle_budget, "cycle_budget")
+    if interval >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"frame_interval_ticks must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if budget >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"cycle_budget must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if work * WORK_TICKS_PER_UNIT_UPPER_BOUND >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            "work_per_frame upper bound would reach the 2**31 wrap-tracked timestamp gap"
+        )
     fixed_work_ticks = _positive_int(
         config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
     )
@@ -754,7 +788,7 @@ def build_measurement_record(
         "environment": dict(environment),
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(timing_evidence and completed and dropped == 0),
+        "timing_evidence": bool(not watcher and timing_evidence and completed and dropped == 0),
     }
 
 
@@ -780,6 +814,8 @@ def build_rejection_record(
 
 
 __all__ = [
+    "CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS",
+    "CURRENT_WRAP_WORK_PER_FRAME",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
@@ -787,7 +823,10 @@ __all__ = [
     "PAGE_WORDS",
     "RESIDENT_SEMAPHORE_COUNT",
     "SEMAPHORE_BYTES",
+    "TIMESTAMP_GAP_LIMIT_TICKS",
     "UINT32_MAX",
+    "WORK_TICKS_MARGIN_PERCENT",
+    "WORK_TICKS_PER_UNIT_UPPER_BOUND",
     "ResidentConfig",
     "ResidentPreflightError",
     "RingAccounting",

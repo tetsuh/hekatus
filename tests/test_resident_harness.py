@@ -9,9 +9,13 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench.resident_harness import (
+    CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS,
+    CURRENT_WRAP_WORK_PER_FRAME,
     RESIDENT_SEMAPHORE_COUNT,
     SEMAPHORE_BYTES,
+    TIMESTAMP_GAP_LIMIT_TICKS,
     UINT32_MAX,
+    WORK_TICKS_PER_UNIT_UPPER_BOUND,
     ResidentConfig,
     ResidentPreflightError,
     RingAccounting,
@@ -221,9 +225,8 @@ def test_run_budget_uses_64_bit_overflow_checks_and_scopes_errors():
         split_u64(1 << 64)
     with pytest.raises(ValueError):
         interval_ticks_for_microseconds(microseconds=0, aiclk_mhz=1_350)
-    huge = _config(frame_count=UINT32_MAX, frame_interval_ticks=UINT32_MAX)
-    with pytest.raises(ResidentPreflightError, match="64-bit"):
-        run_budget_breakdown(huge)
+    huge = _config(frame_count=UINT32_MAX, frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1)
+    assert run_budget_breakdown(huge)["run_budget_ticks"] <= (1 << 64) - 1
 
 
 def test_outer_cap_rejects_60000_frames_and_reports_safe_alternative():
@@ -266,6 +269,32 @@ def test_resident_semaphore_l1_bytes_are_in_preflight_accounting():
     assert "RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES" in source
 
 
+def test_wrap_tracked_single_gap_bounds_and_work_formula():
+    assert CURRENT_WRAP_WORK_PER_FRAME == 64
+    assert CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS == 1_087
+    assert WORK_TICKS_PER_UNIT_UPPER_BOUND == 19
+    assert validate_configuration(
+        _config(
+            frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1,
+            cycle_budget=TIMESTAMP_GAP_LIMIT_TICKS - 1,
+            work_per_frame=(TIMESTAMP_GAP_LIMIT_TICKS - 1) // WORK_TICKS_PER_UNIT_UPPER_BOUND,
+            fixed_work_ticks_per_frame=100_000,
+        )
+    )
+    with pytest.raises(ResidentPreflightError, match="frame_interval_ticks"):
+        validate_configuration(_config(frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS))
+    with pytest.raises(ResidentPreflightError, match="cycle_budget"):
+        validate_configuration(_config(cycle_budget=TIMESTAMP_GAP_LIMIT_TICKS))
+    with pytest.raises(ResidentPreflightError, match="work_per_frame"):
+        validate_configuration(
+            _config(
+                frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1,
+                work_per_frame=(TIMESTAMP_GAP_LIMIT_TICKS - 1) // WORK_TICKS_PER_UNIT_UPPER_BOUND + 1,
+                fixed_work_ticks_per_frame=100_000,
+            )
+        )
+
+
 @pytest.mark.parametrize("aiclk_mhz", [800, 1_350])
 def test_600_second_timing_cap_maximum_safe_frame_boundary(aiclk_mhz):
     interval_ticks = aiclk_mhz * 1_000
@@ -293,10 +322,10 @@ def test_600_second_timing_cap_maximum_safe_frame_boundary(aiclk_mhz):
 
 def test_runtime_uint32_bounds_cover_kernel_arguments():
     assert validate_configuration(
-        _config(frame_interval_ticks=UINT32_MAX)
-    ).frame_interval_ticks == UINT32_MAX
-    invalid_interval = _config(frame_interval_ticks=UINT32_MAX + 1)
-    with pytest.raises(ResidentPreflightError, match="frame_interval_ticks.*uint32"):
+        _config(frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1)
+    ).frame_interval_ticks == TIMESTAMP_GAP_LIMIT_TICKS - 1
+    invalid_interval = _config(frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS)
+    with pytest.raises(ResidentPreflightError, match="frame_interval_ticks.*wrap-tracked"):
         validate_configuration(invalid_interval)
 
     invalid_configs = {
@@ -500,6 +529,24 @@ def test_aborted_attempts_reject_invalid_normal_and_error_relations():
             build_measurement_record(**error_base, aborted_attempts=invalid)
     with pytest.raises(ValueError, match="error counter relation"):
         build_measurement_record(**error_base, aborted_attempts=0)
+
+
+def test_watcher_timing_evidence_is_always_false():
+    kwargs = {
+        "config": _config(frame_count=3),
+        "aiclk_mhz": 1_350,
+        "timestamps": [1_000, 2_000, 3_000],
+        "producer_full_count": 0,
+        "consumer_empty_count": 0,
+        "cycle_budget_hit": False,
+        "kernel_error_flag": 0,
+        "harness_commit": "0123456789abcdef",
+        "environment": _environment(),
+        "power_trace": "resident-power.csv",
+        "watcher": True,
+    }
+    assert build_measurement_record(**kwargs)["timing_evidence"] is False
+    assert build_measurement_record(**kwargs, timing_evidence=True)["timing_evidence"] is False
 
 
 def test_record_schema_is_strict_and_excludes_raw_timestamps():
