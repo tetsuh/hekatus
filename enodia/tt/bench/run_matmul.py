@@ -61,6 +61,7 @@ from enodia.tt.bench.half_sync import (
     preflight_half_sync_rows,
 )
 from enodia.tt.bench.newton_schulz_kernel import (
+    BENCHMARK_INPUT_SEED,
     DEFAULT_DOUBLE_BUFFER,
     DEFAULT_DST_FULL_SYNC_EN,
     DEFAULT_FP32_DEST_ACC_EN,
@@ -675,7 +676,7 @@ def run_custom_newton_schulz(
 
     kernel = None
     try:
-        matrices = benchmark_matrices(shape.batch, shape.m, seed=6300)
+        matrices = benchmark_matrices(shape.batch, shape.m, seed=BENCHMARK_INPUT_SEED)
         prepare_kwargs = {
             "variant": variant,
             "math_fidelity": math_fidelity,

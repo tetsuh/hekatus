@@ -22,6 +22,7 @@ import re
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 if __package__ in (None, ""):
@@ -32,8 +33,22 @@ from enodia.strict_json import dumps as strict_json_dumps
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
 _DEFAULT_DEVICE_NODE = "/dev/tenstorrent/0"
-_PCI_BUS_ID_RE = re.compile(r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])", re.IGNORECASE)
-_DEVICE_INDEX_RE = re.compile(r"^/dev/tenstorrent/(\d+)$")
+_PCI_BUS_ID_RE = re.compile(
+    r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])",
+    re.IGNORECASE,
+)
+_BOARD_BUS_ID_KEYS = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+
+
+def _requested_device_node() -> str:
+    return os.environ.get("HEKATUS_TT_DEVICE_NODE") or _DEFAULT_DEVICE_NODE
+
+
+def _normalize_pci_bus_id(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = _PCI_BUS_ID_RE.fullmatch(value.strip())
+    return match.group(1).lower() if match else None
 
 
 def _nested_text_values(device: dict, keys: tuple[str, ...]) -> set[str]:
@@ -51,55 +66,102 @@ def _nested_text_values(device: dict, keys: tuple[str, ...]) -> set[str]:
     return {value for value in values if value}
 
 
-def _device_bus_ids(device: dict) -> set[str]:
-    values = _nested_text_values(
-        device,
-        ("bus_id", "pci_bus_id", "pci_address", "pci_bdf"),
-    )
-    return {value.lower() for value in values}
+def _device_bus_identity(device: dict) -> set[str] | None:
+    """Return all valid PCI ids, or None when an identity field is malformed."""
+    values = _nested_text_values(device, _BOARD_BUS_ID_KEYS)
+    identity = {_normalize_pci_bus_id(value) for value in values}
+    if None in identity:
+        return None
+    return {value for value in identity if value is not None}
 
 
-def _device_nodes(device: dict) -> set[str]:
-    """Return node-like fields without resolving a device path."""
-    values: set[str] = set()
-    sources = [device]
-    board_info = device.get("board_info")
-    if isinstance(board_info, dict):
-        sources.append(board_info)
-    for source in sources:
-        for key in ("device_node", "device_path", "node", "path"):
-            value = source.get(key)
-            if isinstance(value, str) and value:
-                values.add(value)
-        for key in ("device_nodes", "nodes"):
-            value = source.get(key)
-            if isinstance(value, (list, tuple)):
-                values.update(item for item in value if isinstance(item, str) and item)
-    return values
+def _by_id_pci_bus_id(path: Path) -> str | None:
+    """Read a PCI identity from a verified ``by-id/pci-*`` symlink."""
+    if path.parent.name != "by-id" or not path.is_symlink():
+        return None
+    if not path.name.startswith("pci-"):
+        return None
+    return _normalize_pci_bus_id(path.name.removeprefix("pci-"))
 
 
-def _device_indices(device: dict) -> set[int]:
-    values = _nested_text_values(device, ("device_id", "device_index", "index"))
-    indices: set[int] = set()
-    for value in values:
+def _resolve_device_node_to_pci(node: str) -> set[str]:
+    """Resolve a device node to the PCI ids of verified by-id links.
+
+    Numeric node names are deliberately not interpreted as board indexes.  A
+    direct node is usable only when a sibling ``by-id/pci-*`` symlink resolves
+    to that exact node.  A by-id node is usable only when it is itself a real
+    symlink into the same device directory.
+    """
+    path = Path(node)
+    if not path.is_absolute():
+        return set()
+    try:
+        resolved_node = path.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return set()
+
+    if path.parent.name == "by-id":
+        bus_id = _by_id_pci_bus_id(path)
+        if bus_id is None:
+            return set()
         try:
-            index = int(value, 10)
-        except ValueError:
+            device_dir = path.parent.parent.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return set()
+        return {bus_id} if resolved_node.parent == device_dir else set()
+
+    matches: set[str] = set()
+    try:
+        by_id_entries = tuple((path.parent / "by-id").iterdir())
+    except OSError:
+        return set()
+    for entry in by_id_entries:
+        bus_id = _by_id_pci_bus_id(entry)
+        if bus_id is None:
             continue
-        if index >= 0:
-            indices.add(index)
-    return indices
+        try:
+            if entry.resolve(strict=True) == resolved_node:
+                matches.add(bus_id)
+        except (OSError, RuntimeError):
+            continue
+    return matches
 
 
-def _device_info(snapshot: str) -> dict | None:
+def _resolved_pci_bus_ids(
+    node: str, resolver: Callable[[str], object]
+) -> set[str]:
+    """Normalize an injected resolver result, rejecting malformed identities."""
+    try:
+        resolved = resolver(node)
+    except Exception:  # noqa: BLE001 - an unverifiable node must be rejected
+        return set()
+    if isinstance(resolved, str):
+        values = (resolved,)
+    elif isinstance(resolved, (list, tuple, set, frozenset)):
+        values = tuple(resolved)
+    else:
+        return set()
+    normalized: set[str] = set()
+    for value in values:
+        bus_id = _normalize_pci_bus_id(value)
+        if bus_id is None:
+            return set()
+        normalized.add(bus_id)
+    return normalized
+
+
+def _device_info(
+    snapshot: str,
+    *,
+    node_resolver: Callable[[str], object] | None = None,
+) -> dict | None:
     """Select the board addressed by ``HEKATUS_TT_DEVICE_NODE``.
 
     With no explicit node, the historical first-device behavior remains the
     default for ``/dev/tenstorrent/0``.  A non-default node is accepted only
-    when its PCI bus id (including a ``by-id`` link) or an exact node/index
-    field identifies exactly one snapshot entry.  Missing or conflicting
-    identity data is rejected instead of attaching telemetry to the wrong
-    board.
+    when a verified by-id link resolves it to exactly one PCI bus id and that
+    id identifies exactly one snapshot entry.  Numeric node indexes and
+    snapshot list positions are never used as physical-board identity.
     """
     try:
         devices = json.loads(snapshot)["device_info"]
@@ -110,44 +172,34 @@ def _device_info(snapshot: str) -> dict | None:
     if not all(isinstance(device, dict) for device in devices):
         return None
 
-    requested_node = os.environ.get("HEKATUS_TT_DEVICE_NODE") or _DEFAULT_DEVICE_NODE
+    requested_node = _requested_device_node()
     if requested_node == _DEFAULT_DEVICE_NODE:
         return devices[0]
 
-    requested_bus_match = _PCI_BUS_ID_RE.search(requested_node.lower())
-    requested_bus_id = requested_bus_match.group(1).lower() if requested_bus_match else None
-    requested_index_match = _DEVICE_INDEX_RE.fullmatch(requested_node)
-    requested_index = int(requested_index_match.group(1)) if requested_index_match else None
-
-    candidate_indices: set[int] = set()
-    if requested_bus_id is not None:
-        candidate_indices.update(
-            index
-            for index, device in enumerate(devices)
-            if requested_bus_id in _device_bus_ids(device)
-        )
-    if requested_index is not None:
-        candidate_indices.update(
-            index
-            for index, device in enumerate(devices)
-            if requested_index in _device_indices(device)
-        )
-    exact_node_indices = {
-        index
-        for index, device in enumerate(devices)
-        if requested_node in _device_nodes(device)
-    }
-    if exact_node_indices:
-        candidate_indices.update(exact_node_indices)
-
-    if len(candidate_indices) != 1:
+    resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
+    requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
+    if len(requested_bus_ids) != 1:
         return None
-    return devices[candidate_indices.pop()]
+    requested_bus_id = next(iter(requested_bus_ids))
+
+    matches: list[dict] = []
+    for device in devices:
+        identity = _device_bus_identity(device)
+        if identity is None or requested_bus_id not in identity:
+            continue
+        if len(identity) != 1:
+            return None
+        matches.append(device)
+    return matches[0] if len(matches) == 1 else None
 
 
-def parse_telemetry(snapshot: str) -> dict[str, str] | None:
+def parse_telemetry(
+    snapshot: str,
+    *,
+    node_resolver: Callable[[str], object] | None = None,
+) -> dict[str, str] | None:
     """Extract the sampled quantities, or None if the snapshot is unusable."""
-    device = _device_info(snapshot)
+    device = _device_info(snapshot, node_resolver=node_resolver)
     if device is None:
         return None
     try:
@@ -161,25 +213,38 @@ def parse_telemetry(snapshot: str) -> dict[str, str] | None:
         return None
 
 
-def telemetry_csv_row(snapshot: str, *, timestamp: str) -> str | None:
+def telemetry_csv_row(
+    snapshot: str,
+    *,
+    timestamp: str,
+    node_resolver: Callable[[str], object] | None = None,
+) -> str | None:
     """One CSV row in the order of CSV_HEADER, or None if nothing was read."""
-    reading = parse_telemetry(snapshot)
+    reading = parse_telemetry(snapshot, node_resolver=node_resolver)
     if reading is None:
         return None
     return f"{timestamp},{reading['power_w']},{reading['aiclk_mhz']},{reading['asic_temp_c']}"
 
 
-def parse_environment(snapshot: str) -> dict:
+def parse_environment(
+    snapshot: str,
+    *,
+    node_resolver: Callable[[str], object] | None = None,
+) -> dict:
     """The board identity that every result has to carry with it."""
-    device = _device_info(snapshot)
+    device = _device_info(snapshot, node_resolver=node_resolver)
     if device is None:
-        return {"board_snapshot_error": "no device information in the snapshot"}
+        return {
+            "board_snapshot_error": "no verifiable device information in the snapshot",
+            "device_node": _requested_device_node(),
+        }
     return {
         key: device[key] for key in ("board_info", "firmwares", "limits") if key in device
     } | {
         "board": device.get("board_info"),
         "firmware": device.get("firmwares"),
         "limits": device.get("limits"),
+        "device_node": _requested_device_node(),
     }
 
 

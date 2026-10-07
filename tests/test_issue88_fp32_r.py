@@ -1,5 +1,7 @@
 """Board-free coverage for the explicit Issue #88 FP32-R variant."""
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -31,6 +33,7 @@ def _shape(size: int = 32) -> MatmulShape:
 
 def test_fp32_r_is_explicit_and_keeps_the_default_state_and_x0_formats():
     assert newton_schulz_kernel.DEFAULT_VARIANT == "bf16"
+    assert newton_schulz_kernel.BENCHMARK_INPUT_SEED == 6300
     assert newton_schulz_kernel._state_dtype(TTNN, "fp32-r") == "bf16"
     assert newton_schulz_kernel._r_dtype(TTNN, "fp32-r") == "fp32"
     assert newton_schulz_kernel._r_format("fp32-r") == "FP32"
@@ -171,3 +174,28 @@ def test_fp32_r_parser_and_independent_reference_are_explicit():
     expected = newton_schulz_reference(matrices, x0=initial_value(matrices))
     assert expected.dtype == np.dtype(np.complex64)
     assert np.all(np.isfinite(expected))
+
+
+def test_issue88_plan_matches_runner_seed_and_has_executable_placements():
+    plan_path = (
+        Path(__file__).parents[1]
+        / "docs/measurements/2026-10-07-host-newton-schulz-issue88-fp32-r-plan.json"
+    )
+    plan = json.loads(plan_path.read_text())
+
+    assert plan["comparison_plan"]["seed"] == newton_schulz_kernel.BENCHMARK_INPUT_SEED
+    parser = run_matmul._build_parser()
+    for section in (
+        plan["first_launch_plan"],
+        *plan["comparison_plan"]["rows"],
+    ):
+        args = parser.parse_args(section["runner_args"])
+        run_matmul._validate(parser, args)
+        assert args.custom_variant == section["variant"]
+        assert args.r_memory == section["r_memory"]
+        assert args.x0_memory == section["x0_memory"]
+        assert args.matrix_block == int(plan["algorithm"]["matrix_block"])
+
+    l32_fp32 = plan["comparison_plan"]["rows"][-1]
+    assert l32_fp32["variant"] == "fp32-r"
+    assert l32_fp32["r_memory"] == "dram"

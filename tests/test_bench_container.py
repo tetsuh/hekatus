@@ -741,3 +741,55 @@ else:
         "image": expected_image,
         "image_pinned": True,
     }
+
+
+def test_wrapper_passes_the_effective_device_node_to_host_capture(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    (bindir / "python3").write_text(
+        f"""#!{sys.executable}
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+if sys.argv[2] == "capture-env":
+    output = Path(sys.argv[sys.argv.index("--out") + 1])
+    output.write_text(json.dumps({{"device_node": os.environ.get("HEKATUS_TT_DEVICE_NODE")}}))
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(SystemExit(0)))
+while True:
+    time.sleep(1)
+"""
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "output"
+    device_node = "/dev/tenstorrent/1"
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--", "--iters", "1"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_DEVICE_NODE": device_node,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    env_files = list(output_dir.glob("env-*.json"))
+    assert len(env_files) == 1
+    assert json.loads(env_files[0].read_text()) == {"device_node": device_node}
+    docker_args = args_log.read_text().splitlines()
+    assert docker_args[docker_args.index("--device") + 1] == device_node

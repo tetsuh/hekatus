@@ -90,10 +90,12 @@ def _two_board_snapshot() -> str:
     )
 
 
-def test_explicit_by_id_node_selects_the_matching_board_from_two_boards(monkeypatch):
-    monkeypatch.setenv(
-        "HEKATUS_TT_DEVICE_NODE",
-        "/dev/tenstorrent/by-id/pci-0000:02:00.0",
+def test_explicit_numeric_node_uses_a_verified_pci_mapping(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:02:00.0"},
     )
 
     assert telemetry.parse_telemetry(_two_board_snapshot()) == {
@@ -101,7 +103,9 @@ def test_explicit_by_id_node_selects_the_matching_board_from_two_boards(monkeypa
         "aiclk_mhz": "900",
         "asic_temp_c": "60",
     }
-    assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-one"
+    environment = telemetry.parse_environment(_two_board_snapshot())
+    assert environment["device_node"] == "/dev/tenstorrent/1"
+    assert environment["board"]["board_id"] == "board-one"
 
 
 def test_default_device_node_keeps_first_board_behavior(monkeypatch):
@@ -111,16 +115,47 @@ def test_default_device_node_keeps_first_board_behavior(monkeypatch):
 
 
 def test_unverifiable_or_ambiguous_explicit_node_is_rejected(monkeypatch):
-    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/by-id/pci-0000:03:00.0")
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", lambda node: set())
     assert telemetry.parse_telemetry(_two_board_snapshot()) is None
 
-    ambiguous = json.loads(_two_board_snapshot())
-    ambiguous["device_info"][1]["board_info"]["bus_id"] = "0000:01:00.0"
-    monkeypatch.setenv(
-        "HEKATUS_TT_DEVICE_NODE",
-        "/dev/tenstorrent/by-id/pci-0000:01:00.0",
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:01:00.0", "0000:02:00.0"},
     )
-    assert telemetry.parse_telemetry(json.dumps(ambiguous)) is None
+    assert telemetry.parse_telemetry(_two_board_snapshot()) is None
+
+    conflicting = json.loads(_two_board_snapshot())
+    conflicting["device_info"][1]["board_info"]["pci_bdf"] = "0000:03:00.0"
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:02:00.0"},
+    )
+    assert telemetry.parse_telemetry(json.dumps(conflicting)) is None
+
+
+def test_numeric_node_does_not_fall_back_to_snapshot_position(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", lambda node: set())
+
+    snapshot = json.loads(_two_board_snapshot())
+    snapshot["device_info"][0]["device_id"] = 1
+    assert telemetry.parse_environment(json.dumps(snapshot))["board_snapshot_error"]
+
+
+def test_resolver_accepts_only_a_real_by_id_symlink(tmp_path):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "pci-0000:02:00.0"
+    link.symlink_to("../1")
+
+    assert telemetry._resolve_device_node_to_pci(str(node)) == {"0000:02:00.0"}
+    assert telemetry._resolve_device_node_to_pci(str(link)) == {"0000:02:00.0"}
 
 
 def test_environment_survives_a_snapshot_it_cannot_read():

@@ -22,6 +22,7 @@ import numpy as np
 
 NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
+BENCHMARK_INPUT_SEED = 6300
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
 _SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state", "fp32-r")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
@@ -1019,7 +1020,9 @@ def _decode_counter_page(
     }
 
 
-def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np.ndarray:
+def benchmark_matrices(
+    batch: int, size: int = _TILE, *, seed: int = BENCHMARK_INPUT_SEED
+) -> np.ndarray:
     """Return deterministic non-zero inputs for a throughput run."""
     if batch < 1 or size not in (16, _TILE):
         raise ValueError(f"benchmark inputs require a positive batch and size 16 or {_TILE}")

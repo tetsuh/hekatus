@@ -55,6 +55,9 @@ if ! [[ "${CONTAINER_TIMEOUT_S}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
 DEVICE_NODE="${HEKATUS_TT_DEVICE_NODE:-/dev/tenstorrent/0}"
+# The host-side telemetry process must resolve the same effective node that
+# Docker receives, including the default when the caller did not export it.
+export HEKATUS_TT_DEVICE_NODE="${DEVICE_NODE}"
 WATCHER_ENV=()
 if [[ -n "${TT_METAL_WATCHER:-}" ]]; then
   WATCHER_ENV=(-e "TT_METAL_WATCHER=${TT_METAL_WATCHER}")
