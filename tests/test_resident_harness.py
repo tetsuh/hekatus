@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import shlex
 from pathlib import Path
 from typing import ClassVar
 
@@ -50,6 +52,105 @@ from enodia.tt.bench.run_resident import (
     _resolve_watcher_mode,
     _runtime_u32,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
+README_PATH = ROOT / "docs/measurements/README.md"
+PR_BODY_PATH = ROOT / "tests/data/pr-103-body.md"
+
+
+def _continued_line(line: str) -> bool:
+    trimmed = line.rstrip()
+    trailing_backslashes = len(trimmed) - len(trimmed.rstrip("\\"))
+    return trailing_backslashes % 2 == 1
+
+
+def _shell_tokens(command: str) -> list[str]:
+    command = re.sub(r"\\[ \t]*\r?\n", " ", command).strip()
+    command = re.sub(r"^```[A-Za-z0-9_-]*\s*", "", command)
+    command = re.sub(r"\s*```$", "", command).strip()
+    command = re.sub(r"^\s*[-+*]\s+", "", command)
+    if command.startswith("`") and command.endswith("`"):
+        command = command[1:-1]
+    return shlex.split(command, comments=True, posix=True)
+
+
+def _extract_resident_invocations(text: str) -> list[list[str]]:
+    """Extract runner argv vectors from shell commands containing run_resident.py."""
+    lines = text.splitlines()
+    invocations: list[list[str]] = []
+    seen_spans: set[tuple[int, int]] = set()
+    for index, line in enumerate(lines):
+        if "run_resident.py" not in line:
+            continue
+        start = index
+        while start > 0 and _continued_line(lines[start - 1]):
+            start -= 1
+        end = index
+        while end + 1 < len(lines) and _continued_line(lines[end]):
+            end += 1
+        span = (start, end)
+        if span in seen_spans:
+            continue
+        seen_spans.add(span)
+        tokens = _shell_tokens("\n".join(lines[start : end + 1]))
+        runner_indexes = [
+            token_index
+            for token_index, token in enumerate(tokens)
+            if Path(token.strip("`")).name == "run_resident.py"
+        ]
+        wrapper_indexes = [
+            token_index
+            for token_index, token in enumerate(tokens)
+            if Path(token.strip("`")).name == "run_in_container.sh"
+        ]
+        if wrapper_indexes:
+            wrapper_index = wrapper_indexes[0]
+            try:
+                argument_separator = tokens.index("--", wrapper_index + 1)
+            except ValueError as exc:
+                raise AssertionError(
+                    f"resident wrapper invocation has no runner argument separator: {tokens!r}"
+                ) from exc
+            runner_start = argument_separator + 1
+        elif runner_indexes:
+            runner_start = runner_indexes[0] + 1
+        else:
+            raise AssertionError(f"could not locate resident runner in command: {tokens!r}")
+        command_end = next(
+            (
+                token_index
+                for token_index in range(runner_start, len(tokens))
+                if tokens[token_index] in {";", "&&", "||", "|", "&"}
+            ),
+            len(tokens),
+        )
+        invocations.append(tokens[runner_start:command_end])
+    return invocations
+
+
+def _parse_documented_resident_args(argv: list[str]):
+    parser = _parser()
+    args = parser.parse_args(argv)
+    required_options = {
+        option
+        for action in parser._actions
+        if action.required
+        for option in action.option_strings
+        if option.startswith("--")
+    }
+    for option in required_options:
+        assert any(argument == option or argument.startswith(f"{option}=") for argument in argv)
+    out_options = [
+        argument for argument in argv if argument == "--out" or argument.startswith("--out=")
+    ]
+    assert len(out_options) == 1
+    out = args.out
+    assert out.is_absolute()
+    assert out.parts[:2] == ("/", "out")
+    relative_out = out.relative_to(Path("/out"))
+    assert relative_out.parts and ".." not in relative_out.parts
+    assert out.suffix == ".json"
+    return args
 
 
 def _environment() -> dict:
@@ -470,18 +571,31 @@ class TestResidentDefaults:
             with pytest.raises(ResidentPreflightError, match=reason):
                 validate_run_budget_fits_outer_cap(config, watcher=watcher)
 
-    def test_runbook_watcher_invocation_reaches_preflight_with_defaults(self):
-        runbook = Path("docs/measurements/README.md").read_text()
-        assert "Watcher-enabled, one-frame validation" in runbook
-        assert "TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py" in runbook
-        assert "run_in_container.sh -- --frame-count 1 --watcher" in runbook
-        args = _parser().parse_args(
-            ["--out", "resident.json", "--frame-count", "1", "--watcher"]
-        )
-        config = _config_from_args(args)
-        assert validate_run_budget_fits_outer_cap(
-            validate_configuration(config, watcher=True), watcher=True
-        )
+    def test_every_readme_resident_invocation_reaches_preflight_without_device(self):
+        invocations = _extract_resident_invocations(README_PATH.read_text())
+        assert invocations, "the measurement runbook must retain a resident invocation"
+        for argv in invocations:
+            args = _parse_documented_resident_args(argv)
+            config = _config_from_args(args)
+            watcher = args.watcher
+            assert validate_run_budget_fits_outer_cap(
+                validate_configuration(config, watcher=watcher), watcher=watcher
+            )
+
+    def test_every_pr_body_resident_invocation_uses_the_runner_parser(self):
+        for argv in _extract_resident_invocations(PR_BODY_PATH.read_text()):
+            _parse_documented_resident_args(argv)
+
+
+def test_resident_invocation_extractor_handles_continuations_and_quoted_paths():
+    command = """TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \\
+  ./enodia/tt/bench/run_in_container.sh -- \\
+  --out '/out/resident result.json' --frame-count 1 --watcher"""
+    invocations = _extract_resident_invocations(command)
+    assert invocations == [
+        ["--out", "/out/resident result.json", "--frame-count", "1", "--watcher"]
+    ]
+    _parse_documented_resident_args(invocations[0])
 
 
 def test_runtime_addresses_are_checked_at_uint32_boundary():

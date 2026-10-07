@@ -40,7 +40,7 @@ outer cap; it is not timing evidence. The standard invocation is:
 
    ```bash
    TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
-     enodia/tt/bench/run_in_container.sh -- --frame-count 1 --watcher
+     enodia/tt/bench/run_in_container.sh -- --out /out/runner-result.json --frame-count 1 --watcher
    ```
 
    Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
