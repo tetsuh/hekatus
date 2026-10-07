@@ -14,6 +14,7 @@ from enodia.tt.bench.newton_schulz_reference import (
     random_hpd_batch,
 )
 from enodia.tt.bench.shapes import MatmulShape
+from tools import newton_schulz_issue88 as issue88_runner
 
 TTNN = SimpleNamespace(bfloat16="bf16", float32="fp32", uint32="u32")
 
@@ -184,13 +185,16 @@ def test_issue88_plan_matches_runner_seed_and_has_executable_placements():
     plan = json.loads(plan_path.read_text())
 
     assert plan["comparison_plan"]["seed"] == newton_schulz_kernel.BENCHMARK_INPUT_SEED
-    parser = run_matmul._build_parser()
-    for section in (
-        plan["first_launch_plan"],
-        *plan["comparison_plan"]["rows"],
-    ):
-        args = parser.parse_args(section["runner_args"])
-        run_matmul._validate(parser, args)
+    first_launch_parser = run_matmul._build_parser()
+    first_launch_args = first_launch_parser.parse_args(
+        plan["first_launch_plan"]["runner_args"]
+    )
+    run_matmul._validate(first_launch_parser, first_launch_args)
+
+    comparison_parser = issue88_runner._build_parser()
+    for section in plan["comparison_plan"]["rows"]:
+        args = comparison_parser.parse_args(section["runner_args"])
+        issue88_runner._validate_args(comparison_parser, args)
         assert args.custom_variant == section["variant"]
         assert args.r_memory == section["r_memory"]
         assert args.x0_memory == section["x0_memory"]

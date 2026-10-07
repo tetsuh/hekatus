@@ -105,7 +105,7 @@ _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 # The tuple is built by a function so callers and tests receive independent
 # dictionaries and cannot mutate the catalogue used by a later row.
 def comparison_rows() -> tuple[dict[str, Any], ...]:
-    """Return the four requested, placement-explicit comparison rows."""
+    """Return the placement-explicit Issue #88 comparison rows."""
     common = {
         "batch": 8192,
         "iterations": FIXED_ITERATIONS,
@@ -152,6 +152,19 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
         },
         {
             **common,
+            "name": "bf16-r-L32-r-dram",
+            "variant": "bf16",
+            "r_format": "BF16",
+            "size": 32,
+            "packing": "native_32x32",
+            "r_memory": "dram",
+            "configuration_note": (
+                "R in DRAM is explicit to match the L=32 FP32-R placement-control row; "
+                "no placement fallback is performed."
+            ),
+        },
+        {
+            **common,
             "name": "fp32-r-L32-r-dram",
             "variant": "fp32-r",
             "r_format": "FP32",
@@ -170,11 +183,24 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
 ISSUE88_COMPARISON_ROWS = comparison_rows()
 
 
-def validate_comparison_rows(rows: tuple[dict[str, Any], ...] | list[dict[str, Any]] | None = None) -> None:
-    """Validate the non-negotiable Issue #88 execution catalogue."""
+def validate_comparison_rows(
+    rows: tuple[dict[str, Any], ...] | list[dict[str, Any]] | None = None,
+) -> None:
+    """Validate the full Issue #88 catalogue or an exact selected subset."""
     selected = ISSUE88_COMPARISON_ROWS if rows is None else tuple(rows)
-    if len(selected) != 4:
-        raise ValueError(f"Issue #88 requires four comparison rows, got {len(selected)}")
+    if not selected:
+        raise ValueError("Issue #88 requires at least one comparison row")
+
+    canonical = {row["name"]: row for row in ISSUE88_COMPARISON_ROWS}
+    names = [row.get("name") for row in selected]
+    unknown = [name for name in names if name not in canonical]
+    if unknown:
+        raise ValueError(f"Issue #88 comparison row names are unknown: {unknown!r}")
+    if len(set(names)) != len(names):
+        raise ValueError("Issue #88 comparison rows must not contain duplicate names")
+    if rows is None and set(names) != set(canonical):
+        raise ValueError("Issue #88 full comparison catalogue is incomplete")
+
     expected = {
         "batch": 8192,
         "iterations": 12,
@@ -191,33 +217,20 @@ def validate_comparison_rows(rows: tuple[dict[str, Any], ...] | list[dict[str, A
         "output_memory": "dram",
         "x0_memory": "l1",
     }
-    names = {row.get("name") for row in selected}
-    if names != {row["name"] for row in ISSUE88_COMPARISON_ROWS}:
-        raise ValueError("Issue #88 comparison row names do not match the required catalogue")
-    canonical = {row["name"]: row for row in ISSUE88_COMPARISON_ROWS}
     for row in selected:
+        name = row["name"]
         for key, value in expected.items():
             if row.get(key) != value:
                 raise ValueError(
-                    f"{row.get('name', '<unnamed>')} changes required {key}: "
-                    f"expected {value!r}, got {row.get(key)!r}"
+                    f"{name} changes required {key}: expected {value!r}, "
+                    f"got {row.get(key)!r}"
                 )
         for key in ("variant", "r_format", "size", "packing", "r_memory"):
-            if row.get(key) != canonical[row["name"]][key]:
+            if row.get(key) != canonical[name][key]:
                 raise ValueError(
-                    f"{row['name']} changes required {key}: "
-                    f"expected {canonical[row['name']][key]!r}, got {row.get(key)!r}"
+                    f"{name} changes required {key}: "
+                    f"expected {canonical[name][key]!r}, got {row.get(key)!r}"
                 )
-    placements = {
-        (row["variant"], row["size"]): row["r_memory"] for row in selected
-    }
-    if placements != {
-        ("bf16", 16): "l1",
-        ("fp32-r", 16): "l1",
-        ("bf16", 32): "l1",
-        ("fp32-r", 32): "dram",
-    }:
-        raise ValueError("Issue #88 R placements do not match the required catalogue")
 
 
 def shape_name(row: dict[str, Any]) -> str:
@@ -930,17 +943,14 @@ def run_comparison(
 ) -> dict[str, Any]:
     """Run selected rows on one already-open device and stop on first failure."""
     selected = tuple(ISSUE88_COMPARISON_ROWS if rows is None else rows)
-    if rows is None:
-        validate_comparison_rows()
     if not selected:
         raise ValueError("at least one Issue #88 row is required")
+    validate_comparison_rows(selected)
     if not first_launch:
-        validate_comparison_rows(selected if len(selected) == 4 else ISSUE88_COMPARISON_ROWS)
         if launches != LAUNCHES_PER_ROW:
             raise ValueError(f"Issue #88 requires exactly {LAUNCHES_PER_ROW} timed launches")
-    else:
-        if launches < 1:
-            raise ValueError("first-launch mode requires a positive launch setting")
+    elif launches < 1:
+        raise ValueError("first-launch mode requires a positive launch setting")
 
     remaining = collections.Counter(row["size"] for row in selected)
     matrices_by_size: dict[int, np.ndarray] = {}
@@ -1240,11 +1250,23 @@ def _mark_failed(run: dict[str, Any], stage: str, error: Any) -> dict[str, Any]:
 def _select_rows(args: argparse.Namespace) -> tuple[dict[str, Any], ...]:
     rows = list(ISSUE88_COMPARISON_ROWS)
     if args.only:
+        exact_selectors = {
+            selector
+            for selector in args.only
+            if any(row["name"] == selector for row in rows)
+        }
         rows = [
             row
             for row in rows
             if any(
-                selector in row["name"] or selector in shape_name(row)
+                (
+                    selector in exact_selectors
+                    and row["name"] == selector
+                )
+                or (
+                    selector not in exact_selectors
+                    and (selector in row["name"] or selector in shape_name(row))
+                )
                 for selector in args.only
             )
         ]
