@@ -128,6 +128,83 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
         assert json.loads(env_files[-1].read_text()) == {"fake": True}
 
 
+@pytest.mark.parametrize(
+    ("output_argument", "case"),
+    [
+        ("relative-output", "relative"),
+        ("absolute-output", "absolute"),
+        ("missing-parent/child-output", "nonexistent-parent"),
+    ],
+    ids=["relative-source", "absolute-source", "source-under-nonexistent-parent"],
+)
+def test_wrapper_normalizes_every_docker_bind_source(
+    tmp_path, output_argument, case
+):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+    if case == "absolute":
+        output_argument = str(tmp_path / output_argument)
+    expected_output = Path(output_argument)
+    if not expected_output.is_absolute():
+        expected_output = copied_root / expected_output
+    expected_output = expected_output.resolve()
+
+    completed = subprocess.run(
+        [str(copied_wrapper), output_argument, "--", "--iters", "1"],
+        cwd=copied_root,
+        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "DOCKER_ARGS": str(args_log)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    mounts = [
+        docker_args[index + 1]
+        for index, argument in enumerate(docker_args[:-1])
+        if argument == "-v"
+    ]
+    assert mounts == [
+        "/dev/hugepages-1G:/dev/hugepages-1G",
+        f"{copied_root}:/work",
+        f"{expected_output}:/out",
+    ]
+    assert all(Path(mount.rsplit(":", 1)[0]).is_absolute() for mount in mounts)
+    if case == "nonexistent-parent":
+        assert expected_output.is_dir()
+
+
+def test_wrapper_rejects_an_unnormalizable_mount_source_before_docker(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+
+    completed = subprocess.run(
+        [str(copied_wrapper), "", "--", "--iters", "1"],
+        cwd=copied_root,
+        env={**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "DOCKER_ARGS": str(args_log)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 2
+    assert "cannot normalize" in completed.stderr
+    assert not args_log.exists()
+
+
 def _run_resident_wrapper(
     tmp_path,
     *,

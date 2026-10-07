@@ -23,6 +23,24 @@ set -euo pipefail
 IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
+# Docker bind sources must be absolute host paths. `realpath -m` also handles
+# an output directory whose parent does not exist yet; mkdir below creates it
+# after this validation, before Docker is invoked.
+normalize_host_mount_source() {
+  local source="$1"
+  local normalized
+  if [[ -z "${source}" || "${source}" == *$'\n'* ]]; then
+    echo "cannot normalize empty or newline-containing Docker bind source" >&2
+    return 2
+  fi
+  if ! normalized="$(realpath -m -- "${source}" 2>/dev/null)" \
+    || [[ -z "${normalized}" || "${normalized:0:1}" != "/" || "${normalized}" == *$'\n'* ]]; then
+    echo "cannot normalize Docker bind source: ${source}" >&2
+    return 2
+  fi
+  printf '%s\n' "${normalized}"
+}
+
 TEST_MODE=0
 if [[ "${1:-}" == "--pytest" ]]; then
   TEST_MODE=1
@@ -114,6 +132,15 @@ else
   validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "9"
 fi
 
+if ! HUGEPAGES_SOURCE="$(normalize_host_mount_source /dev/hugepages-1G)"; then
+  exit 2
+fi
+if ! REPO_ROOT_SOURCE="$(normalize_host_mount_source "${REPO_ROOT}")"; then
+  exit 2
+fi
+if ! OUT_DIR="$(normalize_host_mount_source "${OUT_DIR}")"; then
+  exit 2
+fi
 mkdir -p "${OUT_DIR}"
 CONTAINER_NAME="hekatus-bench-${$}-${RANDOM}"
 DEVICE_NODE="${HEKATUS_TT_DEVICE_NODE:-/dev/tenstorrent/0}"
@@ -259,8 +286,8 @@ if [[ "${TEST_MODE}" == "1" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
     --device "${DEVICE_NODE}" \
-    -v /dev/hugepages-1G:/dev/hugepages-1G \
-    -v "${REPO_ROOT}:/work" \
+    -v "${HUGEPAGES_SOURCE}:/dev/hugepages-1G" \
+    -v "${REPO_ROOT_SOURCE}:/work" \
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
@@ -274,8 +301,8 @@ elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
     --device "${DEVICE_NODE}" \
-    -v /dev/hugepages-1G:/dev/hugepages-1G \
-    -v "${REPO_ROOT}:/work" \
+    -v "${HUGEPAGES_SOURCE}:/dev/hugepages-1G" \
+    -v "${REPO_ROOT_SOURCE}:/work" \
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \
@@ -292,8 +319,8 @@ else
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
     --device "${DEVICE_NODE}" \
-    -v /dev/hugepages-1G:/dev/hugepages-1G \
-    -v "${REPO_ROOT}:/work" \
+    -v "${HUGEPAGES_SOURCE}:/dev/hugepages-1G" \
+    -v "${REPO_ROOT_SOURCE}:/work" \
     -v "${OUT_DIR}:/out" \
     -w /work \
     -e PYTHONPATH=/work \

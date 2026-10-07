@@ -16,6 +16,9 @@ import pytest
 
 from enodia.tt.bench import run_resident
 from enodia.tt.bench.resident_harness import (
+    AUDITED_CLOCK_SOURCE_IMAGE,
+    CLOCK_SOURCE_AUDIT_TABLE,
+    CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
     CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS,
     CURRENT_WRAP_WORK_PER_FRAME,
     FAILURE_CODE_TABLE,
@@ -32,6 +35,7 @@ from enodia.tt.bench.resident_harness import (
     ResidentPreflightError,
     RingAccounting,
     build_measurement_record,
+    clock_source_audit_for_image,
     cycle_budget_exceeded,
     failure_name,
     frame_interval_statistics,
@@ -868,6 +872,26 @@ class TestIssue12Runbook:
             output_directories.append(output_directory)
         assert len(set(output_directories)) == len(output_directories)
 
+    def test_readme_resident_invocations_bind_only_absolute_host_sources(self):
+        records = _extract_resident_command_records(README_PATH.read_text())
+        assert len(records) == 2
+        for record in records:
+            tokens = record["tokens"]
+            wrapper_index = next(
+                index
+                for index, token in enumerate(tokens)
+                if Path(token.strip("`")).name == "run_in_container.sh"
+            )
+            output_directory = Path(tokens[wrapper_index + 1])
+            host_output = (ROOT / output_directory).resolve()
+            sources = (Path("/dev/hugepages-1G"), ROOT.resolve(), host_output)
+            assert all(source.is_absolute() for source in sources)
+            assert [str(source) for source in sources] == [
+                "/dev/hugepages-1G",
+                str(ROOT.resolve()),
+                str(host_output),
+            ]
+
     def test_timing_invocation_is_explicitly_no_watcher(self):
         records = _extract_resident_command_records(README_PATH.read_text())
         timing_records = [
@@ -1130,6 +1154,87 @@ def test_accepted_500000_frame_record_matches_failure_table():
     assert record["termination"]["cycle_budget_error"] == classification.cycle_budget_exceeded
     assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
     assert record["cycle_budget"]["error_flag"] == int(classification.error_flag)
+
+
+def test_accepted_500000_record_matches_clock_source_audit_table():
+    record = json.loads(
+        (
+            ROOT
+            / "docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json"
+        ).read_text()
+    )
+    image = record["environment"]["image"]
+    audited = clock_source_audit_for_image(image)
+    assert image == AUDITED_CLOCK_SOURCE_IMAGE
+    assert audited is not None
+    assert record["timing_evidence"] is True
+    assert record["clock_source_evidence"] == dict(audited)
+
+
+@pytest.mark.parametrize(
+    ("image", "timing_expected"),
+    [
+        (AUDITED_CLOCK_SOURCE_IMAGE, True),
+        (
+            "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
+            + "sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4",
+            False,
+        ),
+        ("registry.example/tt@sha256:" + "a" * 64, False),
+    ],
+    ids=["audited-v0.75.0", "valid-v0.70.1", "valid-unknown"],
+)
+def test_clock_source_audit_binds_timing_evidence_to_exact_image(
+    image, timing_expected
+):
+    environment = _environment()
+    environment["image"] = image
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit=environment["harness_commit"],
+        environment=environment,
+        power_trace="resident-power.csv",
+    )
+    evidence = record["clock_source_evidence"]
+    assert evidence["image"] == image
+    assert record["timing_evidence"] is timing_expected
+    if timing_expected:
+        assert evidence["audit_status"] == "audited"
+        assert all(evidence[key] == value for key, value in CLOCK_SOURCE_AUDIT_TABLE[image].items())
+    else:
+        assert evidence["audit_status"] == "unaudited"
+        assert CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC in evidence["diagnostic"]
+
+
+def test_audited_watcher_record_never_claims_timing_evidence():
+    environment = _environment()
+    environment["image"] = AUDITED_CLOCK_SOURCE_IMAGE
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit=environment["harness_commit"],
+        environment=environment,
+        power_trace="resident-power.csv",
+        watcher=True,
+        timing_evidence=True,
+    )
+    assert record["timing_evidence"] is False
+
+
+def test_clock_source_audit_table_is_immutable():
+    with pytest.raises(TypeError):
+        CLOCK_SOURCE_AUDIT_TABLE[AUDITED_CLOCK_SOURCE_IMAGE] = {}
+    with pytest.raises(TypeError):
+        CLOCK_SOURCE_AUDIT_TABLE[AUDITED_CLOCK_SOURCE_IMAGE]["toolchain"] = "changed"
 
 
 def test_aborted_attempts_reject_invalid_normal_and_error_relations():

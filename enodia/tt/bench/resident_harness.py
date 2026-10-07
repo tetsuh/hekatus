@@ -44,6 +44,35 @@ WORK_TICKS_PER_UNIT_UPPER_BOUND = (
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
+AUDITED_CLOCK_SOURCE_IMAGE = (
+    "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
+    "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+)
+CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC = "clock source unaudited for this image"
+
+# This immutable table is the sole authority for clock-source evidence.  Its
+# key is the complete image reference, so an audit cannot accidentally follow
+# a release tag or a different digest under the same repository name.
+CLOCK_SOURCE_AUDIT_TABLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        AUDITED_CLOCK_SOURCE_IMAGE: MappingProxyType(
+            {
+                "toolchain": "tt-metal v0.75.0",
+                "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+                "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
+                "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+                "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+                "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+                "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+                "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+                "cross_core_note": (
+                    "intervals use only the designated consumer core; cross-core "
+                    "correlation is out of scope"
+                ),
+            }
+        )
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -906,17 +935,25 @@ def validate_record_inputs(
     _safe_trace_name(power_trace)
 
 
-def _source_evidence() -> dict[str, Any]:
+def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
+    """Return the immutable clock-source audit entry for one exact image."""
+    if not isinstance(image, str):
+        return None
+    return CLOCK_SOURCE_AUDIT_TABLE.get(image)
+
+
+def _source_evidence(image: Any) -> dict[str, Any]:
+    audited = clock_source_audit_for_image(image)
+    if audited is None:
+        return {
+            "image": image,
+            "audit_status": "unaudited",
+            "diagnostic": CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
+        }
     return {
-        "toolchain": "tt-metal v0.75.0",
-        "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
-        "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
-        "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
-        "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
-        "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
-        "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
-        "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
-        "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope",
+        **audited,
+        "image": image,
+        "audit_status": "audited",
     }
 
 
@@ -964,6 +1001,9 @@ def build_measurement_record(
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
+    selected_image = normalized_environment["image"]
+    clock_source_audit = clock_source_audit_for_image(selected_image)
+    source_evidence = _source_evidence(selected_image)
     validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
         raise ValueError("producer_full_count must be non-negative")
@@ -1089,7 +1129,7 @@ def build_measurement_record(
             "designated_core": list(config.designated_timestamp_core),
             "cross_core_correlation": "out_of_scope",
         },
-        "clock_source_evidence": _source_evidence(),
+        "clock_source_evidence": source_evidence,
         "work_ticks": {
             "minimum": work_min_ticks,
             "maximum": work_max_ticks,
@@ -1134,7 +1174,11 @@ def build_measurement_record(
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
         "timing_evidence": bool(
-            not watcher and timing_evidence and completed and dropped == 0
+            clock_source_audit is not None
+            and not watcher
+            and timing_evidence
+            and completed
+            and dropped == 0
         ),
     }
 
@@ -1153,7 +1197,9 @@ def build_rejection_record(
         "rejection_reason": reason,
         "parameters": config.as_record(),
         "frame_interval_is_not_acquisition_rate_claim": True,
-        "clock_source_evidence": _source_evidence(),
+        "clock_source_evidence": _source_evidence(
+            environment.get("image") if isinstance(environment, Mapping) else None
+        ),
     }
     if environment:
         result["environment"] = (
@@ -1163,6 +1209,9 @@ def build_rejection_record(
 
 
 __all__ = [
+    "AUDITED_CLOCK_SOURCE_IMAGE",
+    "CLOCK_SOURCE_AUDIT_TABLE",
+    "CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC",
     "CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS",
     "CURRENT_WRAP_WORK_PER_FRAME",
     "FAILURE_CODES",
@@ -1188,6 +1237,7 @@ __all__ = [
     "RingAccounting",
     "build_measurement_record",
     "build_rejection_record",
+    "clock_source_audit_for_image",
     "cycle_budget_exceeded",
     "failure_name",
     "frame_interval_statistics",
