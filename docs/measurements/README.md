@@ -44,8 +44,7 @@ for a schedule that exceeds it.
 run exactly one fixed-image Stage-1 health probe. Stop hardware work if the
 probe fails or after the one recovery attempt.
 
-Every run remains frame-count terminated; the frame interval is a harness
-parameter, not an acquisition-rate claim. For no-Watcher timing under the
+Successful non-error runs are frame-count terminated; a cycle-budget error or outer timeout may terminate earlier. The frame interval is a harness parameter, not an acquisition-rate claim. For no-Watcher timing under the
 600-second cap, the explicit startup, overlap, and 10% margin formula gives a
 maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
 corresponding 1 ms tick conversion; 545,355 is rejected. The separate first
