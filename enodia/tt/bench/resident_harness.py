@@ -738,6 +738,8 @@ def build_measurement_record(
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
     if isinstance(aborted_attempts, bool) or not isinstance(aborted_attempts, int) or aborted_attempts not in (0, 1):
         raise ValueError("aborted_attempts must be an integer 0 or 1")
+    if producer_full_count != dropped:
+        raise ValueError("producer_full_count must equal dropped_frame_count")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))

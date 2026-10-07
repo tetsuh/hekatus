@@ -530,9 +530,9 @@ def test_error_paths_accept_zero_aborted_attempts(code, name):
 
 def test_aborted_attempts_reject_invalid_normal_and_error_relations():
     base = {
-        "config": _config(frame_count=100),
+        "config": _config(frame_count=3),
         "aiclk_mhz": 1_350,
-        "timestamps": [1_000],
+        "timestamps": [1_000, 2_000, 3_000],
         "producer_full_count": 0,
         "consumer_empty_count": 0,
         "cycle_budget_hit": False,
@@ -543,11 +543,14 @@ def test_aborted_attempts_reject_invalid_normal_and_error_relations():
     }
     with pytest.raises(ValueError, match="normal counter relation"):
         build_measurement_record(**base, aborted_attempts=1)
+    with pytest.raises(ValueError, match="producer_full_count must equal"):
+        build_measurement_record(**{**base, "producer_full_count": 1}, aborted_attempts=0)
     error_base = {
         **base,
         "cycle_budget_hit": True,
         "kernel_error_flag": 1,
         "failure_check": _failure(2, "producer_pacing_wait"),
+        "timestamps": [1_000],
         "attempted_frame_count": 2,
         "produced_frame_count": 1,
         "dropped_frame_count": 0,
@@ -577,13 +580,56 @@ def test_watcher_timing_evidence_is_always_false():
     assert build_measurement_record(**kwargs, timing_evidence=True)["timing_evidence"] is False
 
 
+def test_existing_issue12_measurement_counters_obey_protocol():
+    checked = 0
+    for path in sorted(Path("docs/measurements").glob("*issue12-stage1*.json")):
+        record = json.loads(path.read_text())
+        ring = record.get("ring")
+        counts = record.get("counts")
+        if ring and ring.get("attempted_frame_count") is not None:
+            source = ring
+            attempted_key = "attempted_frame_count"
+            produced_key = "produced_frame_count"
+            consumed_key = "consumed_frame_count"
+            dropped_key = "dropped_frame_count"
+            full_key = "producer_full_count"
+            overflow_key = "overflow_count"
+        elif counts and counts.get("attempted") is not None:
+            source = counts
+            attempted_key = "attempted"
+            produced_key = "produced"
+            consumed_key = "consumed"
+            dropped_key = "dropped"
+            full_key = "producer_full"
+            overflow_key = "overflow"
+        else:
+            assert record.get("status") in {"blocked", "blocked_timing", "rejected", "error", "abnormal_exit"}
+            assert record.get("timing_evidence") is not True
+            continue
+        checked += 1
+        attempted = source[attempted_key]
+        produced = source[produced_key]
+        consumed = source[consumed_key]
+        dropped = source[dropped_key]
+        aborted = source.get("aborted_attempts", record.get("parameters", {}).get("aborted_attempts", 0))
+        assert source[full_key] == dropped
+        assert source[overflow_key] == source[full_key]
+        assert consumed <= produced
+        ring_pages = record.get("parameters", {}).get("ring_pages", 4)
+        assert produced - consumed <= ring_pages
+        assert attempted == produced + dropped + aborted
+        if "histogram" in record and "N" in record["histogram"]:
+            assert record["histogram"]["N"] == max(0, consumed - 1)
+    assert checked > 0
+
+
 def test_record_schema_is_strict_and_excludes_raw_timestamps():
     config = _config()
     record = build_measurement_record(
         config=config,
         aiclk_mhz=1_350,
         timestamps=[1_000, 2_000, 3_000],
-        producer_full_count=2,
+        producer_full_count=97,
         consumer_empty_count=1,
         startup_ticks=123,
         startup_ticks_valid=True,
@@ -618,7 +664,7 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["raw_timestamps"]["count"] == 3
     assert '"timestamps":' not in encoded
     assert parsed["histogram"]["N"] == 2
-    assert parsed["ring"]["producer_full_count"] == 2
+    assert parsed["ring"]["producer_full_count"] == 97
     assert parsed["ring"]["consumer_empty_count"] == 1
     assert parsed["ring"]["dropped_frame_count"] == 97
     assert parsed["startup"]["observed_ticks"] == 123
