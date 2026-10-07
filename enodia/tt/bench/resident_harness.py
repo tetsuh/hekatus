@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import struct
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
@@ -502,11 +503,25 @@ def timestamp_digest(timestamps: Iterable[int]) -> dict[str, Any]:
     return {"count": count, "sha256": digest.hexdigest()}
 
 
+def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
+    """Require the exact immutable image identity before resident execution."""
+    image = environment.get("image")
+    if (
+        environment.get("image_pinned") is not True
+        or not isinstance(image, str)
+        or re.search(r"@sha256:[0-9a-f]{64}$", image) is None
+    ):
+        raise ResidentPreflightError(
+            "resident execution requires image_pinned=true and image @sha256:<64 lowercase hex>"
+        )
+
+
 def _require_environment(environment: Mapping[str, Any]) -> None:
     required = ("board", "firmware", "kmd_version", "image")
     missing = [name for name in required if not environment.get(name)]
     if missing:
         raise ValueError("environment is missing required fields: " + ", ".join(missing))
+    validate_pinned_environment(environment)
 
 
 def _safe_trace_name(power_trace: str) -> str:
@@ -757,6 +772,7 @@ __all__ = [
     "ticks_to_seconds",
     "timestamp_digest",
     "validate_configuration",
+    "validate_pinned_environment",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]

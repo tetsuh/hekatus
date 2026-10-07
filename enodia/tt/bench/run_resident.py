@@ -32,6 +32,7 @@ from enodia.tt.bench.resident_harness import (
     select_failure_check,
     split_u64,
     validate_configuration,
+    validate_pinned_environment,
     validate_run_budget_fits_outer_cap,
 )
 
@@ -431,6 +432,7 @@ def main(argv: list[str] | None = None) -> int:
         histogram_bin_ticks=args.histogram_bin_ticks,
     )
     try:
+        validate_pinned_environment(environment)
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)

@@ -31,6 +31,7 @@ from enodia.tt.bench.resident_harness import (
     ticks_to_seconds,
     timestamp_digest,
     validate_configuration,
+    validate_pinned_environment,
     validate_run_budget_fits_outer_cap,
     wrap_delta,
 )
@@ -422,7 +423,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
             "board": {"serial": "redacted-board-serial"},
             "firmware": {"bundle": "19.6.0.0"},
             "kmd_version": "2.11.0",
-            "image": "sha256:example",
+            "image": "registry.example/tt@sha256:" + "a" * 64,
+            "image_pinned": True,
         },
         power_trace="resident-power.csv",
     )
@@ -453,7 +455,7 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["attempted_frame_count"] == 100
-    assert parsed["environment"]["image"] == "sha256:example"
+    assert parsed["environment"]["image"] == "registry.example/tt@sha256:" + "a" * 64
 
 
 def test_kernel_protocol_uses_accessor_ring_metadata_and_budgeted_waits():
@@ -580,6 +582,18 @@ def test_every_resident_noc_signal_and_write_has_a_matching_barrier():
     assert "failure_consumer_fixed_work_budget" in consumer
     assert "failure_run_wide_budget" in consumer
     assert "Drop-new policy" in producer
+
+
+def test_resident_environment_requires_verified_digest_image():
+    valid = {
+        "image": "registry.example/tt@sha256:" + "a" * 64,
+        "image_pinned": True,
+    }
+    validate_pinned_environment(valid)
+    with pytest.raises(ResidentPreflightError, match="image_pinned"):
+        validate_pinned_environment({"image": "registry.example/tt:latest", "image_pinned": False})
+    with pytest.raises(ResidentPreflightError, match="image_pinned"):
+        validate_pinned_environment({"image": "registry.example/tt@sha256:" + "A" * 64, "image_pinned": True})
 
 
 def test_record_rejects_missing_environment_provenance():

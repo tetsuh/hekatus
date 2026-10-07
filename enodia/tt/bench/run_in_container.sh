@@ -62,9 +62,11 @@ validate_decimal_timeout() {
   fi
 }
 
+RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 RESIDENT_TIMEOUT_CAP_S="600"
 if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
+  RESIDENT_RUNNER=1
   CLI_WATCHER_MODE=0
   for argument in "${RUNNER_ARGS[@]}"; do
     if [[ "${argument}" == "--watcher" ]]; then
@@ -111,20 +113,35 @@ fi
 # Resolve a tag to the digest it currently points at, so the recorded
 # environment names one immutable toolchain rather than a moving one.
 IMAGE_PINNED=0
+image_is_digest_pinned() {
+  [[ "$1" =~ @sha256:[0-9a-f]{64}$ ]]
+}
 case "${IMAGE}" in
-  *@sha256:*) IMAGE_PINNED=1 ;;
+  *@sha256:*)
+    if image_is_digest_pinned "${IMAGE}"; then
+      IMAGE_PINNED=1
+    fi
+    ;;
   *)
     if RESOLVED="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE}" 2>/dev/null)" \
-       && [[ -n "${RESOLVED}" ]]; then
+       && image_is_digest_pinned "${RESOLVED}"; then
       echo "resolved ${IMAGE} to ${RESOLVED}"
       IMAGE="${RESOLVED}"
       IMAGE_PINNED=1
+    elif [[ "${RESIDENT_RUNNER}" == "1" ]]; then
+      echo "resident runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
+      exit 2
     else
       echo "WARNING: ${IMAGE} is not digest-pinned and could not be resolved;" >&2
       echo "         results will be recorded as coming from an unpinned image." >&2
     fi
     ;;
 esac
+
+if [[ "${RESIDENT_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
+  echo "resident runner requires a verified digest-pinned image" >&2
+  exit 2
+fi
 
 if [[ "${TEST_MODE}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   echo "--pytest requires a digest-pinned HEKATUS_TT_IMAGE" >&2

@@ -109,7 +109,9 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
         assert json.loads(env_files[-1].read_text()) == {"fake": True}
 
 
-def _run_resident_wrapper(tmp_path, *, container_timeout, runner_args, watcher_env=None):
+def _run_resident_wrapper(
+    tmp_path, *, container_timeout, runner_args, watcher_env=None, image_override=None
+):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
@@ -126,6 +128,8 @@ def _run_resident_wrapper(tmp_path, *, container_timeout, runner_args, watcher_e
     env.pop("TT_METAL_WATCHER", None)
     if watcher_env is not None:
         env["TT_METAL_WATCHER"] = watcher_env
+    if image_override is not None:
+        env["HEKATUS_TT_IMAGE"] = image_override
     return subprocess.run(
         [str(copied_wrapper), "--", *runner_args],
         cwd=copied_wrapper.parents[3],
@@ -135,6 +139,28 @@ def _run_resident_wrapper(tmp_path, *, container_timeout, runner_args, watcher_e
         check=False,
         timeout=10,
     )
+
+
+def test_resident_wrapper_rejects_unpinned_image_before_telemetry(tmp_path):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout="600",
+        runner_args=[],
+        image_override="registry.example/tt:latest",
+    )
+    assert completed.returncode == 2
+    assert "requires" in completed.stderr
+    assert not list((tmp_path / "repo/out").glob("env-*.json"))
+
+
+def test_resident_wrapper_accepts_verified_digest_image(tmp_path):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout="600",
+        runner_args=[],
+        image_override="registry.example/tt@sha256:" + "a" * 64,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.parametrize(
