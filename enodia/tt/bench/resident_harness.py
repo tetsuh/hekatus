@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import PurePath
+from types import MappingProxyType
 from typing import Any
 
 PAGE_WORDS = 32 * 32
@@ -43,22 +44,55 @@ WORK_TICKS_PER_UNIT_UPPER_BOUND = (
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
-FAILURE_CODES = {
-    0: "none",
-    1: "run_wide_budget",
-    2: "producer_pacing_wait",
-    3: "consumer_empty_wait",
-    4: "consumer_fixed_work_budget",
-    5: "other_check",
-}
-FAILURE_PRIORITY = {
-    "consumer_fixed_work_budget": 0,
-    "producer_pacing_wait": 1,
-    "consumer_empty_wait": 2,
-    "run_wide_budget": 3,
-    "other_check": 4,
-    "none": 5,
-}
+
+
+@dataclass(frozen=True)
+class ResidentFailureClassification:
+    """Kernel failure semantics shared by summary decoding and record building."""
+
+    code: int
+    name: str
+    sources: tuple[str, ...]
+    termination_reason: str | None
+    cycle_budget_exceeded: bool
+    error_flag: bool
+    priority: int
+
+    @classmethod
+    def for_code(cls, code: Any) -> ResidentFailureClassification:
+        if isinstance(code, bool) or not isinstance(code, int):
+            raise TypeError("resident failure code must be an integer")
+        try:
+            return FAILURE_CODES[code]
+        except KeyError as exc:
+            raise ValueError("unknown resident failure code") from exc
+
+
+# This immutable table mirrors every failure constant defined by the resident
+# kernels.  Codes 1--3 stop on the run-wide limit; only code 4 consumes the
+# per-frame fixed-work budget.  Code 5 is producer cancellation propagated from
+# a peer error and is therefore not a budget breach.
+FAILURE_CODE_TABLE: tuple[ResidentFailureClassification, ...] = (
+    ResidentFailureClassification(
+        0, "none", ("none", "producer", "consumer"), None, False, False, 5
+    ),
+    ResidentFailureClassification(
+        1, "run_wide_budget", ("producer", "consumer"), "run_budget", False, True, 3
+    ),
+    ResidentFailureClassification(
+        2, "producer_pacing_wait", ("producer",), "run_budget", False, True, 1
+    ),
+    ResidentFailureClassification(
+        3, "consumer_empty_wait", ("consumer",), "run_budget", False, True, 2
+    ),
+    ResidentFailureClassification(
+        4, "consumer_fixed_work_budget", ("consumer",), "cycle_budget", True, True, 0
+    ),
+    ResidentFailureClassification(
+        5, "other_check", ("producer",), "cancelled", False, True, 4
+    ),
+)
+FAILURE_CODES = MappingProxyType({entry.code: entry for entry in FAILURE_CODE_TABLE})
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -509,18 +543,37 @@ def validate_run_budget_fits_outer_cap(
     return breakdown
 
 
+def validate_failure_check(failure: Mapping[str, Any]) -> ResidentFailureClassification:
+    """Validate a serialized failure and return its authoritative classification."""
+    if not isinstance(failure, Mapping):
+        raise TypeError("failure_check must be an object")
+    classification = ResidentFailureClassification.for_code(failure.get("code"))
+    if failure.get("name") != classification.name:
+        raise ValueError("failure_check code/name mismatch")
+    source = failure.get("source")
+    if source is not None and source not in classification.sources:
+        raise ValueError(
+            f"failure_check source {source!r} is invalid for code {classification.code}"
+        )
+    return classification
+
+
 def failure_name(code: int) -> str:
-    if isinstance(code, bool) or not isinstance(code, int) or code not in FAILURE_CODES:
-        raise ValueError("unknown resident failure code")
-    return FAILURE_CODES[code]
+    return ResidentFailureClassification.for_code(code).name
 
 
 def select_failure_check(*failures: dict[str, Any] | None) -> dict[str, Any]:
     """Select one deterministic failure when producer/consumer report together."""
-    candidates = [failure for failure in failures if failure and failure["name"] != "none"]
+    candidates: list[tuple[ResidentFailureClassification, dict[str, Any]]] = []
+    for failure in failures:
+        if failure is None:
+            continue
+        classification = validate_failure_check(failure)
+        if classification.code != 0:
+            candidates.append((classification, failure))
     if not candidates:
         return {"code": 0, "name": "none", "source": "none"}
-    return min(candidates, key=lambda failure: FAILURE_PRIORITY[failure["name"]])
+    return min(candidates, key=lambda item: item[0].priority)[1]
 
 
 def split_u64(value: int) -> tuple[int, int]:
@@ -531,13 +584,22 @@ def split_u64(value: int) -> tuple[int, int]:
 
 
 def termination_reason(
-    *, frame_count_reached: bool, cycle_budget_hit: bool, outer_timeout: bool
+    *,
+    frame_count_reached: bool,
+    failure_check: Mapping[str, Any] | None = None,
+    outer_timeout: bool,
 ) -> str:
-    """Classify the first terminal condition, with host timeout taking priority."""
+    """Classify the terminal condition, with host timeout taking priority."""
     if outer_timeout:
         return "outer_timeout"
-    if cycle_budget_hit:
-        return "cycle_budget"
+    failure = (
+        {"code": 0, "name": "none", "source": "none"}
+        if failure_check is None
+        else failure_check
+    )
+    classification = validate_failure_check(failure)
+    if classification.termination_reason is not None:
+        return classification.termination_reason
     if frame_count_reached:
         return "frame_count"
     return "running"
@@ -865,7 +927,6 @@ def build_measurement_record(
     timestamps: Iterable[int],
     producer_full_count: int,
     consumer_empty_count: int,
-    cycle_budget_hit: bool,
     kernel_error_flag: int,
     harness_commit: str,
     environment: Mapping[str, Any],
@@ -910,19 +971,38 @@ def build_measurement_record(
         raise ValueError("consumer_empty_count must be non-negative")
     if kernel_error_flag not in (0, 1, False, True):
         raise ValueError("kernel_error_flag must be a boolean or 0/1")
+    selected_failure = (
+        dict(failure_check)
+        if failure_check is not None
+        else select_failure_check()
+    )
+    classification = validate_failure_check(selected_failure)
+    if classification.code != 0 and any(
+        field not in selected_failure for field in ("elapsed_ticks", "limit_ticks", "unit")
+    ):
+        raise ValueError("failure_check must serialize elapsed and limit units")
+    if bool(kernel_error_flag) != classification.error_flag:
+        raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
     if (
-        any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (attempted, produced, dropped))
+        any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in (attempted, produced, dropped)
+        )
         or produced < len(timestamp_values)
         or produced > attempted
         or dropped < 0
     ):
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
-    if isinstance(aborted_attempts, bool) or not isinstance(aborted_attempts, int) or aborted_attempts not in (0, 1):
+    if (
+        isinstance(aborted_attempts, bool)
+        or not isinstance(aborted_attempts, int)
+        or aborted_attempts not in (0, 1)
+    ):
         raise ValueError("aborted_attempts must be an integer 0 or 1")
     if producer_full_count != dropped:
         raise ValueError("producer_full_count must equal dropped_frame_count")
@@ -933,17 +1013,13 @@ def build_measurement_record(
     frame_count_reached = attempted == config.frame_count and produced == attempted - dropped
     reason = termination_reason(
         frame_count_reached=frame_count_reached and produced == len(timestamp_values),
-        cycle_budget_hit=bool(cycle_budget_hit),
+        failure_check=selected_failure,
         outer_timeout=False,
     )
     if reason == "running":
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
-    failure_hint = bool(
-        cycle_budget_hit
-        or kernel_error_flag
-        or (failure_check is not None and failure_check.get("name") not in (None, "none"))
-    )
+    failure_hint = classification.error_flag
     if failure_hint:
         if attempted != produced + dropped + aborted_attempts:
             raise ValueError("error counter relation requires attempted=produced+dropped+aborted_attempts")
@@ -954,8 +1030,6 @@ def build_measurement_record(
         raise ValueError("produced, consumed, and ring occupancy counters are inconsistent")
     completed = (
         not failure_hint
-        and not cycle_budget_hit
-        and not kernel_error_flag
         and frame_count_reached
         and aborted_attempts == 0
         and produced == len(timestamp_values)
@@ -969,15 +1043,6 @@ def build_measurement_record(
     stats["sample_definition"] = (
         "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
     )
-    selected_failure = dict(failure_check) if failure_check is not None else select_failure_check()
-    if "name" not in selected_failure or "code" not in selected_failure:
-        raise ValueError("failure_check must contain code and name")
-    if failure_name(selected_failure["code"]) != selected_failure["name"]:
-        raise ValueError("failure_check code/name mismatch")
-    if selected_failure["name"] != "none" and any(
-        field not in selected_failure for field in ("elapsed_ticks", "limit_ticks", "unit")
-    ):
-        raise ValueError("failure_check must serialize elapsed and limit units")
     if startup_ticks is not None and (
         isinstance(startup_ticks, bool) or not isinstance(startup_ticks, int) or startup_ticks < 0
     ):
@@ -1060,15 +1125,17 @@ def build_measurement_record(
             "unit": "device_clock_ticks",
             "scope": "per_frame_fixed_work",
             "run_budget_ticks": run_budget_breakdown(config, watcher=watcher)["run_budget_ticks"],
-            "exceeded": bool(cycle_budget_hit),
-            "error_flag": int(bool(kernel_error_flag)),
+            "exceeded": classification.cycle_budget_exceeded,
+            "error_flag": int(classification.error_flag),
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
         "environment": normalized_environment,
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(not watcher and timing_evidence and completed and dropped == 0),
+        "timing_evidence": bool(
+            not watcher and timing_evidence and completed and dropped == 0
+        ),
     }
 
 
@@ -1098,6 +1165,8 @@ def build_rejection_record(
 __all__ = [
     "CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS",
     "CURRENT_WRAP_WORK_PER_FRAME",
+    "FAILURE_CODES",
+    "FAILURE_CODE_TABLE",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
@@ -1114,6 +1183,7 @@ __all__ = [
     "WORK_TICKS_PER_UNIT_UPPER_BOUND",
     "RequiredProvenanceField",
     "ResidentConfig",
+    "ResidentFailureClassification",
     "ResidentPreflightError",
     "RingAccounting",
     "build_measurement_record",
@@ -1136,6 +1206,7 @@ __all__ = [
     "ticks_to_seconds",
     "timestamp_digest",
     "validate_configuration",
+    "validate_failure_check",
     "validate_pinned_environment",
     "validate_post_run_aiclk",
     "validate_post_run_provenance",

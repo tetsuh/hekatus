@@ -24,14 +24,15 @@ from enodia.tt.bench.resident_harness import (
     PAGE_BYTES,
     PAGE_WORDS,
     ResidentConfig,
+    ResidentFailureClassification,
     ResidentPreflightError,
     build_measurement_record,
     build_rejection_record,
-    failure_name,
     run_budget_breakdown,
     select_failure_check,
     split_u64,
     validate_configuration,
+    validate_failure_check,
     validate_post_run_aiclk,
     validate_record_inputs,
     validate_run_budget_fits_outer_cap,
@@ -220,19 +221,18 @@ def _program(
 
 def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
     code = int(values[base])
-    return {
+    classification = ResidentFailureClassification.for_code(code)
+    failure = {
         "code": code,
-        "name": failure_name(code),
+        "name": classification.name,
         "source": source,
         "elapsed_ticks": int(values[base + 1]) | (int(values[base + 2]) << 32),
         "limit_ticks": int(values[base + 3]) | (int(values[base + 4]) << 32),
         "unit": "device_clock_ticks",
         "valid": bool(values[base + 5]),
     }
-
-
-def _is_consumer_fixed_work_budget(failure: dict[str, Any]) -> bool:
-    return failure.get("code") == 4 and failure.get("name") == "consumer_fixed_work_budget"
+    validate_failure_check(failure)
+    return failure
 
 
 def _download(ttnn: Any, tensor):
@@ -317,12 +317,16 @@ def _run_device(
             | (int(timestamp_values[index, 0, 0, 1]) << 32)
             for index in range(frames_consumed)
         ]
+        failure_check = select_failure_check(producer_failure, consumer_failure)
+        failure_classification = validate_failure_check(failure_check)
+        kernel_error_flag = int(bool(producer_values[2] or consumer_values[2]))
+        if kernel_error_flag != int(failure_classification.error_flag):
+            raise ValueError("kernel summary error flags disagree with failure code")
         return {
             "timestamps": raw_timestamps,
             "producer_full_count": int(producer_values[0]),
             "consumer_empty_count": int(consumer_values[0]),
-            "cycle_budget_hit": _is_consumer_fixed_work_budget(consumer_failure),
-            "kernel_error_flag": int(bool(producer_values[2] or consumer_values[2])),
+            "kernel_error_flag": kernel_error_flag,
             "frames_attempted": int(producer_values[3]),
             "frames_produced": int(producer_values[1]),
             "frames_dropped": int(producer_values[4]),
@@ -336,7 +340,7 @@ def _run_device(
             "work_ticks_valid": bool(consumer_values[17]),
             "producer_failure": producer_failure,
             "consumer_failure": consumer_failure,
-            "failure_check": select_failure_check(producer_failure, consumer_failure),
+            "failure_check": failure_check,
         }
     finally:
         for tensor in tensors.values():
@@ -478,7 +482,6 @@ def main(argv: list[str] | None = None) -> int:
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],
-        cycle_budget_hit=result["cycle_budget_hit"],
         attempted_frame_count=result["frames_attempted"],
         produced_frame_count=result["frames_produced"],
         dropped_frame_count=result["frames_dropped"],
@@ -498,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
             and result["frames_attempted"] == config.frame_count
             and result["frames_consumed"] == result["frames_produced"]
             and result["frames_dropped"] == 0
-            and not result["cycle_budget_hit"]
+            and not validate_failure_check(result["failure_check"]).error_flag
         ),
     )
     record["frames_produced"] = result["frames_produced"]

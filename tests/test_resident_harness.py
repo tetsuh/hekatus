@@ -18,6 +18,7 @@ from enodia.tt.bench import run_resident
 from enodia.tt.bench.resident_harness import (
     CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS,
     CURRENT_WRAP_WORK_PER_FRAME,
+    FAILURE_CODE_TABLE,
     PROVENANCE_PHASE_POST_RUN,
     PROVENANCE_PHASE_PREFLIGHT,
     REQUIRED_PROVENANCE_FIELDS,
@@ -27,6 +28,7 @@ from enodia.tt.bench.resident_harness import (
     UINT32_MAX,
     WORK_TICKS_PER_UNIT_UPPER_BOUND,
     ResidentConfig,
+    ResidentFailureClassification,
     ResidentPreflightError,
     RingAccounting,
     build_measurement_record,
@@ -47,6 +49,7 @@ from enodia.tt.bench.resident_harness import (
     ticks_to_seconds,
     timestamp_digest,
     validate_configuration,
+    validate_failure_check,
     validate_pinned_environment,
     validate_post_run_provenance,
     validate_preflight_provenance,
@@ -56,7 +59,7 @@ from enodia.tt.bench.resident_harness import (
 )
 from enodia.tt.bench.run_resident import (
     _config_from_args,
-    _is_consumer_fixed_work_budget,
+    _decode_failure,
     _parser,
     _resolve_watcher_mode,
     _runtime_u32,
@@ -264,6 +267,48 @@ def _config(**overrides) -> ResidentConfig:
     return ResidentConfig(**values)
 
 
+def _failure(
+    code: int,
+    *,
+    source: str | None = None,
+    elapsed_ticks: int = 123,
+    limit_ticks: int = 100,
+) -> dict:
+    classification = ResidentFailureClassification.for_code(code)
+    return {
+        "code": classification.code,
+        "name": classification.name,
+        "source": classification.sources[0] if source is None else source,
+        "elapsed_ticks": elapsed_ticks,
+        "limit_ticks": limit_ticks,
+        "unit": "device_clock_ticks",
+        "valid": classification.error_flag,
+    }
+
+
+def _summary_words(classification, source: str) -> tuple[list[int], int]:
+    values = [0] * (18 if source == "consumer" else 12)
+    base = 7 if source == "consumer" else 6
+    if source == "producer":
+        values[1] = 3
+        values[3] = 3
+        values[5] = 1
+    else:
+        values[1] = 3
+        values[4] = 10
+        values[5] = 0
+        values[6] = 1
+        values[13] = 10
+        values[15] = 20
+        values[17] = 1
+    values[2] = int(classification.error_flag)
+    values[base] = classification.code
+    values[base + 1] = 123
+    values[base + 3] = 100
+    values[base + 5] = int(classification.error_flag)
+    return values, base
+
+
 def test_ring_accounting_counts_full_and_empty_transitions():
     ring = RingAccounting(capacity=2)
 
@@ -294,49 +339,60 @@ def test_wrap_delta_is_unsigned_and_wrap_safe():
         wrap_delta(1, 0, bits=31)
 
 
-def test_failure_codes_and_precedence_are_explicit():
-    assert failure_name(0) == "none"
-    assert failure_name(2) == "producer_pacing_wait"
-    producer = {
-        "code": 2,
-        "name": "producer_pacing_wait",
-        "source": "producer",
-        "elapsed_ticks": 12,
-        "limit_ticks": 10,
-    }
-    consumer = {
-        "code": 4,
-        "name": "consumer_fixed_work_budget",
-        "source": "consumer",
-        "elapsed_ticks": 100,
-        "limit_ticks": 90,
-    }
-    assert select_failure_check(producer, consumer)["name"] == "consumer_fixed_work_budget"
-    assert select_failure_check()["name"] == "none"
-    with pytest.raises(ValueError):
+def test_failure_code_table_is_authoritative_and_immutable():
+    assert tuple(entry.code for entry in FAILURE_CODE_TABLE) == tuple(range(6))
+    assert all(
+        ResidentFailureClassification.for_code(entry.code) is entry
+        for entry in FAILURE_CODE_TABLE
+    )
+    for entry in FAILURE_CODE_TABLE:
+        assert failure_name(entry.code) == entry.name
+    with pytest.raises(ValueError, match="unknown resident failure code"):
         failure_name(99)
+    with pytest.raises(TypeError):
+        FAILURE_CODE_TABLE[0] = FAILURE_CODE_TABLE[0]
+    with pytest.raises(AttributeError):
+        FAILURE_CODE_TABLE[0].name = "changed"
 
 
-def test_cycle_budget_hit_only_tracks_consumer_fixed_work_failure():
-    assert _is_consumer_fixed_work_budget(
-        {"code": 4, "name": "consumer_fixed_work_budget"}
-    ) is True
-    assert _is_consumer_fixed_work_budget({"code": 4, "name": "other_check"}) is False
-    assert _is_consumer_fixed_work_budget({"code": 1, "name": "run_wide_budget"}) is False
+def test_failure_selection_uses_table_precedence_and_validates_names():
+    producer = _failure(2, source="producer", elapsed_ticks=12, limit_ticks=10)
+    consumer = _failure(4, source="consumer", elapsed_ticks=100, limit_ticks=90)
+    assert select_failure_check(producer, consumer)["code"] == consumer["code"]
+    assert select_failure_check()["code"] == 0
+    invalid = {**producer, "name": "not-the-table-name"}
+    with pytest.raises(ValueError, match="code/name mismatch"):
+        validate_failure_check(invalid)
 
 
 def test_cycle_budget_and_termination_are_explicit():
     assert not cycle_budget_exceeded(elapsed_ticks=99, cycle_budget=100)
     assert cycle_budget_exceeded(elapsed_ticks=100, cycle_budget=100)
-    assert termination_reason(frame_count_reached=True, cycle_budget_hit=False, outer_timeout=False) == (
-        "frame_count"
-    )
-    assert termination_reason(frame_count_reached=False, cycle_budget_hit=True, outer_timeout=False) == (
-        "cycle_budget"
-    )
-    assert termination_reason(frame_count_reached=False, cycle_budget_hit=False, outer_timeout=True) == (
-        "outer_timeout"
-    )
+    assert termination_reason(
+        frame_count_reached=True,
+        failure_check=select_failure_check(),
+        outer_timeout=False,
+    ) == "frame_count"
+    assert termination_reason(
+        frame_count_reached=False,
+        failure_check=_failure(4, source="consumer"),
+        outer_timeout=False,
+    ) == "cycle_budget"
+    assert termination_reason(
+        frame_count_reached=False,
+        failure_check=_failure(2, source="producer"),
+        outer_timeout=False,
+    ) == "run_budget"
+    assert termination_reason(
+        frame_count_reached=False,
+        failure_check=_failure(5, source="producer"),
+        outer_timeout=False,
+    ) == "cancelled"
+    assert termination_reason(
+        frame_count_reached=False,
+        failure_check=_failure(4, source="consumer"),
+        outer_timeout=True,
+    ) == "outer_timeout"
 
 
 def test_run_budget_covers_n_frames_interval_work_and_margin():
@@ -918,69 +974,162 @@ def test_timestamp_digest_redacts_raw_values():
     assert "timestamps" not in redacted
 
 
-def _failure(code: int, name: str) -> dict:
-    return {
-        "code": code,
-        "name": name,
-        "source": "producer" if name.startswith("producer") or name == "other_check" else "consumer",
-        "elapsed_ticks": 123,
-        "limit_ticks": 100,
-        "unit": "device_clock_ticks",
-    }
-
-
 def test_pacing_failure_accepts_one_aborted_attempt():
+    classification = ResidentFailureClassification.for_code(2)
     record = build_measurement_record(
         config=_config(frame_count=100),
         aiclk_mhz=1_350,
         timestamps=[1_000],
         producer_full_count=0,
         consumer_empty_count=1,
-        cycle_budget_hit=True,
         kernel_error_flag=1,
         attempted_frame_count=2,
         produced_frame_count=1,
         dropped_frame_count=0,
         aborted_attempts=1,
-        failure_check=_failure(2, "producer_pacing_wait"),
+        failure_check=_failure(classification.code, source="producer"),
         harness_commit="0123456789abcdef",
         environment=_environment(),
         power_trace="resident-power.csv",
     )
     assert record["status"] == "error"
+    assert record["termination_reason"] == classification.termination_reason
     assert record["parameters"]["aborted_attempts"] == 1
     assert record["ring"]["aborted_attempts"] == 1
+    assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
 
 
 @pytest.mark.parametrize(
-    ("code", "name"),
-    [
-        (1, "run_wide_budget"),
-        (3, "consumer_empty_wait"),
-        (4, "consumer_fixed_work_budget"),
-        (5, "other_check"),
-    ],
+    "classification",
+    FAILURE_CODE_TABLE[1:],
+    ids=lambda entry: f"code-{entry.code}-{entry.name}",
 )
-def test_error_paths_accept_zero_aborted_attempts(code, name):
+def test_error_paths_derive_all_record_fields_from_failure_table(classification):
+    source = classification.sources[0]
     record = build_measurement_record(
         config=_config(frame_count=3),
         aiclk_mhz=1_350,
         timestamps=[1_000, 2_000, 3_000],
         producer_full_count=0,
         consumer_empty_count=1,
-        cycle_budget_hit=True,
         kernel_error_flag=1,
         attempted_frame_count=3,
         produced_frame_count=3,
         dropped_frame_count=0,
         aborted_attempts=0,
-        failure_check=_failure(code, name),
+        failure_check=_failure(classification.code, source=source),
         harness_commit="0123456789abcdef",
         environment=_environment(),
         power_trace="resident-power.csv",
     )
     assert record["status"] == "error"
+    assert record["termination_reason"] == classification.termination_reason
+    assert record["failure_check"]["code"] == classification.code
+    assert record["failure_check"]["name"] == classification.name
+    assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
+    assert record["cycle_budget"]["error_flag"] == int(classification.error_flag)
     assert record["parameters"]["aborted_attempts"] == 0
+
+
+@pytest.mark.parametrize(
+    "classification",
+    FAILURE_CODE_TABLE,
+    ids=lambda entry: f"summary-code-{entry.code}-{entry.name}",
+)
+def test_kernel_summary_to_runner_to_builder_path_uses_one_failure_table(classification):
+    source = "producer" if classification.code == 0 else classification.sources[0]
+    values, base = _summary_words(classification, source)
+    decoded = _decode_failure(values, base=base, source=source)
+    selected = select_failure_check(decoded)
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=1,
+        attempted_frame_count=3,
+        produced_frame_count=3,
+        dropped_frame_count=0,
+        aborted_attempts=0,
+        failure_check=selected,
+        kernel_error_flag=int(classification.error_flag),
+        harness_commit="0123456789abcdef",
+        environment=_environment(),
+        power_trace="resident-power.csv",
+    )
+
+    assert selected["code"] == classification.code
+    expected_name = classification.name if classification.code else "none"
+    assert selected["name"] == expected_name
+    assert record["failure_check"]["code"] == classification.code
+    assert record["failure_check"]["name"] == classification.name
+    expected_reason = (
+        "frame_count"
+        if classification.code == 0
+        else classification.termination_reason
+    )
+    assert record["termination_reason"] == expected_reason
+    assert record["status"] == ("ok" if classification.code == 0 else "error")
+    assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
+    assert record["cycle_budget"]["error_flag"] == int(classification.error_flag)
+
+
+@pytest.mark.parametrize("source", FAILURE_CODE_TABLE[1].sources)
+def test_run_wide_budget_decodes_from_each_kernel_summary(source):
+    classification = FAILURE_CODE_TABLE[1]
+    values, base = _summary_words(classification, source)
+    decoded = _decode_failure(values, base=base, source=source)
+    selected = select_failure_check(decoded)
+    assert selected["code"] == classification.code
+    assert selected["name"] == classification.name
+
+
+def test_failure_selection_precedence_runs_through_builder():
+    producer_values, producer_base = _summary_words(
+        FAILURE_CODE_TABLE[2], "producer"
+    )
+    consumer_values, consumer_base = _summary_words(
+        FAILURE_CODE_TABLE[4], "consumer"
+    )
+    producer = _decode_failure(producer_values, base=producer_base, source="producer")
+    consumer = _decode_failure(consumer_values, base=consumer_base, source="consumer")
+    selected = select_failure_check(producer, consumer)
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=1,
+        attempted_frame_count=3,
+        produced_frame_count=3,
+        dropped_frame_count=0,
+        failure_check=selected,
+        kernel_error_flag=1,
+        harness_commit="0123456789abcdef",
+        environment=_environment(),
+        power_trace="resident-power.csv",
+    )
+    classification = ResidentFailureClassification.for_code(selected["code"])
+    assert classification is FAILURE_CODE_TABLE[4]
+    assert record["termination_reason"] == classification.termination_reason
+    assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
+
+
+def test_accepted_500000_frame_record_matches_failure_table():
+    record = json.loads(
+        (
+            ROOT
+            / "docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json"
+        ).read_text()
+    )
+    selected = record["termination"]["failure_check"]
+    classification = validate_failure_check(selected)
+    assert classification.code == 0
+    assert selected["name"] == classification.name
+    assert record["termination"]["reason"] == "frame_count"
+    assert record["termination"]["cycle_budget_error"] == classification.cycle_budget_exceeded
+    assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
+    assert record["cycle_budget"]["error_flag"] == int(classification.error_flag)
 
 
 def test_aborted_attempts_reject_invalid_normal_and_error_relations():
@@ -990,7 +1139,6 @@ def test_aborted_attempts_reject_invalid_normal_and_error_relations():
         "timestamps": [1_000, 2_000, 3_000],
         "producer_full_count": 0,
         "consumer_empty_count": 0,
-        "cycle_budget_hit": False,
         "kernel_error_flag": 0,
         "harness_commit": "0123456789abcdef",
         "environment": _environment(),
@@ -1002,9 +1150,8 @@ def test_aborted_attempts_reject_invalid_normal_and_error_relations():
         build_measurement_record(**{**base, "producer_full_count": 1}, aborted_attempts=0)
     error_base = {
         **base,
-        "cycle_budget_hit": True,
         "kernel_error_flag": 1,
-        "failure_check": _failure(2, "producer_pacing_wait"),
+        "failure_check": _failure(2, source="producer"),
         "timestamps": [1_000],
         "attempted_frame_count": 2,
         "produced_frame_count": 1,
@@ -1024,7 +1171,6 @@ def test_watcher_timing_evidence_is_always_false():
         "timestamps": [1_000, 2_000, 3_000],
         "producer_full_count": 0,
         "consumer_empty_count": 0,
-        "cycle_budget_hit": False,
         "kernel_error_flag": 0,
         "harness_commit": "0123456789abcdef",
         "environment": _environment(),
@@ -1090,16 +1236,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         startup_ticks_valid=True,
         work_min_ticks=10,
         work_max_ticks=20,
-        failure_check={
-            "code": 4,
-            "name": "consumer_fixed_work_budget",
-            "source": "consumer",
-            "elapsed_ticks": 123,
-            "limit_ticks": 100,
-            "unit": "device_clock_ticks",
-        },
-        cycle_budget_hit=False,
-        kernel_error_flag=0,
+        failure_check=_failure(4, source="consumer"),
+        kernel_error_flag=1,
         harness_commit="0123456789abcdef",
         environment=_environment(),
         power_trace="resident-power.csv",
@@ -1124,7 +1262,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
         "valid": True,
         "unit": "device_clock_ticks",
     }
-    assert parsed["failure_check"]["name"] == "consumer_fixed_work_budget"
+    classification = ResidentFailureClassification.for_code(parsed["failure_check"]["code"])
+    assert parsed["failure_check"]["name"] == classification.name
     assert parsed["failure_check"]["elapsed_ticks"] == 123
     assert parsed["failure_check"]["limit_ticks"] == 100
     assert parsed["timing_evidence"] is False
@@ -1658,7 +1797,6 @@ class TestResidentProvenance:
             timestamps=[1_000, 2_000],
             producer_full_count=0,
             consumer_empty_count=0,
-            cycle_budget_hit=False,
             kernel_error_flag=0,
             harness_commit=environment["harness_commit"],
             environment=environment,
@@ -1769,7 +1907,6 @@ def test_record_rejects_missing_environment_provenance():
             timestamps=[1, 2],
             producer_full_count=0,
             consumer_empty_count=0,
-            cycle_budget_hit=False,
             kernel_error_flag=0,
             harness_commit="0123456789abcdef",
             environment={},
