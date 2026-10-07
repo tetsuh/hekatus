@@ -1,0 +1,156 @@
+{
+  "record_schema": "adr-0005-issue88-fp32-r-plan-v1",
+  "status": "planned",
+  "issue": "#88",
+  "adr": "ADR-0005",
+  "captured_at": null,
+  "harness_commit": null,
+  "power_trace": null,
+  "board_run": false,
+  "board_run_note": "No board run was made yet. This file is a host-side measurement plan and accounting record; it contains no device measurements.",
+  "environment": {
+    "board": null,
+    "identity": "not collected because this is a plan"
+  },
+  "algorithm": {
+    "iterations": 12,
+    "initial_value": "I / ||R||_infinity",
+    "state_format": "BF16",
+    "destination_format": "FP32",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "matrix_block": 8,
+    "double_buffer": true,
+    "dst_full_sync_en": true,
+    "output_memory": "dram"
+  },
+  "host_accounting": {
+    "core_count_model": 110,
+    "l1_budget_bytes": 1572864,
+    "static_prefix_bytes": 111360,
+    "default_bf16_r": {
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "L16_batch8192_preflight_bytes": 885504,
+      "L32_batch8192_preflight_bytes": 1295104
+    },
+    "fp32_r": {
+      "default_L32_r_l1_status": "rejected_before_allocation",
+      "default_L32_r_l1_preflight_bytes": 1884928,
+      "default_L32_r_l1_over_budget_bytes": 312064,
+      "L16_batch8192_diagonal_r_l1_preflight_bytes": 1229568,
+      "L32_batch8192_r_dram_preflight_bytes": 901888,
+      "L32_batch8192_block2_r_l1_preflight_bytes": 1479424,
+      "L32_batch8192_block4_r_l1_status": "rejected",
+      "L32_batch8192_block4_r_l1_preflight_bytes": 1581824,
+      "L32_batch8192_block4_r_l1_over_budget_bytes": 8960
+    },
+    "accounting_scope": "Board-free host model: circular-buffer pages, resident tensors, largest assigned core, and static L1 prefix. These are not device measurements."
+  },
+  "first_launch_plan": {
+    "status": "not_run",
+    "variant": "fp32-r",
+    "r_format": "FP32",
+    "size": 16,
+    "packing": "diagonal_pairs_32x32",
+    "batch": 8192,
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "watcher": true,
+    "external_timeout_s": 60,
+    "purpose": "Launch the new FP32-R kernel once under Watcher before any timing comparison."
+  },
+  "comparison_plan": {
+    "status": "not_run",
+    "watcher": false,
+    "launches_per_row": 1000,
+    "same_deterministic_inputs": true,
+    "condition_number": 100.0,
+    "seed": 8800,
+    "rows": [
+      {
+        "name": "bf16-r-L16",
+        "variant": "bf16",
+        "r_format": "BF16",
+        "size": 16,
+        "packing": "diagonal_pairs_32x32",
+        "batch": 8192,
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "preflight_bytes": 885504,
+        "measurements": null
+      },
+      {
+        "name": "fp32-r-L16",
+        "variant": "fp32-r",
+        "r_format": "FP32",
+        "size": 16,
+        "packing": "diagonal_pairs_32x32",
+        "batch": 8192,
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "preflight_bytes": 1229568,
+        "measurements": null
+      },
+      {
+        "name": "bf16-r-L32",
+        "variant": "bf16",
+        "r_format": "BF16",
+        "size": 32,
+        "packing": "native_32x32",
+        "batch": 8192,
+        "r_memory": "l1",
+        "x0_memory": "l1",
+        "preflight_bytes": 1295104,
+        "measurements": null
+      },
+      {
+        "name": "fp32-r-L32-r-dram",
+        "variant": "fp32-r",
+        "r_format": "FP32",
+        "size": 32,
+        "packing": "native_32x32",
+        "batch": 8192,
+        "r_memory": "dram",
+        "x0_memory": "l1",
+        "preflight_bytes": 901888,
+        "configuration_note": "Nearest fitting placement for the selected block-8 default; no silent fallback is performed.",
+        "measurements": null
+      }
+    ],
+    "metrics": {
+      "latency": "per-launch latency in milliseconds from 1000 synchronized launches",
+      "tflops": "fixed-N=12 useful workload divided by measured latency",
+      "inverse_error": "relative Frobenius error against the matching independent NumPy reference and against the true inverse",
+      "mv_direction": "weight-direction cosine deficit where the existing reference records it",
+      "beam_pattern": "beam-pattern difference where the existing reference records it"
+    }
+  },
+  "correctness": {
+    "reference": "independent NumPy fixed-N=12 reference in enodia/tt/bench/newton_schulz_reference.py",
+    "true_inverse": "NumPy complex128 inverse of the unrounded deterministic R",
+    "device_threshold": 0.01,
+    "threshold_change": false,
+    "metrics_are_pending": true
+  },
+  "measurement_provenance_to_capture": {
+    "image_digest": "capture at run time",
+    "firmware": "capture at run time",
+    "kernel_driver_version": "capture at run time",
+    "toolchain_release": "capture at run time",
+    "harness_commit": "capture at run time",
+    "watcher_and_timeout": "record effective settings for the first launch and timing comparison",
+    "power_trace_columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ]
+  },
+  "decision_scope": "Evidence only. This plan does not select BF16-R or FP32-R and does not change ADR-0012, ADR-0013, or the 1e-2 device gate.",
+  "limitations": [
+    "No board, container, device node, or hardware command was used to create this record.",
+    "Latency, TFLOPS, inverse, MV-direction, and beam-pattern measurements remain null until the owner-authorized board run.",
+    "The FP32-R L=32 timing row uses explicit R-in-DRAM placement because the default R-in-L1 preflight rejects before allocation; block 2 with R in L1 is also recorded as an explicit fitting alternative."
+  ]
+}

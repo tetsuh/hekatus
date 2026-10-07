@@ -71,6 +71,7 @@ from enodia.tt.bench.newton_schulz_kernel import (
     DEFAULT_VARIANT,
     INPUT_MEMORY_CHOICES,
     MATRIX_BLOCK_CHOICES,
+    _r_format,
     _resolve_input_memories,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
@@ -581,9 +582,9 @@ def run_custom_newton_schulz(
         return {
             "status": "failed",
             "kind": CUSTOM_KIND,
-            "error": "custom rows require bfloat16 R inputs",
+            "error": "custom rows require the bfloat16 state catalogue",
         }
-    if variant not in {"bf16", "bf16-fp32state"}:
+    if variant not in {"bf16", "bf16-fp32state", "fp32-r"}:
         return {
             "status": "failed",
             "kind": CUSTOM_KIND,
@@ -592,6 +593,7 @@ def run_custom_newton_schulz(
     from enodia.tt.bench.newton_schulz_kernel import (
         _padded_tile_count,
         _physical_tile_count,
+        _r_dtype,
         _state_dtype,
         _validate_l1_preflight,
         _validate_matrix_block,
@@ -605,7 +607,13 @@ def run_custom_newton_schulz(
             dst_full_sync_en=dst_full_sync_en,
         )
     except ValueError as exc:
-        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "variant": variant,
+            "r_format": _r_format(variant),
+            "error": str(exc),
+        }
     if math_fidelity not in CUSTOM_MATH_FIDELITIES:
         return {
             "status": "failed",
@@ -637,6 +645,7 @@ def run_custom_newton_schulz(
             ),
             core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
             state_dtype=_state_dtype(ttnn, variant),
+            r_dtype=_r_dtype(ttnn, variant),
             profile=profile,
             fuse_s=fuse_s,
             output_memory=output_memory,
@@ -650,7 +659,13 @@ def run_custom_newton_schulz(
             dst_full_sync_en=dst_full_sync_en,
         )
     except ValueError as exc:
-        return {"status": "failed", "kind": CUSTOM_KIND, "error": str(exc)}
+        return {
+            "status": "failed",
+            "kind": CUSTOM_KIND,
+            "variant": variant,
+            "r_format": _r_format(variant),
+            "error": str(exc),
+        }
 
     from enodia.tt.bench.newton_schulz_kernel import (
         COMPLEX_MATMULS_PER_INVERSE,
@@ -710,6 +725,7 @@ def run_custom_newton_schulz(
             "status": "ok",
             "kind": CUSTOM_KIND,
             "variant": variant,
+            "r_format": _r_format(variant),
             "math_fidelity": math_fidelity,
             "fuse_s": fuse_s,
             "batch_reads": batch_reads,
@@ -803,9 +819,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kind", action="append", choices=[STOCK_KIND, CUSTOM_KIND], default=None)
     parser.add_argument(
         "--custom-variant",
-        choices=["bf16", "bf16-fp32state"],
+        choices=["bf16", "bf16-fp32state", "fp32-r"],
         default=DEFAULT_VARIANT,
-        help="state precision for custom_newton_schulz rows",
+        help="custom_newton_schulz representation variant",
     )
     parser.add_argument(
         "--custom-math-fidelity",
@@ -2072,6 +2088,7 @@ def main(argv: list[str] | None = None) -> int:
                                             "name": CUSTOM_KIND,
                                             "kind": CUSTOM_KIND,
                                             "variant": args.custom_variant,
+                                            "r_format": _r_format(args.custom_variant),
                                             "math_fidelity": math_fidelity,
                                             "fuse_s": args.fuse_s,
                                             "batch_reads": args.batch_reads,

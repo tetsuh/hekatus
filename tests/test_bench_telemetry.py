@@ -57,6 +57,72 @@ def test_environment_keeps_the_identity_of_the_board_and_its_firmware():
     assert env["limits"]["tdp_limit"] == "150"
 
 
+def _two_board_snapshot() -> str:
+    return json.dumps(
+        {
+            "device_info": [
+                {
+                    "board_info": {
+                        "board_type": "p150a",
+                        "board_id": "board-zero",
+                        "bus_id": "0000:01:00.0",
+                    },
+                    "telemetry": {
+                        "power": "10",
+                        "aiclk": "800",
+                        "asic_temperature": "50",
+                    },
+                },
+                {
+                    "board_info": {
+                        "board_type": "p150a",
+                        "board_id": "board-one",
+                        "bus_id": "0000:02:00.0",
+                    },
+                    "telemetry": {
+                        "power": "20",
+                        "aiclk": "900",
+                        "asic_temperature": "60",
+                    },
+                },
+            ]
+        }
+    )
+
+
+def test_explicit_by_id_node_selects_the_matching_board_from_two_boards(monkeypatch):
+    monkeypatch.setenv(
+        "HEKATUS_TT_DEVICE_NODE",
+        "/dev/tenstorrent/by-id/pci-0000:02:00.0",
+    )
+
+    assert telemetry.parse_telemetry(_two_board_snapshot()) == {
+        "power_w": "20",
+        "aiclk_mhz": "900",
+        "asic_temp_c": "60",
+    }
+    assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-one"
+
+
+def test_default_device_node_keeps_first_board_behavior(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+
+    assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-zero"
+
+
+def test_unverifiable_or_ambiguous_explicit_node_is_rejected(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/by-id/pci-0000:03:00.0")
+    assert telemetry.parse_telemetry(_two_board_snapshot()) is None
+
+    ambiguous = json.loads(_two_board_snapshot())
+    ambiguous["device_info"][1]["board_info"]["bus_id"] = "0000:01:00.0"
+    monkeypatch.setenv(
+        "HEKATUS_TT_DEVICE_NODE",
+        "/dev/tenstorrent/by-id/pci-0000:01:00.0",
+    )
+    assert telemetry.parse_telemetry(json.dumps(ambiguous)) is None
+
+
 def test_environment_survives_a_snapshot_it_cannot_read():
     env = parse_environment("")
 

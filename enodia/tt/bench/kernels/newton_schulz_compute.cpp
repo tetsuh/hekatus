@@ -747,9 +747,9 @@ void negate_state_imag_block(
 }
 
 // Build S directly in DEST: start S_re at BF16 2I and S_im at FP32 zero,
-// then accumulate the signed BF16 R terms against X.  The output CB is the
-// only pack boundary for S; RX never makes a product CB round trip in the
-// fused path.
+// then accumulate the signed R terms against X.  The R CB format is selected
+// by the host variant; the output CB is the only pack boundary for S, so RX
+// never makes a product CB round trip in the fused path.
 void fused_s_matmul(
     std::uint32_t negative_r_real,
     std::uint32_t negative_r_imag,

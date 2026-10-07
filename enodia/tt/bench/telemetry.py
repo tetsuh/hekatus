@@ -18,6 +18,7 @@ import datetime
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -30,15 +31,75 @@ from enodia.strict_json import dumps as strict_json_dumps
 
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
+_DEFAULT_DEVICE_NODE = "/dev/tenstorrent/0"
+_PCI_BUS_ID_RE = re.compile(r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])", re.IGNORECASE)
+_DEVICE_INDEX_RE = re.compile(r"^/dev/tenstorrent/(\d+)$")
+
+
+def _nested_text_values(device: dict, keys: tuple[str, ...]) -> set[str]:
+    """Return scalar identity values from a device and its board metadata."""
+    values: set[str] = set()
+    sources = [device]
+    board_info = device.get("board_info")
+    if isinstance(board_info, dict):
+        sources.append(board_info)
+    for source in sources:
+        for key in keys:
+            value = source.get(key)
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                values.add(str(value).strip())
+    return {value for value in values if value}
+
+
+def _device_bus_ids(device: dict) -> set[str]:
+    values = _nested_text_values(
+        device,
+        ("bus_id", "pci_bus_id", "pci_address", "pci_bdf"),
+    )
+    return {value.lower() for value in values}
+
+
+def _device_nodes(device: dict) -> set[str]:
+    """Return node-like fields without resolving a device path."""
+    values: set[str] = set()
+    sources = [device]
+    board_info = device.get("board_info")
+    if isinstance(board_info, dict):
+        sources.append(board_info)
+    for source in sources:
+        for key in ("device_node", "device_path", "node", "path"):
+            value = source.get(key)
+            if isinstance(value, str) and value:
+                values.add(value)
+        for key in ("device_nodes", "nodes"):
+            value = source.get(key)
+            if isinstance(value, (list, tuple)):
+                values.update(item for item in value if isinstance(item, str) and item)
+    return values
+
+
+def _device_indices(device: dict) -> set[int]:
+    values = _nested_text_values(device, ("device_id", "device_index", "index"))
+    indices: set[int] = set()
+    for value in values:
+        try:
+            index = int(value, 10)
+        except ValueError:
+            continue
+        if index >= 0:
+            indices.add(index)
+    return indices
 
 
 def _device_info(snapshot: str) -> dict | None:
-    """The first device, or None for anything this cannot read.
+    """Select the board addressed by ``HEKATUS_TT_DEVICE_NODE``.
 
-    Every shape the snapshot might arrive in is checked rather than assumed.
-    An exception raised here would propagate out of the sampling loop and end
-    it, and a dead sampler says nothing at all — which is how the first run
-    produced a trace containing only its header.
+    With no explicit node, the historical first-device behavior remains the
+    default for ``/dev/tenstorrent/0``.  A non-default node is accepted only
+    when its PCI bus id (including a ``by-id`` link) or an exact node/index
+    field identifies exactly one snapshot entry.  Missing or conflicting
+    identity data is rejected instead of attaching telemetry to the wrong
+    board.
     """
     try:
         devices = json.loads(snapshot)["device_info"]
@@ -46,7 +107,42 @@ def _device_info(snapshot: str) -> dict | None:
         return None
     if not isinstance(devices, list) or not devices:
         return None
-    return devices[0] if isinstance(devices[0], dict) else None
+    if not all(isinstance(device, dict) for device in devices):
+        return None
+
+    requested_node = os.environ.get("HEKATUS_TT_DEVICE_NODE") or _DEFAULT_DEVICE_NODE
+    if requested_node == _DEFAULT_DEVICE_NODE:
+        return devices[0]
+
+    requested_bus_match = _PCI_BUS_ID_RE.search(requested_node.lower())
+    requested_bus_id = requested_bus_match.group(1).lower() if requested_bus_match else None
+    requested_index_match = _DEVICE_INDEX_RE.fullmatch(requested_node)
+    requested_index = int(requested_index_match.group(1)) if requested_index_match else None
+
+    candidate_indices: set[int] = set()
+    if requested_bus_id is not None:
+        candidate_indices.update(
+            index
+            for index, device in enumerate(devices)
+            if requested_bus_id in _device_bus_ids(device)
+        )
+    if requested_index is not None:
+        candidate_indices.update(
+            index
+            for index, device in enumerate(devices)
+            if requested_index in _device_indices(device)
+        )
+    exact_node_indices = {
+        index
+        for index, device in enumerate(devices)
+        if requested_node in _device_nodes(device)
+    }
+    if exact_node_indices:
+        candidate_indices.update(exact_node_indices)
+
+    if len(candidate_indices) != 1:
+        return None
+    return devices[candidate_indices.pop()]
 
 
 def parse_telemetry(snapshot: str) -> dict[str, str] | None:

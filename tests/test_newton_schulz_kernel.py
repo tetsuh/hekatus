@@ -105,10 +105,14 @@ class ReferenceTests(unittest.TestCase):
             COMPLEX_MATMULS_PER_INVERSE,
         )
 
-    def test_kernel_variants_only_claim_the_two_approved_state_behaviors(self):
-        self.assertEqual(set(newton_schulz_kernel._VARIANTS), {"bf16", "bf16-fp32state"})
+    def test_kernel_variants_name_the_two_state_behaviors_and_fp32_r(self):
+        self.assertEqual(
+            set(newton_schulz_kernel._VARIANTS),
+            {"bf16", "bf16-fp32state", "fp32-r"},
+        )
         self.assertFalse(newton_schulz_kernel._VARIANTS["bf16"])
         self.assertTrue(newton_schulz_kernel._VARIANTS["bf16-fp32state"])
+        self.assertFalse(newton_schulz_kernel._VARIANTS["fp32-r"])
 
     def test_math_fidelity_names_map_to_pinned_enum_and_default_is_hifi3(self):
         ttnn = SimpleNamespace(
