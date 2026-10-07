@@ -38,6 +38,7 @@ _PCI_BUS_ID_RE = re.compile(
     re.IGNORECASE,
 )
 _BOARD_BUS_ID_KEYS = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+_BLACKHOLE_BY_ID_RE = re.compile(r"^blackhole-[0-9A-Za-z][0-9A-Za-z._-]*$")
 
 
 def _requested_device_node() -> str:
@@ -49,6 +50,23 @@ def _normalize_pci_bus_id(value: object) -> str | None:
         return None
     match = _PCI_BUS_ID_RE.fullmatch(value.strip())
     return match.group(1).lower() if match else None
+
+
+def _normalize_pci_bus_ids(values: object) -> set[str]:
+    """Normalize one injected PCI identity and reject malformed collections."""
+    if isinstance(values, str):
+        values = (values,)
+    elif isinstance(values, (list, tuple, set, frozenset)):
+        values = tuple(values)
+    else:
+        return set()
+    normalized: set[str] = set()
+    for value in values:
+        bus_id = _normalize_pci_bus_id(value)
+        if bus_id is None:
+            return set()
+        normalized.add(bus_id)
+    return normalized
 
 
 def _nested_text_values(device: dict, keys: tuple[str, ...]) -> set[str]:
@@ -75,79 +93,170 @@ def _device_bus_identity(device: dict) -> set[str] | None:
     return {value for value in identity if value is not None}
 
 
-def _by_id_pci_bus_id(path: Path) -> str | None:
-    """Read a PCI identity from a verified ``by-id/pci-*`` symlink."""
-    if path.parent.name != "by-id" or not path.is_symlink():
+def _udevadm_info(path: Path) -> str | None:
+    """Return udev's identity text for a device node, or None on failure."""
+    try:
+        completed = subprocess.run(
+            ("udevadm", "info", "--query=all", f"--name={path}"),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
         return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout
+
+
+def _udev_devpaths(info: str) -> tuple[str, ...]:
+    """Extract the sysfs paths carrying the device identity from udev text."""
+    paths: list[str] = []
+    for line in info.splitlines():
+        line = line.strip()
+        if line.startswith("E: DEVPATH="):
+            paths.append(line.removeprefix("E: DEVPATH="))
+        elif line.startswith("P: "):
+            paths.append(line.removeprefix("P: "))
+    return tuple(paths)
+
+
+def _udev_pci_bus_ids(info: str | None) -> set[str]:
+    """Derive the nearest PCI BDF from udev's sysfs identity.
+
+    A PCI path can include parent bridges.  The last BDF in each DEVPATH is
+    the PCI ancestor of the accelerator, while independent udev identities
+    must agree.  No numeric device-node name is considered here.
+    """
+    if not isinstance(info, str) or not info.strip():
+        return set()
+
+    fields: dict[str, list[str]] = {}
+    for line in info.splitlines():
+        line = line.strip()
+        if line.startswith("E: ") and "=" in line[3:]:
+            key, value = line[3:].split("=", 1)
+            fields.setdefault(key, []).append(value)
+
+    devpaths = _udev_devpaths(info)
+    path_bus_ids: list[str] = []
+    for devpath in devpaths:
+        if not devpath.startswith("/devices/"):
+            return set()
+        matches = tuple(_normalize_pci_bus_id(value) for value in _PCI_BUS_ID_RE.findall(devpath))
+        if not matches or any(value is None for value in matches):
+            return set()
+        path_bus_ids.append(matches[-1])
+    if path_bus_ids and len(set(path_bus_ids)) != 1:
+        return set()
+
+    id_path_bus_ids: set[str] = set()
+    for id_path in fields.get("ID_PATH", []):
+        matches = _PCI_BUS_ID_RE.findall(id_path)
+        if matches:
+            bus_id = _normalize_pci_bus_id(matches[-1])
+            if bus_id is None:
+                return set()
+            id_path_bus_ids.add(bus_id)
+    if len(id_path_bus_ids) > 1:
+        return set()
+    id_path_bus_id = next(iter(id_path_bus_ids), None)
+    if id_path_bus_id is not None and path_bus_ids and id_path_bus_id != path_bus_ids[0]:
+        return set()
+
+    slot_values = fields.get("PCI_SLOT_NAME", [])
+    slot_bus_ids = {_normalize_pci_bus_id(value) for value in slot_values}
+    if None in slot_bus_ids or len(slot_bus_ids) > 1:
+        return set()
+    slot_bus_id = next(iter(slot_bus_ids), None)
+    identity_bus_ids = {
+        bus_id
+        for bus_id in (path_bus_ids[0] if path_bus_ids else None, id_path_bus_id, slot_bus_id)
+        if bus_id is not None
+    }
+    return identity_bus_ids if len(identity_bus_ids) == 1 else set()
+
+
+def _device_pci_bus_ids(path: Path) -> set[str]:
+    """Resolve a node's PCI identity through udev's sysfs-backed metadata."""
+    return _udev_pci_bus_ids(_udevadm_info(path))
+
+
+def _by_id_pci_bus_id(path: Path) -> str | None:
+    """Read an optional PCI identity encoded in a ``by-id/pci-*`` name."""
     if not path.name.startswith("pci-"):
         return None
     return _normalize_pci_bus_id(path.name.removeprefix("pci-"))
 
 
-def _resolve_device_node_to_pci(node: str) -> set[str]:
-    """Resolve a device node to the PCI ids of verified by-id links.
+def _by_id_name_is_valid(path: Path) -> bool:
+    """Accept the driver names while requiring a real by-id naming shape."""
+    return path.name.startswith("pci-") or _BLACKHOLE_BY_ID_RE.fullmatch(path.name) is not None
 
-    Numeric node names are deliberately not interpreted as board indexes.  A
-    direct node is usable only when a sibling ``by-id/pci-*`` symlink resolves
-    to that exact node.  A by-id node is usable only when it is itself a real
-    symlink into the same device directory.
+
+def _resolve_device_node_to_pci(
+    node: str,
+    *,
+    identity_resolver: Callable[[Path], object] | None = None,
+) -> set[str]:
+    """Resolve a real node or by-id link through verified PCI identity.
+
+    Numeric names classify a direct node but never identify its board.  Both a
+    direct numeric node and a by-id symlink are accepted only when their
+    resolved target has exactly one PCI BDF in udev's sysfs identity.  A
+    ``pci-*`` label is an additional check, never the sole source of identity.
     """
     path = Path(node)
     if not path.is_absolute():
         return set()
-    try:
-        resolved_node = path.resolve(strict=True)
-    except (OSError, RuntimeError):
-        return set()
 
     if path.parent.name == "by-id":
-        bus_id = _by_id_pci_bus_id(path)
-        if bus_id is None:
+        if path.parent.parent.name != "tenstorrent":
+            return set()
+        if not path.is_symlink() or not _by_id_name_is_valid(path):
             return set()
         try:
             device_dir = path.parent.parent.resolve(strict=True)
+            resolved_node = path.resolve(strict=True)
         except (OSError, RuntimeError):
             return set()
-        return {bus_id} if resolved_node.parent == device_dir else set()
-
-    matches: set[str] = set()
-    try:
-        by_id_entries = tuple((path.parent / "by-id").iterdir())
-    except OSError:
-        return set()
-    for entry in by_id_entries:
-        bus_id = _by_id_pci_bus_id(entry)
-        if bus_id is None:
-            continue
+        if resolved_node.parent != device_dir:
+            return set()
+        named_bus_id = _by_id_pci_bus_id(path)
+        if path.name.startswith("pci-") and named_bus_id is None:
+            return set()
+    else:
+        if path.parent.name != "tenstorrent" or not path.name.isdecimal():
+            return set()
         try:
-            if entry.resolve(strict=True) == resolved_node:
-                matches.add(bus_id)
+            device_dir = path.parent.resolve(strict=True)
+            resolved_node = path.resolve(strict=True)
         except (OSError, RuntimeError):
-            continue
-    return matches
+            return set()
+        if resolved_node.parent != device_dir:
+            return set()
+        named_bus_id = None
+
+    resolver = _device_pci_bus_ids if identity_resolver is None else identity_resolver
+    try:
+        resolved_bus_ids = _normalize_pci_bus_ids(resolver(resolved_node))
+    except Exception:  # noqa: BLE001 - unverifiable identity must be rejected
+        return set()
+    if len(resolved_bus_ids) != 1:
+        return set()
+    resolved_bus_id = next(iter(resolved_bus_ids))
+    if named_bus_id is not None and named_bus_id != resolved_bus_id:
+        return set()
+    return {resolved_bus_id}
 
 
-def _resolved_pci_bus_ids(
-    node: str, resolver: Callable[[str], object]
-) -> set[str]:
+def _resolved_pci_bus_ids(node: str, resolver: Callable[[str], object]) -> set[str]:
     """Normalize an injected resolver result, rejecting malformed identities."""
     try:
-        resolved = resolver(node)
+        return _normalize_pci_bus_ids(resolver(node))
     except Exception:  # noqa: BLE001 - an unverifiable node must be rejected
         return set()
-    if isinstance(resolved, str):
-        values = (resolved,)
-    elif isinstance(resolved, (list, tuple, set, frozenset)):
-        values = tuple(resolved)
-    else:
-        return set()
-    normalized: set[str] = set()
-    for value in values:
-        bus_id = _normalize_pci_bus_id(value)
-        if bus_id is None:
-            return set()
-        normalized.add(bus_id)
-    return normalized
 
 
 def _device_info(
@@ -238,9 +347,7 @@ def parse_environment(
             "board_snapshot_error": "no verifiable device information in the snapshot",
             "device_node": _requested_device_node(),
         }
-    return {
-        key: device[key] for key in ("board_info", "firmwares", "limits") if key in device
-    } | {
+    return {key: device[key] for key in ("board_info", "firmwares", "limits") if key in device} | {
         "board": device.get("board_info"),
         "firmware": device.get("firmwares"),
         "limits": device.get("limits"),
@@ -344,7 +451,9 @@ def capture_environment(image: str, image_pinned: bool) -> dict:
         "image": image,
         "image_pinned": image_pinned,
         "kernel": _run("uname -sr").strip(),
-        "kmd_version": _run("modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'").strip(),
+        "kmd_version": _run(
+            "modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'"
+        ).strip(),
         "tt_env_active_release": _run(
             "tt-env status 2>/dev/null | awk '/Active release:/{print $3}'"
         ).strip(),
