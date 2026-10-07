@@ -85,13 +85,15 @@
   },
   "comparison_plan": {
     "status": "not_run",
-    "runner": "enodia/tt/bench/run_matmul.py",
+    "runner": "tools/newton_schulz_issue88.py",
     "watcher": false,
+    "device_id": 0,
     "launches_per_row": 1000,
     "same_deterministic_inputs": true,
+    "input_generator": "enodia.tt.bench.newton_schulz_reference.random_hpd_batch",
     "condition_number": 100.0,
     "seed": 6300,
-    "seed_source": "BENCHMARK_INPUT_SEED used by run_custom_newton_schulz",
+    "seed_source": "random_hpd_batch condition_number=100.0 seed=6300; one matrix batch is reused for matching variants",
     "rows": [
       {
         "name": "bf16-r-L16",
@@ -232,11 +234,15 @@
       }
     ],
     "metrics": {
-      "latency": "per-launch latency in milliseconds from 1000 synchronized launches",
-      "tflops": "fixed-N=12 useful workload divided by measured latency",
-      "inverse_error": "relative Frobenius error against the matching independent NumPy reference and against the true inverse",
-      "mv_direction": "weight-direction cosine deficit where the existing reference records it",
-      "beam_pattern": "beam-pattern difference where the existing reference records it"
+      "correctness_launch": "one synchronized launch and result download before timing for every row",
+      "latency": "each retained per-launch duration from one synchronized warm-up followed by exactly 1000 synchronized launches",
+      "latency_summary": "all samples plus min, p50, p99, and p99.9",
+      "tflops": "fixed-N=12 useful workload divided by each latency summary statistic; p50 and min derivations are retained",
+      "inverse_error": "relative Frobenius error against the matching independent NumPy fixed-N=12 reference and against the true inverse of original R",
+      "mv_direction": "1 - absolute normalized direction cosine for the equal-spaced half-wavelength array over look directions -30,-15,0,15,30 degrees, aggregated over the batch",
+      "beam_pattern": "same-array response relative Frobenius error and maximum absolute error over look directions -30,-15,0,15,30 degrees and pattern directions -60 through 60 degrees in 15-degree steps, aggregated over the batch",
+      "device_gate": "existing 1e-2 device-test relative-error assertion is recorded unchanged and is not redefined by this plan",
+      "row_stop": "a row exceeding 60 seconds is recorded as a failure and stops later rows without retry"
     }
   },
   "correctness": {
