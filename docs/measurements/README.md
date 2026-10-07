@@ -28,9 +28,10 @@ trace beside it under the same stem.
 
 The resident harness must not return to hardware without a new owner approval.
 When approved, the bounded procedure below uses device 0 through the
-named-container wrapper. Each resident invocation has an explicit result path
-inside the container; the wrapper's mounted output directory is retained on
-the development machine.
+named-container wrapper. Each resident invocation uses a separate explicit host
+output directory and the wrapper's standard custom-runner result path inside
+the container; the mounted output directories are retained on the development
+machine.
 
 ### Cleanup gate
 
@@ -53,8 +54,8 @@ one-frame validation on device 0 with a 1 ms harness interval and a separate
 
 ```bash
 TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
-  enodia/tt/bench/run_in_container.sh -- \
-  --out /out/issue12-watcher-validation.json \
+  enodia/tt/bench/run_in_container.sh out/bench/issue12-watcher -- \
+  --out /out/runner-result.json \
   --device-id 0 \
   --frame-count 1 \
   --frame-interval-ticks 1350000 \
@@ -77,8 +78,8 @@ It writes the result and raw timestamps to container-internal `/out` paths:
 
 ```bash
 env -u TT_METAL_WATCHER HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
-  enodia/tt/bench/run_in_container.sh -- \
-  --out /out/issue12-timing-500000.json \
+  enodia/tt/bench/run_in_container.sh out/bench/issue12-timing -- \
+  --out /out/runner-result.json \
   --device-id 0 \
   --frame-count 500000 \
   --frame-interval-ticks 1350000 \
@@ -94,32 +95,28 @@ run, not a second Watcher validation.
 
 ### Record creation and output retention (host-side shell commands)
 
-The wrapper bind-mounts its output directory at container `/out`. On the
-development machine, verify the resident JSON records, raw timestamp bytes,
-and the wrapper's environment and power provenance before analysis. Retain the
-`out/bench/issue12-watcher-validation.json`,
-`out/bench/issue12-timing-500000.json`, and
-`out/bench/issue12-timing-500000.bin` files:
+The wrapper bind-mounts each explicit output directory at container `/out`.
+On the development machine, verify the resident JSON records, raw timestamp
+bytes, and the wrapper's environment and power provenance before analysis.
+Retain the `out/bench/issue12-watcher/runner-result.json`,
+`out/bench/issue12-timing/runner-result.json`, and
+`out/bench/issue12-timing/issue12-timing-500000.bin` files:
 
 ```bash
-find out/bench -maxdepth 1 -type f \
-  \( -name 'issue12-watcher-validation.json' \
-     -o -name 'issue12-timing-500000.json' \
+find out/bench/issue12-watcher out/bench/issue12-timing -maxdepth 1 -type f \
+  \( -name 'runner-result.json' \
      -o -name 'issue12-timing-500000.bin' \
      -o -name 'env-*.json' \
      -o -name 'power-*.csv' \) -print
 mkdir -p issue12-retained
-cp out/bench/issue12-watcher-validation.json \
-  out/bench/issue12-timing-500000.json \
-  out/bench/issue12-timing-500000.bin \
-  issue12-retained/
-sha256sum issue12-retained/issue12-timing-500000.json \
-  issue12-retained/issue12-timing-500000.bin
+cp -a out/bench/issue12-watcher out/bench/issue12-timing issue12-retained/
+sha256sum issue12-retained/issue12-timing/runner-result.json \
+  issue12-retained/issue12-timing/issue12-timing-500000.bin
 ```
 
-The raw timestamp file is a companion to the result with the same stem and is
-copied to the development machine before any analysis. Keep the JSON, matching
-`env-*.json`, matching `power-*.csv`, and raw timestamp companion together;
+The raw timestamp file is a companion to the timing result and is copied to
+the development machine before any analysis. Keep each result, its matching
+`env-*.json`, matching `power-*.csv`, and any raw timestamp companion together;
 these outputs are evidence only when their provenance remains together.
 
 ### Abnormal exit or timeout: one-reset recovery

@@ -663,9 +663,10 @@ class TestIssue12Runbook:
                 ("60-second", "--outer-timeout-seconds 60"),
                 ("run_resident.py", "run_resident.py"),
                 (
-                    "/out/issue12-watcher-validation.json",
-                    "--out /out/issue12-watcher-validation.json",
+                    "out/bench/issue12-watcher",
+                    "run_in_container.sh out/bench/issue12-watcher --",
                 ),
+                ("/out/runner-result.json", "--out /out/runner-result.json"),
             ),
         },
         {
@@ -680,9 +681,10 @@ class TestIssue12Runbook:
                 ("600-second", "--outer-timeout-seconds 600"),
                 ("run_resident.py", "run_resident.py"),
                 (
-                    "/out/issue12-timing-500000.json",
-                    "--out /out/issue12-timing-500000.json",
+                    "out/bench/issue12-timing",
+                    "run_in_container.sh out/bench/issue12-timing --",
                 ),
+                ("/out/runner-result.json", "--out /out/runner-result.json"),
                 (
                     "/out/issue12-timing-500000.bin",
                     "--raw-timestamps-out /out/issue12-timing-500000.bin",
@@ -694,19 +696,22 @@ class TestIssue12Runbook:
             "heading": "Record creation and output retention (host-side shell commands)",
             "values": (
                 (
-                    "out/bench/issue12-watcher-validation.json",
-                    "out/bench/issue12-watcher-validation.json",
+                    "out/bench/issue12-watcher/runner-result.json",
+                    "out/bench/issue12-watcher",
                 ),
                 (
-                    "out/bench/issue12-timing-500000.json",
-                    "out/bench/issue12-timing-500000.json",
+                    "out/bench/issue12-timing/runner-result.json",
+                    "out/bench/issue12-timing",
                 ),
                 (
-                    "out/bench/issue12-timing-500000.bin",
-                    "out/bench/issue12-timing-500000.bin",
+                    "out/bench/issue12-timing/issue12-timing-500000.bin",
+                    "issue12-timing-500000.bin",
                 ),
                 ("issue12-retained/", "issue12-retained/"),
-                ("Retain the", "cp out/bench/issue12-watcher-validation.json"),
+                (
+                    "Retain the",
+                    "cp -a out/bench/issue12-watcher out/bench/issue12-timing",
+                ),
                 ("environment and power provenance", "'env-*.json'"),
                 ("before any analysis", "sha256sum"),
             ),
@@ -770,6 +775,31 @@ class TestIssue12Runbook:
             assert validate_run_budget_fits_outer_cap(
                 validate_configuration(config, watcher=args.watcher), watcher=args.watcher
             )
+
+    def test_resident_invocations_use_separate_wrapper_output_directories(self):
+        records = _extract_resident_command_records(README_PATH.read_text())
+        assert len(records) == 2
+        output_directories = []
+        for record in records:
+            tokens = record["tokens"]
+            wrapper_index = next(
+                index
+                for index, token in enumerate(tokens)
+                if Path(token.strip("`")).name == "run_in_container.sh"
+            )
+            separator = tokens.index("--", wrapper_index + 1)
+            assert separator == wrapper_index + 2
+            output_directory = Path(tokens[wrapper_index + 1])
+            args = _parse_documented_resident_args(record["argv"])
+            expected_directory = Path(
+                "out/bench/issue12-watcher"
+                if args.watcher
+                else "out/bench/issue12-timing"
+            )
+            assert output_directory == expected_directory
+            assert args.out == Path("/out/runner-result.json")
+            output_directories.append(output_directory)
+        assert len(set(output_directories)) == len(output_directories)
 
     def test_timing_invocation_is_explicitly_no_watcher(self):
         records = _extract_resident_command_records(README_PATH.read_text())
