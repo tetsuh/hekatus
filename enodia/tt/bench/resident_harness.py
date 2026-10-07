@@ -560,6 +560,7 @@ def build_measurement_record(
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
+    aborted_attempts: int = 0,
     failure_check: Mapping[str, Any] | None = None,
     startup_ticks: int | None = None,
     startup_ticks_valid: bool = False,
@@ -568,7 +569,23 @@ def build_measurement_record(
     watcher: bool = False,
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
-    """Build the committed-schema record without retaining raw timestamps."""
+    """Build the committed-schema record without retaining raw timestamps.
+
+    Counter protocol (the current producer/consumer semaphore contract):
+    ``ready_count`` is the cumulative producer-ready value and equals
+    ``produced_frame_count``; the consumer increments the cumulative free value
+    once per consumed timestamp, so ``consumed_frame_count`` is its value at
+    final download. A normal run satisfies
+    ``attempted = produced + dropped``, ``aborted_attempts = 0``, and
+    ``consumed = produced``. An error run may stop during one started cadence
+    attempt and satisfies ``attempted = produced + dropped + aborted_attempts``
+    with ``aborted_attempts`` constrained to 0 or 1; it still requires
+    ``consumed <= produced`` and final ring occupancy ``produced - consumed``
+    no greater than ``ring_pages``. Producer pacing-budget, consumer fixed-work
+    budget, consumer ready-wait, producer cancellation/other, and run-budget
+    failures all use this same relation; drop-new attempts contribute only to
+    ``dropped`` and never overwrite ring data.
+    """
     config = validate_configuration(config, watcher=watcher)
     if isinstance(aiclk_mhz, bool) or not isinstance(aiclk_mhz, int) or aiclk_mhz <= 0:
         raise ValueError("aiclk_mhz must be a positive integer")
@@ -590,9 +607,11 @@ def build_measurement_record(
         any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (attempted, produced, dropped))
         or produced < len(timestamp_values)
         or produced > attempted
-        or dropped != attempted - produced
+        or dropped < 0
     ):
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
+    if isinstance(aborted_attempts, bool) or not isinstance(aborted_attempts, int) or aborted_attempts not in (0, 1):
+        raise ValueError("aborted_attempts must be an integer 0 or 1")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))
@@ -606,10 +625,25 @@ def build_measurement_record(
     if reason == "running":
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
+    failure_hint = bool(
+        cycle_budget_hit
+        or kernel_error_flag
+        or (failure_check is not None and failure_check.get("name") not in (None, "none"))
+    )
+    if failure_hint:
+        if attempted != produced + dropped + aborted_attempts:
+            raise ValueError("error counter relation requires attempted=produced+dropped+aborted_attempts")
+    elif aborted_attempts != 0 or attempted != produced + dropped:
+        raise ValueError("normal counter relation requires attempted=produced+dropped and aborted_attempts=0")
+    consumed = len(timestamp_values)
+    if consumed > produced or produced - consumed > config.ring_pages:
+        raise ValueError("produced, consumed, and ring occupancy counters are inconsistent")
     completed = (
-        not cycle_budget_hit
+        not failure_hint
+        and not cycle_budget_hit
         and not kernel_error_flag
         and frame_count_reached
+        and aborted_attempts == 0
         and produced == len(timestamp_values)
     )
     if completed and dropped:
@@ -659,6 +693,7 @@ def build_measurement_record(
             "attempted_frame_count": attempted,
             "produced_frame_count": produced,
             "dropped_frame_count": dropped,
+            "aborted_attempts": aborted_attempts,
             "frame_interval_is_not_acquisition_rate_claim": True,
             "frame_interval_note": (
                 "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
@@ -700,6 +735,7 @@ def build_measurement_record(
             "produced_frame_count": produced,
             "consumed_frame_count": len(timestamp_values),
             "dropped_frame_count": dropped,
+            "aborted_attempts": aborted_attempts,
             "overflow_count": int(producer_full_count),
             "synchronization": "ring pointers and control metadata only",
             "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",

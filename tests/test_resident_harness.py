@@ -38,6 +38,16 @@ from enodia.tt.bench.resident_harness import (
 from enodia.tt.bench.run_resident import _parser, _resolve_watcher_mode, _runtime_u32
 
 
+def _environment() -> dict:
+    return {
+        "board": {"serial": "redacted-board-serial"},
+        "firmware": {"bundle": "19.6.0.0"},
+        "kmd_version": "2.11.0",
+        "image": "registry.example/tt@sha256:" + "a" * 64,
+        "image_pinned": True,
+    }
+
+
 def _config(**overrides) -> ResidentConfig:
     values = {
         "frame_count": 100,
@@ -396,6 +406,102 @@ def test_timestamp_digest_redacts_raw_values():
     assert "timestamps" not in redacted
 
 
+def _failure(code: int, name: str) -> dict:
+    return {
+        "code": code,
+        "name": name,
+        "source": "producer" if name.startswith("producer") or name == "other_check" else "consumer",
+        "elapsed_ticks": 123,
+        "limit_ticks": 100,
+        "unit": "device_clock_ticks",
+    }
+
+
+def test_pacing_failure_accepts_one_aborted_attempt():
+    record = build_measurement_record(
+        config=_config(frame_count=100),
+        aiclk_mhz=1_350,
+        timestamps=[1_000],
+        producer_full_count=0,
+        consumer_empty_count=1,
+        cycle_budget_hit=True,
+        kernel_error_flag=1,
+        attempted_frame_count=2,
+        produced_frame_count=1,
+        dropped_frame_count=0,
+        aborted_attempts=1,
+        failure_check=_failure(2, "producer_pacing_wait"),
+        harness_commit="0123456789abcdef",
+        environment=_environment(),
+        power_trace="resident-power.csv",
+    )
+    assert record["status"] == "error"
+    assert record["parameters"]["aborted_attempts"] == 1
+    assert record["ring"]["aborted_attempts"] == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "name"),
+    [
+        (1, "run_wide_budget"),
+        (3, "consumer_empty_wait"),
+        (4, "consumer_fixed_work_budget"),
+        (5, "other_check"),
+    ],
+)
+def test_error_paths_accept_zero_aborted_attempts(code, name):
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=1,
+        cycle_budget_hit=True,
+        kernel_error_flag=1,
+        attempted_frame_count=3,
+        produced_frame_count=3,
+        dropped_frame_count=0,
+        aborted_attempts=0,
+        failure_check=_failure(code, name),
+        harness_commit="0123456789abcdef",
+        environment=_environment(),
+        power_trace="resident-power.csv",
+    )
+    assert record["status"] == "error"
+    assert record["parameters"]["aborted_attempts"] == 0
+
+
+def test_aborted_attempts_reject_invalid_normal_and_error_relations():
+    base = {
+        "config": _config(frame_count=100),
+        "aiclk_mhz": 1_350,
+        "timestamps": [1_000],
+        "producer_full_count": 0,
+        "consumer_empty_count": 0,
+        "cycle_budget_hit": False,
+        "kernel_error_flag": 0,
+        "harness_commit": "0123456789abcdef",
+        "environment": _environment(),
+        "power_trace": "resident-power.csv",
+    }
+    with pytest.raises(ValueError, match="normal counter relation"):
+        build_measurement_record(**base, aborted_attempts=1)
+    error_base = {
+        **base,
+        "cycle_budget_hit": True,
+        "kernel_error_flag": 1,
+        "failure_check": _failure(2, "producer_pacing_wait"),
+        "attempted_frame_count": 2,
+        "produced_frame_count": 1,
+        "dropped_frame_count": 0,
+    }
+    for invalid in (-1, 2, 1.5, "1"):
+        with pytest.raises(ValueError, match="aborted_attempts"):
+            build_measurement_record(**error_base, aborted_attempts=invalid)
+    with pytest.raises(ValueError, match="error counter relation"):
+        build_measurement_record(**error_base, aborted_attempts=0)
+
+
 def test_record_schema_is_strict_and_excludes_raw_timestamps():
     config = _config()
     record = build_measurement_record(
@@ -455,6 +561,8 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["ring"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["full_ring_policy"] == "drop_new_frame_without_waiting_or_overwriting"
     assert parsed["parameters"]["attempted_frame_count"] == 100
+    assert parsed["parameters"]["aborted_attempts"] == 0
+    assert parsed["ring"]["aborted_attempts"] == 0
     assert parsed["environment"]["image"] == "registry.example/tt@sha256:" + "a" * 64
 
 

@@ -321,6 +321,7 @@ def _run_device(
             "frames_attempted": int(producer_values[3]),
             "frames_produced": int(producer_values[1]),
             "frames_dropped": int(producer_values[4]),
+            "frames_aborted": int(producer_values[3]) - int(producer_values[1]) - int(producer_values[4]),
             "frames_consumed": int(consumer_values[1]),
             "startup_ticks": int(consumer_values[4])
             | (int(consumer_values[5]) << 32),
@@ -465,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
         attempted_frame_count=result["frames_attempted"],
         produced_frame_count=result["frames_produced"],
         dropped_frame_count=result["frames_dropped"],
+        aborted_attempts=result["frames_aborted"],
         startup_ticks=result["startup_ticks"],
         startup_ticks_valid=result["startup_ticks_valid"],
         work_min_ticks=result["work_min_ticks"] if result["work_ticks_valid"] else None,
