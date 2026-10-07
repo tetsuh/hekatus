@@ -17,7 +17,13 @@ ROOT = Path(__file__).parents[1]
 WRAPPER = ROOT / "enodia/tt/bench/run_in_container.sh"
 
 
-def _fake_tools(tmp_path: Path, *, sampler_exit: int | None = None) -> Path:
+def _fake_tools(
+    tmp_path: Path,
+    *,
+    sampler_exit: int | None = None,
+    timeout_log: Path | None = None,
+    sampler_log: Path | None = None,
+) -> Path:
     bindir = tmp_path / "bin"
     bindir.mkdir()
     sample = (
@@ -28,6 +34,9 @@ def _fake_tools(tmp_path: Path, *, sampler_exit: int | None = None) -> Path:
     (bindir / "python3").write_text(
         f"""#!/bin/sh
 set -eu
+if [ "${{2:-}}" = sample ] && [ -n "${{SAMPLER_LOG:-}}" ]; then
+  printf '%s\\n' "$@" > "$SAMPLER_LOG"
+fi
 case "$2" in
   capture-env)
     out=""
@@ -66,6 +75,16 @@ exit "${DOCKER_EXIT:-0}"
 """
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    if timeout_log is not None:
+        (bindir / "timeout").write_text(
+            """#!/bin/sh
+set -eu
+printf '%s\\n' "$@" > "${TIMEOUT_LOG:?}"
+shift 3
+exec "$@"
+"""
+        )
+        (bindir / "timeout").chmod(stat.S_IRWXU)
     return bindir
 
 
@@ -110,9 +129,17 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
 
 
 def _run_resident_wrapper(
-    tmp_path, *, container_timeout, runner_args, watcher_env=None, image_override=None
+    tmp_path,
+    *,
+    container_timeout,
+    runner_args,
+    watcher_env=None,
+    image_override=None,
+    timeout_log=None,
+    sampler_log=None,
+    runner="enodia/tt/bench/run_resident.py",
 ):
-    bindir = _fake_tools(tmp_path)
+    bindir = _fake_tools(tmp_path, timeout_log=timeout_log, sampler_log=sampler_log)
     args_log = tmp_path / "docker-args"
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
@@ -122,9 +149,20 @@ def _run_resident_wrapper(
         **os.environ,
         "PATH": f"{bindir}:{os.environ['PATH']}",
         "DOCKER_ARGS": str(args_log),
-        "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
-        "HEKATUS_TT_CONTAINER_TIMEOUT_S": container_timeout,
     }
+    env.pop("HEKATUS_TT_RUNNER", None)
+    env.pop("HEKATUS_TT_CONTAINER_TIMEOUT_S", None)
+    env.pop("HEKATUS_TT_IMAGE", None)
+    env.pop("SAMPLER_LOG", None)
+    env.pop("TIMEOUT_LOG", None)
+    if runner is not None:
+        env["HEKATUS_TT_RUNNER"] = runner
+    if container_timeout is not None:
+        env["HEKATUS_TT_CONTAINER_TIMEOUT_S"] = container_timeout
+    if timeout_log is not None:
+        env["TIMEOUT_LOG"] = str(timeout_log)
+    if sampler_log is not None:
+        env["SAMPLER_LOG"] = str(sampler_log)
     env.pop("TT_METAL_WATCHER", None)
     if watcher_env is not None:
         env["TT_METAL_WATCHER"] = watcher_env
@@ -139,6 +177,49 @@ def _run_resident_wrapper(
         check=False,
         timeout=10,
     )
+
+
+class TestBenchDefaults:
+    @pytest.mark.parametrize(
+        ("runner_args", "watcher_env", "expected_timeout"),
+        [([], None, "600s"), (["--watcher"], "1", "60s")],
+        ids=("timing", "watcher"),
+    )
+    def test_resident_wrapper_uses_mode_timeout_when_unset(
+        self, tmp_path, runner_args, watcher_env, expected_timeout
+    ):
+        timeout_log = tmp_path / "timeout-args"
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=None,
+            runner_args=runner_args,
+            watcher_env=watcher_env,
+            timeout_log=timeout_log,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert timeout_log.read_text().splitlines()[2] == expected_timeout
+
+    def test_nonresident_wrapper_keeps_900_second_default(self, tmp_path):
+        timeout_log = tmp_path / "timeout-args"
+        sampler_log = tmp_path / "sampler-args"
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=None,
+            runner_args=["--iters", "1"],
+            timeout_log=timeout_log,
+            sampler_log=sampler_log,
+            runner=None,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert timeout_log.read_text().splitlines()[2] == "900s"
+        assert sampler_log.read_text().splitlines()[-1] == "2"
+        docker_args = (tmp_path / "docker-args").read_text().splitlines()
+        assert "enodia/tt/bench/run_matmul.py" in docker_args
+        assert docker_args[docker_args.index("--device") + 1] == "/dev/tenstorrent/0"
+        output_mount = next(argument for argument in docker_args if argument.endswith(":/out"))
+        output_host, output_container = output_mount.rsplit(":", 1)
+        assert Path(output_host).name == "bench"
+        assert output_container == "/out"
 
 
 def test_resident_wrapper_rejects_unpinned_image_before_telemetry(tmp_path):

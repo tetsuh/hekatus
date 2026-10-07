@@ -47,7 +47,13 @@ if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
   CUSTOM_RUNNER=1
 fi
 RUNNER_ARGS=("$@")
-CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S-900}"
+TIMEOUT_EXPLICIT=0
+if [[ -v HEKATUS_TT_CONTAINER_TIMEOUT_S ]]; then
+  TIMEOUT_EXPLICIT=1
+  CONTAINER_TIMEOUT_S="${HEKATUS_TT_CONTAINER_TIMEOUT_S}"
+else
+  CONTAINER_TIMEOUT_S=""
+fi
 
 validate_decimal_timeout() {
   local value="$1"
@@ -90,6 +96,9 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident
   if [[ "${RESIDENT_WATCHER_MODE}" == "1" ]]; then
     RESIDENT_TIMEOUT_CAP_S="60"
   fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
+    CONTAINER_TIMEOUT_S="${RESIDENT_TIMEOUT_CAP_S}"
+  fi
   validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "${#RESIDENT_TIMEOUT_CAP_S}"
   if [[ "${#CONTAINER_TIMEOUT_S}" == "${#RESIDENT_TIMEOUT_CAP_S}" \
         && "${CONTAINER_TIMEOUT_S}" > "${RESIDENT_TIMEOUT_CAP_S}" ]]; then
@@ -99,6 +108,9 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident
 else
   # Non-resident wrapper users retain their historical timeout range, but the
   # input is still bounded before GNU timeout or any shell arithmetic sees it.
+  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
+    CONTAINER_TIMEOUT_S="900"
+  fi
   validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "9"
 fi
 

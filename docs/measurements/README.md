@@ -36,7 +36,15 @@ Prior cycle-budget records collapsed producer/consumer causes and did not
 serialize elapsed/limit ticks, so their startup attribution remains uncertain;
 new runs serialize named failure checks and diagnostics.
 2. Run one Watcher-enabled, one-frame validation with the separate 60-second
-outer cap; it is not timing evidence.
+outer cap; it is not timing evidence. The standard invocation is:
+
+   ```bash
+   TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
+     enodia/tt/bench/run_in_container.sh -- --frame-count 1 --watcher
+   ```
+
+   Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
+   mode-specific cap and supplies its default output, device, and image.
 3. If it passes, run one no-Watcher timing attempt with the 600-second outer
 cap. The margin-inclusive run budget must fit that cap; there is no override
 for a schedule that exceeds it.

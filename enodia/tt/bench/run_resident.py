@@ -393,6 +393,25 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
+def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
+    """Build the resident configuration without importing or opening TTNN."""
+    timestamp_core = args.timestamp_core or args.consumer_core
+    return ResidentConfig(
+        frame_count=args.frame_count,
+        frame_interval_ticks=args.frame_interval_ticks,
+        producer_core=args.producer_core,
+        consumer_core=args.consumer_core,
+        ring_pages=args.ring_pages,
+        work_per_frame=args.work_per_frame,
+        designated_timestamp_core=timestamp_core,
+        cycle_budget=args.cycle_budget,
+        outer_timeout_seconds=args.outer_timeout_seconds,
+        fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
+        budget_aiclk_mhz=args.budget_aiclk_mhz,
+        histogram_bin_ticks=args.histogram_bin_ticks,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--out", type=Path, required=True)
@@ -421,21 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     environment_path = args.env_json or _latest_output("env-")
     power_trace = args.power_trace or _latest_output("power-").name
     environment = _environment(environment_path)
-    timestamp_core = args.timestamp_core or args.consumer_core
-    config = ResidentConfig(
-        frame_count=args.frame_count,
-        frame_interval_ticks=args.frame_interval_ticks,
-        producer_core=args.producer_core,
-        consumer_core=args.consumer_core,
-        ring_pages=args.ring_pages,
-        work_per_frame=args.work_per_frame,
-        designated_timestamp_core=timestamp_core,
-        cycle_budget=args.cycle_budget,
-        outer_timeout_seconds=args.outer_timeout_seconds,
-        fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
-        budget_aiclk_mhz=args.budget_aiclk_mhz,
-        histogram_bin_ticks=args.histogram_bin_ticks,
-    )
+    config = _config_from_args(args)
     try:
         validate_record_inputs(
             harness_commit=environment.get("harness_commit"),

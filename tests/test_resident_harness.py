@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -43,6 +44,7 @@ from enodia.tt.bench.resident_harness import (
     wrap_delta,
 )
 from enodia.tt.bench.run_resident import (
+    _config_from_args,
     _is_consumer_fixed_work_budget,
     _parser,
     _resolve_watcher_mode,
@@ -395,6 +397,91 @@ def test_watcher_mode_requires_matching_cli_and_environment():
 def test_resident_parser_rejects_abbreviated_watcher_flag():
     with pytest.raises(SystemExit):
         _parser().parse_args(["--out", "record.json", "--wat"])
+
+
+class TestResidentDefaults:
+    DEFAULTS: ClassVar[dict[str, object]] = {
+        "frame_count": 100,
+        "frame_interval_ticks": 1_350_000,
+        "producer_core": (0, 0),
+        "consumer_core": (1, 0),
+        "ring_pages": 4,
+        "work_per_frame": 64,
+        "cycle_budget": 10_000_000,
+        "fixed_work_ticks_per_frame": 100_000,
+        "budget_aiclk_mhz": 1_350,
+        "outer_timeout_seconds": 60,
+        "histogram_bin_ticks": 1,
+        "device_id": 0,
+        "watcher": False,
+    }
+
+    def test_parser_defaults_are_explicit_and_host_independent(self):
+        args = _parser().parse_args(["--out", "resident.json"])
+        for name, expected in self.DEFAULTS.items():
+            assert getattr(args, name) == expected
+        assert args.env_json is None
+        assert args.power_trace is None
+        assert args.raw_timestamps_out is None
+        config = _config_from_args(args)
+        assert config.designated_timestamp_core == (1, 0)
+
+    @pytest.mark.parametrize(
+        ("runner_args", "watcher", "valid", "reason"),
+        [
+            pytest.param([], False, True, None, id="default-timing"),
+            pytest.param(["--watcher"], True, True, None, id="default-watcher"),
+            pytest.param(
+                ["--outer-timeout-seconds", "600"], False, True, None, id="timing-cap"
+            ),
+            pytest.param(
+                ["--watcher", "--outer-timeout-seconds", "600"],
+                True,
+                False,
+                "60s Stage 1 Watcher cap",
+                id="watcher-cap",
+            ),
+            pytest.param(
+                [
+                    "--frame-count",
+                    "545355",
+                    "--frame-interval-ticks",
+                    "1350000",
+                    "--outer-timeout-seconds",
+                    "600",
+                ],
+                False,
+                False,
+                "run budget exceeds outer cap",
+                id="timing-budget",
+            ),
+        ],
+    )
+    def test_default_combinations_are_preflighted_without_device(
+        self, runner_args, watcher, valid, reason
+    ):
+        args = _parser().parse_args(["--out", "resident.json", *runner_args])
+        config = _config_from_args(args)
+        if valid:
+            assert validate_run_budget_fits_outer_cap(
+                validate_configuration(config, watcher=watcher), watcher=watcher
+            )
+        else:
+            with pytest.raises(ResidentPreflightError, match=reason):
+                validate_run_budget_fits_outer_cap(config, watcher=watcher)
+
+    def test_runbook_watcher_invocation_reaches_preflight_with_defaults(self):
+        runbook = Path("docs/measurements/README.md").read_text()
+        assert "Watcher-enabled, one-frame validation" in runbook
+        assert "TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py" in runbook
+        assert "run_in_container.sh -- --frame-count 1 --watcher" in runbook
+        args = _parser().parse_args(
+            ["--out", "resident.json", "--frame-count", "1", "--watcher"]
+        )
+        config = _config_from_args(args)
+        assert validate_run_budget_fits_outer_cap(
+            validate_configuration(config, watcher=True), watcher=True
+        )
 
 
 def test_runtime_addresses_are_checked_at_uint32_boundary():
