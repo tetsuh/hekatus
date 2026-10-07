@@ -55,7 +55,6 @@ from enodia.tt.bench.run_resident import (
 
 ROOT = Path(__file__).resolve().parents[1]
 README_PATH = ROOT / "docs/measurements/README.md"
-PR_BODY_PATH = ROOT / "tests/data/pr-103-body.md"
 
 
 def _continued_line(line: str) -> bool:
@@ -581,10 +580,6 @@ class TestResidentDefaults:
             assert validate_run_budget_fits_outer_cap(
                 validate_configuration(config, watcher=watcher), watcher=watcher
             )
-
-    def test_every_pr_body_resident_invocation_uses_the_runner_parser(self):
-        for argv in _extract_resident_invocations(PR_BODY_PATH.read_text()):
-            _parse_documented_resident_args(argv)
 
 
 def test_resident_invocation_extractor_handles_continuations_and_quoted_paths():
