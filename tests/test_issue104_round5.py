@@ -95,6 +95,14 @@ def _valid_record(tmp_path: Path) -> tuple[dict, Path, list[int]]:
     return record, trace, timestamps
 
 
+def _set_sampler_pair(record: dict, mode: str, interval):
+    for sampler in (
+        record["telemetry_sampler"],
+        record["environment"]["telemetry_sampler"],
+    ):
+        sampler.update(mode=mode, interval_seconds=interval)
+
+
 def _mutations(record: dict, trace: Path, timestamps: list[int]):
     del trace, timestamps
     return {
@@ -123,6 +131,14 @@ def _mutations(record: dict, trace: Path, timestamps: list[int]):
         "power_trace.sha256": lambda r: r.update(power_trace_sha256="0" * 64),
         "clock.aiclk_source": lambda r: r["clock"].update(aiclk_source="snapshot_only"),
         "sampler.trace_presence": lambda r: r["telemetry_sampler"].update(power_trace="absent_by_design"),
+        "sampler.default_interval": lambda r: _set_sampler_pair(r, "default", 5.0),
+        "sampler.off_interval": lambda r: _set_sampler_pair(r, "off", 2.0),
+        "sampler.explicit_zero_interval": lambda r: _set_sampler_pair(r, "explicit", 0),
+        "sampler.explicit_bool_interval": lambda r: _set_sampler_pair(r, "explicit", True),
+        "sampler.explicit_string_interval": lambda r: _set_sampler_pair(r, "explicit", "1"),
+        "sampler.explicit_nan_interval": lambda r: _set_sampler_pair(r, "explicit", float("nan")),
+        "sampler.explicit_infinite_interval": lambda r: _set_sampler_pair(r, "explicit", float("inf")),
+        "sampler.default_missing_interval": lambda r: _set_sampler_pair(r, "default", None),
         "timing_evidence.reason": lambda r: r.update(timing_evidence=False, timing_evidence_reason="power_trace_run_samples"),
     }
 
@@ -153,6 +169,11 @@ def test_table_driven_catalog_mutations_report_the_changed_relationship(tmp_path
         )
         assert report["valid"] is False, field
         assert report["mismatches"], field
+        if field.startswith("sampler."):
+            assert any(
+                mismatch["invariant"] == "sampler.trace_contract"
+                for mismatch in report["mismatches"]
+            ), field
 
 
 def test_pair_catalog_mutations_are_checked_by_the_shared_validator(tmp_path):
@@ -272,3 +293,66 @@ def test_normal_runner_result_contains_outlier_analysis_without_hardware(tmp_pat
     record = json.loads(output.read_text())
     assert record["outlier_analysis"]["pair_count"] == 0
     assert record["outlier_analysis"]["sampler_interval_comparison"]["mode"] == "off"
+    assert record["telemetry_sampler"] == record["environment"]["telemetry_sampler"]
+    assert record["outlier_analysis"]["sampler_interval_comparison"]["interval_seconds"] is None
+
+
+def test_runner_completes_legacy_default_sampler_once_and_reuses_it(tmp_path, monkeypatch):
+    environment = _environment()
+    environment.pop("telemetry_sampler")
+    environment["aiclk_mhz_observed"] = [1_350]
+    environment_path = tmp_path / "environment.json"
+    environment_path.write_text(json.dumps(environment))
+    output = tmp_path / "record.json"
+
+    def fake_run_device(_ttnn, _device, config, *, watcher):
+        del watcher
+        count = config.frame_count
+        return {
+            "timestamps": [1_000 + config.frame_interval_ticks * index for index in range(count)],
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "kernel_error_flag": 0,
+            "frames_attempted": count,
+            "frames_produced": count,
+            "frames_dropped": 0,
+            "frames_aborted": 0,
+            "frames_consumed": count,
+            "startup_ticks": 0,
+            "startup_ticks_valid": False,
+            "work_min_ticks": None,
+            "work_max_ticks": None,
+            "work_ticks_valid": False,
+            "failure_check": {"code": 0, "name": "none", "source": "none"},
+        }
+
+    monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **_: object(), close_device=lambda _device: None),
+    )
+    assert run_resident.main(
+        [
+            "--out",
+            str(output),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            "legacy-default.csv",
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+
+    record = json.loads(output.read_text())
+    expected_sampler = {
+        "mode": "default",
+        "interval_seconds": 2.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    assert record["telemetry_sampler"] == expected_sampler
+    assert record["environment"]["telemetry_sampler"] == expected_sampler
+    assert record["outlier_analysis"]["sampler_interval_comparison"]["mode"] == "default"
+    assert record["outlier_analysis"]["sampler_interval_comparison"]["interval_seconds"] == 2.0

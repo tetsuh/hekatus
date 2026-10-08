@@ -31,6 +31,9 @@ the catalog are:
   row counts, first/last timestamps, run bounds, in-run AICLK, and PR #109
   ``coverage_complete`` value agree with the actual CSV when bytes are
   supplied.  Sampler-off is absent by design and is diagnostic-only.
+* ``telemetry_sampler`` follows the shared ``SAMPLER_CONTRACT``: off has no
+  interval, default is exactly 2.0 seconds, and explicit is positive and
+  finite.  Top-level and environment copies must agree.
 * ``clock.aiclk_mhz`` must equal the AICLK from valid in-run trace samples
   whenever timing evidence is true.  Timing evidence is never accepted for
   sampler-off, Watcher, snapshot-only AICLK, missing/invalid/incomplete
@@ -60,6 +63,10 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from enodia.tt.bench.sampler_contract import (
+    SAMPLER_CONTRACT,
+    normalize_sampler_metadata,
+)
 from enodia.tt.bench.telemetry import POWER_TRACE_COLUMNS, parse_power_trace
 
 CLOCK_MODULUS_TICKS = 1 << 32
@@ -402,6 +409,15 @@ def build_outlier_analysis(
     """Build the complete outlier catalog from one resident timestamp stream."""
     if not _is_int(aiclk_mhz, positive=True):
         raise ValueError("aiclk_mhz must be a positive integer")
+    if sampler_mode is not None:
+        sampler = normalize_sampler_metadata(
+            {
+                "mode": sampler_mode,
+                "interval_seconds": sampler_interval_seconds,
+            }
+        )
+        sampler_mode = sampler["mode"]
+        sampler_interval_seconds = sampler["interval_seconds"]
     values = list(timestamps)
     if any(not _is_int(value, nonnegative=True) for value in values):
         raise ValueError("timestamps must contain unsigned integer values")
@@ -867,6 +883,7 @@ def validate_pair_analysis(
         mismatches.append(_mismatch(invariant, ("outlier_analysis.sum_delta_max_ticks", "outlier_analysis.pairs"), "sum_delta_max_ticks does not match pair objects"))
     if "pair_order_counts" in outlier_analysis and outlier_analysis.get("pair_order_counts") != _count_orders(pair for pair in pairs if isinstance(pair, Mapping)):
         mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_order_counts", "outlier_analysis.pairs"), "pair_order_counts does not match pair objects"))
+
     return mismatches
 
 
@@ -917,6 +934,19 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
     clock = _mapping(record, "clock")
     aiclk = clock.get("aiclk_mhz") if clock else None
     mismatches.extend(validate_pair_analysis(outlier, timestamps=ctx.timestamps, aiclk_mhz=aiclk))
+
+    comparison = outlier.get("sampler_interval_comparison")
+    sampler = _sampler(record)
+    if (
+        isinstance(comparison, Mapping)
+        and isinstance(sampler, Mapping)
+        and sampler.get("mode") != "__mismatch__"
+        and ("mode" in comparison or "interval_seconds" in comparison)
+    ):
+        if "mode" in comparison and comparison.get("mode") != sampler.get("mode"):
+            mismatches.append(_mismatch("outlier_analysis", ("outlier_analysis.sampler_interval_comparison.mode", "telemetry_sampler.mode"), "sampler comparison mode does not match record sampler mode"))
+        if "interval_seconds" in comparison and comparison.get("interval_seconds") != sampler.get("interval_seconds"):
+            mismatches.append(_mismatch("outlier_analysis", ("outlier_analysis.sampler_interval_comparison.interval_seconds", "telemetry_sampler.interval_seconds"), "sampler comparison interval does not match record sampler interval"))
     return mismatches
 
 
@@ -968,9 +998,15 @@ def _check_ring(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[
 
 
 def _sampler(record: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    top_present = "telemetry_sampler" in record
     top = record.get("telemetry_sampler")
     environment = record.get("environment")
+    nested_present = isinstance(environment, Mapping) and "telemetry_sampler" in environment
     nested = environment.get("telemetry_sampler") if isinstance(environment, Mapping) else None
+    if top_present and not isinstance(top, Mapping):
+        return {"mode": "__mismatch__", "top": top, "nested": nested}
+    if nested_present and not isinstance(nested, Mapping):
+        return {"mode": "__mismatch__", "top": top, "nested": nested}
     if isinstance(top, Mapping) and isinstance(nested, Mapping):
         compared = ("mode", "interval_seconds", "power_trace", "timing_evidence")
         if any(top.get(key) != nested.get(key) for key in compared):
@@ -994,16 +1030,24 @@ def _check_sampler_contract(record: Mapping[str, Any], ctx: ValidationContext) -
         if mode in {"default", "explicit"}:
             return [_mismatch(invariant, ("telemetry_sampler", "environment.telemetry_sampler"), "sampled sampler mode requires matching trace metadata")]
         return [_mismatch(invariant, ("telemetry_sampler", "environment.telemetry_sampler"), "top-level and environment sampler metadata disagree")]
-    mode = sampler.get("mode")
+
+    try:
+        canonical = normalize_sampler_metadata(sampler, complete_default=False)
+    except (TypeError, ValueError) as exc:
+        field = (
+            "telemetry_sampler.interval_seconds"
+            if "interval" in str(exc)
+            else "telemetry_sampler.mode"
+        )
+        return [_mismatch(invariant, (field,), f"sampler contract violation: {exc}")]
+
+    mode = canonical["mode"]
+    contract = SAMPLER_CONTRACT[mode]
     trace_name = record.get("power_trace")
     mismatches: list[dict[str, Any]] = []
-    if mode not in {"off", "default", "explicit"}:
-        return [_mismatch(invariant, ("telemetry_sampler.mode",), "telemetry sampler mode must be off, default, or explicit")]
-    expected_trace = "absent_by_design" if mode == "off" else "required"
-    expected_timing = "diagnostic_only" if mode == "off" else "available"
-    if sampler.get("power_trace") != expected_trace:
+    if sampler.get("power_trace") != contract["power_trace"]:
         mismatches.append(_mismatch(invariant, ("telemetry_sampler.power_trace",), "sampler power_trace metadata does not match sampler mode"))
-    if sampler.get("timing_evidence") != expected_timing:
+    if sampler.get("timing_evidence") != contract["timing_evidence"]:
         mismatches.append(_mismatch(invariant, ("telemetry_sampler.timing_evidence",), "sampler timing_evidence metadata does not match sampler mode"))
     if mode == "off":
         if trace_name is not None:
@@ -1356,8 +1400,8 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ),
     ResidentInvariant(
         "sampler.trace_contract",
-        ("telemetry_sampler", "power_trace", "power_trace_absent_reason"),
-        "sampler mode and trace presence/absence",
+        ("telemetry_sampler.mode", "telemetry_sampler.interval_seconds", "power_trace", "power_trace_absent_reason"),
+        "sampler mode, interval contract, and trace presence/absence",
         _check_sampler_contract,
     ),
     ResidentInvariant(
@@ -1541,6 +1585,7 @@ __all__ = [
     "PAIR_TARGET_TICKS",
     "PAIR_TOLERANCE_TICKS",
     "RESIDENT_INVARIANT_CATALOG",
+    "SAMPLER_CONTRACT",
     "SHORT_THRESHOLD_TICKS",
     "ResidentInvariant",
     "_count_orders",
@@ -1548,6 +1593,7 @@ __all__ = [
     "_record_correspondence",
     "build_outlier_analysis",
     "detect_pairs",
+    "normalize_sampler_metadata",
     "raw_metadata_matches",
     "record_correspondence",
     "validate_issue104_record",

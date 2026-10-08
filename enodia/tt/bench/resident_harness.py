@@ -27,6 +27,10 @@ from enodia.tt.bench.resident_record import (
     validate_pair_analysis,
     validate_resident_record,
 )
+from enodia.tt.bench.sampler_contract import (
+    SAMPLER_CONTRACT,
+    normalize_sampler_metadata,
+)
 
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
@@ -852,24 +856,28 @@ def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     authoritative only when it agrees with a present board ID; a board ID is
     copied to the canonical ``serial`` field only when that field is absent.
     Non-mapping board values are left for the required-field table to reject.
+    A sampler object is canonicalized when present, while a missing sampler is
+    retained for legacy callers that do not need a runner-side default.
     """
     if not isinstance(environment, Mapping):
         raise TypeError("environment must be an object")
     normalized = dict(environment)
     board = normalized.get("board")
-    if not isinstance(board, Mapping):
-        return normalized
-
-    normalized_board = dict(board)
-    has_serial = "serial" in normalized_board
-    has_board_id = "board_id" in normalized_board
-    if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
-        raise ResidentPreflightError(
-            "environment.board.serial and environment.board.board_id must match"
+    if isinstance(board, Mapping):
+        normalized_board = dict(board)
+        has_serial = "serial" in normalized_board
+        has_board_id = "board_id" in normalized_board
+        if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
+            raise ResidentPreflightError(
+                "environment.board.serial and environment.board.board_id must match"
+            )
+        if not has_serial and has_board_id:
+            normalized_board["serial"] = normalized_board["board_id"]
+        normalized["board"] = normalized_board
+    if "telemetry_sampler" in normalized:
+        normalized["telemetry_sampler"] = normalize_sampler_metadata(
+            normalized["telemetry_sampler"]
         )
-    if not has_serial and has_board_id:
-        normalized_board["serial"] = normalized_board["board_id"]
-    normalized["board"] = normalized_board
     return normalized
 
 
@@ -940,43 +948,17 @@ def _safe_trace_name(power_trace: str | None) -> str | None:
 
 
 def _telemetry_sampler(environment: Mapping[str, Any]) -> dict[str, Any]:
-    """Return the sampler metadata, defaulting legacy records to 2 seconds."""
-    raw_sampler = environment.get("telemetry_sampler")
-    if raw_sampler is None:
-        return {
-            "mode": "default",
-            "interval_seconds": 2.0,
-            "power_trace": "required",
-            "timing_evidence": "available",
-        }
-    if not isinstance(raw_sampler, Mapping):
-        raise TypeError("environment telemetry_sampler metadata is required")
-    sampler = dict(raw_sampler)
-    mode = sampler.get("mode")
-    if mode not in {"off", "default", "explicit"}:
-        raise ValueError("environment telemetry_sampler mode is required")
-    interval = sampler.get("interval_seconds")
-    if mode == "off":
-        if interval is not None:
-            raise ValueError("sampler-off metadata must not carry an interval")
-    elif (
-        isinstance(interval, bool)
-        or not isinstance(interval, (int, float))
-        or not math.isfinite(float(interval))
-        or float(interval) <= 0
-    ):
-        raise ValueError("sampled telemetry metadata must carry a positive interval")
-    return sampler
+    """Return canonical sampler metadata, defaulting legacy records to 2 seconds."""
+    return normalize_sampler_metadata(environment.get("telemetry_sampler"))
 
 
 def _validate_sampler_trace(environment: Mapping[str, Any], power_trace: str | None) -> dict[str, Any]:
     sampler = _telemetry_sampler(environment)
+    contract = SAMPLER_CONTRACT[sampler["mode"]]
     sampler_off = sampler["mode"] == "off"
-    expected_trace = "absent_by_design" if sampler_off else "required"
-    if sampler.get("power_trace") != expected_trace:
+    if sampler.get("power_trace") != contract["power_trace"]:
         raise ValueError("telemetry sampler power_trace metadata does not match sampler mode")
-    expected_timing = "diagnostic_only" if sampler_off else "available"
-    if sampler.get("timing_evidence") != expected_timing:
+    if sampler.get("timing_evidence") != contract["timing_evidence"]:
         raise ValueError("telemetry sampler timing_evidence metadata does not match sampler mode")
     if sampler_off != (power_trace is None):
         raise ValueError(
@@ -987,13 +969,15 @@ def _validate_sampler_trace(environment: Mapping[str, Any], power_trace: str | N
 
 def validate_record_inputs(
     *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str | None
-) -> None:
-    """Validate record provenance before resident device execution."""
+) -> dict[str, Any]:
+    """Validate and return the runner's canonical preflight environment."""
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
-    _validate_sampler_trace(normalized_environment, power_trace)
+    sampler = _validate_sampler_trace(normalized_environment, power_trace)
+    normalized_environment["telemetry_sampler"] = sampler
     _safe_trace_name(power_trace)
+    return normalized_environment
 
 
 def _trace_failure_reason(trace: Mapping[str, Any] | None) -> str:
@@ -1588,6 +1572,7 @@ __all__ = [
     "REQUIRED_PROVENANCE_FIELDS",
     "RESIDENT_INVARIANT_CATALOG",
     "RESIDENT_SEMAPHORE_COUNT",
+    "SAMPLER_CONTRACT",
     "SEMAPHORE_BYTES",
     "TIMESTAMP_GAP_LIMIT_TICKS",
     "UINT32_MAX",

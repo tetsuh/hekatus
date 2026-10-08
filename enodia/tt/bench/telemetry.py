@@ -32,11 +32,14 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.sampler_contract import (
+    DEFAULT_SAMPLER_INTERVAL_SECONDS,
+    SAMPLER_MODES,
+    normalize_sampler_metadata,
+)
 
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
-DEFAULT_SAMPLER_INTERVAL_SECONDS = 2.0
-SAMPLER_MODES = ("off", "default", "explicit")
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 
 
@@ -322,29 +325,7 @@ def parse_environment(snapshot: str) -> dict:
 
 def sampler_metadata(mode: str, interval: float | None = None) -> dict[str, object]:
     """Validate and describe the wrapper's telemetry-sampler mode."""
-    if mode not in SAMPLER_MODES:
-        raise ValueError(f"sampler mode must be one of {SAMPLER_MODES}, got {mode!r}")
-    if mode == "off":
-        if interval is not None:
-            raise ValueError("sampler-off mode cannot carry an interval")
-        return {
-            "mode": "off",
-            "interval_seconds": None,
-            "power_trace": "absent_by_design",
-            "timing_evidence": "diagnostic_only",
-        }
-    if interval is None:
-        interval = DEFAULT_SAMPLER_INTERVAL_SECONDS
-    if not (math.isfinite(interval) and interval > 0):
-        raise ValueError(f"sampler interval must be positive and finite, got {interval}")
-    if mode == "default" and interval != DEFAULT_SAMPLER_INTERVAL_SECONDS:
-        raise ValueError("default sampler mode must use the existing 2-second interval")
-    return {
-        "mode": mode,
-        "interval_seconds": interval,
-        "power_trace": "required",
-        "timing_evidence": "available",
-    }
+    return normalize_sampler_metadata({"mode": mode, "interval_seconds": interval})
 
 
 def _run(command: tuple[str, ...] | str) -> str:

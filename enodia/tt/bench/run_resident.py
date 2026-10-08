@@ -491,11 +491,12 @@ def main(argv: list[str] | None = None) -> int:
         environment["aiclk_mhz_observed"] = sorted(set(trace_aiclk))
     config = _config_from_args(args)
     try:
-        validate_record_inputs(
+        environment = validate_record_inputs(
             harness_commit=environment.get("harness_commit"),
             environment=environment,
             power_trace=power_trace,
         )
+        sampler = environment["telemetry_sampler"]
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
@@ -560,8 +561,8 @@ def main(argv: list[str] | None = None) -> int:
     outlier_analysis = build_outlier_analysis(
         result["timestamps"],
         aiclk_mhz=aiclk_mhz,
-        sampler_mode=environment.get("telemetry_sampler", {}).get("mode"),
-        sampler_interval_seconds=environment.get("telemetry_sampler", {}).get("interval_seconds"),
+        sampler_mode=sampler["mode"],
+        sampler_interval_seconds=sampler["interval_seconds"],
     )
     record = build_measurement_record(
         config=config,
