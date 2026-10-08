@@ -29,6 +29,7 @@ from enodia.tt.bench.resident_harness import (
     ResidentFailureClassification,
     ResidentPreflightError,
     build_measurement_record,
+    build_outlier_analysis,
     build_rejection_record,
     run_budget_breakdown,
     select_failure_check,
@@ -556,6 +557,12 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     )
+    outlier_analysis = build_outlier_analysis(
+        result["timestamps"],
+        aiclk_mhz=aiclk_mhz,
+        sampler_mode=environment.get("telemetry_sampler", {}).get("mode"),
+        sampler_interval_seconds=environment.get("telemetry_sampler", {}).get("interval_seconds"),
+    )
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
@@ -577,6 +584,7 @@ def main(argv: list[str] | None = None) -> int:
         power_trace=power_trace,
         power_trace_path=power_trace_path,
         power_trace_metadata=trace_metadata,
+        outlier_analysis=outlier_analysis,
         run_start=run_start.isoformat(),
         run_end=run_end.isoformat(),
         watcher=watcher,

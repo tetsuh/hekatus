@@ -1,38 +1,16 @@
 """Host-side accounting and record helpers for Issue #12 Stage 1.
 
-Invariant catalog (the builder enforces every item that is available at build
- time; the Issue #104 analyzer reports the same items from committed records):
-
-* declared counts equal their sequences: ``frame_count``/attempted,
-  produced/consumed counts versus timestamp rows, raw timestamp count equals
-  interval histogram ``N + 1``, histogram bins sum to ``N``, and a power trace's
-  declared sample count equals its CSV row count and valid-row count;
-* sampler mode agrees with trace presence, the trace basename, and an explicit
-  absent-by-design reason; sampler-off records remain diagnostic-only;
-* a power trace is readable, has the declared columns, SHA-256 of its actual
-  bytes, nonzero valid rows, parseable ordered timestamps, first/last values,
-  and complete ``first <= run_start <= run_end <= last`` coverage;
-* timing AICLK comes only from valid in-run trace samples.  Pre-run environment
-  snapshots are diagnostic provenance only.  A sampled trace with no valid
-  in-run rows or incomplete coverage forces ``timing_evidence=false`` and an
-  explicit machine-readable reason;
-* pair ``pair_count`` agrees with frame starts, pair objects, pair sums and
-  endpoint/value/order arrays.  Correspondence checks are duplicate-aware and
-  compare length, multiset, and order, including pair endpoints and values;
-* raw timestamp count and hash describe the actual little-endian bytes, and
-  every histogram and pair sequence is derived from that same timestamp stream.
-
-The device runner is intentionally kept separate from these helpers.  This
-module has no TTNN import, so ring accounting, timestamp arithmetic, trace
-coverage, and the measurement contract remain testable on a development
-machine.  The catalog is deliberately kept here as a durable docstring rather
-than only in a PR description.
+The Issue #104 record relationships and paired-outlier algorithm live in the
+single executable catalog in :mod:`enodia.tt.bench.resident_record`.  This
+module supplies the builder-side configuration, accounting, and schema
+assembly; it imports and calls that shared validator rather than maintaining a
+second invariant implementation.  It has no TTNN import, so configuration,
+ring accounting, and record construction remain board-free and testable.
 """
 
 from __future__ import annotations
 
 import hashlib
-import itertools
 import math
 import re
 import struct
@@ -42,6 +20,13 @@ from fractions import Fraction
 from pathlib import Path, PurePath
 from types import MappingProxyType
 from typing import Any
+
+from enodia.tt.bench.resident_record import (
+    RESIDENT_INVARIANT_CATALOG,
+    build_outlier_analysis,
+    validate_pair_analysis,
+    validate_resident_record,
+)
 
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
@@ -1136,65 +1121,13 @@ def _power_trace_metadata(
 def validate_outlier_analysis(
     outlier_analysis: Mapping[str, Any], *, timestamps: Iterable[int] | None = None
 ) -> None:
-    """Validate pair counts and duplicate-aware sequence lengths at build time."""
-    if not isinstance(outlier_analysis, Mapping):
-        raise TypeError("outlier_analysis must be an object")
-    pair_count = outlier_analysis.get("pair_count")
-    if isinstance(pair_count, bool) or not isinstance(pair_count, int) or pair_count < 0:
-        raise ValueError("outlier_analysis.pair_count must be a non-negative integer")
-    starts = outlier_analysis.get("frame_start_indices", [])
-    pairs = outlier_analysis.get("pairs", [])
-    pair_sums = outlier_analysis.get("pair_sums")
-    if not isinstance(starts, list) or len(starts) != pair_count:
-        raise ValueError("outlier_analysis pair_count must equal frame_start_indices length")
-    if any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in starts):
-        raise ValueError("outlier_analysis.frame_start_indices must be positive integers")
-    if not isinstance(pairs, list) or len(pairs) != pair_count:
-        raise ValueError("outlier_analysis pair_count must equal pairs length")
-    if pair_sums is not None and (not isinstance(pair_sums, list) or len(pair_sums) != pair_count):
-        raise ValueError("outlier_analysis pair_count must equal pair_sums length")
-    for index, pair in enumerate(pairs):
-        if not isinstance(pair, Mapping):
-            raise TypeError("outlier_analysis.pairs must contain objects")
-        endpoints = pair.get("interval_end_frame_indices")
-        if not isinstance(endpoints, list) or len(endpoints) != 2:
-            raise ValueError("outlier_analysis pair endpoints must contain two indices")
-        if endpoints[0] != starts[index] or endpoints[1] != starts[index] + 1:
-            raise ValueError("outlier_analysis pair endpoints must match frame starts")
-        if pair_sums is not None and pair.get("pair_sum_ticks") != pair_sums[index]:
-            raise ValueError("outlier_analysis pair sums must match pair objects")
-    positions = outlier_analysis.get("event_frame_positions")
-    if positions is not None:
-        expected = [position for pair in pairs for position in pair["interval_end_frame_indices"]]
-        if positions != expected:
-            raise ValueError("outlier_analysis event frame positions do not match pair endpoints")
-    elapsed = outlier_analysis.get("event_elapsed_seconds")
-    if elapsed is not None and (not isinstance(elapsed, list) or len(elapsed) != pair_count * 2):
-        raise ValueError("outlier_analysis event elapsed values must match pair endpoints")
-    gaps = outlier_analysis.get("frame_gaps")
-    if gaps is not None:
-        expected_gaps = [right - left for left, right in itertools.pairwise(starts)]
-        if gaps != expected_gaps:
-            raise ValueError("outlier_analysis frame gaps do not match frame starts")
-    if timestamps is not None:
-        values = list(timestamps)
-        for pair in pairs:
-            first, second = pair["interval_end_frame_indices"]
-            if second >= len(values):
-                raise ValueError("outlier_analysis pair endpoint exceeds timestamp count")
-            first_ticks = values[first] - values[first - 1]
-            second_ticks = values[second] - values[first]
-            pair_sum = first_ticks + second_ticks
-            if pair.get("pair_sum_ticks") is not None and pair["pair_sum_ticks"] != pair_sum:
-                raise ValueError("outlier_analysis pair sum does not match timestamps")
-            if pair.get("first_interval_ticks") is not None and pair["first_interval_ticks"] != first_ticks:
-                raise ValueError("outlier_analysis first interval does not match timestamps")
-            if pair.get("second_interval_ticks") is not None and pair["second_interval_ticks"] != second_ticks:
-                raise ValueError("outlier_analysis second interval does not match timestamps")
-            if pair.get("short_ticks") is not None and pair["short_ticks"] != min(first_ticks, second_ticks):
-                raise ValueError("outlier_analysis short value does not match timestamps")
-            if pair.get("long_ticks") is not None and pair["long_ticks"] != max(first_ticks, second_ticks):
-                raise ValueError("outlier_analysis long value does not match timestamps")
+    """Compatibility wrapper over the shared pair invariant checker."""
+    mismatches = validate_pair_analysis(outlier_analysis, timestamps=timestamps)
+    if mismatches:
+        first = mismatches[0]
+        if first["message"].startswith("outlier_analysis must be"):
+            raise TypeError(first["message"])
+        raise ValueError(first["message"])
 
 
 def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
@@ -1349,19 +1282,21 @@ def build_measurement_record(
         raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
-    if outlier_analysis is not None:
-        validate_outlier_analysis(outlier_analysis, timestamps=timestamp_values)
+    if outlier_analysis is None:
+        outlier_analysis = build_outlier_analysis(
+            timestamp_values,
+            aiclk_mhz=aiclk_mhz,
+            sampler_mode=sampler.get("mode"),
+            sampler_interval_seconds=sampler.get("interval_seconds"),
+        )
+    else:
+        outlier_analysis = dict(outlier_analysis)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
-    if (
-        any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for value in (attempted, produced, dropped)
-        )
-        or produced < len(timestamp_values)
-        or produced > attempted
-        or dropped < 0
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in (attempted, produced, dropped)
     ):
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
     if (
@@ -1370,8 +1305,6 @@ def build_measurement_record(
         or aborted_attempts not in (0, 1)
     ):
         raise ValueError("aborted_attempts must be an integer 0 or 1")
-    if producer_full_count != dropped:
-        raise ValueError("producer_full_count must equal dropped_frame_count")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))
@@ -1386,14 +1319,6 @@ def build_measurement_record(
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
     failure_hint = classification.error_flag
-    if failure_hint:
-        if attempted != produced + dropped + aborted_attempts:
-            raise ValueError("error counter relation requires attempted=produced+dropped+aborted_attempts")
-    elif aborted_attempts != 0 or attempted != produced + dropped:
-        raise ValueError("normal counter relation requires attempted=produced+dropped and aborted_attempts=0")
-    consumed = len(timestamp_values)
-    if consumed > produced or produced - consumed > config.ring_pages:
-        raise ValueError("produced, consumed, and ring occupancy counters are inconsistent")
     completed = (
         not failure_hint
         and frame_count_reached
@@ -1606,9 +1531,17 @@ def build_measurement_record(
         "watcher": bool(watcher),
         "timing_evidence": timing_ok,
         "timing_evidence_reason": final_timing_reason,
+        "outlier_analysis": dict(outlier_analysis),
     }
-    if outlier_analysis is not None:
-        record["outlier_analysis"] = dict(outlier_analysis)
+    validate_resident_record(
+        record,
+        timestamps=timestamp_values,
+        power_trace_path=power_trace_path,
+        power_trace_metadata=trace_metadata,
+        builder=True,
+        strict_trace=strict_trace,
+        raise_on_error=True,
+    )
     return record
 
 
@@ -1653,6 +1586,7 @@ __all__ = [
     "PROVENANCE_PHASE_POST_RUN",
     "PROVENANCE_PHASE_PREFLIGHT",
     "REQUIRED_PROVENANCE_FIELDS",
+    "RESIDENT_INVARIANT_CATALOG",
     "RESIDENT_SEMAPHORE_COUNT",
     "SEMAPHORE_BYTES",
     "TIMESTAMP_GAP_LIMIT_TICKS",
@@ -1665,6 +1599,7 @@ __all__ = [
     "ResidentPreflightError",
     "RingAccounting",
     "build_measurement_record",
+    "build_outlier_analysis",
     "build_rejection_record",
     "clock_source_audit_for_image",
     "cycle_budget_exceeded",
@@ -1692,6 +1627,7 @@ __all__ = [
     "validate_post_run_provenance",
     "validate_preflight_provenance",
     "validate_record_inputs",
+    "validate_resident_record",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]

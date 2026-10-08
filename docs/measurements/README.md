@@ -45,24 +45,25 @@ protocol fix, so these runs must not be described as having used that fix.
 
 ### Issue #104 invariant revalidation
 
-The new board-free validator was run against all three committed Issue #104
-JSON records and their committed companion CSVs without rewriting either data
-format. The sampler-off record passes the structural catalog: its trace is
-absent by design and `timing_evidence=false`; its raw timestamp hash cannot be
-rechecked against bytes because the referenced external `raw-timestamps.bin`
-is not committed. The sampled records have readable, fully valid CSVs whose
-row counts and SHA-256 values match their committed metadata: 181 rows and
-`0c3b8f1893bc329004c4c0a5a59a76d572ff479d04f686c03effb6b110f41b7b` for
+The shared board-free `validate_resident_record` catalog in
+`enodia/tt/bench/resident_record.py` was run against all three committed Issue
+#104 JSON records and their committed companion CSVs without rewriting either
+data format. The sampler-off record passes the diagnostic structural catalog:
+its trace is absent by design and `timing_evidence=false`; its raw timestamp
+hash cannot be rechecked against bytes because the referenced external
+`raw-timestamps.bin` is not committed. It is not timing evidence. The sampled
+records remain invalid under the strict catalog even though their CSV bytes are
+readable and their declared sample counts and SHA-256 values match: 181 rows
+and `0c3b8f1893bc329004c4c0a5a59a76d572ff479d04f686c03effb6b110f41b7b` for
 `2026-10-06-p150a-issue104-sampler-default.json`, and 77 rows and
 `f728f53d7f64bf3a599d9abfc85161e7d66d17794c723d8f19a792f2839b6f50` for
 `2026-10-06-p150a-issue104-sampler-5s.json`. Both sampled JSON records lack
 explicit `run_start`/`run_end` bounds, valid-row counts, and in-run AICLK
 provenance, so their first/last coverage and timing AICLK are unverifiable
-under the PR #109 rule;
-their committed `timing_evidence=true` therefore does not pass the new gate.
-The same external raw-timestamp-byte limitation applies to both sampled
-records, although their committed `raw_timestamps.count=400000` and
-`histogram.N=399999` satisfy the count relationship.
+under the PR #109 rule; their committed `timing_evidence=true` therefore does
+not pass the gate. The same external raw-timestamp-byte limitation applies to
+both sampled records, although their committed `raw_timestamps.count=400000`
+and `histogram.N=399999` satisfy the count relationship.
 
 The wrap analysis gives `2^32 / 1,350,000,000 = 3.1814572563` seconds,
 or 3,181.4572563 configured 1-ms frames, so a frame-gap gcd of 1 does not
