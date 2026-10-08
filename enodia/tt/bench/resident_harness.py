@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import struct
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import PurePath
+from types import MappingProxyType
 from typing import Any
 
 PAGE_WORDS = 32 * 32
@@ -29,25 +31,97 @@ RESIDENT_SEMAPHORE_COUNT = 4
 SEMAPHORE_BYTES = 4
 UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
+TIMESTAMP_GAP_LIMIT_TICKS = 1 << 31
+CURRENT_WRAP_WORK_PER_FRAME = 64
+CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS = 1_087
+WORK_TICKS_MARGIN_PERCENT = 10
+WORK_TICKS_PER_UNIT_UPPER_BOUND = (
+    (CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS + CURRENT_WRAP_WORK_PER_FRAME - 1)
+    // CURRENT_WRAP_WORK_PER_FRAME
+    * (100 + WORK_TICKS_MARGIN_PERCENT)
+    + 99
+) // 100
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
-FAILURE_CODES = {
-    0: "none",
-    1: "run_wide_budget",
-    2: "producer_pacing_wait",
-    3: "consumer_empty_wait",
-    4: "consumer_fixed_work_budget",
-    5: "other_check",
-}
-FAILURE_PRIORITY = {
-    "consumer_fixed_work_budget": 0,
-    "producer_pacing_wait": 1,
-    "consumer_empty_wait": 2,
-    "run_wide_budget": 3,
-    "other_check": 4,
-    "none": 5,
-}
+AUDITED_CLOCK_SOURCE_IMAGE = (
+    "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
+    "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+)
+CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC = "clock source unaudited for this image"
+
+# This immutable table is the sole authority for clock-source evidence.  Its
+# key is the complete image reference, so an audit cannot accidentally follow
+# a release tag or a different digest under the same repository name.
+CLOCK_SOURCE_AUDIT_TABLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
+    {
+        AUDITED_CLOCK_SOURCE_IMAGE: MappingProxyType(
+            {
+                "toolchain": "tt-metal v0.75.0",
+                "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+                "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
+                "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+                "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+                "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+                "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+                "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+                "cross_core_note": (
+                    "intervals use only the designated consumer core; cross-core "
+                    "correlation is out of scope"
+                ),
+            }
+        )
+    }
+)
+
+
+@dataclass(frozen=True)
+class ResidentFailureClassification:
+    """Kernel failure semantics shared by summary decoding and record building."""
+
+    code: int
+    name: str
+    sources: tuple[str, ...]
+    termination_reason: str | None
+    cycle_budget_exceeded: bool
+    error_flag: bool
+    priority: int
+
+    @classmethod
+    def for_code(cls, code: Any) -> ResidentFailureClassification:
+        if isinstance(code, bool) or not isinstance(code, int):
+            raise TypeError("resident failure code must be an integer")
+        try:
+            return FAILURE_CODES[code]
+        except KeyError as exc:
+            raise ValueError("unknown resident failure code") from exc
+
+
+# This immutable table mirrors every failure constant defined by the resident
+# kernels.  Codes 1--3 stop on the run-wide limit; only code 4 consumes the
+# per-frame fixed-work budget.  Code 5 is producer cancellation propagated from
+# a peer error and is therefore not a budget breach.
+FAILURE_CODE_TABLE: tuple[ResidentFailureClassification, ...] = (
+    ResidentFailureClassification(
+        0, "none", ("none", "producer", "consumer"), None, False, False, 5
+    ),
+    ResidentFailureClassification(
+        1, "run_wide_budget", ("producer", "consumer"), "run_budget", False, True, 3
+    ),
+    ResidentFailureClassification(
+        2, "producer_pacing_wait", ("producer",), "run_budget", False, True, 1
+    ),
+    ResidentFailureClassification(
+        3, "consumer_empty_wait", ("consumer",), "run_budget", False, True, 2
+    ),
+    ResidentFailureClassification(
+        4, "consumer_fixed_work_budget", ("consumer",), "cycle_budget", True, True, 0
+    ),
+    ResidentFailureClassification(
+        5, "other_check", ("producer",), "cancelled", False, True, 4
+    ),
+)
+FAILURE_CODES = MappingProxyType({entry.code: entry for entry in FAILURE_CODE_TABLE})
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
@@ -159,10 +233,114 @@ def _uint32_positive_int(value: Any, name: str) -> int:
     return value
 
 
+def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> list[dict[str, Any]]:
+    """Return the authoritative resident L1 allocation ledger.
+
+    Per-core rows: producer has one producer-anchor page, one producer CB page,
+    and two semaphore words; consumer has the shared ring storage in its L1,
+    one control page, one consumer CB page, and two semaphore words. Shared
+    timestamp and producer/consumer stats tensors are DRAM allocations (zero
+    L1 bytes). Watcher adds no resident tensor/CB/semaphore allocation.
+    Total bytes are the row sum: ``(ring_pages + 4) * PAGE_BYTES + 4 * 4``.
+    """
+    rows = [
+        {
+            "scope": "consumer_core",
+            "component": "ring_storage",
+            "pages": ring_pages,
+            "bytes": ring_pages * PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "control_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "consumer_cb_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "consumer_core",
+            "component": "ready_done_semaphores",
+            "pages": 0,
+            "bytes": 2 * SEMAPHORE_BYTES,
+            "placement": "consumer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "producer_anchor_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "producer_cb_page",
+            "pages": 1,
+            "bytes": PAGE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "producer_core",
+            "component": "free_error_semaphores",
+            "pages": 0,
+            "bytes": 2 * SEMAPHORE_BYTES,
+            "placement": "producer L1",
+        },
+        {
+            "scope": "shared",
+            "component": "timestamps_DRAM",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "DRAM",
+        },
+        {
+            "scope": "shared",
+            "component": "producer_consumer_stats_DRAM",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "DRAM",
+        },
+        {
+            "scope": "shared",
+            "component": "watcher_extra_resident_allocation",
+            "pages": 0,
+            "bytes": 0,
+            "placement": "none",
+        },
+    ]
+    if watcher:
+        rows[-1]["note"] = "Watcher instrumentation adds no host-accounted resident L1 allocation."
+    return rows
+
+
+def resident_l1_allocation_bytes(*, ring_pages: int, watcher: bool = False) -> int:
+    """Return the sum of :func:`resident_l1_allocation_table` bytes."""
+    return sum(row["bytes"] for row in resident_l1_allocation_table(ring_pages=ring_pages, watcher=watcher))
+
+
 def validate_configuration(
     config: ResidentConfig, *, watcher: bool = False
 ) -> ResidentConfig:
-    """Reject unsafe or unbounded configurations before device work."""
+    """Reject unsafe or unbounded configurations before device work.
+
+    The wrap-tracked low-word clock requires every single read gap to remain
+    below ``TIMESTAMP_GAP_LIMIT_TICKS`` (2**31 ticks). Producer pacing and
+    consumer ready-wait loops poll at each configured frame interval; the
+    per-frame budget is also a single-interval bound. The fixed-work loop is
+    bounded using the current-wrap record
+    ``2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json``:
+    observed work max is 1,087 ticks for 64 units, so
+    ``ceil(1087 / 64) * 1.10`` is conservatively rounded to
+    ``WORK_TICKS_PER_UNIT_UPPER_BOUND = 19`` ticks/unit. Finalization adds no
+    timestamp-read gap after the last bounded work/read checkpoint.
+    """
     if not isinstance(config, ResidentConfig):
         raise TypeError("config must be ResidentConfig")
     frame_count = _uint32_positive_int(config.frame_count, "frame_count")
@@ -170,6 +348,18 @@ def validate_configuration(
     ring_pages = _uint32_positive_int(config.ring_pages, "ring_pages")
     work = _uint32_positive_int(config.work_per_frame, "work_per_frame")
     budget = _uint32_positive_int(config.cycle_budget, "cycle_budget")
+    if interval >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"frame_interval_ticks must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if budget >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"cycle_budget must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if work * WORK_TICKS_PER_UNIT_UPPER_BOUND >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            "work_per_frame upper bound would reach the 2**31 wrap-tracked timestamp gap"
+        )
     fixed_work_ticks = _positive_int(
         config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
     )
@@ -197,7 +387,7 @@ def validate_configuration(
         raise ResidentPreflightError(
             "designated_timestamp_core must equal consumer_core; all intervals use one clock"
         )
-    l1_bytes = ring_pages * PAGE_BYTES + 3 * PAGE_BYTES + RESIDENT_SEMAPHORE_COUNT * SEMAPHORE_BYTES
+    l1_bytes = resident_l1_allocation_bytes(ring_pages=ring_pages, watcher=watcher)
     if l1_bytes > MAX_RING_L1_BYTES:
         raise ResidentPreflightError(
             f"ring_pages={ring_pages} exceeds the L1 preflight budget "
@@ -382,18 +572,37 @@ def validate_run_budget_fits_outer_cap(
     return breakdown
 
 
+def validate_failure_check(failure: Mapping[str, Any]) -> ResidentFailureClassification:
+    """Validate a serialized failure and return its authoritative classification."""
+    if not isinstance(failure, Mapping):
+        raise TypeError("failure_check must be an object")
+    classification = ResidentFailureClassification.for_code(failure.get("code"))
+    if failure.get("name") != classification.name:
+        raise ValueError("failure_check code/name mismatch")
+    source = failure.get("source")
+    if source is not None and source not in classification.sources:
+        raise ValueError(
+            f"failure_check source {source!r} is invalid for code {classification.code}"
+        )
+    return classification
+
+
 def failure_name(code: int) -> str:
-    if isinstance(code, bool) or not isinstance(code, int) or code not in FAILURE_CODES:
-        raise ValueError("unknown resident failure code")
-    return FAILURE_CODES[code]
+    return ResidentFailureClassification.for_code(code).name
 
 
 def select_failure_check(*failures: dict[str, Any] | None) -> dict[str, Any]:
     """Select one deterministic failure when producer/consumer report together."""
-    candidates = [failure for failure in failures if failure and failure["name"] != "none"]
+    candidates: list[tuple[ResidentFailureClassification, dict[str, Any]]] = []
+    for failure in failures:
+        if failure is None:
+            continue
+        classification = validate_failure_check(failure)
+        if classification.code != 0:
+            candidates.append((classification, failure))
     if not candidates:
         return {"code": 0, "name": "none", "source": "none"}
-    return min(candidates, key=lambda failure: FAILURE_PRIORITY[failure["name"]])
+    return min(candidates, key=lambda item: item[0].priority)[1]
 
 
 def split_u64(value: int) -> tuple[int, int]:
@@ -404,13 +613,22 @@ def split_u64(value: int) -> tuple[int, int]:
 
 
 def termination_reason(
-    *, frame_count_reached: bool, cycle_budget_hit: bool, outer_timeout: bool
+    *,
+    frame_count_reached: bool,
+    failure_check: Mapping[str, Any] | None = None,
+    outer_timeout: bool,
 ) -> str:
-    """Classify the first terminal condition, with host timeout taking priority."""
+    """Classify the terminal condition, with host timeout taking priority."""
     if outer_timeout:
         return "outer_timeout"
-    if cycle_budget_hit:
-        return "cycle_budget"
+    failure = (
+        {"code": 0, "name": "none", "source": "none"}
+        if failure_check is None
+        else failure_check
+    )
+    classification = validate_failure_check(failure)
+    if classification.termination_reason is not None:
+        return classification.termination_reason
     if frame_count_reached:
         return "frame_count"
     return "running"
@@ -502,11 +720,204 @@ def timestamp_digest(timestamps: Iterable[int]) -> dict[str, Any]:
     return {"count": count, "sha256": digest.hexdigest()}
 
 
-def _require_environment(environment: Mapping[str, Any]) -> None:
-    required = ("board", "firmware", "kmd_version", "image")
-    missing = [name for name in required if not environment.get(name)]
-    if missing:
-        raise ValueError("environment is missing required fields: " + ", ".join(missing))
+@dataclass(frozen=True)
+class RequiredProvenanceField:
+    """One field in the resident record provenance contract."""
+
+    path: str
+    phase: str
+    expected_type: str
+    validator: Callable[[Any], bool]
+
+
+PROVENANCE_PHASE_PREFLIGHT = "preflight"
+PROVENANCE_PHASE_POST_RUN = "post_run"
+
+
+def _is_nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _is_pinned_image(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and re.search(r"@sha256:[0-9a-f]{64}$", value) is not None
+    )
+
+
+def _is_true_boolean(value: Any) -> bool:
+    return value is True
+
+
+def _is_positive_integer(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+# This table is the single source of truth for the fields required to identify
+# a resident run.  Its paths are the paths in the accepted measurement record;
+# the top-level harness_commit entry is also the argument supplied to the run.
+REQUIRED_PROVENANCE_FIELDS: tuple[RequiredProvenanceField, ...] = (
+    RequiredProvenanceField(
+        path="environment.board.serial",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.board.board_type",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.firmware.fw_bundle_version",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.kmd_version",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.image",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type=(
+            "a digest-pinned image string with image_pinned=true and lowercase "
+            "@sha256:<64 hex>"
+        ),
+        validator=_is_pinned_image,
+    ),
+    RequiredProvenanceField(
+        path="environment.image_pinned",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="the boolean true",
+        validator=_is_true_boolean,
+    ),
+    RequiredProvenanceField(
+        path="environment.harness_commit",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="environment.tt_env_active_release",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="harness_commit",
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        expected_type="a non-empty string",
+        validator=_is_nonempty_string,
+    ),
+    RequiredProvenanceField(
+        path="clock.aiclk_mhz",
+        phase=PROVENANCE_PHASE_POST_RUN,
+        expected_type="a positive integer",
+        validator=_is_positive_integer,
+    ),
+)
+
+_MISSING_PROVENANCE_VALUE = object()
+
+
+def _provenance_value(record: Mapping[str, Any], path: str) -> Any:
+    value: Any = record
+    for component in path.split("."):
+        if not isinstance(value, Mapping) or component not in value:
+            return _MISSING_PROVENANCE_VALUE
+        value = value[component]
+    return value
+
+
+def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a canonical environment copy without mutating the input.
+
+    Telemetry names the board serial as ``board_id``.  A present serial is
+    authoritative only when it agrees with a present board ID; a board ID is
+    copied to the canonical ``serial`` field only when that field is absent.
+    Non-mapping board values are left for the required-field table to reject.
+    """
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    normalized = dict(environment)
+    board = normalized.get("board")
+    if not isinstance(board, Mapping):
+        return normalized
+
+    normalized_board = dict(board)
+    has_serial = "serial" in normalized_board
+    has_board_id = "board_id" in normalized_board
+    if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
+        raise ResidentPreflightError(
+            "environment.board.serial and environment.board.board_id must match"
+        )
+    if not has_serial and has_board_id:
+        normalized_board["serial"] = normalized_board["board_id"]
+    normalized["board"] = normalized_board
+    return normalized
+
+
+def _validate_provenance_fields(
+    record: Mapping[str, Any],
+    *,
+    phase: str,
+    fields: Iterable[RequiredProvenanceField] | None = None,
+) -> None:
+    """Validate one phase by iterating the authoritative provenance table."""
+    if not isinstance(record, Mapping):
+        raise TypeError("record must be an object")
+    selected = REQUIRED_PROVENANCE_FIELDS if fields is None else fields
+    for field in selected:
+        if field.phase != phase:
+            continue
+        value = _provenance_value(record, field.path)
+        if value is _MISSING_PROVENANCE_VALUE or not field.validator(value):
+            raise ResidentPreflightError(
+                f"{field.path} is required and must be {field.expected_type}"
+            )
+
+
+def validate_preflight_provenance(
+    *, harness_commit: Any, environment: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Normalize and validate all provenance available before opening a device."""
+    normalized_environment = normalize_environment(environment)
+    _validate_provenance_fields(
+        {"harness_commit": harness_commit, "environment": normalized_environment},
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+    )
+    return normalized_environment
+
+
+def validate_post_run_provenance(record: Mapping[str, Any]) -> None:
+    """Validate provenance that is available only after a run completes."""
+    _validate_provenance_fields(record, phase=PROVENANCE_PHASE_POST_RUN)
+
+
+def validate_post_run_aiclk(aiclk_mhz: Any) -> None:
+    """Validate the observed AICLK before constructing a final record."""
+    validate_post_run_provenance({"clock": {"aiclk_mhz": aiclk_mhz}})
+
+
+def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
+    """Require the immutable image identity using the table's image validators."""
+    if not isinstance(environment, Mapping):
+        raise TypeError("environment must be an object")
+    _validate_provenance_fields(
+        {"environment": environment},
+        phase=PROVENANCE_PHASE_PREFLIGHT,
+        fields=(
+            field
+            for field in REQUIRED_PROVENANCE_FIELDS
+            if field.path.startswith("environment.image")
+        ),
+    )
 
 
 def _safe_trace_name(power_trace: str | None) -> str | None:
@@ -518,17 +929,76 @@ def _safe_trace_name(power_trace: str | None) -> str | None:
     return power_trace
 
 
-def _source_evidence() -> dict[str, Any]:
+def _telemetry_sampler(environment: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the sampler metadata, defaulting legacy records to 2 seconds."""
+    raw_sampler = environment.get("telemetry_sampler")
+    if raw_sampler is None:
+        return {
+            "mode": "default",
+            "interval_seconds": 2.0,
+            "power_trace": "required",
+            "timing_evidence": "available",
+        }
+    if not isinstance(raw_sampler, Mapping):
+        raise ValueError("environment telemetry_sampler metadata is required")
+    sampler = dict(raw_sampler)
+    mode = sampler.get("mode")
+    if mode not in {"off", "default", "explicit"}:
+        raise ValueError("environment telemetry_sampler mode is required")
+    interval = sampler.get("interval_seconds")
+    if mode == "off":
+        if interval is not None:
+            raise ValueError("sampler-off metadata must not carry an interval")
+    elif (
+        isinstance(interval, bool)
+        or not isinstance(interval, (int, float))
+        or not math.isfinite(float(interval))
+        or float(interval) <= 0
+    ):
+        raise ValueError("sampled telemetry metadata must carry a positive interval")
+    return sampler
+
+
+def _validate_sampler_trace(environment: Mapping[str, Any], power_trace: str | None) -> dict[str, Any]:
+    sampler = _telemetry_sampler(environment)
+    sampler_off = sampler["mode"] == "off"
+    if sampler_off != (power_trace is None):
+        raise ValueError(
+            "sampler-off records must omit the power trace, and sampled records must name it"
+        )
+    return sampler
+
+
+def validate_record_inputs(
+    *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str | None
+) -> None:
+    """Validate record provenance before resident device execution."""
+    normalized_environment = validate_preflight_provenance(
+        harness_commit=harness_commit, environment=environment
+    )
+    _validate_sampler_trace(normalized_environment, power_trace)
+    _safe_trace_name(power_trace)
+
+
+def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
+    """Return the immutable clock-source audit entry for one exact image."""
+    if not isinstance(image, str):
+        return None
+    return CLOCK_SOURCE_AUDIT_TABLE.get(image)
+
+
+def _source_evidence(image: Any) -> dict[str, Any]:
+    audited = clock_source_audit_for_image(image)
+    if audited is None:
+        return {
+            "image": image,
+            "audit_status": "unaudited",
+            "diagnostic": CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
+        }
     return {
-        "toolchain": "tt-metal v0.75.0",
-        "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
-        "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
-        "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
-        "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
-        "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
-        "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
-        "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
-        "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope",
+        **audited,
+        "image": image,
+        "audit_status": "audited",
     }
 
 
@@ -539,7 +1009,6 @@ def build_measurement_record(
     timestamps: Iterable[int],
     producer_full_count: int,
     consumer_empty_count: int,
-    cycle_budget_hit: bool,
     kernel_error_flag: int,
     harness_commit: str,
     environment: Mapping[str, Any],
@@ -547,6 +1016,7 @@ def build_measurement_record(
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
+    aborted_attempts: int = 0,
     failure_check: Mapping[str, Any] | None = None,
     startup_ticks: int | None = None,
     startup_ticks_valid: bool = False,
@@ -555,38 +1025,74 @@ def build_measurement_record(
     watcher: bool = False,
     timing_evidence: bool = True,
 ) -> dict[str, Any]:
-    """Build the committed-schema record without retaining raw timestamps."""
+    """Build the committed-schema record without retaining raw timestamps.
+
+    Counter protocol (the current producer/consumer semaphore contract):
+    ``ready_count`` is the cumulative producer-ready value and equals
+    ``produced_frame_count``; the consumer increments the cumulative free value
+    once per consumed timestamp, so ``consumed_frame_count`` is its value at
+    final download. A normal run satisfies
+    ``attempted = produced + dropped``, ``aborted_attempts = 0``, and
+    ``consumed = produced``. An error run may stop during one started cadence
+    attempt and satisfies ``attempted = produced + dropped + aborted_attempts``
+    with ``aborted_attempts`` constrained to 0 or 1; it still requires
+    ``consumed <= produced`` and final ring occupancy ``produced - consumed``
+    no greater than ``ring_pages``. Producer pacing-budget, consumer fixed-work
+    budget, consumer ready-wait, producer cancellation/other, and run-budget
+    failures all use this same relation; drop-new attempts contribute only to
+    ``dropped`` and never overwrite ring data.
+    """
     config = validate_configuration(config, watcher=watcher)
-    if isinstance(aiclk_mhz, bool) or not isinstance(aiclk_mhz, int) or aiclk_mhz <= 0:
-        raise ValueError("aiclk_mhz must be a positive integer")
-    if not isinstance(harness_commit, str) or not harness_commit.strip():
-        raise ValueError("harness_commit is required")
-    _require_environment(environment)
-    sampler = environment.get("telemetry_sampler", {"mode": "default", "interval_seconds": 2.0})
-    if not isinstance(sampler, Mapping) or sampler.get("mode") not in {"off", "default", "explicit"}:
-        raise ValueError("environment telemetry_sampler mode is required")
-    sampler = dict(sampler)
+    normalized_environment = validate_preflight_provenance(
+        harness_commit=harness_commit, environment=environment
+    )
+    sampler = _validate_sampler_trace(normalized_environment, power_trace)
     sampler_off = sampler["mode"] == "off"
-    if sampler_off != (power_trace is None):
-        raise ValueError("sampler-off records must omit the power trace, and sampled records must name it")
+    selected_image = normalized_environment["image"]
+    clock_source_audit = clock_source_audit_for_image(selected_image)
+    source_evidence = _source_evidence(selected_image)
+    validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
         raise ValueError("producer_full_count must be non-negative")
     if isinstance(consumer_empty_count, bool) or consumer_empty_count < 0:
         raise ValueError("consumer_empty_count must be non-negative")
     if kernel_error_flag not in (0, 1, False, True):
         raise ValueError("kernel_error_flag must be a boolean or 0/1")
+    selected_failure = (
+        dict(failure_check)
+        if failure_check is not None
+        else select_failure_check()
+    )
+    classification = validate_failure_check(selected_failure)
+    if classification.code != 0 and any(
+        field not in selected_failure for field in ("elapsed_ticks", "limit_ticks", "unit")
+    ):
+        raise ValueError("failure_check must serialize elapsed and limit units")
+    if bool(kernel_error_flag) != classification.error_flag:
+        raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
     if (
-        any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (attempted, produced, dropped))
+        any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in (attempted, produced, dropped)
+        )
         or produced < len(timestamp_values)
         or produced > attempted
-        or dropped != attempted - produced
+        or dropped < 0
     ):
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
+    if (
+        isinstance(aborted_attempts, bool)
+        or not isinstance(aborted_attempts, int)
+        or aborted_attempts not in (0, 1)
+    ):
+        raise ValueError("aborted_attempts must be an integer 0 or 1")
+    if producer_full_count != dropped:
+        raise ValueError("producer_full_count must equal dropped_frame_count")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))
@@ -594,16 +1100,25 @@ def build_measurement_record(
     frame_count_reached = attempted == config.frame_count and produced == attempted - dropped
     reason = termination_reason(
         frame_count_reached=frame_count_reached and produced == len(timestamp_values),
-        cycle_budget_hit=bool(cycle_budget_hit),
+        failure_check=selected_failure,
         outer_timeout=False,
     )
     if reason == "running":
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
+    failure_hint = classification.error_flag
+    if failure_hint:
+        if attempted != produced + dropped + aborted_attempts:
+            raise ValueError("error counter relation requires attempted=produced+dropped+aborted_attempts")
+    elif aborted_attempts != 0 or attempted != produced + dropped:
+        raise ValueError("normal counter relation requires attempted=produced+dropped and aborted_attempts=0")
+    consumed = len(timestamp_values)
+    if consumed > produced or produced - consumed > config.ring_pages:
+        raise ValueError("produced, consumed, and ring occupancy counters are inconsistent")
     completed = (
-        not cycle_budget_hit
-        and not kernel_error_flag
+        not failure_hint
         and frame_count_reached
+        and aborted_attempts == 0
         and produced == len(timestamp_values)
     )
     if completed and dropped:
@@ -615,15 +1130,6 @@ def build_measurement_record(
     stats["sample_definition"] = (
         "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
     )
-    selected_failure = dict(failure_check) if failure_check is not None else select_failure_check()
-    if "name" not in selected_failure or "code" not in selected_failure:
-        raise ValueError("failure_check must contain code and name")
-    if failure_name(selected_failure["code"]) != selected_failure["name"]:
-        raise ValueError("failure_check code/name mismatch")
-    if selected_failure["name"] != "none" and any(
-        field not in selected_failure for field in ("elapsed_ticks", "limit_ticks", "unit")
-    ):
-        raise ValueError("failure_check must serialize elapsed and limit units")
     if startup_ticks is not None and (
         isinstance(startup_ticks, bool) or not isinstance(startup_ticks, int) or startup_ticks < 0
     ):
@@ -653,6 +1159,7 @@ def build_measurement_record(
             "attempted_frame_count": attempted,
             "produced_frame_count": produced,
             "dropped_frame_count": dropped,
+            "aborted_attempts": aborted_attempts,
             "frame_interval_is_not_acquisition_rate_claim": True,
             "frame_interval_note": (
                 "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
@@ -680,13 +1187,13 @@ def build_measurement_record(
                 "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
                 "core": list(config.producer_core),
                 "reason": (
-                    "The producer and consumer call get_timestamp() on different cores. "
+                    "The producer and consumer call get_timestamp_32b() on different cores. "
                     "The source has no same-designated-core producer stamp without changing "
                     "the pacing kernel, so producer-versus-consumer attribution remains open."
                 ),
             },
         },
-        "clock_source_evidence": _source_evidence(),
+        "clock_source_evidence": source_evidence,
         "work_ticks": {
             "minimum": work_min_ticks,
             "maximum": work_max_ticks,
@@ -711,6 +1218,7 @@ def build_measurement_record(
             "produced_frame_count": produced,
             "consumed_frame_count": len(timestamp_values),
             "dropped_frame_count": dropped,
+            "aborted_attempts": aborted_attempts,
             "overflow_count": int(producer_full_count),
             "synchronization": "ring pointers and control metadata only",
             "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
@@ -721,18 +1229,23 @@ def build_measurement_record(
             "unit": "device_clock_ticks",
             "scope": "per_frame_fixed_work",
             "run_budget_ticks": run_budget_breakdown(config, watcher=watcher)["run_budget_ticks"],
-            "exceeded": bool(cycle_budget_hit),
-            "error_flag": int(bool(kernel_error_flag)),
+            "exceeded": classification.cycle_budget_exceeded,
+            "error_flag": int(classification.error_flag),
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
         "power_trace_absent_reason": "sampler_off_by_design" if sampler_off else None,
         "telemetry_sampler": sampler,
-        "environment": dict(environment),
+        "environment": normalized_environment,
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
         "timing_evidence": bool(
-            timing_evidence and not sampler_off and completed and dropped == 0
+            clock_source_audit is not None
+            and not sampler_off
+            and not watcher
+            and timing_evidence
+            and completed
+            and dropped == 0
         ),
     }
 
@@ -751,33 +1264,56 @@ def build_rejection_record(
         "rejection_reason": reason,
         "parameters": config.as_record(),
         "frame_interval_is_not_acquisition_rate_claim": True,
-        "clock_source_evidence": _source_evidence(),
+        "clock_source_evidence": _source_evidence(
+            environment.get("image") if isinstance(environment, Mapping) else None
+        ),
     }
     if environment:
-        result["environment"] = dict(environment)
+        result["environment"] = (
+            dict(environment) if isinstance(environment, Mapping) else environment
+        )
     return result
 
 
 __all__ = [
+    "AUDITED_CLOCK_SOURCE_IMAGE",
+    "CLOCK_SOURCE_AUDIT_TABLE",
+    "CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC",
+    "CURRENT_WRAP_OBSERVED_WORK_MAX_TICKS",
+    "CURRENT_WRAP_WORK_PER_FRAME",
+    "FAILURE_CODES",
+    "FAILURE_CODE_TABLE",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
+    "PROVENANCE_PHASE_POST_RUN",
+    "PROVENANCE_PHASE_PREFLIGHT",
+    "REQUIRED_PROVENANCE_FIELDS",
     "RESIDENT_SEMAPHORE_COUNT",
     "SEMAPHORE_BYTES",
+    "TIMESTAMP_GAP_LIMIT_TICKS",
     "UINT32_MAX",
+    "WORK_TICKS_MARGIN_PERCENT",
+    "WORK_TICKS_PER_UNIT_UPPER_BOUND",
+    "RequiredProvenanceField",
     "ResidentConfig",
+    "ResidentFailureClassification",
     "ResidentPreflightError",
     "RingAccounting",
     "build_measurement_record",
     "build_rejection_record",
+    "clock_source_audit_for_image",
     "cycle_budget_exceeded",
     "failure_name",
     "frame_interval_statistics",
     "interval_ticks_for_microseconds",
+    "normalize_environment",
     "periodic_gap_decomposition",
     "required_samples_for_percentile",
+    "resident_l1_allocation_bytes",
+    "resident_l1_allocation_table",
     "run_budget_breakdown",
     "run_budget_exceeded",
     "select_failure_check",
@@ -787,6 +1323,12 @@ __all__ = [
     "ticks_to_seconds",
     "timestamp_digest",
     "validate_configuration",
+    "validate_failure_check",
+    "validate_pinned_environment",
+    "validate_post_run_aiclk",
+    "validate_post_run_provenance",
+    "validate_preflight_provenance",
+    "validate_record_inputs",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]

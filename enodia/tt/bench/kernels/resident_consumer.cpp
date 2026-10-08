@@ -81,8 +81,12 @@ void kernel_main() {
         invalidate_l1_cache();
         const std::uint32_t required = frames_consumed + 1;
         const std::uint32_t ready_count = *ready_sem;
-        if (*done_sem != 0 && ready_count == frames_consumed) {
-            break;
+        if (*done_sem != 0) {
+            invalidate_l1_cache();
+            const std::uint32_t fresh_ready_count = *ready_sem;
+            if (fresh_ready_count == frames_consumed) {
+                break;
+            }
         }
         auto* payload = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
             ring_address + (frames_consumed % ring_pages) * page_words * sizeof(std::uint32_t));
@@ -91,8 +95,12 @@ void kernel_main() {
         }
         while (*ready_sem < required) {
             invalidate_l1_cache();
-            if (*done_sem != 0 && *ready_sem == frames_consumed) {
-                break;
+            if (*done_sem != 0) {
+                invalidate_l1_cache();
+                const std::uint32_t fresh_ready_count = *ready_sem;
+                if (fresh_ready_count == frames_consumed) {
+                    break;
+                }
             }
             if (clock.read() - run_start >= run_budget_ticks) {
                 error_flag = 1;
@@ -109,8 +117,12 @@ void kernel_main() {
         }
         invalidate_l1_cache();
         if (*ready_sem < required) {
-            if (*done_sem != 0 && *ready_sem == frames_consumed) {
-                break;
+            if (*done_sem != 0) {
+                invalidate_l1_cache();
+                const std::uint32_t fresh_ready_count = *ready_sem;
+                if (fresh_ready_count == frames_consumed) {
+                    break;
+                }
             }
             if (error_flag != 0) {
                 break;

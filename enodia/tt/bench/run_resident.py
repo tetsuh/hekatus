@@ -24,14 +24,17 @@ from enodia.tt.bench.resident_harness import (
     PAGE_BYTES,
     PAGE_WORDS,
     ResidentConfig,
+    ResidentFailureClassification,
     ResidentPreflightError,
     build_measurement_record,
     build_rejection_record,
-    failure_name,
     run_budget_breakdown,
     select_failure_check,
     split_u64,
     validate_configuration,
+    validate_failure_check,
+    validate_post_run_aiclk,
+    validate_record_inputs,
     validate_run_budget_fits_outer_cap,
 )
 
@@ -218,15 +221,18 @@ def _program(
 
 def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
     code = int(values[base])
-    return {
+    classification = ResidentFailureClassification.for_code(code)
+    failure = {
         "code": code,
-        "name": failure_name(code),
+        "name": classification.name,
         "source": source,
         "elapsed_ticks": int(values[base + 1]) | (int(values[base + 2]) << 32),
         "limit_ticks": int(values[base + 3]) | (int(values[base + 4]) << 32),
         "unit": "device_clock_ticks",
         "valid": bool(values[base + 5]),
     }
+    validate_failure_check(failure)
+    return failure
 
 
 def _download(ttnn: Any, tensor):
@@ -311,15 +317,20 @@ def _run_device(
             | (int(timestamp_values[index, 0, 0, 1]) << 32)
             for index in range(frames_consumed)
         ]
+        failure_check = select_failure_check(producer_failure, consumer_failure)
+        failure_classification = validate_failure_check(failure_check)
+        kernel_error_flag = int(bool(producer_values[2] or consumer_values[2]))
+        if kernel_error_flag != int(failure_classification.error_flag):
+            raise ValueError("kernel summary error flags disagree with failure code")
         return {
             "timestamps": raw_timestamps,
             "producer_full_count": int(producer_values[0]),
             "consumer_empty_count": int(consumer_values[0]),
-            "cycle_budget_hit": bool(producer_values[2] or consumer_values[2]),
-            "kernel_error_flag": int(bool(producer_values[2] or consumer_values[2])),
+            "kernel_error_flag": kernel_error_flag,
             "frames_attempted": int(producer_values[3]),
             "frames_produced": int(producer_values[1]),
             "frames_dropped": int(producer_values[4]),
+            "frames_aborted": int(producer_values[3]) - int(producer_values[1]) - int(producer_values[4]),
             "frames_consumed": int(consumer_values[1]),
             "startup_ticks": int(consumer_values[4])
             | (int(consumer_values[5]) << 32),
@@ -329,7 +340,7 @@ def _run_device(
             "work_ticks_valid": bool(consumer_values[17]),
             "producer_failure": producer_failure,
             "consumer_failure": consumer_failure,
-            "failure_check": select_failure_check(producer_failure, consumer_failure),
+            "failure_check": failure_check,
         }
     finally:
         for tensor in tensors.values():
@@ -409,6 +420,25 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
+def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
+    """Build the resident configuration without importing or opening TTNN."""
+    timestamp_core = args.timestamp_core or args.consumer_core
+    return ResidentConfig(
+        frame_count=args.frame_count,
+        frame_interval_ticks=args.frame_interval_ticks,
+        producer_core=args.producer_core,
+        consumer_core=args.consumer_core,
+        ring_pages=args.ring_pages,
+        work_per_frame=args.work_per_frame,
+        designated_timestamp_core=timestamp_core,
+        cycle_budget=args.cycle_budget,
+        outer_timeout_seconds=args.outer_timeout_seconds,
+        fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
+        budget_aiclk_mhz=args.budget_aiclk_mhz,
+        histogram_bin_ticks=args.histogram_bin_ticks,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--out", type=Path, required=True)
@@ -444,23 +474,13 @@ def main(argv: list[str] | None = None) -> int:
     trace_aiclk = _power_trace_aiclk_values(power_trace)
     if trace_aiclk:
         environment["aiclk_mhz_observed"] = sorted(set(trace_aiclk))
-    aiclk_mhz = _power_aiclk(power_trace, environment)
-    timestamp_core = args.timestamp_core or args.consumer_core
-    config = ResidentConfig(
-        frame_count=args.frame_count,
-        frame_interval_ticks=args.frame_interval_ticks,
-        producer_core=args.producer_core,
-        consumer_core=args.consumer_core,
-        ring_pages=args.ring_pages,
-        work_per_frame=args.work_per_frame,
-        designated_timestamp_core=timestamp_core,
-        cycle_budget=args.cycle_budget,
-        outer_timeout_seconds=args.outer_timeout_seconds,
-        fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
-        budget_aiclk_mhz=args.budget_aiclk_mhz,
-        histogram_bin_ticks=args.histogram_bin_ticks,
-    )
+    config = _config_from_args(args)
     try:
+        validate_record_inputs(
+            harness_commit=environment.get("harness_commit"),
+            environment=environment,
+            power_trace=power_trace,
+        )
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
@@ -483,16 +503,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.raw_timestamps_out is not None:
         _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
+    aiclk_mhz = _power_aiclk(power_trace, environment)
+    validate_post_run_aiclk(aiclk_mhz)
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],
-        cycle_budget_hit=result["cycle_budget_hit"],
         attempted_frame_count=result["frames_attempted"],
         produced_frame_count=result["frames_produced"],
         dropped_frame_count=result["frames_dropped"],
+        aborted_attempts=result["frames_aborted"],
         startup_ticks=result["startup_ticks"],
         startup_ticks_valid=result["startup_ticks_valid"],
         work_min_ticks=result["work_min_ticks"] if result["work_ticks_valid"] else None,
@@ -504,12 +526,11 @@ def main(argv: list[str] | None = None) -> int:
         power_trace=power_trace,
         watcher=watcher,
         timing_evidence=(
-            environment.get("telemetry_sampler", {}).get("mode") != "off"
-            and not watcher
+            not watcher
             and result["frames_attempted"] == config.frame_count
             and result["frames_consumed"] == result["frames_produced"]
             and result["frames_dropped"] == 0
-            and not result["cycle_budget_hit"]
+            and not validate_failure_check(result["failure_check"]).error_flag
         ),
     )
     record["frames_produced"] = result["frames_produced"]

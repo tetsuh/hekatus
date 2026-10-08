@@ -1962,7 +1962,11 @@ versus 27 pairs before the low-word-only 32-bit read with software wrap tracking
 A shared tile latch being overwritten remains a hypothesis inferred from the
 evidence, not a proven mechanism. There is still no direct same-clock
 producer-write stamp, so this attribution is resolved only to the level supported
-by the PR #103 experiment; it makes no broader firmware or consumer claim.
+by the PR #103 experiment; it makes no broader firmware or consumer claim. The
+current-wrap 500,000-frame record is the intermediate controlled comparison;
+the final accepted Stage 1 authority is the corrected-drain
+`docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json`
+record, which also reports zero paired outliers.
 
 ---
 
