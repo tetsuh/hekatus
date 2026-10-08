@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from enodia.tt.bench.resident_clock import (
+    AICLK_SOURCE_LEGACY_UNVERIFIED,
     select_elapsed_aiclk,
     ticks_to_seconds,
 )
@@ -32,6 +33,7 @@ from enodia.tt.bench.resident_record import (
     PAIR_ORDERS,  # noqa: F401 - preserve analyzer module API
     PAIR_TARGET_TICKS,  # noqa: F401 - preserve analyzer module API
     PAIR_TOLERANCE_TICKS,  # noqa: F401 - preserve analyzer module API
+    RESIDENT_RECORD_SCHEMA_MARKER,
     SHORT_THRESHOLD_TICKS,  # noqa: F401 - preserve analyzer module API
     _count_orders,
     _detect_pairs,  # noqa: F401 - preserve analyzer module API
@@ -175,7 +177,13 @@ def analyze_run(
     trace_metadata: Mapping[str, Any] | None = None,
     phase_window_ms: float = DEFAULT_PHASE_WINDOW_MS,
 ) -> dict[str, Any]:
-    """Return board-free wrap, pair-order, and record-correspondence analysis."""
+    """Return board-free wrap, pair-order, and record-correspondence analysis.
+
+    Historical sampled records may lack run bounds and AICLK provenance.  For
+    those out-of-scope records only, their persisted ``clock.aiclk_mhz`` is
+    used as explicitly unverified elapsed-time provenance; it never supports
+    timing evidence.
+    """
     if len(timestamps) < 3:
         raise ValueError("at least three timestamps are required")
     if raw_metadata.get("count") != len(timestamps):
@@ -208,12 +216,24 @@ def analyze_run(
         if isinstance(trace_metadata, Mapping)
         else (_record_aiclk_mhz(record) if trace_source == "run_trace_samples" else None)
     )
+    current_runner_record = (
+        type(record.get("resident_record_schema")) is int
+        and record.get("resident_record_schema") == RESIDENT_RECORD_SCHEMA_MARKER
+    )
+    historical_legacy_aiclk = (
+        _record_aiclk_mhz(record) if not current_runner_record else None
+    )
     legacy_aiclk = (
-        aiclk_mhz
+        historical_legacy_aiclk or aiclk_mhz
         if sampler_mode in {"default", "explicit"}
         and trace_source != "run_trace_samples"
         and trace_metadata is None
         else None
+    )
+    legacy_aiclk_source = (
+        AICLK_SOURCE_LEGACY_UNVERIFIED
+        if historical_legacy_aiclk is not None
+        else (trace_source or AICLK_SOURCE_LEGACY_UNVERIFIED)
     )
     aiclk_selection = select_elapsed_aiclk(
         budget_aiclk_mhz=configured_aiclk,
@@ -221,7 +241,7 @@ def analyze_run(
         trace_aiclk_mhz=trace_aiclk,
         trace_aiclk_source=trace_source,
         legacy_aiclk_mhz=legacy_aiclk,
-        legacy_aiclk_source=trace_source or "legacy_unverified",
+        legacy_aiclk_source=legacy_aiclk_source,
     )
     aiclk_mhz = aiclk_selection["aiclk_mhz"]
     aiclk_source = aiclk_selection["aiclk_source"]

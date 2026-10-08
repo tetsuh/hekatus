@@ -22,6 +22,7 @@ from enodia.tt.bench.resident_record import (
     REQUIRED_SAMPLER_GAP_FIELDS,
     RESIDENT_INVARIANT_CATALOG,
     RESIDENT_RECORD_FIELD_MATRIX,
+    RESIDENT_RECORD_SCHEMA_MARKER,
     TIMING_EVIDENCE_COMPATIBILITY_BRANCHES,
     TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES,
     build_outlier_analysis,
@@ -98,9 +99,12 @@ def _valid_record(
         run_end=RUN_END,
         timing_evidence=True,
     )
-    assert validate_resident_record(
+    report = validate_resident_record(
         record, timestamps=timestamps, power_trace_path=trace
-    )["valid"]
+    )
+    assert report["valid"] is True
+    assert report["out_of_scope"] is not True
+    assert record["resident_record_schema"] == RESIDENT_RECORD_SCHEMA_MARKER
     return record, trace, timestamps
 
 
@@ -306,15 +310,41 @@ def test_unknown_modern_fields_are_warnings_and_do_not_reject_the_record(
     assert "environment.unexpected_field" in report["warning_fields"]
 
 
-def test_historical_unknown_fields_are_warnings_without_rewriting_the_record():
-    path = Path("docs/measurements/2026-10-06-p150a-issue104-sampler-off.json")
+@pytest.mark.parametrize(
+    "path",
+    [
+        Path("docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json"),
+        Path("docs/measurements/2026-10-06-p150a-issue104-sampler-off.json"),
+        Path("docs/measurements/2026-10-06-p150a-issue104-sampler-default.json"),
+        Path("docs/measurements/2026-10-06-p150a-issue104-sampler-5s.json"),
+    ],
+    ids=["issue12-final", "issue104-sampler-off", "issue104-sampler-default", "issue104-sampler-5s"],
+)
+def test_historical_records_are_out_of_scope_without_rewriting_the_record(path: Path):
     record = json.loads(path.read_text())
-    assert validate_resident_record(record)["valid"]
-    candidate = copy.deepcopy(record)
-    candidate["unexpected_historical_field"] = True
-    report = validate_resident_record(candidate)
-    assert report["valid"]
-    assert "unexpected_historical_field" in report["warning_fields"]
+
+    report = validate_resident_record(record)
+
+    assert report["out_of_scope"] is True
+    assert report["classification"] == "out_of_scope"
+    assert report["valid"] is True
+    assert report["timing_evidence"] is False
+    assert report["mismatches"] == []
+
+
+def test_missing_or_different_runner_marker_is_out_of_scope(tmp_path: Path):
+    record, _trace, _timestamps = _valid_record(tmp_path)
+
+    missing = copy.deepcopy(record)
+    del missing["resident_record_schema"]
+    different = copy.deepcopy(record)
+    different["resident_record_schema"] = RESIDENT_RECORD_SCHEMA_MARKER + 1
+
+    for candidate in (missing, different):
+        report = validate_resident_record(candidate)
+        assert report["out_of_scope"] is True
+        assert report["classification"] == "out_of_scope"
+        assert report["valid"] is True
 
 
 def test_failure_code_zero_is_canonical_and_failure_mutations_force_non_timing(

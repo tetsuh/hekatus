@@ -48,35 +48,25 @@ protocol fix, so these runs must not be described as having used that fix.
 ### Issue #104 invariant revalidation
 
 The shared board-free `validate_resident_record` field matrix and invariant
-catalog in `enodia/tt/bench/resident_record.py` were run against all three
-committed Issue #104 JSON records and their committed companion CSVs without
-rewriting either data format. The validator guarantees required field
-presence/type/range and major relationships; undeclared telemetry or
-production fields are retained and reported as warnings rather than rejected.
-Full record-kind consistency and agreement between declared coverage flags and
-parsed trace facts are deferred to Issue #110. Revalidation therefore reports
-added fields without rewriting the historical JSON or CSV.
-The sampler-off record passes the diagnostic structural checks:
-its trace is absent by design and `timing_evidence=false`; its elapsed-seconds
-fields are interpreted with the configured `parameters.budget_aiclk_mhz` of
-1,350 MHz, not the 800 MHz pre-run environment snapshot. The record's elapsed
-seconds and `aiclk_mhz_for_elapsed_seconds` are therefore revalidated as
-configured-clock values without selecting that snapshot. Its raw timestamp
-hash cannot be rechecked or recomputed from retained bytes because the
-referenced external `raw-timestamps.bin` is not committed. The immutable JSON
-and CSV leaves are unchanged. It is not timing evidence. The sampled records
-remain invalid under the strict catalog even though their CSV bytes are
-readable and their declared sample counts and SHA-256 values match: 181 rows
-and `0c3b8f1893bc329004c4c0a5a59a76d572ff479d04f686c03effb6b110f41b7b` for
-`2026-10-06-p150a-issue104-sampler-default.json`, and 77 rows and
-`f728f53d7f64bf3a599d9abfc85161e7d66d17794c723d8f19a792f2839b6f50` for
-`2026-10-06-p150a-issue104-sampler-5s.json`. Both sampled JSON records lack
-explicit `run_start`/`run_end` bounds, valid-row counts, and in-run AICLK
-provenance, so their first/last coverage and timing AICLK are unverifiable
-under the PR #109 rule; their committed `timing_evidence=true` therefore does
-not pass the gate. The same external raw-timestamp-byte limitation applies to
-both sampled records, although their committed `raw_timestamps.count=400000`
-and `histogram.N=399999` satisfy the count relationship.
+catalog in `enodia/tt/bench/resident_record.py` are scoped to records written
+by the current runner, which carry top-level `resident_record_schema: 1`.
+The final Issue #12 evidence record and all three committed Issue #104 records
+predate that marker, so validation reports them as `out_of_scope` historical
+records rather than invalid records. No JSON or CSV leaf is rewritten. A new
+runner-shaped record still receives the ordinary required-field, type/range,
+and relationship checks; full record-kind consistency and agreement between
+declared coverage flags and parsed trace facts remain deferred to Issue #110.
+
+The board-free analyzer still analyzes the two historical sampled records even
+though they have no explicit `run_start`/`run_end` bounds or persisted
+`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as
+`legacy_unverified` elapsed-time provenance. It never selects an environment
+snapshot AICLK, and this historical path is not timing evidence. The historical
+sampler-off record uses its configured budget AICLK for elapsed-time display and
+remains diagnostic-only. The external raw-timestamp-byte limitation applies to
+all three records because the referenced `raw-timestamps.bin` files are not
+committed, although the sampled records retain their committed count and
+histogram relationships.
 
 The wrap analysis gives `2^32 / 1,350,000,000 = 3.1814572563` seconds,
 or 3,181.4572563 configured 1-ms frames, so a frame-gap gcd of 1 does not

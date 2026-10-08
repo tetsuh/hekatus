@@ -40,6 +40,7 @@ from enodia.tt.bench.resident_record import (
     FAILURE_CODES,
     RESIDENT_INVARIANT_CATALOG,
     RESIDENT_RECORD_SCHEMA,
+    RESIDENT_RECORD_SCHEMA_MARKER,
     TIMING_EVIDENCE_ERROR_RECORD_REASON,
     TIMING_EVIDENCE_NOT_REQUESTED,
     TIMING_EVIDENCE_REJECTED_RECORD_REASON,
@@ -1363,7 +1364,8 @@ def build_measurement_record(
     # against the actual trace, coverage, provenance, and sampler invariants.
     timing_ok = timing_evidence is True and not error_record
     record = {
-        "schema": "issue-12-stage-1-resident-v1",
+        "resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
+        "schema": RESIDENT_RECORD_SCHEMA,
         "issue": 12,
         "stage": 1,
         "status": status,
@@ -1563,6 +1565,7 @@ def build_rejection_record(
         "aborted_attempts": 0,
     }
     result: dict[str, Any] = {
+        "resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
         "schema": RESIDENT_RECORD_SCHEMA,
         "issue": 12,
         "stage": 1,

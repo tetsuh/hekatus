@@ -47,11 +47,12 @@ the catalog are:
   bytes, basename-only compatibility input, invalid or incomplete traces, a
   clock mismatch, or any corresponding provenance mismatch.  A builder call
   may force the claim false and retain a machine-readable reason; an analyzer
-  call reports the mismatch without mutating its input.  The three committed
-  ADR-0005 Issue #104 records retain their older schema: the historical pair
-  field skip is structural only, and sampled records still fail strict
-  trace-coverage/AICLK validation.  No compatibility skip bypasses this timing
-  gate.
+  call reports the mismatch without mutating its input.  Validation is scoped
+  to records carrying the current runner marker; records without that marker
+  are classified as out_of_scope rather than being treated as invalid.  The
+  historical analyzer may use a persisted record clock as explicitly
+  unverified elapsed-time provenance, but it never turns that into timing
+  evidence.
 
 Compatibility skips are deliberately narrow and are listed in
 ``TIMING_EVIDENCE_COMPATIBILITY_BRANCHES``: historical ADR-0005 pair fields
@@ -145,6 +146,7 @@ TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
 _MISSING = object()
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
+RESIDENT_RECORD_SCHEMA_MARKER = 1
 RECORD_KIND_SAMPLED_TIMING = "sampled_timing"
 RECORD_KIND_SAMPLER_OFF = "sampler_off"
 RECORD_KIND_ERROR = "error"
@@ -1269,6 +1271,8 @@ def _iter_record_paths(value: Any, prefix: str = "") -> Iterable[str]:
 def _known_record_path(path: str, kind: str) -> bool:
     """Return whether one concrete path is in the required/allowed matrix."""
     normalized = re.sub(r"\[\d+\]", "[]", path)
+    if normalized == "resident_record_schema":
+        return True
     known = {str(field) for field in RESIDENT_RECORD_FIELD_MATRIX[kind]}
     known.update(RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS[kind])
     known.update(str(field) for field in PAIR_FIELD_SPECS.values())
@@ -3402,6 +3406,36 @@ def _apply_builder_timing_policy(
                 provenance["timing_evidence_reason"] = record["timing_evidence_reason"]
 
 
+def _out_of_scope_report(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Report records written outside the current runner validation scope."""
+    actual_marker = record.get("resident_record_schema", _MISSING)
+    marker_text = "missing" if actual_marker is _MISSING else repr(actual_marker)
+    return {
+        "valid": True,
+        "out_of_scope": True,
+        "classification": "out_of_scope",
+        "reason": (
+            "resident_record_schema marker must be "
+            f"{RESIDENT_RECORD_SCHEMA_MARKER}; got {marker_text}"
+        ),
+        "resident_record_schema": (
+            None if actual_marker is _MISSING else actual_marker
+        ),
+        "expected_resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
+        "timing_evidence": False,
+        "mismatches": [],
+        "failures": [],
+        "warnings": [],
+        "warning_fields": [],
+        "checks": {},
+        "catalog": [
+            {"name": entry.name, "fields": list(entry.fields), "description": entry.description}
+            for entry in RESIDENT_INVARIANT_CATALOG
+        ],
+        "power_trace": None,
+    }
+
+
 def validate_resident_record(
     record: Mapping[str, Any],
     *,
@@ -3415,11 +3449,12 @@ def validate_resident_record(
     strict_trace: bool = True,
     raise_on_error: bool | None = None,
 ) -> dict[str, Any]:
-    """Validate one record through the table-driven invariant catalog.
+    """Validate one current-runner record through the invariant catalog.
 
-    The modern record-kind field matrix runs before value and relationship
-    checks; only the explicitly named historical branches skip fields.
-    Unknown telemetry and production paths are retained as warnings, while
+    Records without the current ``resident_record_schema`` marker are returned
+    as ``out_of_scope`` without running the catalog.  For marked records, the
+    modern record-kind field matrix runs before value and relationship checks;
+    unknown telemetry and production paths are retained as warnings, while
     required declared fields and major relationships remain hard failures.
     Analyzer callers use the default report mode.  Builder callers pass
     ``builder=True`` and may use ``raise_on_error=True`` for hard numeric or
@@ -3442,6 +3477,11 @@ def validate_resident_record(
         if raise_on_error:
             raise ValueError("record must be an object")
         return report
+    if (
+        type(record.get("resident_record_schema")) is not int
+        or record.get("resident_record_schema") != RESIDENT_RECORD_SCHEMA_MARKER
+    ):
+        return _out_of_scope_report(record)
     timestamp_values = list(timestamps) if timestamps is not None else None
     if raw_metadata is None and raw_bytes is not None:
         raw_metadata = {
@@ -3517,6 +3557,8 @@ def validate_resident_record(
         checks["timing_evidence"] = checks["clock.timing_evidence"]
     report: dict[str, Any] = {
         "valid": not mismatches,
+        "out_of_scope": False,
+        "classification": "in_scope",
         "mismatches": mismatches,
         "failures": failures,
         "warnings": warnings,
@@ -3592,6 +3634,7 @@ __all__ = [
     "RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS",
     "RESIDENT_RECORD_FIELD_MATRIX",
     "RESIDENT_RECORD_SCHEMA",
+    "RESIDENT_RECORD_SCHEMA_MARKER",
     "SAMPLER_CONTRACT",
     "SAMPLER_GAP_FIELD_SPECS",
     "SHORT_THRESHOLD_TICKS",

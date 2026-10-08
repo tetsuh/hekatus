@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import itertools
 import json
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -167,6 +169,44 @@ def test_pair_order_detects_long_first_without_calling_it_short_first():
     assert pairs[0]["order"] == "long-first"
     assert pairs[0]["first_interval_ticks"] == 1_600_000
     assert pairs[0]["second_interval_ticks"] == 1_100_000
+
+
+@pytest.mark.parametrize(
+    "record_name",
+    [
+        "2026-10-06-p150a-issue104-sampler-default.json",
+        "2026-10-06-p150a-issue104-sampler-5s.json",
+    ],
+    ids=["historical-default", "historical-5s"],
+)
+def test_historical_sampled_records_use_only_record_clock_as_unverified_aiclk(
+    tmp_path: Path, record_name: str
+):
+    timestamps = [0, 1_000_000, 2_700_000]
+    raw = b"".join(struct.pack("<Q", value) for value in timestamps)
+    record = copy.deepcopy(
+        json.loads((Path("docs/measurements") / record_name).read_text())
+    )
+    record["environment"]["aiclk_mhz_observed"] = [800]
+    record["raw_timestamps"].update(
+        count=len(timestamps), sha256=hashlib.sha256(raw).hexdigest()
+    )
+    record["histogram"]["N"] = len(timestamps) - 1
+    record["outlier_analysis"] = _record_for(timestamps, [1])["outlier_analysis"]
+
+    raw_path = tmp_path / "raw-timestamps.bin"
+    raw_path.write_bytes(raw)
+    record_path = tmp_path / record_name
+    record_path.write_text(json.dumps(record))
+
+    result = analyze_file(raw_path, record_path)
+
+    assert result["aiclk_mhz"] == 1_350
+    assert result["aiclk_source"] == "legacy_unverified"
+    assert result["outlier_analysis"]["aiclk_source"] == "legacy_unverified"
+    assert result["invariant_validation"]["out_of_scope"] is True
+    assert result["invariant_validation"]["timing_evidence"] is False
+    assert record["timing_evidence"] is True
 
 
 def test_zero_pair_analysis_returns_empty_counts_and_null_phase_statistics(tmp_path):
