@@ -1213,6 +1213,12 @@ def build_measurement_record(
             else AICLK_SOURCE_RUN_TRACE_SAMPLES
         )
     )
+    strict_no_valid_rows = (
+        strict_trace
+        and not sampler_off
+        and trace_metadata is not None
+        and trace_metadata.get("aiclk_source") == "no_valid_in_run_samples"
+    )
     selection = select_elapsed_aiclk(
         budget_aiclk_mhz=config.budget_aiclk_mhz,
         sampler_mode=sampler["mode"],
@@ -1229,6 +1235,7 @@ def build_measurement_record(
         legacy_aiclk_mhz=(
             aiclk_mhz
             if not sampler_off
+            and not strict_no_valid_rows
             and selected_source not in {AICLK_SOURCE_CONFIGURED, AICLK_SOURCE_RUN_TRACE_SAMPLES}
             and (
                 not strict_trace
@@ -1244,7 +1251,10 @@ def build_measurement_record(
         ),
         allow_configured_fallback=(
             not sampler_off
-            and selected_source == AICLK_SOURCE_CONFIGURED
+            and (
+                selected_source == AICLK_SOURCE_CONFIGURED
+                or strict_no_valid_rows
+            )
         ),
     )
     aiclk_mhz = selection["aiclk_mhz"]

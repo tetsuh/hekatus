@@ -186,7 +186,7 @@ def test_builder_defaults_timing_evidence_false_even_with_complete_trace(tmp_pat
     assert record["timing_evidence_reason"] == "timing_evidence_not_requested"
 
 
-def test_builder_marks_snapshot_only_aiclk_as_non_timing_evidence(tmp_path):
+def test_builder_uses_configured_aiclk_when_sampled_trace_has_no_in_run_rows(tmp_path):
     trace = tmp_path / "power.csv"
     _write_trace(
         trace,
@@ -211,7 +211,17 @@ def test_builder_marks_snapshot_only_aiclk_as_non_timing_evidence(tmp_path):
 
     assert record["timing_evidence"] is False
     assert record["timing_evidence_reason"] == "power_trace_no_valid_in_run_rows"
-    assert record["clock"]["aiclk_source"] == "no_valid_in_run_samples"
+    assert record["clock"]["aiclk_mhz"] == 1_350
+    assert record["clock"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["aiclk_mhz_for_elapsed_seconds"] == 1_350
+    assert record["outlier_analysis"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["run_elapsed_seconds"] == pytest.approx(
+        2_000 / (1_350 * 1_000_000)
+    )
+    assert record["outlier_analysis"]["run_elapsed_seconds"] != pytest.approx(
+        2_000 / (800 * 1_000_000)
+    )
+    assert record["power_clock_provenance"]["aiclk_source"] == "no_valid_in_run_samples"
 
 
 def test_analyzer_reports_sampler_trace_mismatch_and_power_hash_count_mismatches(tmp_path):

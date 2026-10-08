@@ -386,7 +386,6 @@ def test_catalog_is_nonempty_and_executable():
     assert RESIDENT_INVARIANT_CATALOG
     assert all(callable(entry.check) for entry in RESIDENT_INVARIANT_CATALOG)
     assert set(TIMING_EVIDENCE_COMPATIBILITY_BRANCHES) == {
-        "legacy_structural_pair_schema",
         "basename_only_trace_metadata",
         "sampler_off_trace_absent",
         "missing_timing_evidence_field",
@@ -439,14 +438,16 @@ def test_builder_forces_unverified_timing_requests_false(
     assert record["power_clock_provenance"]["timing_evidence_reason"] == expected_reason
 
 
-def test_legacy_structural_skip_cannot_bypass_timing_gate(tmp_path: Path):
+def test_marker_one_historical_schema_mutation_cannot_skip_modern_checks(tmp_path: Path):
     record, _trace, timestamps = _valid_record(tmp_path)
     record = copy.deepcopy(record)
+    assert record["resident_record_schema"] == RESIDENT_RECORD_SCHEMA_MARKER
     record["schema"] = "adr-0005-issue-104-paired-outliers-v1"
     record["timing_evidence"] = True
     record["timing_evidence_reason"] = "power_trace_run_samples"
     record["power_clock_provenance"]["timing_evidence"] = True
     record["power_clock_provenance"]["timing_evidence_reason"] = "power_trace_run_samples"
+    del record["parameters"]["aborted_attempts"]
     for field in (
         "pair_sum_target_ticks",
         "pair_sums",
@@ -466,6 +467,14 @@ def test_legacy_structural_skip_cannot_bypass_timing_gate(tmp_path: Path):
     report = validate_resident_record(record, timestamps=timestamps)
 
     assert report["valid"] is False
+    assert any(
+        "parameters.aborted_attempts" in mismatch["fields"]
+        for mismatch in report["mismatches"]
+    )
+    assert any(
+        "outlier_analysis.pair_sums" in mismatch["fields"]
+        for mismatch in report["mismatches"]
+    )
     assert any(
         mismatch["invariant"] == "clock.timing_evidence"
         for mismatch in report["mismatches"]

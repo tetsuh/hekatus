@@ -55,10 +55,10 @@ the catalog are:
   evidence.
 
 Compatibility skips are deliberately narrow and are listed in
-``TIMING_EVIDENCE_COMPATIBILITY_BRANCHES``: historical ADR-0005 pair fields
-may be absent; a basename-only legacy trace may omit unavailable byte facts;
-a sampler-off record may omit trace facts by design; and a record predating
-the timing field may omit that field.  Each skip is followed by the timing
+``TIMING_EVIDENCE_COMPATIBILITY_BRANCHES``: a basename-only legacy trace may
+omit unavailable byte facts; a sampler-off record may omit trace facts by
+design; and a record predating the timing field may omit that field.  Each
+skip is followed by the timing
 check, and every positive claim still requires the exact ``run_trace_samples``
 provenance sentinel plus readable, complete trace bytes.  The unverified
 catalog includes legacy and basename-only values, ``unverified`` and
@@ -133,7 +133,6 @@ TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES = frozenset(
     }
 )
 TIMING_EVIDENCE_COMPATIBILITY_BRANCHES = (
-    "legacy_structural_pair_schema",
     "basename_only_trace_metadata",
     "sampler_off_trace_absent",
     "missing_timing_evidence_field",
@@ -980,108 +979,6 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "outlier_analysis.periodicity",
 )
 
-# Exact leaf paths retained by the immutable ADR-0005 Issue #104 schema.
-# Historical records use this compatibility set instead of the modern matrix;
-# an unlisted historical key is still reported as an unknown-field warning.
-_LEGACY_ALLOWED_FIELDS = frozenset({
-    "schema", "issue", "related_issue", "stage", "status", "summary",
-    "environment", "environment.captured_at", "environment.image",
-    "environment.image_pinned", "environment.telemetry_sampler",
-    "environment.telemetry_sampler.mode", "environment.telemetry_sampler.interval_seconds",
-    "environment.telemetry_sampler.power_trace", "environment.telemetry_sampler.timing_evidence",
-    "environment.kernel", "environment.kmd_version", "environment.tt_env_active_release",
-    "environment.harness_commit", "environment.harness_dirty", "environment.harness_identity_source",
-    "environment.board_info", "environment.board_info.bus_id", "environment.board_info.board_type",
-    "environment.board_info.board_id", "environment.board_info.coords", "environment.board_info.dram_status",
-    "environment.board_info.dram_speed", "environment.board_info.pcie_speed", "environment.board_info.pcie_width",
-    "environment.firmwares", "environment.firmwares.fw_bundle_version", "environment.firmwares.tt_flash_version",
-    "environment.firmwares.cm_fw", "environment.firmwares.cm_fw_date", "environment.firmwares.eth_fw",
-    "environment.firmwares.dm_bl_fw", "environment.firmwares.dm_app_fw", "environment.firmwares.gddr_fw",
-    "environment.limits", "environment.limits.vdd_min", "environment.limits.vdd_max",
-    "environment.limits.tdp_limit", "environment.limits.tdc_limit", "environment.limits.asic_fmax",
-    "environment.limits.therm_trip_l1_limit", "environment.limits.thm_limit", "environment.limits.bus_peak_limit",
-    "environment.limits.fan_rpm_limit", "environment.limits.board_power_limit",
-    "environment.board", "environment.board.bus_id", "environment.board.board_type",
-    "environment.board.board_id", "environment.board.coords", "environment.board.dram_status",
-    "environment.board.dram_speed", "environment.board.pcie_speed", "environment.board.pcie_width",
-    "environment.board.serial", "environment.board.serial_source", "environment.firmware",
-    "environment.firmware.fw_bundle_version", "environment.firmware.tt_flash_version",
-    "environment.firmware.cm_fw", "environment.firmware.cm_fw_date", "environment.firmware.eth_fw",
-    "environment.firmware.dm_bl_fw", "environment.firmware.dm_app_fw", "environment.firmware.gddr_fw",
-    "environment.aiclk_mhz_observed", "environment.run_id", "environment.aiclk_observation",
-    "parameters", "parameters.frame_count", "parameters.frame_interval_ticks", "parameters.producer_core",
-    "parameters.consumer_core", "parameters.ring_pages", "parameters.work_per_frame",
-    "parameters.designated_timestamp_core", "parameters.cycle_budget", "parameters.outer_timeout_seconds",
-    "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz",
-    "parameters.run_budget", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks",
-    "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks",
-    "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks",
-    "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks",
-    "parameters.run_budget.overlap_model", "parameters.run_budget.startup_allowance_ms",
-    "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks",
-    "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent",
-    "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks",
-    "parameters.run_budget.run_budget_ticks", "parameters.cycle_budget_scope", "parameters.full_ring_policy",
-    "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count",
-    "parameters.frame_interval_is_not_acquisition_rate_claim", "parameters.frame_interval_note",
-    "clock", "clock.name", "clock.timestamp_api", "clock.width_bits", "clock.interval_unit",
-    "clock.frequency_source", "clock.aiclk_mhz", "clock.aiclk_observation", "clock.designated_core",
-    "clock.cross_core_correlation", "timestamp_attribution", "timestamp_attribution.status",
-    "timestamp_attribution.consumer_completion", "timestamp_attribution.consumer_completion.clock",
-    "timestamp_attribution.consumer_completion.core", "timestamp_attribution.producer_write",
-    "timestamp_attribution.producer_write.available", "timestamp_attribution.producer_write.clock",
-    "timestamp_attribution.producer_write.core", "timestamp_attribution.producer_write.reason",
-    "clock_source_evidence", "clock_source_evidence.toolchain", "clock_source_evidence.tt_metal_revision",
-    "clock_source_evidence.clock_api", "clock_source_evidence.blackhole_read_api",
-    "clock_source_evidence.dataflow_ring_api", "clock_source_evidence.semaphore_api",
-    "clock_source_evidence.frequency_api", "clock_source_evidence.profiler_conversion",
-    "clock_source_evidence.cross_core_note", "work_ticks", "work_ticks.minimum", "work_ticks.maximum",
-    "work_ticks.valid", "work_ticks.unit", "histogram", "histogram.N", "histogram.min_ticks",
-    "histogram.max_ticks", "histogram.percentiles", "histogram.percentiles.p50",
-    "histogram.percentiles.p50.status", "histogram.percentiles.p50.minimum_samples",
-    "histogram.percentiles.p50.value_ticks", "histogram.percentiles.p99", "histogram.percentiles.p99.status",
-    "histogram.percentiles.p99.minimum_samples", "histogram.percentiles.p99.value_ticks",
-    "histogram.percentiles.p99_9", "histogram.percentiles.p99_9.status",
-    "histogram.percentiles.p99_9.minimum_samples", "histogram.percentiles.p99_9.value_ticks",
-    "histogram.percentiles.p99_99", "histogram.percentiles.p99_99.status",
-    "histogram.percentiles.p99_99.minimum_samples", "histogram.percentiles.p99_99.value_ticks",
-    "histogram.histogram", "histogram.histogram.bin_width_ticks", "histogram.histogram.bins",
-    "histogram.histogram.bins[]", "histogram.histogram.bins[].start_ticks",
-    "histogram.histogram.bins[].end_ticks", "histogram.histogram.bins[].count", "histogram.sample_definition",
-    "ring", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count",
-    "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.overflow_count",
-    "ring.synchronization", "ring.full_ring_policy", "failure_check", "failure_check.code",
-    "failure_check.name", "failure_check.source", "cycle_budget", "cycle_budget.budget_ticks",
-    "cycle_budget.unit", "cycle_budget.scope", "cycle_budget.run_budget_ticks", "cycle_budget.exceeded",
-    "cycle_budget.error_flag", "raw_timestamps", "raw_timestamps.count", "raw_timestamps.file",
-    "raw_timestamps.sha256", "raw_timestamps.retained_outside_repository", "power_trace",
-    "power_trace_sample_count", "power_trace_sha256", "power_trace_absent_reason", "telemetry_sampler",
-    "telemetry_sampler.mode", "telemetry_sampler.interval_seconds", "telemetry_sampler.power_trace",
-    "telemetry_sampler.timing_evidence", "watcher", "timing_evidence", "outlier_analysis",
-    "outlier_analysis.method", "outlier_analysis.status", "outlier_analysis.pair_count",
-    "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.pair_sum_min_ticks",
-    "outlier_analysis.pair_sum_max_ticks", "outlier_analysis.pair_sum_mean_ticks",
-    "outlier_analysis.sum_delta_min_ticks", "outlier_analysis.sum_delta_max_ticks",
-    "outlier_analysis.frame_start_indices", "outlier_analysis.event_frame_positions",
-    "outlier_analysis.event_elapsed_seconds", "outlier_analysis.pair_start_elapsed_seconds",
-    "outlier_analysis.frame_gaps", "outlier_analysis.gap_counts", "outlier_analysis.gcd_frame_gap",
-    "outlier_analysis.periodicity", "outlier_analysis.pairs", "outlier_analysis.pairs[]",
-    "outlier_analysis.pairs[].first_interval_end_elapsed_seconds",
-    "outlier_analysis.pairs[].first_interval_end_elapsed_ticks", "outlier_analysis.pairs[].interval_end_frame_indices",
-    "outlier_analysis.pairs[].long_ticks", "outlier_analysis.pairs[].pair_sum_ticks",
-    "outlier_analysis.pairs[].short_ticks", "outlier_analysis.pairs[].sum_delta_ticks",
-    "outlier_analysis.elapsed_time_unit", "outlier_analysis.device_tick_unit",
-    "outlier_analysis.aiclk_mhz_for_elapsed_seconds", "outlier_analysis.run_elapsed_ticks",
-    "outlier_analysis.run_elapsed_seconds", "outlier_analysis.sampler_interval_comparison",
-    "outlier_analysis.sampler_interval_comparison.status", "outlier_analysis.sampler_interval_comparison.reason",
-    "hardware", "hardware.device_id", "hardware.device_node", "hardware.named_wrapper",
-    "hardware.docker_running_before", "hardware.docker_running_after", "hardware.reset_performed",
-    "hardware.health_probe", "hardware.outer_timeout_seconds", "hardware.frame_count_termination",
-    "producer_timestamp_attribution", "producer_timestamp_attribution.status",
-    "producer_timestamp_attribution.available", "producer_timestamp_attribution.reason", "conclusion",
-    "historical_records", "historical_records.existing_issue12_records_unchanged",
-    "historical_records.supersedes", "harness_commit", "validation_warnings",
-})
 RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
         kind: _COMMON_ALLOWED_EXTRA_FIELDS
@@ -1143,15 +1040,10 @@ def _mapping(record: Mapping[str, Any], path: str) -> Mapping[str, Any] | None:
 
 
 def _is_modern_record(record: Mapping[str, Any]) -> bool:
-    schema = record.get("schema", _MISSING)
-    if isinstance(schema, str) and schema.startswith("adr-0005-issue-104-"):
-        return False
-    # A single-field mutation must not erase the validator's ability to
-    # identify a modern record.  Named historical schemas remain the only
-    # compatibility family outside the modern matrix.
-    return schema == RESIDENT_RECORD_SCHEMA or any(
-        field in record
-        for field in ("parameters", "clock", "outlier_analysis", "clock_source_evidence")
+    """Return whether the current runner marker puts a record in scope."""
+    return (
+        type(record.get("resident_record_schema")) is int
+        and record.get("resident_record_schema") == RESIDENT_RECORD_SCHEMA_MARKER
     )
 
 
@@ -1290,47 +1182,9 @@ def _known_record_path(path: str, kind: str) -> bool:
 def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     del ctx
     kind = _record_kind(record)
-    legacy = isinstance(record.get("schema"), str) and record["schema"].startswith(
-        "adr-0005-issue-104-"
-    )
-    if kind is None and not legacy:
+    if kind is None:
         return []
     mismatches: list[dict[str, Any]] = []
-    if legacy:
-        dynamic_legacy_fields = {
-            "outlier_analysis.pairs[].first_interval_end_elapsed_seconds",
-            "outlier_analysis.pairs[].first_interval_end_elapsed_ticks",
-            "outlier_analysis.pairs[].interval_end_frame_indices",
-            "outlier_analysis.pairs[].long_ticks",
-            "outlier_analysis.pairs[].pair_sum_ticks",
-            "outlier_analysis.pairs[].short_ticks",
-            "outlier_analysis.pairs[].sum_delta_ticks",
-            "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].from_pair_start_frame",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].to_pair_start_frame",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_elapsed_seconds",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_frames",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].nearest_integer_sampler_intervals",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].residual_to_nearest_sampler_multiple_seconds",
-            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].sampler_intervals",
-        }
-        for path in _iter_record_paths(record):
-            normalized = re.sub(r"\[\d+\]", "[]", path)
-            known = normalized in _LEGACY_ALLOWED_FIELDS or normalized in dynamic_legacy_fields
-            known = known or bool(
-                re.fullmatch(r"outlier_analysis\.gap_counts\.\d+", normalized)
-            )
-            if not known:
-                mismatches.append(
-                    _mismatch(
-                        "record.unknown_fields",
-                        (path,),
-                        f"{path} is not declared for the historical record schema",
-                        soft=True,
-                    )
-                )
-        return mismatches
     for path in _iter_record_paths(record):
         if not _known_record_path(path, kind):
             mismatches.append(
@@ -1767,10 +1621,19 @@ def build_outlier_analysis(
         ),
         legacy_aiclk_mhz=(
             aiclk_mhz
-            if selection_mode != "off" and selected_source != AICLK_SOURCE_RUN_TRACE_SAMPLES
+            if selection_mode != "off"
+            and selected_source
+            not in {
+                AICLK_SOURCE_CONFIGURED,
+                AICLK_SOURCE_RUN_TRACE_SAMPLES,
+                "no_valid_in_run_samples",
+            }
             else None
         ),
         legacy_aiclk_source=selected_source,
+        allow_configured_fallback=(
+            selection_mode != "off" and selected_source == AICLK_SOURCE_CONFIGURED
+        ),
     )
     aiclk_mhz = aiclk_selection["aiclk_mhz"]
     selected_source = aiclk_selection["aiclk_source"]
@@ -2573,33 +2436,27 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
     if not isinstance(outlier, Mapping):
         return [_mismatch("outlier_analysis", ("outlier_analysis",), "record is missing outlier_analysis")]
     mismatches: list[dict[str, Any]] = []
-    schema = record.get("schema")
-    # Compatibility branch: the original ADR-0005 Issue #104 records predate
-    # the modern pair-detail fields.  This skips only structural requirements;
-    # the independent timing-evidence invariant below still runs.
-    legacy = isinstance(schema, str) and schema.startswith("adr-0005-issue-104-")
-    if not legacy:
-        required = (
-            "pair_sum_target_ticks",
-            "pair_sums",
-            "frame_start_indices",
-            "pairs",
-            "event_frame_positions",
-            "event_elapsed_seconds",
-            "event_elapsed_ticks",
-            "event_elapsed_ticks_mod_period",
-            "frame_gaps",
-            "gap_counts",
-            "gap_histogram",
-            "gcd_frame_gap",
-            "interval_count",
-            "pair_order_counts",
-            "sampler_interval_comparison",
-        )
-        for field in required:
-            if field not in outlier:
-                mismatches.append(_mismatch("outlier_analysis", (f"outlier_analysis.{field}",), f"outlier_analysis.{field} is required by the resident schema"))
-    if not legacy and isinstance(outlier.get("pairs"), list):
+    required = (
+        "pair_sum_target_ticks",
+        "pair_sums",
+        "frame_start_indices",
+        "pairs",
+        "event_frame_positions",
+        "event_elapsed_seconds",
+        "event_elapsed_ticks",
+        "event_elapsed_ticks_mod_period",
+        "frame_gaps",
+        "gap_counts",
+        "gap_histogram",
+        "gcd_frame_gap",
+        "interval_count",
+        "pair_order_counts",
+        "sampler_interval_comparison",
+    )
+    for field in required:
+        if field not in outlier:
+            mismatches.append(_mismatch("outlier_analysis", (f"outlier_analysis.{field}",), f"outlier_analysis.{field} is required by the resident schema"))
+    if isinstance(outlier.get("pairs"), list):
         pair_fields = (
             "interval_end_frame_indices",
             "first_interval_ticks",
@@ -2636,7 +2493,7 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
             aiclk_mhz=aiclk,
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
-            strict_fields=not legacy,
+            strict_fields=True,
         )
     )
 
@@ -3084,9 +2941,6 @@ def _timing_block_reason(
         return "failure_metadata_unverified"
     if record.get("watcher") is True:
         return "watcher_diagnostic_only"
-    schema = record.get("schema")
-    if isinstance(schema, str) and schema.startswith("adr-0005-issue-104-"):
-        return "legacy_record_unverified"
     if not record.get("power_trace"):
         return "power_trace_missing"
 
@@ -3280,7 +3134,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "record.required_fields",
         ("schema", "status", "environment.image", "outlier_analysis"),
-        "modern record-kind field presence matrix; historical schemas use scoped compatibility skips",
+        "marker-scoped current record field presence matrix",
         _check_required_fields,
     ),
     ResidentInvariant(
@@ -3334,7 +3188,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "outlier_analysis",
         ("outlier_analysis.pair_count", "outlier_analysis.frame_start_indices", "outlier_analysis.pairs", "outlier_analysis.pair_sums"),
-        "pair objects, sums, endpoints, event arrays, gaps, and raw correspondence; historical pair-field compatibility is structural only and legacy records cannot claim timing",
+        "pair objects, sums, endpoints, event arrays, gaps, and raw correspondence for the current record schema",
         _check_pairs,
     ),
     ResidentInvariant(
