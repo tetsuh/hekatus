@@ -15,6 +15,18 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 WRAPPER = ROOT / "enodia/tt/bench/run_in_container.sh"
+RESIDENT_RUNNER_ALIASES = (
+    "./enodia/tt/bench/run_resident.py",
+    "enodia/tt/bench/../bench/run_resident.py",
+    "/work/enodia/tt/bench/run_resident.py",
+    "enodia//tt//bench//run_resident.py",
+)
+MATMUL_RUNNER_ALIASES = (
+    "./enodia/tt/bench/run_matmul.py",
+    "enodia/tt/bench/../bench/run_matmul.py",
+    "/work/enodia/tt/bench/run_matmul.py",
+    "enodia//tt//bench//run_matmul.py",
+)
 
 
 def _fake_tools(
@@ -205,6 +217,70 @@ def test_wrapper_rejects_an_unnormalizable_mount_source_before_docker(tmp_path):
     assert not args_log.exists()
 
 
+def test_wrapper_rejects_runner_outside_repository_before_docker(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+    outside_runner = copied_root.parent / "outside" / "runner.py"
+
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--iters", "1"],
+        cwd=copied_root,
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_RUNNER": str(outside_runner),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 2
+    assert "outside repository" in completed.stderr
+    assert not args_log.exists()
+    assert not (copied_root / "out").exists()
+
+
+def test_wrapper_accepts_equivalent_absolute_host_runner_path(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    timeout_log = tmp_path / "timeout-args"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+    host_runner = copied_root / "enodia/tt/bench/run_resident.py"
+
+    completed = subprocess.run(
+        [str(copied_wrapper), "--", "--watcher"],
+        cwd=copied_root,
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "TIMEOUT_LOG": str(timeout_log),
+            "HEKATUS_TT_RUNNER": str(host_runner),
+            "TT_METAL_WATCHER": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert timeout_log.read_text().splitlines()[2] == "60s"
+    assert "enodia/tt/bench/run_resident.py" in args_log.read_text().splitlines()
+
+
 def _run_resident_wrapper(
     tmp_path,
     *,
@@ -257,6 +333,78 @@ def _run_resident_wrapper(
 
 
 class TestBenchDefaults:
+    @pytest.mark.parametrize(
+        "runner",
+        RESIDENT_RUNNER_ALIASES,
+        ids=("dot", "parent", "work-absolute", "duplicate-slashes"),
+    )
+    @pytest.mark.parametrize(
+        ("runner_args", "watcher_env", "expected_timeout"),
+        [([], None, "600s"), (["--watcher"], "1", "60s")],
+        ids=("timing", "watcher"),
+    )
+    def test_resident_runner_alias_uses_mode_timeout_when_unset(
+        self, tmp_path, runner, runner_args, watcher_env, expected_timeout
+    ):
+        timeout_log = tmp_path / "timeout-args"
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=None,
+            runner_args=runner_args,
+            watcher_env=watcher_env,
+            timeout_log=timeout_log,
+            runner=runner,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert timeout_log.read_text().splitlines()[2] == expected_timeout
+
+    @pytest.mark.parametrize(
+        "runner",
+        RESIDENT_RUNNER_ALIASES,
+        ids=("dot", "parent", "work-absolute", "duplicate-slashes"),
+    )
+    @pytest.mark.parametrize(
+        ("runner_args", "watcher_env", "container_timeout"),
+        [(["--watcher"], "1", "61"), ([], None, "601")],
+        ids=("watcher", "timing"),
+    )
+    def test_resident_runner_alias_rejects_explicit_timeout_over_cap(
+        self, tmp_path, runner, runner_args, watcher_env, container_timeout
+    ):
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=container_timeout,
+            runner_args=runner_args,
+            watcher_env=watcher_env,
+            runner=runner,
+        )
+        assert completed.returncode == 2
+        assert "approved cap" in completed.stderr
+        assert not (tmp_path / "docker-args").exists()
+
+    @pytest.mark.parametrize(
+        "runner",
+        MATMUL_RUNNER_ALIASES,
+        ids=("dot", "parent", "work-absolute", "duplicate-slashes"),
+    )
+    def test_matmul_runner_alias_uses_power_trace_and_matmul_docker_branch(
+        self, tmp_path, runner
+    ):
+        timeout_log = tmp_path / "timeout-args"
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=None,
+            runner_args=["--iters", "1"],
+            timeout_log=timeout_log,
+            runner=runner,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert timeout_log.read_text().splitlines()[2] == "900s"
+        docker_args = (tmp_path / "docker-args").read_text().splitlines()
+        assert docker_args[docker_args.index("--entrypoint") + 1] == "/bin/bash"
+        assert docker_args.count("enodia/tt/bench/run_matmul.py") == 1
+        assert "--power-trace" in docker_args
+
     @pytest.mark.parametrize(
         ("runner_args", "watcher_env", "expected_timeout"),
         [([], None, "600s"), (["--watcher"], "1", "60s")],

@@ -22,6 +22,79 @@ set -euo pipefail
 
 IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+RESIDENT_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_resident.py"
+MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
+
+# Resolve runner paths against the host repository that is mounted at /work.
+# The returned path is the only representation used by runner classifiers and
+# is also the path passed to the container.
+normalize_runner_path() {
+  local runner="$1"
+  local absolute_mount_path candidate normalized_root normalized relative
+  if [[ -z "${runner}" || "${runner}" == *$'\n'* ]]; then
+    echo "HEKATUS_TT_RUNNER must be nonempty and contain no newline" >&2
+    return 2
+  fi
+
+  if [[ "${runner}" == /* ]]; then
+    # Canonicalize absolute inputs first so duplicate-slash /work aliases are
+    # treated like the path visible inside the container.
+    if ! absolute_mount_path="$(realpath -m -- "${runner}" 2>/dev/null)" \
+      || [[ -z "${absolute_mount_path}" ]]; then
+      echo "cannot normalize HEKATUS_TT_RUNNER: ${runner}" >&2
+      return 2
+    fi
+    case "${absolute_mount_path}" in
+      /work)
+        candidate="${REPO_ROOT}"
+        ;;
+      /work/*)
+        candidate="${REPO_ROOT}/${absolute_mount_path#/work/}"
+        ;;
+      *)
+        # Other absolute paths are host paths and are checked against the
+        # canonical host repository below.
+        candidate="${runner}"
+        ;;
+    esac
+  else
+    candidate="${REPO_ROOT}/${runner}"
+  fi
+
+  if ! normalized_root="$(realpath -m -- "${REPO_ROOT}" 2>/dev/null)" \
+    || [[ -z "${normalized_root}" || "${normalized_root:0:1}" != "/" ]]; then
+    echo "cannot normalize repository root for HEKATUS_TT_RUNNER" >&2
+    return 2
+  fi
+  if ! normalized="$(realpath -m -- "${candidate}" 2>/dev/null)" \
+    || [[ -z "${normalized}" || "${normalized:0:1}" != "/" || "${normalized}" == *$'\n'* ]]; then
+    echo "cannot normalize HEKATUS_TT_RUNNER: ${runner}" >&2
+    return 2
+  fi
+
+  case "${normalized}" in
+    "${normalized_root}")
+      relative="."
+      ;;
+    "${normalized_root}"/*)
+      relative="${normalized#"${normalized_root}"/}"
+      ;;
+    *)
+      echo "HEKATUS_TT_RUNNER resolves outside repository: ${runner}" >&2
+      return 2
+      ;;
+  esac
+  printf '%s\n' "${relative}"
+}
+
+CUSTOM_RUNNER=0
+if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
+  CUSTOM_RUNNER=1
+fi
+RUNNER="${HEKATUS_TT_RUNNER:-${MATMUL_RUNNER_RELATIVE_PATH}}"
+if ! RUNNER="$(normalize_runner_path "${RUNNER}")"; then
+  exit 2
+fi
 
 # Docker bind sources must be absolute host paths. `realpath -m` also handles
 # an output directory whose parent does not exist yet; mkdir below creates it
@@ -59,11 +132,6 @@ fi
 
 # The default runs the benchmark.  A board-side Python probe can opt in with
 # HEKATUS_TT_RUNNER; arguments after `--` are passed to that runner unchanged.
-RUNNER="${HEKATUS_TT_RUNNER:-enodia/tt/bench/run_matmul.py}"
-CUSTOM_RUNNER=0
-if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
-  CUSTOM_RUNNER=1
-fi
 RUNNER_ARGS=("$@")
 TIMEOUT_EXPLICIT=0
 if [[ -v HEKATUS_TT_CONTAINER_TIMEOUT_S ]]; then
@@ -89,7 +157,7 @@ validate_decimal_timeout() {
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 RESIDENT_TIMEOUT_CAP_S="600"
-if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
+if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PATH}" ]]; then
   RESIDENT_RUNNER=1
   CLI_WATCHER_MODE=0
   for argument in "${RUNNER_ARGS[@]}"; do
@@ -268,7 +336,7 @@ SAMPLER_PID=$!
 # a shell string. The default runner also receives the sibling power trace
 # path, so its JSON record names the same provenance that the wrapper writes.
 # A custom probe is responsible for its own argument contract.
-if [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
+if [[ "${RUNNER}" == "${MATMUL_RUNNER_RELATIVE_PATH}" ]]; then
   HAS_POWER_TRACE_ARG=0
   for argument in "${RUNNER_ARGS[@]}"; do
     if [[ "${argument}" == "--power-trace" ]]; then
@@ -297,7 +365,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     "${WATCHER_ENV[@]}" \
     --entrypoint /usr/local/bin/uv \
     "${IMAGE}" run --no-project --with pytest==8.3.5 --with scipy==1.13.1 python -m pytest "${PYTEST_ARGS[@]}" &
-elif [[ "${RUNNER}" == "enodia/tt/bench/run_matmul.py" ]]; then
+elif [[ "${RUNNER}" == "${MATMUL_RUNNER_RELATIVE_PATH}" ]]; then
   timeout --signal=TERM --kill-after=5s "${CONTAINER_TIMEOUT_S}s" \
     docker run --rm --name "${CONTAINER_NAME}" \
     --device "${DEVICE_NODE}" \
