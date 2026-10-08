@@ -1253,9 +1253,10 @@ def build_measurement_record(
     When ``power_trace_path`` or explicit trace metadata is supplied, the
     complete power catalog is strict: the actual CSV bytes, rows, timestamps,
     run coverage, and in-run AICLK are checked here.  Calls that only provide
-    the historical basename remain readable for older board-free callers, but
-    are marked ``legacy_unverified`` in power provenance; the resident runner
-    always supplies the strict path and run bounds.
+    the historical basename and omit sampler metadata remain readable for
+    older board-free callers, but are marked ``legacy_unverified`` in power
+    provenance; the resident runner always supplies the strict path and run
+    bounds.
 
     Counter protocol (the current producer/consumer semaphore contract):
     ``ready_count`` is the cumulative producer-ready value and equals
@@ -1287,6 +1288,7 @@ def build_measurement_record(
             or power_trace_metadata is not None
             or run_start is not None
             or run_end is not None
+            or "telemetry_sampler" in normalized_environment
         )
     )
     trace_metadata: dict[str, Any] | None = None
