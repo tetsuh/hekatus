@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import json
 import os
 import re
@@ -38,6 +39,7 @@ from enodia.tt.bench.resident_harness import (
     validate_record_inputs,
     validate_run_budget_fits_outer_cap,
 )
+from enodia.tt.bench.telemetry import parse_power_trace
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 
@@ -400,14 +402,21 @@ def _environment_aiclk_values(environment: dict[str, Any]) -> list[int]:
     return result
 
 
-def _power_aiclk(power_trace: str | None, environment: dict[str, Any]) -> int:
+def _power_aiclk(
+    power_trace: str | None,
+    environment: dict[str, Any],
+    *,
+    allow_environment_snapshot: bool = False,
+) -> int:
+    """Select a trace AICLK, with snapshot fallback explicitly diagnostic-only."""
     values = _power_trace_aiclk_values(power_trace)
     if values:
         return max(values)
-    fallback = _environment_aiclk_values(environment)
-    if fallback:
-        return max(fallback)
-    raise ValueError("no AICLK sample was available from the power trace or environment")
+    if allow_environment_snapshot:
+        fallback = _environment_aiclk_values(environment)
+        if fallback:
+            return max(fallback)
+    raise ValueError("no valid in-run AICLK sample was available")
 
 
 def _environment(path: Path) -> dict[str, Any]:
@@ -499,17 +508,54 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as exc:  # pragma: no cover - exercised only outside the image
         raise RuntimeError("run_resident.py requires the pinned TTNN image") from exc
 
+    run_start = datetime.datetime.now(datetime.UTC)
     device = ttnn.open_device(device_id=args.device_id)
     try:
         result = _run_device(ttnn, device, config, watcher=watcher)
     finally:
         ttnn.close_device(device)
+    run_end = datetime.datetime.now(datetime.UTC)
 
     if args.raw_timestamps_out is not None:
         _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
-    aiclk_mhz = _power_aiclk(power_trace, environment)
+    power_trace_path = Path("/out") / power_trace if power_trace is not None else None
+    trace_metadata = (
+        parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
+        if power_trace_path is not None
+        else None
+    )
+    trace_aiclk = trace_metadata.get("aiclk_mhz") if trace_metadata is not None else None
+    aiclk_mhz = (
+        int(float(trace_aiclk))
+        if trace_aiclk is not None
+        else _power_aiclk(
+            power_trace,
+            environment,
+            allow_environment_snapshot=True,
+        )
+    )
     validate_post_run_aiclk(aiclk_mhz)
+    trace_timing_ok = (
+        trace_metadata is not None
+        and trace_metadata.get("coverage_complete") is True
+        and trace_metadata.get("aiclk_source") == "run_trace_samples"
+        and trace_metadata.get("in_run_valid_row_count", 0) > 0
+    )
+    trace_timing_reason = (
+        "power_trace_run_samples"
+        if trace_timing_ok
+        else (
+            "sampler_off_by_design"
+            if power_trace is None
+            else (
+                "power_trace_no_valid_in_run_rows"
+                if trace_metadata is not None
+                and trace_metadata.get("in_run_valid_row_count", 0) < 1
+                else "power_trace_coverage_incomplete"
+            )
+        )
+    )
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
@@ -529,14 +575,20 @@ def main(argv: list[str] | None = None) -> int:
         harness_commit=str(environment.get("harness_commit") or ""),
         environment=environment,
         power_trace=power_trace,
+        power_trace_path=power_trace_path,
+        power_trace_metadata=trace_metadata,
+        run_start=run_start.isoformat(),
+        run_end=run_end.isoformat(),
         watcher=watcher,
         timing_evidence=(
-            not watcher
+            trace_timing_ok
+            and not watcher
             and result["frames_attempted"] == config.frame_count
             and result["frames_consumed"] == result["frames_produced"]
             and result["frames_dropped"] == 0
             and not validate_failure_check(result["failure_check"]).error_flag
         ),
+        timing_evidence_reason=trace_timing_reason,
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]

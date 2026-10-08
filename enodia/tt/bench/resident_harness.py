@@ -1,20 +1,45 @@
 """Host-side accounting and record helpers for Issue #12 Stage 1.
 
+Invariant catalog (the builder enforces every item that is available at build
+ time; the Issue #104 analyzer reports the same items from committed records):
+
+* declared counts equal their sequences: ``frame_count``/attempted,
+  produced/consumed counts versus timestamp rows, raw timestamp count equals
+  interval histogram ``N + 1``, histogram bins sum to ``N``, and a power trace's
+  declared sample count equals its CSV row count and valid-row count;
+* sampler mode agrees with trace presence, the trace basename, and an explicit
+  absent-by-design reason; sampler-off records remain diagnostic-only;
+* a power trace is readable, has the declared columns, SHA-256 of its actual
+  bytes, nonzero valid rows, parseable ordered timestamps, first/last values,
+  and complete ``first <= run_start <= run_end <= last`` coverage;
+* timing AICLK comes only from valid in-run trace samples.  Pre-run environment
+  snapshots are diagnostic provenance only.  A sampled trace with no valid
+  in-run rows or incomplete coverage forces ``timing_evidence=false`` and an
+  explicit machine-readable reason;
+* pair ``pair_count`` agrees with frame starts, pair objects, pair sums and
+  endpoint/value/order arrays.  Correspondence checks are duplicate-aware and
+  compare length, multiset, and order, including pair endpoints and values;
+* raw timestamp count and hash describe the actual little-endian bytes, and
+  every histogram and pair sequence is derived from that same timestamp stream.
+
 The device runner is intentionally kept separate from these helpers.  This
-module has no TTNN import, so ring accounting, timestamp arithmetic, and the
-measurement contract remain testable on a development machine.
+module has no TTNN import, so ring accounting, timestamp arithmetic, trace
+coverage, and the measurement contract remain testable on a development
+machine.  The catalog is deliberately kept here as a durable docstring rather
+than only in a PR description.
 """
 
 from __future__ import annotations
 
 import hashlib
+import itertools
 import math
 import re
 import struct
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from types import MappingProxyType
 from typing import Any
 
@@ -962,6 +987,12 @@ def _telemetry_sampler(environment: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_sampler_trace(environment: Mapping[str, Any], power_trace: str | None) -> dict[str, Any]:
     sampler = _telemetry_sampler(environment)
     sampler_off = sampler["mode"] == "off"
+    expected_trace = "absent_by_design" if sampler_off else "required"
+    if sampler.get("power_trace") != expected_trace:
+        raise ValueError("telemetry sampler power_trace metadata does not match sampler mode")
+    expected_timing = "diagnostic_only" if sampler_off else "available"
+    if sampler.get("timing_evidence") != expected_timing:
+        raise ValueError("telemetry sampler timing_evidence metadata does not match sampler mode")
     if sampler_off != (power_trace is None):
         raise ValueError(
             "sampler-off records must omit the power trace, and sampled records must name it"
@@ -978,6 +1009,189 @@ def validate_record_inputs(
     )
     _validate_sampler_trace(normalized_environment, power_trace)
     _safe_trace_name(power_trace)
+
+
+def _trace_failure_reason(trace: Mapping[str, Any] | None) -> str:
+    """Return a stable reason code for a trace that cannot support timing."""
+    if not isinstance(trace, Mapping):
+        return "power_trace_missing"
+    if trace.get("readable") is not True:
+        return "power_trace_unreadable"
+    if not trace.get("nonempty"):
+        return "power_trace_empty"
+    if not isinstance(trace.get("sample_count"), int) or not isinstance(trace.get("csv_row_count"), int):
+        return "power_trace_sample_count_unavailable"
+    if trace.get("sample_count") != trace.get("csv_row_count"):
+        return "power_trace_sample_count_mismatch"
+    if not isinstance(trace.get("valid_row_count"), int):
+        return "power_trace_valid_row_count_unavailable"
+    if trace.get("valid_row_count") != trace.get("csv_row_count"):
+        return "power_trace_invalid_rows"
+    if trace.get("timestamps_parse") is not True:
+        return "power_trace_timestamp_parse_failed"
+    if trace.get("timestamps_ordered") is not True:
+        return "power_trace_timestamp_order_failed"
+    if trace.get("coverage_complete") is not True:
+        return "power_trace_coverage_incomplete"
+    if trace.get("in_run_valid_row_count", 0) < 1:
+        return "power_trace_no_valid_in_run_rows"
+    return "power_trace_coverage_complete"
+
+
+def _public_power_trace_metadata(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep file facts and coverage while excluding parser-only row arrays."""
+    public_keys = (
+        "file",
+        "columns",
+        "sha256",
+        "readable",
+        "nonempty",
+        "csv_row_count",
+        "sample_count",
+        "valid_row_count",
+        "in_run_valid_row_count",
+        "timestamps_parse",
+        "timestamps_ordered",
+        "first_timestamp",
+        "last_timestamp",
+        "run_start",
+        "run_end",
+        "covers_run_start",
+        "covers_run_end",
+        "coverage_complete",
+        "coverage",
+        "aiclk_source",
+        "aiclk_mhz",
+        "errors",
+    )
+    return {key: trace.get(key) for key in public_keys}
+
+
+def _power_trace_metadata(
+    *,
+    power_trace: str,
+    power_trace_path: Path | None,
+    power_trace_metadata: Mapping[str, Any] | None,
+    run_start: Any,
+    run_end: Any,
+) -> dict[str, Any]:
+    """Read one run-bound trace or normalize supplied board-free metadata."""
+    if power_trace_path is not None:
+        from enodia.tt.bench.telemetry import parse_power_trace
+
+        parsed = parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
+        if parsed.get("file") != power_trace:
+            raise ValueError("power_trace_path basename must match power_trace")
+        return _public_power_trace_metadata(parsed)
+    if power_trace_metadata is None:
+        return {
+            "file": power_trace,
+            "columns": [],
+            "sha256": None,
+            "readable": False,
+            "nonempty": False,
+            "csv_row_count": 0,
+            "sample_count": None,
+            "valid_row_count": 0,
+            "in_run_valid_row_count": 0,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_timestamp": None,
+            "last_timestamp": None,
+            "run_start": run_start,
+            "run_end": run_end,
+            "covers_run_start": False,
+            "covers_run_end": False,
+            "coverage_complete": False,
+            "coverage": {
+                "nonempty": False,
+                "timestamps_parse": False,
+                "timestamps_ordered": False,
+                "first_at_or_before_run_start": False,
+                "last_at_or_after_run_end": False,
+                "readable": False,
+                "complete": False,
+            },
+            "aiclk_source": "no_valid_in_run_samples",
+            "aiclk_mhz": None,
+            "errors": ["power trace metadata was not supplied"],
+        }
+    metadata = dict(power_trace_metadata)
+    metadata.setdefault("file", power_trace)
+    if metadata["file"] != power_trace:
+        raise ValueError("power trace metadata file must match power_trace")
+    if run_start is not None:
+        metadata["run_start"] = run_start
+    if run_end is not None:
+        metadata["run_end"] = run_end
+    return {key: metadata.get(key) for key in (
+        "file", "columns", "sha256", "readable", "nonempty", "csv_row_count",
+        "sample_count", "valid_row_count", "in_run_valid_row_count", "timestamps_parse",
+        "timestamps_ordered", "first_timestamp", "last_timestamp", "run_start", "run_end",
+        "covers_run_start", "covers_run_end", "coverage_complete", "coverage", "aiclk_source",
+        "aiclk_mhz", "errors"
+    )}
+
+
+def validate_outlier_analysis(
+    outlier_analysis: Mapping[str, Any], *, timestamps: Iterable[int] | None = None
+) -> None:
+    """Validate pair counts and duplicate-aware sequence lengths at build time."""
+    if not isinstance(outlier_analysis, Mapping):
+        raise TypeError("outlier_analysis must be an object")
+    pair_count = outlier_analysis.get("pair_count")
+    if isinstance(pair_count, bool) or not isinstance(pair_count, int) or pair_count < 0:
+        raise ValueError("outlier_analysis.pair_count must be a non-negative integer")
+    starts = outlier_analysis.get("frame_start_indices", [])
+    pairs = outlier_analysis.get("pairs", [])
+    pair_sums = outlier_analysis.get("pair_sums")
+    if not isinstance(starts, list) or len(starts) != pair_count:
+        raise ValueError("outlier_analysis pair_count must equal frame_start_indices length")
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in starts):
+        raise ValueError("outlier_analysis.frame_start_indices must be positive integers")
+    if not isinstance(pairs, list) or len(pairs) != pair_count:
+        raise ValueError("outlier_analysis pair_count must equal pairs length")
+    if pair_sums is not None and (not isinstance(pair_sums, list) or len(pair_sums) != pair_count):
+        raise ValueError("outlier_analysis pair_count must equal pair_sums length")
+    for index, pair in enumerate(pairs):
+        if not isinstance(pair, Mapping):
+            raise TypeError("outlier_analysis.pairs must contain objects")
+        endpoints = pair.get("interval_end_frame_indices")
+        if not isinstance(endpoints, list) or len(endpoints) != 2:
+            raise ValueError("outlier_analysis pair endpoints must contain two indices")
+        if endpoints[0] != starts[index] or endpoints[1] != starts[index] + 1:
+            raise ValueError("outlier_analysis pair endpoints must match frame starts")
+        if pair_sums is not None and pair.get("pair_sum_ticks") != pair_sums[index]:
+            raise ValueError("outlier_analysis pair sums must match pair objects")
+    positions = outlier_analysis.get("event_frame_positions")
+    if positions is not None:
+        expected = [position for pair in pairs for position in pair["interval_end_frame_indices"]]
+        if positions != expected:
+            raise ValueError("outlier_analysis event frame positions do not match pair endpoints")
+    elapsed = outlier_analysis.get("event_elapsed_seconds")
+    if elapsed is not None and (not isinstance(elapsed, list) or len(elapsed) != pair_count * 2):
+        raise ValueError("outlier_analysis event elapsed values must match pair endpoints")
+    gaps = outlier_analysis.get("frame_gaps")
+    if gaps is not None:
+        expected_gaps = [right - left for left, right in itertools.pairwise(starts)]
+        if gaps != expected_gaps:
+            raise ValueError("outlier_analysis frame gaps do not match frame starts")
+    if timestamps is not None:
+        values = list(timestamps)
+        for pair in pairs:
+            first, second = pair["interval_end_frame_indices"]
+            if second >= len(values):
+                raise ValueError("outlier_analysis pair endpoint exceeds timestamp count")
+            first_ticks = values[first] - values[first - 1]
+            second_ticks = values[second] - values[first]
+            if pair.get("first_interval_ticks") is not None and pair["first_interval_ticks"] != first_ticks:
+                raise ValueError("outlier_analysis first interval does not match timestamps")
+            if pair.get("second_interval_ticks") is not None and pair["second_interval_ticks"] != second_ticks:
+                raise ValueError("outlier_analysis second interval does not match timestamps")
+            if pair.get("short_ticks") is not None and pair["short_ticks"] != min(first_ticks, second_ticks):
+                raise ValueError("outlier_analysis short value does not match timestamps")
+            if pair.get("long_ticks") is not None and pair["long_ticks"] != max(first_ticks, second_ticks):
+                raise ValueError("outlier_analysis long value does not match timestamps")
 
 
 def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
@@ -1013,6 +1227,11 @@ def build_measurement_record(
     harness_commit: str,
     environment: Mapping[str, Any],
     power_trace: str | None,
+    power_trace_path: Path | None = None,
+    power_trace_metadata: Mapping[str, Any] | None = None,
+    run_start: Any = None,
+    run_end: Any = None,
+    outlier_analysis: Mapping[str, Any] | None = None,
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
@@ -1024,8 +1243,16 @@ def build_measurement_record(
     work_max_ticks: int | None = None,
     watcher: bool = False,
     timing_evidence: bool = True,
+    timing_evidence_reason: str | None = None,
 ) -> dict[str, Any]:
-    """Build the committed-schema record without retaining raw timestamps.
+    """Build and validate the committed-schema record without raw timestamps.
+
+    When ``power_trace_path`` or explicit trace metadata is supplied, the
+    complete power catalog is strict: the actual CSV bytes, rows, timestamps,
+    run coverage, and in-run AICLK are checked here.  Calls that only provide
+    the historical basename remain readable for older board-free callers, but
+    are marked ``legacy_unverified`` in power provenance; the resident runner
+    always supplies the strict path and run bounds.
 
     Counter protocol (the current producer/consumer semaphore contract):
     ``ready_count`` is the cumulative producer-ready value and equals
@@ -1048,6 +1275,51 @@ def build_measurement_record(
     )
     sampler = _validate_sampler_trace(normalized_environment, power_trace)
     sampler_off = sampler["mode"] == "off"
+    if sampler_off and (power_trace_path is not None or power_trace_metadata is not None):
+        raise ValueError("sampler-off records must not carry power trace metadata")
+    strict_trace = bool(
+        not sampler_off
+        and (
+            power_trace_path is not None
+            or power_trace_metadata is not None
+            or run_start is not None
+            or run_end is not None
+        )
+    )
+    trace_metadata: dict[str, Any] | None = None
+    trace_reason: str
+    if sampler_off:
+        trace_reason = "sampler_off_by_design"
+    elif power_trace is None:
+        trace_reason = "power_trace_missing"
+    elif strict_trace:
+        trace_metadata = _power_trace_metadata(
+            power_trace=power_trace,
+            power_trace_path=power_trace_path,
+            power_trace_metadata=power_trace_metadata,
+            run_start=run_start,
+            run_end=run_end,
+        )
+        trace_reason = _trace_failure_reason(trace_metadata)
+        trace_aiclk = trace_metadata.get("aiclk_mhz")
+        if trace_reason == "power_trace_coverage_complete":
+            if trace_aiclk is None:
+                trace_reason = "power_trace_no_valid_in_run_rows"
+            elif int(float(trace_aiclk)) != aiclk_mhz:
+                raise ValueError("aiclk_mhz must equal the maximum valid in-run power trace AICLK")
+    else:
+        # Historical direct callers supplied only a basename.  Keep that API
+        # readable, but make the unverifiable status explicit; the device
+        # runner never uses this compatibility branch.
+        trace_metadata = _power_trace_metadata(
+            power_trace=power_trace,
+            power_trace_path=None,
+            power_trace_metadata=None,
+            run_start=None,
+            run_end=None,
+        )
+        trace_metadata["aiclk_source"] = "legacy_unverified"
+        trace_reason = "legacy_power_trace_unverified"
     selected_image = normalized_environment["image"]
     clock_source_audit = clock_source_audit_for_image(selected_image)
     source_evidence = _source_evidence(selected_image)
@@ -1072,6 +1344,8 @@ def build_measurement_record(
         raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
+    if outlier_analysis is not None:
+        validate_outlier_analysis(outlier_analysis, timestamps=timestamp_values)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
@@ -1145,7 +1419,33 @@ def build_measurement_record(
         or work_max_ticks < work_min_ticks
     ):
         raise ValueError("work minimum/maximum ticks are invalid")
-    return {
+    if timing_evidence_reason is not None:
+        final_timing_reason = timing_evidence_reason
+    elif sampler_off:
+        final_timing_reason = "sampler_off_by_design"
+    elif watcher:
+        final_timing_reason = "watcher_diagnostic_only"
+    elif not completed or dropped:
+        final_timing_reason = "run_incomplete_or_dropped_frames"
+    elif strict_trace and trace_reason != "power_trace_coverage_complete":
+        final_timing_reason = trace_reason
+    elif strict_trace:
+        final_timing_reason = "power_trace_run_samples"
+    else:
+        final_timing_reason = trace_reason
+    timing_ok = bool(
+        clock_source_audit is not None
+        and not sampler_off
+        and not watcher
+        and timing_evidence
+        and completed
+        and dropped == 0
+        and (
+            not strict_trace
+            or trace_reason == "power_trace_coverage_complete"
+        )
+    )
+    record = {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
         "stage": 1,
@@ -1173,6 +1473,17 @@ def build_measurement_record(
             "interval_unit": "device_clock_ticks",
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
+            "aiclk_source": (
+                trace_metadata.get("aiclk_source")
+                if trace_metadata is not None
+                else "sampler_off_diagnostic"
+            ),
+            "aiclk_observation": (
+                "valid in-run power trace samples"
+                if trace_metadata is not None
+                and trace_metadata.get("aiclk_source") == "run_trace_samples"
+                else "pre-run environment snapshot or legacy caller value"
+            ),
             "designated_core": list(config.designated_timestamp_core),
             "cross_core_correlation": "out_of_scope",
         },
@@ -1234,20 +1545,66 @@ def build_measurement_record(
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
+        "power_trace_sample_count": (
+            trace_metadata.get("sample_count") if trace_metadata is not None else None
+        ),
+        "power_trace_csv_row_count": (
+            trace_metadata.get("csv_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_valid_row_count": (
+            trace_metadata.get("valid_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_in_run_valid_row_count": (
+            trace_metadata.get("in_run_valid_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_sha256": (
+            trace_metadata.get("sha256") if trace_metadata is not None else None
+        ),
         "power_trace_absent_reason": "sampler_off_by_design" if sampler_off else None,
+        "power_trace_coverage": (
+            {
+                "coverage": trace_metadata.get("coverage"),
+                "coverage_complete": trace_metadata.get("coverage_complete"),
+                "first_timestamp": trace_metadata.get("first_timestamp"),
+                "last_timestamp": trace_metadata.get("last_timestamp"),
+                "run_start": trace_metadata.get("run_start"),
+                "run_end": trace_metadata.get("run_end"),
+                "valid_row_count": trace_metadata.get("valid_row_count"),
+                "in_run_valid_row_count": trace_metadata.get("in_run_valid_row_count"),
+            }
+            if trace_metadata is not None
+            else None
+        ),
+        "power_clock_provenance": (
+            {
+                "trace": trace_metadata.get("file"),
+                **trace_metadata,
+                "aiclk_source": trace_metadata.get("aiclk_source"),
+                "timing_evidence": bool(timing_ok),
+                "timing_evidence_reason": final_timing_reason,
+            }
+            if trace_metadata is not None
+            else {
+                "trace": None,
+                "aiclk_source": "sampler_off_diagnostic",
+                "timing_evidence": False,
+                "timing_evidence_reason": final_timing_reason,
+                "run_start": run_start,
+                "run_end": run_end,
+            }
+        ),
+        "run_start": trace_metadata.get("run_start") if trace_metadata is not None else run_start,
+        "run_end": trace_metadata.get("run_end") if trace_metadata is not None else run_end,
         "telemetry_sampler": sampler,
         "environment": normalized_environment,
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(
-            clock_source_audit is not None
-            and not sampler_off
-            and not watcher
-            and timing_evidence
-            and completed
-            and dropped == 0
-        ),
+        "timing_evidence": timing_ok,
+        "timing_evidence_reason": final_timing_reason,
     }
+    if outlier_analysis is not None:
+        record["outlier_analysis"] = dict(outlier_analysis)
+    return record
 
 
 def build_rejection_record(
@@ -1324,6 +1681,7 @@ __all__ = [
     "timestamp_digest",
     "validate_configuration",
     "validate_failure_check",
+    "validate_outlier_analysis",
     "validate_pinned_environment",
     "validate_post_run_aiclk",
     "validate_post_run_provenance",
