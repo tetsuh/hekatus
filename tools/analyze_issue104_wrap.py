@@ -72,7 +72,19 @@ def _record_pair_starts(record: Mapping[str, Any]) -> list[int]:
     outlier = record.get("outlier_analysis")
     if not isinstance(outlier, Mapping):
         raise TypeError("record is missing outlier_analysis")
-    starts = outlier.get("frame_start_indices")
+    if "frame_start_indices" not in outlier:
+        # Zero-pair records omit pair-detail arrays but declare an empty pair_sums list.
+        pair_count = outlier.get("pair_count")
+        pair_sums = outlier.get("pair_sums")
+        if (
+            type(pair_count) is int
+            and pair_count == 0
+            and isinstance(pair_sums, list)
+            and not pair_sums
+        ):
+            return []
+        raise ValueError("record outlier_analysis.frame_start_indices must be non-negative integers")
+    starts = outlier["frame_start_indices"]
     if not isinstance(starts, list) or any(
         isinstance(value, bool) or not isinstance(value, int) or value < 1 for value in starts
     ):
@@ -138,20 +150,20 @@ def _crossing_endpoint_indices(timestamps: list[int]) -> list[int]:
     ]
 
 
-def _circular_mean(phases: Iterable[int]) -> float:
+def _circular_mean(phases: Iterable[int]) -> float | None:
     values = list(phases)
     if not values:
-        raise ValueError("at least one phase is required")
+        return None
     angles = [2.0 * math.pi * phase / CLOCK_MODULUS_TICKS for phase in values]
     sine = sum(math.sin(angle) for angle in angles)
     cosine = sum(math.cos(angle) for angle in angles)
     return (math.atan2(sine, cosine) % (2.0 * math.pi)) * CLOCK_MODULUS_TICKS / (2.0 * math.pi)
 
 
-def _circular_arc_width(phases: Iterable[int]) -> int:
+def _circular_arc_width(phases: Iterable[int]) -> int | None:
     ordered = sorted(phases)
     if not ordered:
-        raise ValueError("at least one phase is required")
+        return None
     if len(ordered) == 1:
         return 0
     gaps = [current - previous for previous, current in itertools.pairwise(ordered)]
@@ -159,10 +171,10 @@ def _circular_arc_width(phases: Iterable[int]) -> int:
     return CLOCK_MODULUS_TICKS - max(gaps)
 
 
-def _rayleigh_r(phases: Iterable[int]) -> float:
+def _rayleigh_r(phases: Iterable[int]) -> float | None:
     values = list(phases)
     if not values:
-        raise ValueError("at least one phase is required")
+        return None
     angles = [2.0 * math.pi * phase / CLOCK_MODULUS_TICKS for phase in values]
     return math.hypot(
         sum(math.cos(angle) for angle in angles),
@@ -281,6 +293,10 @@ def analyze_run(
     pair_sum_values = [pair["pair_sum_ticks"] for pair in pairs]
     phase_width_ticks = _circular_arc_width(event_phases_raw)
     period_seconds = CLOCK_MODULUS_TICKS / (aiclk_mhz * 1_000_000)
+    raw_phase_min_ticks = min(event_phases_raw) if event_phases_raw else None
+    raw_phase_max_ticks = max(event_phases_raw) if event_phases_raw else None
+    elapsed_phase_min_ticks = min(event_phases_elapsed) if event_phases_elapsed else None
+    elapsed_phase_max_ticks = max(event_phases_elapsed) if event_phases_elapsed else None
     return {
         "frame_count": len(timestamps),
         "raw_timestamps": dict(raw_metadata),
@@ -343,16 +359,22 @@ def analyze_run(
                 timestamps[index] - timestamps[0] for index in pair_starts
             ],
             "first_interval_end_elapsed_ticks_mod_period": event_phases_elapsed,
-            "raw_phase_min_ticks": min(event_phases_raw),
-            "raw_phase_max_ticks": max(event_phases_raw),
-            "elapsed_phase_min_ticks": min(event_phases_elapsed),
-            "elapsed_phase_max_ticks": max(event_phases_elapsed),
+            "raw_phase_min_ticks": raw_phase_min_ticks,
+            "raw_phase_max_ticks": raw_phase_max_ticks,
+            "elapsed_phase_min_ticks": elapsed_phase_min_ticks,
+            "elapsed_phase_max_ticks": elapsed_phase_max_ticks,
             "rayleigh_R": _rayleigh_r(event_phases_elapsed),
             "circular_mean_raw_phase_ticks": _circular_mean(event_phases_raw),
             "circular_arc_width_ticks": phase_width_ticks,
-            "circular_arc_width_ms": phase_width_ticks / (aiclk_mhz * 1_000),
-            "all_event_phases_in_window": all(
-                phase < phase_window_ticks for phase in event_phases_raw
+            "circular_arc_width_ms": (
+                phase_width_ticks / (aiclk_mhz * 1_000)
+                if phase_width_ticks is not None
+                else None
+            ),
+            "all_event_phases_in_window": (
+                all(phase < phase_window_ticks for phase in event_phases_raw)
+                if event_phases_raw
+                else None
             ),
         },
         "run_elapsed_ticks": timestamps[-1] - timestamps[0],
