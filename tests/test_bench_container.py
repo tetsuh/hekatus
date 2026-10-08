@@ -249,9 +249,9 @@ def test_wrapper_rejects_runner_outside_repository_before_docker(tmp_path):
 
 
 def test_wrapper_accepts_equivalent_absolute_host_runner_path(tmp_path):
-    bindir = _fake_tools(tmp_path)
-    args_log = tmp_path / "docker-args"
     timeout_log = tmp_path / "timeout-args"
+    bindir = _fake_tools(tmp_path, timeout_log=timeout_log)
+    args_log = tmp_path / "docker-args"
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
     shutil.copy2(WRAPPER, copied_wrapper)
