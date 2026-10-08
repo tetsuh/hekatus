@@ -940,7 +940,7 @@ def _telemetry_sampler(environment: Mapping[str, Any]) -> dict[str, Any]:
             "timing_evidence": "available",
         }
     if not isinstance(raw_sampler, Mapping):
-        raise ValueError("environment telemetry_sampler metadata is required")
+        raise TypeError("environment telemetry_sampler metadata is required")
     sampler = dict(raw_sampler)
     mode = sampler.get("mode")
     if mode not in {"off", "default", "explicit"}:
