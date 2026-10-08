@@ -20,6 +20,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
+from enodia.tt.bench.resident_clock import (
+    select_elapsed_aiclk,
+    ticks_to_seconds,
+)
 from enodia.tt.bench.resident_record import (
     CLOCK_MODULUS_TICKS,
     DEFAULT_AICLK_MHZ,
@@ -39,6 +43,7 @@ from enodia.tt.bench.resident_record import (
     raw_metadata_matches,
     validate_resident_record,
 )
+from enodia.tt.bench.telemetry import parse_power_trace
 
 # Compatibility aliases retain the analyzer's board-free names while keeping
 # their implementation in the shared module.
@@ -146,12 +151,28 @@ def _record_aiclk_mhz(record: Mapping[str, Any]) -> int | None:
     return None
 
 
+def _record_configured_aiclk_mhz(record: Mapping[str, Any]) -> int | None:
+    parameters = record.get("parameters")
+    value = parameters.get("budget_aiclk_mhz") if isinstance(parameters, Mapping) else None
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
+def _record_aiclk_source(record: Mapping[str, Any]) -> str | None:
+    clock = record.get("clock")
+    value = clock.get("aiclk_source") if isinstance(clock, Mapping) else None
+    return value if isinstance(value, str) else None
+
+
 def analyze_run(
     timestamps: list[int],
     *,
     raw_metadata: Mapping[str, Any],
     record: Mapping[str, Any],
     aiclk_mhz: int | None = None,
+    aiclk_source: str | None = None,
+    trace_metadata: Mapping[str, Any] | None = None,
     phase_window_ms: float = DEFAULT_PHASE_WINDOW_MS,
 ) -> dict[str, Any]:
     """Return board-free wrap, pair-order, and record-correspondence analysis."""
@@ -164,8 +185,46 @@ def analyze_run(
     invariant_validation = validate_resident_record(
         record, raw_metadata=raw_metadata, timestamps=timestamps
     )
-    if aiclk_mhz is None:
-        aiclk_mhz = _record_aiclk_mhz(record) or DEFAULT_AICLK_MHZ
+    sampler_metadata = _record_sampler_metadata(record)
+    sampler_mode = (
+        sampler_metadata.get("mode")
+        if isinstance(sampler_metadata, Mapping)
+        else "off"
+    )
+    configured_aiclk = (
+        _record_configured_aiclk_mhz(record)
+        or aiclk_mhz
+        or _record_aiclk_mhz(record)
+        or DEFAULT_AICLK_MHZ
+    )
+    persisted_source = _record_aiclk_source(record)
+    trace_source = (
+        trace_metadata.get("aiclk_source")
+        if isinstance(trace_metadata, Mapping)
+        else (aiclk_source or persisted_source)
+    )
+    trace_aiclk = (
+        trace_metadata.get("aiclk_mhz")
+        if isinstance(trace_metadata, Mapping)
+        else (_record_aiclk_mhz(record) if trace_source == "run_trace_samples" else None)
+    )
+    legacy_aiclk = (
+        aiclk_mhz
+        if sampler_mode in {"default", "explicit"}
+        and trace_source != "run_trace_samples"
+        and trace_metadata is None
+        else None
+    )
+    aiclk_selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=configured_aiclk,
+        sampler_mode=sampler_mode,
+        trace_aiclk_mhz=trace_aiclk,
+        trace_aiclk_source=trace_source,
+        legacy_aiclk_mhz=legacy_aiclk,
+        legacy_aiclk_source=trace_source or "legacy_unverified",
+    )
+    aiclk_mhz = aiclk_selection["aiclk_mhz"]
+    aiclk_source = aiclk_selection["aiclk_source"]
     phase_window_ticks = _phase_window_ticks(aiclk_mhz, phase_window_ms)
     if phase_window_ticks >= CLOCK_MODULUS_TICKS:
         raise ValueError("phase window must be less than one clock period")
@@ -174,7 +233,8 @@ def analyze_run(
     outlier_analysis = build_outlier_analysis(
         timestamps,
         aiclk_mhz=aiclk_mhz,
-        sampler_metadata=_record_sampler_metadata(record),
+        aiclk_source=aiclk_source,
+        sampler_metadata=sampler_metadata,
     )
     pairs = outlier_analysis["pairs"]
     crossing_indices = _crossing_endpoint_indices(timestamps)
@@ -209,7 +269,10 @@ def analyze_run(
     candidate_order_counts = _count_orders(candidate_order_entries)
     record_match = _record_correspondence(pairs, record)
     phase_width_ticks = _circular_arc_width(event_phases_raw)
-    period_seconds = CLOCK_MODULUS_TICKS / (aiclk_mhz * 1_000_000)
+    period_seconds = ticks_to_seconds(
+        ticks=CLOCK_MODULUS_TICKS,
+        selection=aiclk_selection,
+    )
     raw_phase_min_ticks = min(event_phases_raw) if event_phases_raw else None
     raw_phase_max_ticks = max(event_phases_raw) if event_phases_raw else None
     elapsed_phase_min_ticks = min(event_phases_elapsed) if event_phases_elapsed else None
@@ -220,6 +283,7 @@ def analyze_run(
         "raw_timestamps_match_record": True,
         "invariant_validation": invariant_validation,
         "aiclk_mhz": aiclk_mhz,
+        "aiclk_source": aiclk_source,
         "wall_clock_period_ticks": CLOCK_MODULUS_TICKS,
         "wall_clock_period_seconds": period_seconds,
         "interval_count": len(intervals),
@@ -282,7 +346,11 @@ def analyze_run(
             "circular_mean_raw_phase_ticks": _circular_mean(event_phases_raw),
             "circular_arc_width_ticks": phase_width_ticks,
             "circular_arc_width_ms": (
-                phase_width_ticks / (aiclk_mhz * 1_000)
+                ticks_to_seconds(
+                    ticks=phase_width_ticks,
+                    selection=aiclk_selection,
+                )
+                * 1_000
                 if phase_width_ticks is not None
                 else None
             ),
@@ -301,21 +369,32 @@ def analyze_file(
     raw_path: Path,
     record_path: Path,
     *,
-    aiclk_mhz: int = DEFAULT_AICLK_MHZ,
+    aiclk_mhz: int | None = None,
     phase_window_ms: float = DEFAULT_PHASE_WINDOW_MS,
 ) -> dict[str, Any]:
     """Read one raw artifact and its committed record, then analyze it."""
     timestamps, metadata = _read_uint64_le(raw_path)
     record = json.loads(record_path.read_text())
+    trace_name = record.get("power_trace") if isinstance(record, Mapping) else None
+    trace_path = record_path.parent / trace_name if isinstance(trace_name, str) else None
+    trace_metadata = None
+    if trace_path is not None and trace_path.exists():
+        run_start = record.get("run_start") if isinstance(record, Mapping) else None
+        run_end = record.get("run_end") if isinstance(record, Mapping) else None
+        if run_start is not None and run_end is not None:
+            trace_metadata = parse_power_trace(
+                trace_path,
+                run_start=run_start,
+                run_end=run_end,
+            )
     analysis = analyze_run(
         timestamps,
         raw_metadata=metadata,
         record=record,
         aiclk_mhz=aiclk_mhz,
+        trace_metadata=trace_metadata,
         phase_window_ms=phase_window_ms,
     )
-    trace_name = record.get("power_trace") if isinstance(record, Mapping) else None
-    trace_path = record_path.parent / trace_name if isinstance(trace_name, str) else None
     analysis["invariant_validation"] = validate_resident_record(
         record,
         raw_metadata=metadata,
@@ -349,12 +428,20 @@ def analyze_issue104(
             issue12_record,
             phase_window_ms=phase_window_ms,
         )
+    default_selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=DEFAULT_AICLK_MHZ,
+        sampler_mode="off",
+    )
     return {
         "schema": "issue-104-wrap-analysis-v1",
         "clock": {
             "modulus_ticks": CLOCK_MODULUS_TICKS,
-            "aiclk_mhz": DEFAULT_AICLK_MHZ,
-            "period_seconds": CLOCK_MODULUS_TICKS / (DEFAULT_AICLK_MHZ * 1_000_000),
+            "aiclk_mhz": default_selection["aiclk_mhz"],
+            "aiclk_source": default_selection["aiclk_source"],
+            "period_seconds": ticks_to_seconds(
+                ticks=CLOCK_MODULUS_TICKS,
+                selection=default_selection,
+            ),
             "phase_window_ms": phase_window_ms,
         },
         "runs": runs,

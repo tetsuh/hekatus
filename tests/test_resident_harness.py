@@ -47,6 +47,7 @@ from enodia.tt.bench.resident_harness import (
     resident_l1_allocation_table,
     run_budget_breakdown,
     run_budget_exceeded,
+    select_elapsed_aiclk,
     select_failure_check,
     split_u64,
     startup_allowance_ticks,
@@ -459,6 +460,39 @@ def test_wrap_tracked_low_word_extension_is_monotonic_across_wrap():
 def test_ticks_to_seconds_uses_aiclk_hz_conversion():
     assert ticks_to_seconds(ticks=1_350_000, aiclk_mhz=1_350) == pytest.approx(0.001)
     assert ticks_to_seconds(ticks=80_000_000, aiclk_mhz=800) == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize(
+    ("mode", "trace_aiclk_mhz", "trace_source", "expected_aiclk", "expected_source"),
+    [
+        pytest.param("off", 800, "snapshot_only", 1_350, "configured", id="off-configured"),
+        pytest.param("default", 1_350, "run_trace_samples", 1_350, "run_trace_samples", id="default-trace"),
+        pytest.param("explicit", 1_350, "run_trace_samples", 1_350, "run_trace_samples", id="explicit-trace"),
+    ],
+)
+def test_elapsed_aiclk_selection_is_table_driven_by_sampler_mode(
+    mode, trace_aiclk_mhz, trace_source, expected_aiclk, expected_source
+):
+    selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=1_350,
+        sampler_mode=mode,
+        trace_aiclk_mhz=trace_aiclk_mhz,
+        trace_aiclk_source=trace_source,
+    )
+    assert selection == {
+        "aiclk_mhz": expected_aiclk,
+        "aiclk_source": expected_source,
+    }
+
+
+def test_sampled_elapsed_aiclk_selection_rejects_snapshot_provenance():
+    with pytest.raises(ValueError, match="valid in-run power-trace AICLK"):
+        select_elapsed_aiclk(
+            budget_aiclk_mhz=1_350,
+            sampler_mode="default",
+            trace_aiclk_mhz=800,
+            trace_aiclk_source="snapshot_only",
+        )
 
 
 def test_periodic_gap_decomposition_preserves_quotients_and_remainders():
@@ -1524,6 +1558,43 @@ def test_sampler_interval_measurements_reject_nonfinite_ratio_before_rounding():
         )
 
 
+def test_sampler_off_400000_frame_elapsed_seconds_use_configured_aiclk():
+    environment = _environment()
+    environment["aiclk_mhz_observed"] = [800]
+    environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    config = _config(frame_count=400_000, frame_interval_ticks=1_350_000)
+    timestamps = [index * config.frame_interval_ticks for index in range(config.frame_count)]
+    record = build_measurement_record(
+        config=config,
+        aiclk_mhz=800,
+        timestamps=timestamps,
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit=environment["harness_commit"],
+        environment=environment,
+        power_trace=None,
+    )
+
+    elapsed_ticks = (config.frame_count - 1) * config.frame_interval_ticks
+    assert record["clock"]["aiclk_mhz"] == 1_350
+    assert record["clock"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["aiclk_mhz_for_elapsed_seconds"] == 1_350
+    assert record["outlier_analysis"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["run_elapsed_seconds"] == pytest.approx(
+        elapsed_ticks / (1_350 * 1_000_000)
+    )
+    assert record["outlier_analysis"]["run_elapsed_seconds"] != pytest.approx(
+        elapsed_ticks / (800 * 1_000_000)
+    )
+    assert record["environment"]["aiclk_mhz_observed"] == [800]
+
+
 def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
     environment = _environment()
     environment["telemetry_sampler"] = {
@@ -1644,7 +1715,10 @@ def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off
     assert sampled_record["power_trace"] == trace_name
     assert off_record["power_trace"] is None
     assert off_record["power_trace_absent_reason"] == "sampler_off_by_design"
-    assert off_record["clock"]["aiclk_mhz"] == 800
+    assert off_record["clock"]["aiclk_mhz"] == 1_350
+    assert off_record["clock"]["aiclk_source"] == "configured"
+    assert off_record["outlier_analysis"]["aiclk_mhz_for_elapsed_seconds"] == 1_350
+    assert off_record["outlier_analysis"]["aiclk_source"] == "configured"
     assert (output_dir / trace_name).exists()
     assert selected_environment_paths == [
         Path("/out/env-sampled.json"),

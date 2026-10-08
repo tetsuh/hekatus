@@ -57,10 +57,15 @@ Full record-kind consistency and agreement between declared coverage flags and
 parsed trace facts are deferred to Issue #110. Revalidation therefore reports
 added fields without rewriting the historical JSON or CSV.
 The sampler-off record passes the diagnostic structural checks:
-its trace is absent by design and `timing_evidence=false`; its raw timestamp
-hash cannot be rechecked against bytes because the referenced external
-`raw-timestamps.bin` is not committed. It is not timing evidence. The sampled
-records remain invalid under the strict catalog even though their CSV bytes are
+its trace is absent by design and `timing_evidence=false`; its elapsed-seconds
+fields are interpreted with the configured `parameters.budget_aiclk_mhz` of
+1,350 MHz, not the 800 MHz pre-run environment snapshot. The record's elapsed
+seconds and `aiclk_mhz_for_elapsed_seconds` are therefore revalidated as
+configured-clock values without selecting that snapshot. Its raw timestamp
+hash cannot be rechecked or recomputed from retained bytes because the
+referenced external `raw-timestamps.bin` is not committed. The immutable JSON
+and CSV leaves are unchanged. It is not timing evidence. The sampled records
+remain invalid under the strict catalog even though their CSV bytes are
 readable and their declared sample counts and SHA-256 values match: 181 rows
 and `0c3b8f1893bc329004c4c0a5a59a76d572ff479d04f686c03effb6b110f41b7b` for
 `2026-10-06-p150a-issue104-sampler-default.json`, and 77 rows and

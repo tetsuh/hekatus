@@ -23,6 +23,10 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.resident_clock import (
+    safe_aiclk_integer,
+    select_elapsed_aiclk,
+)
 from enodia.tt.bench.resident_harness import (
     PAGE_BYTES,
     PAGE_WORDS,
@@ -45,26 +49,13 @@ from enodia.tt.bench.resident_harness import (
 from enodia.tt.bench.telemetry import parse_power_trace
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
-_AICLK_MAX_MHZ = (1 << 63) - 1
 
 
 class ResidentResultUnavailable(ValueError):
     """A device result contained a numeric value that cannot be classified."""
 
 
-def _safe_aiclk_integer(value: Any) -> int | None:
-    """Convert one AICLK reading, treating non-finite/out-of-range values as absent."""
-    try:
-        parsed = float(value)
-    except (OverflowError, TypeError, ValueError):
-        return None
-    if not math.isfinite(parsed) or parsed <= 0.0 or parsed > _AICLK_MAX_MHZ:
-        return None
-    try:
-        converted = int(parsed)
-    except (OverflowError, TypeError, ValueError):
-        return None
-    return converted if converted > 0 else None
+_safe_aiclk_integer = safe_aiclk_integer
 
 
 def _device_word(value: Any, name: str) -> int:
@@ -482,15 +473,18 @@ def _power_aiclk(
     *,
     allow_environment_snapshot: bool = False,
 ) -> int | None:
-    """Select a trace AICLK, with snapshot fallback explicitly diagnostic-only."""
+    """Return a trace-only AICLK for legacy callers; never use snapshots."""
+    del environment, allow_environment_snapshot
     values = _power_trace_aiclk_values(power_trace)
-    if values:
-        return max(values)
-    if allow_environment_snapshot:
-        fallback = _environment_aiclk_values(environment)
-        if fallback:
-            return max(fallback)
-    return None
+    if not values:
+        return None
+    selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=values[0],
+        sampler_mode="default",
+        trace_aiclk_mhz=max(values),
+        trace_aiclk_source="run_trace_samples",
+    )
+    return selection["aiclk_mhz"]
 
 
 def _environment(path: Path) -> dict[str, Any]:
@@ -612,19 +606,25 @@ def main(argv: list[str] | None = None) -> int:
         if power_trace_path is not None
         else None
     )
-    trace_aiclk = trace_metadata.get("aiclk_mhz") if trace_metadata is not None else None
-    aiclk_mhz = _safe_aiclk_integer(trace_aiclk)
-    if aiclk_mhz is None:
-        aiclk_mhz = _power_aiclk(
-            power_trace,
-            environment,
-            allow_environment_snapshot=True,
+    try:
+        aiclk_selection = select_elapsed_aiclk(
+            budget_aiclk_mhz=config.budget_aiclk_mhz,
+            sampler_mode=sampler["mode"],
+            trace_aiclk_mhz=(
+                trace_metadata.get("aiclk_mhz") if trace_metadata is not None else None
+            ),
+            trace_aiclk_source=(
+                trace_metadata.get("aiclk_source") if trace_metadata is not None else None
+            ),
+            allow_configured_fallback=True,
         )
-    if aiclk_mhz is None:
-        reason = "no valid AICLK sample was available"
+    except ValueError as exc:
+        reason = str(exc)
         _write(args.out, build_rejection_record(config=config, reason=reason, environment=environment))
         print(f"resident record rejected: {reason}", file=sys.stderr)
         return 2
+    aiclk_mhz = aiclk_selection["aiclk_mhz"]
+    aiclk_source = aiclk_selection["aiclk_source"]
     validate_post_run_aiclk(aiclk_mhz)
     trace_timing_ok = (
         trace_metadata is not None
@@ -649,11 +649,13 @@ def main(argv: list[str] | None = None) -> int:
     outlier_analysis = build_outlier_analysis(
         result["timestamps"],
         aiclk_mhz=aiclk_mhz,
+        aiclk_source=aiclk_source,
         sampler_metadata=sampler,
     )
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
+        aiclk_source=aiclk_source,
         timestamps=result["timestamps"],
         producer_full_count=result["producer_full_count"],
         consumer_empty_count=result["consumer_empty_count"],

@@ -27,6 +27,14 @@ from enodia.tt.bench.clock_source_audit import (
     clock_source_audit_for_image,
     source_evidence_for_image,
 )
+from enodia.tt.bench.resident_clock import (
+    AICLK_SOURCE_CONFIGURED,
+    AICLK_SOURCE_LEGACY_UNVERIFIED,
+    AICLK_SOURCE_RUN_TRACE_SAMPLES,
+    safe_aiclk_integer,
+    select_elapsed_aiclk,
+    ticks_to_seconds,
+)
 from enodia.tt.bench.resident_record import (
     FAILURE_CODE_TABLE,
     FAILURE_CODES,
@@ -80,22 +88,7 @@ PERCENTILES = {
     "p99_9": 0.999,
     "p99_99": 0.9999,
 }
-_MAX_AICLK_MHZ = (1 << 63) - 1
-
-
-def _safe_aiclk_integer(value: Any) -> int | None:
-    """Convert finite positive AICLK metadata without allowing overflow."""
-    try:
-        parsed = float(value)
-    except (OverflowError, TypeError, ValueError):
-        return None
-    if not math.isfinite(parsed) or parsed <= 0.0 or parsed > _MAX_AICLK_MHZ:
-        return None
-    try:
-        converted = int(parsed)
-    except (OverflowError, TypeError, ValueError):
-        return None
-    return converted if converted > 0 else None
+_safe_aiclk_integer = safe_aiclk_integer
 
 
 @dataclass(frozen=True)
@@ -406,20 +399,6 @@ def run_budget_exceeded(*, elapsed_ticks: int, run_budget_ticks: int) -> bool:
     if elapsed_ticks < 0 or run_budget_ticks <= 0:
         raise ValueError("elapsed_ticks must be non-negative and run_budget_ticks positive")
     return elapsed_ticks >= run_budget_ticks
-
-
-def ticks_to_seconds(*, ticks: int, aiclk_mhz: int) -> float:
-    """Convert device-clock ticks to seconds using the observed AICLK."""
-    if (
-        isinstance(ticks, bool)
-        or not isinstance(ticks, int)
-        or ticks < 0
-        or isinstance(aiclk_mhz, bool)
-        or not isinstance(aiclk_mhz, int)
-        or aiclk_mhz <= 0
-    ):
-        raise ValueError("ticks must be non-negative and aiclk_mhz must be positive integers")
-    return ticks / (aiclk_mhz * 1_000_000)
 
 
 def periodic_gap_decomposition(
@@ -1115,6 +1094,7 @@ def build_measurement_record(
     *,
     config: ResidentConfig,
     aiclk_mhz: int,
+    aiclk_source: str | None = None,
     timestamps: Iterable[int],
     producer_full_count: int,
     consumer_empty_count: int,
@@ -1221,8 +1201,53 @@ def build_measurement_record(
             run_start=None,
             run_end=None,
         )
-        trace_metadata["aiclk_source"] = "legacy_unverified"
+        trace_metadata["aiclk_source"] = AICLK_SOURCE_LEGACY_UNVERIFIED
         trace_reason = "legacy_power_trace_unverified"
+    selected_source = aiclk_source or (
+        trace_metadata.get("aiclk_source")
+        if not sampler_off and trace_metadata is not None
+        else (
+            AICLK_SOURCE_CONFIGURED
+            if sampler_off
+            else AICLK_SOURCE_RUN_TRACE_SAMPLES
+        )
+    )
+    selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=config.budget_aiclk_mhz,
+        sampler_mode=sampler["mode"],
+        trace_aiclk_mhz=(
+            trace_metadata.get("aiclk_mhz")
+            if strict_trace and trace_metadata is not None
+            else None
+        ),
+        trace_aiclk_source=(
+            trace_metadata.get("aiclk_source")
+            if strict_trace and trace_metadata is not None
+            else None
+        ),
+        legacy_aiclk_mhz=(
+            aiclk_mhz
+            if not sampler_off
+            and selected_source not in {AICLK_SOURCE_CONFIGURED, AICLK_SOURCE_RUN_TRACE_SAMPLES}
+            and (
+                not strict_trace
+                or trace_metadata is None
+                or trace_metadata.get("aiclk_source") != AICLK_SOURCE_RUN_TRACE_SAMPLES
+            )
+            else None
+        ),
+        legacy_aiclk_source=(
+            trace_metadata.get("aiclk_source", AICLK_SOURCE_LEGACY_UNVERIFIED)
+            if strict_trace and trace_metadata is not None
+            else AICLK_SOURCE_LEGACY_UNVERIFIED
+        ),
+        allow_configured_fallback=(
+            not sampler_off
+            and selected_source == AICLK_SOURCE_CONFIGURED
+        ),
+    )
+    aiclk_mhz = selection["aiclk_mhz"]
+    aiclk_source = selection["aiclk_source"]
     selected_image = normalized_environment["image"]
     source_evidence = _source_evidence(selected_image)
     validate_post_run_aiclk(aiclk_mhz)
@@ -1250,10 +1275,12 @@ def build_measurement_record(
         outlier_analysis = build_outlier_analysis(
             timestamp_values,
             aiclk_mhz=aiclk_mhz,
+            aiclk_source=aiclk_source,
             sampler_metadata=sampler,
         )
     else:
         outlier_analysis = dict(outlier_analysis)
+    outlier_analysis.setdefault("aiclk_source", aiclk_source)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
@@ -1363,16 +1390,15 @@ def build_measurement_record(
             "interval_unit": "device_clock_ticks",
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
-            "aiclk_source": (
-                trace_metadata.get("aiclk_source")
-                if trace_metadata is not None
-                else "sampler_off_diagnostic"
-            ),
+            "aiclk_source": aiclk_source,
             "aiclk_observation": (
-                "valid in-run power trace samples"
-                if trace_metadata is not None
-                and trace_metadata.get("aiclk_source") == "run_trace_samples"
-                else "pre-run environment snapshot or legacy caller value"
+                "configured run AICLK; sampler off provides no loaded-clock trace"
+                if aiclk_source == AICLK_SOURCE_CONFIGURED
+                else (
+                    "valid in-run power trace samples"
+                    if aiclk_source == AICLK_SOURCE_RUN_TRACE_SAMPLES
+                    else "unverified legacy caller value"
+                )
             ),
             "designated_core": list(config.designated_timestamp_core),
             "cross_core_correlation": "out_of_scope",
@@ -1614,6 +1640,9 @@ def build_rejection_record(
 
 
 __all__ = [
+    "AICLK_SOURCE_CONFIGURED",
+    "AICLK_SOURCE_LEGACY_UNVERIFIED",
+    "AICLK_SOURCE_RUN_TRACE_SAMPLES",
     "AUDITED_CLOCK_SOURCE_IMAGE",
     "CLOCK_SOURCE_AUDIT_TABLE",
     "CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC",
@@ -1659,6 +1688,7 @@ __all__ = [
     "resident_l1_allocation_table",
     "run_budget_breakdown",
     "run_budget_exceeded",
+    "select_elapsed_aiclk",
     "select_failure_check",
     "split_u64",
     "startup_allowance_ticks",

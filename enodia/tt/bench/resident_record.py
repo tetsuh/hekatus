@@ -90,6 +90,12 @@ from enodia.tt.bench.clock_source_audit import (
     CLOCK_SOURCE_AUDIT_TABLE,
     clock_source_audit_for_image,
 )
+from enodia.tt.bench.resident_clock import (
+    AICLK_SOURCE_CONFIGURED,
+    AICLK_SOURCE_RUN_TRACE_SAMPLES,
+    select_elapsed_aiclk,
+    ticks_to_seconds,
+)
 from enodia.tt.bench.sampler_contract import (
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
@@ -121,6 +127,7 @@ TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES = frozenset(
         "pre_run_environment_snapshot",
         "pre-run environment snapshot",
         "sampler_off_diagnostic",
+        "configured",
         "no_valid_in_run_samples",
     }
 )
@@ -647,6 +654,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         type_rule, range_rule, expected = string, _enum(
             "run_trace_samples",
             "sampler_off_diagnostic",
+            "configured",
             "no_valid_in_run_samples",
             "legacy_unverified",
             "legacy",
@@ -943,6 +951,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "environment.harness_commit",
     "environment.tt_env_active_release",
     "environment.aiclk_mhz_observed",
+    "outlier_analysis.aiclk_source",
     "outlier_analysis.sampler_interval_comparison.status",
     "outlier_analysis.sampler_interval_comparison.reason",
     "outlier_analysis.pairs[].interval_end_frame_indices",
@@ -1650,7 +1659,7 @@ def _sampler_comparison(
     sampler_interval_seconds: float | None,
     timestamps: list[int],
     pair_starts: list[int],
-    aiclk_mhz: int,
+    aiclk_selection: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Return numeric sampler-gap measurements without a prose conclusion."""
     pair_count = len(pair_starts)
@@ -1662,13 +1671,11 @@ def _sampler_comparison(
         sampler_interval = _finite_float(
             sampler_interval_seconds, "sampler interval seconds"
         )
-        clock_hz = aiclk_mhz * 1_000_000
         for from_frame, to_frame in itertools.pairwise(pair_starts):
             gap_frames = to_frame - from_frame
-            gap_elapsed_seconds = _finite_ratio(
-                timestamps[to_frame] - timestamps[from_frame],
-                clock_hz,
-                "gap elapsed seconds",
+            gap_elapsed_seconds = ticks_to_seconds(
+                ticks=timestamps[to_frame] - timestamps[from_frame],
+                selection=aiclk_selection,
             )
             sampler_intervals = _finite_float(
                 gap_elapsed_seconds / sampler_interval,
@@ -1712,6 +1719,7 @@ def build_outlier_analysis(
     timestamps: Iterable[int],
     *,
     aiclk_mhz: int = DEFAULT_AICLK_MHZ,
+    aiclk_source: str | None = None,
     sampler_mode: str | None = None,
     sampler_interval_seconds: float | None = None,
     sampler_metadata: Mapping[str, Any] | None = None,
@@ -1734,6 +1742,34 @@ def build_outlier_analysis(
         )
         sampler_mode = sampler["mode"]
         sampler_interval_seconds = sampler["interval_seconds"]
+    selection_mode = sampler_mode or "off"
+    selected_source = aiclk_source or (
+        AICLK_SOURCE_CONFIGURED
+        if selection_mode == "off"
+        else AICLK_SOURCE_RUN_TRACE_SAMPLES
+    )
+    aiclk_selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=aiclk_mhz,
+        sampler_mode=selection_mode,
+        trace_aiclk_mhz=(
+            aiclk_mhz
+            if selection_mode != "off" and selected_source == AICLK_SOURCE_RUN_TRACE_SAMPLES
+            else None
+        ),
+        trace_aiclk_source=(
+            selected_source
+            if selection_mode != "off" and selected_source == AICLK_SOURCE_RUN_TRACE_SAMPLES
+            else None
+        ),
+        legacy_aiclk_mhz=(
+            aiclk_mhz
+            if selection_mode != "off" and selected_source != AICLK_SOURCE_RUN_TRACE_SAMPLES
+            else None
+        ),
+        legacy_aiclk_source=selected_source,
+    )
+    aiclk_mhz = aiclk_selection["aiclk_mhz"]
+    selected_source = aiclk_selection["aiclk_source"]
     values = list(timestamps)
     if any(not _is_int(value, nonnegative=True) for value in values):
         raise ValueError("timestamps must contain unsigned integer values")
@@ -1744,22 +1780,22 @@ def build_outlier_analysis(
     endpoints = [endpoint for pair in pairs for endpoint in pair["interval_end_frame_indices"]]
     elapsed_ticks = [values[index] - values[0] for index in endpoints]
     elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in elapsed_ticks]
-    clock_hz = aiclk_mhz * 1_000_000
     elapsed_seconds = [
-        _finite_ratio(elapsed, clock_hz, "event elapsed seconds")
+        ticks_to_seconds(ticks=elapsed, selection=aiclk_selection)
         for elapsed in elapsed_ticks
     ]
     pair_start_elapsed_seconds = [
-        _finite_ratio(
-            values[index] - values[0], clock_hz, "pair start elapsed seconds"
+        ticks_to_seconds(
+            ticks=values[index] - values[0], selection=aiclk_selection
         )
         for index in starts
     ]
     for pair in pairs:
         first_endpoint = pair["interval_end_frame_indices"][0]
         first_elapsed = values[first_endpoint] - values[0]
-        pair["first_interval_end_elapsed_seconds"] = _finite_ratio(
-            first_elapsed, clock_hz, "first interval endpoint elapsed seconds"
+        pair["first_interval_end_elapsed_seconds"] = ticks_to_seconds(
+            ticks=first_elapsed,
+            selection=aiclk_selection,
         )
     pair_sums = [pair["pair_sum_ticks"] for pair in pairs]
     gaps = [right - left for left, right in itertools.pairwise(starts)]
@@ -1802,9 +1838,14 @@ def build_outlier_analysis(
         "elapsed_time_unit": "seconds",
         "device_tick_unit": "device_clock_ticks",
         "aiclk_mhz_for_elapsed_seconds": aiclk_mhz,
+        "aiclk_source": selected_source,
         "run_elapsed_ticks": values[-1] - values[0] if values else 0,
         "run_elapsed_seconds": (
-            (values[-1] - values[0]) / (aiclk_mhz * 1_000_000) if values else 0.0
+            ticks_to_seconds(
+                ticks=values[-1] - values[0], selection=aiclk_selection
+            )
+            if values
+            else 0.0
         ),
         "interval_count": len(intervals),
         "sampler_interval_comparison": _sampler_comparison(
@@ -1812,7 +1853,7 @@ def build_outlier_analysis(
             sampler_interval_seconds=sampler_interval_seconds,
             timestamps=values,
             pair_starts=starts,
-            aiclk_mhz=aiclk_mhz,
+            aiclk_selection=aiclk_selection,
         ),
     }
 
@@ -2327,12 +2368,12 @@ def validate_pair_analysis(
             expected_elapsed_ticks = [values[index] - values[0] for index in expected_endpoints]
             expected_elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in expected_elapsed_ticks]
             actual_seconds_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
+            expected_aiclk_selection = select_elapsed_aiclk(
+                budget_aiclk_mhz=actual_seconds_aiclk,
+                sampler_mode="off",
+            )
             expected_elapsed_seconds = [
-                _finite_ratio(
-                    elapsed,
-                    actual_seconds_aiclk * 1_000_000,
-                    "expected event elapsed seconds",
-                )
+                ticks_to_seconds(ticks=elapsed, selection=expected_aiclk_selection)
                 for elapsed in expected_elapsed_ticks
             ]
             for field, expected in (
@@ -2341,10 +2382,9 @@ def validate_pair_analysis(
                 ("event_elapsed_ticks_mod_period", expected_elapsed_mod),
                 ("event_elapsed_seconds", expected_elapsed_seconds),
                 ("pair_start_elapsed_seconds", [
-                    _finite_ratio(
-                        values[index] - values[0],
-                        actual_seconds_aiclk * 1_000_000,
-                        "expected pair start elapsed seconds",
+                    ticks_to_seconds(
+                        ticks=values[index] - values[0],
+                        selection=expected_aiclk_selection,
                     )
                     for index in [pair["interval_end_frame_indices"][0] for pair in expected_pairs]
                 ]),
@@ -2369,10 +2409,9 @@ def validate_pair_analysis(
                 ("run_elapsed_ticks", values[-1] - values[0] if values else 0),
                 (
                     "run_elapsed_seconds",
-                    _finite_ratio(
-                        values[-1] - values[0],
-                        actual_seconds_aiclk * 1_000_000,
-                        "expected run elapsed seconds",
+                    ticks_to_seconds(
+                        ticks=values[-1] - values[0],
+                        selection=expected_aiclk_selection,
                     )
                     if values
                     else 0.0,
@@ -3530,6 +3569,8 @@ validate_record_power_invariants = validate_resident_record
 
 
 __all__ = [
+    "AICLK_SOURCE_CONFIGURED",
+    "AICLK_SOURCE_RUN_TRACE_SAMPLES",
     "CLOCK_MODULUS_TICKS",
     "DEFAULT_AICLK_MHZ",
     "DEFAULT_PHASE_WINDOW_MS",
@@ -3571,6 +3612,8 @@ __all__ = [
     "normalize_sampler_metadata",
     "raw_metadata_matches",
     "record_correspondence",
+    "select_elapsed_aiclk",
+    "ticks_to_seconds",
     "validate_issue104_record",
     "validate_pair_analysis",
     "validate_record_invariants",
