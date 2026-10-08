@@ -18,7 +18,6 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import Path, PurePath
-from types import MappingProxyType
 from typing import Any
 
 from enodia.tt.bench.clock_source_audit import (
@@ -29,10 +28,13 @@ from enodia.tt.bench.clock_source_audit import (
     source_evidence_for_image,
 )
 from enodia.tt.bench.resident_record import (
+    FAILURE_CODE_TABLE,
+    FAILURE_CODES,
     RESIDENT_INVARIANT_CATALOG,
     RESIDENT_RECORD_SCHEMA,
     TIMING_EVIDENCE_NOT_REQUESTED,
     TIMING_EVIDENCE_RUN_TRACE_REASON,
+    ResidentFailureClassification,
     build_outlier_analysis,
     validate_pair_analysis,
     validate_resident_record,
@@ -70,53 +72,6 @@ WORK_TICKS_PER_UNIT_UPPER_BOUND = (
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
-@dataclass(frozen=True)
-class ResidentFailureClassification:
-    """Kernel failure semantics shared by summary decoding and record building."""
-
-    code: int
-    name: str
-    sources: tuple[str, ...]
-    termination_reason: str | None
-    cycle_budget_exceeded: bool
-    error_flag: bool
-    priority: int
-
-    @classmethod
-    def for_code(cls, code: Any) -> ResidentFailureClassification:
-        if isinstance(code, bool) or not isinstance(code, int):
-            raise TypeError("resident failure code must be an integer")
-        try:
-            return FAILURE_CODES[code]
-        except KeyError as exc:
-            raise ValueError("unknown resident failure code") from exc
-
-
-# This immutable table mirrors every failure constant defined by the resident
-# kernels.  Codes 1--3 stop on the run-wide limit; only code 4 consumes the
-# per-frame fixed-work budget.  Code 5 is producer cancellation propagated from
-# a peer error and is therefore not a budget breach.
-FAILURE_CODE_TABLE: tuple[ResidentFailureClassification, ...] = (
-    ResidentFailureClassification(
-        0, "none", ("none", "producer", "consumer"), None, False, False, 5
-    ),
-    ResidentFailureClassification(
-        1, "run_wide_budget", ("producer", "consumer"), "run_budget", False, True, 3
-    ),
-    ResidentFailureClassification(
-        2, "producer_pacing_wait", ("producer",), "run_budget", False, True, 1
-    ),
-    ResidentFailureClassification(
-        3, "consumer_empty_wait", ("consumer",), "run_budget", False, True, 2
-    ),
-    ResidentFailureClassification(
-        4, "consumer_fixed_work_budget", ("consumer",), "cycle_budget", True, True, 0
-    ),
-    ResidentFailureClassification(
-        5, "other_check", ("producer",), "cancelled", False, True, 4
-    ),
-)
-FAILURE_CODES = MappingProxyType({entry.code: entry for entry in FAILURE_CODE_TABLE})
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,

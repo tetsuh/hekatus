@@ -80,7 +80,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Self
 
 from enodia.tt.bench.clock_source_audit import (
     CLOCK_SOURCE_AUDIT_TABLE,
@@ -137,8 +137,55 @@ RECORD_KIND_SAMPLER_OFF = "sampler_off"
 RECORD_KIND_ERROR = "error"
 RECORD_KIND_REJECTED = "rejected"
 
-# These paths are the persisted-record presence contract.  Relationship and
-# value checks run only after this table has established the record shape.
+
+@dataclass(frozen=True)
+class ResidentFailureClassification:
+    """Kernel failure semantics shared by builders, runners, and validators."""
+
+    code: int
+    name: str
+    sources: tuple[str, ...]
+    termination_reason: str | None
+    cycle_budget_exceeded: bool
+    error_flag: bool
+    priority: int
+
+    @classmethod
+    def for_code(cls, code: Any) -> ResidentFailureClassification:
+        if isinstance(code, bool) or not isinstance(code, int):
+            raise TypeError("resident failure code must be an integer")
+        try:
+            return FAILURE_CODES[code]
+        except KeyError as exc:
+            raise ValueError("unknown resident failure code") from exc
+
+
+# This immutable table is the canonical resident failure contract.  The
+# builder, runner, and record validator all use these same classifications.
+FAILURE_CODE_TABLE: tuple[ResidentFailureClassification, ...] = (
+    ResidentFailureClassification(
+        0, "none", ("none", "producer", "consumer"), None, False, False, 5
+    ),
+    ResidentFailureClassification(
+        1, "run_wide_budget", ("producer", "consumer"), "run_budget", False, True, 3
+    ),
+    ResidentFailureClassification(
+        2, "producer_pacing_wait", ("producer",), "run_budget", False, True, 1
+    ),
+    ResidentFailureClassification(
+        3, "consumer_empty_wait", ("consumer",), "run_budget", False, True, 2
+    ),
+    ResidentFailureClassification(
+        4, "consumer_fixed_work_budget", ("consumer",), "cycle_budget", True, True, 0
+    ),
+    ResidentFailureClassification(
+        5, "other_check", ("producer",), "cancelled", False, True, 4
+    ),
+)
+FAILURE_CODES = MappingProxyType({entry.code: entry for entry in FAILURE_CODE_TABLE})
+
+# These paths are the persisted-record presence contract.  Type/range and
+# relationship checks run only after this table has established the shape.
 _COMMON_REQUIRED_RECORD_FIELDS = (
     "schema",
     "issue",
@@ -149,6 +196,7 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "parameters.frame_count",
     "parameters.frame_interval_ticks",
     "parameters.ring_pages",
+    "parameters.cycle_budget",
     "parameters.attempted_frame_count",
     "parameters.produced_frame_count",
     "parameters.dropped_frame_count",
@@ -173,6 +221,13 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "ring.dropped_frame_count",
     "ring.aborted_attempts",
     "ring.overflow_count",
+    "cycle_budget",
+    "cycle_budget.budget_ticks",
+    "cycle_budget.unit",
+    "cycle_budget.scope",
+    "cycle_budget.run_budget_ticks",
+    "cycle_budget.exceeded",
+    "cycle_budget.error_flag",
     "failure_check",
     "failure_check.code",
     "failure_check.name",
@@ -199,6 +254,7 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "power_clock_provenance",
     "power_clock_provenance.trace",
     "power_clock_provenance.file",
+    "power_clock_provenance.columns",
     "power_clock_provenance.sha256",
     "power_clock_provenance.readable",
     "power_clock_provenance.nonempty",
@@ -244,6 +300,7 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "outlier_analysis.method",
     "outlier_analysis.pair_count",
     "outlier_analysis.pair_sum_target_ticks",
+    "outlier_analysis.pair_sums",
     "outlier_analysis.pair_sum_min_ticks",
     "outlier_analysis.pair_sum_max_ticks",
     "outlier_analysis.pair_sum_mean_ticks",
@@ -309,27 +366,709 @@ _AUDITED_CLOCK_SOURCE_FIELDS = tuple(
     for field in next(iter(CLOCK_SOURCE_AUDIT_TABLE.values()), {})
 )
 
+
+def _is_int(value: Any, *, nonnegative: bool = False, positive: bool = False) -> bool:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return False
+    if nonnegative and value < 0:
+        return False
+    return not (positive and value <= 0)
+
+
+def _is_number(value: Any) -> bool:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
+
+
+def _is_pinned_image(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and re.search(r"@sha256:[0-9a-f]{64}$", value) is not None
+    )
+
+
+class ResidentRecordField(str):
+    """A string-compatible field path with executable type/range metadata."""
+
+    def __new__(
+        cls,
+        path: str,
+        *,
+        expected_type: str,
+        type_validator: Callable[[Any], bool],
+        range_validator: Callable[[Any], bool],
+        invalid_type: Any = None,
+        invalid_range: Any = None,
+    ) -> Self:
+        field = str.__new__(cls, path)
+        field.path = path
+        field.expected_type = expected_type
+        field.type_validator = type_validator
+        field.range_validator = range_validator
+        field.invalid_type = invalid_type
+        field.invalid_range = invalid_range
+        return field
+
+    def validate(self, value: Any) -> str | None:
+        """Return ``type``/``range`` for the first failed validation phase."""
+        if not self.type_validator(value):
+            return "type"
+        if not self.range_validator(value):
+            return "range"
+        return None
+
+
+def _always(_: Any) -> bool:
+    return True
+
+
+def _optional(predicate: Callable[[Any], bool]) -> Callable[[Any], bool]:
+    return lambda value: value is None or predicate(value)
+
+
+def _enum(*values: Any) -> Callable[[Any], bool]:
+    allowed = frozenset(values)
+    return lambda value: value in allowed
+
+
+def _list_of(predicate: Callable[[Any], bool]) -> Callable[[Any], bool]:
+    return lambda value: isinstance(value, list) and all(predicate(item) for item in value)
+
+
+def _mapping_of_values(predicate: Callable[[Any], bool]) -> Callable[[Any], bool]:
+    return lambda value: isinstance(value, Mapping) and all(
+        predicate(item) for item in value.values()
+    )
+
+
+def _nonempty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _sha256(value: Any) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def _timestamp_string(value: Any) -> bool:
+    return _nonempty_string(value)
+
+
+def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool], Callable[[Any], bool], Any, Any]:
+    """Return the machine-readable type and range rules for one matrix path."""
+    normalized_path = path.replace("[]", "")
+    pair_rules = {
+        "outlier_analysis.pairs.interval_end_frame_indices": (
+            list,
+            lambda value: isinstance(value, list)
+            and len(value) == 2
+            and all(_is_int(item, nonnegative=True) for item in value),
+            "a list of two non-negative integers",
+            [0],
+        ),
+        "outlier_analysis.pairs.first_interval_ticks": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.pairs.second_interval_ticks": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.pairs.short_ticks": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.pairs.long_ticks": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.pairs.pair_sum_ticks": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.pairs.sum_delta_ticks": (_is_int, _is_int, "an integer", "not-an-integer"),
+        "outlier_analysis.pairs.order": (str, _enum(*PAIR_ORDERS), "a pair-order enum", "unknown-order"),
+        "outlier_analysis.pairs.first_interval_end_elapsed_ticks": (_is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer", -1),
+        "outlier_analysis.pairs.first_interval_end_elapsed_ticks_mod_period": (_is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer", -1),
+        "outlier_analysis.pairs.first_interval_end_elapsed_seconds": (_is_number, lambda value: _is_number(value) and value >= 0, "a non-negative finite number", -1.0),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.from_pair_start_frame": (_is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer", -1),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.to_pair_start_frame": (_is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer", -1),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.gap_elapsed_seconds": (_is_number, lambda value: _is_number(value) and value >= 0, "a non-negative finite number", -1.0),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.gap_frames": (_is_int, lambda value: _is_int(value, positive=True), "a positive integer", -1),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.nearest_integer_sampler_intervals": (_is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer", -1),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.residual_to_nearest_sampler_multiple_seconds": (_is_number, _is_number, "a finite number", float("nan")),
+        "outlier_analysis.sampler_interval_comparison.adjacent_gaps.sampler_intervals": (_is_number, lambda value: _is_number(value) and value >= 0, "a non-negative finite number", -1.0),
+    }
+    if normalized_path in pair_rules:
+        type_rule, range_rule, expected, invalid_range = pair_rules[normalized_path]
+        return expected, type_rule, range_rule, object(), invalid_range
+    optional = {
+        "power_trace",
+        "power_trace_sample_count",
+        "power_trace_csv_row_count",
+        "power_trace_valid_row_count",
+        "power_trace_in_run_valid_row_count",
+        "power_trace_sha256",
+        "power_trace_absent_reason",
+        "power_trace_coverage.first_timestamp",
+        "power_trace_coverage.last_timestamp",
+        "power_trace_coverage.run_start",
+        "power_trace_coverage.run_end",
+        "power_trace_coverage.coverage",
+        "power_trace_coverage.coverage_complete",
+        "power_trace_coverage.valid_row_count",
+        "power_trace_coverage.in_run_valid_row_count",
+        "power_clock_provenance.trace",
+        "power_clock_provenance.file",
+        "power_clock_provenance.sha256",
+        "power_clock_provenance.columns",
+        "power_clock_provenance.first_timestamp",
+        "power_clock_provenance.last_timestamp",
+        "power_clock_provenance.run_start",
+        "power_clock_provenance.run_end",
+        "power_clock_provenance.coverage",
+        "power_clock_provenance.readable",
+        "power_clock_provenance.nonempty",
+        "power_clock_provenance.timestamps_parse",
+        "power_clock_provenance.timestamps_ordered",
+        "power_clock_provenance.covers_run_start",
+        "power_clock_provenance.covers_run_end",
+        "power_clock_provenance.coverage_complete",
+        "power_clock_provenance.aiclk_mhz",
+        "power_clock_provenance.csv_row_count",
+        "power_clock_provenance.sample_count",
+        "power_clock_provenance.valid_row_count",
+        "power_clock_provenance.in_run_valid_row_count",
+        "power_clock_provenance.errors",
+        "run_start",
+        "run_end",
+        "outlier_analysis.pair_sum_min_ticks",
+        "outlier_analysis.pair_sum_max_ticks",
+        "outlier_analysis.pair_sum_mean_ticks",
+        "outlier_analysis.sum_delta_min_ticks",
+        "outlier_analysis.sum_delta_max_ticks",
+        "outlier_analysis.gcd_frame_gap",
+    }
+    if kind == RECORD_KIND_REJECTED:
+        optional.update(
+            {
+                "clock.aiclk_mhz",
+                "environment.image",
+                "clock_source_evidence.image",
+                "cycle_budget.run_budget_ticks",
+            }
+        )
+    if kind != RECORD_KIND_SAMPLED_TIMING:
+        optional.update(
+            {
+                "telemetry_sampler.interval_seconds",
+                "environment.telemetry_sampler.interval_seconds",
+                "outlier_analysis.sampler_interval_comparison.interval_seconds",
+                "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds",
+            }
+        )
+    optional_value = path in optional or (
+        path.startswith("clock_source_evidence.")
+        and path not in {"clock_source_evidence.image", "clock_source_evidence.audit_status"}
+    )
+
+    integer_nonnegative = lambda value: _is_int(value, nonnegative=True)
+    string = _nonempty_string
+    boolean = lambda value: isinstance(value, bool)
+    mapping = lambda value: isinstance(value, Mapping)
+    list_value = lambda value: isinstance(value, list)
+
+    if path == "schema":
+        type_rule, range_rule, expected = string, lambda value: value == RESIDENT_RECORD_SCHEMA, "the resident schema string"
+        invalid_range = "unknown-resident-schema"
+    elif path == "issue":
+        type_rule, range_rule, expected = _is_int, lambda value: value == 12, "the integer 12"
+        invalid_range = 13
+    elif path == "stage":
+        type_rule, range_rule, expected = _is_int, lambda value: value == 1, "the integer 1"
+        invalid_range = 2
+    elif path == "status":
+        type_rule, range_rule, expected = string, _enum("ok", "ok_with_drops", "error", "rejected"), "a resident status enum"
+        invalid_range = "unknown-status"
+    elif path == "termination_reason":
+        type_rule, range_rule, expected = string, _enum(
+            "frame_count", "run_budget", "cycle_budget", "cancelled", "outer_timeout", "incomplete", "rejected", "running"
+        ), "a termination-reason enum"
+        invalid_range = "unknown-termination"
+    elif path in {"parameters", "clock", "clock_source_evidence", "histogram", "histogram.histogram", "ring", "cycle_budget", "failure_check", "raw_timestamps", "power_trace_coverage", "power_trace_coverage.coverage", "power_clock_provenance", "power_clock_provenance.coverage", "telemetry_sampler", "environment", "environment.telemetry_sampler", "outlier_analysis", "outlier_analysis.pair_order_counts", "outlier_analysis.sampler_interval_comparison", "timestamp_attribution", "timestamp_attribution.consumer_completion", "timestamp_attribution.producer_write", "work_ticks", "startup"}:
+        type_rule, range_rule, expected = mapping, _always, "an object"
+        invalid_range = []
+    elif path in {"parameters.producer_core", "parameters.consumer_core", "parameters.designated_timestamp_core", "clock.designated_core"}:
+        type_rule, range_rule, expected = list_value, _list_of(integer_nonnegative), "a list of non-negative integers"
+        invalid_range = [-1]
+    elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", "outlier_analysis.aiclk_mhz_for_elapsed_seconds", "outlier_analysis.run_elapsed_ticks", "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
+        invalid_range = -1
+    elif path == "clock.aiclk_mhz":
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, positive=True), "a positive integer"
+        invalid_range = 0
+    elif path in {"clock.width_bits", "power_clock_provenance.aiclk_mhz"}:
+        type_rule, range_rule, expected = _is_number, lambda value: _is_number(value) and value > 0, "a positive number"
+        invalid_range = 0
+    elif path == "cycle_budget.error_flag":
+        type_rule, range_rule, expected = _is_int, _enum(0, 1), "the integer 0 or 1"
+        invalid_range = 2
+    elif path in {"cycle_budget.exceeded", "watcher", "timing_evidence", "power_clock_provenance.readable", "power_clock_provenance.nonempty", "power_clock_provenance.timestamps_parse", "power_clock_provenance.timestamps_ordered", "power_clock_provenance.covers_run_start", "power_clock_provenance.covers_run_end", "power_clock_provenance.coverage_complete", "power_clock_provenance.timing_evidence", "environment.image_pinned", "power_trace_coverage.coverage_complete", "power_trace_coverage.coverage.nonempty", "power_trace_coverage.coverage.timestamps_parse", "power_trace_coverage.coverage.timestamps_ordered", "power_trace_coverage.coverage.first_at_or_before_run_start", "power_trace_coverage.coverage.last_at_or_after_run_end", "power_trace_coverage.coverage.readable", "power_trace_coverage.coverage.complete"}:
+        type_rule, range_rule, expected = boolean, _enum(True, False), "a boolean"
+        invalid_range = "not-a-boolean"
+    elif path in {"timing_evidence_reason", "power_clock_provenance.timing_evidence_reason", "rejection_reason"}:
+        type_rule, range_rule, expected = string, string, "a non-empty string"
+        invalid_range = ""
+    elif path in {"raw_timestamps.sha256", "power_trace_sha256", "power_clock_provenance.sha256"}:
+        type_rule, range_rule, expected = string, _sha256, "64 lowercase hexadecimal characters"
+        invalid_range = "0" * 63 + "G"
+    elif path in {"harness_commit", "environment.harness_commit"}:
+        type_rule, range_rule, expected = string, string, "a non-empty harness commit string"
+        invalid_range = ""
+    elif path in {"environment.image", "clock_source_evidence.image"}:
+        type_rule, range_rule, expected = string, _is_pinned_image, "a digest-pinned image"
+        invalid_range = "registry/image:latest"
+    elif path in {"telemetry_sampler.mode", "environment.telemetry_sampler.mode", "outlier_analysis.sampler_interval_comparison.mode"}:
+        type_rule, range_rule, expected = string, _enum(*SAMPLER_CONTRACT), "the sampler mode enum"
+        invalid_range = "unknown-mode"
+    elif path in {"telemetry_sampler.interval_seconds", "environment.telemetry_sampler.interval_seconds", "outlier_analysis.sampler_interval_comparison.interval_seconds", "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds"}:
+        type_rule, range_rule, expected = _is_number, lambda value: (
+            value is None
+            and kind == RECORD_KIND_SAMPLER_OFF
+            or _is_number(value)
+            and ((kind == RECORD_KIND_SAMPLER_OFF and value is None) or (kind != RECORD_KIND_SAMPLER_OFF and value > 0.0))
+        ), "a supported sampler interval"
+        if kind == RECORD_KIND_SAMPLER_OFF:
+            range_rule = lambda value: value is None
+        elif path in {"telemetry_sampler.interval_seconds", "environment.telemetry_sampler.interval_seconds"}:
+            range_rule = lambda value: _is_number(value) and value > 0.0
+        invalid_range = -1.0
+    elif path in {"telemetry_sampler.power_trace", "environment.telemetry_sampler.power_trace"}:
+        type_rule, range_rule, expected = string, _enum("required", "absent_by_design"), "the sampler trace enum"
+        invalid_range = "unknown-trace-policy"
+    elif path in {"telemetry_sampler.timing_evidence", "environment.telemetry_sampler.timing_evidence"}:
+        type_rule, range_rule, expected = string, _enum("available", "diagnostic_only"), "the sampler timing-evidence enum"
+        invalid_range = "unknown-timing-policy"
+    elif path == "clock.aiclk_source" or path == "power_clock_provenance.aiclk_source":
+        type_rule, range_rule, expected = string, _enum(
+            "run_trace_samples",
+            "sampler_off_diagnostic",
+            "no_valid_in_run_samples",
+            "legacy_unverified",
+            "legacy",
+            "basename_only",
+            "basename-only",
+            "unverified",
+            "unavailable",
+            "snapshot",
+            "snapshot_only",
+            "pre_run_environment_snapshot",
+            "pre-run environment snapshot",
+            "rejected_preflight",
+        ), "an AICLK provenance enum"
+        invalid_range = "unknown-aiclk-source"
+    elif path == "clock_source_evidence.audit_status":
+        type_rule, range_rule, expected = string, _enum("audited", "unaudited"), "the audit-status enum"
+        invalid_range = "unknown-audit-status"
+    elif path == "failure_check.code":
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True) and value in FAILURE_CODES, "an integer in FAILURE_CODE_TABLE"
+        invalid_range = max(entry.code for entry in FAILURE_CODE_TABLE) + 1
+    elif path == "failure_check.name" or path == "failure_check.source":
+        type_rule, range_rule, expected = string, string, "a non-empty failure classification string"
+        invalid_range = "unknown-failure-value"
+    elif path in {"failure_check.elapsed_ticks", "failure_check.limit_ticks"}:
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
+        invalid_range = -1
+    elif path == "failure_check.valid":
+        type_rule, range_rule, expected = boolean, _enum(True, False), "a boolean"
+        invalid_range = "not-a-boolean"
+    elif path in {"outlier_analysis.event_elapsed_seconds", "outlier_analysis.pair_start_elapsed_seconds"}:
+        type_rule, range_rule, expected = list_value, _list_of(_is_number), "a list of finite numbers"
+        invalid_range = [float("nan")]
+    elif path in {"outlier_analysis.event_elapsed_ticks", "outlier_analysis.event_elapsed_ticks_mod_period", "outlier_analysis.frame_gaps", "outlier_analysis.frame_start_indices", "outlier_analysis.event_frame_positions", "outlier_analysis.pair_sums"}:
+        type_rule, range_rule, expected = list_value, _list_of(integer_nonnegative), "a list of non-negative integers"
+        invalid_range = [-1]
+    elif path == "outlier_analysis.gap_counts":
+        type_rule, range_rule, expected = mapping, _mapping_of_values(integer_nonnegative), "a gap-to-count object"
+        invalid_range = {"gap": -1}
+    elif path == "outlier_analysis.gap_histogram":
+        type_rule, range_rule, expected = list_value, _list_of(
+            lambda item: isinstance(item, Mapping)
+            and _is_int(item.get("gap_frames"), nonnegative=True)
+            and _is_int(item.get("count"), nonnegative=True)
+        ), "a list of gap-count objects"
+        invalid_range = [{"gap_frames": -1, "count": 1}]
+    elif path in {"outlier_analysis.pairs", "outlier_analysis.sampler_interval_comparison.adjacent_gaps"}:
+        type_rule, range_rule, expected = list_value, _list_of(mapping), "a list of objects"
+        invalid_range = ["not-an-object"]
+    elif path == "histogram.histogram.bins":
+        type_rule, range_rule, expected = list_value, _list_of(
+            lambda item: isinstance(item, Mapping)
+            and _is_int(item.get("start_ticks"), nonnegative=True)
+            and _is_int(item.get("end_ticks"), nonnegative=True)
+            and _is_int(item.get("count"), nonnegative=True)
+        ), "a list of histogram bins"
+        invalid_range = [{"start_ticks": -1, "end_ticks": 0, "count": 1}]
+    elif path in {"outlier_analysis.pair_sum_min_ticks", "outlier_analysis.pair_sum_max_ticks", "outlier_analysis.sum_delta_min_ticks", "outlier_analysis.sum_delta_max_ticks"}:
+        type_rule, range_rule, expected = _is_number, _is_number, "a finite number"
+        invalid_range = float("nan")
+    elif path in {"outlier_analysis.pair_sum_mean_ticks", "outlier_analysis.run_elapsed_seconds", "outlier_analysis.aiclk_mhz_for_elapsed_seconds"}:
+        type_rule, range_rule, expected = _is_number, lambda value: _is_number(value) and value >= 0, "a non-negative finite number"
+        invalid_range = -1.0
+    elif path == "outlier_analysis.gcd_frame_gap":
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
+        invalid_range = -1
+    elif path in {"power_clock_provenance.columns"}:
+        type_rule = _optional(list_value) if optional_value else list_value
+        if kind == RECORD_KIND_SAMPLED_TIMING:
+            range_rule = _optional(
+                lambda value: value is None or value == [] or value == list(POWER_TRACE_COLUMNS)
+            ) if optional_value else lambda value: value == list(POWER_TRACE_COLUMNS)
+        else:
+            range_rule = _optional(lambda value: value == []) if optional_value else lambda value: value == []
+        expected = "the declared telemetry column list"
+        invalid_range = ["wrong"]
+    elif path.endswith(".columns"):
+        type_rule, range_rule, expected = list_value, _list_of(string), "a list of column names"
+        invalid_range = [""]
+    elif path in {"power_trace_coverage.coverage", "power_clock_provenance.coverage"}:
+        type_rule, range_rule, expected = mapping, _always, "a coverage object"
+        invalid_range = []
+    elif path.endswith(".errors"):
+        type_rule, range_rule, expected = list_value, _list_of(string), "a list of error strings"
+        invalid_range = [""]
+    elif path.endswith((".unit", ".scope", ".method", ".status", ".reason", ".note", ".policy", ".name", ".api", ".source", ".observation", ".clock", ".semantics", ".definition")):
+        type_rule, range_rule, expected = string, string, "a non-empty string"
+        invalid_range = ""
+    elif path.endswith((".valid", ".available", ".pinned", ".complete", ".readable", ".nonempty", ".ordered", ".performed", ".claim")):
+        type_rule, range_rule, expected = boolean, _enum(True, False), "a boolean"
+        invalid_range = "not-a-boolean"
+    elif path.endswith(".sha256"):
+        type_rule, range_rule, expected = string, _sha256, "64 lowercase hexadecimal characters"
+        invalid_range = "0" * 63 + "G"
+    elif path.endswith((".seconds", ".temperature_c")):
+        type_rule, range_rule, expected = _is_number, _is_number, "a finite number"
+        invalid_range = float("nan")
+    elif path.endswith((".ticks", ".count", ".width_bits", ".mhz", ".id")):
+        type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
+        invalid_range = -1
+    elif path.endswith(".image"):
+        type_rule, range_rule, expected = string, _is_pinned_image, "a digest-pinned image"
+        invalid_range = "registry/image:latest"
+    elif path.endswith((".timestamp", ".start", ".end")):
+        type_rule, range_rule, expected = string, _timestamp_string, "a timestamp string"
+        invalid_range = ""
+    else:
+        type_rule, range_rule, expected = string, string, "a non-empty string"
+        invalid_range = ""
+
+    if optional_value:
+        type_rule = _optional(type_rule)
+        range_rule = _optional(range_rule)
+    invalid_type = object()
+    return expected, type_rule, range_rule, invalid_type, invalid_range
+
+
+def _field(path: str, kind: str) -> ResidentRecordField:
+    expected, type_rule, range_rule, invalid_type, invalid_range = _field_predicates(path, kind)
+    return ResidentRecordField(
+        path,
+        expected_type=expected,
+        type_validator=type_rule,
+        range_validator=range_rule,
+        invalid_type=invalid_type,
+        invalid_range=invalid_range,
+    )
+
+
 # A rejected record is still a machine-readable result.  It uses the same
 # field matrix with a small diagnostic payload, so a preflight failure cannot
 # silently discard provenance or the schema shape needed to audit the refusal.
-RESIDENT_RECORD_FIELD_MATRIX: Mapping[str, tuple[str, ...]] = MappingProxyType(
+_MATRIX_PATHS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
-        RECORD_KIND_SAMPLED_TIMING: _COMMON_REQUIRED_RECORD_FIELDS
-        + _AUDITED_CLOCK_SOURCE_FIELDS,
-        RECORD_KIND_SAMPLER_OFF: _COMMON_REQUIRED_RECORD_FIELDS,
-        RECORD_KIND_ERROR: _COMMON_REQUIRED_RECORD_FIELDS
+        RECORD_KIND_SAMPLED_TIMING: _COMMON_REQUIRED_RECORD_FIELDS + _AUDITED_CLOCK_SOURCE_FIELDS,
+        RECORD_KIND_SAMPLER_OFF: _COMMON_REQUIRED_RECORD_FIELDS + _AUDITED_CLOCK_SOURCE_FIELDS,
+        RECORD_KIND_ERROR: _COMMON_REQUIRED_RECORD_FIELDS + _AUDITED_CLOCK_SOURCE_FIELDS
         + (
             "failure_check.elapsed_ticks",
             "failure_check.limit_ticks",
             "failure_check.unit",
             "failure_check.valid",
         ),
-        RECORD_KIND_REJECTED: _COMMON_REQUIRED_RECORD_FIELDS + ("rejection_reason",),
+        RECORD_KIND_REJECTED: _COMMON_REQUIRED_RECORD_FIELDS + _AUDITED_CLOCK_SOURCE_FIELDS + ("rejection_reason",),
+    }
+)
+RESIDENT_RECORD_FIELD_MATRIX: Mapping[str, tuple[ResidentRecordField, ...]] = MappingProxyType(
+    {
+        kind: tuple(_field(path, kind) for path in paths)
+        for kind, paths in _MATRIX_PATHS.items()
     }
 )
 REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
 REQUIRED_PAIR_FIELDS = _REQUIRED_PAIR_FIELDS
 REQUIRED_SAMPLER_GAP_FIELDS = _REQUIRED_SAMPLER_GAP_FIELDS
+PAIR_FIELD_SPECS: Mapping[str, ResidentRecordField] = MappingProxyType(
+    {
+        field: _field(f"outlier_analysis.pairs[].{field}", RECORD_KIND_SAMPLED_TIMING)
+        for field in REQUIRED_PAIR_FIELDS
+    }
+)
+SAMPLER_GAP_FIELD_SPECS: Mapping[str, ResidentRecordField] = MappingProxyType(
+    {
+        field: _field(
+            f"outlier_analysis.sampler_interval_comparison.adjacent_gaps[].{field}",
+            RECORD_KIND_SAMPLED_TIMING,
+        )
+        for field in REQUIRED_SAMPLER_GAP_FIELDS
+    }
+)
+
+# These are explicit compatibility fields emitted by the resident builder or
+# retained by documented historical callers.  They are not a wildcard: an
+# unlisted key is an unknown-field mismatch.
+_COMMON_ALLOWED_EXTRA_FIELDS = (
+    "parameters.producer_core",
+    "parameters.consumer_core",
+    "parameters.work_per_frame",
+    "parameters.designated_timestamp_core",
+    "parameters.outer_timeout_seconds",
+    "parameters.histogram_bin_ticks",
+    "parameters.fixed_work_ticks_per_frame",
+    "parameters.budget_aiclk_mhz",
+    "parameters.run_budget",
+    "parameters.run_budget.frame_count",
+    "parameters.run_budget.frame_interval_ticks",
+    "parameters.run_budget.pacing_ticks",
+    "parameters.run_budget.per_frame_work_budget_ticks",
+    "parameters.run_budget.cycle_budget_ticks_per_frame",
+    "parameters.run_budget.fixed_work_ticks",
+    "parameters.run_budget.critical_path_ticks",
+    "parameters.run_budget.schedule_ticks",
+    "parameters.run_budget.overlap_model",
+    "parameters.run_budget.startup_allowance_ms",
+    "parameters.run_budget.budget_aiclk_mhz",
+    "parameters.run_budget.startup_allowance_ticks",
+    "parameters.run_budget.safety_margin_percent",
+    "parameters.run_budget.watcher_overhead_margin_percent",
+    "parameters.run_budget.total_margin_percent",
+    "parameters.run_budget.safety_margin_ticks",
+    "parameters.run_budget.run_budget_ticks",
+    "parameters.cycle_budget_scope",
+    "parameters.full_ring_policy",
+    "parameters.frame_interval_is_not_acquisition_rate_claim",
+    "parameters.frame_interval_note",
+    "frame_interval_is_not_acquisition_rate_claim",
+    "clock.name",
+    "clock.timestamp_api",
+    "clock.timestamp_semantics",
+    "clock.width_bits",
+    "clock.interval_unit",
+    "clock.frequency_source",
+    "clock.aiclk_observation",
+    "clock.designated_core",
+    "clock.cross_core_correlation",
+    "timestamp_attribution",
+    "timestamp_attribution.status",
+    "timestamp_attribution.consumer_completion",
+    "timestamp_attribution.consumer_completion.clock",
+    "timestamp_attribution.consumer_completion.core",
+    "timestamp_attribution.producer_write",
+    "timestamp_attribution.producer_write.available",
+    "timestamp_attribution.producer_write.clock",
+    "timestamp_attribution.producer_write.core",
+    "timestamp_attribution.producer_write.reason",
+    "work_ticks",
+    "work_ticks.minimum",
+    "work_ticks.maximum",
+    "work_ticks.valid",
+    "work_ticks.unit",
+    "startup",
+    "startup.configured_allowance_ms",
+    "startup.configured_allowance_ticks",
+    "startup.budget_aiclk_mhz",
+    "startup.observed_ticks",
+    "startup.observed_valid",
+    "startup.clock",
+    "histogram.min_ticks",
+    "histogram.max_ticks",
+    "histogram.percentiles",
+    "histogram.percentiles.p50",
+    "histogram.percentiles.p50.status",
+    "histogram.percentiles.p50.minimum_samples",
+    "histogram.percentiles.p50.value_ticks",
+    "histogram.percentiles.p99",
+    "histogram.percentiles.p99.status",
+    "histogram.percentiles.p99.minimum_samples",
+    "histogram.percentiles.p99.value_ticks",
+    "histogram.percentiles.p99_9",
+    "histogram.percentiles.p99_9.status",
+    "histogram.percentiles.p99_9.minimum_samples",
+    "histogram.percentiles.p99_9.value_ticks",
+    "histogram.percentiles.p99_99",
+    "histogram.percentiles.p99_99.status",
+    "histogram.percentiles.p99_99.minimum_samples",
+    "histogram.percentiles.p99_99.value_ticks",
+    "histogram.sample_definition",
+    "histogram.histogram.bins[]",
+    "histogram.histogram.bins[].start_ticks",
+    "histogram.histogram.bins[].end_ticks",
+    "histogram.histogram.bins[].count",
+    "outlier_analysis.gap_histogram[]",
+    "outlier_analysis.gap_histogram[].gap_frames",
+    "outlier_analysis.gap_histogram[].count",
+    "ring.synchronization",
+    "ring.full_ring_policy",
+    "raw_timestamps.file",
+    "raw_timestamps.retained_outside_repository",
+    "power_trace_coverage.coverage.nonempty",
+    "power_trace_coverage.coverage.timestamps_parse",
+    "power_trace_coverage.coverage.timestamps_ordered",
+    "power_trace_coverage.coverage.first_at_or_before_run_start",
+    "power_trace_coverage.coverage.last_at_or_after_run_end",
+    "power_trace_coverage.coverage.readable",
+    "power_trace_coverage.coverage.complete",
+    "power_clock_provenance.coverage.nonempty",
+    "power_clock_provenance.coverage.timestamps_parse",
+    "power_clock_provenance.coverage.timestamps_ordered",
+    "power_clock_provenance.coverage.first_at_or_before_run_start",
+    "power_clock_provenance.coverage.last_at_or_after_run_end",
+    "power_clock_provenance.coverage.readable",
+    "power_clock_provenance.coverage.complete",
+    "power_clock_provenance.columns",
+    "power_clock_provenance.errors",
+    "clock_source_evidence.diagnostic",
+    "environment.board",
+    "environment.board.serial",
+    "environment.board.board_id",
+    "environment.board.board_type",
+    "environment.board.serial_source",
+    "environment.firmware",
+    "environment.firmware.fw_bundle_version",
+    "environment.kmd_version",
+    "environment.harness_commit",
+    "environment.tt_env_active_release",
+    "environment.aiclk_mhz_observed",
+    "outlier_analysis.sampler_interval_comparison.status",
+    "outlier_analysis.sampler_interval_comparison.reason",
+    "outlier_analysis.pairs[].interval_end_frame_indices",
+    "outlier_analysis.pairs[].first_interval_ticks",
+    "outlier_analysis.pairs[].second_interval_ticks",
+    "outlier_analysis.pairs[].short_ticks",
+    "outlier_analysis.pairs[].long_ticks",
+    "outlier_analysis.pairs[].pair_sum_ticks",
+    "outlier_analysis.pairs[].sum_delta_ticks",
+    "outlier_analysis.pairs[].order",
+    "outlier_analysis.pairs[].first_interval_end_elapsed_ticks",
+    "outlier_analysis.pairs[].first_interval_end_elapsed_ticks_mod_period",
+    "outlier_analysis.pairs[].first_interval_end_elapsed_seconds",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].from_pair_start_frame",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].to_pair_start_frame",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_elapsed_seconds",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_frames",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].nearest_integer_sampler_intervals",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].residual_to_nearest_sampler_multiple_seconds",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].sampler_intervals",
+    "failure_check.valid",
+    "outlier_analysis.status",
+    "outlier_analysis.periodicity",
+)
+
+# Exact leaf paths retained by the immutable ADR-0005 Issue #104 schema.
+# Historical records use this compatibility set instead of the modern matrix;
+# an unlisted historical key is still an unknown-field mismatch.
+_LEGACY_ALLOWED_FIELDS = frozenset({
+    "schema", "issue", "related_issue", "stage", "status", "summary",
+    "environment", "environment.captured_at", "environment.image",
+    "environment.image_pinned", "environment.telemetry_sampler",
+    "environment.telemetry_sampler.mode", "environment.telemetry_sampler.interval_seconds",
+    "environment.telemetry_sampler.power_trace", "environment.telemetry_sampler.timing_evidence",
+    "environment.kernel", "environment.kmd_version", "environment.tt_env_active_release",
+    "environment.harness_commit", "environment.harness_dirty", "environment.harness_identity_source",
+    "environment.board_info", "environment.board_info.bus_id", "environment.board_info.board_type",
+    "environment.board_info.board_id", "environment.board_info.coords", "environment.board_info.dram_status",
+    "environment.board_info.dram_speed", "environment.board_info.pcie_speed", "environment.board_info.pcie_width",
+    "environment.firmwares", "environment.firmwares.fw_bundle_version", "environment.firmwares.tt_flash_version",
+    "environment.firmwares.cm_fw", "environment.firmwares.cm_fw_date", "environment.firmwares.eth_fw",
+    "environment.firmwares.dm_bl_fw", "environment.firmwares.dm_app_fw", "environment.firmwares.gddr_fw",
+    "environment.limits", "environment.limits.vdd_min", "environment.limits.vdd_max",
+    "environment.limits.tdp_limit", "environment.limits.tdc_limit", "environment.limits.asic_fmax",
+    "environment.limits.therm_trip_l1_limit", "environment.limits.thm_limit", "environment.limits.bus_peak_limit",
+    "environment.limits.fan_rpm_limit", "environment.limits.board_power_limit",
+    "environment.board", "environment.board.bus_id", "environment.board.board_type",
+    "environment.board.board_id", "environment.board.coords", "environment.board.dram_status",
+    "environment.board.dram_speed", "environment.board.pcie_speed", "environment.board.pcie_width",
+    "environment.board.serial", "environment.board.serial_source", "environment.firmware",
+    "environment.firmware.fw_bundle_version", "environment.firmware.tt_flash_version",
+    "environment.firmware.cm_fw", "environment.firmware.cm_fw_date", "environment.firmware.eth_fw",
+    "environment.firmware.dm_bl_fw", "environment.firmware.dm_app_fw", "environment.firmware.gddr_fw",
+    "environment.aiclk_mhz_observed", "environment.run_id", "environment.aiclk_observation",
+    "parameters", "parameters.frame_count", "parameters.frame_interval_ticks", "parameters.producer_core",
+    "parameters.consumer_core", "parameters.ring_pages", "parameters.work_per_frame",
+    "parameters.designated_timestamp_core", "parameters.cycle_budget", "parameters.outer_timeout_seconds",
+    "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz",
+    "parameters.run_budget", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks",
+    "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks",
+    "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks",
+    "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks",
+    "parameters.run_budget.overlap_model", "parameters.run_budget.startup_allowance_ms",
+    "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks",
+    "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent",
+    "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks",
+    "parameters.run_budget.run_budget_ticks", "parameters.cycle_budget_scope", "parameters.full_ring_policy",
+    "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count",
+    "parameters.frame_interval_is_not_acquisition_rate_claim", "parameters.frame_interval_note",
+    "clock", "clock.name", "clock.timestamp_api", "clock.width_bits", "clock.interval_unit",
+    "clock.frequency_source", "clock.aiclk_mhz", "clock.aiclk_observation", "clock.designated_core",
+    "clock.cross_core_correlation", "timestamp_attribution", "timestamp_attribution.status",
+    "timestamp_attribution.consumer_completion", "timestamp_attribution.consumer_completion.clock",
+    "timestamp_attribution.consumer_completion.core", "timestamp_attribution.producer_write",
+    "timestamp_attribution.producer_write.available", "timestamp_attribution.producer_write.clock",
+    "timestamp_attribution.producer_write.core", "timestamp_attribution.producer_write.reason",
+    "clock_source_evidence", "clock_source_evidence.toolchain", "clock_source_evidence.tt_metal_revision",
+    "clock_source_evidence.clock_api", "clock_source_evidence.blackhole_read_api",
+    "clock_source_evidence.dataflow_ring_api", "clock_source_evidence.semaphore_api",
+    "clock_source_evidence.frequency_api", "clock_source_evidence.profiler_conversion",
+    "clock_source_evidence.cross_core_note", "work_ticks", "work_ticks.minimum", "work_ticks.maximum",
+    "work_ticks.valid", "work_ticks.unit", "histogram", "histogram.N", "histogram.min_ticks",
+    "histogram.max_ticks", "histogram.percentiles", "histogram.percentiles.p50",
+    "histogram.percentiles.p50.status", "histogram.percentiles.p50.minimum_samples",
+    "histogram.percentiles.p50.value_ticks", "histogram.percentiles.p99", "histogram.percentiles.p99.status",
+    "histogram.percentiles.p99.minimum_samples", "histogram.percentiles.p99.value_ticks",
+    "histogram.percentiles.p99_9", "histogram.percentiles.p99_9.status",
+    "histogram.percentiles.p99_9.minimum_samples", "histogram.percentiles.p99_9.value_ticks",
+    "histogram.percentiles.p99_99", "histogram.percentiles.p99_99.status",
+    "histogram.percentiles.p99_99.minimum_samples", "histogram.percentiles.p99_99.value_ticks",
+    "histogram.histogram", "histogram.histogram.bin_width_ticks", "histogram.histogram.bins",
+    "histogram.histogram.bins[]", "histogram.histogram.bins[].start_ticks",
+    "histogram.histogram.bins[].end_ticks", "histogram.histogram.bins[].count", "histogram.sample_definition",
+    "ring", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count",
+    "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.overflow_count",
+    "ring.synchronization", "ring.full_ring_policy", "failure_check", "failure_check.code",
+    "failure_check.name", "failure_check.source", "cycle_budget", "cycle_budget.budget_ticks",
+    "cycle_budget.unit", "cycle_budget.scope", "cycle_budget.run_budget_ticks", "cycle_budget.exceeded",
+    "cycle_budget.error_flag", "raw_timestamps", "raw_timestamps.count", "raw_timestamps.file",
+    "raw_timestamps.sha256", "raw_timestamps.retained_outside_repository", "power_trace",
+    "power_trace_sample_count", "power_trace_sha256", "power_trace_absent_reason", "telemetry_sampler",
+    "telemetry_sampler.mode", "telemetry_sampler.interval_seconds", "telemetry_sampler.power_trace",
+    "telemetry_sampler.timing_evidence", "watcher", "timing_evidence", "outlier_analysis",
+    "outlier_analysis.method", "outlier_analysis.status", "outlier_analysis.pair_count",
+    "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.pair_sum_min_ticks",
+    "outlier_analysis.pair_sum_max_ticks", "outlier_analysis.pair_sum_mean_ticks",
+    "outlier_analysis.sum_delta_min_ticks", "outlier_analysis.sum_delta_max_ticks",
+    "outlier_analysis.frame_start_indices", "outlier_analysis.event_frame_positions",
+    "outlier_analysis.event_elapsed_seconds", "outlier_analysis.pair_start_elapsed_seconds",
+    "outlier_analysis.frame_gaps", "outlier_analysis.gap_counts", "outlier_analysis.gcd_frame_gap",
+    "outlier_analysis.periodicity", "outlier_analysis.pairs", "outlier_analysis.pairs[]",
+    "outlier_analysis.pairs[].first_interval_end_elapsed_seconds",
+    "outlier_analysis.pairs[].first_interval_end_elapsed_ticks", "outlier_analysis.pairs[].interval_end_frame_indices",
+    "outlier_analysis.pairs[].long_ticks", "outlier_analysis.pairs[].pair_sum_ticks",
+    "outlier_analysis.pairs[].short_ticks", "outlier_analysis.pairs[].sum_delta_ticks",
+    "outlier_analysis.elapsed_time_unit", "outlier_analysis.device_tick_unit",
+    "outlier_analysis.aiclk_mhz_for_elapsed_seconds", "outlier_analysis.run_elapsed_ticks",
+    "outlier_analysis.run_elapsed_seconds", "outlier_analysis.sampler_interval_comparison",
+    "outlier_analysis.sampler_interval_comparison.status", "outlier_analysis.sampler_interval_comparison.reason",
+    "hardware", "hardware.device_id", "hardware.device_node", "hardware.named_wrapper",
+    "hardware.docker_running_before", "hardware.docker_running_after", "hardware.reset_performed",
+    "hardware.health_probe", "hardware.outer_timeout_seconds", "hardware.frame_count_termination",
+    "producer_timestamp_attribution", "producer_timestamp_attribution.status",
+    "producer_timestamp_attribution.available", "producer_timestamp_attribution.reason", "conclusion",
+    "historical_records", "historical_records.existing_issue12_records_unchanged",
+    "historical_records.supersedes", "harness_commit",
+})
+RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        kind: _COMMON_ALLOWED_EXTRA_FIELDS
+        for kind in RESIDENT_RECORD_FIELD_MATRIX
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -370,23 +1109,6 @@ def _mismatch(
     }
 
 
-def _is_int(value: Any, *, nonnegative: bool = False, positive: bool = False) -> bool:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return False
-    if nonnegative and value < 0:
-        return False
-    return not (positive and value <= 0)
-
-
-def _is_number(value: Any) -> bool:
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        return False
-    try:
-        return math.isfinite(float(value))
-    except OverflowError:
-        return False
-
-
 def _value(record: Mapping[str, Any], path: str, default: Any = _MISSING) -> Any:
     current: Any = record
     for component in path.split("."):
@@ -403,11 +1125,12 @@ def _mapping(record: Mapping[str, Any], path: str) -> Mapping[str, Any] | None:
 
 def _is_modern_record(record: Mapping[str, Any]) -> bool:
     schema = record.get("schema", _MISSING)
-    if schema == RESIDENT_RECORD_SCHEMA:
-        return True
+    if isinstance(schema, str) and schema.startswith("adr-0005-issue-104-"):
+        return False
     # A single-field mutation must not erase the validator's ability to
-    # identify a modern record; named historical schemas remain the only skip.
-    return schema is _MISSING and any(
+    # identify a modern record.  Named historical schemas remain the only
+    # compatibility family outside the modern matrix.
+    return schema == RESIDENT_RECORD_SCHEMA or any(
         field in record
         for field in ("parameters", "clock", "outlier_analysis", "clock_source_evidence")
     )
@@ -439,20 +1162,20 @@ def _path_present(record: Mapping[str, Any], path: str) -> bool:
 
 
 def _check_required_fields(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
-    """Enforce the modern shape before any relationship or value checks."""
+    """Enforce the modern shape before any type, range, or relationship checks."""
     del ctx
     kind = _record_kind(record)
     if kind is None:
         return []
     invariant = "record.required_fields"
     mismatches: list[dict[str, Any]] = []
-    for path in RESIDENT_RECORD_FIELD_MATRIX[kind]:
-        if not _path_present(record, path):
+    for field in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        if not _path_present(record, field.path):
             mismatches.append(
                 _mismatch(
                     invariant,
-                    (path,),
-                    f"{path} is required for {kind} records",
+                    (field.path,),
+                    f"{field.path} is required for {kind} records",
                 )
             )
     outlier = record.get("outlier_analysis")
@@ -494,11 +1217,164 @@ def _check_required_fields(record: Mapping[str, Any], ctx: ValidationContext) ->
     return mismatches
 
 
-def _is_pinned_image(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and re.search(r"@sha256:[0-9a-f]{64}$", value) is not None
+def _iter_record_paths(value: Any, prefix: str = "") -> Iterable[str]:
+    """Yield concrete mapping keys, including fields inside list objects."""
+    if not isinstance(value, Mapping):
+        return
+    for key, child in value.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        yield path
+        if isinstance(child, Mapping):
+            yield from _iter_record_paths(child, path)
+        elif isinstance(child, list):
+            for item in child:
+                if isinstance(item, Mapping):
+                    yield from _iter_record_paths(item, f"{path}[]")
+
+
+def _known_record_path(path: str, kind: str) -> bool:
+    """Return whether one concrete path is in the required/allowed matrix."""
+    normalized = re.sub(r"\[\d+\]", "[]", path)
+    known = {str(field) for field in RESIDENT_RECORD_FIELD_MATRIX[kind]}
+    known.update(RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS[kind])
+    known.update(str(field) for field in PAIR_FIELD_SPECS.values())
+    known.update(str(field) for field in SAMPLER_GAP_FIELD_SPECS.values())
+    known.update({"outlier_analysis.pairs[]", "outlier_analysis.sampler_interval_comparison.adjacent_gaps[]"})
+    if normalized in known:
+        return True
+    if normalized.startswith("outlier_analysis.gap_counts."):
+        return bool(re.fullmatch(r"outlier_analysis\.gap_counts\.\d+", normalized))
+    if any(pattern.endswith(".*") and normalized.startswith(pattern[:-1]) for pattern in known):
+        return True
+    return any(candidate.startswith(f"{normalized}.") for candidate in known)
+
+
+def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    del ctx
+    kind = _record_kind(record)
+    legacy = isinstance(record.get("schema"), str) and record["schema"].startswith(
+        "adr-0005-issue-104-"
     )
+    if kind is None and not legacy:
+        return []
+    mismatches: list[dict[str, Any]] = []
+    if legacy:
+        dynamic_legacy_fields = {
+            "outlier_analysis.pairs[].first_interval_end_elapsed_seconds",
+            "outlier_analysis.pairs[].first_interval_end_elapsed_ticks",
+            "outlier_analysis.pairs[].interval_end_frame_indices",
+            "outlier_analysis.pairs[].long_ticks",
+            "outlier_analysis.pairs[].pair_sum_ticks",
+            "outlier_analysis.pairs[].short_ticks",
+            "outlier_analysis.pairs[].sum_delta_ticks",
+            "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].from_pair_start_frame",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].to_pair_start_frame",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_elapsed_seconds",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].gap_frames",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].nearest_integer_sampler_intervals",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].residual_to_nearest_sampler_multiple_seconds",
+            "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].sampler_intervals",
+        }
+        for path in _iter_record_paths(record):
+            normalized = re.sub(r"\[\d+\]", "[]", path)
+            known = normalized in _LEGACY_ALLOWED_FIELDS or normalized in dynamic_legacy_fields
+            known = known or bool(
+                re.fullmatch(r"outlier_analysis\.gap_counts\.\d+", normalized)
+            )
+            if not known:
+                mismatches.append(
+                    _mismatch(
+                        "record.unknown_fields",
+                        (path,),
+                        f"{path} is not declared for the historical record schema",
+                    )
+                )
+        return mismatches
+    for path in _iter_record_paths(record):
+        if not _known_record_path(path, kind):
+            mismatches.append(
+                _mismatch(
+                    "record.unknown_fields",
+                    (path,),
+                    f"{path} is not declared for {kind} records",
+                )
+            )
+    return mismatches
+
+
+def _validate_field_value(
+    field: ResidentRecordField, value: Any, mismatches: list[dict[str, Any]]
+) -> None:
+    failure = field.validate(value)
+    if failure is None:
+        return
+    label = "type" if failure == "type" else "range"
+    mismatches.append(
+        _mismatch(
+            "record.field_values",
+            (field.path,),
+            f"{field.path} has an invalid {label}; expected {field.expected_type}",
+        )
+    )
+
+
+def _check_field_values(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    """Apply each matrix entry's type validator, then its range validator."""
+    del ctx
+    kind = _record_kind(record)
+    if kind is None:
+        return []
+    mismatches: list[dict[str, Any]] = []
+    for field in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        value = _value(record, field.path)
+        if value is not _MISSING:
+            _validate_field_value(field, value, mismatches)
+    outlier = record.get("outlier_analysis")
+    if isinstance(outlier, Mapping):
+        pairs = outlier.get("pairs")
+        if isinstance(pairs, list):
+            for index, pair in enumerate(pairs):
+                if not isinstance(pair, Mapping):
+                    continue
+                for name, field in PAIR_FIELD_SPECS.items():
+                    if name in pair:
+                        _validate_field_value(
+                            ResidentRecordField(
+                                f"outlier_analysis.pairs[{index}].{name}",
+                                expected_type=field.expected_type,
+                                type_validator=field.type_validator,
+                                range_validator=field.range_validator,
+                                invalid_type=field.invalid_type,
+                                invalid_range=field.invalid_range,
+                            ),
+                            pair[name],
+                            mismatches,
+                        )
+        comparison = outlier.get("sampler_interval_comparison")
+        if isinstance(comparison, Mapping):
+            gaps = comparison.get("adjacent_gaps")
+            if isinstance(gaps, list):
+                for index, gap in enumerate(gaps):
+                    if not isinstance(gap, Mapping):
+                        continue
+                    for name, field in SAMPLER_GAP_FIELD_SPECS.items():
+                        if name in gap:
+                            _validate_field_value(
+                                ResidentRecordField(
+                                    "outlier_analysis.sampler_interval_comparison."
+                                    f"adjacent_gaps[{index}].{name}",
+                                    expected_type=field.expected_type,
+                                    type_validator=field.type_validator,
+                                    range_validator=field.range_validator,
+                                    invalid_type=field.invalid_type,
+                                    invalid_range=field.invalid_range,
+                                ),
+                                gap[name],
+                                mismatches,
+                            )
+    return mismatches
 
 
 def _finite_float(value: Any, field: str) -> float:
@@ -918,33 +1794,99 @@ def build_outlier_analysis(
 # Invariant checks consumed through RESIDENT_INVARIANT_CATALOG.
 
 
-def _failure_flag(record: Mapping[str, Any]) -> bool:
+def _failure_classification(record: Mapping[str, Any]) -> ResidentFailureClassification | None:
     failure = record.get("failure_check")
-    if isinstance(failure, Mapping) and isinstance(failure.get("error_flag"), bool):
-        return failure["error_flag"]
-    if isinstance(failure, Mapping) and _is_int(failure.get("code"), nonnegative=True):
-        return failure.get("code") != 0
-    return record.get("status") in {"error", "abnormal_exit", "timeout"}
+    if not isinstance(failure, Mapping):
+        return None
+    try:
+        return ResidentFailureClassification.for_code(failure.get("code"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _failure_flag(record: Mapping[str, Any]) -> bool:
+    """Fail closed for malformed or contradictory failure metadata."""
+    classification = _failure_classification(record)
+    if classification is not None:
+        return classification.error_flag
+    return True
 
 
 def _check_failure_check(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     del ctx
     if not _is_modern_record(record):
         return []
+    invariant = "failure_check"
     failure = record.get("failure_check")
-    if not isinstance(failure, Mapping) or not _is_int(failure.get("code"), nonnegative=True):
-        return []
-    if failure.get("code") == 0:
-        return []
-    if failure.get("valid") is not True:
-        return [
+    if not isinstance(failure, Mapping):
+        return [_mismatch(invariant, ("failure_check",), "failure_check must be an object")]
+    code = failure.get("code")
+    try:
+        classification = ResidentFailureClassification.for_code(code)
+    except (TypeError, ValueError) as exc:
+        return [_mismatch(invariant, ("failure_check.code",), f"failure_check code is invalid: {exc}")]
+    mismatches: list[dict[str, Any]] = []
+    if failure.get("name") != classification.name:
+        mismatches.append(
             _mismatch(
-                "failure_check",
+                invariant,
+                ("failure_check.code", "failure_check.name"),
+                "failure_check name does not match FAILURE_CODE_TABLE",
+            )
+        )
+    if failure.get("source") not in classification.sources:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("failure_check.code", "failure_check.source"),
+                "failure_check source does not match FAILURE_CODE_TABLE",
+            )
+        )
+    if classification.code != 0 and failure.get("valid") is not True:
+        mismatches.append(
+            _mismatch(
+                invariant,
                 ("failure_check.valid",),
                 "nonzero failure_check.valid must be true",
             )
-        ]
-    return []
+        )
+    if classification.code != 0 and failure.get("unit") != "device_clock_ticks":
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("failure_check.unit",),
+                "nonzero failure_check.unit must be device_clock_ticks",
+            )
+        )
+    return mismatches
+
+
+def _check_cycle_budget(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    del ctx
+    invariant = "cycle_budget"
+    cycle = _mapping(record, "cycle_budget")
+    classification = _failure_classification(record)
+    if cycle is None or classification is None:
+        return []
+    mismatches: list[dict[str, Any]] = []
+    expected_flag = int(classification.error_flag)
+    if cycle.get("error_flag") != expected_flag:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("cycle_budget.error_flag", "failure_check.code"),
+                "cycle_budget.error_flag does not match FAILURE_CODE_TABLE",
+            )
+        )
+    if cycle.get("exceeded") != classification.cycle_budget_exceeded:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("cycle_budget.exceeded", "failure_check.code"),
+                "cycle_budget.exceeded does not match FAILURE_CODE_TABLE",
+            )
+        )
+    return mismatches
 
 
 def _check_parameter_counts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
@@ -2068,6 +3010,8 @@ def _timing_block_reason(
         return "legacy_sampler_metadata_unverified"
     if isinstance(sampler, Mapping) and _check_sampler_contract(record, ctx):
         return "sampler_metadata_unverified"
+    if _check_failure_check(record, ctx) or _check_cycle_budget(record, ctx):
+        return "failure_metadata_unverified"
     if record.get("watcher") is True:
         return "watcher_diagnostic_only"
     schema = record.get("schema")
@@ -2223,6 +3167,18 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
         _check_required_fields,
     ),
     ResidentInvariant(
+        "record.field_values",
+        ("record",),
+        "matrix-driven type and range validation before cross-field relationships",
+        _check_field_values,
+    ),
+    ResidentInvariant(
+        "record.unknown_fields",
+        ("record",),
+        "unknown fields are rejected unless explicitly listed for the record kind",
+        _check_unknown_fields,
+    ),
+    ResidentInvariant(
         "clock_source_evidence",
         ("environment.image", "clock_source_evidence"),
         "exact environment image digest and immutable clock-source audit facts",
@@ -2230,9 +3186,15 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ),
     ResidentInvariant(
         "failure_check",
-        ("failure_check.code", "failure_check.valid"),
-        "nonzero failure classification and validity flag",
+        ("failure_check.code", "failure_check.name", "failure_check.source", "failure_check.valid"),
+        "canonical failure code, name, source, and validity relationships",
         _check_failure_check,
+    ),
+    ResidentInvariant(
+        "cycle_budget",
+        ("cycle_budget.error_flag", "cycle_budget.exceeded", "failure_check.code"),
+        "cycle-budget error metadata agrees with the canonical failure table",
+        _check_cycle_budget,
     ),
     ResidentInvariant(
         "parameters.counts",
@@ -2291,6 +3253,15 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
 )
 
 
+def _force_timing_false(record: dict[str, Any], reason: str) -> None:
+    record["timing_evidence"] = False
+    record["timing_evidence_reason"] = reason
+    provenance = record.get("power_clock_provenance")
+    if isinstance(provenance, dict):
+        provenance["timing_evidence"] = False
+        provenance["timing_evidence_reason"] = reason
+
+
 def _apply_builder_timing_policy(
     record: dict[str, Any], ctx: ValidationContext, report: Mapping[str, Any] | None
 ) -> None:
@@ -2298,12 +3269,7 @@ def _apply_builder_timing_policy(
     reason = _timing_block_reason(record, ctx, report)
     timing = record.get("timing_evidence")
     if reason is not None and timing is True:
-        record["timing_evidence"] = False
-        record["timing_evidence_reason"] = reason
-        provenance = record.get("power_clock_provenance")
-        if isinstance(provenance, dict):
-            provenance["timing_evidence"] = False
-            provenance["timing_evidence_reason"] = reason
+        _force_timing_false(record, reason)
     elif timing is False:
         current_reason = record.get("timing_evidence_reason")
         if not isinstance(current_reason, str) or not current_reason.strip() or current_reason in {
@@ -2371,24 +3337,23 @@ def validate_resident_record(
     mismatches: list[dict[str, Any]] = []
     checks: dict[str, Any] = {}
     record_kind = _record_kind(record)
+    if builder and isinstance(record, dict):
+        _apply_builder_timing_policy(record, ctx, trace_report)
     for entry in RESIDENT_INVARIANT_CATALOG:
         try:
             if record_kind == RECORD_KIND_REJECTED and entry.name not in {
                 "record.required_fields",
+                "record.field_values",
+                "record.unknown_fields",
                 "clock_source_evidence",
+                "failure_check",
+                "cycle_budget",
             }:
                 entry_mismatches = []
             else:
                 entry_mismatches = entry.check(record, ctx)
         except (TypeError, ValueError, KeyError, IndexError) as exc:
             entry_mismatches = [_mismatch(entry.name, entry.fields, f"malformed input: {exc}")]
-        if (
-            entry.name == "record.required_fields"
-            and builder
-            and not entry_mismatches
-            and isinstance(record, dict)
-        ):
-            _apply_builder_timing_policy(record, ctx, trace_report)
         checks[entry.name] = {
             "ok": not entry_mismatches,
             "fields": list(entry.fields),
@@ -2396,6 +3361,13 @@ def validate_resident_record(
             "mismatches": entry_mismatches,
         }
         mismatches.extend(entry_mismatches)
+    if (
+        builder
+        and isinstance(record, dict)
+        and record.get("timing_evidence") is True
+        and mismatches
+    ):
+        _force_timing_false(record, "record_validation_failed")
     failures = [item["message"] for item in mismatches]
     # Preserve the historic check names consumed by board-free callers while
     # keeping their implementation in the catalog entries above.
@@ -2463,7 +3435,10 @@ __all__ = [
     "CLOCK_MODULUS_TICKS",
     "DEFAULT_AICLK_MHZ",
     "DEFAULT_PHASE_WINDOW_MS",
+    "FAILURE_CODES",
+    "FAILURE_CODE_TABLE",
     "LONG_THRESHOLD_TICKS",
+    "PAIR_FIELD_SPECS",
     "PAIR_ORDERS",
     "PAIR_TARGET_TICKS",
     "PAIR_TOLERANCE_TICKS",
@@ -2475,15 +3450,19 @@ __all__ = [
     "REQUIRED_RECORD_FIELDS",
     "REQUIRED_SAMPLER_GAP_FIELDS",
     "RESIDENT_INVARIANT_CATALOG",
+    "RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS",
     "RESIDENT_RECORD_FIELD_MATRIX",
     "RESIDENT_RECORD_SCHEMA",
     "SAMPLER_CONTRACT",
+    "SAMPLER_GAP_FIELD_SPECS",
     "SHORT_THRESHOLD_TICKS",
     "TIMING_EVIDENCE_COMPATIBILITY_BRANCHES",
     "TIMING_EVIDENCE_NOT_REQUESTED",
     "TIMING_EVIDENCE_RUN_TRACE_REASON",
     "TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES",
+    "ResidentFailureClassification",
     "ResidentInvariant",
+    "ResidentRecordField",
     "_count_orders",
     "_detect_pairs",
     "_record_correspondence",

@@ -160,6 +160,14 @@ def _delete_field(record: dict, path: str) -> None:
     del target[components[-1]]
 
 
+def _set_field(record: dict, path: str, value) -> None:
+    components = path.split(".")
+    target = record
+    for component in components[:-1]:
+        target = target[component]
+    target[components[-1]] = value
+
+
 def _matrix_record(kind: str, tmp_path: Path) -> dict:
     if kind == "sampled_timing":
         record, _trace, _timestamps = _valid_record(tmp_path)
@@ -224,6 +232,41 @@ def test_required_field_matrix_deletion_mutations_are_rejected(kind: str, tmp_pa
         )
 
 
+@pytest.mark.parametrize("kind", tuple(RESIDENT_RECORD_FIELD_MATRIX))
+def test_required_field_matrix_type_and_range_mutations_are_rejected(
+    kind: str, tmp_path: Path
+):
+    record = _matrix_record(kind, tmp_path)
+    for field in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        for mutation, value in (
+            ("type", field.invalid_type),
+            ("range", field.invalid_range),
+        ):
+            candidate = copy.deepcopy(record)
+            _set_field(candidate, field.path, value)
+            report = validate_resident_record(candidate)
+            assert not report["valid"], (kind, field.path, mutation, report["failures"])
+            assert any(
+                field.path in mismatch["fields"]
+                for mismatch in report["mismatches"]
+            ), (kind, field.path, mutation, report["mismatches"])
+            if (
+                kind == "sampled_timing"
+                and field.path != "timing_evidence"
+                and record["timing_evidence"] is True
+            ):
+                builder_candidate = copy.deepcopy(candidate)
+                validate_resident_record(
+                    builder_candidate,
+                    builder=True,
+                    raise_on_error=False,
+                )
+                assert builder_candidate["timing_evidence"] is False, (
+                    field.path,
+                    mutation,
+                )
+
+
 def test_required_list_item_fields_are_checked_from_the_same_matrix(tmp_path: Path):
     timestamps = [0, 1_000_000, 2_700_000, 4_050_000, 5_050_000, 6_750_000]
     record, trace, _timestamps = _valid_record(tmp_path, timestamps=timestamps)
@@ -239,6 +282,84 @@ def test_required_list_item_fields_are_checked_from_the_same_matrix(tmp_path: Pa
         assert not validate_resident_record(
             candidate, timestamps=timestamps, power_trace_path=trace
         )["valid"]
+
+
+def test_unknown_modern_fields_are_rejected_by_the_explicit_compatibility_table(
+    tmp_path: Path,
+):
+    record, trace, timestamps = _valid_record(tmp_path)
+    candidate = copy.deepcopy(record)
+    candidate["unexpected_field"] = True
+    report = validate_resident_record(
+        candidate, timestamps=timestamps, power_trace_path=trace
+    )
+    assert not report["valid"]
+    assert any(
+        mismatch["invariant"] == "record.unknown_fields"
+        and mismatch["fields"] == ["unexpected_field"]
+        for mismatch in report["mismatches"]
+    )
+
+    candidate = copy.deepcopy(record)
+    candidate["environment"]["unexpected_field"] = True
+    report = validate_resident_record(
+        candidate, timestamps=timestamps, power_trace_path=trace
+    )
+    assert not report["valid"]
+    assert any(
+        mismatch["invariant"] == "record.unknown_fields"
+        and mismatch["fields"] == ["environment.unexpected_field"]
+        for mismatch in report["mismatches"]
+    )
+
+
+def test_historical_unknown_fields_are_rejected_without_rewriting_the_record():
+    path = Path("docs/measurements/2026-10-06-p150a-issue104-sampler-off.json")
+    record = json.loads(path.read_text())
+    assert validate_resident_record(record)["valid"]
+    candidate = copy.deepcopy(record)
+    candidate["unexpected_historical_field"] = True
+    report = validate_resident_record(candidate)
+    assert not report["valid"]
+    assert any(
+        mismatch["invariant"] == "record.unknown_fields"
+        and mismatch["fields"] == ["unexpected_historical_field"]
+        for mismatch in report["mismatches"]
+    )
+
+
+def test_failure_code_zero_is_canonical_and_failure_mutations_force_non_timing(
+    tmp_path: Path,
+):
+    record, trace, timestamps = _valid_record(tmp_path)
+    assert validate_resident_record(
+        record, timestamps=timestamps, power_trace_path=trace
+    )["valid"]
+    mutations = {
+        "failure_check.code.type": lambda r: r["failure_check"].update(code="0"),
+        "failure_check.code.range": lambda r: r["failure_check"].update(code=99),
+        "failure_check.name": lambda r: r["failure_check"].update(name="wrong"),
+        "failure_check.source": lambda r: r["failure_check"].update(source="unknown"),
+        "cycle_budget.error_flag.type": lambda r: r["cycle_budget"].update(error_flag=True),
+        "cycle_budget.error_flag.range": lambda r: r["cycle_budget"].update(error_flag=2),
+    }
+    for name, mutate in mutations.items():
+        candidate = copy.deepcopy(record)
+        mutate(candidate)
+        report = validate_resident_record(
+            candidate, timestamps=timestamps, power_trace_path=trace
+        )
+        assert not report["valid"], (name, report["failures"])
+        builder_candidate = copy.deepcopy(candidate)
+        validate_resident_record(
+            builder_candidate,
+            timestamps=timestamps,
+            power_trace_path=trace,
+            builder=True,
+            raise_on_error=False,
+        )
+        assert builder_candidate["timing_evidence"] is False, name
+        assert builder_candidate["power_clock_provenance"]["timing_evidence"] is False
 
 
 def test_catalog_is_nonempty_and_executable():
