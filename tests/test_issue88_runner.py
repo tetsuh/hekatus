@@ -138,14 +138,18 @@ def test_issue88_quality_metrics_label_each_reference_and_submetric():
         (
             "bf16",
             "quality_vs_matching_reference",
-            "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
-            "X0=I/||original FP32 R||_infinity",
+            (
+                "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
+                "X0=I/||original FP32 R||_infinity"
+            ),
         ),
         (
             "fp32-r",
             "quality_vs_matching_reference",
-            "fixed-N=12 Newton-Schulz reference using original FP32 R and "
-            "X0=I/||original FP32 R||_infinity",
+            (
+                "fixed-N=12 Newton-Schulz reference using original FP32 R and "
+                "X0=I/||original FP32 R||_infinity"
+            ),
         ),
     ):
         context = runner.reference_context(matrices, variant)
