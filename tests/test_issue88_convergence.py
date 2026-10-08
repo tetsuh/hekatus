@@ -1,6 +1,7 @@
 """Board-free coverage for Issue #88 convergence and publication gates."""
 
 import datetime
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -12,6 +13,12 @@ from tools import newton_schulz_issue88 as runner
 
 RUN_START = datetime.datetime(2026, 1, 1, 0, 0, 1, tzinfo=datetime.UTC)
 RUN_END = datetime.datetime(2026, 1, 1, 0, 0, 1, 500000, tzinfo=datetime.UTC)
+SOURCE_RECORD = Path(__file__).parents[1] / (
+    "docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json"
+)
+DERIVED_SUMMARY = Path(__file__).parents[1] / (
+    "docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun-summary.json"
+)
 
 
 def _environment() -> dict:
@@ -87,6 +94,130 @@ def _passing_parts(tmp_path: Path) -> tuple[dict, dict, dict]:
     return run, telemetry, cleanup
 
 
+def test_issue88_derived_summary_maps_values_to_source_rows_and_references():
+    source_bytes = SOURCE_RECORD.read_bytes()
+    source = json.loads(source_bytes)
+    summary = json.loads(DERIVED_SUMMARY.read_text())
+    measured_rows = [
+        row for row in source["measurement"]["comparison_rows"] if row["status"] == "ok"
+    ]
+
+    assert summary["source_record"] == {
+        "file": SOURCE_RECORD.name,
+        "sha256": hashlib.sha256(source_bytes).hexdigest(),
+    }
+    assert summary["source_record"]["sha256"] == (
+        "34d3db5f1185548b7415dac2166ee7783d02c82e0ea8b0659e4ec1b500121d88"
+    )
+    assert len(measured_rows) == 5
+
+    true_table, matching_table = summary["tables"]
+    true_reference = summary["metric_reference_definition"]["original_R_true_inverse"]
+    matching_reference = summary["metric_reference_definition"][
+        "variant_matching_fixed_N_reference"
+    ]
+    assert true_table["metric_reference"] == true_reference["metric_reference"]
+    for table, group, error_field in (
+        (
+            true_table,
+            "quality_vs_true_inverse",
+            "relative_frobenius_error_vs_true_inverse",
+        ),
+        (
+            matching_table,
+            "quality_vs_matching_reference",
+            "relative_frobenius_error_vs_matching_reference",
+        ),
+    ):
+        assert [item["row"] for item in table["rows"]] == [
+            row["row"] for row in measured_rows
+        ]
+        for item, source_row in zip(table["rows"], measured_rows, strict=True):
+            correctness = source_row["correctness"]
+            quality = correctness[group]
+            assert item["variant"] == ("BF16-R" if source_row["variant"] == "bf16" else "FP32-R")
+            assert item["L"] == source_row["size"]
+            assert item["R_placement"] == source_row["r_memory"].upper()
+            expected_metric_reference = (
+                true_reference["metric_reference"]
+                if group == "quality_vs_true_inverse"
+                else matching_reference[
+                    "bf16_R" if source_row["variant"] == "bf16" else "fp32_R"
+                ]
+            )
+            assert item["metric_reference"] == expected_metric_reference
+            assert item["inverse_relative_frobenius_error"] == correctness[error_field]
+            assert item["mv_direction_max_cosine_deficit"] == (
+                quality["mv_weight_direction"]["max_cosine_deficit"]
+            )
+            assert item["beam_pattern_relative_frobenius_error"] == (
+                quality["beam_pattern"]["relative_frobenius_error"]
+            )
+            if group == "quality_vs_matching_reference":
+                assert table["metric_reference_by_variant"][source_row["variant"]] == (
+                    matching_reference[
+                        "bf16_R" if source_row["variant"] == "bf16" else "fp32_R"
+                    ]
+                )
+
+    owner_comparisons = summary["owner_facing_comparisons_true_inverse_reference"]
+    assert all(
+        item["metric_reference"] == true_reference["metric_reference"]
+        for item in owner_comparisons
+    )
+    source_by_name = {row["row"]: row for row in measured_rows}
+    assert [item["rows"] for item in owner_comparisons] == [
+        ["bf16-r-L16", "fp32-r-L16"],
+        ["bf16-r-L32-r-dram", "fp32-r-L32-r-dram"],
+        ["bf16-r-L32", "bf16-r-L32-r-dram"],
+        ["bf16-r-L32", "fp32-r-L32-r-dram"],
+    ]
+    for comparison in owner_comparisons:
+        for row_name in comparison["rows"]:
+            source_row = source_by_name[row_name]
+            context = comparison["performance_context"][row_name]
+            assert context["p50_latency_seconds"] == source_row["seconds_per_launch_p50"]
+            assert context["p50_tflops"] == source_row["tflops_p50_derived"]
+            assert context["launches_measured"] == source_row["launches_measured"]
+
+    true_inverse_rows = {item["row"]: item for item in true_table["rows"]}
+    assert all(
+        true_inverse_rows["bf16-r-L32"][metric]
+        == true_inverse_rows["bf16-r-L32-r-dram"][metric]
+        for metric in (
+            "inverse_relative_frobenius_error",
+            "mv_direction_max_cosine_deficit",
+            "beam_pattern_relative_frobenius_error",
+        )
+    )
+    outcomes = summary["fp32_r_outcome_under_common_true_inverse_reference"]
+    for bf16_name, fp32_name in (
+        ("bf16-r-L16", "fp32-r-L16"),
+        ("bf16-r-L32-r-dram", "fp32-r-L32-r-dram"),
+    ):
+        bf16 = true_inverse_rows[bf16_name]
+        fp32 = true_inverse_rows[fp32_name]
+        assert outcomes["inverse_error_improves"] == (
+            fp32["inverse_relative_frobenius_error"]
+            < bf16["inverse_relative_frobenius_error"]
+        )
+        assert outcomes["mv_direction_deficit_improves"] == (
+            fp32["mv_direction_max_cosine_deficit"]
+            < bf16["mv_direction_max_cosine_deficit"]
+        )
+        assert outcomes["beam_pattern_error_improves"] == (
+            fp32["beam_pattern_relative_frobenius_error"]
+            < bf16["beam_pattern_relative_frobenius_error"]
+        )
+    assert outcomes["beam_pattern_error_improves"] is False
+    assert outcomes["beam_pattern_outcome"] == (
+        "Beam-pattern error is higher (worse) for FP32-R in both same-placement "
+        "comparisons: L=16 with R in L1 and L=32 with R in DRAM."
+    )
+    assert summary["preflight_rejection"]["row"] == "fp32-r-L32"
+    assert summary["preflight_rejection"]["status"] == "preflight_rejected"
+
+
 def test_issue88_catalogue_has_six_rows_and_host_only_rejection():
     runner.validate_comparison_rows()
     assert len(runner.ISSUE88_COMPARISON_ROWS) == 6
@@ -129,6 +260,10 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
     )
     assert record["status"] == "pass"
     assert record["status_components"] == statuses
+    assert record["measurement"]["comparison_conclusion_reference_policy"] == (
+        "Each conclusion uses one declared metric_reference; metrics with "
+        "different references are reported in separate conclusions."
+    )
 
 
 @pytest.mark.parametrize(

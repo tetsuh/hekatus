@@ -1,0 +1,267 @@
+{
+  "summary_schema": "issue88-convergence-rerun-summary-v1",
+  "issue": "#88",
+  "source_record": {
+    "file": "2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json",
+    "sha256": "34d3db5f1185548b7415dac2166ee7783d02c82e0ea8b0659e4ec1b500121d88"
+  },
+  "metric_reference_definition": {
+    "original_R_true_inverse": {
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "inverse_error": "Relative Frobenius error against NumPy's complex128 inverse of the original, unrounded FP32 R.",
+      "mv_direction_deficit": "Maximum cosine deficit for MV weights derived from the device inverse versus weights derived from the named reference inverse; lower is better.",
+      "beam_pattern_error": "Relative Frobenius error between same-array beam responses derived from the device inverse and the named reference inverse; lower is better."
+    },
+    "variant_matching_fixed_N_reference": {
+      "metric_reference": "Each row's own fixed-N=12 Newton-Schulz reference, using that row's R representation and X0 computed from original FP32 R.",
+      "bf16_R": "fixed-N=12 Newton-Schulz reference using BF16-rounded R and X0=I/||original FP32 R||_infinity",
+      "fp32_R": "fixed-N=12 Newton-Schulz reference using original FP32 R and X0=I/||original FP32 R||_infinity",
+      "inverse_error": "Relative Frobenius error against that row's variant-matched fixed-N reference.",
+      "mv_direction_deficit": "Maximum cosine deficit for MV weights derived from the device inverse versus weights derived from that row's variant-matched fixed-N reference; lower is better.",
+      "beam_pattern_error": "Relative Frobenius error between same-array beam responses derived from the device inverse and that row's variant-matched fixed-N reference; lower is better."
+    },
+    "conclusion_rule": "Each owner-facing quality conclusion below uses only the original-R true-inverse reference; matching-reference metrics are reported separately and are not mixed into those conclusions."
+  },
+  "tables": [
+    {
+      "name": "quality_vs_true_inverse",
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "columns": [
+        "row",
+        "variant",
+        "L",
+        "R_placement",
+        "metric_reference",
+        "inverse_relative_frobenius_error",
+        "mv_direction_max_cosine_deficit",
+        "beam_pattern_relative_frobenius_error"
+      ],
+      "rows": [
+        {
+          "row": "bf16-r-L16",
+          "variant": "BF16-R",
+          "L": 16,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.021145014741766808,
+          "mv_direction_max_cosine_deficit": 0.001703048708917243,
+          "beam_pattern_relative_frobenius_error": 1.1692626092102962,
+          "metric_reference": "NumPy complex128 inverse of original FP32 R"
+        },
+        {
+          "row": "fp32-r-L16",
+          "variant": "FP32-R",
+          "L": 16,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.005721162451479609,
+          "mv_direction_max_cosine_deficit": 0.00020398768972673675,
+          "beam_pattern_relative_frobenius_error": 1.180650029527541,
+          "metric_reference": "NumPy complex128 inverse of original FP32 R"
+        },
+        {
+          "row": "bf16-r-L32",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.021826325072699795,
+          "mv_direction_max_cosine_deficit": 0.0010762611385012333,
+          "beam_pattern_relative_frobenius_error": 1.1058901700625405,
+          "metric_reference": "NumPy complex128 inverse of original FP32 R"
+        },
+        {
+          "row": "bf16-r-L32-r-dram",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "inverse_relative_frobenius_error": 0.021826325072699795,
+          "mv_direction_max_cosine_deficit": 0.0010762611385012333,
+          "beam_pattern_relative_frobenius_error": 1.1058901700625405,
+          "metric_reference": "NumPy complex128 inverse of original FP32 R"
+        },
+        {
+          "row": "fp32-r-L32-r-dram",
+          "variant": "FP32-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "inverse_relative_frobenius_error": 0.005290290299383328,
+          "mv_direction_max_cosine_deficit": 7.21114591603067e-05,
+          "beam_pattern_relative_frobenius_error": 1.1768554974382435,
+          "metric_reference": "NumPy complex128 inverse of original FP32 R"
+        }
+      ]
+    },
+    {
+      "name": "quality_vs_matching_reference",
+      "metric_reference": "Variant-specific reference stated per row below; BF16-R and FP32-R values are not pooled as one reference.",
+      "metric_reference_by_variant": {
+        "bf16": "fixed-N=12 Newton-Schulz reference using BF16-rounded R and X0=I/||original FP32 R||_infinity",
+        "fp32-r": "fixed-N=12 Newton-Schulz reference using original FP32 R and X0=I/||original FP32 R||_infinity"
+      },
+      "columns": [
+        "row",
+        "variant",
+        "L",
+        "R_placement",
+        "metric_reference",
+        "inverse_relative_frobenius_error",
+        "mv_direction_max_cosine_deficit",
+        "beam_pattern_relative_frobenius_error"
+      ],
+      "rows": [
+        {
+          "row": "bf16-r-L16",
+          "variant": "BF16-R",
+          "L": 16,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.004448701411549597,
+          "mv_direction_max_cosine_deficit": 0.0002082932362580392,
+          "beam_pattern_relative_frobenius_error": 1.161766176988618,
+          "metric_reference": "fixed-N=12 Newton-Schulz reference using BF16-rounded R and X0=I/||original FP32 R||_infinity"
+        },
+        {
+          "row": "fp32-r-L16",
+          "variant": "FP32-R",
+          "L": 16,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.0057211590633383085,
+          "mv_direction_max_cosine_deficit": 0.00020398446818670202,
+          "beam_pattern_relative_frobenius_error": 1.1892390935095902,
+          "metric_reference": "fixed-N=12 Newton-Schulz reference using original FP32 R and X0=I/||original FP32 R||_infinity"
+        },
+        {
+          "row": "bf16-r-L32",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "L1",
+          "inverse_relative_frobenius_error": 0.0043613963271280625,
+          "mv_direction_max_cosine_deficit": 7.648638570068034e-05,
+          "beam_pattern_relative_frobenius_error": 1.0915060050938137,
+          "metric_reference": "fixed-N=12 Newton-Schulz reference using BF16-rounded R and X0=I/||original FP32 R||_infinity"
+        },
+        {
+          "row": "bf16-r-L32-r-dram",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "inverse_relative_frobenius_error": 0.0043613963271280625,
+          "mv_direction_max_cosine_deficit": 7.648638570068034e-05,
+          "beam_pattern_relative_frobenius_error": 1.0915060050938137,
+          "metric_reference": "fixed-N=12 Newton-Schulz reference using BF16-rounded R and X0=I/||original FP32 R||_infinity"
+        },
+        {
+          "row": "fp32-r-L32-r-dram",
+          "variant": "FP32-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "inverse_relative_frobenius_error": 0.005290288704814096,
+          "mv_direction_max_cosine_deficit": 7.21171444276747e-05,
+          "beam_pattern_relative_frobenius_error": 1.23067609595079,
+          "metric_reference": "fixed-N=12 Newton-Schulz reference using original FP32 R and X0=I/||original FP32 R||_infinity"
+        }
+      ]
+    }
+  ],
+  "owner_facing_comparisons_true_inverse_reference": [
+    {
+      "comparison": "L=16, R in L1 for both variants",
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "rows": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "conclusion": "FP32-R improves inverse error and MV direction, but worsens beam-pattern error versus BF16-R.",
+      "performance_context": {
+        "bf16-r-L16": {
+          "p50_latency_seconds": 0.0003953489999730664,
+          "p50_tflops": 16.295604502449482,
+          "launches_measured": 1000
+        },
+        "fp32-r-L16": {
+          "p50_latency_seconds": 0.0004030120003335469,
+          "p50_tflops": 15.985754614423394,
+          "launches_measured": 1000
+        }
+      }
+    },
+    {
+      "comparison": "L=32, equal R-in-DRAM placement",
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "rows": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "conclusion": "FP32-R improves inverse error and MV direction, but worsens beam-pattern error versus BF16-R.",
+      "performance_context": {
+        "bf16-r-L32-r-dram": {
+          "p50_latency_seconds": 0.0006609779998143495,
+          "p50_tflops": 77.97477006265875,
+          "launches_measured": 1000
+        },
+        "fp32-r-L32-r-dram": {
+          "p50_latency_seconds": 0.0006947585002308188,
+          "p50_tflops": 74.18348611046437,
+          "launches_measured": 1000
+        }
+      }
+    },
+    {
+      "comparison": "L=32 BF16-R placement control, R in L1 versus DRAM",
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "rows": [
+        "bf16-r-L32",
+        "bf16-r-L32-r-dram"
+      ],
+      "conclusion": "All three quality metrics are identical; this run shows no BF16-R quality change from moving R between L1 and DRAM.",
+      "performance_context": {
+        "bf16-r-L32": {
+          "p50_latency_seconds": 0.0006614685003114573,
+          "p50_tflops": 77.91694922393462,
+          "launches_measured": 1000
+        },
+        "bf16-r-L32-r-dram": {
+          "p50_latency_seconds": 0.0006609779998143495,
+          "p50_tflops": 77.97477006265875,
+          "launches_measured": 1000
+        }
+      }
+    },
+    {
+      "comparison": "L=32 default BF16-R/L1 versus fitting FP32-R/DRAM configuration",
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "rows": [
+        "bf16-r-L32",
+        "fp32-r-L32-r-dram"
+      ],
+      "conclusion": "FP32-R/DRAM improves inverse error and MV direction, but worsens beam-pattern error; this comparison combines the R-format and placement changes.",
+      "performance_context": {
+        "bf16-r-L32": {
+          "p50_latency_seconds": 0.0006614685003114573,
+          "p50_tflops": 77.91694922393462,
+          "launches_measured": 1000
+        },
+        "fp32-r-L32-r-dram": {
+          "p50_latency_seconds": 0.0006947585002308188,
+          "p50_tflops": 74.18348611046437,
+          "launches_measured": 1000
+        }
+      }
+    }
+  ],
+  "fp32_r_outcome_under_common_true_inverse_reference": {
+    "inverse_error_improves": true,
+    "mv_direction_deficit_improves": true,
+    "beam_pattern_error_improves": false,
+    "beam_pattern_outcome": "Beam-pattern error is higher (worse) for FP32-R in both same-placement comparisons: L=16 with R in L1 and L=32 with R in DRAM."
+  },
+  "preflight_rejection": {
+    "row": "fp32-r-L32",
+    "status": "preflight_rejected",
+    "preflight_status": "rejected_before_allocation",
+    "bytes": 1884928,
+    "over_budget_bytes": 312064,
+    "allocation_attempted": false,
+    "launches": 0,
+    "fallback": false,
+    "source": "The corresponding comparison_rows entry and input_generation.fp32_r_l32_default_l1_preflight in the source record."
+  },
+  "source_conclusions_note": "This summary rebuilds the owner-facing quality comparisons from the measured comparison_rows and their explicitly named quality metric groups; it does not use the source record's comparison_conclusions aggregates."
+}

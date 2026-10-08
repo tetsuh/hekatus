@@ -132,6 +132,45 @@ def test_issue88_reference_context_uses_original_x0_for_both_r_formats():
     )
 
 
+def test_issue88_quality_metrics_label_each_reference_and_submetric():
+    matrices = random_hpd_batch(2, 4, condition_number=100.0, seed=runner.INPUT_SEED)
+    for variant, group, metric_reference in (
+        (
+            "bf16",
+            "quality_vs_matching_reference",
+            "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
+            "X0=I/||original FP32 R||_infinity",
+        ),
+        (
+            "fp32-r",
+            "quality_vs_matching_reference",
+            "fixed-N=12 Newton-Schulz reference using original FP32 R and "
+            "X0=I/||original FP32 R||_infinity",
+        ),
+    ):
+        context = runner.reference_context(matrices, variant)
+        metrics = runner.correctness_metrics(context["fixed_reference"], context)
+        quality = metrics[group]
+        assert quality["metric_reference"] == metric_reference
+        assert quality["mv_weight_direction"]["metric_reference"] == metric_reference
+        assert quality["beam_pattern"]["metric_reference"] == metric_reference
+        assert metrics["metric_references"]["relative_error"] == metric_reference
+        assert metrics["device_test_gate"]["metric_reference"] == metric_reference
+
+    context = runner.reference_context(matrices, "fp32-r")
+    metrics = runner.correctness_metrics(context["fixed_reference"], context)
+    true_inverse = metrics["quality_vs_true_inverse"]
+    assert true_inverse["metric_reference"] == runner.TRUE_INVERSE_METRIC_REFERENCE
+    assert (
+        true_inverse["mv_weight_direction"]["metric_reference"]
+        == runner.TRUE_INVERSE_METRIC_REFERENCE
+    )
+    assert (
+        true_inverse["beam_pattern"]["metric_reference"]
+        == runner.TRUE_INVERSE_METRIC_REFERENCE
+    )
+
+
 def test_issue88_same_array_metrics_are_zero_for_identical_inverses():
     inverse = np.broadcast_to(np.eye(4, dtype=np.complex128), (2, 4, 4)).copy()
     metrics = runner.same_array_metrics(inverse, inverse)

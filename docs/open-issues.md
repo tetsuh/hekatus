@@ -96,9 +96,15 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   BF16-rounded-R input representation already bounds error against the true
   inverse, so FP32 state does not remove the dominant input-precision bound.
   The implementation default is therefore `variant=bf16` with
-  `fp32_dest_acc_en=true`; the R representation itself remains open in #88.
-  Issue #100's board record confirms the defaults and supplies a new-default
-  throughput denominator without changing the R-format decision.
+  `fp32_dest_acc_en=true`. Issue #88 has now measured FP32-R on device; under
+  the common original-R true-inverse reference it improves inverse error and
+  MV direction but worsens beam-pattern error. The authoritative rerun and
+  its separately labeled summary are
+  `docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json`
+  and `docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun-summary.json`.
+  The R representation remains open for owner decision. Issue #100's board
+  record confirms the defaults and supplies a new-default throughput
+  denominator without changing the R-format decision.
 - Beamspace: basis design and dimension. **The dimension is no longer a free
   choice on compute grounds alone, and the planning claim has changed.** The
   stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16

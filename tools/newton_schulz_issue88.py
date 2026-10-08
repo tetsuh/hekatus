@@ -82,6 +82,7 @@ PATTERN_DIRECTIONS_DEG = (
 ISSUE88_RECORD_SCHEMA = "adr-0005-issue88-fp32-r-v1"
 ISSUE88_RAW_SCHEMA = "adr-0005-issue88-fp32-r-raw-v1"
 ISSUE88_RUNNER = "tools/newton_schulz_issue88.py"
+TRUE_INVERSE_METRIC_REFERENCE = "NumPy complex128 inverse of original FP32 R"
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 _PCI_BUS_ID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
@@ -511,7 +512,7 @@ def reference_context(
     *,
     true_inverse: np.ndarray | None = None,
     x0: np.ndarray | None = None,
-) -> dict[str, np.ndarray]:
+) -> dict[str, Any]:
     """Build the matching fixed-N reference and original-R true inverse."""
     matrices = np.asarray(matrices, dtype=np.complex64)
     if variant not in {"bf16", "fp32-r"}:
@@ -525,22 +526,46 @@ def reference_context(
     )
     if true_inverse is None:
         true_inverse = np.linalg.inv(matrices.astype(np.complex128))
+    matching_reference = (
+        "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
+        "X0=I/||original FP32 R||_infinity"
+        if variant == "bf16"
+        else "fixed-N=12 Newton-Schulz reference using original FP32 R and "
+        "X0=I/||original FP32 R||_infinity"
+    )
     return {
         "reference_r": reference_r,
         "x0": original_x0,
         "fixed_reference": fixed_reference,
         "true_inverse": true_inverse,
+        "matching_reference_metric_reference": matching_reference,
+        "true_inverse_metric_reference": TRUE_INVERSE_METRIC_REFERENCE,
     }
+
+
+def _quality_metrics_with_reference(
+    quality_metrics: dict[str, Any], metric_reference: str
+) -> dict[str, Any]:
+    labeled = dict(quality_metrics)
+    labeled["metric_reference"] = metric_reference
+    for name in ("mv_weight_direction", "beam_pattern"):
+        labeled[name] = {
+            **quality_metrics[name],
+            "metric_reference": metric_reference,
+        }
+    return labeled
 
 
 def correctness_metrics(
     actual: np.ndarray,
-    context: dict[str, np.ndarray],
+    context: dict[str, Any],
 ) -> dict[str, Any]:
     """Compare a downloaded device result with both required references."""
     actual = np.asarray(actual)
     reference = context["fixed_reference"]
     true_inverse = context["true_inverse"]
+    matching_metric_reference = context["matching_reference_metric_reference"]
+    true_inverse_metric_reference = context["true_inverse_metric_reference"]
     finite = bool(np.all(np.isfinite(actual)))
     reference_finite = bool(np.all(np.isfinite(reference)))
     true_inverse_finite = bool(np.all(np.isfinite(true_inverse)))
@@ -561,10 +586,17 @@ def correctness_metrics(
         "true_inverse_finite": true_inverse_finite,
         "relative_frobenius_error_vs_matching_reference": matching_error,
         "relative_frobenius_error_vs_true_inverse": true_error,
+        "metric_references": {
+            "relative_frobenius_error_vs_matching_reference": matching_metric_reference,
+            "relative_frobenius_error_vs_true_inverse": true_inverse_metric_reference,
+            "relative_error": matching_metric_reference,
+            "device_test_gate": matching_metric_reference,
+        },
         # This alias makes the matching-reference comparison easy to find next
         # to the equivalent field in older board records.
         "relative_error": matching_error,
         "device_test_gate": {
+            "metric_reference": matching_metric_reference,
             "relative_error_max": DEVICE_TEST_RELATIVE_ERROR_GATE,
             "unchanged": True,
             "pass": bool(
@@ -577,11 +609,15 @@ def correctness_metrics(
         },
     }
     if finite and reference_finite:
-        metrics["quality_vs_matching_reference"] = same_array_metrics(actual, reference)
+        metrics["quality_vs_matching_reference"] = _quality_metrics_with_reference(
+            same_array_metrics(actual, reference), matching_metric_reference
+        )
     else:
         metrics["quality_vs_matching_reference"] = None
     if finite and true_inverse_finite:
-        metrics["quality_vs_true_inverse"] = same_array_metrics(actual, true_inverse)
+        metrics["quality_vs_true_inverse"] = _quality_metrics_with_reference(
+            same_array_metrics(actual, true_inverse), true_inverse_metric_reference
+        )
     else:
         metrics["quality_vs_true_inverse"] = None
     return metrics
@@ -1252,7 +1288,7 @@ def _prepare_comparison_input(
     true_inverse_by_size: dict[int, np.ndarray],
     fingerprints: dict[str, dict[str, Any]],
     matrices_factory: Callable[..., np.ndarray],
-) -> tuple[int, np.ndarray, dict[str, np.ndarray]]:
+) -> tuple[int, np.ndarray, dict[str, Any]]:
     """Prepare one cached HPD batch and its variant-specific reference."""
     size = int(config["size"])
     if size not in matrices_by_size:
@@ -1673,7 +1709,11 @@ def _record_payload(
             "correctness_reference": (
                 "enodia.tt.bench.newton_schulz_reference.newton_schulz_reference; fixed N=12"
             ),
-            "true_inverse": "NumPy complex128 inverse of original FP32 R",
+            "true_inverse": TRUE_INVERSE_METRIC_REFERENCE,
+            "comparison_conclusion_reference_policy": (
+                "Each conclusion uses one declared metric_reference; metrics with "
+                "different references are reported in separate conclusions."
+            ),
             "correctness_device_test_gate": {
                 "relative_error_max": DEVICE_TEST_RELATIVE_ERROR_GATE,
                 "unchanged": True,
@@ -1703,6 +1743,10 @@ def _record_payload(
             },
         },
         "metric_definitions": {
+            "quality_metric_reference_policy": (
+                "Each quality metric group and its MV/beam submetrics carry a "
+                "metric_reference; conclusions must not combine distinct references."
+            ),
             "relative_frobenius_error_vs_matching_reference": (
                 "||X_device - X_reference||_F / ||X_reference||_F"
             ),

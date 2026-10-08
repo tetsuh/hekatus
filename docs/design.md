@@ -2510,8 +2510,15 @@ diagnostics:
 The same record separates input representation from solver error: at κ=100,
 BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by
 2.52e-4, and the beam pattern by 1.42e-2 against the unrounded truth, while the
-kernel is about 3.67e-3 from the BF16-`R` reference. The production `R` format
-remains a follow-up decision; no FP32-`R` device variant has been measured.
+kernel is about 3.67e-3 from the BF16-`R` reference. FP32-`R` has now been
+measured in the authoritative Issue #88 convergence rerun,
+`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json`;
+its separate true-inverse and matching-reference comparisons are summarized in
+`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun-summary.json`.
+Under the common original-`R` true-inverse reference, FP32-`R` improves inverse
+error and MV direction but worsens beam-pattern error in both same-placement
+comparisons (L=16 with `R` in L1 and L=32 with `R` in DRAM). The `R`
+representation remains open for owner decision.
 
 ### Investigation items
 
