@@ -405,10 +405,10 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
     RUNNER_ARGS=(--out "/out/$(basename "${RUNNER_RESULT_CONTAINER_PATH}")" "${RUNNER_ARGS[@]}")
   fi
 
-  # Resident records store a sibling filename, and the wrapper owns its
-  # run-specific trace.  Remove a caller-supplied trace in sampler-off mode;
-  # sampled mode replaces one with this invocation's trace rather than
-  # allowing a reused output directory to select another run.
+  # Resident records store sibling filenames, and the wrapper owns both
+  # run-specific paths.  Replace caller-supplied provenance paths so a reused
+  # output directory cannot select artifacts from another invocation.
+  RESIDENT_ENV_JSON="/out/$(basename "${ENV_JSON}")"
   RESIDENT_POWER_TRACE="$(basename "${POWER_CSV}")"
   RESIDENT_ARGS=()
   HAS_POWER_TRACE_ARG=0
@@ -416,6 +416,18 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
   while [[ "${RESIDENT_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
     argument="${RUNNER_ARGS[${RESIDENT_ARGUMENT_INDEX}]}"
     case "${argument}" in
+      --env-json)
+        if [[ "${RESIDENT_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--env-json requires a value" >&2
+          exit 2
+        fi
+        RESIDENT_ARGUMENT_INDEX=$((RESIDENT_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --env-json=*)
+        RESIDENT_ARGUMENT_INDEX=$((RESIDENT_ARGUMENT_INDEX + 1))
+        continue
+        ;;
       --power-trace)
         if [[ "${RESIDENT_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
           echo "--power-trace requires a value" >&2
@@ -442,6 +454,7 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
         ;;
     esac
   done
+  RESIDENT_ARGS+=(--env-json "${RESIDENT_ENV_JSON}")
   if [[ "${TELEMETRY_MODE}" != "off" && "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
     RESIDENT_ARGS+=(--power-trace "${RESIDENT_POWER_TRACE}")
   fi

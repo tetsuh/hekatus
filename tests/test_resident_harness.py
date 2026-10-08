@@ -64,6 +64,7 @@ from enodia.tt.bench.resident_harness import (
 from enodia.tt.bench.run_resident import (
     _config_from_args,
     _decode_failure,
+    _environment_output_path,
     _parser,
     _resolve_watcher_mode,
     _runtime_u32,
@@ -1482,7 +1483,9 @@ def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
     assert record["timing_evidence"] is False
 
 
-def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_path, monkeypatch):
+def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off_mode(
+    tmp_path, monkeypatch
+):
     output_dir = tmp_path / "shared-output"
     output_dir.mkdir()
     sampled_environment = _environment()
@@ -1530,14 +1533,16 @@ def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_pat
             "failure_check": {"code": 0, "name": "none", "source": "none"},
         }
 
-    original_glob = Path.glob
+    selected_environment_paths = []
+    original_environment = run_resident._environment
 
-    def map_container_output(path, pattern):
-        if path == Path("/out"):
-            return original_glob(output_dir, pattern)
-        return original_glob(path, pattern)
+    def read_environment(path):
+        selected_environment_paths.append(path)
+        if path.parent == Path("/out"):
+            path = output_dir / path.name
+        return original_environment(path)
 
-    monkeypatch.setattr(Path, "glob", map_container_output)
+    monkeypatch.setattr(run_resident, "_environment", read_environment)
     monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
     monkeypatch.setitem(
         sys.modules,
@@ -1545,12 +1550,11 @@ def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_pat
         SimpleNamespace(open_device=lambda **_: object(), close_device=lambda _device: None),
     )
 
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "sampled")
     assert run_resident.main(
         [
             "--out",
             str(sampled_output),
-            "--env-json",
-            str(sampled_environment_path),
             "--power-trace",
             trace_name,
             "--frame-count",
@@ -1559,12 +1563,11 @@ def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_pat
     ) == 0
     (output_dir / trace_name).write_text("old sampled trace\n")
 
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "off")
     assert run_resident.main(
         [
             "--out",
             str(off_output),
-            "--env-json",
-            str(off_environment_path),
             "--frame-count",
             "3",
         ]
@@ -1576,6 +1579,31 @@ def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_pat
     assert off_record["power_trace_absent_reason"] == "sampler_off_by_design"
     assert off_record["clock"]["aiclk_mhz"] == 800
     assert (output_dir / trace_name).exists()
+    assert selected_environment_paths == [
+        Path("/out/env-sampled.json"),
+        Path("/out/env-off.json"),
+    ]
+
+
+def test_environment_fallback_is_run_id_bound_and_rejects_unsafe_ids(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+    assert _environment_output_path() == Path("/out/env-current-run.json")
+
+    for run_id in ("", ".", "..", "../stale", "run/id", "run id"):
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", run_id)
+        with pytest.raises(ValueError, match="safe filename component"):
+            _environment_output_path()
+
+    monkeypatch.delenv("HEKATUS_TT_RUN_ID")
+    with pytest.raises(ValueError, match="HEKATUS_TT_RUN_ID"):
+        _environment_output_path()
+
+
+def test_resident_output_selection_contains_no_directory_globs():
+    source = Path("enodia/tt/bench/run_resident.py").read_text()
+    assert ".glob(" not in source
+    assert "env-*.json" not in source
+    assert "power-*.csv" not in source
 
 
 class TestResidentSemaphoreDecisionAudit:

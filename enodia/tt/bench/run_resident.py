@@ -11,6 +11,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -350,11 +351,17 @@ def _run_device(
                 pass
 
 
-def _latest_environment_output() -> Path:
-    candidates = sorted(Path("/out").glob("env-*.json"))
-    if not candidates:
-        raise ValueError("wrapper environment output was not found")
-    return candidates[-1]
+_SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
+
+
+def _environment_output_path() -> Path:
+    run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    if run_id is None or _SAFE_RUN_ID.fullmatch(run_id) is None:
+        raise ValueError(
+            "HEKATUS_TT_RUN_ID must be a nonempty safe filename component "
+            "when --env-json is omitted"
+        )
+    return Path("/out") / f"env-{run_id}.json"
 
 
 def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:
@@ -464,10 +471,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    environment_path = args.env_json or _latest_environment_output()
+    environment_path = args.env_json or _environment_output_path()
     environment = _environment(environment_path)
-    # The wrapper owns per-run trace selection.  A missing option means that
-    # sampler-off mode has no trace; it does not mean "the latest" trace.
+    # The wrapper owns per-run trace selection. A missing option means that
+    # sampler-off mode has no trace; it does not infer one from output files.
     power_trace = args.power_trace
     trace_aiclk = _power_trace_aiclk_values(power_trace)
     if trace_aiclk:

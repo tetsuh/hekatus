@@ -1031,7 +1031,10 @@ def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_pa
     assert sampled_trace.endswith(".csv")
     environment_files = sorted(output_dir.glob("env-*.json"))
     assert len(environment_files) == 1
-    run_id = environment_files[0].stem.removeprefix("env-")
+    sampled_environment = environment_files[0]
+    environment_index = sampled_docker_args.index("--env-json")
+    assert sampled_docker_args[environment_index + 1] == f"/out/{sampled_environment.name}"
+    run_id = sampled_environment.stem.removeprefix("env-")
     assert sampled_trace == f"power-{run_id}.csv"
     old_trace = output_dir / sampled_trace
     old_trace.write_text("old trace\n")
@@ -1041,7 +1044,7 @@ def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_pa
     off_bindir = _fake_tools(off_tools)
     off_args = off_tools / "docker-args"
     off = subprocess.run(
-        [str(copied_wrapper), str(output_dir), "--"],
+        [str(copied_wrapper), str(output_dir), "--", "--env-json", "/out/env-stale.json"],
         cwd=copied_wrapper.parents[3],
         env={
             **common_environment,
@@ -1057,6 +1060,12 @@ def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_pa
     assert off.returncode == 0, off.stderr
     off_docker_args = off_args.read_text().splitlines()
     assert "--power-trace" not in off_docker_args
+    off_environment_files = sorted(output_dir.glob("env-*.json"))
+    assert len(off_environment_files) == 2
+    off_environment = next(path for path in off_environment_files if path != sampled_environment)
+    off_environment_index = off_docker_args.index("--env-json")
+    assert off_docker_args[off_environment_index + 1] == f"/out/{off_environment.name}"
+    assert "/out/env-stale.json" not in off_docker_args
     assert [path.name for path in output_dir.glob("power-*.csv")] == [old_trace.name]
     assert "sampler -> off (diagnostic-only; no power trace by design)" in off.stdout
 
