@@ -21,8 +21,16 @@ from pathlib import Path, PurePath
 from types import MappingProxyType
 from typing import Any
 
+from enodia.tt.bench.clock_source_audit import (
+    AUDITED_CLOCK_SOURCE_IMAGE,
+    CLOCK_SOURCE_AUDIT_TABLE,
+    CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
+    clock_source_audit_for_image,
+    source_evidence_for_image,
+)
 from enodia.tt.bench.resident_record import (
     RESIDENT_INVARIANT_CATALOG,
+    RESIDENT_RECORD_SCHEMA,
     TIMING_EVIDENCE_NOT_REQUESTED,
     TIMING_EVIDENCE_RUN_TRACE_REASON,
     build_outlier_analysis,
@@ -30,6 +38,8 @@ from enodia.tt.bench.resident_record import (
     validate_resident_record,
 )
 from enodia.tt.bench.sampler_contract import (
+    MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
 )
@@ -60,37 +70,6 @@ WORK_TICKS_PER_UNIT_UPPER_BOUND = (
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
-AUDITED_CLOCK_SOURCE_IMAGE = (
-    "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
-    "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
-)
-CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC = "clock source unaudited for this image"
-
-# This immutable table is the sole authority for clock-source evidence.  Its
-# key is the complete image reference, so an audit cannot accidentally follow
-# a release tag or a different digest under the same repository name.
-CLOCK_SOURCE_AUDIT_TABLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {
-        AUDITED_CLOCK_SOURCE_IMAGE: MappingProxyType(
-            {
-                "toolchain": "tt-metal v0.75.0",
-                "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
-                "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
-                "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
-                "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
-                "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
-                "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
-                "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
-                "cross_core_note": (
-                    "intervals use only the designated consumer core; cross-core "
-                    "correlation is out of scope"
-                ),
-            }
-        )
-    }
-)
-
-
 @dataclass(frozen=True)
 class ResidentFailureClassification:
     """Kernel failure semantics shared by summary decoding and record building."""
@@ -1104,6 +1083,45 @@ def _power_trace_metadata(
     )}
 
 
+def _diagnostic_trace_metadata(
+    *, run_start: Any = None, run_end: Any = None
+) -> dict[str, Any]:
+    """Return explicit trace facts for runs that have no usable trace bytes."""
+    coverage = {
+        "nonempty": False,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_at_or_before_run_start": False,
+        "last_at_or_after_run_end": False,
+        "readable": False,
+        "complete": False,
+    }
+    return {
+        "file": None,
+        "columns": [],
+        "sha256": None,
+        "readable": False,
+        "nonempty": False,
+        "csv_row_count": 0,
+        "sample_count": 0,
+        "valid_row_count": 0,
+        "in_run_valid_row_count": 0,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "run_start": run_start,
+        "run_end": run_end,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "coverage": coverage,
+        "aiclk_source": "sampler_off_diagnostic",
+        "aiclk_mhz": None,
+        "errors": [],
+    }
+
+
 def validate_outlier_analysis(
     outlier_analysis: Mapping[str, Any], *, timestamps: Iterable[int] | None = None
 ) -> None:
@@ -1116,26 +1134,8 @@ def validate_outlier_analysis(
         raise ValueError(first["message"])
 
 
-def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
-    """Return the immutable clock-source audit entry for one exact image."""
-    if not isinstance(image, str):
-        return None
-    return CLOCK_SOURCE_AUDIT_TABLE.get(image)
-
-
 def _source_evidence(image: Any) -> dict[str, Any]:
-    audited = clock_source_audit_for_image(image)
-    if audited is None:
-        return {
-            "image": image,
-            "audit_status": "unaudited",
-            "diagnostic": CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
-        }
-    return {
-        **audited,
-        "image": image,
-        "audit_status": "audited",
-    }
+    return source_evidence_for_image(image)
 
 
 def build_measurement_record(
@@ -1170,7 +1170,7 @@ def build_measurement_record(
     """Build and validate the committed-schema record without raw timestamps.
 
     When ``power_trace_path`` or explicit trace metadata is supplied, the
-    complete power catalog is strict: the actual CSV bytes, rows, timestamps,
+    power-provenance field table is strict: the actual CSV bytes, rows, timestamps,
     run coverage, and in-run AICLK are checked here.  Calls that only provide
     the historical basename and omit sampler metadata remain readable for
     older board-free callers, but are marked ``legacy_unverified`` in power
@@ -1199,7 +1199,9 @@ def build_measurement_record(
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
+    sampler_metadata_supplied = "telemetry_sampler" in normalized_environment
     sampler = _validate_sampler_trace(normalized_environment, power_trace)
+    normalized_environment["telemetry_sampler"] = dict(sampler)
     sampler_off = sampler["mode"] == "off"
     if sampler_off and (power_trace_path is not None or power_trace_metadata is not None):
         raise ValueError("sampler-off records must not carry power trace metadata")
@@ -1210,12 +1212,13 @@ def build_measurement_record(
             or power_trace_metadata is not None
             or run_start is not None
             or run_end is not None
-            or "telemetry_sampler" in normalized_environment
+            or sampler_metadata_supplied
         )
     )
     trace_metadata: dict[str, Any] | None = None
     trace_reason: str
     if sampler_off:
+        trace_metadata = _diagnostic_trace_metadata(run_start=run_start, run_end=run_end)
         trace_reason = "sampler_off_by_design"
     elif power_trace is None:
         trace_reason = "power_trace_missing"
@@ -1529,25 +1532,107 @@ def build_measurement_record(
 def build_rejection_record(
     *, config: ResidentConfig, reason: str, environment: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Record a rejected configuration without running it on a device."""
+    """Record a rejected configuration with explicit diagnostic provenance."""
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("rejection reason is required")
+    supplied_environment = dict(environment) if isinstance(environment, Mapping) else {}
+    image = supplied_environment.get("image")
+    try:
+        sampler = normalize_sampler_metadata(supplied_environment.get("telemetry_sampler"))
+    except (TypeError, ValueError):
+        sampler = {
+            "mode": "off",
+            "interval_seconds": None,
+            "power_trace": "absent_by_design",
+            "timing_evidence": "diagnostic_only",
+        }
+    supplied_environment["image"] = image
+    supplied_environment.setdefault("image_pinned", False)
+    supplied_environment["telemetry_sampler"] = sampler
+    supplied_environment.setdefault("harness_commit", None)
+    trace_metadata = _diagnostic_trace_metadata()
+    outlier = build_outlier_analysis([], sampler_metadata=sampler)
+    histogram = frame_interval_statistics([], bin_width_ticks=1)
+    parameters = {
+        **config.as_record(),
+        "attempted_frame_count": 0,
+        "produced_frame_count": 0,
+        "dropped_frame_count": 0,
+        "aborted_attempts": 0,
+    }
     result: dict[str, Any] = {
-        "schema": "issue-12-stage-1-resident-v1",
+        "schema": RESIDENT_RECORD_SCHEMA,
         "issue": 12,
         "stage": 1,
         "status": "rejected",
+        "termination_reason": "rejected",
         "rejection_reason": reason,
-        "parameters": config.as_record(),
+        "parameters": parameters,
         "frame_interval_is_not_acquisition_rate_claim": True,
-        "clock_source_evidence": _source_evidence(
-            environment.get("image") if isinstance(environment, Mapping) else None
-        ),
+        "clock": {
+            "aiclk_mhz": None,
+            "aiclk_source": "rejected_preflight",
+        },
+        "clock_source_evidence": _source_evidence(image),
+        "histogram": {
+            **histogram,
+            "sample_definition": (
+                "No device timestamps were collected because preflight rejected the run."
+            ),
+        },
+        "ring": {
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "attempted_frame_count": 0,
+            "produced_frame_count": 0,
+            "consumed_frame_count": 0,
+            "dropped_frame_count": 0,
+            "aborted_attempts": 0,
+            "overflow_count": 0,
+        },
+        "failure_check": {"code": 0, "name": "none", "source": "none"},
+        "cycle_budget": {
+            "budget_ticks": config.cycle_budget,
+            "unit": "device_clock_ticks",
+            "scope": "preflight_not_run",
+            "run_budget_ticks": None,
+            "exceeded": False,
+            "error_flag": 0,
+        },
+        "raw_timestamps": timestamp_digest([]),
+        "power_trace": None,
+        "power_trace_sample_count": trace_metadata["sample_count"],
+        "power_trace_csv_row_count": trace_metadata["csv_row_count"],
+        "power_trace_valid_row_count": trace_metadata["valid_row_count"],
+        "power_trace_in_run_valid_row_count": trace_metadata["in_run_valid_row_count"],
+        "power_trace_sha256": trace_metadata["sha256"],
+        "power_trace_absent_reason": "rejected_preflight",
+        "power_trace_coverage": {
+            "coverage": trace_metadata["coverage"],
+            "coverage_complete": trace_metadata["coverage_complete"],
+            "first_timestamp": trace_metadata["first_timestamp"],
+            "last_timestamp": trace_metadata["last_timestamp"],
+            "run_start": trace_metadata["run_start"],
+            "run_end": trace_metadata["run_end"],
+            "valid_row_count": trace_metadata["valid_row_count"],
+            "in_run_valid_row_count": trace_metadata["in_run_valid_row_count"],
+        },
+        "power_clock_provenance": {
+            "trace": None,
+            **trace_metadata,
+            "timing_evidence": False,
+            "timing_evidence_reason": "rejected_preflight",
+        },
+        "run_start": None,
+        "run_end": None,
+        "telemetry_sampler": sampler,
+        "environment": supplied_environment,
+        "harness_commit": supplied_environment.get("harness_commit"),
+        "watcher": False,
+        "timing_evidence": False,
+        "timing_evidence_reason": "rejected_preflight",
+        "outlier_analysis": outlier,
     }
-    if environment:
-        result["environment"] = (
-            dict(environment) if isinstance(environment, Mapping) else environment
-        )
     return result
 
 
@@ -1559,9 +1644,11 @@ __all__ = [
     "CURRENT_WRAP_WORK_PER_FRAME",
     "FAILURE_CODES",
     "FAILURE_CODE_TABLE",
+    "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
+    "MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
     "PROVENANCE_PHASE_POST_RUN",

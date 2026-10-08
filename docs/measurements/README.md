@@ -27,9 +27,11 @@ trace beside it under the same stem.
 ## Issue #104 paired-outlier records
 
 The wrapper supports the existing telemetry sampler as `default` (2 seconds),
-`explicit` with a positive `HEKATUS_TT_TELEMETRY_INTERVAL_S`, and `off` with no
-sampler or power trace. Sampler-off output is diagnostic-only; sampled output
-retains its same-stem power trace. The three Issue #104 runs below were produced
+`explicit` with a bounded `HEKATUS_TT_TELEMETRY_INTERVAL_S` in the supported
+0.1–3600.0 second range, and `off` with no sampler or power trace. Sampler-off
+output is diagnostic-only; sampled output retains its same-stem power trace.
+New canonical outlier records contain numeric measurements; human conclusions
+remain in this wrap-analysis document. The three Issue #104 runs below were produced
 by kernel/harness commit `487bc36fa30e870b6cd9b2a62199275397cde004`, exactly as
 recorded in each JSON record. That commit predates PR #103's synchronization-
 protocol fix, so these runs must not be described as having used that fix.
@@ -45,10 +47,11 @@ protocol fix, so these runs must not be described as having used that fix.
 
 ### Issue #104 invariant revalidation
 
-The shared board-free `validate_resident_record` catalog in
-`enodia/tt/bench/resident_record.py` was run against all three committed Issue
-#104 JSON records and their committed companion CSVs without rewriting either
-data format. The sampler-off record passes the diagnostic structural catalog:
+The shared board-free `validate_resident_record` field matrix and invariant
+catalog in `enodia/tt/bench/resident_record.py` were run against all three
+committed Issue #104 JSON records and their committed companion CSVs without
+rewriting either data format. The sampler-off record passes the diagnostic
+structural checks:
 its trace is absent by design and `timing_evidence=false`; its raw timestamp
 hash cannot be rechecked against bytes because the referenced external
 `raw-timestamps.bin` is not committed. It is not timing evidence. The sampled

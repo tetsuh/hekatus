@@ -131,7 +131,8 @@ def test_sampler_interval_comparison_reports_adjacent_gap_residuals():
             sampler_metadata={"mode": mode, "interval_seconds": interval_seconds},
         )
         comparison = outlier["sampler_interval_comparison"]
-        assert comparison["status"] == "no_strict_alignment_observed"
+        assert "status" not in comparison
+        assert "reason" not in comparison
         assert comparison["adjacent_gaps"]
         gap = comparison["adjacent_gaps"][0]
         elapsed = gap["gap_elapsed_seconds"]
@@ -148,8 +149,9 @@ def test_sampler_interval_comparison_reports_adjacent_gap_residuals():
         aiclk_mhz=AICLK_MHZ,
         sampler_metadata={"mode": "off", "interval_seconds": None},
     )
-    assert off["sampler_interval_comparison"]["status"] == "not_applicable"
-    assert "adjacent_gaps" not in off["sampler_interval_comparison"]
+    assert "status" not in off["sampler_interval_comparison"]
+    assert "reason" not in off["sampler_interval_comparison"]
+    assert off["sampler_interval_comparison"]["adjacent_gaps"] == []
 
 
 def test_committed_record_keys_are_preserved_by_regenerated_runner_catalog():
@@ -162,7 +164,10 @@ def test_committed_record_keys_are_preserved_by_regenerated_runner_catalog():
             sampler_metadata=record["telemetry_sampler"],
         )
         committed_keys = set(record["outlier_analysis"])
-        assert committed_keys <= set(regenerated), record_path.name
+        historical_prose = {"status", "periodicity"}
+        assert committed_keys - historical_prose <= set(regenerated), record_path.name
+        assert "status" not in regenerated
+        assert "periodicity" not in regenerated
 
 
 def _optional_raw_path(relative_raw: str) -> Path | None:
@@ -189,7 +194,8 @@ def test_committed_sampler_shapes_regenerate_when_raw_artifact_is_available(run_
     assert analysis["pair_count"] == regenerated["pair_count"]
     comparison = regenerated["sampler_interval_comparison"]
     if run_name == "sampler-off":
-        assert comparison["status"] == "not_applicable"
-        assert "adjacent_gaps" not in comparison
+        assert "status" not in comparison
+        assert "reason" not in comparison
+        assert comparison["adjacent_gaps"] == []
     else:
         assert comparison["adjacent_gaps"] == committed["sampler_interval_comparison"]["adjacent_gaps"]

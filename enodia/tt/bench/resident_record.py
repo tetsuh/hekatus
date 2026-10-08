@@ -5,8 +5,8 @@ measurement record.  The builder in :mod:`resident_harness` and the board-free
 analyzer both call :func:`validate_resident_record`; neither caller owns a
 second copy of these checks.
 
-The outlier builder is the single constructor for the complete pair and
-sampler catalog.  The resident runner and board-free analyzer both call
+The outlier builder is the single constructor for the pair and sampler
+catalog.  The resident runner and board-free analyzer both call
 :func:`build_outlier_analysis`; neither caller reconstructs a partial object.
 The catalog is intentionally executable.  ``RESIDENT_INVARIANT_CATALOG`` is a
 table of ``ResidentInvariant`` entries, and the validator iterates that table
@@ -73,13 +73,19 @@ from __future__ import annotations
 import hashlib
 import itertools
 import math
+import re
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from fractions import Fraction
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
+from enodia.tt.bench.clock_source_audit import (
+    CLOCK_SOURCE_AUDIT_TABLE,
+    clock_source_audit_for_image,
+)
 from enodia.tt.bench.sampler_contract import (
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
@@ -124,6 +130,206 @@ TIMING_EVIDENCE_NOT_REQUESTED = "timing_evidence_not_requested"
 TIMING_EVIDENCE_RUN_TRACE_REASON = "power_trace_run_samples"
 
 _MISSING = object()
+
+RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
+RECORD_KIND_SAMPLED_TIMING = "sampled_timing"
+RECORD_KIND_SAMPLER_OFF = "sampler_off"
+RECORD_KIND_ERROR = "error"
+RECORD_KIND_REJECTED = "rejected"
+
+# These paths are the persisted-record presence contract.  Relationship and
+# value checks run only after this table has established the record shape.
+_COMMON_REQUIRED_RECORD_FIELDS = (
+    "schema",
+    "issue",
+    "stage",
+    "status",
+    "termination_reason",
+    "parameters",
+    "parameters.frame_count",
+    "parameters.frame_interval_ticks",
+    "parameters.ring_pages",
+    "parameters.attempted_frame_count",
+    "parameters.produced_frame_count",
+    "parameters.dropped_frame_count",
+    "parameters.aborted_attempts",
+    "clock",
+    "clock.aiclk_mhz",
+    "clock.aiclk_source",
+    "clock_source_evidence",
+    "clock_source_evidence.image",
+    "clock_source_evidence.audit_status",
+    "histogram",
+    "histogram.N",
+    "histogram.histogram",
+    "histogram.histogram.bin_width_ticks",
+    "histogram.histogram.bins",
+    "ring",
+    "ring.producer_full_count",
+    "ring.consumer_empty_count",
+    "ring.attempted_frame_count",
+    "ring.produced_frame_count",
+    "ring.consumed_frame_count",
+    "ring.dropped_frame_count",
+    "ring.aborted_attempts",
+    "ring.overflow_count",
+    "failure_check",
+    "failure_check.code",
+    "failure_check.name",
+    "failure_check.source",
+    "raw_timestamps",
+    "raw_timestamps.count",
+    "raw_timestamps.sha256",
+    "power_trace",
+    "power_trace_sample_count",
+    "power_trace_csv_row_count",
+    "power_trace_valid_row_count",
+    "power_trace_in_run_valid_row_count",
+    "power_trace_sha256",
+    "power_trace_absent_reason",
+    "power_trace_coverage",
+    "power_trace_coverage.coverage",
+    "power_trace_coverage.coverage_complete",
+    "power_trace_coverage.first_timestamp",
+    "power_trace_coverage.last_timestamp",
+    "power_trace_coverage.run_start",
+    "power_trace_coverage.run_end",
+    "power_trace_coverage.valid_row_count",
+    "power_trace_coverage.in_run_valid_row_count",
+    "power_clock_provenance",
+    "power_clock_provenance.trace",
+    "power_clock_provenance.file",
+    "power_clock_provenance.sha256",
+    "power_clock_provenance.readable",
+    "power_clock_provenance.nonempty",
+    "power_clock_provenance.csv_row_count",
+    "power_clock_provenance.sample_count",
+    "power_clock_provenance.valid_row_count",
+    "power_clock_provenance.in_run_valid_row_count",
+    "power_clock_provenance.timestamps_parse",
+    "power_clock_provenance.timestamps_ordered",
+    "power_clock_provenance.first_timestamp",
+    "power_clock_provenance.last_timestamp",
+    "power_clock_provenance.run_start",
+    "power_clock_provenance.run_end",
+    "power_clock_provenance.covers_run_start",
+    "power_clock_provenance.covers_run_end",
+    "power_clock_provenance.coverage_complete",
+    "power_clock_provenance.coverage",
+    "power_clock_provenance.aiclk_source",
+    "power_clock_provenance.aiclk_mhz",
+    "power_clock_provenance.errors",
+    "power_clock_provenance.timing_evidence",
+    "power_clock_provenance.timing_evidence_reason",
+    "run_start",
+    "run_end",
+    "telemetry_sampler",
+    "telemetry_sampler.mode",
+    "telemetry_sampler.interval_seconds",
+    "telemetry_sampler.power_trace",
+    "telemetry_sampler.timing_evidence",
+    "environment",
+    "environment.image",
+    "environment.image_pinned",
+    "environment.telemetry_sampler",
+    "environment.telemetry_sampler.mode",
+    "environment.telemetry_sampler.interval_seconds",
+    "environment.telemetry_sampler.power_trace",
+    "environment.telemetry_sampler.timing_evidence",
+    "harness_commit",
+    "watcher",
+    "timing_evidence",
+    "timing_evidence_reason",
+    "outlier_analysis",
+    "outlier_analysis.method",
+    "outlier_analysis.pair_count",
+    "outlier_analysis.pair_sum_target_ticks",
+    "outlier_analysis.pair_sum_min_ticks",
+    "outlier_analysis.pair_sum_max_ticks",
+    "outlier_analysis.pair_sum_mean_ticks",
+    "outlier_analysis.sum_delta_min_ticks",
+    "outlier_analysis.sum_delta_max_ticks",
+    "outlier_analysis.pair_order_counts",
+    "outlier_analysis.pair_order_counts.short-first",
+    "outlier_analysis.pair_order_counts.long-first",
+    "outlier_analysis.pair_order_counts.other",
+    "outlier_analysis.frame_start_indices",
+    "outlier_analysis.event_frame_positions",
+    "outlier_analysis.event_elapsed_seconds",
+    "outlier_analysis.event_elapsed_ticks",
+    "outlier_analysis.event_elapsed_ticks_mod_period",
+    "outlier_analysis.pair_start_elapsed_seconds",
+    "outlier_analysis.frame_gaps",
+    "outlier_analysis.gap_counts",
+    "outlier_analysis.gap_histogram",
+    "outlier_analysis.gcd_frame_gap",
+    "outlier_analysis.pairs",
+    "outlier_analysis.elapsed_time_unit",
+    "outlier_analysis.device_tick_unit",
+    "outlier_analysis.aiclk_mhz_for_elapsed_seconds",
+    "outlier_analysis.run_elapsed_ticks",
+    "outlier_analysis.run_elapsed_seconds",
+    "outlier_analysis.interval_count",
+    "outlier_analysis.sampler_interval_comparison",
+    "outlier_analysis.sampler_interval_comparison.mode",
+    "outlier_analysis.sampler_interval_comparison.interval_seconds",
+    "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds",
+    "outlier_analysis.sampler_interval_comparison.pair_count",
+    "outlier_analysis.sampler_interval_comparison.timestamp_count",
+    "outlier_analysis.sampler_interval_comparison.adjacent_gaps",
+)
+
+# These list-item paths are part of the same table contract.  They apply to
+# every present pair or adjacent sampler gap; an empty list needs no item.
+_REQUIRED_PAIR_FIELDS = (
+    "interval_end_frame_indices",
+    "first_interval_ticks",
+    "second_interval_ticks",
+    "short_ticks",
+    "long_ticks",
+    "pair_sum_ticks",
+    "sum_delta_ticks",
+    "order",
+    "first_interval_end_elapsed_ticks",
+    "first_interval_end_elapsed_ticks_mod_period",
+    "first_interval_end_elapsed_seconds",
+)
+_REQUIRED_SAMPLER_GAP_FIELDS = (
+    "from_pair_start_frame",
+    "to_pair_start_frame",
+    "gap_elapsed_seconds",
+    "gap_frames",
+    "nearest_integer_sampler_intervals",
+    "residual_to_nearest_sampler_multiple_seconds",
+    "sampler_intervals",
+)
+
+_AUDITED_CLOCK_SOURCE_FIELDS = tuple(
+    f"clock_source_evidence.{field}"
+    for field in next(iter(CLOCK_SOURCE_AUDIT_TABLE.values()), {})
+)
+
+# A rejected record is still a machine-readable result.  It uses the same
+# field matrix with a small diagnostic payload, so a preflight failure cannot
+# silently discard provenance or the schema shape needed to audit the refusal.
+RESIDENT_RECORD_FIELD_MATRIX: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        RECORD_KIND_SAMPLED_TIMING: _COMMON_REQUIRED_RECORD_FIELDS
+        + _AUDITED_CLOCK_SOURCE_FIELDS,
+        RECORD_KIND_SAMPLER_OFF: _COMMON_REQUIRED_RECORD_FIELDS,
+        RECORD_KIND_ERROR: _COMMON_REQUIRED_RECORD_FIELDS
+        + (
+            "failure_check.elapsed_ticks",
+            "failure_check.limit_ticks",
+            "failure_check.unit",
+            "failure_check.valid",
+        ),
+        RECORD_KIND_REJECTED: _COMMON_REQUIRED_RECORD_FIELDS + ("rejection_reason",),
+    }
+)
+REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
+REQUIRED_PAIR_FIELDS = _REQUIRED_PAIR_FIELDS
+REQUIRED_SAMPLER_GAP_FIELDS = _REQUIRED_SAMPLER_GAP_FIELDS
 
 
 @dataclass(frozen=True)
@@ -173,11 +379,12 @@ def _is_int(value: Any, *, nonnegative: bool = False, positive: bool = False) ->
 
 
 def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
 
 
 def _value(record: Mapping[str, Any], path: str, default: Any = _MISSING) -> Any:
@@ -192,6 +399,127 @@ def _value(record: Mapping[str, Any], path: str, default: Any = _MISSING) -> Any
 def _mapping(record: Mapping[str, Any], path: str) -> Mapping[str, Any] | None:
     value = _value(record, path)
     return value if isinstance(value, Mapping) else None
+
+
+def _is_modern_record(record: Mapping[str, Any]) -> bool:
+    schema = record.get("schema", _MISSING)
+    if schema == RESIDENT_RECORD_SCHEMA:
+        return True
+    # A single-field mutation must not erase the validator's ability to
+    # identify a modern record; named historical schemas remain the only skip.
+    return schema is _MISSING and any(
+        field in record
+        for field in ("parameters", "clock", "outlier_analysis", "clock_source_evidence")
+    )
+
+
+def _record_kind(record: Mapping[str, Any]) -> str | None:
+    if not _is_modern_record(record):
+        return None
+    if record.get("status") == RECORD_KIND_REJECTED:
+        return RECORD_KIND_REJECTED
+    failure = record.get("failure_check")
+    failure_code = failure.get("code") if isinstance(failure, Mapping) else _MISSING
+    if (
+        _is_int(failure_code, nonnegative=True)
+        and failure_code != 0
+    ) or (
+        record.get("status") in {"error", "abnormal_exit", "timeout"}
+        and failure_code is _MISSING
+    ):
+        return RECORD_KIND_ERROR
+    sampler = record.get("telemetry_sampler")
+    if isinstance(sampler, Mapping) and sampler.get("mode") == "off":
+        return RECORD_KIND_SAMPLER_OFF
+    return RECORD_KIND_SAMPLED_TIMING
+
+
+def _path_present(record: Mapping[str, Any], path: str) -> bool:
+    return _value(record, path) is not _MISSING
+
+
+def _check_required_fields(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    """Enforce the modern shape before any relationship or value checks."""
+    del ctx
+    kind = _record_kind(record)
+    if kind is None:
+        return []
+    invariant = "record.required_fields"
+    mismatches: list[dict[str, Any]] = []
+    for path in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        if not _path_present(record, path):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (path,),
+                    f"{path} is required for {kind} records",
+                )
+            )
+    outlier = record.get("outlier_analysis")
+    if isinstance(outlier, Mapping):
+        pairs = outlier.get("pairs")
+        if isinstance(pairs, list):
+            for index, pair in enumerate(pairs):
+                if not isinstance(pair, Mapping):
+                    continue
+                for field in REQUIRED_PAIR_FIELDS:
+                    if field not in pair:
+                        mismatches.append(
+                            _mismatch(
+                                invariant,
+                                (f"outlier_analysis.pairs[{index}].{field}",),
+                                f"outlier_analysis.pairs[{index}].{field} is required for {kind} records",
+                            )
+                        )
+        comparison = outlier.get("sampler_interval_comparison")
+        if isinstance(comparison, Mapping):
+            gaps = comparison.get("adjacent_gaps")
+            if isinstance(gaps, list):
+                for index, gap in enumerate(gaps):
+                    if not isinstance(gap, Mapping):
+                        continue
+                    for field in REQUIRED_SAMPLER_GAP_FIELDS:
+                        if field not in gap:
+                            mismatches.append(
+                                _mismatch(
+                                    invariant,
+                                    (
+                                        "outlier_analysis.sampler_interval_comparison."
+                                        f"adjacent_gaps[{index}].{field}"
+                                    ),
+                                    "sampler interval gap field is required for "
+                                    f"{kind} records",
+                                )
+                            )
+    return mismatches
+
+
+def _is_pinned_image(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and re.search(r"@sha256:[0-9a-f]{64}$", value) is not None
+    )
+
+
+def _finite_float(value: Any, field: str) -> float:
+    """Convert one derived measurement only when the result is finite."""
+    try:
+        converted = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{field} must be finite") from exc
+    if not math.isfinite(converted):
+        raise ValueError(f"{field} must be finite")
+    return converted
+
+
+def _finite_ratio(numerator: int, denominator: int, field: str) -> float:
+    if denominator == 0:
+        raise ValueError(f"{field} denominator must be non-zero")
+    try:
+        result = numerator / denominator
+    except (OverflowError, ZeroDivisionError) as exc:
+        raise ValueError(f"{field} must be finite") from exc
+    return _finite_float(result, field)
 
 
 def _pair_order(first: int, second: int) -> str:
@@ -421,59 +749,59 @@ def _sampler_comparison(
     pair_starts: list[int],
     aiclk_mhz: int,
 ) -> dict[str, Any]:
-    """Compare adjacent paired-event gaps with the configured sampler interval."""
+    """Return numeric sampler-gap measurements without a prose conclusion."""
     pair_count = len(pair_starts)
     frame_count = len(timestamps)
-    if sampler_mode == "off":
-        return {
-            "status": "not_applicable",
-            "mode": "off",
-            "interval_seconds": None,
-            "pair_count": pair_count,
-            "timestamp_count": frame_count,
-            "reason": "sampler_off_by_design; diagnostic-only run",
-        }
+    adjacent_gaps: list[dict[str, Any]] = []
     if sampler_mode in {"default", "explicit"}:
         if sampler_interval_seconds is None:
             raise ValueError("sampled sampler metadata must include an interval")
-        adjacent_gaps: list[dict[str, Any]] = []
+        sampler_interval = _finite_float(
+            sampler_interval_seconds, "sampler interval seconds"
+        )
+        clock_hz = aiclk_mhz * 1_000_000
         for from_frame, to_frame in itertools.pairwise(pair_starts):
             gap_frames = to_frame - from_frame
-            gap_elapsed_seconds = (timestamps[to_frame] - timestamps[from_frame]) / (
-                aiclk_mhz * 1_000_000
+            gap_elapsed_seconds = _finite_ratio(
+                timestamps[to_frame] - timestamps[from_frame],
+                clock_hz,
+                "gap elapsed seconds",
             )
-            sampler_intervals = gap_elapsed_seconds / sampler_interval_seconds
+            sampler_intervals = _finite_float(
+                gap_elapsed_seconds / sampler_interval,
+                "sampler intervals",
+            )
             nearest_integer = round(sampler_intervals)
+            residual = _finite_float(
+                gap_elapsed_seconds - nearest_integer * sampler_interval,
+                "sampler residual seconds",
+            )
             adjacent_gaps.append(
                 {
                     "from_pair_start_frame": from_frame,
                     "gap_elapsed_seconds": gap_elapsed_seconds,
                     "gap_frames": gap_frames,
                     "nearest_integer_sampler_intervals": nearest_integer,
-                    "residual_to_nearest_sampler_multiple_seconds": (
-                        gap_elapsed_seconds - nearest_integer * sampler_interval_seconds
-                    ),
+                    "residual_to_nearest_sampler_multiple_seconds": residual,
                     "sampler_intervals": sampler_intervals,
                     "to_pair_start_frame": to_frame,
                 }
             )
         return {
-            "status": "no_strict_alignment_observed",
             "mode": sampler_mode,
-            "interval_seconds": sampler_interval_seconds,
-            "sampler_interval_seconds": sampler_interval_seconds,
+            "interval_seconds": sampler_interval,
+            "sampler_interval_seconds": sampler_interval,
             "pair_count": pair_count,
             "timestamp_count": frame_count,
             "adjacent_gaps": adjacent_gaps,
-            "reason": "pair analysis was computed from the resident timestamp stream",
         }
     return {
-        "status": "legacy_unverified",
         "mode": sampler_mode,
-        "interval_seconds": sampler_interval_seconds,
+        "interval_seconds": None,
+        "sampler_interval_seconds": None,
         "pair_count": pair_count,
         "timestamp_count": frame_count,
-        "reason": "sampler metadata was absent",
+        "adjacent_gaps": adjacent_gaps,
     }
 
 
@@ -485,7 +813,7 @@ def build_outlier_analysis(
     sampler_interval_seconds: float | None = None,
     sampler_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the complete outlier catalog from timestamps and run metadata."""
+    """Build the canonical outlier catalog from timestamps and run metadata."""
     if not _is_int(aiclk_mhz, positive=True):
         raise ValueError("aiclk_mhz must be a positive integer")
     if sampler_metadata is not None:
@@ -513,14 +841,23 @@ def build_outlier_analysis(
     endpoints = [endpoint for pair in pairs for endpoint in pair["interval_end_frame_indices"]]
     elapsed_ticks = [values[index] - values[0] for index in endpoints]
     elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in elapsed_ticks]
-    elapsed_seconds = [elapsed / (aiclk_mhz * 1_000_000) for elapsed in elapsed_ticks]
+    clock_hz = aiclk_mhz * 1_000_000
+    elapsed_seconds = [
+        _finite_ratio(elapsed, clock_hz, "event elapsed seconds")
+        for elapsed in elapsed_ticks
+    ]
     pair_start_elapsed_seconds = [
-        (values[index] - values[0]) / (aiclk_mhz * 1_000_000) for index in starts
+        _finite_ratio(
+            values[index] - values[0], clock_hz, "pair start elapsed seconds"
+        )
+        for index in starts
     ]
     for pair in pairs:
         first_endpoint = pair["interval_end_frame_indices"][0]
         first_elapsed = values[first_endpoint] - values[0]
-        pair["first_interval_end_elapsed_seconds"] = first_elapsed / (aiclk_mhz * 1_000_000)
+        pair["first_interval_end_elapsed_seconds"] = _finite_ratio(
+            first_elapsed, clock_hz, "first interval endpoint elapsed seconds"
+        )
     pair_sums = [pair["pair_sum_ticks"] for pair in pairs]
     gaps = [right - left for left, right in itertools.pairwise(starts)]
     gap_counts = Counter(gaps)
@@ -529,29 +866,22 @@ def build_outlier_analysis(
     ]
     pair_order_counts = _count_orders(pairs)
     sum_deltas = [pair - PAIR_TARGET_TICKS for pair in pair_sums]
-    if pairs:
-        most_common_gap, most_common_count = gap_counts.most_common(1)[0] if gap_counts else (None, 0)
-        periodicity = (
-            f"No single exact period detected; the most common gap is {most_common_gap} frames "
-            f"({most_common_count} of {len(gaps)} gaps), and the gap gcd is {_gcd(gaps)}."
-            if most_common_gap is not None
-            else "One paired outlier was observed; no gap distribution is applicable."
-        )
-    else:
-        periodicity = "No paired short/long outliers were observed; no phase distribution is applicable."
     intervals = [current - previous for previous, current in itertools.pairwise(values)]
     return {
         "method": (
             "short < 1250000 ticks, long > 1450000 ticks, "
             "adjacent pair sum within 1000 ticks of 2700000"
         ),
-        "status": "observation_only_no_causal_claim",
         "pair_count": len(pairs),
         "pair_sum_target_ticks": PAIR_TARGET_TICKS,
         "pair_sums": pair_sums,
         "pair_sum_min_ticks": min(pair_sums) if pair_sums else None,
         "pair_sum_max_ticks": max(pair_sums) if pair_sums else None,
-        "pair_sum_mean_ticks": sum(pair_sums) / len(pair_sums) if pair_sums else None,
+        "pair_sum_mean_ticks": (
+            _finite_ratio(sum(pair_sums), len(pair_sums), "pair sum mean ticks")
+            if pair_sums
+            else None
+        ),
         "sum_delta_min_ticks": min(sum_deltas) if sum_deltas else None,
         "sum_delta_max_ticks": max(sum_deltas) if sum_deltas else None,
         "pair_order_counts": pair_order_counts,
@@ -565,7 +895,6 @@ def build_outlier_analysis(
         "gap_counts": {str(gap): gap_counts[gap] for gap in sorted(gap_counts)},
         "gap_histogram": gap_histogram,
         "gcd_frame_gap": _gcd(gaps),
-        "periodicity": periodicity,
         "pairs": pairs,
         "elapsed_time_unit": "seconds",
         "device_tick_unit": "device_clock_ticks",
@@ -596,6 +925,26 @@ def _failure_flag(record: Mapping[str, Any]) -> bool:
     if isinstance(failure, Mapping) and _is_int(failure.get("code"), nonnegative=True):
         return failure.get("code") != 0
     return record.get("status") in {"error", "abnormal_exit", "timeout"}
+
+
+def _check_failure_check(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    del ctx
+    if not _is_modern_record(record):
+        return []
+    failure = record.get("failure_check")
+    if not isinstance(failure, Mapping) or not _is_int(failure.get("code"), nonnegative=True):
+        return []
+    if failure.get("code") == 0:
+        return []
+    if failure.get("valid") is not True:
+        return [
+            _mismatch(
+                "failure_check",
+                ("failure_check.valid",),
+                "nonzero failure_check.valid must be true",
+            )
+        ]
+    return []
 
 
 def _check_parameter_counts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
@@ -800,8 +1149,9 @@ def validate_pair_analysis(
     aiclk_mhz: int | None = None,
     sampler_mode: str | None = None,
     sampler_interval_seconds: float | None = None,
+    strict_fields: bool = False,
 ) -> list[dict[str, Any]]:
-    """Return structured pair-catalog mismatches for builder compatibility callers."""
+    """Return pair mismatches, requiring every modern field when requested."""
     invariant = "outlier_analysis"
     if not isinstance(outlier_analysis, Mapping):
         return [_mismatch(invariant, ("outlier_analysis",), "outlier_analysis must be an object")]
@@ -810,11 +1160,75 @@ def validate_pair_analysis(
     pair_count = outlier_analysis.get("pair_count")
     if not _is_int(pair_count, nonnegative=True):
         return [_mismatch(invariant, ("outlier_analysis.pair_count",), "outlier_analysis.pair_count must be a non-negative integer")]
+    if strict_fields:
+        numeric_fields = (
+            "pair_sum_min_ticks",
+            "pair_sum_max_ticks",
+            "pair_sum_mean_ticks",
+            "sum_delta_min_ticks",
+            "sum_delta_max_ticks",
+            "run_elapsed_seconds",
+        )
+        for field in numeric_fields:
+            value = outlier_analysis.get(field)
+            if value is not None and not _is_number(value):
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (f"outlier_analysis.{field}",),
+                        f"outlier_analysis.{field} must be finite",
+                    )
+                )
+        for field in ("event_elapsed_seconds", "pair_start_elapsed_seconds"):
+            values = outlier_analysis.get(field)
+            if isinstance(values, list) and any(not _is_number(value) for value in values):
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (f"outlier_analysis.{field}",),
+                        f"outlier_analysis.{field} must contain finite values",
+                    )
+                )
+        comparison = outlier_analysis.get("sampler_interval_comparison")
+        if isinstance(comparison, Mapping):
+            for field in ("interval_seconds", "sampler_interval_seconds"):
+                value = comparison.get(field)
+                if value is not None and not _is_number(value):
+                    mismatches.append(
+                        _mismatch(
+                            invariant,
+                            (f"outlier_analysis.sampler_interval_comparison.{field}",),
+                            f"sampler interval {field} must be finite",
+                        )
+                    )
+            gaps = comparison.get("adjacent_gaps")
+            if isinstance(gaps, list):
+                for index, gap in enumerate(gaps):
+                    if not isinstance(gap, Mapping):
+                        continue
+                    for field in (
+                        "gap_elapsed_seconds",
+                        "residual_to_nearest_sampler_multiple_seconds",
+                        "sampler_intervals",
+                    ):
+                        if not _is_number(gap.get(field)):
+                            mismatches.append(
+                                _mismatch(
+                                    invariant,
+                                    (f"outlier_analysis.sampler_interval_comparison.adjacent_gaps[{index}].{field}",),
+                                    f"sampler interval gap {field} must be finite",
+                                )
+                            )
     target = outlier_analysis.get("pair_sum_target_ticks", _MISSING)
-    if target is not _MISSING and target != PAIR_TARGET_TICKS:
+    if (strict_fields or target is not _MISSING) and target != PAIR_TARGET_TICKS:
         mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_sum_target_ticks",), "pair_sum_target_ticks does not equal the shared pair target"))
     starts_value = outlier_analysis.get("frame_start_indices", _MISSING)
-    if starts_value is _MISSING and pair_count == 0 and outlier_analysis.get("pair_sums") == []:
+    if (
+        starts_value is _MISSING
+        and not strict_fields
+        and pair_count == 0
+        and outlier_analysis.get("pair_sums") == []
+    ):
         starts: list[Any] = []
     elif isinstance(starts_value, list):
         starts = starts_value
@@ -835,6 +1249,14 @@ def validate_pair_analysis(
     pair_sums: list[Any] | None
     if pair_sums_value is _MISSING:
         pair_sums = None
+        if strict_fields:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("outlier_analysis.pair_sums",),
+                    "outlier_analysis.pair_sums is required",
+                )
+            )
     elif isinstance(pair_sums_value, list):
         pair_sums = pair_sums_value
         if len(pair_sums) != pair_count:
@@ -855,31 +1277,35 @@ def validate_pair_analysis(
             continue
         if index < len(starts) and endpoints != [starts[index], starts[index] + 1]:
             mismatches.append(_mismatch(invariant, (f"outlier_analysis.pairs[{index}]", "outlier_analysis.frame_start_indices"), "outlier_analysis pair endpoints must match frame starts"))
-        if pair_sums is not None and index < len(pair_sums) and pair.get("pair_sum_ticks") != pair_sums[index]:
+        if (
+            pair_sums is not None
+            and index < len(pair_sums)
+            and pair.get("pair_sum_ticks") != pair_sums[index]
+        ):
             mismatches.append(_mismatch(invariant, (f"outlier_analysis.pairs[{index}].pair_sum_ticks", "outlier_analysis.pair_sums"), "outlier_analysis pair sums must match pair objects"))
 
     expected_positions = [endpoint for pair in pairs if isinstance(pair, Mapping) for endpoint in pair.get("interval_end_frame_indices", [])]
-    if "event_frame_positions" in outlier_analysis and outlier_analysis.get("event_frame_positions") != expected_positions:
+    if (strict_fields or "event_frame_positions" in outlier_analysis) and outlier_analysis.get("event_frame_positions") != expected_positions:
         mismatches.append(_mismatch(invariant, ("outlier_analysis.event_frame_positions", "outlier_analysis.pairs"), "outlier_analysis event frame positions do not match pair endpoints"))
     for field in ("event_elapsed_seconds", "event_elapsed_ticks", "event_elapsed_ticks_mod_period"):
-        if field in outlier_analysis:
+        if strict_fields or field in outlier_analysis:
             values = outlier_analysis.get(field)
             if not isinstance(values, list) or len(values) != pair_count * 2:
                 mismatches.append(_mismatch(invariant, (f"outlier_analysis.{field}", "outlier_analysis.pair_count"), f"{field} length does not equal pair endpoint count"))
     starts_int = [value for value in starts if _is_int(value)]
     expected_gaps = [right - left for left, right in itertools.pairwise(starts_int)]
-    if "frame_gaps" in outlier_analysis and outlier_analysis.get("frame_gaps") != expected_gaps:
+    if (strict_fields or "frame_gaps" in outlier_analysis) and outlier_analysis.get("frame_gaps") != expected_gaps:
         mismatches.append(_mismatch(invariant, ("outlier_analysis.frame_gaps", "outlier_analysis.frame_start_indices"), "outlier_analysis frame gaps do not match frame starts"))
-    if "gap_counts" in outlier_analysis:
+    if strict_fields or "gap_counts" in outlier_analysis:
         expected_counts = Counter(expected_gaps)
         declared = outlier_analysis.get("gap_counts")
         if not isinstance(declared, Mapping) or {str(key): value for key, value in expected_counts.items()} != dict(declared):
             mismatches.append(_mismatch(invariant, ("outlier_analysis.gap_counts", "outlier_analysis.frame_gaps"), "outlier_analysis gap_counts do not match frame gaps"))
-    if "gap_histogram" in outlier_analysis:
+    if strict_fields or "gap_histogram" in outlier_analysis:
         expected_histogram = [{"gap_frames": gap, "count": Counter(expected_gaps)[gap]} for gap in sorted(set(expected_gaps))]
         if outlier_analysis.get("gap_histogram") != expected_histogram:
             mismatches.append(_mismatch(invariant, ("outlier_analysis.gap_histogram", "outlier_analysis.frame_gaps"), "outlier_analysis gap histogram does not match frame gaps"))
-    if "gcd_frame_gap" in outlier_analysis and outlier_analysis.get("gcd_frame_gap") != _gcd(expected_gaps):
+    if (strict_fields or "gcd_frame_gap" in outlier_analysis) and outlier_analysis.get("gcd_frame_gap") != _gcd(expected_gaps):
         mismatches.append(_mismatch(invariant, ("outlier_analysis.gcd_frame_gap", "outlier_analysis.frame_gaps"), "outlier_analysis gcd_frame_gap does not match frame gaps"))
 
     if timestamp_values is not None:
@@ -904,7 +1330,8 @@ def validate_pair_analysis(
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.pairs", "timestamps"), "derived pair sums do not match record"))
             actual_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
             expected_pairs = build_outlier_analysis(values, aiclk_mhz=actual_aiclk).get("pairs", [])
-            if "interval_count" in outlier_analysis and outlier_analysis.get("interval_count") != len(values) - 1:
+            expected_interval_count = max(0, len(values) - 1)
+            if (strict_fields or "interval_count" in outlier_analysis) and outlier_analysis.get("interval_count") != expected_interval_count:
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.interval_count", "timestamps"), "outlier_analysis interval_count does not match timestamps"))
             for index, pair in enumerate(pairs):
                 if index >= len(expected_pairs) or not isinstance(pair, Mapping):
@@ -922,56 +1349,120 @@ def validate_pair_analysis(
                     "first_interval_end_elapsed_ticks_mod_period",
                     "first_interval_end_elapsed_seconds",
                 ):
-                    if field in pair and pair.get(field) != expected.get(field):
+                    if (strict_fields or field in pair) and pair.get(field) != expected.get(field):
                         mismatches.append(_mismatch(invariant, (f"outlier_analysis.pairs[{index}].{field}", "timestamps"), f"pair {index} {field} does not match timestamps"))
             expected_pair_sums = [pair["pair_sum_ticks"] for pair in expected_pairs]
-            if pair_sums is not None and pair_sums != expected_pair_sums:
+            if (strict_fields or pair_sums is not None) and pair_sums != expected_pair_sums:
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_sums", "timestamps"), "outlier_analysis pair_sums do not match timestamps"))
             expected_endpoints = [endpoint for pair in expected_pairs for endpoint in pair["interval_end_frame_indices"]]
             expected_elapsed_ticks = [values[index] - values[0] for index in expected_endpoints]
             expected_elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in expected_elapsed_ticks]
             actual_seconds_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
-            expected_elapsed_seconds = [elapsed / (actual_seconds_aiclk * 1_000_000) for elapsed in expected_elapsed_ticks]
+            expected_elapsed_seconds = [
+                _finite_ratio(
+                    elapsed,
+                    actual_seconds_aiclk * 1_000_000,
+                    "expected event elapsed seconds",
+                )
+                for elapsed in expected_elapsed_ticks
+            ]
             for field, expected in (
                 ("event_frame_positions", expected_endpoints),
                 ("event_elapsed_ticks", expected_elapsed_ticks),
                 ("event_elapsed_ticks_mod_period", expected_elapsed_mod),
                 ("event_elapsed_seconds", expected_elapsed_seconds),
                 ("pair_start_elapsed_seconds", [
-                    (values[index] - values[0]) / (actual_seconds_aiclk * 1_000_000)
+                    _finite_ratio(
+                        values[index] - values[0],
+                        actual_seconds_aiclk * 1_000_000,
+                        "expected pair start elapsed seconds",
+                    )
                     for index in [pair["interval_end_frame_indices"][0] for pair in expected_pairs]
                 ]),
             ):
-                if field in outlier_analysis and outlier_analysis.get(field) != expected:
+                if (strict_fields or field in outlier_analysis) and outlier_analysis.get(field) != expected:
                     mismatches.append(_mismatch(invariant, (f"outlier_analysis.{field}", "timestamps"), f"outlier_analysis {field} does not match timestamps"))
             expected_sums = [pair["pair_sum_ticks"] for pair in expected_pairs]
             for field, expected in (
                 ("pair_sum_min_ticks", min(expected_sums) if expected_sums else None),
                 ("pair_sum_max_ticks", max(expected_sums) if expected_sums else None),
-                ("pair_sum_mean_ticks", sum(expected_sums) / len(expected_sums) if expected_sums else None),
+                (
+                    "pair_sum_mean_ticks",
+                    _finite_ratio(
+                        sum(expected_sums), len(expected_sums), "expected pair sum mean ticks"
+                    )
+                    if expected_sums
+                    else None,
+                ),
                 ("sum_delta_min_ticks", min((value - PAIR_TARGET_TICKS) for value in expected_sums) if expected_sums else None),
                 ("sum_delta_max_ticks", max((value - PAIR_TARGET_TICKS) for value in expected_sums) if expected_sums else None),
                 ("aiclk_mhz_for_elapsed_seconds", actual_seconds_aiclk),
                 ("run_elapsed_ticks", values[-1] - values[0] if values else 0),
-                ("run_elapsed_seconds", (values[-1] - values[0]) / (actual_seconds_aiclk * 1_000_000) if values else 0.0),
+                (
+                    "run_elapsed_seconds",
+                    _finite_ratio(
+                        values[-1] - values[0],
+                        actual_seconds_aiclk * 1_000_000,
+                        "expected run elapsed seconds",
+                    )
+                    if values
+                    else 0.0,
+                ),
             ):
-                if field in outlier_analysis and outlier_analysis.get(field) != expected:
+                if (strict_fields or field in outlier_analysis) and outlier_analysis.get(field) != expected:
                     mismatches.append(_mismatch(invariant, (f"outlier_analysis.{field}", "timestamps"), f"outlier_analysis {field} does not match timestamps"))
     # Pair sums and order metadata are derivable even without raw timestamps.
-    object_sums = [pair.get("pair_sum_ticks") for pair in pairs if isinstance(pair, Mapping) and _is_int(pair.get("pair_sum_ticks"))]
-    if "pair_sum_min_ticks" in outlier_analysis and outlier_analysis.get("pair_sum_min_ticks") != (min(object_sums) if object_sums else None):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_sum_min_ticks", "outlier_analysis.pairs"), "pair_sum_min_ticks does not match pair objects"))
-    if "pair_sum_max_ticks" in outlier_analysis and outlier_analysis.get("pair_sum_max_ticks") != (max(object_sums) if object_sums else None):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_sum_max_ticks", "outlier_analysis.pairs"), "pair_sum_max_ticks does not match pair objects"))
-    if "pair_sum_mean_ticks" in outlier_analysis and outlier_analysis.get("pair_sum_mean_ticks") != (sum(object_sums) / len(object_sums) if object_sums else None):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_sum_mean_ticks", "outlier_analysis.pairs"), "pair_sum_mean_ticks does not match pair objects"))
+    object_sums = [
+        pair.get("pair_sum_ticks")
+        for pair in pairs
+        if isinstance(pair, Mapping) and _is_int(pair.get("pair_sum_ticks"))
+    ]
+    expected_pair_sum_min = min(object_sums) if object_sums else None
+    expected_pair_sum_max = max(object_sums) if object_sums else None
+    expected_pair_sum_mean = (
+        _finite_ratio(sum(object_sums), len(object_sums), "pair sum mean ticks")
+        if object_sums
+        else None
+    )
+    for field, expected_value in (
+        ("pair_sum_min_ticks", expected_pair_sum_min),
+        ("pair_sum_max_ticks", expected_pair_sum_max),
+        ("pair_sum_mean_ticks", expected_pair_sum_mean),
+    ):
+        if (strict_fields or field in outlier_analysis) and outlier_analysis.get(field) != expected_value:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (f"outlier_analysis.{field}", "outlier_analysis.pairs"),
+                    f"{field} does not match pair objects",
+                )
+            )
     object_deltas = [value - PAIR_TARGET_TICKS for value in object_sums]
-    if "sum_delta_min_ticks" in outlier_analysis and outlier_analysis.get("sum_delta_min_ticks") != (min(object_deltas) if object_deltas else None):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.sum_delta_min_ticks", "outlier_analysis.pairs"), "sum_delta_min_ticks does not match pair objects"))
-    if "sum_delta_max_ticks" in outlier_analysis and outlier_analysis.get("sum_delta_max_ticks") != (max(object_deltas) if object_deltas else None):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.sum_delta_max_ticks", "outlier_analysis.pairs"), "sum_delta_max_ticks does not match pair objects"))
-    if "pair_order_counts" in outlier_analysis and outlier_analysis.get("pair_order_counts") != _count_orders(pair for pair in pairs if isinstance(pair, Mapping)):
-        mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_order_counts", "outlier_analysis.pairs"), "pair_order_counts does not match pair objects"))
+    for field, expected_value in (
+        ("sum_delta_min_ticks", min(object_deltas) if object_deltas else None),
+        ("sum_delta_max_ticks", max(object_deltas) if object_deltas else None),
+    ):
+        if (strict_fields or field in outlier_analysis) and outlier_analysis.get(field) != expected_value:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (f"outlier_analysis.{field}", "outlier_analysis.pairs"),
+                    f"{field} does not match pair objects",
+                )
+            )
+    expected_order_counts = _count_orders(
+        pair for pair in pairs if isinstance(pair, Mapping)
+    )
+    if (strict_fields or "pair_order_counts" in outlier_analysis) and outlier_analysis.get(
+        "pair_order_counts"
+    ) != expected_order_counts:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("outlier_analysis.pair_order_counts", "outlier_analysis.pairs"),
+                "pair_order_counts does not match pair objects",
+            )
+        )
 
     if timestamp_values is not None and sampler_mode in {"off", "default", "explicit"}:
         actual_timestamps = timestamp_values
@@ -984,7 +1475,7 @@ def validate_pair_analysis(
         actual = outlier_analysis.get("sampler_interval_comparison")
         if isinstance(actual, Mapping):
             for field, expected_value in expected.items():
-                if field in actual and actual.get(field) != expected_value:
+                if (strict_fields or field in actual) and actual.get(field) != expected_value:
                     mismatches.append(
                         _mismatch(
                             invariant,
@@ -1001,6 +1492,67 @@ def validate_pair_analysis(
                 )
             )
 
+    return mismatches
+
+
+def _check_clock_source_evidence(
+    record: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Check evidence against the immutable image-digest audit table."""
+    del ctx
+    if not _is_modern_record(record):
+        return []
+    invariant = "clock_source_evidence"
+    environment = _mapping(record, "environment")
+    evidence = _mapping(record, "clock_source_evidence")
+    if environment is None or evidence is None:
+        return []
+    image = environment.get("image")
+    mismatches: list[dict[str, Any]] = []
+    kind = _record_kind(record)
+    if kind != RECORD_KIND_REJECTED and not _is_pinned_image(image):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("environment.image", "environment.image_pinned"),
+                "environment image must be digest-pinned",
+            )
+        )
+    if evidence.get("image") != image:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("clock_source_evidence.image", "environment.image"),
+                "clock-source evidence image must equal environment.image",
+            )
+        )
+    audited = clock_source_audit_for_image(image)
+    if audited is not None:
+        if evidence.get("audit_status") != "audited":
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("clock_source_evidence.audit_status",),
+                    "audited image requires audited clock-source evidence",
+                )
+            )
+        for field, expected in audited.items():
+            if evidence.get(field) != expected:
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (f"clock_source_evidence.{field}", "environment.image"),
+                        f"clock-source evidence {field} does not match the immutable audit table",
+                    )
+                )
+    elif evidence.get("audit_status") != "unaudited":
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("clock_source_evidence.audit_status", "environment.image"),
+                "an image without an audit entry must be marked unaudited",
+            )
+        )
     return mismatches
 
 
@@ -1072,6 +1624,7 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
             aiclk_mhz=aiclk,
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
+            strict_fields=not legacy,
         )
     )
 
@@ -1305,6 +1858,65 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     invariant = "power_trace.facts"
     sampler = _sampler(record)
     mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
+    if mode == "off":
+        if not _is_modern_record(record):
+            return []
+        declared = _declared_power_metadata(record)
+        mismatches: list[dict[str, Any]] = []
+        provenance = _mapping(record, "power_clock_provenance")
+        if provenance is not None and provenance.get("trace") != provenance.get("file"):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("power_clock_provenance.trace", "power_clock_provenance.file"),
+                    "power provenance trace must equal file",
+                )
+            )
+        expected_top = {
+            "file": None,
+            "sample_count": 0,
+            "csv_row_count": 0,
+            "valid_row_count": 0,
+            "in_run_valid_row_count": 0,
+            "sha256": None,
+        }
+        for field, expected in expected_top.items():
+            actual = declared.get(field, _MISSING)
+            if actual != expected:
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (f"power_clock_provenance.{field}",),
+                        f"sampler-off power trace {field} must be {expected!r}",
+                    )
+                )
+        if provenance is not None:
+            for field, expected in {
+                "file": None,
+                "sha256": None,
+                "readable": False,
+                "nonempty": False,
+                "csv_row_count": 0,
+                "sample_count": 0,
+                "valid_row_count": 0,
+                "in_run_valid_row_count": 0,
+                "timestamps_parse": False,
+                "timestamps_ordered": False,
+                "covers_run_start": False,
+                "covers_run_end": False,
+                "coverage_complete": False,
+                "aiclk_source": "sampler_off_diagnostic",
+                "aiclk_mhz": None,
+            }.items():
+                if provenance.get(field) != expected:
+                    mismatches.append(
+                        _mismatch(
+                            invariant,
+                            (f"power_clock_provenance.{field}",),
+                            f"sampler-off power trace {field} must be {expected!r}",
+                        )
+                    )
+        return mismatches
     if mode not in {"default", "explicit"} or not record.get("power_trace"):
         return []
     declared = _declared_power_metadata(record)
@@ -1312,6 +1924,15 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     if report is None:
         return []
     mismatches: list[dict[str, Any]] = []
+    provenance = _mapping(record, "power_clock_provenance")
+    if provenance is not None and provenance.get("trace") != provenance.get("file"):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("power_clock_provenance.trace", "power_clock_provenance.file"),
+                "power provenance trace must equal file",
+            )
+        )
     trace_name = record.get("power_trace")
     if declared.get("file", _MISSING) not in {_MISSING, None, trace_name}:
         mismatches.append(_mismatch(invariant, ("power_trace", "power_clock_provenance.file"), "power trace filename does not match record"))
@@ -1512,6 +2133,8 @@ def _timing_block_reason(
         return "run_incomplete_or_dropped_frames"
     if params.get("attempted_frame_count") != params.get("frame_count"):
         return "run_incomplete_or_dropped_frames"
+    if _check_clock_source_evidence(record, ctx):
+        return "clock_source_unaudited"
     source_evidence = _mapping(record, "clock_source_evidence")
     if source_evidence is None or source_evidence.get("audit_status") != "audited":
         return "clock_source_unaudited"
@@ -1593,6 +2216,24 @@ def _check_trace_metadata_duplicates(record: Mapping[str, Any], ctx: ValidationC
 
 
 RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
+    ResidentInvariant(
+        "record.required_fields",
+        ("schema", "status", "environment.image", "outlier_analysis"),
+        "modern record-kind field presence matrix; historical schemas use scoped compatibility skips",
+        _check_required_fields,
+    ),
+    ResidentInvariant(
+        "clock_source_evidence",
+        ("environment.image", "clock_source_evidence"),
+        "exact environment image digest and immutable clock-source audit facts",
+        _check_clock_source_evidence,
+    ),
+    ResidentInvariant(
+        "failure_check",
+        ("failure_check.code", "failure_check.valid"),
+        "nonzero failure classification and validity flag",
+        _check_failure_check,
+    ),
     ResidentInvariant(
         "parameters.counts",
         ("parameters.frame_count", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts"),
@@ -1688,8 +2329,10 @@ def validate_resident_record(
     strict_trace: bool = True,
     raise_on_error: bool | None = None,
 ) -> dict[str, Any]:
-    """Validate one record through the executable shared invariant catalog.
+    """Validate one record through the table-driven invariant catalog.
 
+    The modern record-kind field matrix runs before value and relationship
+    checks; only the explicitly named historical branches skip fields.
     Analyzer callers use the default report mode.  Builder callers pass
     ``builder=True`` and may use ``raise_on_error=True`` for hard numeric or
     schema contradictions; unsafe timing claims are changed to false with an
@@ -1725,15 +2368,27 @@ def validate_resident_record(
         builder=builder,
     )
     trace_report = _trace_report(record, ctx)
-    if builder and isinstance(record, dict):
-        _apply_builder_timing_policy(record, ctx, trace_report)
     mismatches: list[dict[str, Any]] = []
     checks: dict[str, Any] = {}
+    record_kind = _record_kind(record)
     for entry in RESIDENT_INVARIANT_CATALOG:
         try:
-            entry_mismatches = entry.check(record, ctx)
+            if record_kind == RECORD_KIND_REJECTED and entry.name not in {
+                "record.required_fields",
+                "clock_source_evidence",
+            }:
+                entry_mismatches = []
+            else:
+                entry_mismatches = entry.check(record, ctx)
         except (TypeError, ValueError, KeyError, IndexError) as exc:
             entry_mismatches = [_mismatch(entry.name, entry.fields, f"malformed input: {exc}")]
+        if (
+            entry.name == "record.required_fields"
+            and builder
+            and not entry_mismatches
+            and isinstance(record, dict)
+        ):
+            _apply_builder_timing_policy(record, ctx, trace_report)
         checks[entry.name] = {
             "ok": not entry_mismatches,
             "fields": list(entry.fields),
@@ -1812,7 +2467,16 @@ __all__ = [
     "PAIR_ORDERS",
     "PAIR_TARGET_TICKS",
     "PAIR_TOLERANCE_TICKS",
+    "RECORD_KIND_ERROR",
+    "RECORD_KIND_REJECTED",
+    "RECORD_KIND_SAMPLED_TIMING",
+    "RECORD_KIND_SAMPLER_OFF",
+    "REQUIRED_PAIR_FIELDS",
+    "REQUIRED_RECORD_FIELDS",
+    "REQUIRED_SAMPLER_GAP_FIELDS",
     "RESIDENT_INVARIANT_CATALOG",
+    "RESIDENT_RECORD_FIELD_MATRIX",
+    "RESIDENT_RECORD_SCHEMA",
     "SAMPLER_CONTRACT",
     "SHORT_THRESHOLD_TICKS",
     "TIMING_EVIDENCE_COMPATIBILITY_BRANCHES",

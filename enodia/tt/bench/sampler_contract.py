@@ -37,6 +37,8 @@ SAMPLER_CONTRACT: Mapping[str, Mapping[str, Any]] = MappingProxyType(
 )
 SAMPLER_MODES = tuple(SAMPLER_CONTRACT)
 DEFAULT_SAMPLER_INTERVAL_SECONDS = float(SAMPLER_CONTRACT["default"]["interval_seconds"])
+MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS = 0.1
+MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS = 3_600.0
 
 _MISSING = object()
 
@@ -58,7 +60,7 @@ def normalize_sampler_metadata(
     A missing sampler object is the legacy default and is completed to the
     existing two-second sampler.  A default object may likewise omit its
     interval only when ``complete_default`` is true; record validation passes
-    false so a persisted record must carry the complete contract explicitly.
+    false so a persisted record must carry the explicit contract fields.
     """
     if raw_sampler is None:
         raw: dict[str, Any] = {"mode": "default"}
@@ -92,9 +94,19 @@ def normalize_sampler_metadata(
     else:
         if interval is _MISSING or interval is None:
             raise ValueError("explicit sampler mode must carry a positive finite interval")
-        if not _is_finite_number(interval) or float(interval) <= 0:
-            raise ValueError("explicit sampler interval must be positive and finite")
+        if not _is_finite_number(interval):
+            raise ValueError("explicit sampler interval must be finite")
         normalized_interval = float(interval)
+        if not (
+            MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS
+            <= normalized_interval
+            <= MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS
+        ):
+            raise ValueError(
+                "explicit sampler interval must be between "
+                f"{MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS} and "
+                f"{MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS} seconds"
+            )
 
     normalized = dict(raw)
     normalized["mode"] = mode
@@ -106,6 +118,8 @@ def normalize_sampler_metadata(
 
 __all__ = [
     "DEFAULT_SAMPLER_INTERVAL_SECONDS",
+    "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
+    "MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "SAMPLER_CONTRACT",
     "SAMPLER_MODES",
     "normalize_sampler_metadata",

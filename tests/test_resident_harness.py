@@ -35,6 +35,7 @@ from enodia.tt.bench.resident_harness import (
     ResidentPreflightError,
     RingAccounting,
     build_measurement_record,
+    build_outlier_analysis,
     clock_source_audit_for_image,
     cycle_budget_exceeded,
     failure_name,
@@ -68,6 +69,11 @@ from enodia.tt.bench.run_resident import (
     _parser,
     _resolve_watcher_mode,
     _runtime_u32,
+)
+from enodia.tt.bench.sampler_contract import (
+    MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    normalize_sampler_metadata,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1098,6 +1104,37 @@ def test_pacing_failure_accepts_one_aborted_attempt():
     assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
 
 
+def test_empty_timestamp_error_records_persist_before_first_completion():
+    environment = _environment()
+    environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    for classification in FAILURE_CODE_TABLE[1:]:
+        record = build_measurement_record(
+            config=_config(frame_count=3),
+            aiclk_mhz=1_350,
+            timestamps=[],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            kernel_error_flag=1,
+            attempted_frame_count=1,
+            produced_frame_count=0,
+            dropped_frame_count=0,
+            aborted_attempts=1,
+            failure_check=_failure(classification.code, source=classification.sources[0]),
+            harness_commit="0123456789abcdef",
+            environment=environment,
+            power_trace=None,
+        )
+        assert record["status"] == "error"
+        assert record["histogram"]["N"] == 0
+        assert record["outlier_analysis"]["interval_count"] == 0
+        assert record["failure_check"]["code"] == classification.code
+
+
 @pytest.mark.parametrize(
     "classification",
     FAILURE_CODE_TABLE[1:],
@@ -1453,6 +1490,38 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["environment"]["image"] == "registry.example/tt@sha256:" + "a" * 64
     assert parsed["telemetry_sampler"]["mode"] == "default"
     assert parsed["timestamp_attribution"]["producer_write"]["available"] is False
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS, MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS],
+)
+def test_explicit_sampler_interval_accepts_supported_boundaries(interval):
+    normalized = normalize_sampler_metadata(
+        {"mode": "explicit", "interval_seconds": interval}
+    )
+    assert normalized["interval_seconds"] == float(interval)
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [
+        MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS - 0.000001,
+        MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS + 0.000001,
+    ],
+)
+def test_explicit_sampler_interval_rejects_outside_supported_range(interval):
+    with pytest.raises(ValueError, match="between"):
+        normalize_sampler_metadata({"mode": "explicit", "interval_seconds": interval})
+
+
+def test_sampler_interval_measurements_reject_nonfinite_ratio_before_rounding():
+    with pytest.raises(ValueError, match="finite"):
+        build_outlier_analysis(
+            [0, 1_000_000, 2_700_000],
+            aiclk_mhz=1_350,
+            sampler_metadata={"mode": "explicit", "interval_seconds": float("inf")},
+        )
 
 
 def test_sampler_off_record_is_trace_free_and_not_timing_evidence():

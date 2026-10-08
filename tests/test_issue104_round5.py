@@ -15,9 +15,13 @@ from enodia.tt.bench.resident_harness import (
     AUDITED_CLOCK_SOURCE_IMAGE,
     ResidentConfig,
     build_measurement_record,
+    build_rejection_record,
 )
 from enodia.tt.bench.resident_record import (
+    REQUIRED_PAIR_FIELDS,
+    REQUIRED_SAMPLER_GAP_FIELDS,
     RESIDENT_INVARIANT_CATALOG,
+    RESIDENT_RECORD_FIELD_MATRIX,
     TIMING_EVIDENCE_COMPATIBILITY_BRANCHES,
     TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES,
     build_outlier_analysis,
@@ -73,12 +77,14 @@ def _trace(path: Path) -> None:
     )
 
 
-def _valid_record(tmp_path: Path) -> tuple[dict, Path, list[int]]:
+def _valid_record(
+    tmp_path: Path, timestamps: list[int] | None = None
+) -> tuple[dict, Path, list[int]]:
     trace = tmp_path / "power.csv"
     _trace(trace)
-    timestamps = [1_000, 2_000, 3_000]
+    timestamps = [1_000, 2_000, 3_000] if timestamps is None else timestamps
     record = build_measurement_record(
-        config=_config(),
+        config=_config(frame_count=len(timestamps)),
         aiclk_mhz=1_350,
         timestamps=timestamps,
         producer_full_count=0,
@@ -144,6 +150,95 @@ def _mutations(record: dict, trace: Path, timestamps: list[int]):
         "sampler.default_missing_interval": lambda r: _set_sampler_pair(r, "default", None),
         "timing_evidence.reason": lambda r: r.update(timing_evidence=False, timing_evidence_reason="power_trace_run_samples"),
     }
+
+
+def _delete_field(record: dict, path: str) -> None:
+    components = path.split(".")
+    target = record
+    for component in components[:-1]:
+        target = target[component]
+    del target[components[-1]]
+
+
+def _matrix_record(kind: str, tmp_path: Path) -> dict:
+    if kind == "sampled_timing":
+        record, _trace, _timestamps = _valid_record(tmp_path)
+        return record
+    if kind == "sampler_off":
+        return build_measurement_record(
+            config=_config(),
+            aiclk_mhz=1_350,
+            timestamps=[1_000, 2_000, 3_000],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            kernel_error_flag=0,
+            harness_commit="a" * 40,
+            environment=_environment(mode="off"),
+            power_trace=None,
+        )
+    if kind == "error":
+        classification = 2
+        return build_measurement_record(
+            config=_config(),
+            aiclk_mhz=1_350,
+            timestamps=[],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            kernel_error_flag=1,
+            harness_commit="a" * 40,
+            environment=_environment(mode="off"),
+            power_trace=None,
+            attempted_frame_count=1,
+            produced_frame_count=0,
+            dropped_frame_count=0,
+            aborted_attempts=1,
+            failure_check={
+                "code": classification,
+                "name": "producer_pacing_wait",
+                "source": "producer",
+                "elapsed_ticks": 1,
+                "limit_ticks": 2,
+                "unit": "device_clock_ticks",
+                "valid": True,
+            },
+        )
+    if kind == "rejected":
+        return build_rejection_record(
+            config=_config(), reason="preflight rejected", environment=_environment(mode="off")
+        )
+    raise AssertionError(kind)
+
+
+@pytest.mark.parametrize("kind", tuple(RESIDENT_RECORD_FIELD_MATRIX))
+def test_required_field_matrix_deletion_mutations_are_rejected(kind: str, tmp_path: Path):
+    record = _matrix_record(kind, tmp_path)
+    for path in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        candidate = copy.deepcopy(record)
+        _delete_field(candidate, path)
+        report = validate_resident_record(candidate)
+        assert not report["valid"], (kind, path, report["failures"])
+        assert any(path in mismatch["fields"] for mismatch in report["mismatches"]), (
+            kind,
+            path,
+            report["mismatches"],
+        )
+
+
+def test_required_list_item_fields_are_checked_from_the_same_matrix(tmp_path: Path):
+    timestamps = [0, 1_000_000, 2_700_000, 4_050_000, 5_050_000, 6_750_000]
+    record, trace, _timestamps = _valid_record(tmp_path, timestamps=timestamps)
+    for field in REQUIRED_PAIR_FIELDS:
+        candidate = copy.deepcopy(record)
+        del candidate["outlier_analysis"]["pairs"][0][field]
+        assert not validate_resident_record(
+            candidate, timestamps=timestamps, power_trace_path=trace
+        )["valid"]
+    for field in REQUIRED_SAMPLER_GAP_FIELDS:
+        candidate = copy.deepcopy(record)
+        del candidate["outlier_analysis"]["sampler_interval_comparison"]["adjacent_gaps"][0][field]
+        assert not validate_resident_record(
+            candidate, timestamps=timestamps, power_trace_path=trace
+        )["valid"]
 
 
 def test_catalog_is_nonempty_and_executable():
