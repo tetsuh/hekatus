@@ -284,7 +284,7 @@ def test_required_list_item_fields_are_checked_from_the_same_matrix(tmp_path: Pa
         )["valid"]
 
 
-def test_unknown_modern_fields_are_rejected_by_the_explicit_compatibility_table(
+def test_unknown_modern_fields_are_warnings_and_do_not_reject_the_record(
     tmp_path: Path,
 ):
     record, trace, timestamps = _valid_record(tmp_path)
@@ -293,39 +293,28 @@ def test_unknown_modern_fields_are_rejected_by_the_explicit_compatibility_table(
     report = validate_resident_record(
         candidate, timestamps=timestamps, power_trace_path=trace
     )
-    assert not report["valid"]
-    assert any(
-        mismatch["invariant"] == "record.unknown_fields"
-        and mismatch["fields"] == ["unexpected_field"]
-        for mismatch in report["mismatches"]
-    )
+    assert report["valid"]
+    assert "unexpected_field" in report["warning_fields"]
+    assert report["checks"]["record.unknown_fields"]["ok"]
 
     candidate = copy.deepcopy(record)
     candidate["environment"]["unexpected_field"] = True
     report = validate_resident_record(
         candidate, timestamps=timestamps, power_trace_path=trace
     )
-    assert not report["valid"]
-    assert any(
-        mismatch["invariant"] == "record.unknown_fields"
-        and mismatch["fields"] == ["environment.unexpected_field"]
-        for mismatch in report["mismatches"]
-    )
+    assert report["valid"]
+    assert "environment.unexpected_field" in report["warning_fields"]
 
 
-def test_historical_unknown_fields_are_rejected_without_rewriting_the_record():
+def test_historical_unknown_fields_are_warnings_without_rewriting_the_record():
     path = Path("docs/measurements/2026-10-06-p150a-issue104-sampler-off.json")
     record = json.loads(path.read_text())
     assert validate_resident_record(record)["valid"]
     candidate = copy.deepcopy(record)
     candidate["unexpected_historical_field"] = True
     report = validate_resident_record(candidate)
-    assert not report["valid"]
-    assert any(
-        mismatch["invariant"] == "record.unknown_fields"
-        and mismatch["fields"] == ["unexpected_historical_field"]
-        for mismatch in report["mismatches"]
-    )
+    assert report["valid"]
+    assert "unexpected_historical_field" in report["warning_fields"]
 
 
 def test_failure_code_zero_is_canonical_and_failure_mutations_force_non_timing(

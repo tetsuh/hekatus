@@ -50,10 +50,12 @@ protocol fix, so these runs must not be described as having used that fix.
 The shared board-free `validate_resident_record` field matrix and invariant
 catalog in `enodia/tt/bench/resident_record.py` were run against all three
 committed Issue #104 JSON records and their committed companion CSVs without
-rewriting either data format. Modern records reject unknown fields unless they
-are listed in the record-kind compatibility table; the historical ADR-0005
-records use their explicit immutable leaf-path compatibility set. Revalidation
-therefore reports added fields without rewriting the historical JSON or CSV.
+rewriting either data format. The validator guarantees required field
+presence/type/range and major relationships; undeclared telemetry or
+production fields are retained and reported as warnings rather than rejected.
+Full record-kind consistency and agreement between declared coverage flags and
+parsed trace facts are deferred to Issue #110. Revalidation therefore reports
+added fields without rewriting the historical JSON or CSV.
 The sampler-off record passes the diagnostic structural checks:
 its trace is absent by design and `timing_evidence=false`; its raw timestamp
 hash cannot be rechecked against bytes because the referenced external

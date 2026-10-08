@@ -32,7 +32,9 @@ from enodia.tt.bench.resident_record import (
     FAILURE_CODES,
     RESIDENT_INVARIANT_CATALOG,
     RESIDENT_RECORD_SCHEMA,
+    TIMING_EVIDENCE_ERROR_RECORD_REASON,
     TIMING_EVIDENCE_NOT_REQUESTED,
+    TIMING_EVIDENCE_REJECTED_RECORD_REASON,
     TIMING_EVIDENCE_RUN_TRACE_REASON,
     ResidentFailureClassification,
     build_outlier_analysis,
@@ -78,6 +80,22 @@ PERCENTILES = {
     "p99_9": 0.999,
     "p99_99": 0.9999,
 }
+_MAX_AICLK_MHZ = (1 << 63) - 1
+
+
+def _safe_aiclk_integer(value: Any) -> int | None:
+    """Convert finite positive AICLK metadata without allowing overflow."""
+    try:
+        parsed = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed) or parsed <= 0.0 or parsed > _MAX_AICLK_MHZ:
+        return None
+    try:
+        converted = int(parsed)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return converted if converted > 0 else None
 
 
 @dataclass(frozen=True)
@@ -1186,11 +1204,11 @@ def build_measurement_record(
             run_end=run_end,
         )
         trace_reason = _trace_failure_reason(trace_metadata)
-        trace_aiclk = trace_metadata.get("aiclk_mhz")
+        trace_aiclk = _safe_aiclk_integer(trace_metadata.get("aiclk_mhz"))
         if trace_reason == "power_trace_coverage_complete":
             if trace_aiclk is None:
                 trace_reason = "power_trace_no_valid_in_run_rows"
-            elif int(float(trace_aiclk)) != aiclk_mhz:
+            elif trace_aiclk != aiclk_mhz:
                 raise ValueError("aiclk_mhz must equal the maximum valid in-run power trace AICLK")
     else:
         # Historical direct callers supplied only a basename.  Keep that API
@@ -1294,7 +1312,10 @@ def build_measurement_record(
         or work_max_ticks < work_min_ticks
     ):
         raise ValueError("work minimum/maximum ticks are invalid")
-    if timing_evidence_reason is not None:
+    error_record = classification.error_flag or status == "error"
+    if error_record:
+        final_timing_reason = TIMING_EVIDENCE_ERROR_RECORD_REASON
+    elif timing_evidence_reason is not None:
         final_timing_reason = timing_evidence_reason
     elif sampler_off:
         final_timing_reason = "sampler_off_by_design"
@@ -1313,7 +1334,7 @@ def build_measurement_record(
     # The shared validator is the sole timing gate.  This value is only the
     # caller's request; validate_resident_record below proves or rejects it
     # against the actual trace, coverage, provenance, and sampler invariants.
-    timing_ok = timing_evidence is True
+    timing_ok = timing_evidence is True and not error_record
     record = {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,
@@ -1576,7 +1597,7 @@ def build_rejection_record(
             "trace": None,
             **trace_metadata,
             "timing_evidence": False,
-            "timing_evidence_reason": "rejected_preflight",
+            "timing_evidence_reason": TIMING_EVIDENCE_REJECTED_RECORD_REASON,
         },
         "run_start": None,
         "run_end": None,
@@ -1585,9 +1606,10 @@ def build_rejection_record(
         "harness_commit": supplied_environment.get("harness_commit"),
         "watcher": False,
         "timing_evidence": False,
-        "timing_evidence_reason": "rejected_preflight",
+        "timing_evidence_reason": TIMING_EVIDENCE_REJECTED_RECORD_REASON,
         "outlier_analysis": outlier,
     }
+    validate_resident_record(result, builder=True, raise_on_error=False)
     return result
 
 

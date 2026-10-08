@@ -11,6 +11,7 @@ import argparse
 import csv
 import datetime
 import json
+import math
 import os
 import re
 import struct
@@ -38,11 +39,50 @@ from enodia.tt.bench.resident_harness import (
     validate_failure_check,
     validate_post_run_aiclk,
     validate_record_inputs,
+    validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
 from enodia.tt.bench.telemetry import parse_power_trace
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
+_AICLK_MAX_MHZ = (1 << 63) - 1
+
+
+class ResidentResultUnavailable(ValueError):
+    """A device result contained a numeric value that cannot be classified."""
+
+
+def _safe_aiclk_integer(value: Any) -> int | None:
+    """Convert one AICLK reading, treating non-finite/out-of-range values as absent."""
+    try:
+        parsed = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed) or parsed <= 0.0 or parsed > _AICLK_MAX_MHZ:
+        return None
+    try:
+        converted = int(parsed)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return converted if converted > 0 else None
+
+
+def _device_word(value: Any, name: str) -> int:
+    """Read one finite uint32 device word or classify the result unavailable."""
+    if isinstance(value, (bool, str, bytes)):
+        raise ResidentResultUnavailable(f"{name} is not a device word")
+    try:
+        numeric = float(value)
+        converted = int(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ResidentResultUnavailable(f"{name} is not a finite device word") from exc
+    if (
+        not math.isfinite(numeric)
+        or numeric != converted
+        or not 0 <= converted <= 0xFFFFFFFF
+    ):
+        raise ResidentResultUnavailable(f"{name} is not a finite uint32 device word")
+    return converted
 
 
 def _core(value: str) -> tuple[int, int]:
@@ -224,18 +264,31 @@ def _program(
 
 
 def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
-    code = int(values[base])
-    classification = ResidentFailureClassification.for_code(code)
+    try:
+        code = _device_word(values[base], f"{source} failure code")
+        classification = ResidentFailureClassification.for_code(code)
+        elapsed_low = _device_word(values[base + 1], f"{source} elapsed low word")
+        elapsed_high = _device_word(values[base + 2], f"{source} elapsed high word")
+        limit_low = _device_word(values[base + 3], f"{source} limit low word")
+        limit_high = _device_word(values[base + 4], f"{source} limit high word")
+        valid = _device_word(values[base + 5], f"{source} failure validity")
+    except (IndexError, TypeError, ValueError) as exc:
+        if isinstance(exc, ResidentResultUnavailable):
+            raise
+        raise ResidentResultUnavailable(f"{source} failure result is unavailable") from exc
     failure = {
         "code": code,
         "name": classification.name,
         "source": source,
-        "elapsed_ticks": int(values[base + 1]) | (int(values[base + 2]) << 32),
-        "limit_ticks": int(values[base + 3]) | (int(values[base + 4]) << 32),
+        "elapsed_ticks": elapsed_low | (elapsed_high << 32),
+        "limit_ticks": limit_low | (limit_high << 32),
         "unit": "device_clock_ticks",
-        "valid": bool(values[base + 5]),
+        "valid": bool(valid),
     }
-    validate_failure_check(failure)
+    try:
+        validate_failure_check(failure)
+    except (TypeError, ValueError) as exc:
+        raise ResidentResultUnavailable(f"{source} failure result is unavailable") from exc
     return failure
 
 
@@ -315,33 +368,57 @@ def _run_device(
         consumer_values = _download(ttnn, consumer_stats).reshape(-1)
         producer_failure = _decode_failure(producer_values, base=6, source="producer")
         consumer_failure = _decode_failure(consumer_values, base=7, source="consumer")
-        frames_consumed = min(int(consumer_values[1]), config.frame_count)
+        producer_full_count = _device_word(producer_values[0], "producer full count")
+        consumer_empty_count = _device_word(consumer_values[0], "consumer empty count")
+        frames_attempted = _device_word(producer_values[3], "frames attempted")
+        frames_produced = _device_word(producer_values[1], "frames produced")
+        frames_dropped = _device_word(producer_values[4], "frames dropped")
+        frames_consumed = min(
+            _device_word(consumer_values[1], "frames consumed"), config.frame_count
+        )
         raw_timestamps = [
-            int(timestamp_values[index, 0, 0, 0])
-            | (int(timestamp_values[index, 0, 0, 1]) << 32)
+            _device_word(timestamp_values[index, 0, 0, 0], f"timestamp {index} low word")
+            | (
+                _device_word(timestamp_values[index, 0, 0, 1], f"timestamp {index} high word")
+                << 32
+            )
             for index in range(frames_consumed)
         ]
         failure_check = select_failure_check(producer_failure, consumer_failure)
-        failure_classification = validate_failure_check(failure_check)
-        kernel_error_flag = int(bool(producer_values[2] or consumer_values[2]))
+        try:
+            failure_classification = validate_failure_check(failure_check)
+            producer_error = _device_word(producer_values[2], "producer error flag")
+            consumer_error = _device_word(consumer_values[2], "consumer error flag")
+            startup_low = _device_word(consumer_values[4], "startup low word")
+            startup_high = _device_word(consumer_values[5], "startup high word")
+            startup_valid = _device_word(consumer_values[6], "startup validity")
+            work_min_low = _device_word(consumer_values[13], "work minimum low word")
+            work_min_high = _device_word(consumer_values[14], "work minimum high word")
+            work_max_low = _device_word(consumer_values[15], "work maximum low word")
+            work_max_high = _device_word(consumer_values[16], "work maximum high word")
+            work_valid = _device_word(consumer_values[17], "work validity")
+        except (IndexError, TypeError, ValueError) as exc:
+            if isinstance(exc, ResidentResultUnavailable):
+                raise
+            raise ResidentResultUnavailable("resident device result is unavailable") from exc
+        kernel_error_flag = int(bool(producer_error or consumer_error))
         if kernel_error_flag != int(failure_classification.error_flag):
-            raise ValueError("kernel summary error flags disagree with failure code")
+            raise ResidentResultUnavailable("kernel summary error flags are unavailable")
         return {
             "timestamps": raw_timestamps,
-            "producer_full_count": int(producer_values[0]),
-            "consumer_empty_count": int(consumer_values[0]),
+            "producer_full_count": producer_full_count,
+            "consumer_empty_count": consumer_empty_count,
             "kernel_error_flag": kernel_error_flag,
-            "frames_attempted": int(producer_values[3]),
-            "frames_produced": int(producer_values[1]),
-            "frames_dropped": int(producer_values[4]),
-            "frames_aborted": int(producer_values[3]) - int(producer_values[1]) - int(producer_values[4]),
-            "frames_consumed": int(consumer_values[1]),
-            "startup_ticks": int(consumer_values[4])
-            | (int(consumer_values[5]) << 32),
-            "startup_ticks_valid": bool(consumer_values[6]),
-            "work_min_ticks": int(consumer_values[13]) | (int(consumer_values[14]) << 32),
-            "work_max_ticks": int(consumer_values[15]) | (int(consumer_values[16]) << 32),
-            "work_ticks_valid": bool(consumer_values[17]),
+            "frames_attempted": frames_attempted,
+            "frames_produced": frames_produced,
+            "frames_dropped": frames_dropped,
+            "frames_aborted": frames_attempted - frames_produced - frames_dropped,
+            "frames_consumed": frames_consumed,
+            "startup_ticks": startup_low | (startup_high << 32),
+            "startup_ticks_valid": bool(startup_valid),
+            "work_min_ticks": work_min_low | (work_min_high << 32),
+            "work_max_ticks": work_max_low | (work_max_high << 32),
+            "work_ticks_valid": bool(work_valid),
             "producer_failure": producer_failure,
             "consumer_failure": consumer_failure,
             "failure_check": failure_check,
@@ -375,13 +452,12 @@ def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:
     try:
         with path.open(newline="") as handle:
             for row in csv.DictReader(handle):
-                try:
-                    value = int(float(row["aiclk_mhz"]))
-                except (KeyError, TypeError, ValueError):
+                if not isinstance(row, dict):
                     continue
-                if value > 0:
+                value = _safe_aiclk_integer(row.get("aiclk_mhz"))
+                if value is not None:
                     values.append(value)
-    except OSError:
+    except (OSError, csv.Error):
         pass
     return values
 
@@ -394,11 +470,8 @@ def _environment_aiclk_values(environment: dict[str, Any]) -> list[int]:
         values = [observed, environment.get("aiclk_mhz")]
     result: list[int] = []
     for value in values:
-        try:
-            parsed = int(float(value))
-        except (TypeError, ValueError):
-            continue
-        if parsed > 0:
+        parsed = _safe_aiclk_integer(value)
+        if parsed is not None:
             result.append(parsed)
     return result
 
@@ -408,7 +481,7 @@ def _power_aiclk(
     environment: dict[str, Any],
     *,
     allow_environment_snapshot: bool = False,
-) -> int:
+) -> int | None:
     """Select a trace AICLK, with snapshot fallback explicitly diagnostic-only."""
     values = _power_trace_aiclk_values(power_trace)
     if values:
@@ -417,7 +490,7 @@ def _power_aiclk(
         fallback = _environment_aiclk_values(environment)
         if fallback:
             return max(fallback)
-    raise ValueError("no valid in-run AICLK sample was available")
+    return None
 
 
 def _environment(path: Path) -> dict[str, Any]:
@@ -513,7 +586,19 @@ def main(argv: list[str] | None = None) -> int:
     run_start = datetime.datetime.now(datetime.UTC)
     device = ttnn.open_device(device_id=args.device_id)
     try:
-        result = _run_device(ttnn, device, config, watcher=watcher)
+        try:
+            result = _run_device(ttnn, device, config, watcher=watcher)
+        except (IndexError, OverflowError, TypeError, ValueError) as exc:
+            _write(
+                args.out,
+                build_rejection_record(
+                    config=config,
+                    reason=f"resident result unavailable: {exc}",
+                    environment=environment,
+                ),
+            )
+            print(f"resident result unavailable: {exc}", file=sys.stderr)
+            return 2
     finally:
         ttnn.close_device(device)
     run_end = datetime.datetime.now(datetime.UTC)
@@ -528,15 +613,18 @@ def main(argv: list[str] | None = None) -> int:
         else None
     )
     trace_aiclk = trace_metadata.get("aiclk_mhz") if trace_metadata is not None else None
-    aiclk_mhz = (
-        int(float(trace_aiclk))
-        if trace_aiclk is not None
-        else _power_aiclk(
+    aiclk_mhz = _safe_aiclk_integer(trace_aiclk)
+    if aiclk_mhz is None:
+        aiclk_mhz = _power_aiclk(
             power_trace,
             environment,
             allow_environment_snapshot=True,
         )
-    )
+    if aiclk_mhz is None:
+        reason = "no valid AICLK sample was available"
+        _write(args.out, build_rejection_record(config=config, reason=reason, environment=environment))
+        print(f"resident record rejected: {reason}", file=sys.stderr)
+        return 2
     validate_post_run_aiclk(aiclk_mhz)
     trace_timing_ok = (
         trace_metadata is not None
@@ -600,6 +688,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
+    validate_resident_record(
+        record,
+        timestamps=result["timestamps"],
+        power_trace_path=power_trace_path,
+        power_trace_metadata=trace_metadata,
+        builder=True,
+        strict_trace=power_trace is not None,
+        raise_on_error=False,
+    )
     _write(args.out, record)
     print(f"resident record -> {args.out.name}")
     return 0

@@ -3,7 +3,11 @@
 This module is the single authority for the relationships in a resident
 measurement record.  The builder in :mod:`resident_harness` and the board-free
 analyzer both call :func:`validate_resident_record`; neither caller owns a
-second copy of these checks.
+second copy of these checks.  The validator guarantees required field
+presence, declared field type/range, and major relationships.  Telemetry and
+other production fields that are not yet declared are retained and reported as
+warnings rather than rejected; full record-kind and coverage-flag consistency
+is deferred to Issue #110.
 
 The outlier builder is the single constructor for the pair and sampler
 catalog.  The resident runner and board-free analyzer both call
@@ -128,6 +132,8 @@ TIMING_EVIDENCE_COMPATIBILITY_BRANCHES = (
 )
 TIMING_EVIDENCE_NOT_REQUESTED = "timing_evidence_not_requested"
 TIMING_EVIDENCE_RUN_TRACE_REASON = "power_trace_run_samples"
+TIMING_EVIDENCE_ERROR_RECORD_REASON = "run_error_not_timing_evidence"
+TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
 
 _MISSING = object()
 
@@ -812,8 +818,9 @@ SAMPLER_GAP_FIELD_SPECS: Mapping[str, ResidentRecordField] = MappingProxyType(
 )
 
 # These are explicit compatibility fields emitted by the resident builder or
-# retained by documented historical callers.  They are not a wildcard: an
-# unlisted key is an unknown-field mismatch.
+# retained by documented historical callers.  Unknown keys are diagnostic
+# warnings, not hard schema failures, because telemetry and production tools
+# can add fields without changing the required resident contract.
 _COMMON_ALLOWED_EXTRA_FIELDS = (
     "parameters.producer_core",
     "parameters.consumer_core",
@@ -956,6 +963,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].nearest_integer_sampler_intervals",
     "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].residual_to_nearest_sampler_multiple_seconds",
     "outlier_analysis.sampler_interval_comparison.adjacent_gaps[].sampler_intervals",
+    "validation_warnings",
     "failure_check.valid",
     "outlier_analysis.status",
     "outlier_analysis.periodicity",
@@ -963,7 +971,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
 
 # Exact leaf paths retained by the immutable ADR-0005 Issue #104 schema.
 # Historical records use this compatibility set instead of the modern matrix;
-# an unlisted historical key is still an unknown-field mismatch.
+# an unlisted historical key is still reported as an unknown-field warning.
 _LEGACY_ALLOWED_FIELDS = frozenset({
     "schema", "issue", "related_issue", "stage", "status", "summary",
     "environment", "environment.captured_at", "environment.image",
@@ -1061,7 +1069,7 @@ _LEGACY_ALLOWED_FIELDS = frozenset({
     "producer_timestamp_attribution", "producer_timestamp_attribution.status",
     "producer_timestamp_attribution.available", "producer_timestamp_attribution.reason", "conclusion",
     "historical_records", "historical_records.existing_issue12_records_unchanged",
-    "historical_records.supersedes", "harness_commit",
+    "historical_records.supersedes", "harness_commit", "validation_warnings",
 })
 RESIDENT_RECORD_ALLOWED_EXTRA_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
@@ -1155,6 +1163,23 @@ def _record_kind(record: Mapping[str, Any]) -> str | None:
     if isinstance(sampler, Mapping) and sampler.get("mode") == "off":
         return RECORD_KIND_SAMPLER_OFF
     return RECORD_KIND_SAMPLED_TIMING
+
+
+def _timing_record_kind(record: Mapping[str, Any]) -> str | None:
+    """Identify error/rejected status before any schema compatibility skip."""
+    status = record.get("status")
+    if status == RECORD_KIND_REJECTED:
+        return RECORD_KIND_REJECTED
+    if status in {"error", "abnormal_exit", "timeout"}:
+        return RECORD_KIND_ERROR
+    kind = _record_kind(record)
+    if kind in {RECORD_KIND_ERROR, RECORD_KIND_REJECTED}:
+        return kind
+    failure = record.get("failure_check")
+    failure_code = failure.get("code") if isinstance(failure, Mapping) else _MISSING
+    if _is_int(failure_code, nonnegative=True) and failure_code != 0:
+        return RECORD_KIND_ERROR
+    return kind
 
 
 def _path_present(record: Mapping[str, Any], path: str) -> bool:
@@ -1289,6 +1314,7 @@ def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> 
                         "record.unknown_fields",
                         (path,),
                         f"{path} is not declared for the historical record schema",
+                        soft=True,
                     )
                 )
         return mismatches
@@ -1299,6 +1325,7 @@ def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> 
                     "record.unknown_fields",
                     (path,),
                     f"{path} is not declared for {kind} records",
+                    soft=True,
                 )
             )
     return mismatches
@@ -3093,6 +3120,53 @@ def _check_clock_and_timing(record: Mapping[str, Any], ctx: ValidationContext) -
     report = _trace_report(record, ctx)
     declared = _declared_power_metadata(record)
     mismatches: list[dict[str, Any]] = []
+    timing_kind = _timing_record_kind(record)
+    if timing_kind in {RECORD_KIND_ERROR, RECORD_KIND_REJECTED}:
+        expected_reason = (
+            TIMING_EVIDENCE_ERROR_RECORD_REASON
+            if timing_kind == RECORD_KIND_ERROR
+            else TIMING_EVIDENCE_REJECTED_RECORD_REASON
+        )
+        if timing is not False:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("timing_evidence",),
+                    f"{timing_kind} records must have timing_evidence=false",
+                )
+            )
+        provenance = record.get("power_clock_provenance")
+        if isinstance(provenance, Mapping) and provenance.get("timing_evidence") is not False:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("power_clock_provenance.timing_evidence",),
+                    f"{timing_kind} records must have power provenance timing_evidence=false",
+                )
+            )
+        reason = record.get("timing_evidence_reason")
+        if reason != expected_reason:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("timing_evidence_reason",),
+                    f"{timing_kind} records require timing_evidence_reason={expected_reason!r}",
+                )
+            )
+        provenance_reason = (
+            provenance.get("timing_evidence_reason")
+            if isinstance(provenance, Mapping)
+            else None
+        )
+        if provenance_reason != expected_reason:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("power_clock_provenance.timing_evidence_reason",),
+                    f"{timing_kind} records require power provenance reason={expected_reason!r}",
+                )
+            )
+        return mismatches
     clock = _mapping(record, "clock")
     clock_aiclk = clock.get("aiclk_mhz") if clock else _MISSING
     if clock is not None and not _is_int(clock_aiclk, positive=True):
@@ -3175,7 +3249,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "record.unknown_fields",
         ("record",),
-        "unknown fields are rejected unless explicitly listed for the record kind",
+        "unknown fields are retained and reported as warnings; declared fields remain strict",
         _check_unknown_fields,
     ),
     ResidentInvariant(
@@ -3266,6 +3340,13 @@ def _apply_builder_timing_policy(
     record: dict[str, Any], ctx: ValidationContext, report: Mapping[str, Any] | None
 ) -> None:
     """Force unsafe builder claims false without weakening numeric checks."""
+    timing_kind = _timing_record_kind(record)
+    if timing_kind == RECORD_KIND_ERROR:
+        _force_timing_false(record, TIMING_EVIDENCE_ERROR_RECORD_REASON)
+        return
+    if timing_kind == RECORD_KIND_REJECTED:
+        _force_timing_false(record, TIMING_EVIDENCE_REJECTED_RECORD_REASON)
+        return
     reason = _timing_block_reason(record, ctx, report)
     timing = record.get("timing_evidence")
     if reason is not None and timing is True:
@@ -3299,6 +3380,8 @@ def validate_resident_record(
 
     The modern record-kind field matrix runs before value and relationship
     checks; only the explicitly named historical branches skip fields.
+    Unknown telemetry and production paths are retained as warnings, while
+    required declared fields and major relationships remain hard failures.
     Analyzer callers use the default report mode.  Builder callers pass
     ``builder=True`` and may use ``raise_on_error=True`` for hard numeric or
     schema contradictions; unsafe timing claims are changed to false with an
@@ -3311,6 +3394,8 @@ def validate_resident_record(
             "valid": False,
             "mismatches": [_mismatch("record", ("record",), "record must be an object")],
             "failures": ["record must be an object"],
+            "warnings": [],
+            "warning_fields": [],
             "checks": {},
             "catalog": [entry.name for entry in RESIDENT_INVARIANT_CATALOG],
             "power_trace": None,
@@ -3335,6 +3420,7 @@ def validate_resident_record(
     )
     trace_report = _trace_report(record, ctx)
     mismatches: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
     checks: dict[str, Any] = {}
     record_kind = _record_kind(record)
     if builder and isinstance(record, dict):
@@ -3348,18 +3434,23 @@ def validate_resident_record(
                 "clock_source_evidence",
                 "failure_check",
                 "cycle_budget",
+                "clock.timing_evidence",
             }:
                 entry_mismatches = []
             else:
                 entry_mismatches = entry.check(record, ctx)
         except (TypeError, ValueError, KeyError, IndexError) as exc:
             entry_mismatches = [_mismatch(entry.name, entry.fields, f"malformed input: {exc}")]
+        entry_warnings = [item for item in entry_mismatches if item.get("soft") is True]
+        entry_mismatches = [item for item in entry_mismatches if item.get("soft") is not True]
         checks[entry.name] = {
             "ok": not entry_mismatches,
             "fields": list(entry.fields),
             "description": entry.description,
             "mismatches": entry_mismatches,
+            "warnings": entry_warnings,
         }
+        warnings.extend(entry_warnings)
         mismatches.extend(entry_mismatches)
     if (
         builder
@@ -3368,7 +3459,12 @@ def validate_resident_record(
         and mismatches
     ):
         _force_timing_false(record, "record_validation_failed")
+    warning_fields = sorted(
+        {field for warning in warnings for field in warning.get("fields", ())}
+    )
     failures = [item["message"] for item in mismatches]
+    if builder and isinstance(record, dict):
+        record["validation_warnings"] = warning_fields
     # Preserve the historic check names consumed by board-free callers while
     # keeping their implementation in the catalog entries above.
     if "histogram" in checks:
@@ -3384,6 +3480,8 @@ def validate_resident_record(
         "valid": not mismatches,
         "mismatches": mismatches,
         "failures": failures,
+        "warnings": warnings,
+        "warning_fields": warning_fields,
         "checks": checks,
         "catalog": [
             {"name": entry.name, "fields": list(entry.fields), "description": entry.description}
@@ -3457,7 +3555,9 @@ __all__ = [
     "SAMPLER_GAP_FIELD_SPECS",
     "SHORT_THRESHOLD_TICKS",
     "TIMING_EVIDENCE_COMPATIBILITY_BRANCHES",
+    "TIMING_EVIDENCE_ERROR_RECORD_REASON",
     "TIMING_EVIDENCE_NOT_REQUESTED",
+    "TIMING_EVIDENCE_REJECTED_RECORD_REASON",
     "TIMING_EVIDENCE_RUN_TRACE_REASON",
     "TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES",
     "ResidentFailureClassification",

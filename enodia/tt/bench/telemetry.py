@@ -46,9 +46,14 @@ POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 def _parse_trace_timestamp(value: Any, *, field: str) -> datetime.datetime:
     """Parse one timezone-bearing ISO-8601 trace timestamp."""
     if isinstance(value, datetime.datetime):
-        if value.tzinfo is None or value.utcoffset() is None:
+        try:
+            has_timezone = value.tzinfo is not None and value.utcoffset() is not None
+            parsed = value.astimezone(datetime.UTC) if has_timezone else None
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+        if parsed is None:
             raise ValueError(f"{field} must include a timezone")
-        return value.astimezone(datetime.UTC)
+        return parsed
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a non-empty ISO-8601 timestamp")
     text = value.strip()
@@ -56,11 +61,37 @@ def _parse_trace_timestamp(value: Any, *, field: str) -> datetime.datetime:
         text = text[:-1] + "+00:00"
     try:
         parsed = datetime.datetime.fromisoformat(text)
-    except ValueError as exc:
+    except (OverflowError, ValueError) as exc:
         raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
+    try:
+        has_timezone = parsed.tzinfo is not None and parsed.utcoffset() is not None
+        normalized = parsed.astimezone(datetime.UTC) if has_timezone else None
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+    if normalized is None:
         raise ValueError(f"{field} must include a timezone")
-    return parsed.astimezone(datetime.UTC)
+    return normalized
+
+
+def _finite_integer(
+    value: Any, *, field: str, positive: bool = False, maximum: int = (1 << 63) - 1
+) -> int | None:
+    """Return a bounded integer conversion, or ``None`` for unusable input."""
+    try:
+        converted = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(converted) or converted > maximum or (
+        positive and converted <= 0.0
+    ):
+        return None
+    try:
+        result = int(converted)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if result < 0 or (positive and result <= 0):
+        return None
+    return result
 
 
 def _trace_timestamp_text(value: Any, *, field: str) -> str | None:
@@ -72,7 +103,7 @@ def _trace_timestamp_text(value: Any, *, field: str) -> str | None:
 def _trace_number(value: Any, *, field: str, positive: bool = False) -> float:
     try:
         parsed = float(value)
-    except (TypeError, ValueError) as exc:
+    except (OverflowError, TypeError, ValueError) as exc:
         raise ValueError(f"{field} is not numeric") from exc
     if not math.isfinite(parsed) or (positive and parsed <= 0.0):
         requirement = "finite and positive" if positive else "finite"
@@ -279,23 +310,27 @@ def _device_info(snapshot: str) -> dict | None:
 
 
 def parse_telemetry(snapshot: str) -> dict[str, str] | None:
-    """Extract the sampled quantities, or None if the snapshot is unusable."""
+    """Extract one finite sampled reading, or None if the snapshot is unusable."""
     device = _device_info(snapshot)
     if device is None:
         return None
     try:
         telemetry = device["telemetry"]
-        return {
+        reading = {
             "power_w": str(telemetry["power"]).strip(),
             "aiclk_mhz": str(telemetry["aiclk"]).strip(),
             "asic_temp_c": str(telemetry["asic_temperature"]).strip(),
         }
-    except (KeyError, TypeError):
+        _trace_number(reading["power_w"], field="telemetry power_w")
+        _trace_number(reading["aiclk_mhz"], field="telemetry aiclk_mhz", positive=True)
+        _trace_number(reading["asic_temp_c"], field="telemetry asic_temp_c")
+    except (KeyError, TypeError, ValueError):
         return None
+    return reading
 
 
 def telemetry_csv_row(snapshot: str, *, timestamp: str) -> str | None:
-    """One CSV row in the order of CSV_HEADER, or None if nothing was read."""
+    """One finite CSV row in the order of CSV_HEADER, or None if unusable."""
     reading = parse_telemetry(snapshot)
     if reading is None:
         return None
@@ -316,10 +351,11 @@ def parse_environment(snapshot: str) -> dict:
     }
     reading = parse_telemetry(snapshot)
     if reading is not None:
-        try:
-            environment["aiclk_mhz_observed"] = [int(float(reading["aiclk_mhz"]))]
-        except (TypeError, ValueError):
-            pass
+        observed = _finite_integer(
+            reading["aiclk_mhz"], field="aiclk_mhz", positive=True
+        )
+        if observed is not None:
+            environment["aiclk_mhz_observed"] = [observed]
     return environment
 
 
