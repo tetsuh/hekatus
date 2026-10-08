@@ -561,8 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     outlier_analysis = build_outlier_analysis(
         result["timestamps"],
         aiclk_mhz=aiclk_mhz,
-        sampler_mode=sampler["mode"],
-        sampler_interval_seconds=sampler["interval_seconds"],
+        sampler_metadata=sampler,
     )
     record = build_measurement_record(
         config=config,

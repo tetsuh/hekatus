@@ -1270,8 +1270,7 @@ def build_measurement_record(
         outlier_analysis = build_outlier_analysis(
             timestamp_values,
             aiclk_mhz=aiclk_mhz,
-            sampler_mode=sampler.get("mode"),
-            sampler_interval_seconds=sampler.get("interval_seconds"),
+            sampler_metadata=sampler,
         )
     else:
         outlier_analysis = dict(outlier_analysis)

@@ -5,6 +5,9 @@ measurement record.  The builder in :mod:`resident_harness` and the board-free
 analyzer both call :func:`validate_resident_record`; neither caller owns a
 second copy of these checks.
 
+The outlier builder is the single constructor for the complete pair and
+sampler catalog.  The resident runner and board-free analyzer both call
+:func:`build_outlier_analysis`; neither caller reconstructs a partial object.
 The catalog is intentionally executable.  ``RESIDENT_INVARIANT_CATALOG`` is a
 table of ``ResidentInvariant`` entries, and the validator iterates that table
 rather than selecting ad-hoc checks in either caller.  The relationships in
@@ -369,8 +372,16 @@ def _gcd(values: Iterable[int]) -> int | None:
 
 
 def _sampler_comparison(
-    *, sampler_mode: str | None, sampler_interval_seconds: float | None, pair_count: int, frame_count: int
+    *,
+    sampler_mode: str | None,
+    sampler_interval_seconds: float | None,
+    timestamps: list[int],
+    pair_starts: list[int],
+    aiclk_mhz: int,
 ) -> dict[str, Any]:
+    """Compare adjacent paired-event gaps with the configured sampler interval."""
+    pair_count = len(pair_starts)
+    frame_count = len(timestamps)
     if sampler_mode == "off":
         return {
             "status": "not_applicable",
@@ -381,12 +392,37 @@ def _sampler_comparison(
             "reason": "sampler_off_by_design; diagnostic-only run",
         }
     if sampler_mode in {"default", "explicit"}:
+        if sampler_interval_seconds is None:
+            raise ValueError("sampled sampler metadata must include an interval")
+        adjacent_gaps: list[dict[str, Any]] = []
+        for from_frame, to_frame in itertools.pairwise(pair_starts):
+            gap_frames = to_frame - from_frame
+            gap_elapsed_seconds = (timestamps[to_frame] - timestamps[from_frame]) / (
+                aiclk_mhz * 1_000_000
+            )
+            sampler_intervals = gap_elapsed_seconds / sampler_interval_seconds
+            nearest_integer = round(sampler_intervals)
+            adjacent_gaps.append(
+                {
+                    "from_pair_start_frame": from_frame,
+                    "gap_elapsed_seconds": gap_elapsed_seconds,
+                    "gap_frames": gap_frames,
+                    "nearest_integer_sampler_intervals": nearest_integer,
+                    "residual_to_nearest_sampler_multiple_seconds": (
+                        gap_elapsed_seconds - nearest_integer * sampler_interval_seconds
+                    ),
+                    "sampler_intervals": sampler_intervals,
+                    "to_pair_start_frame": to_frame,
+                }
+            )
         return {
-            "status": "recorded",
+            "status": "no_strict_alignment_observed",
             "mode": sampler_mode,
             "interval_seconds": sampler_interval_seconds,
+            "sampler_interval_seconds": sampler_interval_seconds,
             "pair_count": pair_count,
             "timestamp_count": frame_count,
+            "adjacent_gaps": adjacent_gaps,
             "reason": "pair analysis was computed from the resident timestamp stream",
         }
     return {
@@ -405,11 +441,18 @@ def build_outlier_analysis(
     aiclk_mhz: int = DEFAULT_AICLK_MHZ,
     sampler_mode: str | None = None,
     sampler_interval_seconds: float | None = None,
+    sampler_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build the complete outlier catalog from one resident timestamp stream."""
+    """Build the complete outlier catalog from timestamps and run metadata."""
     if not _is_int(aiclk_mhz, positive=True):
         raise ValueError("aiclk_mhz must be a positive integer")
-    if sampler_mode is not None:
+    if sampler_metadata is not None:
+        if sampler_mode is not None or sampler_interval_seconds is not None:
+            raise ValueError("sampler metadata cannot be combined with sampler mode arguments")
+        sampler = normalize_sampler_metadata(sampler_metadata)
+        sampler_mode = sampler["mode"]
+        sampler_interval_seconds = sampler["interval_seconds"]
+    elif sampler_mode is not None:
         sampler = normalize_sampler_metadata(
             {
                 "mode": sampler_mode,
@@ -493,8 +536,9 @@ def build_outlier_analysis(
         "sampler_interval_comparison": _sampler_comparison(
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
-            pair_count=len(pairs),
-            frame_count=len(values),
+            timestamps=values,
+            pair_starts=starts,
+            aiclk_mhz=aiclk_mhz,
         ),
     }
 
@@ -712,12 +756,15 @@ def validate_pair_analysis(
     *,
     timestamps: Iterable[int] | None = None,
     aiclk_mhz: int | None = None,
+    sampler_mode: str | None = None,
+    sampler_interval_seconds: float | None = None,
 ) -> list[dict[str, Any]]:
     """Return structured pair-catalog mismatches for builder compatibility callers."""
     invariant = "outlier_analysis"
     if not isinstance(outlier_analysis, Mapping):
         return [_mismatch(invariant, ("outlier_analysis",), "outlier_analysis must be an object")]
     mismatches: list[dict[str, Any]] = []
+    timestamp_values = list(timestamps) if timestamps is not None else None
     pair_count = outlier_analysis.get("pair_count")
     if not _is_int(pair_count, nonnegative=True):
         return [_mismatch(invariant, ("outlier_analysis.pair_count",), "outlier_analysis.pair_count must be a non-negative integer")]
@@ -793,8 +840,8 @@ def validate_pair_analysis(
     if "gcd_frame_gap" in outlier_analysis and outlier_analysis.get("gcd_frame_gap") != _gcd(expected_gaps):
         mismatches.append(_mismatch(invariant, ("outlier_analysis.gcd_frame_gap", "outlier_analysis.frame_gaps"), "outlier_analysis gcd_frame_gap does not match frame gaps"))
 
-    if timestamps is not None:
-        values = list(timestamps)
+    if timestamp_values is not None:
+        values = timestamp_values
         try:
             detected = detect_pairs(values)
         except ValueError as exc:
@@ -884,6 +931,34 @@ def validate_pair_analysis(
     if "pair_order_counts" in outlier_analysis and outlier_analysis.get("pair_order_counts") != _count_orders(pair for pair in pairs if isinstance(pair, Mapping)):
         mismatches.append(_mismatch(invariant, ("outlier_analysis.pair_order_counts", "outlier_analysis.pairs"), "pair_order_counts does not match pair objects"))
 
+    if timestamp_values is not None and sampler_mode in {"off", "default", "explicit"}:
+        actual_timestamps = timestamp_values
+        expected = build_outlier_analysis(
+            actual_timestamps,
+            aiclk_mhz=(aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ),
+            sampler_mode=sampler_mode,
+            sampler_interval_seconds=sampler_interval_seconds,
+        )["sampler_interval_comparison"]
+        actual = outlier_analysis.get("sampler_interval_comparison")
+        if isinstance(actual, Mapping):
+            for field, expected_value in expected.items():
+                if field in actual and actual.get(field) != expected_value:
+                    mismatches.append(
+                        _mismatch(
+                            invariant,
+                            (f"outlier_analysis.sampler_interval_comparison.{field}", "timestamps"),
+                            f"sampler interval comparison {field} does not match timestamps",
+                        )
+                    )
+        elif sampler_mode != "off":
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("outlier_analysis.sampler_interval_comparison",),
+                    "sampled outlier analysis must include sampler interval comparison",
+                )
+            )
+
     return mismatches
 
 
@@ -906,8 +981,11 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
             "event_elapsed_ticks_mod_period",
             "frame_gaps",
             "gap_counts",
+            "gap_histogram",
             "gcd_frame_gap",
+            "interval_count",
             "pair_order_counts",
+            "sampler_interval_comparison",
         )
         for field in required:
             if field not in outlier:
@@ -933,10 +1011,26 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
                         mismatches.append(_mismatch("outlier_analysis", (f"outlier_analysis.pairs[{index}].{field}",), f"pair {index} {field} is required by the resident schema"))
     clock = _mapping(record, "clock")
     aiclk = clock.get("aiclk_mhz") if clock else None
-    mismatches.extend(validate_pair_analysis(outlier, timestamps=ctx.timestamps, aiclk_mhz=aiclk))
+    sampler = _sampler(record)
+    sampler_mode = (
+        sampler.get("mode")
+        if isinstance(sampler, Mapping) and sampler.get("mode") in {"off", "default", "explicit"}
+        else None
+    )
+    sampler_interval_seconds = (
+        sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
+    )
+    mismatches.extend(
+        validate_pair_analysis(
+            outlier,
+            timestamps=ctx.timestamps,
+            aiclk_mhz=aiclk,
+            sampler_mode=sampler_mode,
+            sampler_interval_seconds=sampler_interval_seconds,
+        )
+    )
 
     comparison = outlier.get("sampler_interval_comparison")
-    sampler = _sampler(record)
     if (
         isinstance(comparison, Mapping)
         and isinstance(sampler, Mapping)
@@ -945,8 +1039,21 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
     ):
         if "mode" in comparison and comparison.get("mode") != sampler.get("mode"):
             mismatches.append(_mismatch("outlier_analysis", ("outlier_analysis.sampler_interval_comparison.mode", "telemetry_sampler.mode"), "sampler comparison mode does not match record sampler mode"))
-        if "interval_seconds" in comparison and comparison.get("interval_seconds") != sampler.get("interval_seconds"):
-            mismatches.append(_mismatch("outlier_analysis", ("outlier_analysis.sampler_interval_comparison.interval_seconds", "telemetry_sampler.interval_seconds"), "sampler comparison interval does not match record sampler interval"))
+        for comparison_field in ("interval_seconds", "sampler_interval_seconds"):
+            if (
+                comparison_field in comparison
+                and comparison.get(comparison_field) != sampler.get("interval_seconds")
+            ):
+                mismatches.append(
+                    _mismatch(
+                        "outlier_analysis",
+                        (
+                            f"outlier_analysis.sampler_interval_comparison.{comparison_field}",
+                            "telemetry_sampler.interval_seconds",
+                        ),
+                        "sampler comparison interval does not match record sampler interval",
+                    )
+                )
     return mismatches
 
 

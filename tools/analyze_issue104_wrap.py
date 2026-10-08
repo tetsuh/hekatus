@@ -1,10 +1,11 @@
 """Analyze resident timestamp phases against the 32-bit wall-clock wrap.
 
-Record validation and paired-outlier construction are shared with the resident
-builder in :mod:`enodia.tt.bench.resident_record`.  This tool only performs
-phase-window presentation and file I/O; it does not carry a second invariant
-catalog.  The input files are external run artifacts and this tool emits only
-scalar/list analysis, never raw arrays into the repository.
+Record validation and the complete paired-outlier catalog are shared with
+the resident builder in :mod:`enodia.tt.bench.resident_record`.  This tool
+only performs phase-window presentation and file I/O around that canonical
+catalog; it does not carry a second invariant catalog.  The input files are
+external run artifacts and this tool emits only scalar/list analysis, never
+raw arrays into the repository.
 """
 
 from __future__ import annotations
@@ -29,10 +30,12 @@ from enodia.tt.bench.resident_record import (
     PAIR_TOLERANCE_TICKS,  # noqa: F401 - preserve analyzer module API
     SHORT_THRESHOLD_TICKS,  # noqa: F401 - preserve analyzer module API
     _count_orders,
-    _detect_pairs,
+    _detect_pairs,  # noqa: F401 - preserve analyzer module API
     _is_paired_outlier,
     _pair_order,
     _record_correspondence,
+    build_outlier_analysis,
+    normalize_sampler_metadata,
     raw_metadata_matches,
     validate_resident_record,
 )
@@ -124,12 +127,31 @@ def _rayleigh_r(phases: Iterable[int]) -> float | None:
     ) / len(values)
 
 
+def _record_sampler_metadata(record: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    sampler = record.get("telemetry_sampler")
+    if isinstance(sampler, Mapping):
+        return normalize_sampler_metadata(sampler)
+    environment = record.get("environment")
+    nested = environment.get("telemetry_sampler") if isinstance(environment, Mapping) else None
+    if isinstance(nested, Mapping):
+        return normalize_sampler_metadata(nested)
+    return None
+
+
+def _record_aiclk_mhz(record: Mapping[str, Any]) -> int | None:
+    clock = record.get("clock")
+    value = clock.get("aiclk_mhz") if isinstance(clock, Mapping) else None
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return None
+
+
 def analyze_run(
     timestamps: list[int],
     *,
     raw_metadata: Mapping[str, Any],
     record: Mapping[str, Any],
-    aiclk_mhz: int = DEFAULT_AICLK_MHZ,
+    aiclk_mhz: int | None = None,
     phase_window_ms: float = DEFAULT_PHASE_WINDOW_MS,
 ) -> dict[str, Any]:
     """Return board-free wrap, pair-order, and record-correspondence analysis."""
@@ -142,19 +164,26 @@ def analyze_run(
     invariant_validation = validate_resident_record(
         record, raw_metadata=raw_metadata, timestamps=timestamps
     )
+    if aiclk_mhz is None:
+        aiclk_mhz = _record_aiclk_mhz(record) or DEFAULT_AICLK_MHZ
     phase_window_ticks = _phase_window_ticks(aiclk_mhz, phase_window_ms)
     if phase_window_ticks >= CLOCK_MODULUS_TICKS:
         raise ValueError("phase window must be less than one clock period")
 
     intervals = [current - previous for previous, current in itertools.pairwise(timestamps)]
-    pairs = _detect_pairs(timestamps)
+    outlier_analysis = build_outlier_analysis(
+        timestamps,
+        aiclk_mhz=aiclk_mhz,
+        sampler_metadata=_record_sampler_metadata(record),
+    )
+    pairs = outlier_analysis["pairs"]
     crossing_indices = _crossing_endpoint_indices(timestamps)
     wrap_candidate_indices = [
         index
         for index in crossing_indices
         if timestamps[index] % CLOCK_MODULUS_TICKS < phase_window_ticks
     ]
-    pair_starts = [pair["interval_end_frame_indices"][0] for pair in pairs]
+    pair_starts = outlier_analysis["frame_start_indices"]
     pair_start_set = set(pair_starts)
     candidate_set = set(wrap_candidate_indices)
     event_phases_raw = [timestamps[index] % CLOCK_MODULUS_TICKS for index in pair_starts]
@@ -179,7 +208,6 @@ def analyze_run(
         )
     candidate_order_counts = _count_orders(candidate_order_entries)
     record_match = _record_correspondence(pairs, record)
-    pair_sum_values = [pair["pair_sum_ticks"] for pair in pairs]
     phase_width_ticks = _circular_arc_width(event_phases_raw)
     period_seconds = CLOCK_MODULUS_TICKS / (aiclk_mhz * 1_000_000)
     raw_phase_min_ticks = min(event_phases_raw) if event_phases_raw else None
@@ -197,15 +225,12 @@ def analyze_run(
         "interval_count": len(intervals),
         "pair_count": len(pairs),
         "pairs": pairs,
-        "pair_order_counts": _count_orders(pairs),
-        "pair_sum_min_ticks": min(pair_sum_values) if pair_sum_values else None,
-        "pair_sum_max_ticks": max(pair_sum_values) if pair_sum_values else None,
-        "pair_sum_delta_min_ticks": min(pair["sum_delta_ticks"] for pair in pairs)
-        if pairs
-        else None,
-        "pair_sum_delta_max_ticks": max(pair["sum_delta_ticks"] for pair in pairs)
-        if pairs
-        else None,
+        "pair_order_counts": outlier_analysis["pair_order_counts"],
+        "pair_sum_min_ticks": outlier_analysis["pair_sum_min_ticks"],
+        "pair_sum_max_ticks": outlier_analysis["pair_sum_max_ticks"],
+        "pair_sum_delta_min_ticks": outlier_analysis["sum_delta_min_ticks"],
+        "pair_sum_delta_max_ticks": outlier_analysis["sum_delta_max_ticks"],
+        "outlier_analysis": outlier_analysis,
         "record_correspondence": record_match,
         "clock_wrap_crossings": {
             "definition": (
@@ -267,8 +292,8 @@ def analyze_run(
                 else None
             ),
         },
-        "run_elapsed_ticks": timestamps[-1] - timestamps[0],
-        "run_elapsed_seconds": (timestamps[-1] - timestamps[0]) / (aiclk_mhz * 1_000_000),
+        "run_elapsed_ticks": outlier_analysis["run_elapsed_ticks"],
+        "run_elapsed_seconds": outlier_analysis["run_elapsed_seconds"],
     }
 
 
