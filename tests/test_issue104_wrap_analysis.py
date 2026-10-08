@@ -205,7 +205,8 @@ def test_historical_sampled_records_use_only_record_clock_as_unverified_aiclk(
     assert result["aiclk_source"] == "legacy_unverified"
     assert result["outlier_analysis"]["aiclk_source"] == "legacy_unverified"
     assert result["invariant_validation"]["out_of_scope"] is True
-    assert result["invariant_validation"]["timing_evidence"] is False
+    assert result["invariant_validation"]["valid"] is None
+    assert result["invariant_validation"]["timing_evidence"] is None
     assert record["timing_evidence"] is True
 
 

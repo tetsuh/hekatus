@@ -327,8 +327,8 @@ def test_historical_records_are_out_of_scope_without_rewriting_the_record(path: 
 
     assert report["out_of_scope"] is True
     assert report["classification"] == "out_of_scope"
-    assert report["valid"] is True
-    assert report["timing_evidence"] is False
+    assert report["valid"] is None
+    assert report["timing_evidence"] is None
     assert report["mismatches"] == []
 
 
@@ -344,7 +344,8 @@ def test_missing_or_different_runner_marker_is_out_of_scope(tmp_path: Path):
         report = validate_resident_record(candidate)
         assert report["out_of_scope"] is True
         assert report["classification"] == "out_of_scope"
-        assert report["valid"] is True
+        assert report["valid"] is None
+        assert report["timing_evidence"] is None
 
 
 def test_failure_code_zero_is_canonical_and_failure_mutations_force_non_timing(

@@ -3411,7 +3411,7 @@ def _out_of_scope_report(record: Mapping[str, Any]) -> dict[str, Any]:
     actual_marker = record.get("resident_record_schema", _MISSING)
     marker_text = "missing" if actual_marker is _MISSING else repr(actual_marker)
     return {
-        "valid": True,
+        "valid": None,
         "out_of_scope": True,
         "classification": "out_of_scope",
         "reason": (
@@ -3422,7 +3422,7 @@ def _out_of_scope_report(record: Mapping[str, Any]) -> dict[str, Any]:
             None if actual_marker is _MISSING else actual_marker
         ),
         "expected_resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
-        "timing_evidence": False,
+        "timing_evidence": None,
         "mismatches": [],
         "failures": [],
         "warnings": [],
