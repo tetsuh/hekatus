@@ -969,7 +969,7 @@ def test_configuration_rejects_outer_cap_and_core_clock_mismatch():
         validate_configuration(same_cores)
 
 
-def test_histogram_percentiles_have_exact_sample_thresholds():
+def test_histogram_percentiles_are_insufficient_below_threshold():
     assert required_samples_for_percentile(0.50) == 40
     assert required_samples_for_percentile(0.99) == 2_000
     assert required_samples_for_percentile(0.999) == 20_000
@@ -988,6 +988,80 @@ def test_histogram_percentiles_have_exact_sample_thresholds():
     assert enough["percentiles"]["p99"]["status"] == "insufficient"
     assert enough["histogram"]["bin_width_ticks"] == 5
     assert sum(item["count"] for item in enough["histogram"]["bins"]) == 40
+
+
+def test_empty_frame_interval_statistics_have_no_samples():
+    statistics = frame_interval_statistics([], bin_width_ticks=5)
+
+    assert statistics["N"] == 0
+    assert statistics["min_ticks"] is None
+    assert statistics["max_ticks"] is None
+    assert statistics["histogram"] == {"bin_width_ticks": 5, "bins": []}
+    assert set(statistics["percentiles"]) == {"p50", "p99", "p99_9", "p99_99"}
+    for percentile in statistics["percentiles"].values():
+        assert percentile["status"] == "insufficient"
+        assert "value_ticks" not in percentile
+
+
+@pytest.mark.parametrize(
+    ("bin_width_ticks", "expected_bins"),
+    [
+        (
+            1,
+            [
+                {"start_ticks": 1, "end_ticks": 2, "count": 2},
+                {"start_ticks": 2, "end_ticks": 3, "count": 3},
+                {"start_ticks": 7, "end_ticks": 8, "count": 2},
+                {"start_ticks": 10, "end_ticks": 11, "count": 1},
+            ],
+        ),
+        (
+            5,
+            [
+                {"start_ticks": 0, "end_ticks": 5, "count": 5},
+                {"start_ticks": 5, "end_ticks": 10, "count": 2},
+                {"start_ticks": 10, "end_ticks": 15, "count": 1},
+            ],
+        ),
+    ],
+    ids=("fine-bins", "coarse-bins"),
+)
+def test_frame_interval_statistics_aggregate_repeated_values(
+    bin_width_ticks, expected_bins
+):
+    intervals = [1, 1, 2, 2, 2, 7, 7, 10]
+    statistics = frame_interval_statistics(intervals, bin_width_ticks=bin_width_ticks)
+
+    assert statistics["N"] == 8
+    assert statistics["min_ticks"] == 1
+    assert statistics["max_ticks"] == 10
+    assert statistics["histogram"] == {
+        "bin_width_ticks": bin_width_ticks,
+        "bins": expected_bins,
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "percentile"),
+    [("p50", 0.50), ("p99", 0.99), ("p99_9", 0.999), ("p99_99", 0.9999)],
+)
+def test_histogram_percentiles_cross_exact_sample_threshold(name, percentile):
+    threshold = required_samples_for_percentile(percentile)
+    assert threshold == {0.50: 40, 0.99: 2_000, 0.999: 20_000, 0.9999: 200_000}[percentile]
+
+    for sample_count, expected_status, has_value in (
+        (threshold - 1, "insufficient", False),
+        (threshold, "ok", True),
+        (threshold + 1, "ok", True),
+    ):
+        statistics = frame_interval_statistics([123] * sample_count, bin_width_ticks=1)
+        result = statistics["percentiles"][name]
+        assert statistics["N"] == sample_count
+        assert result["minimum_samples"] == threshold
+        assert result["status"] == expected_status
+        assert ("value_ticks" in result) is has_value
+        if has_value:
+            assert result["value_ticks"] == 123.0
 
 
 def test_timestamp_digest_redacts_raw_values():
