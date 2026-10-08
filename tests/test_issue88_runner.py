@@ -1,6 +1,7 @@
 """Board-free tests for the Issue #88 comparison runner."""
 
 import ast
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -188,6 +189,50 @@ def test_issue88_same_array_metrics_are_zero_for_identical_inverses():
     ] == pytest.approx(0.0)
 
 
+def test_issue88_inverse_artifact_metadata_hashes_c_order_payload(tmp_path):
+    inverse = np.arange(16, dtype=np.float32).astype(np.complex64).reshape(2, 2, 4)
+    inverse = inverse[:, :, :2].copy()
+    metadata = runner._atomic_inverse_artifact_write(
+        tmp_path,
+        run_id="run-hash-test",
+        row_name="bf16-r-L16",
+        downloaded_inverse=inverse,
+    )
+    path = tmp_path / metadata["file"]
+    expected_payload = np.ascontiguousarray(inverse).view(np.uint8)
+
+    assert metadata["row"] == "bf16-r-L16"
+    assert metadata["file"] == "issue88-fp32-r-inverse-run-hash-test-bf16-r-L16.npy"
+    assert metadata["matrix_count"] == 2
+    assert metadata["element_count"] == 8
+    assert metadata["shape"] == [2, 2, 2]
+    assert metadata["dtype"] == inverse.dtype.str
+    assert metadata["byte_count"] == inverse.nbytes
+    assert metadata["sha256"] == hashlib.sha256(expected_payload).hexdigest()
+    assert metadata["hash_definition"] == runner.INVERSE_ARRAY_HASH_DEFINITION
+    assert metadata["npy_file_byte_count"] == path.stat().st_size
+    assert metadata["npy_file_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert metadata["npy_file_hash_definition"] == runner.INVERSE_NPY_HASH_DEFINITION
+
+
+def test_issue88_inverse_artifact_round_trips_with_numpy_load(tmp_path):
+    inverse = np.asarray(
+        [[[1.0 + 2.0j, 3.0 - 4.0j], [5.5 + 0.0j, -6.0 + 0.25j]]],
+        dtype=np.complex64,
+    )
+    metadata = runner._atomic_inverse_artifact_write(
+        tmp_path,
+        run_id="run-roundtrip",
+        row_name="fp32-r-L16",
+        downloaded_inverse=inverse,
+    )
+    loaded = np.load(tmp_path / metadata["file"], allow_pickle=False)
+
+    assert loaded.shape == inverse.shape
+    assert loaded.dtype == inverse.dtype
+    np.testing.assert_array_equal(loaded, inverse)
+
+
 def test_issue88_runner_has_no_spec_reference_and_matches_plan():
     source = Path(runner.__file__).read_text()
     tree = ast.parse(source)
@@ -210,7 +255,7 @@ def test_issue88_runner_has_no_spec_reference_and_matches_plan():
         runner._validate_args(parser, args)
 
 
-def test_issue88_runner_selects_the_l32_dram_pair_in_one_session():
+def test_issue88_runner_selects_the_l32_dram_pair_in_one_session(tmp_path):
     parser = runner._build_parser()
     args = parser.parse_args(
         [
@@ -268,6 +313,8 @@ def test_issue88_runner_selects_the_l32_dram_pair_in_one_session():
     result = runner.run_comparison(
         SimpleNamespace(synchronize_device=lambda device: synchronized.append(device)),
         device=object(),
+        artifact_dir=tmp_path,
+        run_id="run-issue88-pair",
         rows=selected,
         kernel_class=FakeKernel,
         time_fn=time_fn,
@@ -287,6 +334,119 @@ def test_issue88_runner_selects_the_l32_dram_pair_in_one_session():
     assert [item[1].launches for item in prepared] == [1002, 1002]
     assert len(synchronized) == 2 * (1 + 1 + runner.LAUNCHES_PER_ROW)
     assert [row["launches_measured"] for row in result["comparison_rows"]] == [1000, 1000]
+    artifacts = result["device_inverse_artifacts"]
+    assert len(artifacts) == 2
+    assert [artifact["row"] for artifact in artifacts] == [row["name"] for row in selected]
+    for artifact in artifacts:
+        assert artifact["file"] == (
+            f"issue88-fp32-r-inverse-run-issue88-pair-{artifact['row']}.npy"
+        )
+        assert (tmp_path / artifact["file"]).is_file()
+        assert runner._inverse_artifact_metadata_error(
+            artifact, row_name=artifact["row"], run_id="run-issue88-pair"
+        ) is None
+
+
+def test_issue88_full_selection_retains_measured_outputs_not_preflight_output(tmp_path):
+    selected = runner._select_rows(runner._build_parser().parse_args([]))
+    matrices = np.broadcast_to(np.eye(2, dtype=np.complex64), (2, 2, 2)).copy()
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            kernel.launches = 0
+            return kernel
+
+        def launch(self):
+            self.launches += 1
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            return None
+
+    clock = [0.0]
+
+    def time_fn():
+        clock[0] += 0.001
+        return clock[0]
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path,
+        run_id="run-six-row",
+        rows=selected,
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == "pass"
+    assert [row["row"] for row in result["comparison_rows"]] == [
+        row["name"] for row in selected
+    ]
+    measured_rows = result["comparison_rows"][:-1]
+    rejected_row = result["comparison_rows"][-1]
+    assert all(row["status"] == "ok" for row in measured_rows)
+    assert all("device_inverse_artifact" in row for row in measured_rows)
+    assert rejected_row["status"] == "preflight_rejected"
+    assert "device_inverse_artifact" not in rejected_row
+    assert rejected_row["launches_requested"] == 0
+    assert rejected_row["launches_measured"] == 0
+    assert [artifact["row"] for artifact in result["device_inverse_artifacts"]] == [
+        row["row"] for row in measured_rows
+    ]
+    assert len(list(tmp_path.glob("*.npy"))) == 5
+
+
+def test_issue88_inverse_persistence_failure_fails_run_before_pass(tmp_path):
+    blocked_output = tmp_path / "not-a-directory"
+    blocked_output.write_text("file blocks artifact directory")
+    matrices = np.broadcast_to(np.eye(2, dtype=np.complex64), (2, 2, 2)).copy()
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            return kernel
+
+        def launch(self):
+            return None
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            return None
+
+    config = next(
+        row for row in runner.ISSUE88_COMPARISON_ROWS if row["name"] == "bf16-r-L16"
+    )
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=blocked_output,
+        run_id="run-persist-failure",
+        rows=(config,),
+        launches=1,
+        first_launch=True,
+        kernel_class=FakeKernel,
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == "failed"
+    assert result["comparison_rows"][0]["status"] == "failed"
+    assert result["comparison_rows"][0]["failure_stage"] == "inverse_artifact_persistence"
+    assert result["device_inverse_artifacts"] == []
 
 
 def test_issue88_runner_parser_rejects_the_forbidden_fp32_l32_l1_placement():

@@ -2532,7 +2532,10 @@ and regenerated host matrix-byte hashes do not match its stored fingerprints.
 Accordingly, the historical conclusion that FP32-`R` worsens beam-pattern
 error is withdrawn as unsupported; no corrected device-level ranking is
 available, and the `R` representation remains open pending retained device
-outputs or an authorized rerun.
+outputs or an authorized rerun. The runner is prepared for a future authorized
+rerun to retain each downloaded inverse as a basename-only `.npy` artifact in
+the wrapper output directory, with array-payload and complete-file SHA-256
+metadata; this preparation is not a new measurement or ranking.
 
 ### Investigation items
 

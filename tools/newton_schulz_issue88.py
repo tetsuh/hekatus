@@ -9,7 +9,8 @@ result is compared with ``enodia.tt.bench.newton_schulz_reference`` only.
 
 The script is used as a custom runner by ``run_in_container.sh``.  The wrapper
 captures environment and power artifacts beside the result path; this runner
-copies only sanitized, basename-bound telemetry into its raw audit artifact.
+copies sanitized, basename-bound telemetry and inverse-artifact metadata into
+its raw audit artifact, while retaining downloaded inverses as sibling .npy files.
 """
 
 from __future__ import annotations
@@ -79,10 +80,43 @@ PATTERN_DIRECTIONS_DEG = (
     60.0,
 )
 
-ISSUE88_RECORD_SCHEMA = "adr-0005-issue88-fp32-r-v1"
-ISSUE88_RAW_SCHEMA = "adr-0005-issue88-fp32-r-raw-v1"
+ISSUE88_RECORD_SCHEMA = "adr-0005-issue88-fp32-r-v2"
+ISSUE88_RAW_SCHEMA = "adr-0005-issue88-fp32-r-raw-v2"
 ISSUE88_RUNNER = "tools/newton_schulz_issue88.py"
 TRUE_INVERSE_METRIC_REFERENCE = "NumPy complex128 inverse of original FP32 R"
+BEAM_RESPONSE_METRIC_DEFINITIONS = {
+    "phase_sensitive_complex_response_relative_frobenius_error": (
+        "||response_candidate - response_reference||_F / ||response_reference||_F; "
+        "complex phase and response scale are retained"
+    ),
+    "phase_aligned_complex_response_relative_frobenius_error": (
+        "Fit alpha = vdot(response_candidate, response_reference) / "
+        "vdot(response_candidate, response_candidate), then report "
+        "||alpha * response_candidate - response_reference||_F / "
+        "||response_reference||_F"
+    ),
+    "magnitude_response_relative_frobenius_error": (
+        "||abs(response_candidate) - abs(response_reference)||_F / "
+        "||abs(response_reference)||_F, before per-look peak normalization"
+    ),
+    "normalized_magnitude_pattern_relative_frobenius_error": (
+        "Normalize each candidate and reference look pattern by its own sampled "
+        "look-direction magnitude, then report the relative Frobenius error "
+        "of the valid normalized magnitude arrays"
+    ),
+    "db_pattern": (
+        "Normalize candidate and reference magnitudes separately by each look's "
+        "sampled look-direction magnitude; compare 20*log10(max(magnitude, "
+        "10**(floor_db/20))) using RMS and maximum absolute dB error; "
+        "floor_db=-120 by default"
+    ),
+}
+INVERSE_ARRAY_HASH_DEFINITION = (
+    "SHA-256 of the downloaded inverse converted with np.ascontiguousarray and "
+    "viewed as uint8 in C order; excludes the .npy header and preserves the "
+    "downloaded dtype byte order"
+)
+INVERSE_NPY_HASH_DEFINITION = "SHA-256 of the complete .npy file bytes, including header and payload"
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 _PCI_BUS_ID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
@@ -93,6 +127,10 @@ _HARNESS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 # iterate it rather than maintaining a second list of required checks.
 ISSUE88_STATUS_COMPONENTS = (
     ("rows", "every selected comparison row succeeds"),
+    (
+        "inverse_outputs",
+        "every downloaded inverse has matching raw artifact metadata and the expected rejection has none",
+    ),
     (
         "board_selection",
         "telemetry board selection is verifiable and has board type, serial, PCI identity, and firmware",
@@ -131,6 +169,8 @@ _ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9:])/(?:home|Users|tmp|var/tmp|workspace|workspaces|work|out|mnt|opt|root|run/user|dev|build|src)/[^\s,;\"']+"
 )
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_ROW_ARTIFACT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 # The tuple is built by a function so callers and tests receive independent
@@ -513,6 +553,7 @@ def beam_response_metrics(
     )
 
     return {
+        "metric_definitions": dict(BEAM_RESPONSE_METRIC_DEFINITIONS),
         "phase_sensitive_complex_response_relative_frobenius_error": phase_sensitive_error,
         "phase_sensitive_complex_response_max_absolute_error": (
             float(np.max(np.abs(candidate_values - reference_values)))
@@ -757,6 +798,7 @@ def same_array_metrics(
         },
         "beam_pattern": {
             "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "metric_definitions": response_metrics["metric_definitions"],
             "phase_sensitive_complex_response_relative_frobenius_error": phase_sensitive_error,
             "phase_sensitive_complex_response_max_absolute_error": max_absolute_error,
             "phase_aligned_complex_response_relative_frobenius_error": response_metrics[
@@ -1420,6 +1462,8 @@ def _run_row(
     matrices: np.ndarray,
     config: dict[str, Any],
     *,
+    artifact_dir: Path,
+    run_id: str,
     reference: dict[str, np.ndarray] | None = None,
     launches: int = LAUNCHES_PER_ROW,
     timeout_s: float = ROW_TIMEOUT_S,
@@ -1492,6 +1536,31 @@ def _run_row(
             "downloaded": True,
             "finite": correctness["finite"],
         }
+        try:
+            result["device_inverse_artifact"] = _atomic_inverse_artifact_write(
+                artifact_dir,
+                run_id=run_id,
+                row_name=config["name"],
+                downloaded_inverse=actual,
+            )
+        except Exception as exc:  # noqa: BLE001 - persistence is a row-level acceptance requirement
+            result.update(_failed_row(config, "inverse_artifact_persistence", exc))
+            result.update(
+                {
+                    "row": config["name"],
+                    "shape_name": shape_name(config),
+                    "flops_per_launch": flops_per_launch,
+                    "launches_requested": 0 if first_launch else launches,
+                    "row_timeout_s": timeout_s,
+                    "correctness": correctness,
+                    "correctness_launch": {
+                        "synchronized": True,
+                        "downloaded": True,
+                        "finite": correctness["finite"],
+                    },
+                }
+            )
+            return result
         if not correctness["finite"]:
             result.update(
                 _failed_row(config, "correctness", "correctness launch returned non-finite values")
@@ -1553,6 +1622,7 @@ def _run_row(
         )
         return result
     except Exception as exc:  # noqa: BLE001 - preserve row-local device failures
+        inverse_artifact = result.get("device_inverse_artifact")
         result = _failed_row(
             config,
             "row",
@@ -1560,6 +1630,8 @@ def _run_row(
             samples=samples,
             flops_per_launch=flops_per_launch,
         )
+        if inverse_artifact is not None:
+            result["device_inverse_artifact"] = inverse_artifact
         result["row"] = config["name"]
         result["shape_name"] = shape_name(config)
         result["flops_per_launch"] = flops_per_launch
@@ -1626,6 +1698,8 @@ def run_comparison(
     ttnn: Any,
     device: Any,
     *,
+    artifact_dir: Path,
+    run_id: str,
     rows: tuple[dict[str, Any], ...] | list[dict[str, Any]] | None = None,
     launches: int = LAUNCHES_PER_ROW,
     timeout_s: float = ROW_TIMEOUT_S,
@@ -1635,6 +1709,8 @@ def run_comparison(
     matrices_factory: Callable[..., np.ndarray] = random_hpd_batch,
 ) -> dict[str, Any]:
     """Run selected rows on one already-open device and stop on first failure."""
+    run_id = _validated_run_id(run_id)
+    artifact_dir = Path(artifact_dir)
     selected = tuple(ISSUE88_COMPARISON_ROWS if rows is None else rows)
     if not selected:
         raise ValueError("at least one Issue #88 row is required")
@@ -1677,6 +1753,8 @@ def run_comparison(
             device,
             matrices,
             config,
+            artifact_dir=artifact_dir,
+            run_id=run_id,
             reference=reference,
             launches=launches,
             timeout_s=timeout_s,
@@ -1703,12 +1781,28 @@ def run_comparison(
         if first_launch:
             break
 
-    passed = bool(comparison) and len(comparison) == len(selected) and all(
-        row.get("status") in SUCCESSFUL_ROW_STATUSES for row in comparison
+    device_inverse_artifacts = [
+        dict(row["device_inverse_artifact"])
+        for row in comparison
+        if isinstance(row.get("device_inverse_artifact"), dict)
+    ]
+    run_record = {
+        "run_id": run_id,
+        "comparison_rows": comparison,
+        "device_inverse_artifacts": device_inverse_artifacts,
+    }
+    inverse_outputs_pass = not _inverse_output_failures(run_record)
+    passed = (
+        bool(comparison)
+        and len(comparison) == len(selected)
+        and all(row.get("status") in SUCCESSFUL_ROW_STATUSES for row in comparison)
+        and inverse_outputs_pass
     )
     return {
         "status": "pass" if passed and not stopped else "failed",
+        "run_id": run_id,
         "comparison_rows": comparison,
+        "device_inverse_artifacts": device_inverse_artifacts,
         "rows_completed": len(comparison),
         "rows_requested": len(selected),
         "stopped_on_failure": stopped,
@@ -1757,6 +1851,165 @@ def _raw_path(result_path: Path, run_id: str) -> Path:
     return result_path.parent / f"issue88-fp32-r-raw-{run_id}.json"
 
 
+def _inverse_artifact_path(output_dir: Path, run_id: str, row_name: str) -> Path:
+    run_id = _validated_run_id(run_id)
+    if not isinstance(row_name, str) or not _ROW_ARTIFACT_NAME_RE.fullmatch(row_name):
+        raise ValueError("row name must be a safe artifact identifier")
+    return output_dir / f"issue88-fp32-r-inverse-{run_id}-{row_name}.npy"
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _atomic_inverse_artifact_write(
+    output_dir: Path,
+    *,
+    run_id: str,
+    row_name: str,
+    downloaded_inverse: np.ndarray,
+) -> dict[str, Any]:
+    """Atomically save a loadable .npy inverse and return auditable hashes."""
+    values = np.asarray(downloaded_inverse)
+    if values.ndim < 2 or values.shape[-2] != values.shape[-1]:
+        raise ValueError("downloaded inverse must contain square matrices")
+    if values.dtype.hasobject:
+        raise ValueError("downloaded inverse must not use an object dtype")
+    contiguous = np.ascontiguousarray(values)
+    path = _inverse_artifact_path(output_dir, run_id, row_name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            np.save(handle, contiguous, allow_pickle=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+    matrix_count = int(np.prod(contiguous.shape[:-2], dtype=np.int64)) if contiguous.ndim > 2 else 1
+    return {
+        "row": row_name,
+        "run_id": run_id,
+        "file": path.name,
+        "format": "NumPy .npy",
+        "matrix_count": matrix_count,
+        "element_count": int(contiguous.size),
+        "shape": [int(dimension) for dimension in contiguous.shape],
+        "dtype": contiguous.dtype.str,
+        "byte_count": int(contiguous.nbytes),
+        "sha256": _array_sha256(contiguous),
+        "hash_definition": INVERSE_ARRAY_HASH_DEFINITION,
+        "npy_file_byte_count": int(path.stat().st_size),
+        "npy_file_sha256": _file_sha256(path),
+        "npy_file_hash_definition": INVERSE_NPY_HASH_DEFINITION,
+    }
+
+
+def _inverse_artifact_metadata_error(
+    metadata: Any, *, row_name: str, run_id: str
+) -> str | None:
+    if not isinstance(metadata, dict):
+        return "downloaded inverse artifact metadata is missing"
+    expected_file = f"issue88-fp32-r-inverse-{run_id}-{row_name}.npy"
+    if metadata.get("row") != row_name or metadata.get("run_id") != run_id:
+        return "downloaded inverse artifact row or run id does not match"
+    filename = metadata.get("file")
+    if not isinstance(filename, str) or Path(filename).name != filename or filename != expected_file:
+        return "downloaded inverse artifact filename is not the deterministic basename"
+    if metadata.get("format") != "NumPy .npy":
+        return "downloaded inverse artifact is not a NumPy .npy file"
+    shape = metadata.get("shape")
+    if (
+        not isinstance(shape, list)
+        or len(shape) < 2
+        or any(not isinstance(value, int) or isinstance(value, bool) or value < 1 for value in shape)
+        or shape[-2] != shape[-1]
+    ):
+        return "downloaded inverse artifact shape is invalid"
+    dtype_text = metadata.get("dtype")
+    if not isinstance(dtype_text, str) or not dtype_text:
+        return "downloaded inverse artifact dtype is invalid"
+    try:
+        dtype = np.dtype(dtype_text)
+    except (TypeError, ValueError):
+        return "downloaded inverse artifact dtype is invalid"
+    if dtype.hasobject:
+        return "downloaded inverse artifact dtype is not loadable without pickle"
+    expected_elements = math.prod(shape)
+    expected_matrices = math.prod(shape[:-2]) if len(shape) > 2 else 1
+    if metadata.get("element_count") != expected_elements:
+        return "downloaded inverse artifact element count is inconsistent"
+    if metadata.get("matrix_count") != expected_matrices:
+        return "downloaded inverse artifact matrix count is inconsistent"
+    if metadata.get("byte_count") != expected_elements * dtype.itemsize:
+        return "downloaded inverse artifact byte count is inconsistent"
+    if not isinstance(metadata.get("npy_file_byte_count"), int) or metadata[
+        "npy_file_byte_count"
+    ] < metadata["byte_count"]:
+        return "downloaded inverse .npy file byte count is invalid"
+    if metadata.get("hash_definition") != INVERSE_ARRAY_HASH_DEFINITION:
+        return "downloaded inverse array hash definition is missing or invalid"
+    if metadata.get("npy_file_hash_definition") != INVERSE_NPY_HASH_DEFINITION:
+        return "downloaded inverse .npy hash definition is missing or invalid"
+    for field in ("sha256", "npy_file_sha256"):
+        if not isinstance(metadata.get(field), str) or not _SHA256_RE.fullmatch(metadata[field]):
+            return f"downloaded inverse artifact {field} is invalid"
+    return None
+
+
+def _inverse_output_failures(run: dict[str, Any]) -> list[str]:
+    run_id = run.get("run_id")
+    try:
+        run_id = _validated_run_id(run_id)
+    except ValueError as exc:
+        return [str(exc)]
+    comparison = run.get("comparison_rows")
+    if not isinstance(comparison, list):
+        return ["comparison rows are missing for inverse artifact validation"]
+
+    expected_artifacts: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for row in comparison:
+        row_name = row.get("row", row.get("name", "<unknown>"))
+        metadata = row.get("device_inverse_artifact")
+        status = row.get("status")
+        if status == "preflight_rejected":
+            if metadata is not None:
+                failures.append(f"{row_name} preflight rejection has an inverse output artifact")
+            preflight = row.get("preflight")
+            if (
+                not isinstance(preflight, dict)
+                or preflight.get("allocation_attempted") is not False
+                or preflight.get("launches") != 0
+                or row.get("launches_requested") != 0
+                or row.get("launches_measured") != 0
+            ):
+                failures.append(f"{row_name} preflight rejection did not prove zero allocation and launches")
+            continue
+        if status in {"ok", "correctness_only"} or metadata is not None:
+            error = _inverse_artifact_metadata_error(
+                metadata, row_name=row_name, run_id=run_id
+            )
+            if error:
+                failures.append(f"{row_name}: {error}")
+            else:
+                expected_artifacts.append(dict(metadata))
+
+    artifacts = run.get("device_inverse_artifacts")
+    if artifacts != expected_artifacts:
+        failures.append("aggregate inverse artifact metadata does not match row metadata")
+    return failures
+
+
 def _status_components(
     run: dict[str, Any],
     *,
@@ -1786,6 +2039,8 @@ def _status_components(
         if run.get("stopped_on_failure"):
             row_failures.append("run stopped on a row failure")
     row_ok = not row_failures
+    inverse_failures = _inverse_output_failures(run)
+    inverse_outputs_ok = not inverse_failures
 
     environment = telemetry.get("normalized_environment")
     board_failures: list[str] = []
@@ -1901,6 +2156,12 @@ def _status_components(
         "rows": (
             row_ok,
             "all selected rows succeeded" if row_ok else "; ".join(row_failures),
+        ),
+        "inverse_outputs": (
+            inverse_outputs_ok,
+            "all downloaded inverses have valid retained artifacts"
+            if inverse_outputs_ok
+            else "; ".join(inverse_failures),
         ),
         "board_selection": (
             not board_failures,
@@ -2023,6 +2284,7 @@ def _record_payload(
                 "application": "recorded metric/gate only",
             },
             "comparison_rows": rows,
+            "device_inverse_artifacts": run.get("device_inverse_artifacts", []),
             "power_trace": power_trace.get("file"),
             "power_clock_provenance": {
                 "trace": power_trace.get("file"),
@@ -2061,9 +2323,24 @@ def _record_payload(
                 "w = R^-1 a / (a^H R^-1 a)"
             ),
             "beam_pattern": (
-                "relative Frobenius error between same-array w^H a(theta) response "
-                "arrays over look and pattern directions"
+                "For each inverse P, compute w = P a / (a^H P a) with the fixed "
+                "_weight contraction, then compare same-array response arrays "
+                "w^H a(theta) over batch, look, and pattern directions."
             ),
+            "beam_response_metrics": dict(BEAM_RESPONSE_METRIC_DEFINITIONS),
+            "metric_reference_labels": {
+                "quality_vs_true_inverse": TRUE_INVERSE_METRIC_REFERENCE,
+                "quality_vs_matching_reference": {
+                    "bf16": (
+                        "fixed-N=12 Newton-Schulz reference using BF16-rounded R "
+                        "and X0=I/||original FP32 R||_infinity"
+                    ),
+                    "fp32-r": (
+                        "fixed-N=12 Newton-Schulz reference using original FP32 R "
+                        "and X0=I/||original FP32 R||_infinity"
+                    ),
+                },
+            },
             "steering_array": {
                 "array": "equal-spaced linear array",
                 "element_spacing": "one-half wavelength",
@@ -2092,7 +2369,9 @@ def _record_payload(
             "BF16-R reference uses BF16-rounded R and X0 computed from original R.",
             "FP32-R reference uses original FP32 R and the same X0 computed from original R.",
             "FP32-R L=32 keeps block 8 and moves only R to explicit DRAM placement.",
-            "Raw launch samples, fingerprints, correctness metrics, and sanitized telemetry are retained.",
+            "The synchronized correctness-launch inverse for each downloaded row is retained as a basename-only NumPy .npy file in the wrapper output directory; the expected preflight rejection has no inverse artifact.",
+            "Each inverse artifact records the SHA-256 of canonical contiguous C-order array payload bytes and the SHA-256 of the complete .npy file, plus shape, dtype, element/matrix counts, and byte counts.",
+            "Raw launch samples, fingerprints, correctness metrics, inverse artifact metadata, and sanitized telemetry are retained.",
             "No host name or user-specific absolute path is included in this record.",
         ],
     }
@@ -2305,7 +2584,9 @@ def main(
     run_start = now()
     run: dict[str, Any] = {
         "status": "failed",
+        "run_id": run_id,
         "comparison_rows": [],
+        "device_inverse_artifacts": [],
         "rows_completed": 0,
         "rows_requested": len(selected_rows),
         "stopped_on_failure": False,
@@ -2333,7 +2614,12 @@ def main(
             else:
                 try:
                     run = run_comparison(
-                        ttnn, device, rows=selected_rows, first_launch=args.first_launch
+                        ttnn,
+                        device,
+                        artifact_dir=output_dir,
+                        run_id=run_id,
+                        rows=selected_rows,
+                        first_launch=args.first_launch,
                     )
                 except Exception as exc:  # noqa: BLE001 - preserve device-session failures
                     partial = getattr(exc, "partial_rows", None)

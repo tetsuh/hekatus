@@ -101,7 +101,10 @@ def _source_row_diagnostics(
 ) -> dict[str, Any]:
     candidate = context["fixed_reference"]
     true_inverse = context["true_inverse"]
-    quality = runner.same_array_metrics(candidate, true_inverse)
+    quality = runner._quality_metrics_with_reference(
+        runner.same_array_metrics(candidate, true_inverse),
+        runner.TRUE_INVERSE_METRIC_REFERENCE,
+    )
     inverse_transforms = _matrix_transform_diagnostics(candidate, true_inverse)
     correctness = source_row.get("correctness") or {}
     source_quality = correctness.get("quality_vs_true_inverse") or {}
@@ -347,11 +350,19 @@ def build_summary(source_path: Path = SOURCE_RECORD) -> dict[str, Any]:
             "MV weight": "w = P a / (aᴴ P a), with P the inverse and steering a; normalization is checked as wᴴa=1.",
             "direction cosine deficit": "1 - |w_trueᴴ w_candidate| / (||w_true||₂ ||w_candidate||₂).",
             "complex ratios": "candidate weight / true-inverse weight where |w_true| > 1e-12 times that vector's maximum component; undefined counts and ratio range/phase summaries are retained.",
-            "phase_sensitive_complex_response": "||w_candidateᴴa(theta)-w_trueᴴa(theta)||_F / ||w_trueᴴa(theta)||_F; the complex phase is retained.",
-            "best complex scalar alignment": "alpha = <candidate_response, true_response> / ||candidate_response||²; report alpha and the relative Frobenius residual of alpha*candidate_response.",
-            "magnitude response": "Relative Frobenius error between |candidate response| and |true response|, before per-pattern peak normalization; phase is discarded but scale is retained.",
-            "normalized magnitude pattern": "Relative Frobenius error after each look's sampled main response magnitude normalizes its pattern.",
-            "dB pattern": "20*log10(max(|response|/|response_at_look|, 1e-6)); candidate and reference normalized separately; -120 dB floor applies to exact/sub-floor zeros and counts are recorded.",
+            "phase_sensitive_complex_response": runner.BEAM_RESPONSE_METRIC_DEFINITIONS[
+                "phase_sensitive_complex_response_relative_frobenius_error"
+            ],
+            "best complex scalar alignment": runner.BEAM_RESPONSE_METRIC_DEFINITIONS[
+                "phase_aligned_complex_response_relative_frobenius_error"
+            ],
+            "magnitude response": runner.BEAM_RESPONSE_METRIC_DEFINITIONS[
+                "magnitude_response_relative_frobenius_error"
+            ],
+            "normalized magnitude pattern": runner.BEAM_RESPONSE_METRIC_DEFINITIONS[
+                "normalized_magnitude_pattern_relative_frobenius_error"
+            ],
+            "dB pattern": runner.BEAM_RESPONSE_METRIC_DEFINITIONS["db_pattern"],
             "nonfinite and undefined values": "Metric helpers retain finite/total/undefined counts; dB metrics also count undefined look peaks and floor hits.",
         },
         "kernel_reconstruction_audit": {

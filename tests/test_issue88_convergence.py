@@ -59,19 +59,42 @@ def _power_trace(tmp_path: Path) -> dict:
     return trace
 
 
-def _passing_run() -> dict:
-    rows = [
-        {
+def _passing_run(run_id: str = "run-1") -> dict:
+    rows = []
+    artifacts = []
+    for config in runner.ISSUE88_COMPARISON_ROWS:
+        if config.get("expected_preflight_rejection"):
+            rows.append(runner._preflight_rejected_row(config))
+            continue
+        artifact = {
             "row": config["name"],
-            "status": "preflight_rejected"
-            if config.get("expected_preflight_rejection")
-            else "ok",
+            "run_id": run_id,
+            "file": f"issue88-fp32-r-inverse-{run_id}-{config['name']}.npy",
+            "format": "NumPy .npy",
+            "matrix_count": 1,
+            "element_count": 4,
+            "shape": [1, 2, 2],
+            "dtype": "<c8",
+            "byte_count": 32,
+            "sha256": "a" * 64,
+            "hash_definition": runner.INVERSE_ARRAY_HASH_DEFINITION,
+            "npy_file_byte_count": 160,
+            "npy_file_sha256": "b" * 64,
+            "npy_file_hash_definition": runner.INVERSE_NPY_HASH_DEFINITION,
         }
-        for config in runner.ISSUE88_COMPARISON_ROWS
-    ]
+        artifacts.append(artifact)
+        rows.append(
+            {
+                "row": config["name"],
+                "status": "ok",
+                "device_inverse_artifact": artifact,
+            }
+        )
     return {
         "status": "pass",
+        "run_id": run_id,
         "comparison_rows": rows,
+        "device_inverse_artifacts": artifacts,
         "rows_completed": len(rows),
         "rows_requested": len(rows),
         "stopped_on_failure": False,
@@ -218,7 +241,7 @@ def test_issue88_derived_summary_maps_values_to_source_rows_and_references():
     assert summary["preflight_rejection"]["status"] == "preflight_rejected"
 
 
-def test_issue88_catalogue_has_six_rows_and_host_only_rejection():
+def test_issue88_catalogue_has_six_rows_and_host_only_rejection(tmp_path):
     runner.validate_comparison_rows()
     assert len(runner.ISSUE88_COMPARISON_ROWS) == 6
     rejected = next(
@@ -230,9 +253,22 @@ def test_issue88_catalogue_has_six_rows_and_host_only_rejection():
     assert rejected["preflight_bytes"] == 1_884_928
     assert rejected["preflight_over_budget_bytes"] == 312_064
 
+    selected = runner._select_rows(runner._build_parser().parse_args([]))
+    assert [row["name"] for row in selected] == [
+        "bf16-r-L16",
+        "fp32-r-L16",
+        "bf16-r-L32",
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram",
+        "fp32-r-L32",
+    ]
+    assert selected[-1]["expected_preflight_rejection"] is True
+
     result = runner.run_comparison(
         SimpleNamespace(),
         object(),
+        artifact_dir=tmp_path,
+        run_id="run-rejection-only",
         rows=(rejected,),
     )
 
@@ -241,6 +277,8 @@ def test_issue88_catalogue_has_six_rows_and_host_only_rejection():
     assert result["comparison_rows"] == [runner._preflight_rejected_row(rejected)]
     assert result["comparison_rows"][0]["preflight"]["allocation_attempted"] is False
     assert result["comparison_rows"][0]["preflight"]["launches"] == 0
+    assert "device_inverse_artifact" not in result["comparison_rows"][0]
+    assert result["device_inverse_artifacts"] == []
 
 
 def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_path):
@@ -264,6 +302,26 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
         "Each conclusion uses one declared metric_reference; metrics with "
         "different references are reported in separate conclusions."
     )
+    assert record["measurement"]["device_inverse_artifacts"] == run[
+        "device_inverse_artifacts"
+    ]
+    assert record["measurement"]["comparison_rows"][0][
+        "device_inverse_artifact"
+    ] == run["comparison_rows"][0]["device_inverse_artifact"]
+    raw = runner._raw_payload(
+        run,
+        telemetry=telemetry,
+        run_id="run-1",
+        raw_path=tmp_path / "raw-run-1.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert raw["run"]["device_inverse_artifacts"] == run["device_inverse_artifacts"]
+    assert raw["rows"][0]["device_inverse_artifact"] == run["comparison_rows"][0][
+        "device_inverse_artifact"
+    ]
+    assert "/home/" not in json.dumps(record)
+    assert "/home/" not in json.dumps(raw, default=str)
 
 
 @pytest.mark.parametrize(
@@ -273,6 +331,12 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
             "rows",
             lambda run, telemetry: run["comparison_rows"][0].update(
                 status="failed", error="row injected"
+            ),
+        ),
+        (
+            "inverse_outputs",
+            lambda run, telemetry: run["comparison_rows"][0].pop(
+                "device_inverse_artifact"
             ),
         ),
         ("board_selection", lambda run, telemetry: telemetry["normalized_environment"]["board"].pop("board_type")),
@@ -364,7 +428,11 @@ def _run_main_with_close(tmp_path, monkeypatch, close_device):
             close_device=close_device,
         ),
     )
-    monkeypatch.setattr(runner, "run_comparison", lambda *args, **kwargs: _passing_run())
+    monkeypatch.setattr(
+        runner,
+        "run_comparison",
+        lambda *args, **kwargs: _passing_run(run_id=kwargs["run_id"]),
+    )
     return runner.main(
         [
             "--out",

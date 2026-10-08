@@ -41,6 +41,31 @@ def test_issue88_true_inverse_health_and_mv_normalization():
             assert abs(np.sum(runner.steering_vector(size, direction))) < 1e-12
 
 
+def test_issue88_device_metrics_compare_original_R_true_inverse_separately():
+    matrices = random_hpd_batch(2, 4, condition_number=100.0, seed=runner.INPUT_SEED)
+    context = runner.reference_context(matrices, "bf16")
+    metrics = runner.correctness_metrics(context["true_inverse"], context)
+
+    true_quality = metrics["quality_vs_true_inverse"]
+    matching_quality = metrics["quality_vs_matching_reference"]
+    assert true_quality["metric_reference"] == runner.TRUE_INVERSE_METRIC_REFERENCE
+    assert true_quality["beam_pattern"]["metric_reference"] == (
+        runner.TRUE_INVERSE_METRIC_REFERENCE
+    )
+    assert true_quality["beam_pattern"][
+        "phase_sensitive_complex_response_relative_frobenius_error"
+    ] == pytest.approx(0.0)
+    assert matching_quality["metric_reference"] == context[
+        "matching_reference_metric_reference"
+    ]
+    assert matching_quality["beam_pattern"][
+        "phase_sensitive_complex_response_relative_frobenius_error"
+    ] > 0.0
+    assert true_quality["beam_pattern"]["metric_definitions"] == (
+        runner.BEAM_RESPONSE_METRIC_DEFINITIONS
+    )
+
+
 def test_issue88_complex_scalar_alignment_separates_phase_from_pattern_shape():
     reference = np.asarray([[[1.0 + 0.0j, 0.4 - 0.2j, -0.1 + 0.3j]]])
     candidate = 1.7 * np.exp(0.73j) * reference
