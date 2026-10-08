@@ -23,6 +23,8 @@ from typing import Any
 
 from enodia.tt.bench.resident_record import (
     RESIDENT_INVARIANT_CATALOG,
+    TIMING_EVIDENCE_NOT_REQUESTED,
+    TIMING_EVIDENCE_RUN_TRACE_REASON,
     build_outlier_analysis,
     validate_pair_analysis,
     validate_resident_record,
@@ -1162,7 +1164,7 @@ def build_measurement_record(
     work_min_ticks: int | None = None,
     work_max_ticks: int | None = None,
     watcher: bool = False,
-    timing_evidence: bool = True,
+    timing_evidence: bool = False,
     timing_evidence_reason: str | None = None,
 ) -> dict[str, Any]:
     """Build and validate the committed-schema record without raw timestamps.
@@ -1172,8 +1174,11 @@ def build_measurement_record(
     run coverage, and in-run AICLK are checked here.  Calls that only provide
     the historical basename and omit sampler metadata remain readable for
     older board-free callers, but are marked ``legacy_unverified`` in power
-    provenance; the resident runner always supplies the strict path and run
-    bounds.
+    provenance and can never claim timing evidence; the resident runner
+    always supplies the strict path and run bounds.  ``timing_evidence``
+    defaults to false.  A true request is retained only after the shared
+    validator proves the strict trace, coverage, AICLK, sampler, and run
+    invariants.
 
     Counter protocol (the current producer/consumer semaphore contract):
     ``ready_count`` is the cumulative producer-ready value and equals
@@ -1243,7 +1248,6 @@ def build_measurement_record(
         trace_metadata["aiclk_source"] = "legacy_unverified"
         trace_reason = "legacy_power_trace_unverified"
     selected_image = normalized_environment["image"]
-    clock_source_audit = clock_source_audit_for_image(selected_image)
     source_evidence = _source_evidence(selected_image)
     validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
@@ -1342,22 +1346,16 @@ def build_measurement_record(
         final_timing_reason = "run_incomplete_or_dropped_frames"
     elif strict_trace and trace_reason != "power_trace_coverage_complete":
         final_timing_reason = trace_reason
+    elif strict_trace and timing_evidence is True:
+        final_timing_reason = TIMING_EVIDENCE_RUN_TRACE_REASON
     elif strict_trace:
-        final_timing_reason = "power_trace_run_samples"
+        final_timing_reason = TIMING_EVIDENCE_NOT_REQUESTED
     else:
         final_timing_reason = trace_reason
-    timing_ok = bool(
-        clock_source_audit is not None
-        and not sampler_off
-        and not watcher
-        and timing_evidence
-        and completed
-        and dropped == 0
-        and (
-            not strict_trace
-            or trace_reason == "power_trace_coverage_complete"
-        )
-    )
+    # The shared validator is the sole timing gate.  This value is only the
+    # caller's request; validate_resident_record below proves or rejects it
+    # against the actual trace, coverage, provenance, and sampler invariants.
+    timing_ok = timing_evidence is True
     record = {
         "schema": "issue-12-stage-1-resident-v1",
         "issue": 12,

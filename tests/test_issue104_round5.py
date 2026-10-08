@@ -18,6 +18,8 @@ from enodia.tt.bench.resident_harness import (
 )
 from enodia.tt.bench.resident_record import (
     RESIDENT_INVARIANT_CATALOG,
+    TIMING_EVIDENCE_COMPATIBILITY_BRANCHES,
+    TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES,
     build_outlier_analysis,
     validate_resident_record,
 )
@@ -88,6 +90,7 @@ def _valid_record(tmp_path: Path) -> tuple[dict, Path, list[int]]:
         power_trace_path=trace,
         run_start=RUN_START,
         run_end=RUN_END,
+        timing_evidence=True,
     )
     assert validate_resident_record(
         record, timestamps=timestamps, power_trace_path=trace
@@ -146,6 +149,95 @@ def _mutations(record: dict, trace: Path, timestamps: list[int]):
 def test_catalog_is_nonempty_and_executable():
     assert RESIDENT_INVARIANT_CATALOG
     assert all(callable(entry.check) for entry in RESIDENT_INVARIANT_CATALOG)
+    assert set(TIMING_EVIDENCE_COMPATIBILITY_BRANCHES) == {
+        "legacy_structural_pair_schema",
+        "basename_only_trace_metadata",
+        "sampler_off_trace_absent",
+        "missing_timing_evidence_field",
+    }
+    assert {
+        "legacy_unverified",
+        "snapshot_only",
+        "sampler_off_diagnostic",
+        "no_valid_in_run_samples",
+    } <= set(TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES)
+
+
+@pytest.mark.parametrize(
+    ("state", "expected_reason"),
+    [
+        ("legacy", "legacy_power_trace_unverified"),
+        ("unverified", "power_trace_aiclk_unverified"),
+        ("unavailable", "power_trace_bytes_unavailable"),
+    ],
+    ids=["legacy-basename", "unverified-provenance", "unavailable-bytes"],
+)
+def test_builder_forces_unverified_timing_requests_false(
+    tmp_path: Path, state, expected_reason
+):
+    environment = _environment()
+    trace_name = f"{state}.csv"
+    trace_metadata = None
+    if state == "legacy":
+        environment.pop("telemetry_sampler")
+    elif state == "unverified":
+        trace_metadata = {"file": trace_name, "aiclk_source": "unverified"}
+
+    record = build_measurement_record(
+        config=_config(),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="a" * 40,
+        environment=environment,
+        power_trace=trace_name,
+        power_trace_metadata=trace_metadata,
+        timing_evidence=True,
+    )
+
+    assert record["timing_evidence"] is False
+    assert record["timing_evidence_reason"] == expected_reason
+    assert record["power_clock_provenance"]["timing_evidence"] is False
+    assert record["power_clock_provenance"]["timing_evidence_reason"] == expected_reason
+
+
+def test_legacy_structural_skip_cannot_bypass_timing_gate(tmp_path: Path):
+    record, _trace, timestamps = _valid_record(tmp_path)
+    record = copy.deepcopy(record)
+    record["schema"] = "adr-0005-issue-104-paired-outliers-v1"
+    record["timing_evidence"] = True
+    record["timing_evidence_reason"] = "power_trace_run_samples"
+    record["power_clock_provenance"]["timing_evidence"] = True
+    record["power_clock_provenance"]["timing_evidence_reason"] = "power_trace_run_samples"
+    for field in (
+        "pair_sum_target_ticks",
+        "pair_sums",
+        "event_frame_positions",
+        "event_elapsed_seconds",
+        "event_elapsed_ticks",
+        "event_elapsed_ticks_mod_period",
+        "frame_gaps",
+        "gap_counts",
+        "gap_histogram",
+        "gcd_frame_gap",
+        "interval_count",
+        "pair_order_counts",
+    ):
+        record["outlier_analysis"].pop(field, None)
+
+    report = validate_resident_record(record, timestamps=timestamps)
+
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "clock.timing_evidence"
+        for mismatch in report["mismatches"]
+    )
+    assert any(
+        "bytes are unavailable" in failure or "not permitted" in failure
+        for failure in report["failures"]
+    )
 
 
 def test_table_driven_catalog_mutations_report_the_changed_relationship(tmp_path):

@@ -39,13 +39,27 @@ the catalog are:
   finite.  Top-level and environment copies must agree.
 * ``clock.aiclk_mhz`` must equal the AICLK from valid in-run trace samples
   whenever timing evidence is true.  Timing evidence is never accepted for
-  sampler-off, Watcher, snapshot-only AICLK, missing/invalid/incomplete
-  traces, a clock mismatch, or any corresponding provenance mismatch.  A
-  builder call may force the claim false and retain a machine-readable reason;
-  an analyzer call reports the mismatch without mutating its input.  The three
-  committed ADR-0005 Issue #104 records retain their older schema: absent
-  modern pair-detail arrays are treated as legacy compatibility fields, while
-  sampled records still fail strict trace-coverage/AICLK validation.
+  sampler-off, Watcher, snapshot-only or otherwise unverified AICLK, missing
+  bytes, basename-only compatibility input, invalid or incomplete traces, a
+  clock mismatch, or any corresponding provenance mismatch.  A builder call
+  may force the claim false and retain a machine-readable reason; an analyzer
+  call reports the mismatch without mutating its input.  The three committed
+  ADR-0005 Issue #104 records retain their older schema: the historical pair
+  field skip is structural only, and sampled records still fail strict
+  trace-coverage/AICLK validation.  No compatibility skip bypasses this timing
+  gate.
+
+Compatibility skips are deliberately narrow and are listed in
+``TIMING_EVIDENCE_COMPATIBILITY_BRANCHES``: historical ADR-0005 pair fields
+may be absent; a basename-only legacy trace may omit unavailable byte facts;
+a sampler-off record may omit trace facts by design; and a record predating
+the timing field may omit that field.  Each skip is followed by the timing
+check, and every positive claim still requires the exact ``run_trace_samples``
+provenance sentinel plus readable, complete trace bytes.  The unverified
+catalog includes legacy and basename-only values, ``unverified`` and
+``unavailable`` sentinels, snapshot/pre-run snapshot values,
+``sampler_off_diagnostic``, and ``no_valid_in_run_samples``; trace failures
+are separately reasoned as missing, unreadable, empty, invalid, or incomplete.
 
 The validator returns a JSON-serializable report with one structured check per
 catalog entry.  ``builder=True`` additionally applies the safe timing policy
@@ -80,6 +94,34 @@ SHORT_THRESHOLD_TICKS = 1_250_000
 LONG_THRESHOLD_TICKS = 1_450_000
 PAIR_TOLERANCE_TICKS = 1_000
 PAIR_ORDERS = ("short-first", "long-first", "other")
+
+# These are provenance values that describe a snapshot, a compatibility
+# caller, or the absence of usable in-run samples.  Only the exact
+# ``run_trace_samples`` value can support positive timing evidence.
+TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES = frozenset(
+    {
+        "legacy",
+        "legacy_unverified",
+        "basename_only",
+        "basename-only",
+        "unverified",
+        "unavailable",
+        "snapshot",
+        "snapshot_only",
+        "pre_run_environment_snapshot",
+        "pre-run environment snapshot",
+        "sampler_off_diagnostic",
+        "no_valid_in_run_samples",
+    }
+)
+TIMING_EVIDENCE_COMPATIBILITY_BRANCHES = (
+    "legacy_structural_pair_schema",
+    "basename_only_trace_metadata",
+    "sampler_off_trace_absent",
+    "missing_timing_evidence_field",
+)
+TIMING_EVIDENCE_NOT_REQUESTED = "timing_evidence_not_requested"
+TIMING_EVIDENCE_RUN_TRACE_REASON = "power_trace_run_samples"
 
 _MISSING = object()
 
@@ -968,6 +1010,9 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
         return [_mismatch("outlier_analysis", ("outlier_analysis",), "record is missing outlier_analysis")]
     mismatches: list[dict[str, Any]] = []
     schema = record.get("schema")
+    # Compatibility branch: the original ADR-0005 Issue #104 records predate
+    # the modern pair-detail fields.  This skips only structural requirements;
+    # the independent timing-evidence invariant below still runs.
     legacy = isinstance(schema, str) and schema.startswith("adr-0005-issue-104-")
     if not legacy:
         required = (
@@ -1281,8 +1326,10 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         supplied_hash = hashlib.sha256(ctx.power_trace_bytes).hexdigest()
         if declared_hash is _MISSING or declared_hash != supplied_hash:
             mismatches.append(_mismatch(invariant, ("power_trace_sha256",), "power trace SHA-256 does not match supplied bytes"))
-    # A builder's basename-only compatibility branch is intentionally
-    # diagnostic.  A strict analyzer read still reports unavailable facts.
+    # Compatibility branch: a basename-only builder call has no bytes to
+    # inspect, so unavailable physical facts are omitted from this check.  It
+    # remains diagnostic-only; _timing_block_reason independently rejects any
+    # positive timing claim from this branch.
     legacy_unverified = declared.get("aiclk_source") == "legacy_unverified"
     actual_available = report.get("actual_bytes_available") is True
     required_fields = (
@@ -1354,45 +1401,119 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     return mismatches
 
 
-def _timing_block_reason(record: Mapping[str, Any], ctx: ValidationContext, report: Mapping[str, Any] | None) -> str | None:
+def _timing_source_block_reason(source: Any) -> str | None:
+    """Map an AICLK provenance sentinel to a diagnostic timing reason.
+
+    The positive path is intentionally not represented by a truthy value: it
+    is the single exact ``run_trace_samples`` sentinel.  Unknown, missing, and
+    legacy values therefore remain blocked by the caller below.
+    """
+    if source == "legacy_unverified":
+        return "legacy_power_trace_unverified"
+    if source == "sampler_off_diagnostic":
+        return "sampler_off_by_design"
+    if source == "no_valid_in_run_samples":
+        return "power_trace_no_valid_in_run_rows"
+    if isinstance(source, str):
+        lowered = source.lower()
+        if source in TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES or any(
+            marker in lowered
+            for marker in ("snapshot", "unverified", "unavailable", "legacy", "no_valid", "diagnostic")
+        ):
+            return "power_trace_aiclk_unverified"
+    return None
+
+
+def _timing_block_reason(
+    record: Mapping[str, Any],
+    ctx: ValidationContext,
+    report: Mapping[str, Any] | None,
+) -> str | None:
+    """Return the first reason a record cannot claim timing evidence.
+
+    This is deliberately stricter than the structural compatibility checks.  A
+    report is usable only when the validator can inspect actual trace bytes,
+    prove complete run coverage, and match the record's AICLK provenance to
+    valid in-run samples.  The caller's timing flag is never evidence for any
+    of those facts.
+    """
     sampler = _sampler(record)
     mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
     if mode == "off":
         return "sampler_off_by_design"
+    if mode == "__mismatch__":
+        return "sampler_metadata_unverified"
+    if sampler is None and record.get("power_trace"):
+        return "legacy_sampler_metadata_unverified"
+    if isinstance(sampler, Mapping) and _check_sampler_contract(record, ctx):
+        return "sampler_metadata_unverified"
     if record.get("watcher") is True:
         return "watcher_diagnostic_only"
+    schema = record.get("schema")
+    if isinstance(schema, str) and schema.startswith("adr-0005-issue-104-"):
+        return "legacy_record_unverified"
     if not record.get("power_trace"):
         return "power_trace_missing"
+
     declared = _declared_power_metadata(record)
-    legacy_unverified = declared.get("aiclk_source") == "legacy_unverified" and ctx.power_trace_path is None and ctx.power_trace_metadata is not None
+    declared_source = declared.get("aiclk_source", _MISSING)
+    source_reason = _timing_source_block_reason(declared_source)
+    if source_reason == "legacy_power_trace_unverified" or declared_source in {
+        "unverified",
+        "unavailable",
+    }:
+        # These compatibility and sentinel branches are readable for old
+        # callers, but they never prove trace bytes or in-run AICLK.
+        return source_reason or "power_trace_aiclk_unverified"
     if report is None:
         return "power_trace_bytes_unavailable"
-    if legacy_unverified:
-        return None
+    if report.get("actual_bytes_available") is not True:
+        return "power_trace_bytes_unavailable"
     if report.get("readable") is not True or report.get("nonempty") is not True:
         return "power_trace_unreadable"
+    if report.get("sample_count") != report.get("csv_row_count"):
+        return "power_trace_sample_count_mismatch"
+    if report.get("valid_row_count") != report.get("csv_row_count"):
+        return "power_trace_invalid_rows"
+    if report.get("timestamps_parse") is not True:
+        return "power_trace_timestamp_parse_failed"
+    if report.get("timestamps_ordered") is not True:
+        return "power_trace_timestamp_order_failed"
     if report.get("coverage_complete") is not True:
+        return "power_trace_coverage_incomplete"
+    if report.get("covers_run_start") is not True or report.get("covers_run_end") is not True:
         return "power_trace_coverage_incomplete"
     if report.get("in_run_valid_row_count", 0) < 1 or report.get("aiclk_source") != "run_trace_samples":
         return "power_trace_no_valid_in_run_rows"
+
     clock = _mapping(record, "clock")
     clock_aiclk = clock.get("aiclk_mhz") if clock else None
     trace_aiclk = report.get("aiclk_mhz")
     if clock_aiclk != trace_aiclk:
         return "clock_aiclk_mismatch"
-    if declared.get("aiclk_source") != "run_trace_samples":
-        return "power_trace_aiclk_not_in_run"
+    if declared_source != "run_trace_samples":
+        return source_reason or "power_trace_aiclk_not_in_run"
+
+    # These checks are normally reported by their catalog entries.  Repeating
+    # the physical and duplicate metadata gates here ensures that a caller
+    # cannot retain a positive flag merely because a compatibility branch
+    # skipped a structural fact.
+    if _check_power_trace_facts(record, ctx):
+        return "power_trace_metadata_unverified"
+    if _check_trace_metadata_duplicates(record, ctx):
+        return "power_trace_metadata_unverified"
     if _failure_flag(record):
         return "run_error_not_timing_evidence"
     params = _mapping(record, "parameters")
     ring = _mapping(record, "ring")
-    if params and ring:
-        if params.get("dropped_frame_count") != 0 or ring.get("consumed_frame_count") != params.get("produced_frame_count"):
-            return "run_incomplete_or_dropped_frames"
-        if params.get("attempted_frame_count") != params.get("frame_count"):
-            return "run_incomplete_or_dropped_frames"
+    if params is None or ring is None:
+        return "run_counters_unverified"
+    if params.get("dropped_frame_count") != 0 or ring.get("consumed_frame_count") != params.get("produced_frame_count"):
+        return "run_incomplete_or_dropped_frames"
+    if params.get("attempted_frame_count") != params.get("frame_count"):
+        return "run_incomplete_or_dropped_frames"
     source_evidence = _mapping(record, "clock_source_evidence")
-    if source_evidence and source_evidence.get("audit_status") not in {None, "audited"}:
+    if source_evidence is None or source_evidence.get("audit_status") != "audited":
         return "clock_source_unaudited"
     return None
 
@@ -1430,12 +1551,9 @@ def _check_clock_and_timing(record: Mapping[str, Any], ctx: ValidationContext) -
         block = _timing_block_reason(record, ctx, report)
         if block is not None:
             mismatches.append(_mismatch(invariant, ("timing_evidence", "timing_evidence_reason"), f"timing_evidence=true is not permitted: {block}"))
-        if (
-            declared.get("aiclk_source") != "run_trace_samples"
-            and declared.get("aiclk_source") != "legacy_unverified"
-        ):
-            # Keep the compatibility branch truthful while retaining old
-            # board-free callers that explicitly carry legacy_unverified.
+        if declared.get("aiclk_source") != "run_trace_samples":
+            # Structural compatibility never widens the positive timing
+            # contract: legacy and unknown provenance are all non-timing.
             mismatches.append(_mismatch(invariant, ("clock.aiclk_source", "power_clock_provenance.aiclk_source"), "timing AICLK is not sourced from valid in-run trace samples"))
     else:
         if mode in {"default", "explicit"} and (not isinstance(reason, str) or not reason.strip()):
@@ -1496,7 +1614,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "outlier_analysis",
         ("outlier_analysis.pair_count", "outlier_analysis.frame_start_indices", "outlier_analysis.pairs", "outlier_analysis.pair_sums"),
-        "pair objects, sums, endpoints, event arrays, gaps, and raw correspondence",
+        "pair objects, sums, endpoints, event arrays, gaps, and raw correspondence; historical pair-field compatibility is structural only and legacy records cannot claim timing",
         _check_pairs,
     ),
     ResidentInvariant(
@@ -1508,13 +1626,13 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "sampler.trace_contract",
         ("telemetry_sampler.mode", "telemetry_sampler.interval_seconds", "power_trace", "power_trace_absent_reason"),
-        "sampler mode, interval contract, and trace presence/absence",
+        "sampler mode, interval contract, and trace presence/absence; sampler-off is diagnostic-only",
         _check_sampler_contract,
     ),
     ResidentInvariant(
         "power_trace.facts",
         ("power_trace", "power_clock_provenance", "power_trace_sha256"),
-        "trace bytes, rows, timestamps, run bounds, AICLK, and PR #109 coverage",
+        "trace bytes, rows, timestamps, run bounds, AICLK, and PR #109 coverage; basename-only legacy facts are diagnostic-only",
         _check_power_trace_facts,
     ),
     ResidentInvariant(
@@ -1526,7 +1644,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "clock.timing_evidence",
         ("clock.aiclk_mhz", "clock.aiclk_source", "timing_evidence", "timing_evidence_reason"),
-        "in-run AICLK provenance and non-timing evidence policy",
+        "in-run AICLK provenance and non-timing evidence policy; compatibility skips never permit a positive claim",
         _check_clock_and_timing,
     ),
 )
@@ -1547,8 +1665,11 @@ def _apply_builder_timing_policy(
             provenance["timing_evidence_reason"] = reason
     elif timing is False:
         current_reason = record.get("timing_evidence_reason")
-        if not isinstance(current_reason, str) or not current_reason.strip():
-            record["timing_evidence_reason"] = reason or "timing_evidence_false"
+        if not isinstance(current_reason, str) or not current_reason.strip() or current_reason in {
+            TIMING_EVIDENCE_RUN_TRACE_REASON,
+            "timing",
+        }:
+            record["timing_evidence_reason"] = reason or TIMING_EVIDENCE_NOT_REQUESTED
             provenance = record.get("power_clock_provenance")
             if isinstance(provenance, dict):
                 provenance["timing_evidence_reason"] = record["timing_evidence_reason"]
@@ -1694,6 +1815,10 @@ __all__ = [
     "RESIDENT_INVARIANT_CATALOG",
     "SAMPLER_CONTRACT",
     "SHORT_THRESHOLD_TICKS",
+    "TIMING_EVIDENCE_COMPATIBILITY_BRANCHES",
+    "TIMING_EVIDENCE_NOT_REQUESTED",
+    "TIMING_EVIDENCE_RUN_TRACE_REASON",
+    "TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES",
     "ResidentInvariant",
     "_count_orders",
     "_detect_pairs",

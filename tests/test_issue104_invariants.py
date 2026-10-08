@@ -97,6 +97,7 @@ def _record_with_trace(tmp_path: Path, timestamps: list[int] | None = None) -> t
         power_trace_path=trace,
         run_start=RUN_START,
         run_end=RUN_END,
+        timing_evidence=True,
     )
     return record, trace
 
@@ -163,6 +164,28 @@ def test_builder_uses_only_in_run_aiclk_and_publishes_power_provenance(tmp_path)
     assert record["power_clock_provenance"]["in_run_valid_row_count"] == 1
 
 
+def test_builder_defaults_timing_evidence_false_even_with_complete_trace(tmp_path):
+    trace = tmp_path / "power-default.csv"
+    _complete_trace(trace)
+    record = build_measurement_record(
+        config=_config(),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="a" * 40,
+        environment=_environment(),
+        power_trace=trace.name,
+        power_trace_path=trace,
+        run_start=RUN_START,
+        run_end=RUN_END,
+    )
+
+    assert record["timing_evidence"] is False
+    assert record["timing_evidence_reason"] == "timing_evidence_not_requested"
+
+
 def test_builder_marks_snapshot_only_aiclk_as_non_timing_evidence(tmp_path):
     trace = tmp_path / "power.csv"
     _write_trace(
@@ -183,6 +206,7 @@ def test_builder_marks_snapshot_only_aiclk_as_non_timing_evidence(tmp_path):
         power_trace_path=trace,
         run_start="2026-01-01T00:00:01+00:00",
         run_end="2026-01-01T00:00:09+00:00",
+        timing_evidence=True,
     )
 
     assert record["timing_evidence"] is False

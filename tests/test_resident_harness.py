@@ -1247,21 +1247,18 @@ def test_accepted_500000_record_matches_clock_source_audit_table():
 
 
 @pytest.mark.parametrize(
-    ("image", "timing_expected"),
+    "image",
     [
-        (AUDITED_CLOCK_SOURCE_IMAGE, True),
+        AUDITED_CLOCK_SOURCE_IMAGE,
         (
             "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
-            + "sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4",
-            False,
+            + "sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4"
         ),
-        ("registry.example/tt@sha256:" + "a" * 64, False),
+        "registry.example/tt@sha256:" + "a" * 64,
     ],
-    ids=["audited-v0.75.0", "valid-v0.70.1", "valid-unknown"],
+    ids=["audited-v0.75.0-basename-only", "valid-v0.70.1", "valid-unknown"],
 )
-def test_clock_source_audit_binds_timing_evidence_to_exact_image(
-    image, timing_expected
-):
+def test_clock_source_audit_does_not_override_basename_trace_gate(image):
     environment = _environment()
     environment["image"] = image
     record = build_measurement_record(
@@ -1277,13 +1274,14 @@ def test_clock_source_audit_binds_timing_evidence_to_exact_image(
     )
     evidence = record["clock_source_evidence"]
     assert evidence["image"] == image
-    assert record["timing_evidence"] is timing_expected
-    if timing_expected:
+    assert record["timing_evidence"] is False
+    if image == AUDITED_CLOCK_SOURCE_IMAGE:
         assert evidence["audit_status"] == "audited"
         assert all(evidence[key] == value for key, value in CLOCK_SOURCE_AUDIT_TABLE[image].items())
     else:
         assert evidence["audit_status"] == "unaudited"
         assert CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC in evidence["diagnostic"]
+    assert record["timing_evidence_reason"] == "legacy_power_trace_unverified"
 
 
 def test_audited_watcher_record_never_claims_timing_evidence():
