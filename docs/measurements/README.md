@@ -218,32 +218,13 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 
 | File | What it is |
 |---|---|
-| `2026-10-05-p150a-issue12-stage1-resident-recovery.json` | Issue #12 recovery record: corrected one-frame Watcher validation passed; the single no-Watcher timing attempt stopped on the in-kernel cycle budget, followed by one reset and one passing fixed-image health probe. It includes sanitized Watcher-log evidence and no timing claim. |
-| `2026-10-05-p150a-issue12-stage1-resident-recovery-power.csv` | Power, AICLK, and temperature trace for the passing Watcher validation in the recovery record. |
-| `2026-10-05-p150a-issue12-stage1-resident-recovery-timing-power.csv` | Power, AICLK, and temperature trace for the failed no-Watcher timing attempt in the recovery record. |
-| `2026-10-06-p150a-issue12-stage1-watcher-cycle-budget.json` | Main-integrated Watcher validation attempt: one frame completed but the pre-correction run-wide budget raised its cycle error; no timing run followed. The later board-free Watcher-margin fix is not claimed as hardware evidence. |
-| `2026-10-06-p150a-issue12-stage1-watcher-cycle-budget-power.csv` | Power, AICLK, and temperature trace for the Watcher cycle-budget attempt above. |
-| `2026-10-06-p150a-issue12-stage1-watcher-margin-retry.json` | Retry with the explicit Watcher overhead margin: one-frame validation still reported a cycle-budget error; no timing run, reset, or health probe followed. |
-| `2026-10-06-p150a-issue12-stage1-watcher-margin-retry-power.csv` | Power, AICLK, and temperature trace for the Watcher-margin retry above. |
-| `2026-10-06-p150a-issue12-stage1-startup-allowance-retry.json` | Startup-allowance validation: observed startup ticks were recorded, but the one-frame Watcher run still reported cycle-budget error; no timing run followed. |
-| `2026-10-06-p150a-issue12-stage1-startup-allowance-retry-power.csv` | Power, AICLK, and temperature trace for the startup-allowance validation above. |
 | `2026-10-06-p150a-issue12-stage1-60000-preflight-rejected.json` | Board-free rejection of the owner-requested 60,000-frame/1 ms/60 s configuration; explicit calculations show a safe 54,445-frame maximum under the current cap. |
-| `2026-10-06-p150a-issue12-stage1-timing-60000.json` | No-Watcher 60-second frame-count run: no cycle error, but 59,996 producer drops leave only N=3 completion intervals; no timing evidence is claimed. |
-| `2026-10-06-p150a-issue12-stage1-timing-60000-power.csv` | Power, AICLK, and temperature trace for the 60,000-frame run above. |
-| `2026-10-06-p150a-issue12-stage1-timing-600000.json` | No-Watcher longest frame-count run: no cycle error, but 599,996 producer drops leave only N=3 completion intervals; no timing evidence is claimed. |
-| `2026-10-06-p150a-issue12-stage1-timing-600000-power.csv` | Power, AICLK, and temperature trace for the 600,000-frame run above. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000.json` | Semaphore-protocol 60,000-frame run: zero overflow and valid N=59,999 histogram, but fixed-work extrema were not serialized by the run harness, so no timing claim/PR is made. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-power.csv` | Power, AICLK, and temperature trace for the semaphore 60,000-frame run. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000.json` | Semaphore-protocol 600,000-frame run: zero overflow and valid N=599,999 histogram, but fixed-work extrema were not serialized by the run harness, so no timing claim/PR is made. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-power.csv` | Power, AICLK, and temperature trace for the semaphore 600,000-frame run. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005.json` | ADR-0005 record for the corrected semaphore 60,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 60,000-frame record. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. Owner decision 2026-10-07: not timing evidence (ran beyond the approved 600 s cap); retained as a historical record. The configured timeout was 660s; cap correction commit `7fda4a1` is recorded separately. This README disposition takes precedence over the JSON `timing_evidence=true` field. |
 | `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 600,000-frame record. |
 | `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005.json` | Final 100-frame Watcher validation: 100/100 produced/consumed, zero overflow/cycle error, work ticks 1,073–1,084, and explicitly non-timing evidence. |
 | `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the final Watcher validation. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-final-watcher-abnormal-adr0005.json` | Truthful semaphore-protocol Watcher failure: Watcher stopped the producer for pending NOC transactions before a resident result; one reset and a passing fixed-image Stage-1 health probe followed; no timing evidence or 500,000-frame run was performed. |
-| `2026-10-06-p150a-issue12-stage1-semaphore-final-watcher-abnormal-adr0005-power.csv` | Companion power trace for the semaphore-protocol Watcher failure above. |
 | `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` | Historical final in-cap 500,000-frame no-Watcher timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 111,119/2,588,915, work ticks 1,074–1,098, and zero overflow; superseded by `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` because synchronization and clock representation changed. |
 | `2026-10-06-p150a-issue12-stage1-final-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the superseded historical 500,000-frame timing record. |
 | `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005.json` | Superseded current-wrap Watcher validation: N=99, timing evidence false, work ticks 1,063–1,073, zero overflow/cycle error. Superseded by the 2026-10-07 board-id-alias record because eaf6632 corrected the resident drain completion decision; this record remains unchanged. |
@@ -254,8 +235,6 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-07-p150a-issue12-stage1-board-id-alias-watcher-100-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current board-id-alias Watcher validation (2 samples). |
 | `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` | Current corrected-drain in-cap 500,000-frame no-Watcher timing record under the board-id serial-alias fix: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,061/1,350,065/1,350,065 ticks, min/max 1,349,889/1,350,065, work ticks 1,062–1,087, zero overflow, and zero paired short/long outliers. |
 | `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current board-id-alias 500,000-frame timing record (226 samples). |
-| `2026-10-05-p150a-issue12-stage1-resident-blocked.json` | Issue #12 Stage 1 resident producer/consumer attempt: pinned v0.75.0 environment, Watcher first run, one reset plus passing fixed-image Stage 1 health probe, and a truthful liveness block; no timing evidence or raw timestamps. |
-| `2026-10-05-p150a-issue12-stage1-resident-blocked-power.csv` | Power, AICLK, and temperature trace for the Issue #12 blocked resident attempt; provenance is the matching result record above. |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
 | `2026-08-14-p150a-effective-efficiency-power.csv` | Board power, clock, and temperature sampled through that run |
 | `2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json` | Issue #65 full stock matmul catalogue sweep: 284 rows (190 successful, 94 failed), image digest `sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621` in its environment block. The four failed `batched_dram_sharded` rows for the batch-1024 L16/L32 shapes are superseded by the 2026-09-21 record below, and the two unbatched `dram_sharded` rows for beamspace B=16, 256 channels, 4096 pixels are superseded by the 2026-09-23 record; the other 278 rows remain authoritative. |
@@ -368,7 +347,7 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json` | Authoritative combined Issue #100/PR #101 record: one device-0 session with all nine correctness rows, four 1,000-launch performance rows, p50/p99/p99.9 and both TFLOPS derivations, board-id serial alias provenance, complete environment, cleanup evidence, and external raw-artifact provenance. The raw artifact is persisted for audit; rebuilding is deferred to Issue #102. This record supersedes both 2026-10-05 records above; those predecessors remain immutable. |
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv` | Power, clock, and temperature trace for the authoritative combined record above. |
 
-Historical discrepancy: the 2026-10-05 recovery record's `watcher_log_sha256` has 61 hex characters and is unusable for verification; it is historical and non-authoritative.
+Issue 12 debugging trials from 2026-10-05 through 2026-10-06 (failed runs used to chase harness defects) were removed before merge because they support no claim; they remain in this PR branch history, in the commits that removed them.
 
 Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
 
@@ -386,12 +365,6 @@ Every resident timing number in the README, open-issues table, and PR #103 maps 
 - **Historical 660-second exclusion:** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` — N=599,999; it is not timing evidence because its configured timeout exceeded the approved 600-second cap.
 
 The preceding numeric sets are historical or current exactly as labeled; no number is silently transferred between records.
-
-**Correction (2026-10-07, resident recovery record).** `2026-10-05-p150a-issue12-stage1-resident-recovery.json` retains a `timing_attempt.histogram` bin of 2000–2001 while `min_ticks` is 2017; the retained record is unchanged, and the conflicting histogram field is not authoritative.
-
-**Correction (2026-10-07, semaphore timing record).** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000.json` retains a 65-character `raw_timestamps.sha256`, while the matching ADR-0005 record has the 64-character digest without the trailing `3`; the retained record is unchanged, and the conflicting hash field is not authoritative.
-
-**Correction (2026-10-07, startup-allowance record).** `2026-10-06-p150a-issue12-stage1-startup-allowance-retry.json` retains `safety_margin_ticks` as 1,595,000, while schedule 136,450,000 with 110% implies 150,095,000 and a run budget of 286,545,000; the retained record is unchanged, and the conflicting margin field is not authoritative.
 
 **Correction (peak fidelity, 2026-10-03).** `2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json` associates the 332 TFLOPS BF16 peak with LoFi and derives HiFi2/HiFi3/HiFi4 reference peaks of 166.0/110.7/83.0 TFLOPS from it. The record states that association as an inference; it does not hold. tt-metal's `tech_reports/GEMM_FLOPS/GEMM_FLOPS.md` gives the ideal cycles per tile product as 16 (LoFi), 32 (HiFi2), 48 (HiFi3) and 64 (HiFi4), or about 5.4 TFLOPS per matrix engine at LoFi and 1.35 GHz, and `docs/design.md` §2 lists Block FP8 at 664 TFLOPS beside BF16 at 332. The 332 figure is therefore the HiFi2-rate BF16 peak, and the LoFi rate is about twice it. The record is not rewritten; its efficiency figures remain correct against the 332 denominator, while its derived per-fidelity reference peaks should be read as half their true values.
 
