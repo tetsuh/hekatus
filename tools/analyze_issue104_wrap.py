@@ -435,6 +435,22 @@ def _validate_pair_catalog(
 
     correspondence: dict[str, Any] | None = None
     if timestamps is not None:
+        for index, pair in enumerate(pairs):
+            if not isinstance(pair, Mapping):
+                continue
+            endpoints = pair.get("interval_end_frame_indices")
+            if (
+                not isinstance(endpoints, list)
+                or len(endpoints) != 2
+                or any(isinstance(value, bool) or not isinstance(value, int) for value in endpoints)
+                or endpoints[0] < 1
+                or endpoints[1] >= len(timestamps)
+            ):
+                continue
+            first_ticks = timestamps[endpoints[0]] - timestamps[endpoints[0] - 1]
+            second_ticks = timestamps[endpoints[1]] - timestamps[endpoints[0]]
+            if pair.get("pair_sum_ticks") is not None and pair["pair_sum_ticks"] != first_ticks + second_ticks:
+                pair_failures.append(f"pair {index} sum does not match raw timestamps")
         try:
             correspondence = _record_correspondence(_detect_pairs(timestamps), record)
         except (TypeError, ValueError, KeyError) as exc:
@@ -476,6 +492,7 @@ def validate_record_invariants(
 
     raw = record.get("raw_timestamps")
     raw_count = raw.get("count") if isinstance(raw, Mapping) else None
+    raw_hash = raw.get("sha256") if isinstance(raw, Mapping) else None
     if isinstance(raw_count, bool) or not isinstance(raw_count, int) or raw_count < 0:
         _failure(failures, checks, "raw_count", False, "raw_timestamps.count is not a non-negative integer")
     elif timestamps is not None and raw_count != len(timestamps):
@@ -484,11 +501,19 @@ def validate_record_invariants(
         _failure(failures, checks, "raw_count", False, "raw_timestamps.count does not equal actual raw bytes")
     else:
         _failure(failures, checks, "raw_count", True, "raw timestamp count matches available evidence")
-    if raw_metadata is not None and isinstance(raw, Mapping):
-        if raw.get("sha256") != raw_metadata.get("sha256"):
+    if (
+        not isinstance(raw_hash, str)
+        or len(raw_hash) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in raw_hash)
+    ):
+        _failure(failures, checks, "raw_hash", False, "raw_timestamps.sha256 is not a 64-character digest")
+    elif raw_metadata is not None:
+        if raw_hash != raw_metadata.get("sha256"):
             _failure(failures, checks, "raw_hash", False, "raw_timestamps.sha256 does not match actual raw bytes")
         else:
             _failure(failures, checks, "raw_hash", True, "raw timestamp SHA-256 matches actual raw bytes")
+    else:
+        _failure(failures, checks, "raw_hash", True, "raw timestamp SHA-256 is declared; bytes were not supplied")
 
     histogram = record.get("histogram")
     histogram_n = histogram.get("N") if isinstance(histogram, Mapping) else None

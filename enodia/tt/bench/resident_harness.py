@@ -1184,6 +1184,9 @@ def validate_outlier_analysis(
                 raise ValueError("outlier_analysis pair endpoint exceeds timestamp count")
             first_ticks = values[first] - values[first - 1]
             second_ticks = values[second] - values[first]
+            pair_sum = first_ticks + second_ticks
+            if pair.get("pair_sum_ticks") is not None and pair["pair_sum_ticks"] != pair_sum:
+                raise ValueError("outlier_analysis pair sum does not match timestamps")
             if pair.get("first_interval_ticks") is not None and pair["first_interval_ticks"] != first_ticks:
                 raise ValueError("outlier_analysis first interval does not match timestamps")
             if pair.get("second_interval_ticks") is not None and pair["second_interval_ticks"] != second_ticks:
