@@ -2,7 +2,9 @@
 
 The input files are external run artifacts.  This tool reads their absolute
 uint64 timestamps, verifies the committed record metadata, and emits only
-scalar/list analysis; it never copies raw arrays into the repository.
+scalar/list analysis; it never copies raw arrays into the repository.  Pair
+correspondence is checked by length, duplicate-aware multiset, and ordered
+comparisons so a truncated or reordered record cannot pass silently.
 """
 
 from __future__ import annotations
@@ -189,6 +191,22 @@ def _count_orders(pairs: Iterable[Mapping[str, Any]]) -> dict[str, int]:
     return {order: counts[order] for order in PAIR_ORDERS}
 
 
+def _duplicate_values(values: Iterable[int]) -> list[int]:
+    return sorted(value for value, count in Counter(values).items() if count > 1)
+
+
+def _counter_difference(left: Iterable[int], right: Iterable[int]) -> list[int]:
+    return sorted((Counter(left) - Counter(right)).elements())
+
+
+def _ordered_mismatches(left: list[Any], right: list[Any]) -> list[int]:
+    return [
+        index
+        for index in range(min(len(left), len(right)))
+        if left[index] != right[index]
+    ]
+
+
 def _record_correspondence(
     detected_pairs: list[Mapping[str, Any]], record: Mapping[str, Any]
 ) -> dict[str, Any]:
@@ -199,16 +217,35 @@ def _record_correspondence(
         pair.get("interval_end_frame_indices") for pair in record_pairs if isinstance(pair, Mapping)
     ]
     detected_starts = [endpoints[0] for endpoints in detected_endpoints]
-    missing = sorted(set(record_starts) - set(detected_starts))
-    unexpected = sorted(set(detected_starts) - set(record_starts))
-    endpoint_mismatches = [
-        index
-        for index, (detected, recorded) in enumerate(zip(detected_endpoints, record_endpoints))
-        if detected != recorded
-    ]
+
+    missing = _counter_difference(record_starts, detected_starts)
+    unexpected = _counter_difference(detected_starts, record_starts)
+    record_duplicate_starts = _duplicate_values(record_starts)
+    raw_duplicate_starts = _duplicate_values(detected_starts)
+    frame_start_length_match = len(record_starts) == len(detected_starts)
+    frame_start_multiset_match = not missing and not unexpected
+    frame_start_order_mismatches = _ordered_mismatches(record_starts, detected_starts)
+    frame_start_order_match = (
+        frame_start_length_match and not frame_start_order_mismatches
+    )
+    exact_frame_start_match = (
+        frame_start_length_match
+        and frame_start_multiset_match
+        and frame_start_order_match
+        and not record_duplicate_starts
+    )
+
+    endpoint_mismatches = _ordered_mismatches(detected_endpoints, record_endpoints)
+    endpoint_length_match = len(detected_endpoints) == len(record_endpoints)
+    missing_endpoint_indices = list(range(len(record_endpoints), len(detected_endpoints)))
+    unexpected_endpoint_indices = list(range(len(detected_endpoints), len(record_endpoints)))
+
+    common_pair_count = min(len(detected_pairs), len(record_pairs))
     order_mismatches: list[int] = []
     value_mismatches: list[int] = []
-    for index, (detected, recorded) in enumerate(zip(detected_pairs, record_pairs)):
+    for index in range(common_pair_count):
+        detected = detected_pairs[index]
+        recorded = record_pairs[index]
         if recorded.get("order") is not None and recorded.get("order") != detected["order"]:
             order_mismatches.append(index)
         if (
@@ -216,18 +253,51 @@ def _record_correspondence(
             or recorded.get("long_ticks") != detected["long_ticks"]
         ):
             value_mismatches.append(index)
+    missing_pair_indices = list(range(len(record_pairs), len(detected_pairs)))
+    unexpected_pair_indices = list(range(len(detected_pairs), len(record_pairs)))
+
     return {
         "record_pair_count": len(record_starts),
         "raw_derived_pair_count": len(detected_pairs),
         "record_frame_start_indices": record_starts,
         "raw_derived_frame_start_indices": detected_starts,
-        "exact_frame_start_match": not missing and not unexpected,
+        "exact_frame_start_match": exact_frame_start_match,
         "missing_raw_pair_starts": missing,
         "unexpected_raw_pair_starts": unexpected,
-        "record_pair_endpoints_present": len(record_endpoints) == len(record_starts),
+        "frame_start_length_match": frame_start_length_match,
+        "frame_start_length_mismatch": not frame_start_length_match,
+        "frame_start_lengths": {
+            "record": len(record_starts),
+            "raw_derived": len(detected_starts),
+        },
+        "record_duplicate_frame_start_indices": record_duplicate_starts,
+        "raw_derived_duplicate_frame_start_indices": raw_duplicate_starts,
+        "frame_start_multiset_match": frame_start_multiset_match,
+        "frame_start_order_match": frame_start_order_match,
+        "frame_start_order_mismatches": frame_start_order_mismatches,
+        "record_pair_list_count": len(record_pairs),
+        "record_pair_list_length_match": len(record_pairs) == len(detected_pairs),
+        "record_pair_list_length_mismatch": len(record_pairs) != len(detected_pairs),
+        "record_pair_endpoints_present": (
+            len(record_endpoints) == len(record_pairs)
+            and all(endpoint is not None for endpoint in record_endpoints)
+        ),
+        "pair_endpoint_list_length_match": endpoint_length_match,
+        "pair_endpoint_list_length_mismatch": not endpoint_length_match,
+        "pair_endpoint_list_lengths": {
+            "record": len(record_endpoints),
+            "raw_derived": len(detected_endpoints),
+        },
+        "pair_endpoint_missing_record_indices": missing_endpoint_indices,
+        "pair_endpoint_unexpected_record_indices": unexpected_endpoint_indices,
         "pair_endpoint_mismatches": endpoint_mismatches,
+        "pair_endpoint_order_mismatches": endpoint_mismatches,
         "pair_order_mismatches": order_mismatches,
+        "pair_order_missing_record_indices": missing_pair_indices,
+        "pair_order_unexpected_record_indices": unexpected_pair_indices,
         "pair_value_mismatches": value_mismatches,
+        "pair_value_missing_record_indices": missing_pair_indices,
+        "pair_value_unexpected_record_indices": unexpected_pair_indices,
     }
 
 

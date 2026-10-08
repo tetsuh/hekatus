@@ -99,12 +99,16 @@ def _record_for(timestamps: list[int], starts: list[int]) -> dict:
     }
 
 
-def _analyze_case(tmp_path, timestamps: list[int], starts: list[int]) -> dict:
+def _analyze_record(tmp_path, timestamps: list[int], record: dict) -> dict:
     raw_path = tmp_path / "raw-timestamps.bin"
     raw_path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
     record_path = tmp_path / "record.json"
-    record_path.write_text(json.dumps(_record_for(timestamps, starts)))
+    record_path.write_text(json.dumps(record))
     return analyze_file(raw_path, record_path)
+
+
+def _analyze_case(tmp_path, timestamps: list[int], starts: list[int]) -> dict:
+    return _analyze_record(tmp_path, timestamps, _record_for(timestamps, starts))
 
 
 def test_wrap_phase_and_record_endpoints_use_little_endian_absolute_values(tmp_path):
@@ -299,3 +303,70 @@ def test_two_pair_analysis_preserves_circular_gap_and_phase_extrema(tmp_path):
     assert phase_window["event_pair_starts_outside_window"] == [4]
     assert phase_window["non_event_wrap_candidate_count"] == 0
     assert phase_window["pair_to_wrap_candidate_ratio"]["fraction"] == 1.0
+
+
+def test_duplicate_record_frame_starts_are_a_correspondence_mismatch(tmp_path):
+    period = CLOCK_MODULUS_TICKS
+    timestamps = [period - 1_000, period + 100, period + 2_699_000]
+
+    result = _analyze_case(tmp_path, timestamps, [1, 1])
+
+    correspondence = result["record_correspondence"]
+    assert correspondence["exact_frame_start_match"] is False
+    assert correspondence["frame_start_length_mismatch"] is True
+    assert correspondence["record_duplicate_frame_start_indices"] == [1]
+    assert correspondence["frame_start_multiset_match"] is False
+    assert correspondence["missing_raw_pair_starts"] == [1]
+    assert correspondence["record_pair_list_length_mismatch"] is True
+    assert correspondence["pair_endpoint_list_length_mismatch"] is True
+
+
+def test_record_pair_count_mismatch_reports_tail_and_common_value_order_errors(tmp_path):
+    period = CLOCK_MODULUS_TICKS
+    timestamps = [
+        period - 1_000,
+        period + 100,
+        period + 2_699_000,
+        2 * period - 1_200,
+        2 * period - 100,
+        2 * period + 2_698_800,
+    ]
+    record = _record_for(timestamps, [1])
+    record["outlier_analysis"]["pairs"][0]["short_ticks"] += 1
+    record["outlier_analysis"]["pairs"][0]["order"] = "long-first"
+
+    result = _analyze_record(tmp_path, timestamps, record)
+
+    correspondence = result["record_correspondence"]
+    assert correspondence["record_pair_count"] == 1
+    assert correspondence["raw_derived_pair_count"] == 2
+    assert correspondence["frame_start_length_mismatch"] is True
+    assert correspondence["frame_start_multiset_match"] is False
+    assert correspondence["unexpected_raw_pair_starts"] == [4]
+    assert correspondence["pair_endpoint_list_length_mismatch"] is True
+    assert correspondence["pair_endpoint_missing_record_indices"] == [1]
+    assert correspondence["pair_value_missing_record_indices"] == [1]
+    assert correspondence["pair_value_mismatches"] == [0]
+    assert correspondence["pair_order_mismatches"] == [0]
+
+
+def test_pair_endpoint_order_mismatch_is_reported_without_zip_truncation(tmp_path):
+    period = CLOCK_MODULUS_TICKS
+    timestamps = [
+        period - 1_000,
+        period + 100,
+        period + 2_699_000,
+        2 * period - 1_200,
+        2 * period - 100,
+        2 * period + 2_698_800,
+    ]
+    record = _record_for(timestamps, [1, 4])
+    record["outlier_analysis"]["pairs"][0]["interval_end_frame_indices"] = [2, 1]
+
+    result = _analyze_record(tmp_path, timestamps, record)
+
+    correspondence = result["record_correspondence"]
+    assert correspondence["pair_endpoint_list_length_match"] is True
+    assert correspondence["pair_endpoint_order_mismatches"] == [0]
+    assert correspondence["pair_endpoint_mismatches"] == [0]
+    assert correspondence["pair_value_mismatches"] == []

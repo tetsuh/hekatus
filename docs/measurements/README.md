@@ -50,9 +50,13 @@ R `0.9999999999999996`–`0.9999999999999998` and circular widths
 `0.0000296296`–`0.0000422222 ms` immediately after the wrap; the short interval
 comes first and the long catch-up interval follows. The same phase lock in the
 off run means a host sampler is not necessary. Together with PR #103's
-controlled low-word-only clock experiment, the supported cause is that the old
-producer measurement-clock read path read a timestamp `2^32` ticks too large and
-sent a frame early. A shared tile-latch overwrite remains a hypothesis only.
+controlled low-word-only clock experiment, the paired events are phase-locked to
+the wall-clock wrap and disappear after switching to low-word-only reads with
+software wrap tracking. This supports the clock-read path as the cause. Direct
+producer-versus-consumer attribution remains open because there is no producer
+stamp on the same clock. The short-first order is consistent with an early
+producer send, but does not establish producer-side attribution. A shared
+tile-latch overwrite remains a hypothesis only.
 
 The `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` record
 is the **intermediate controlled comparison**: it has `pair_count=0` and

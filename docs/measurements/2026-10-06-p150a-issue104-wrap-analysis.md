@@ -128,13 +128,13 @@ line ranges are recorded here:
   there is no producer stamp on the same designated clock.
 
 The source's low-then-high details and the controlled experiment now have
-separate roles. The indirect evidence — the short interval comes first, the
-configured pacing schedule remains intact, and the paired events disappear
-after low-word-only reads with software wrap tracking — is consistent with an
-early producer send caused by the old measurement-clock read path. It is not
-direct producer-versus-consumer attribution. PR #103 replaced that path with a
-low-word-only 32-bit read plus software wrap tracking. Its current
-500,000-frame record,
+separate roles. The paired events disappear after switching to low-word-only
+reads with software wrap tracking, which supports the old measurement-clock read
+path as the cause. The short-first order is consistent with an early producer
+send, but this is not direct producer-versus-consumer attribution. Direct
+producer-versus-consumer attribution remains open because there is no producer
+stamp on the same clock. PR #103 replaced that path with a low-word-only 32-bit
+read plus software wrap tracking. Its current 500,000-frame record,
 `docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`,
 records `pair_count=0`, `min_ticks=1,349,924`, and `max_ticks=1,350,068`,
 versus 27 pairs in the prior record. This controlled change is indirect
@@ -151,12 +151,12 @@ paired event starts phase-locked to the `2^32`-tick wall-clock wrap, with
 measured `R` values above and widths below 0.1 ms. The event order is short
 interval first, followed by the long catch-up interval. The same phase lock is
 present with the sampler off, so a host telemetry sampler is not a necessary
-condition. Direct producer-versus-consumer attribution remains open because
-there is no producer stamp on the same designated clock. The indirect evidence
-— short interval first, intact pacing schedule, and disappearance after
-low-word-only reads with software wrap tracking — is consistent with an early
-producer send caused by the old measurement-clock read path, without claiming
-direct attribution. The controlled record
+condition. The paired events disappear after switching to low-word-only reads
+with software wrap tracking. This supports the clock-read path as the cause.
+Direct producer-versus-consumer attribution remains open because there is no
+producer stamp on the same clock. The short-first order is consistent with an
+early producer send, without establishing producer-side attribution. The
+controlled record
 `docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
 reports 500,000 frames, `pair_count=0`, and `min_ticks=1,349,924` through
 `max_ticks=1,350,068`, versus the prior 27 pairs. A shared tile latch being
