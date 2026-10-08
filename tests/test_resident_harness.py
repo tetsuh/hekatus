@@ -1482,6 +1482,102 @@ def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
     assert record["timing_evidence"] is False
 
 
+def test_resident_runs_do_not_reuse_a_previous_trace_in_sampler_off_mode(tmp_path, monkeypatch):
+    output_dir = tmp_path / "shared-output"
+    output_dir.mkdir()
+    sampled_environment = _environment()
+    sampled_environment["aiclk_mhz_observed"] = [1_350]
+    sampled_environment["telemetry_sampler"] = {
+        "mode": "default",
+        "interval_seconds": 2.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    off_environment = _environment()
+    off_environment["aiclk_mhz_observed"] = [800]
+    off_environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    sampled_environment_path = output_dir / "env-sampled.json"
+    off_environment_path = output_dir / "env-off.json"
+    sampled_environment_path.write_text(json.dumps(sampled_environment))
+    off_environment_path.write_text(json.dumps(off_environment))
+    sampled_output = output_dir / "sampled-result.json"
+    off_output = output_dir / "off-result.json"
+    trace_name = "power-sampled.csv"
+
+    def fake_run_device(_ttnn, _device, config, *, watcher):
+        assert watcher is False
+        count = config.frame_count
+        return {
+            "timestamps": list(range(1_000, 1_000 + count)),
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "kernel_error_flag": 0,
+            "frames_attempted": count,
+            "frames_produced": count,
+            "frames_dropped": 0,
+            "frames_aborted": 0,
+            "frames_consumed": count,
+            "startup_ticks": 0,
+            "startup_ticks_valid": False,
+            "work_min_ticks": None,
+            "work_max_ticks": None,
+            "work_ticks_valid": False,
+            "failure_check": {"code": 0, "name": "none", "source": "none"},
+        }
+
+    original_glob = Path.glob
+
+    def map_container_output(path, pattern):
+        if path == Path("/out"):
+            return original_glob(output_dir, pattern)
+        return original_glob(path, pattern)
+
+    monkeypatch.setattr(Path, "glob", map_container_output)
+    monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **_: object(), close_device=lambda _device: None),
+    )
+
+    assert run_resident.main(
+        [
+            "--out",
+            str(sampled_output),
+            "--env-json",
+            str(sampled_environment_path),
+            "--power-trace",
+            trace_name,
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+    (output_dir / trace_name).write_text("old sampled trace\n")
+
+    assert run_resident.main(
+        [
+            "--out",
+            str(off_output),
+            "--env-json",
+            str(off_environment_path),
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+    sampled_record = json.loads(sampled_output.read_text())
+    off_record = json.loads(off_output.read_text())
+    assert sampled_record["power_trace"] == trace_name
+    assert off_record["power_trace"] is None
+    assert off_record["power_trace_absent_reason"] == "sampler_off_by_design"
+    assert off_record["clock"]["aiclk_mhz"] == 800
+    assert (output_dir / trace_name).exists()
+
+
 class TestResidentSemaphoreDecisionAudit:
     """Board-free inventory and interleaving checks for shared kernel decisions."""
 

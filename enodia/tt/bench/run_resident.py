@@ -350,10 +350,10 @@ def _run_device(
                 pass
 
 
-def _latest_output(prefix: str) -> Path:
-    candidates = sorted(Path("/out").glob(f"{prefix}*.json" if prefix == "env-" else f"{prefix}*.csv"))
+def _latest_environment_output() -> Path:
+    candidates = sorted(Path("/out").glob("env-*.json"))
     if not candidates:
-        raise ValueError(f"wrapper output {prefix!r} was not found")
+        raise ValueError("wrapper environment output was not found")
     return candidates[-1]
 
 
@@ -464,13 +464,11 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    environment_path = args.env_json or _latest_output("env-")
+    environment_path = args.env_json or _latest_environment_output()
     environment = _environment(environment_path)
-    if args.power_trace is not None:
-        power_trace = args.power_trace
-    else:
-        power_outputs = sorted(Path("/out").glob("power-*.csv"))
-        power_trace = power_outputs[-1].name if power_outputs else None
+    # The wrapper owns per-run trace selection.  A missing option means that
+    # sampler-off mode has no trace; it does not mean "the latest" trace.
+    power_trace = args.power_trace
     trace_aiclk = _power_trace_aiclk_values(power_trace)
     if trace_aiclk:
         environment["aiclk_mhz_observed"] = sorted(set(trace_aiclk))

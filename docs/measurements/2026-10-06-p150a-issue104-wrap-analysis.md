@@ -124,25 +124,25 @@ line ranges are recorded here:
   and `enodia/tt/bench/kernels/resident_consumer.cpp:64-150`). The committed
   timestamp is the designated consumer completion timestamp; there is no direct
   same-clock producer-write stamp because the producer uses a different core.
-  The controlled PR #103 comparison nevertheless resolves attribution enough for
-  this experiment.
+  Direct producer-versus-consumer attribution therefore remains open because
+  there is no producer stamp on the same designated clock.
 
 The source's low-then-high details and the controlled experiment now have
-separate roles. The old measurement-clock read path could let the producer read
-a timestamp 2^32 ticks too large and release a frame early. PR #103 replaced
-that path with a low-word-only 32-bit read plus software wrap tracking. Its
-current 500,000-frame record,
+separate roles. The indirect evidence — the short interval comes first, the
+configured pacing schedule remains intact, and the paired events disappear
+after low-word-only reads with software wrap tracking — is consistent with an
+early producer send caused by the old measurement-clock read path. It is not
+direct producer-versus-consumer attribution. PR #103 replaced that path with a
+low-word-only 32-bit read plus software wrap tracking. Its current
+500,000-frame record,
 `docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`,
 records `pair_count=0`, `min_ticks=1,349,924`, and `max_ticks=1,350,068`,
-versus 27 pairs in the prior record. This controlled change is the causal
-evidence for the measurement-clock read path; it is already the mitigation in
-PR #103, not a new fix prescribed by this PR. A shared latch within a tile
-being overwritten between reads is a possible mechanism inferred from the
-observation and PR #103 evidence only, not an established hardware fact. The
-producer-versus-consumer attribution is resolved enough for this experiment:
-the producer's measurement read path produced the early timestamp, without a
-broader firmware or consumer claim. No kernel functionality or benchmark
-default changed.
+versus 27 pairs in the prior record. This controlled change is indirect
+evidence consistent with the measurement-clock read path; it is already the
+mitigation in PR #103, not a new fix prescribed by this PR. A shared latch
+within a tile being overwritten between reads is a possible mechanism inferred
+from the observation and PR #103 evidence only, not an established hardware
+fact. No kernel functionality or benchmark default changed.
 
 ## Conclusion and device status
 
@@ -151,16 +151,18 @@ paired event starts phase-locked to the `2^32`-tick wall-clock wrap, with
 measured `R` values above and widths below 0.1 ms. The event order is short
 interval first, followed by the long catch-up interval. The same phase lock is
 present with the sampler off, so a host telemetry sampler is not a necessary
-condition. The causal conclusion is supported by PR #103's controlled
-clock-path change:
+condition. Direct producer-versus-consumer attribution remains open because
+there is no producer stamp on the same designated clock. The indirect evidence
+— short interval first, intact pacing schedule, and disappearance after
+low-word-only reads with software wrap tracking — is consistent with an early
+producer send caused by the old measurement-clock read path, without claiming
+direct attribution. The controlled record
 `docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
 reports 500,000 frames, `pair_count=0`, and `min_ticks=1,349,924` through
-`max_ticks=1,350,068`, versus the prior 27 pairs. The producer's old
-measurement-clock read path read a timestamp 2^32 ticks too large and sent a
-frame early; low-word-only 32-bit reads with software wrap tracking removed the
-pairs. A shared tile latch being overwritten remains a hypothesis, not a
-proven mechanism. PR #103 already contains the mitigation, and no additional
-hardware run or new fix was performed in this follow-up.
+`max_ticks=1,350,068`, versus the prior 27 pairs. A shared tile latch being
+overwritten remains a hypothesis, not a proven mechanism. PR #103 already
+contains the mitigation, and no additional hardware run or new fix was
+performed in this follow-up.
 
 No SSH, Docker, device run, reset, or health probe was performed in this
 follow-up because the board was unavailable. The previously authorized runs

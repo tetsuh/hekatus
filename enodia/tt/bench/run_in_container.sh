@@ -404,6 +404,48 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
   if [[ "${HAS_RESULT_PATH_ARG}" == "0" ]]; then
     RUNNER_ARGS=(--out "/out/$(basename "${RUNNER_RESULT_CONTAINER_PATH}")" "${RUNNER_ARGS[@]}")
   fi
+
+  # Resident records store a sibling filename, and the wrapper owns its
+  # run-specific trace.  Remove a caller-supplied trace in sampler-off mode;
+  # sampled mode replaces one with this invocation's trace rather than
+  # allowing a reused output directory to select another run.
+  RESIDENT_POWER_TRACE="$(basename "${POWER_CSV}")"
+  RESIDENT_ARGS=()
+  HAS_POWER_TRACE_ARG=0
+  RESIDENT_ARGUMENT_INDEX=0
+  while [[ "${RESIDENT_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${RESIDENT_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --power-trace)
+        if [[ "${RESIDENT_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--power-trace requires a value" >&2
+          exit 2
+        fi
+        HAS_POWER_TRACE_ARG=1
+        if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+          RESIDENT_ARGS+=("--power-trace" "${RESIDENT_POWER_TRACE}")
+        fi
+        RESIDENT_ARGUMENT_INDEX=$((RESIDENT_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --power-trace=*)
+        HAS_POWER_TRACE_ARG=1
+        if [[ "${TELEMETRY_MODE}" != "off" ]]; then
+          RESIDENT_ARGS+=("--power-trace=${RESIDENT_POWER_TRACE}")
+        fi
+        RESIDENT_ARGUMENT_INDEX=$((RESIDENT_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        RESIDENT_ARGS+=("${argument}")
+        RESIDENT_ARGUMENT_INDEX=$((RESIDENT_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  if [[ "${TELEMETRY_MODE}" != "off" && "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+    RESIDENT_ARGS+=(--power-trace "${RESIDENT_POWER_TRACE}")
+  fi
+  RUNNER_ARGS=("${RESIDENT_ARGS[@]}")
 fi
 # `timeout` is inside the wrapper, so losing an SSH session cannot leave the
 # Docker client or the board-side container unbounded.
