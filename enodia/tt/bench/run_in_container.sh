@@ -87,13 +87,13 @@ normalize_runner_path() {
   printf '%s\n' "${relative}"
 }
 
-CUSTOM_RUNNER=0
-if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
-  CUSTOM_RUNNER=1
-fi
 RUNNER="${HEKATUS_TT_RUNNER:-${MATMUL_RUNNER_RELATIVE_PATH}}"
 if ! RUNNER="$(normalize_runner_path "${RUNNER}")"; then
   exit 2
+fi
+CUSTOM_RUNNER=0
+if [[ -n "${HEKATUS_TT_RUNNER:-}" ]]; then
+  CUSTOM_RUNNER=1
 fi
 
 # Docker bind sources must be absolute host paths. `realpath -m` also handles
