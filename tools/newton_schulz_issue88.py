@@ -363,21 +363,248 @@ def direction_cosine_deficit(reference: np.ndarray, candidate: np.ndarray) -> fl
 
 
 def _weight(inverse: np.ndarray, steering: np.ndarray) -> np.ndarray:
-    """Form normalized MV weights for a batch of inverse matrices."""
+    """Return MV weights ``P a / (aᴴ P a)`` for batched inverse matrices P."""
     weights = np.einsum("bij,j->bi", inverse, steering, optimize=True)
-    denominator = np.einsum("j,bi->b", steering.conj(), weights, optimize=True)
+    # The second index must contract with the steering index.  Leaving these
+    # labels distinct computes (sum(conj(a))) * (sum(Pa)), not aᴴPa; for the
+    # Issue #88 ±30° steering vectors that erroneous sum is exactly zero.
+    denominator = np.einsum("j,bj->b", steering.conj(), weights, optimize=True)
     with np.errstate(divide="ignore", invalid="ignore"):
         return weights / denominator[:, None]
 
 
-def _finite_mean(values: np.ndarray) -> float:
-    finite = values[np.isfinite(values)]
-    return float(np.mean(finite)) if finite.size else float("nan")
+def best_complex_scalar_alignment(
+    candidate: np.ndarray, reference: np.ndarray
+) -> dict[str, Any]:
+    """Fit one least-squares complex scalar and report its aligned residual."""
+    candidate = np.asarray(candidate, dtype=np.complex128)
+    reference = np.asarray(reference, dtype=np.complex128)
+    if candidate.shape != reference.shape:
+        raise ValueError("candidate and reference must have matching shapes")
+    finite = np.isfinite(candidate) & np.isfinite(reference)
+    candidate_values = candidate[finite]
+    reference_values = reference[finite]
+    denominator = float(np.vdot(candidate_values, candidate_values).real)
+    reference_norm = float(np.linalg.norm(reference_values))
+    if (
+        candidate_values.size == 0
+        or not math.isfinite(denominator)
+        or denominator <= 0.0
+        or not math.isfinite(reference_norm)
+        or reference_norm <= 0.0
+    ):
+        return {
+            "best_complex_scalar": None,
+            "aligned_relative_frobenius_error": None,
+            "finite_values": int(candidate_values.size),
+            "total_values": int(candidate.size),
+            "undefined": True,
+        }
+    scalar = np.vdot(candidate_values, reference_values) / denominator
+    aligned_error = float(
+        np.linalg.norm(scalar * candidate_values - reference_values) / reference_norm
+    )
+    return {
+        "best_complex_scalar": {
+            "real": float(scalar.real),
+            "imag": float(scalar.imag),
+            "magnitude": float(abs(scalar)),
+            "phase_radians": float(np.angle(scalar)),
+            "phase_degrees": float(np.rad2deg(np.angle(scalar))),
+        },
+        "aligned_relative_frobenius_error": aligned_error,
+        "finite_values": int(candidate_values.size),
+        "total_values": int(candidate.size),
+        "undefined": False,
+    }
 
 
-def _finite_max(values: np.ndarray) -> float:
+def beam_response_metrics(
+    candidate_response: np.ndarray,
+    reference_response: np.ndarray,
+    *,
+    look_indices: tuple[int, ...],
+    floor_db: float = -120.0,
+) -> dict[str, Any]:
+    """Compare complex, phase-aligned, magnitude, and dB response patterns.
+
+    Responses have shape ``(batch, look, pattern_direction)``.  The dB pattern
+    is normalized to each response's sampled look-direction magnitude and uses
+    a fixed amplitude floor (default -120 dB); exact and sub-floor zeros are
+    counted rather than converted to infinities.
+    """
+    candidate = np.asarray(candidate_response, dtype=np.complex128)
+    reference = np.asarray(reference_response, dtype=np.complex128)
+    if candidate.ndim != 3 or reference.shape != candidate.shape:
+        raise ValueError("beam responses must have matching (batch, look, direction) shapes")
+    if len(look_indices) != candidate.shape[1] or any(
+        index < 0 or index >= candidate.shape[2] for index in look_indices
+    ):
+        raise ValueError("look_indices must identify one in-range pattern direction per look")
+    if not math.isfinite(floor_db) or floor_db >= 0.0:
+        raise ValueError("floor_db must be finite and below zero")
+
+    finite = np.isfinite(candidate) & np.isfinite(reference)
+    candidate_values = candidate[finite]
+    reference_values = reference[finite]
+    reference_norm = float(np.linalg.norm(reference_values))
+    if candidate_values.size and reference_norm > 0.0 and math.isfinite(reference_norm):
+        phase_sensitive_error = float(
+            np.linalg.norm(candidate_values - reference_values) / reference_norm
+        )
+    else:
+        phase_sensitive_error = None
+    if reference_norm > 0.0 and math.isfinite(reference_norm):
+        magnitude_error = float(
+            np.linalg.norm(np.abs(candidate_values) - np.abs(reference_values))
+            / np.linalg.norm(np.abs(reference_values))
+        )
+    else:
+        magnitude_error = None
+    alignment = best_complex_scalar_alignment(candidate, reference)
+
+    batch, look_count, _direction_count = candidate.shape
+    batch_indices = np.arange(batch)[:, None]
+    look_indices_array = np.asarray(look_indices, dtype=np.intp)[None, :]
+    candidate_peak = np.abs(candidate[batch_indices, np.arange(look_count)[None, :], look_indices_array])
+    reference_peak = np.abs(reference[batch_indices, np.arange(look_count)[None, :], look_indices_array])
+    candidate_peak_valid = np.isfinite(candidate_peak) & (candidate_peak > 0.0)
+    reference_peak_valid = np.isfinite(reference_peak) & (reference_peak > 0.0)
+    candidate_db_valid = finite & candidate_peak_valid[..., None]
+    reference_db_valid = finite & reference_peak_valid[..., None]
+    both_db_valid = candidate_db_valid & reference_db_valid
+    candidate_magnitude = np.abs(candidate)
+    reference_magnitude = np.abs(reference)
+    candidate_normalized = np.full(candidate.shape, np.nan, dtype=np.float64)
+    reference_normalized = np.full(reference.shape, np.nan, dtype=np.float64)
+    np.divide(
+        candidate_magnitude,
+        candidate_peak[..., None],
+        out=candidate_normalized,
+        where=candidate_peak_valid[..., None] & np.isfinite(candidate_magnitude),
+    )
+    np.divide(
+        reference_magnitude,
+        reference_peak[..., None],
+        out=reference_normalized,
+        where=reference_peak_valid[..., None] & np.isfinite(reference_magnitude),
+    )
+    amplitude_floor = 10.0 ** (floor_db / 20.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        candidate_db = 20.0 * np.log10(np.maximum(candidate_normalized, amplitude_floor))
+        reference_db = 20.0 * np.log10(np.maximum(reference_normalized, amplitude_floor))
+    candidate_floored = candidate_db_valid & (candidate_normalized < amplitude_floor)
+    reference_floored = reference_db_valid & (reference_normalized < amplitude_floor)
+    db_difference = candidate_db[both_db_valid] - reference_db[both_db_valid]
+    db_rms = float(np.sqrt(np.mean(np.square(db_difference)))) if db_difference.size else None
+    db_max = float(np.max(np.abs(db_difference))) if db_difference.size else None
+    magnitude_pattern_valid = candidate_db_valid & reference_db_valid
+    candidate_magnitude_pattern = candidate_normalized[magnitude_pattern_valid]
+    reference_magnitude_pattern = reference_normalized[magnitude_pattern_valid]
+    reference_magnitude_pattern_norm = float(np.linalg.norm(reference_magnitude_pattern))
+    normalized_magnitude_pattern_error = (
+        float(
+            np.linalg.norm(candidate_magnitude_pattern - reference_magnitude_pattern)
+            / reference_magnitude_pattern_norm
+        )
+        if reference_magnitude_pattern_norm > 0.0
+        and math.isfinite(reference_magnitude_pattern_norm)
+        else None
+    )
+
+    return {
+        "phase_sensitive_complex_response_relative_frobenius_error": phase_sensitive_error,
+        "phase_sensitive_complex_response_max_absolute_error": (
+            float(np.max(np.abs(candidate_values - reference_values)))
+            if candidate_values.size
+            else None
+        ),
+        "phase_aligned_complex_response_relative_frobenius_error": alignment[
+            "aligned_relative_frobenius_error"
+        ],
+        "best_complex_scalar": alignment["best_complex_scalar"],
+        "alignment_finite_values": alignment["finite_values"],
+        "alignment_total_values": alignment["total_values"],
+        "alignment_undefined": alignment["undefined"],
+        "magnitude_response_relative_frobenius_error": magnitude_error,
+        "normalized_magnitude_pattern_relative_frobenius_error": normalized_magnitude_pattern_error,
+        "magnitude_response_max_absolute_error": (
+            float(np.max(np.abs(np.abs(candidate_values) - np.abs(reference_values))))
+            if candidate_values.size
+            else None
+        ),
+        "db_pattern": {
+            "definition": (
+                "20*log10(max(abs(response)/abs(response_at_look), "
+                "10**(floor_db/20))); candidate and reference normalized separately"
+            ),
+            "floor_db": float(floor_db),
+            "amplitude_floor": amplitude_floor,
+            "rms_absolute_error_db": db_rms,
+            "max_absolute_error_db": db_max,
+            "finite_values": int(db_difference.size),
+            "total_values": int(candidate.size),
+            "undefined_values": int(candidate.size - np.count_nonzero(both_db_valid)),
+            "candidate_floored_values": int(np.count_nonzero(candidate_floored)),
+            "reference_floored_values": int(np.count_nonzero(reference_floored)),
+            "candidate_undefined_look_peaks": int(np.count_nonzero(~candidate_peak_valid)),
+            "reference_undefined_look_peaks": int(np.count_nonzero(~reference_peak_valid)),
+        },
+        "finite_values": int(candidate_values.size),
+        "total_values": int(candidate.size),
+        "undefined_values": int(candidate.size - candidate_values.size),
+    }
+
+
+def _finite_mean(values: np.ndarray) -> float | None:
     finite = values[np.isfinite(values)]
-    return float(np.max(finite)) if finite.size else float("nan")
+    return float(np.mean(finite)) if finite.size else None
+
+
+def _finite_max(values: np.ndarray) -> float | None:
+    finite = values[np.isfinite(values)]
+    return float(np.max(finite)) if finite.size else None
+
+
+def _weight_ratio_diagnostics(candidate: np.ndarray, reference: np.ndarray) -> dict[str, Any]:
+    """Summarize complex candidate/reference weight ratios above a relative floor."""
+    candidate = np.asarray(candidate, dtype=np.complex128)
+    reference = np.asarray(reference, dtype=np.complex128)
+    if candidate.shape != reference.shape or candidate.ndim < 1:
+        raise ValueError("candidate and reference weights must have matching shapes")
+    reference_scale = np.max(np.abs(reference), axis=-1, keepdims=True)
+    threshold = reference_scale * 1e-12
+    defined = np.isfinite(candidate) & np.isfinite(reference) & (np.abs(reference) > threshold)
+    ratios = candidate[defined] / reference[defined]
+    finite_ratios = ratios[np.isfinite(ratios)]
+    alignment = best_complex_scalar_alignment(candidate, reference)
+    if finite_ratios.size:
+        magnitudes = np.abs(finite_ratios)
+        phases = np.angle(finite_ratios)
+        phase_vector = np.mean(np.exp(1j * phases))
+        ratio_summary = {
+            "magnitude_min": float(np.min(magnitudes)),
+            "magnitude_p05": float(np.percentile(magnitudes, 5)),
+            "magnitude_median": float(np.median(magnitudes)),
+            "magnitude_p95": float(np.percentile(magnitudes, 95)),
+            "magnitude_max": float(np.max(magnitudes)),
+            "phase_circular_mean_radians": float(np.angle(phase_vector)),
+            "phase_circular_resultant_length": float(abs(phase_vector)),
+        }
+    else:
+        ratio_summary = None
+    return {
+        "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+        "defined_ratios": int(np.count_nonzero(defined)),
+        "total_ratios": int(candidate.size),
+        "nonfinite_ratios": int(np.count_nonzero(defined) - finite_ratios.size),
+        "ratio_summary": ratio_summary,
+        "best_global_complex_scalar_candidate_from_reference": alignment["best_complex_scalar"],
+        "relative_residual_after_best_global_scalar": alignment[
+            "aligned_relative_frobenius_error"
+        ],
+        "global_scalar_alignment_undefined": alignment["undefined"],
+    }
 
 
 def same_array_metrics(
@@ -387,11 +614,11 @@ def same_array_metrics(
     look_directions_deg: tuple[float, ...] = LOOK_DIRECTIONS_DEG,
     pattern_directions_deg: tuple[float, ...] = PATTERN_DIRECTIONS_DEG,
 ) -> dict[str, Any]:
-    """Compute MV-direction and same-array pattern errors without spec imports.
+    """Compare normalized MV weights and explicitly labeled beam responses.
 
-    A leading batch dimension is accepted so the aggregate values describe all
-    8,192 matrices in a board row.  Per-look-direction values are conservative
-    maxima across the batch, with means retained alongside them for audit.
+    The complex response error is retained as a phase-sensitive secondary
+    diagnostic.  Phase-aligned complex, magnitude-only, and dB-pattern values
+    separate overall response phase/scale from pattern-shape differences.
     """
     candidate = np.asarray(candidate_inverse)
     reference = np.asarray(true_inverse)
@@ -413,41 +640,95 @@ def same_array_metrics(
         ],
         axis=1,
     )
+    look_indices = tuple(
+        pattern_directions_deg.index(direction) if direction in pattern_directions_deg else -1
+        for direction in look_directions_deg
+    )
+    if -1 in look_indices:
+        raise ValueError("pattern_directions_deg must include every look direction for dB normalization")
 
     deficits: list[np.ndarray] = []
+    normalization_errors_candidate: list[np.ndarray] = []
+    normalization_errors_reference: list[np.ndarray] = []
     true_responses: list[np.ndarray] = []
     candidate_responses: list[np.ndarray] = []
-    response_errors: list[np.ndarray] = []
+    true_weights: list[np.ndarray] = []
+    candidate_weights: list[np.ndarray] = []
+    conjugate_true_weights: list[np.ndarray] = []
+    transpose_true_weights: list[np.ndarray] = []
     for direction in look_directions_deg:
         steering = steering_vector(aperture_size, direction, dtype=np.complex128)
         true_weight = _weight(reference.astype(np.complex128, copy=False), steering)
         candidate_weight = _weight(candidate.astype(np.complex128, copy=False), steering)
-        denominators = np.linalg.norm(true_weight, axis=1) * np.linalg.norm(candidate_weight, axis=1)
+        denominator_norm = np.linalg.norm(true_weight, axis=1) * np.linalg.norm(candidate_weight, axis=1)
         with np.errstate(divide="ignore", invalid="ignore"):
             cosine = np.abs(
                 np.einsum("bi,bi->b", true_weight.conj(), candidate_weight, optimize=True)
-            ) / denominators
+            ) / denominator_norm
         cosine = np.clip(cosine, 0.0, 1.0)
         deficits.append(1.0 - cosine)
-        true_response = np.einsum("bi,ij->bj", true_weight.conj(), pattern, optimize=True)
-        candidate_response = np.einsum(
-            "bi,ij->bj", candidate_weight.conj(), pattern, optimize=True
+        true_main_response = np.einsum("bi,i->b", true_weight.conj(), steering, optimize=True)
+        candidate_main_response = np.einsum(
+            "bi,i->b", candidate_weight.conj(), steering, optimize=True
         )
-        true_responses.append(true_response)
-        candidate_responses.append(candidate_response)
-        response_difference = np.linalg.norm(candidate_response - true_response, axis=1)
-        true_norm = np.linalg.norm(true_response, axis=1)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            response_errors.append(response_difference / np.maximum(true_norm, np.finfo(float).tiny))
+        normalization_errors_reference.append(np.abs(true_main_response - 1.0))
+        normalization_errors_candidate.append(np.abs(candidate_main_response - 1.0))
+        true_responses.append(np.einsum("bi,ij->bj", true_weight.conj(), pattern, optimize=True))
+        candidate_responses.append(
+            np.einsum("bi,ij->bj", candidate_weight.conj(), pattern, optimize=True)
+        )
+        true_weights.append(true_weight)
+        candidate_weights.append(candidate_weight)
+        conjugate_true_weights.append(true_weight.conj())
+        transpose_inverse = reference.astype(np.complex128, copy=False).transpose(0, 2, 1)
+        transpose_true_weights.append(_weight(transpose_inverse, steering))
 
     deficit_array = np.stack(deficits, axis=1)
     true_response_array = np.stack(true_responses, axis=1)
     candidate_response_array = np.stack(candidate_responses, axis=1)
-    response_error_array = np.stack(response_errors, axis=1)
-    difference = candidate_response_array - true_response_array
-    true_norm = np.linalg.norm(true_response_array)
-    pattern_error = float(np.linalg.norm(difference) / max(true_norm, np.finfo(float).tiny))
-    pattern_max = float(np.max(np.abs(difference))) if difference.size else float("nan")
+    response_metrics = beam_response_metrics(
+        candidate_response_array,
+        true_response_array,
+        look_indices=look_indices,
+    )
+    phase_sensitive_error = response_metrics[
+        "phase_sensitive_complex_response_relative_frobenius_error"
+    ]
+    max_absolute_error = response_metrics[
+        "phase_sensitive_complex_response_max_absolute_error"
+    ]
+    response_difference = candidate_response_array - true_response_array
+    response_difference_norm = np.linalg.norm(response_difference, axis=2)
+    response_reference_norm = np.linalg.norm(true_response_array, axis=2)
+    response_error_array = np.full(response_reference_norm.shape, np.nan, dtype=np.float64)
+    response_error_valid = (
+        np.isfinite(response_difference_norm)
+        & np.isfinite(response_reference_norm)
+        & (response_reference_norm > 0.0)
+    )
+    np.divide(
+        response_difference_norm,
+        response_reference_norm,
+        out=response_error_array,
+        where=response_error_valid,
+    )
+    stacked_true_weights = np.stack(true_weights, axis=1)
+    stacked_candidate_weights = np.stack(candidate_weights, axis=1)
+    stacked_conjugate_weights = np.stack(conjugate_true_weights, axis=1)
+    stacked_transpose_weights = np.stack(transpose_true_weights, axis=1)
+    ratio_metrics = _weight_ratio_diagnostics(stacked_candidate_weights, stacked_true_weights)
+    ratio_metrics["candidate_vs_conjugate_reference_relative_error_after_scalar"] = (
+        best_complex_scalar_alignment(stacked_candidate_weights, stacked_conjugate_weights)[
+            "aligned_relative_frobenius_error"
+        ]
+    )
+    ratio_metrics["candidate_vs_transpose_reference_relative_error_after_scalar"] = (
+        best_complex_scalar_alignment(stacked_candidate_weights, stacked_transpose_weights)[
+            "aligned_relative_frobenius_error"
+        ]
+    )
+    normalization_candidate = np.stack(normalization_errors_candidate, axis=1)
+    normalization_reference = np.stack(normalization_errors_reference, axis=1)
 
     return {
         "steering_array": {
@@ -464,23 +745,45 @@ def same_array_metrics(
             "max_cosine_deficit": _finite_max(deficit_array),
             "finite_values": int(np.count_nonzero(np.isfinite(deficit_array))),
             "total_values": int(batch * len(look_directions_deg)),
+            "weight_ratio_diagnostics": ratio_metrics,
+        },
+        "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": _finite_max(normalization_candidate),
+            "reference_max_absolute_error": _finite_max(normalization_reference),
+            "candidate_finite_values": int(np.count_nonzero(np.isfinite(normalization_candidate))),
+            "reference_finite_values": int(np.count_nonzero(np.isfinite(normalization_reference))),
+            "total_values": int(batch * len(look_directions_deg)),
         },
         "beam_pattern": {
-            "relative_frobenius_error": pattern_error,
-            "beam_pattern_relative_error": pattern_error,
-            "max_absolute_error": pattern_max,
-            "beam_response_max_absolute_error": pattern_max,
-            "relative_error_by_look_direction": [
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": phase_sensitive_error,
+            "phase_sensitive_complex_response_max_absolute_error": max_absolute_error,
+            "phase_aligned_complex_response_relative_frobenius_error": response_metrics[
+                "phase_aligned_complex_response_relative_frobenius_error"
+            ],
+            "best_complex_scalar": response_metrics["best_complex_scalar"],
+            "magnitude_response_relative_frobenius_error": response_metrics[
+                "magnitude_response_relative_frobenius_error"
+            ],
+            "normalized_magnitude_pattern_relative_frobenius_error": response_metrics[
+                "normalized_magnitude_pattern_relative_frobenius_error"
+            ],
+            "magnitude_response_max_absolute_error": response_metrics[
+                "magnitude_response_max_absolute_error"
+            ],
+            "db_pattern": response_metrics["db_pattern"],
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
                 _finite_mean(values) for values in response_error_array.T
             ],
-            "beam_response_relative_error_by_look_direction": [
-                _finite_mean(values) for values in response_error_array.T
-            ],
-            "max_relative_error_by_look_direction": [
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
                 _finite_max(values) for values in response_error_array.T
             ],
             "finite_values": int(np.count_nonzero(np.isfinite(response_error_array))),
             "total_values": int(batch * len(look_directions_deg)),
+            "response_metric_finite_values": response_metrics["finite_values"],
+            "response_metric_total_values": response_metrics["total_values"],
+            "response_metric_undefined_values": response_metrics["undefined_values"],
         },
     }
 

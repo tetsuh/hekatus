@@ -180,8 +180,12 @@ def test_issue88_same_array_metrics_are_zero_for_identical_inverses():
     metrics = runner.same_array_metrics(inverse, inverse)
 
     assert metrics["mv_weight_direction"]["max_cosine_deficit"] == pytest.approx(0.0)
-    assert metrics["beam_pattern"]["relative_frobenius_error"] == pytest.approx(0.0)
-    assert metrics["beam_pattern"]["max_absolute_error"] == pytest.approx(0.0)
+    assert metrics["beam_pattern"][
+        "phase_sensitive_complex_response_relative_frobenius_error"
+    ] == pytest.approx(0.0)
+    assert metrics["beam_pattern"][
+        "phase_sensitive_complex_response_max_absolute_error"
+    ] == pytest.approx(0.0)
 
 
 def test_issue88_runner_has_no_spec_reference_and_matches_plan():

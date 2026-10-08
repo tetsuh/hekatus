@@ -1,0 +1,1701 @@
+{
+  "summary_schema": "issue88-beam-metric-diagnostic-v1",
+  "issue": "#88",
+  "source_record": {
+    "file": "2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json",
+    "sha256": "34d3db5f1185548b7415dac2166ee7783d02c82e0ea8b0659e4ec1b500121d88"
+  },
+  "source_power_trace": {
+    "file": "2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun-power.csv",
+    "sha256": "b0d9f48dad2d5527cac393f4098f6fb9d888e3f5ddcf66b15638c86f61dc159d",
+    "modified": false
+  },
+  "host_only": true,
+  "hardware_or_device_accessed": false,
+  "host_environment": {
+    "python": "3.12.3",
+    "numpy": "2.5.1",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.39"
+  },
+  "source_reproduction": {
+    "generator": "enodia.tt.bench.newton_schulz_reference.random_hpd_batch",
+    "condition_number": 100.0,
+    "seed": 6300,
+    "same_matrix_for_matching_size_variants": true,
+    "source_fingerprints": {
+      "16": {
+        "source": {
+          "size": 16,
+          "batch": 8192,
+          "condition_number": 100.0,
+          "seed": 6300,
+          "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+        },
+        "source_row_fingerprints_by_variant": {
+          "bf16": {
+            "input_fingerprint": {
+              "size": 16,
+              "batch": 8192,
+              "condition_number": 100.0,
+              "seed": 6300,
+              "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+            },
+            "reference_fingerprint": {
+              "reference_r_sha256": "fe8a1f1048375624eafbc260fae5c314a73304c20d445b61d121813beac8334d",
+              "x0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+              "fixed_reference_sha256": "bcd18d6f16df6159e96c0a366fd458837c1a6f9fdb90b94a21fd7e5a3ce1f7c9",
+              "true_inverse_sha256": "71dfce5129a87a7b102bb59a799e9ffba170062b85b7a786b383b5b6e03f4fda"
+            }
+          },
+          "fp32-r": {
+            "input_fingerprint": {
+              "size": 16,
+              "batch": 8192,
+              "condition_number": 100.0,
+              "seed": 6300,
+              "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+            },
+            "reference_fingerprint": {
+              "reference_r_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e",
+              "x0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+              "fixed_reference_sha256": "24052232685a8d51e1946c99388b6c4fd275af4e50d515b42a70594280e3924a",
+              "true_inverse_sha256": "71dfce5129a87a7b102bb59a799e9ffba170062b85b7a786b383b5b6e03f4fda"
+            }
+          }
+        },
+        "host_regenerated": {
+          "size": 16,
+          "batch": 8192,
+          "condition_number": 100.0,
+          "seed": 6300,
+          "matrix_sha256": "c97f1a934119822ede41c9b225048d052ee7ccf4e00fc94c31e4287aee266311",
+          "true_inverse_sha256": "63b5ed2f1a7ac4e85732242d0dac3c0655b5167f6668669b0055db924972b640",
+          "references_by_variant": {
+            "bf16": {
+              "reference_R_sha256": "4ca6d1d0f9afba67a856b59534f6dbb920a796ccb16149f3525912a1f215e2c8",
+              "X0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+              "fixed_N_reference_sha256": "8ac88fb09d5f4917a68db7fe8fe95d6963989f716835fcf52c228810080411ba",
+              "true_inverse_sha256": "63b5ed2f1a7ac4e85732242d0dac3c0655b5167f6668669b0055db924972b640"
+            },
+            "fp32-r": {
+              "reference_R_sha256": "c97f1a934119822ede41c9b225048d052ee7ccf4e00fc94c31e4287aee266311",
+              "X0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+              "fixed_N_reference_sha256": "35a9865b74fe90c6c15f71a7f31e82aef3daa24f094d1587d393e0e161a70da1",
+              "true_inverse_sha256": "63b5ed2f1a7ac4e85732242d0dac3c0655b5167f6668669b0055db924972b640"
+            }
+          }
+        },
+        "matrix_sha256_matches_source": false,
+        "reference_fingerprints_match_source_by_variant": {
+          "bf16": {
+            "reference_R": false,
+            "X0": true,
+            "fixed_N_reference": false,
+            "true_inverse": false
+          },
+          "fp32-r": {
+            "reference_R": false,
+            "X0": true,
+            "fixed_N_reference": false,
+            "true_inverse": false
+          }
+        }
+      },
+      "32": {
+        "source": {
+          "size": 32,
+          "batch": 8192,
+          "condition_number": 100.0,
+          "seed": 6300,
+          "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+        },
+        "source_row_fingerprints_by_variant": {
+          "bf16": {
+            "input_fingerprint": {
+              "size": 32,
+              "batch": 8192,
+              "condition_number": 100.0,
+              "seed": 6300,
+              "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+            },
+            "reference_fingerprint": {
+              "reference_r_sha256": "7c9bf57a1a274dbfa37e9a1e6a5671b7c0512b2c358648a6e051c5e96d002a76",
+              "x0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+              "fixed_reference_sha256": "c6c467c751ccd52e7b051f177c182984b47bf86c306db85d2398ec08f83bdccc",
+              "true_inverse_sha256": "735098c1d3879e6989201786970022672ff33d326f4b24ea8ca4b379f589c3e1"
+            }
+          },
+          "fp32-r": {
+            "input_fingerprint": {
+              "size": 32,
+              "batch": 8192,
+              "condition_number": 100.0,
+              "seed": 6300,
+              "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+            },
+            "reference_fingerprint": {
+              "reference_r_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866",
+              "x0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+              "fixed_reference_sha256": "d36e6685c62f12c306772d112bd96313d7e1fa4aa47401d196c476a09daa24a5",
+              "true_inverse_sha256": "735098c1d3879e6989201786970022672ff33d326f4b24ea8ca4b379f589c3e1"
+            }
+          }
+        },
+        "host_regenerated": {
+          "size": 32,
+          "batch": 8192,
+          "condition_number": 100.0,
+          "seed": 6300,
+          "matrix_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+          "true_inverse_sha256": "b18897c94f6f27b251190a11250c6c41102a8518a579ee7c2df691f57f4964e3",
+          "references_by_variant": {
+            "bf16": {
+              "reference_R_sha256": "bc672b32a28e6a2c3eb766da28763d77639449a0a382a772ac2a1e85d3a5fc91",
+              "X0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+              "fixed_N_reference_sha256": "1e82dc48be96818fed89f2f02ff7a04cb8f41df93f98328144b69314b7bd21b5",
+              "true_inverse_sha256": "b18897c94f6f27b251190a11250c6c41102a8518a579ee7c2df691f57f4964e3"
+            },
+            "fp32-r": {
+              "reference_R_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+              "X0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+              "fixed_N_reference_sha256": "43cf30c7ebef51cc966c5e7245162e4cbbf6bece1a3a5d533855e1591fe1099e",
+              "true_inverse_sha256": "b18897c94f6f27b251190a11250c6c41102a8518a579ee7c2df691f57f4964e3"
+            }
+          }
+        },
+        "matrix_sha256_matches_source": false,
+        "reference_fingerprints_match_source_by_variant": {
+          "bf16": {
+            "reference_R": false,
+            "X0": true,
+            "fixed_N_reference": false,
+            "true_inverse": false
+          },
+          "fp32-r": {
+            "reference_R": false,
+            "X0": true,
+            "fixed_N_reference": false,
+            "true_inverse": false
+          }
+        }
+      }
+    },
+    "limitation": "The immutable source record stores matrix and reference SHA-256 fingerprints, not the arrays or downloaded device inverse matrices. The seed/condition generator was rerun here, but regenerated matrix-byte fingerprints do not match the source fingerprints under this host NumPy environment. Thus these host-reference diagnostics are not represented as exact recomputations of the measured device rows."
+  },
+  "metric_definitions": {
+    "MV weight": "w = P a / (aᴴ P a), with P the inverse and steering a; normalization is checked as wᴴa=1.",
+    "direction cosine deficit": "1 - |w_trueᴴ w_candidate| / (||w_true||₂ ||w_candidate||₂).",
+    "complex ratios": "candidate weight / true-inverse weight where |w_true| > 1e-12 times that vector's maximum component; undefined counts and ratio range/phase summaries are retained.",
+    "phase_sensitive_complex_response": "||w_candidateᴴa(theta)-w_trueᴴa(theta)||_F / ||w_trueᴴa(theta)||_F; the complex phase is retained.",
+    "best complex scalar alignment": "alpha = <candidate_response, true_response> / ||candidate_response||²; report alpha and the relative Frobenius residual of alpha*candidate_response.",
+    "magnitude response": "Relative Frobenius error between |candidate response| and |true response|, before per-pattern peak normalization; phase is discarded but scale is retained.",
+    "normalized magnitude pattern": "Relative Frobenius error after each look's sampled main response magnitude normalizes its pattern.",
+    "dB pattern": "20*log10(max(|response|/|response_at_look|, 1e-6)); candidate and reference normalized separately; -120 dB floor applies to exact/sub-floor zeros and counts are recorded.",
+    "nonfinite and undefined values": "Metric helpers retain finite/total/undefined counts; dB metrics also count undefined look peaks and floor hits."
+  },
+  "kernel_reconstruction_audit": {
+    "complex_representation": "Separate real and imaginary float32 planes; L=16 uses diagonal 16x16 blocks packed into 32x32 tiles and unpacks the same diagonal corners.",
+    "complex_multiply_signs": "R*X real=R_re*X_re-R_im*X_im and imag=R_re*X_im+R_im*X_re; X*S uses the negative X_imag plane for the real term.",
+    "download_reconstruction": "Each output plane is downloaded as row-major float32, unpacked with matching packed corners, then reconstructed as real + 1j*imag.",
+    "recorded_device_inverse_relative_error_vs_true_inverse_by_row": [
+      {
+        "row": "bf16-r-L16",
+        "relative_frobenius_error": 0.021145014741766808
+      },
+      {
+        "row": "fp32-r-L16",
+        "relative_frobenius_error": 0.005721162451479609
+      },
+      {
+        "row": "bf16-r-L32",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      {
+        "row": "bf16-r-L32-r-dram",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      {
+        "row": "fp32-r-L32-r-dram",
+        "relative_frobenius_error": 0.005290290299383328
+      }
+    ],
+    "conjugation_or_transpose_defect_found": false,
+    "basis": "Board-free source audit of the input pack/unpack helpers, complex multiply signs in newton_schulz_compute.cpp, tensor download, and result reconstruction. Recorded inverse errors are also far below a wholesale conjugate/transpose mismatch; no accelerator runtime validation was performed."
+  },
+  "historical_metric_handling": {
+    "phase_sensitive_complex_response_retained": true,
+    "role": "Secondary diagnostic alongside phase-aligned complex, magnitude, and dB-pattern metrics; useful for coherent response phase errors but not by itself a pattern-shape metric.",
+    "historical_values": "The source JSON and its reference-labeled summary remain unchanged. Their beam values came from the erroneous normalization contraction and are invalid as beam-pattern evidence."
+  },
+  "host_reference_diagnostics": {
+    "candidate_scope": "Fixed-N=12 NumPy references for each source row's BF16-R or FP32-R variant, compared with the host-regenerated complex128 inverse; not downloaded accelerator outputs.",
+    "rows": [
+      {
+        "row": "bf16-r-L16",
+        "source_status": "ok",
+        "variant": "bf16",
+        "L": 16,
+        "R_format": "BF16",
+        "R_placement": "l1",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "diagonal_pairs_32x32",
+          "R_placement": "l1",
+          "input_fingerprint": {
+            "size": 16,
+            "batch": 8192,
+            "condition_number": 100.0,
+            "seed": 6300,
+            "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+          },
+          "reference_fingerprint": {
+            "reference_r_sha256": "fe8a1f1048375624eafbc260fae5c314a73304c20d445b61d121813beac8334d",
+            "x0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+            "fixed_reference_sha256": "bcd18d6f16df6159e96c0a366fd458837c1a6f9fdb90b94a21fd7e5a3ce1f7c9",
+            "true_inverse_sha256": "71dfce5129a87a7b102bb59a799e9ffba170062b85b7a786b383b5b6e03f4fda"
+          },
+          "preflight": null
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "c97f1a934119822ede41c9b225048d052ee7ccf4e00fc94c31e4287aee266311",
+        "historical_device_inverse_relative_error_vs_true_inverse": 0.021145014741766808,
+        "historical_device_phase_sensitive_complex_response_error": 1.1692626092102962,
+        "historical_device_metric_status": "invalidated for beam-pattern interpretation: the original weight denominator contracted unrelated einsum indices and was not aᴴPa",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              0.001073411730201368,
+              0.0009470066837612423,
+              0.0011595223004819966,
+              0.001113280125977445,
+              0.0011026624310215283
+            ],
+            "mean_by_look_direction": [
+              0.000130866488646531,
+              0.00012935150076731996,
+              0.0001280608001517104,
+              0.0001295144797636734,
+              0.0001288652268659309
+            ],
+            "mean_cosine_deficit": 0.00012933169923903316,
+            "max_cosine_deficit": 0.0011595223004819966,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 655360,
+              "total_ratios": 655360,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.04966465779728979,
+                "magnitude_p05": 0.9670537346175665,
+                "magnitude_median": 0.9985841757152769,
+                "magnitude_p95": 1.030495019497931,
+                "magnitude_max": 7.55027480665414,
+                "phase_circular_mean_radians": -5.0666436869105594e-05,
+                "phase_circular_resultant_length": 0.9997105295132319
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 1.0010237873038161,
+                "imag": 1.9447658021193417e-06,
+                "magnitude": 1.0010237873057053,
+                "phase_radians": 1.942776811882741e-06,
+                "phase_degrees": 0.00011131291185676254
+              },
+              "relative_residual_after_best_global_scalar": 0.016598250029017353,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9939453929579323,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9043479520342026
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 5.23691153334427e-16,
+            "reference_max_absolute_error": 4.965068306494546e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.014059612206165485,
+            "phase_sensitive_complex_response_max_absolute_error": 0.050908953144997764,
+            "phase_aligned_complex_response_relative_frobenius_error": 0.014041091914799745,
+            "best_complex_scalar": {
+              "real": 1.0007219564365533,
+              "imag": 8.163100571107269e-06,
+              "magnitude": 1.0007219564698473,
+              "phase_radians": 8.157211419637478e-06,
+              "phase_degrees": 0.0004673737869411462
+            },
+            "magnitude_response_relative_frobenius_error": 0.01009164785288047,
+            "normalized_magnitude_pattern_relative_frobenius_error": 0.010091647852880472,
+            "magnitude_response_max_absolute_error": 0.04925603982347232,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 0.3467064317241454,
+              "max_absolute_error_db": 26.41685695426051,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              0.013270709518667597,
+              0.013193051644031594,
+              0.013134111961572579,
+              0.013198852489019492,
+              0.01322265755747563
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              0.0451161684662025,
+              0.04254746397847358,
+              0.04265501146274681,
+              0.04030200821129079,
+              0.05620635060090441
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 0.016598250029017353,
+          "conjugate_residual_after_scalar": 0.9939453929579323,
+          "transpose_residual_after_scalar": 0.9043479520342026,
+          "ratio_summary": {
+            "magnitude_min": 0.04966465779728979,
+            "magnitude_p05": 0.9670537346175665,
+            "magnitude_median": 0.9985841757152769,
+            "magnitude_p95": 1.030495019497931,
+            "magnitude_max": 7.55027480665414,
+            "phase_circular_mean_radians": -5.0666436869105594e-05,
+            "phase_circular_resultant_length": 0.9997105295132319
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.0047398631908018,
+              "imag": -4.497432012738332e-10,
+              "magnitude": 1.0047398631908018,
+              "phase_radians": -4.47621536429899e-10,
+              "phase_degrees": -2.564682485659464e-08
+            },
+            "aligned_relative_frobenius_error": 0.02020182579148049,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.42203990826510085,
+              "imag": -2.1331144062094796e-10,
+              "magnitude": 0.42203990826510085,
+              "phase_radians": -5.054295492997742e-10,
+              "phase_degrees": -2.8958980016076432e-08
+            },
+            "aligned_relative_frobenius_error": 0.9075411292443398,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.4220399082651008,
+              "imag": -2.1331144021120735e-10,
+              "magnitude": 0.4220399082651008,
+              "phase_radians": -5.054295483289167e-10,
+              "phase_degrees": -2.89589799604504e-08
+            },
+            "aligned_relative_frobenius_error": 0.9075411292443399,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      },
+      {
+        "row": "fp32-r-L16",
+        "source_status": "ok",
+        "variant": "fp32-r",
+        "L": 16,
+        "R_format": "FP32",
+        "R_placement": "l1",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "diagonal_pairs_32x32",
+          "R_placement": "l1",
+          "input_fingerprint": {
+            "size": 16,
+            "batch": 8192,
+            "condition_number": 100.0,
+            "seed": 6300,
+            "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+          },
+          "reference_fingerprint": {
+            "reference_r_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e",
+            "x0_sha256": "9b9c9e2cea4377c7fc82f40b71d9b806c99570e0251d3fed6e7d0105ee3827f0",
+            "fixed_reference_sha256": "24052232685a8d51e1946c99388b6c4fd275af4e50d515b42a70594280e3924a",
+            "true_inverse_sha256": "71dfce5129a87a7b102bb59a799e9ffba170062b85b7a786b383b5b6e03f4fda"
+          },
+          "preflight": null
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "c97f1a934119822ede41c9b225048d052ee7ccf4e00fc94c31e4287aee266311",
+        "historical_device_inverse_relative_error_vs_true_inverse": 0.005721162451479609,
+        "historical_device_phase_sensitive_complex_response_error": 1.180650029527541,
+        "historical_device_metric_status": "invalidated for beam-pattern interpretation: the original weight denominator contracted unrelated einsum indices and was not aᴴPa",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              1.5829559885105482e-12,
+              4.511946372076636e-13,
+              4.418687638008123e-13,
+              6.403766406037903e-13,
+              6.017408793468348e-13
+            ],
+            "mean_by_look_direction": [
+              4.210508623616466e-14,
+              4.164968066613928e-14,
+              4.258592989966198e-14,
+              4.2288357060896176e-14,
+              4.1965373233712744e-14
+            ],
+            "mean_cosine_deficit": 4.211888541931497e-14,
+            "max_cosine_deficit": 1.5829559885105482e-12,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 655360,
+              "total_ratios": 655360,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.9995994651834461,
+                "magnitude_p05": 0.9999994536604763,
+                "magnitude_median": 0.9999999998527911,
+                "magnitude_p95": 1.0000005468095008,
+                "magnitude_max": 1.000088295310769,
+                "phase_circular_mean_radians": 4.126348063420466e-10,
+                "phase_circular_resultant_length": 0.999999999999754
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 0.9999999997940527,
+                "imag": -3.389978710704562e-10,
+                "magnitude": 0.9999999997940527,
+                "phase_radians": -3.389978711402719e-10,
+                "phase_degrees": -1.942314728025731e-08
+              },
+              "relative_residual_after_best_global_scalar": 3.056519451927344e-07,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9939816791363744,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9046301055866538
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 4.742874840267547e-16,
+            "reference_max_absolute_error": 4.965068306494546e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 2.620375746854191e-07,
+            "phase_sensitive_complex_response_max_absolute_error": 1.4447663957934188e-06,
+            "phase_aligned_complex_response_relative_frobenius_error": 2.620372409755622e-07,
+            "best_complex_scalar": {
+              "real": 0.9999999997311944,
+              "imag": 3.2036304644809923e-10,
+              "magnitude": 0.9999999997311944,
+              "phase_radians": 3.203630465342146e-10,
+              "phase_degrees": 1.8355450478363692e-08
+            },
+            "magnitude_response_relative_frobenius_error": 1.8484713231648744e-07,
+            "normalized_magnitude_pattern_relative_frobenius_error": 1.8484713231715454e-07,
+            "magnitude_response_max_absolute_error": 1.192861779325538e-06,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 7.019809337898504e-06,
+              "max_absolute_error_db": 0.0011233393334890707,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              2.3195115699464238e-07,
+              2.3316414253096752e-07,
+              2.3512554684865896e-07,
+              2.3385460416073246e-07,
+              2.3337772845143278e-07
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              1.517887318968548e-06,
+              1.0013351362792975e-06,
+              9.528876980113922e-07,
+              1.194760324074006e-06,
+              1.1570249093913868e-06
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 3.056519451927344e-07,
+          "conjugate_residual_after_scalar": 0.9939816791363744,
+          "transpose_residual_after_scalar": 0.9046301055866538,
+          "ratio_summary": {
+            "magnitude_min": 0.9995994651834461,
+            "magnitude_p05": 0.9999994536604763,
+            "magnitude_median": 0.9999999998527911,
+            "magnitude_p95": 1.0000005468095008,
+            "magnitude_max": 1.000088295310769,
+            "phase_circular_mean_radians": 4.126348063420466e-10,
+            "phase_circular_resultant_length": 0.999999999999754
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.0000000075076396,
+              "imag": -7.28815177887279e-10,
+              "magnitude": 1.0000000075076396,
+              "phase_radians": -7.288151724155973e-10,
+              "phase_degrees": -4.175803342451314e-08
+            },
+            "aligned_relative_frobenius_error": 2.977293205467282e-07,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.4193763215098369,
+              "imag": -2.2976714713788453e-10,
+              "magnitude": 0.4193763215098369,
+              "phase_radians": -5.478782071211789e-10,
+              "phase_degrees": -3.139110895523791e-08
+            },
+            "aligned_relative_frobenius_error": 0.9078124826183692,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.4193763215098369,
+              "imag": -2.297671467458668e-10,
+              "magnitude": 0.4193763215098369,
+              "phase_radians": -5.478782061864153e-10,
+              "phase_degrees": -3.139110890167991e-08
+            },
+            "aligned_relative_frobenius_error": 0.9078124826183691,
+            "finite_values": 2097152,
+            "total_values": 2097152,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      },
+      {
+        "row": "bf16-r-L32",
+        "source_status": "ok",
+        "variant": "bf16",
+        "L": 32,
+        "R_format": "BF16",
+        "R_placement": "l1",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "native_32x32",
+          "R_placement": "l1",
+          "input_fingerprint": {
+            "size": 32,
+            "batch": 8192,
+            "condition_number": 100.0,
+            "seed": 6300,
+            "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+          },
+          "reference_fingerprint": {
+            "reference_r_sha256": "7c9bf57a1a274dbfa37e9a1e6a5671b7c0512b2c358648a6e051c5e96d002a76",
+            "x0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+            "fixed_reference_sha256": "c6c467c751ccd52e7b051f177c182984b47bf86c306db85d2398ec08f83bdccc",
+            "true_inverse_sha256": "735098c1d3879e6989201786970022672ff33d326f4b24ea8ca4b379f589c3e1"
+          },
+          "preflight": null
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+        "historical_device_inverse_relative_error_vs_true_inverse": 0.021826325072699795,
+        "historical_device_phase_sensitive_complex_response_error": 1.1058901700625405,
+        "historical_device_metric_status": "invalidated for beam-pattern interpretation: the original weight denominator contracted unrelated einsum indices and was not aᴴPa",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              0.000822551000397076,
+              0.0012021569056370751,
+              0.0008043119997737103,
+              0.0009520121929721403,
+              0.0009041292264128087
+            ],
+            "mean_by_look_direction": [
+              0.00015248555108405567,
+              0.00015360793403033912,
+              0.00015270614364012883,
+              0.00015336890218942248,
+              0.0001526565861768425
+            ],
+            "mean_cosine_deficit": 0.0001529650234241577,
+            "max_cosine_deficit": 0.0012021569056370751,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 1310720,
+              "total_ratios": 1310720,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.02876001918319347,
+                "magnitude_p05": 0.9658759994757087,
+                "magnitude_median": 0.9974024059418201,
+                "magnitude_p95": 1.0320864428247343,
+                "magnitude_max": 19.238140720414435,
+                "phase_circular_mean_radians": -1.3669320252981812e-05,
+                "phase_circular_resultant_length": 0.9997000313937249
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 1.0021579245043306,
+                "imag": 3.5293130420632943e-07,
+                "magnitude": 1.0021579245043928,
+                "phase_radians": 3.5217134503114907e-07,
+                "phase_degrees": 2.017793173573036e-05
+              },
+              "relative_residual_after_best_global_scalar": 0.017729634853915918,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9945803130396899,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9030667408046879
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 5.095246377785861e-16,
+            "reference_max_absolute_error": 5.23691153334427e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.011624035141764692,
+            "phase_sensitive_complex_response_max_absolute_error": 0.027727104381353028,
+            "phase_aligned_complex_response_relative_frobenius_error": 0.011585234786218509,
+            "best_complex_scalar": {
+              "real": 1.0009499209867312,
+              "imag": -3.2909329460335743e-06,
+              "magnitude": 1.000949920992141,
+              "phase_radians": -3.2878097865051347e-06,
+              "phase_degrees": -0.00018837762460855245
+            },
+            "magnitude_response_relative_frobenius_error": 0.008351344420411091,
+            "normalized_magnitude_pattern_relative_frobenius_error": 0.008351344420411091,
+            "magnitude_response_max_absolute_error": 0.02672831312769483,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 0.37011165177005956,
+              "max_absolute_error_db": 22.02020568085193,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              0.011340175967219306,
+              0.011131616593433693,
+              0.010998283760389948,
+              0.011076069887569946,
+              0.011329669743460336
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              0.027410403951780314,
+              0.029361810114611725,
+              0.029636753293665472,
+              0.031619830156010824,
+              0.029423641968317173
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 0.017729634853915918,
+          "conjugate_residual_after_scalar": 0.9945803130396899,
+          "transpose_residual_after_scalar": 0.9030667408046879,
+          "ratio_summary": {
+            "magnitude_min": 0.02876001918319347,
+            "magnitude_p05": 0.9658759994757087,
+            "magnitude_median": 0.9974024059418201,
+            "magnitude_p95": 1.0320864428247343,
+            "magnitude_max": 19.238140720414435,
+            "phase_circular_mean_radians": -1.3669320252981812e-05,
+            "phase_circular_resultant_length": 0.9997000313937249
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.009830762056721,
+              "imag": -1.6490383208865565e-10,
+              "magnitude": 1.009830762056721,
+              "phase_radians": -1.632984835526264e-10,
+              "phase_degrees": -9.356313908451981e-09
+            },
+            "aligned_relative_frobenius_error": 0.019313827009840343,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.4299068435339446,
+              "imag": -9.122930801574226e-11,
+              "magnitude": 0.4299068435339446,
+              "phase_radians": -2.1220715461473916e-10,
+              "phase_degrees": -1.2158574341904665e-08
+            },
+            "aligned_relative_frobenius_error": 0.9048915193867194,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.42990684353394465,
+              "imag": -9.122930859458447e-11,
+              "magnitude": 0.42990684353394465,
+              "phase_radians": -2.1220715596117552e-10,
+              "phase_degrees": -1.2158574419049786e-08
+            },
+            "aligned_relative_frobenius_error": 0.9048915193867193,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      },
+      {
+        "row": "bf16-r-L32-r-dram",
+        "source_status": "ok",
+        "variant": "bf16",
+        "L": 32,
+        "R_format": "BF16",
+        "R_placement": "dram",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "native_32x32",
+          "R_placement": "dram",
+          "input_fingerprint": {
+            "size": 32,
+            "batch": 8192,
+            "condition_number": 100.0,
+            "seed": 6300,
+            "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+          },
+          "reference_fingerprint": {
+            "reference_r_sha256": "7c9bf57a1a274dbfa37e9a1e6a5671b7c0512b2c358648a6e051c5e96d002a76",
+            "x0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+            "fixed_reference_sha256": "c6c467c751ccd52e7b051f177c182984b47bf86c306db85d2398ec08f83bdccc",
+            "true_inverse_sha256": "735098c1d3879e6989201786970022672ff33d326f4b24ea8ca4b379f589c3e1"
+          },
+          "preflight": null
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+        "historical_device_inverse_relative_error_vs_true_inverse": 0.021826325072699795,
+        "historical_device_phase_sensitive_complex_response_error": 1.1058901700625405,
+        "historical_device_metric_status": "invalidated for beam-pattern interpretation: the original weight denominator contracted unrelated einsum indices and was not aᴴPa",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              0.000822551000397076,
+              0.0012021569056370751,
+              0.0008043119997737103,
+              0.0009520121929721403,
+              0.0009041292264128087
+            ],
+            "mean_by_look_direction": [
+              0.00015248555108405567,
+              0.00015360793403033912,
+              0.00015270614364012883,
+              0.00015336890218942248,
+              0.0001526565861768425
+            ],
+            "mean_cosine_deficit": 0.0001529650234241577,
+            "max_cosine_deficit": 0.0012021569056370751,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 1310720,
+              "total_ratios": 1310720,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.02876001918319347,
+                "magnitude_p05": 0.9658759994757087,
+                "magnitude_median": 0.9974024059418201,
+                "magnitude_p95": 1.0320864428247343,
+                "magnitude_max": 19.238140720414435,
+                "phase_circular_mean_radians": -1.3669320252981812e-05,
+                "phase_circular_resultant_length": 0.9997000313937249
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 1.0021579245043306,
+                "imag": 3.5293130420632943e-07,
+                "magnitude": 1.0021579245043928,
+                "phase_radians": 3.5217134503114907e-07,
+                "phase_degrees": 2.017793173573036e-05
+              },
+              "relative_residual_after_best_global_scalar": 0.017729634853915918,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9945803130396899,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9030667408046879
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 5.095246377785861e-16,
+            "reference_max_absolute_error": 5.23691153334427e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.011624035141764692,
+            "phase_sensitive_complex_response_max_absolute_error": 0.027727104381353028,
+            "phase_aligned_complex_response_relative_frobenius_error": 0.011585234786218509,
+            "best_complex_scalar": {
+              "real": 1.0009499209867312,
+              "imag": -3.2909329460335743e-06,
+              "magnitude": 1.000949920992141,
+              "phase_radians": -3.2878097865051347e-06,
+              "phase_degrees": -0.00018837762460855245
+            },
+            "magnitude_response_relative_frobenius_error": 0.008351344420411091,
+            "normalized_magnitude_pattern_relative_frobenius_error": 0.008351344420411091,
+            "magnitude_response_max_absolute_error": 0.02672831312769483,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 0.37011165177005956,
+              "max_absolute_error_db": 22.02020568085193,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              0.011340175967219306,
+              0.011131616593433693,
+              0.010998283760389948,
+              0.011076069887569946,
+              0.011329669743460336
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              0.027410403951780314,
+              0.029361810114611725,
+              0.029636753293665472,
+              0.031619830156010824,
+              0.029423641968317173
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 0.017729634853915918,
+          "conjugate_residual_after_scalar": 0.9945803130396899,
+          "transpose_residual_after_scalar": 0.9030667408046879,
+          "ratio_summary": {
+            "magnitude_min": 0.02876001918319347,
+            "magnitude_p05": 0.9658759994757087,
+            "magnitude_median": 0.9974024059418201,
+            "magnitude_p95": 1.0320864428247343,
+            "magnitude_max": 19.238140720414435,
+            "phase_circular_mean_radians": -1.3669320252981812e-05,
+            "phase_circular_resultant_length": 0.9997000313937249
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.009830762056721,
+              "imag": -1.6490383208865565e-10,
+              "magnitude": 1.009830762056721,
+              "phase_radians": -1.632984835526264e-10,
+              "phase_degrees": -9.356313908451981e-09
+            },
+            "aligned_relative_frobenius_error": 0.019313827009840343,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.4299068435339446,
+              "imag": -9.122930801574226e-11,
+              "magnitude": 0.4299068435339446,
+              "phase_radians": -2.1220715461473916e-10,
+              "phase_degrees": -1.2158574341904665e-08
+            },
+            "aligned_relative_frobenius_error": 0.9048915193867194,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.42990684353394465,
+              "imag": -9.122930859458447e-11,
+              "magnitude": 0.42990684353394465,
+              "phase_radians": -2.1220715596117552e-10,
+              "phase_degrees": -1.2158574419049786e-08
+            },
+            "aligned_relative_frobenius_error": 0.9048915193867193,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      },
+      {
+        "row": "fp32-r-L32-r-dram",
+        "source_status": "ok",
+        "variant": "fp32-r",
+        "L": 32,
+        "R_format": "FP32",
+        "R_placement": "dram",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "native_32x32",
+          "R_placement": "dram",
+          "input_fingerprint": {
+            "size": 32,
+            "batch": 8192,
+            "condition_number": 100.0,
+            "seed": 6300,
+            "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+          },
+          "reference_fingerprint": {
+            "reference_r_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866",
+            "x0_sha256": "a5fa2a7e0979e3169f01a9ab391ce7fdb90e9b56371001b001dbb1a46e66847b",
+            "fixed_reference_sha256": "d36e6685c62f12c306772d112bd96313d7e1fa4aa47401d196c476a09daa24a5",
+            "true_inverse_sha256": "735098c1d3879e6989201786970022672ff33d326f4b24ea8ca4b379f589c3e1"
+          },
+          "preflight": null
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+        "historical_device_inverse_relative_error_vs_true_inverse": 0.005290290299383328,
+        "historical_device_phase_sensitive_complex_response_error": 1.1768554974382435,
+        "historical_device_metric_status": "invalidated for beam-pattern interpretation: the original weight denominator contracted unrelated einsum indices and was not aᴴPa",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              2.511324481702104e-13,
+              2.609024107869118e-13,
+              2.128297538206425e-13,
+              2.873257187729905e-13,
+              2.255973186038318e-13
+            ],
+            "mean_by_look_direction": [
+              3.6754331674514196e-14,
+              3.6914468335390305e-14,
+              3.668412958384576e-14,
+              3.7015407557648705e-14,
+              3.675259695103822e-14
+            ],
+            "mean_cosine_deficit": 3.6824186820487435e-14,
+            "max_cosine_deficit": 2.873257187729905e-13,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 1310720,
+              "total_ratios": 1310720,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.9997952240658441,
+                "magnitude_p05": 0.9999994747759786,
+                "magnitude_median": 0.9999999993909359,
+                "magnitude_p95": 1.000000520766139,
+                "magnitude_max": 1.0003332717720221,
+                "phase_circular_mean_radians": -3.2374983069182803e-10,
+                "phase_circular_resultant_length": 0.999999999999782
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 0.9999999997787355,
+                "imag": 2.1660321082342748e-11,
+                "magnitude": 0.9999999997787355,
+                "phase_radians": 2.1660321087135407e-11,
+                "phase_degrees": 1.2410449811910778e-09
+              },
+              "relative_residual_after_best_global_scalar": 2.7758940942863055e-07,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9945977201112953,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9035278339171807
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 5.578801654593729e-16,
+            "reference_max_absolute_error": 5.23691153334427e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 1.8683072492569623e-07,
+            "phase_sensitive_complex_response_max_absolute_error": 4.919398044585459e-07,
+            "phase_aligned_complex_response_relative_frobenius_error": 1.8682997527123528e-07,
+            "best_complex_scalar": {
+              "real": 0.9999999994899947,
+              "imag": 1.4146025635103872e-10,
+              "magnitude": 0.9999999994899947,
+              "phase_radians": 1.414602564231842e-10,
+              "phase_degrees": 8.105075661886849e-09
+            },
+            "magnitude_response_relative_frobenius_error": 1.3220512512728554e-07,
+            "normalized_magnitude_pattern_relative_frobenius_error": 1.322051251273093e-07,
+            "magnitude_response_max_absolute_error": 4.404521604106648e-07,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 7.818052077201725e-06,
+              "max_absolute_error_db": 0.0018734447905330853,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              1.7608514368856202e-07,
+              1.7685072001266274e-07,
+              1.7622835581389572e-07,
+              1.7653608883691632e-07,
+              1.7644685657493674e-07
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              5.637170756403946e-07,
+              5.308103687547113e-07,
+              5.4038256895079e-07,
+              5.881436589490733e-07,
+              5.336680853512914e-07
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 2.7758940942863055e-07,
+          "conjugate_residual_after_scalar": 0.9945977201112953,
+          "transpose_residual_after_scalar": 0.9035278339171807,
+          "ratio_summary": {
+            "magnitude_min": 0.9997952240658441,
+            "magnitude_p05": 0.9999994747759786,
+            "magnitude_median": 0.9999999993909359,
+            "magnitude_p95": 1.000000520766139,
+            "magnitude_max": 1.0003332717720221,
+            "phase_circular_mean_radians": -3.2374983069182803e-10,
+            "phase_circular_resultant_length": 0.999999999999782
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.0000000014355468,
+              "imag": 1.83650616158954e-10,
+              "magnitude": 1.0000000014355468,
+              "phase_radians": 1.8365061589531494e-10,
+              "phase_degrees": 1.0522405195779736e-08
+            },
+            "aligned_relative_frobenius_error": 2.74840249394491e-07,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.42469415510606945,
+              "imag": -2.5123718027818572e-11,
+              "magnitude": 0.42469415510606945,
+              "phase_radians": -5.915720224956664e-11,
+              "phase_degrees": -3.3894580167019877e-09
+            },
+            "aligned_relative_frobenius_error": 0.9053368848868361,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.42469415510606945,
+              "imag": -2.512371812160756e-11,
+              "magnitude": 0.42469415510606945,
+              "phase_radians": -5.915720247040554e-11,
+              "phase_degrees": -3.3894580293551243e-09
+            },
+            "aligned_relative_frobenius_error": 0.9053368848868361,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      },
+      {
+        "row": "fp32-r-L32",
+        "source_status": "preflight_rejected",
+        "variant": "fp32-r",
+        "L": 32,
+        "R_format": "FP32",
+        "R_placement": "l1",
+        "source_row_provenance": {
+          "batch": 8192,
+          "iterations": 12,
+          "initial_value": "I/||R||inf",
+          "state_format": "BF16",
+          "destination_format": "FP32",
+          "fp32_dest_acc_en": true,
+          "math_fidelity": "HiFi3",
+          "fuse_s": true,
+          "matrix_block": 8,
+          "double_buffer": true,
+          "dst_full_sync_en": true,
+          "input_memory": "l1",
+          "x0_memory": "l1",
+          "output_memory": "dram",
+          "packing": "native_32x32",
+          "R_placement": "l1",
+          "input_fingerprint": null,
+          "reference_fingerprint": null,
+          "preflight": {
+            "status": "rejected_before_allocation",
+            "bytes": 1884928,
+            "over_budget_bytes": 312064,
+            "variant": "fp32-r",
+            "size": 32,
+            "matrix_block": 8,
+            "r_memory": "l1",
+            "fallback": false,
+            "allocation_attempted": false,
+            "launches": 0
+          }
+        },
+        "candidate_definition": "Host fixed-N=12 NumPy reference for this row's R representation and original-R X0; not the device inverse output.",
+        "device_inverse_output_available": false,
+        "host_regenerated_matrix_sha256": "cd0e72118a0c6a810eaec4348b441ec810a7ddfc7d5d70206e048a337bcc8247",
+        "historical_device_inverse_relative_error_vs_true_inverse": null,
+        "historical_device_phase_sensitive_complex_response_error": null,
+        "historical_device_metric_status": "not measured: source row was rejected before device allocation",
+        "host_reference_metrics_vs_true_inverse": {
+          "steering_array": {
+            "array": "equal-spaced linear array",
+            "element_spacing": "one-half wavelength",
+            "look_directions_deg": [
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0
+            ],
+            "pattern_directions_deg": [
+              -60.0,
+              -45.0,
+              -30.0,
+              -15.0,
+              0.0,
+              15.0,
+              30.0,
+              45.0,
+              60.0
+            ]
+          },
+          "mv_weight_direction": {
+            "definition": "1 - absolute normalized direction cosine",
+            "by_look_direction": [
+              2.511324481702104e-13,
+              2.609024107869118e-13,
+              2.128297538206425e-13,
+              2.873257187729905e-13,
+              2.255973186038318e-13
+            ],
+            "mean_by_look_direction": [
+              3.6754331674514196e-14,
+              3.6914468335390305e-14,
+              3.668412958384576e-14,
+              3.7015407557648705e-14,
+              3.675259695103822e-14
+            ],
+            "mean_cosine_deficit": 3.6824186820487435e-14,
+            "max_cosine_deficit": 2.873257187729905e-13,
+            "finite_values": 40960,
+            "total_values": 40960,
+            "weight_ratio_diagnostics": {
+              "definition": "candidate_weight/reference_weight where |reference_weight| > 1e-12 * max(|reference_weight|) per vector",
+              "defined_ratios": 1310720,
+              "total_ratios": 1310720,
+              "nonfinite_ratios": 0,
+              "ratio_summary": {
+                "magnitude_min": 0.9997952240658441,
+                "magnitude_p05": 0.9999994747759786,
+                "magnitude_median": 0.9999999993909359,
+                "magnitude_p95": 1.000000520766139,
+                "magnitude_max": 1.0003332717720221,
+                "phase_circular_mean_radians": -3.2374983069182803e-10,
+                "phase_circular_resultant_length": 0.999999999999782
+              },
+              "best_global_complex_scalar_candidate_from_reference": {
+                "real": 0.9999999997787355,
+                "imag": 2.1660321082342748e-11,
+                "magnitude": 0.9999999997787355,
+                "phase_radians": 2.1660321087135407e-11,
+                "phase_degrees": 1.2410449811910778e-09
+              },
+              "relative_residual_after_best_global_scalar": 2.7758940942863055e-07,
+              "global_scalar_alignment_undefined": false,
+              "candidate_vs_conjugate_reference_relative_error_after_scalar": 0.9945977201112953,
+              "candidate_vs_transpose_reference_relative_error_after_scalar": 0.9035278339171807
+            }
+          },
+          "weight_normalization": {
+            "definition": "w = P a / (aᴴ P a); measure |wᴴ a - 1|",
+            "candidate_max_absolute_error": 5.578801654593729e-16,
+            "reference_max_absolute_error": 5.23691153334427e-16,
+            "candidate_finite_values": 40960,
+            "reference_finite_values": 40960,
+            "total_values": 40960
+          },
+          "beam_pattern": {
+            "metric_definition": "beam response is wᴴ a(theta); reported response-pattern comparisons are over batch, look, and pattern directions",
+            "phase_sensitive_complex_response_relative_frobenius_error": 1.8683072492569623e-07,
+            "phase_sensitive_complex_response_max_absolute_error": 4.919398044585459e-07,
+            "phase_aligned_complex_response_relative_frobenius_error": 1.8682997527123528e-07,
+            "best_complex_scalar": {
+              "real": 0.9999999994899947,
+              "imag": 1.4146025635103872e-10,
+              "magnitude": 0.9999999994899947,
+              "phase_radians": 1.414602564231842e-10,
+              "phase_degrees": 8.105075661886849e-09
+            },
+            "magnitude_response_relative_frobenius_error": 1.3220512512728554e-07,
+            "normalized_magnitude_pattern_relative_frobenius_error": 1.322051251273093e-07,
+            "magnitude_response_max_absolute_error": 4.404521604106648e-07,
+            "db_pattern": {
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately",
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "rms_absolute_error_db": 7.818052077201725e-06,
+              "max_absolute_error_db": 0.0018734447905330853,
+              "finite_values": 368640,
+              "total_values": 368640,
+              "undefined_values": 0,
+              "candidate_floored_values": 0,
+              "reference_floored_values": 0,
+              "candidate_undefined_look_peaks": 0,
+              "reference_undefined_look_peaks": 0
+            },
+            "phase_sensitive_complex_response_relative_error_by_look_direction": [
+              1.7608514368856202e-07,
+              1.7685072001266274e-07,
+              1.7622835581389572e-07,
+              1.7653608883691632e-07,
+              1.7644685657493674e-07
+            ],
+            "phase_sensitive_complex_response_max_relative_error_by_look_direction": [
+              5.637170756403946e-07,
+              5.308103687547113e-07,
+              5.4038256895079e-07,
+              5.881436589490733e-07,
+              5.336680853512914e-07
+            ],
+            "finite_values": 40960,
+            "total_values": 40960,
+            "response_metric_finite_values": 368640,
+            "response_metric_total_values": 368640,
+            "response_metric_undefined_values": 0
+          }
+        },
+        "host_weight_transform_assessment": {
+          "classification_tolerance_relative_residual": 1e-12,
+          "best_transform_by_scalar_residual": "same_orientation",
+          "global_complex_scale_or_phase_only": false,
+          "conjugated_reference_match": false,
+          "transposed_reference_match": false,
+          "same_orientation_residual_after_scalar": 2.7758940942863055e-07,
+          "conjugate_residual_after_scalar": 0.9945977201112953,
+          "transpose_residual_after_scalar": 0.9035278339171807,
+          "ratio_summary": {
+            "magnitude_min": 0.9997952240658441,
+            "magnitude_p05": 0.9999994747759786,
+            "magnitude_median": 0.9999999993909359,
+            "magnitude_p95": 1.000000520766139,
+            "magnitude_max": 1.0003332717720221,
+            "phase_circular_mean_radians": -3.2374983069182803e-10,
+            "phase_circular_resultant_length": 0.999999999999782
+          },
+          "interpretation": "Residuals are for host fixed-N references only; no device inverse arrays were persisted in the source record."
+        },
+        "host_inverse_transform_diagnostics": {
+          "same_orientation": {
+            "best_complex_scalar": {
+              "real": 1.0000000014355468,
+              "imag": 1.83650616158954e-10,
+              "magnitude": 1.0000000014355468,
+              "phase_radians": 1.8365061589531494e-10,
+              "phase_degrees": 1.0522405195779736e-08
+            },
+            "aligned_relative_frobenius_error": 2.74840249394491e-07,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "conjugated_reference": {
+            "best_complex_scalar": {
+              "real": 0.42469415510606945,
+              "imag": -2.5123718027818572e-11,
+              "magnitude": 0.42469415510606945,
+              "phase_radians": -5.915720224956664e-11,
+              "phase_degrees": -3.3894580167019877e-09
+            },
+            "aligned_relative_frobenius_error": 0.9053368848868361,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "transposed_reference": {
+            "best_complex_scalar": {
+              "real": 0.42469415510606945,
+              "imag": -2.512371812160756e-11,
+              "magnitude": 0.42469415510606945,
+              "phase_radians": -5.915720247040554e-11,
+              "phase_degrees": -3.3894580293551243e-09
+            },
+            "aligned_relative_frobenius_error": 0.9053368848868361,
+            "finite_values": 8388608,
+            "total_values": 8388608,
+            "undefined": false
+          },
+          "classification": {
+            "classification_tolerance_relative_residual": 1e-12,
+            "best_transform_by_scalar_residual": "same_orientation",
+            "global_complex_scalar_multiple": false,
+            "conjugated_reference_match": false,
+            "transposed_reference_match": false,
+            "interpretation": "Best scalar alignment is a diagnostic, not a matrix correctness metric; a normalized MV weight may remove an inverse-wide scalar."
+          }
+        }
+      }
+    ]
+  },
+  "conclusion": {
+    "metric_definition_defect_found": true,
+    "defect": "_weight used einsum labels 'j,bi->b', which independently summed steering and weights instead of contracting aᴴPa. At ±30 degrees for the 16/32-element half-wavelength array, the steering-vector sum is zero (up to floating residual), creating singular normalization and enormous phase-sensitive errors.",
+    "kernel_or_reconstruction_conjugation_transpose_defect_found": false,
+    "device_level_fp32_r_beam_ranking_supported": false,
+    "corrected_device_beam_ranking": "Not available: the source record retains correctness summaries and fingerprints, not the downloaded inverse matrices needed to recompute corrected device-level response metrics.",
+    "corrected_host_only_conclusion": "The old source beam-pattern conclusion that FP32-R is worse is unsupported and must not be used: its metric normalization is defective. Corrected host-reference metrics are diagnostic only and do not replace device-output evidence. Keep the R representation comparison open pending retained device outputs or an authorized rerun."
+  }
+}

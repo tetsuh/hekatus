@@ -2508,17 +2508,31 @@ diagnostics:
 `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
 
 The same record separates input representation from solver error: at κ=100,
-BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by
-2.52e-4, and the beam pattern by 1.42e-2 against the unrounded truth, while the
-kernel is about 3.67e-3 from the BF16-`R` reference. FP32-`R` has now been
-measured in the authoritative Issue #88 convergence rerun,
-`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json`;
-its separate true-inverse and matching-reference comparisons are summarized in
-`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun-summary.json`.
-Under the common original-`R` true-inverse reference, FP32-`R` improves inverse
-error and MV direction but worsens beam-pattern error in both same-placement
-comparisons (L=16 with `R` in L1 and L=32 with `R` in DRAM). The `R`
-representation remains open for owner decision.
+BF16 rounding of `R` moves the inverse by about 2.03e-2 and the MV direction by
+2.52e-4 against the unrounded truth, while the kernel is about 3.67e-3 from the
+BF16-`R` reference. The Issue #88 source beam-pattern result in
+`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json`
+and its prior derived summary remain unchanged, but their beam values are
+invalid: `_weight` used `einsum("j,bi->b", ...)`, summing independent steering
+and weight vectors rather than computing `aᴴPa`. For the equal-spaced
+half-wavelength 16/32-element array, the steering-vector sum approaches zero
+at ±30°, making that mistaken denominator singular and producing huge
+phase-sensitive response errors. The corrected contraction is
+`einsum("j,bj->b", ...)`, and future output labels phase-sensitive complex
+response separately from best-scalar-aligned, magnitude-only, and -120 dB
+floored pattern metrics. The source audit of the separate real/imaginary
+planes, complex multiply signs, L=16 packing/unpacking, downloads, and complex
+reconstruction found no conjugation or transpose defect.
+
+The new host-only diagnostic summary is
+`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-beam-metric-summary.json`.
+It records host fixed-N reference metrics for every source row, but those are
+not device outputs: the immutable source retains no downloaded inverse arrays,
+and regenerated host matrix-byte hashes do not match its stored fingerprints.
+Accordingly, the historical conclusion that FP32-`R` worsens beam-pattern
+error is withdrawn as unsupported; no corrected device-level ranking is
+available, and the `R` representation remains open pending retained device
+outputs or an authorized rerun.
 
 ### Investigation items
 
