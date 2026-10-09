@@ -14,7 +14,11 @@ sustained load, this trace is the answer.
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
+import hashlib
+import io
+import itertools
 import json
 import math
 import os
@@ -24,11 +28,17 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.sampler_contract import (
+    DEFAULT_SAMPLER_INTERVAL_SECONDS,
+    SAMPLER_MODES,
+    normalize_sampler_metadata,
+)
 
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
@@ -39,6 +49,257 @@ _PCI_BUS_ID_RE = re.compile(
 )
 _BOARD_BUS_ID_KEYS = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
 _BLACKHOLE_BY_ID_RE = re.compile(r"^blackhole-[0-9A-Za-z][0-9A-Za-z._-]*$")
+
+POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+
+
+def _parse_trace_timestamp(value: Any, *, field: str) -> datetime.datetime:
+    """Parse one timezone-bearing ISO-8601 trace timestamp."""
+    if isinstance(value, datetime.datetime):
+        try:
+            has_timezone = value.tzinfo is not None and value.utcoffset() is not None
+            parsed = value.astimezone(datetime.UTC) if has_timezone else None
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+        if parsed is None:
+            raise ValueError(f"{field} must include a timezone")
+        return parsed
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty ISO-8601 timestamp")
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.datetime.fromisoformat(text)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+    try:
+        has_timezone = parsed.tzinfo is not None and parsed.utcoffset() is not None
+        normalized = parsed.astimezone(datetime.UTC) if has_timezone else None
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+    if normalized is None:
+        raise ValueError(f"{field} must include a timezone")
+    return normalized
+
+
+def _finite_integer(
+    value: Any, *, field: str, positive: bool = False, maximum: int = (1 << 63) - 1
+) -> int | None:
+    """Return a bounded integer conversion, or ``None`` for unusable input."""
+    try:
+        converted = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(converted) or converted > maximum or (
+        positive and converted <= 0.0
+    ):
+        return None
+    try:
+        result = int(converted)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if result < 0 or (positive and result <= 0):
+        return None
+    return result
+
+
+def _trace_timestamp_text(value: Any, *, field: str) -> str | None:
+    if value is None:
+        return None
+    return _parse_trace_timestamp(value, field=field).isoformat()
+
+
+def _trace_number(value: Any, *, field: str, positive: bool = False) -> float:
+    try:
+        parsed = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"{field} is not numeric") from exc
+    if not math.isfinite(parsed) or (positive and parsed <= 0.0):
+        requirement = "finite and positive" if positive else "finite"
+        raise ValueError(f"{field} must be {requirement}")
+    return parsed
+
+
+def _power_trace_base(path: Path, *, run_start: Any, run_end: Any) -> dict[str, Any]:
+    errors: list[str] = []
+    try:
+        start_text = _trace_timestamp_text(run_start, field="run_start") if run_start is not None else None
+    except ValueError as exc:
+        start_text = None
+        errors.append(str(exc))
+    try:
+        end_text = _trace_timestamp_text(run_end, field="run_end") if run_end is not None else None
+    except ValueError as exc:
+        end_text = None
+        errors.append(str(exc))
+    return {
+        "file": path.name,
+        "columns": list(POWER_TRACE_COLUMNS),
+        "sha256": None,
+        "readable": False,
+        "nonempty": False,
+        "csv_row_count": 0,
+        "sample_count": 0,
+        "valid_row_count": 0,
+        "in_run_valid_row_count": 0,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "run_start": start_text,
+        "run_end": end_text,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "coverage": {
+            "nonempty": False,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_at_or_before_run_start": False,
+            "last_at_or_after_run_end": False,
+            "readable": False,
+            "complete": False,
+        },
+        "aiclk_source": "no_valid_in_run_samples",
+        "aiclk_mhz": None,
+        "aiclk_mhz_in_run": [],
+        "errors": errors,
+    }
+
+
+def parse_power_trace(
+    path: Path,
+    *,
+    run_start: datetime.datetime | str | None = None,
+    run_end: datetime.datetime | str | None = None,
+) -> dict[str, Any]:
+    """Parse a power CSV and validate PR #109 complete run coverage.
+
+    The returned metadata is board-free and deliberately separates physical
+    file facts (byte hash and row counts), timestamp facts, run coverage, and
+    AICLK provenance.  A usable trace is nonempty, readable, fully parseable,
+    ordered, and satisfies ``first_timestamp <= run_start <= run_end <=
+    last_timestamp``.  ``aiclk_mhz_in_run`` contains only valid rows whose
+    timestamps fall inside the explicit run interval; it never falls back to a
+    pre-run environment snapshot.
+    """
+    if not isinstance(path, Path):
+        path = Path(path)
+    trace = _power_trace_base(path, run_start=run_start, run_end=run_end)
+    try:
+        raw = path.read_bytes()
+    except OSError as exc:
+        trace["errors"] = [
+            f"power trace is not readable: {type(exc).__name__}"
+        ]
+        return trace
+    trace["sha256"] = hashlib.sha256(raw).hexdigest()
+    try:
+        text = raw.decode("utf-8")
+        reader = csv.DictReader(io.StringIO(text, newline=""))
+        fieldnames = tuple(reader.fieldnames or ())
+        if fieldnames != POWER_TRACE_COLUMNS:
+            raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
+        rows = [dict(row) for row in reader]
+    except (UnicodeDecodeError, csv.Error, TypeError, ValueError) as exc:
+        trace["errors"] = [str(exc)]
+        return trace
+
+    trace["readable"] = True
+    trace["csv_row_count"] = len(rows)
+    trace["sample_count"] = len(rows)
+    trace["nonempty"] = bool(rows)
+    parsed_rows: list[tuple[datetime.datetime, float]] = []
+    errors: list[str] = list(trace.get("errors", []))
+    for index, row in enumerate(rows):
+        if None in row or any(column not in row for column in POWER_TRACE_COLUMNS):
+            errors.append(f"power row {index} does not have exactly the declared columns")
+            continue
+        try:
+            timestamp = _parse_trace_timestamp(
+                row["timestamp_utc"], field=f"power row {index} timestamp_utc"
+            )
+            _trace_number(row["power_w"], field=f"power row {index} power_w")
+            aiclk = _trace_number(
+                row["aiclk_mhz"], field=f"power row {index} aiclk_mhz", positive=True
+            )
+            _trace_number(row["asic_temp_c"], field=f"power row {index} asic_temp_c")
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            parsed_rows.append((timestamp, aiclk))
+
+    trace["valid_row_count"] = len(parsed_rows)
+    trace["timestamps_parse"] = bool(rows) and len(parsed_rows) == len(rows)
+    if trace["timestamps_parse"]:
+        timestamps = [timestamp for timestamp, _aiclk in parsed_rows]
+        trace["first_timestamp"] = timestamps[0].isoformat()
+        trace["last_timestamp"] = timestamps[-1].isoformat()
+        trace["timestamps_ordered"] = all(
+            left <= right for left, right in itertools.pairwise(timestamps)
+        )
+        try:
+            start = _parse_trace_timestamp(trace["run_start"], field="run_start")
+            end = _parse_trace_timestamp(trace["run_end"], field="run_end")
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if start > end:
+                errors.append("run_start must be at or before run_end")
+            trace["covers_run_start"] = timestamps[0] <= start <= end
+            trace["covers_run_end"] = timestamps[-1] >= end
+            in_run = [
+                aiclk
+                for timestamp, aiclk in parsed_rows
+                if start <= timestamp <= end
+            ]
+            trace["in_run_valid_row_count"] = len(in_run)
+            trace["aiclk_mhz_in_run"] = in_run
+            if in_run:
+                trace["aiclk_source"] = "run_trace_samples"
+                trace["aiclk_mhz"] = max(in_run)
+            trace["coverage_complete"] = all(
+                (
+                    trace["readable"],
+                    trace["nonempty"],
+                    trace["valid_row_count"] == trace["csv_row_count"],
+                    trace["timestamps_parse"],
+                    trace["timestamps_ordered"],
+                    timestamps[0] <= start,
+                    start <= end,
+                    end <= timestamps[-1],
+                )
+            )
+    if not trace["timestamps_parse"] and rows:
+        trace["aiclk_source"] = "no_valid_in_run_samples"
+    trace["errors"] = errors
+    trace["coverage"] = {
+        "nonempty": trace["nonempty"],
+        "timestamps_parse": trace["timestamps_parse"],
+        "timestamps_ordered": trace["timestamps_ordered"],
+        "first_at_or_before_run_start": trace["covers_run_start"],
+        "last_at_or_after_run_end": trace["covers_run_end"],
+        "readable": trace["readable"],
+        "complete": trace["coverage_complete"],
+    }
+    return trace
+
+
+def validate_power_trace_coverage(
+    path: Path,
+    *,
+    run_start: datetime.datetime | str | None = None,
+    run_end: datetime.datetime | str | None = None,
+) -> dict[str, Any]:
+    """Board-free alias for :func:`parse_power_trace` used by record builders."""
+    return parse_power_trace(path, run_start=run_start, run_end=run_end)
+
+
+# Keep both names discoverable for callers that describe the seam as parsing
+# or validation; they intentionally share one implementation and one catalog.
+read_power_trace = parse_power_trace
+validate_power_trace = validate_power_trace_coverage
 
 
 def _requested_device_node() -> str:
@@ -307,19 +568,23 @@ def parse_telemetry(
     *,
     node_resolver: Callable[[str], object] | None = None,
 ) -> dict[str, str] | None:
-    """Extract the sampled quantities, or None if the snapshot is unusable."""
+    """Extract one finite sampled reading from the requested board."""
     device = _device_info(snapshot, node_resolver=node_resolver)
     if device is None:
         return None
     try:
         telemetry = device["telemetry"]
-        return {
+        reading = {
             "power_w": str(telemetry["power"]).strip(),
             "aiclk_mhz": str(telemetry["aiclk"]).strip(),
             "asic_temp_c": str(telemetry["asic_temperature"]).strip(),
         }
-    except (KeyError, TypeError):
+        _trace_number(reading["power_w"], field="telemetry power_w")
+        _trace_number(reading["aiclk_mhz"], field="telemetry aiclk_mhz", positive=True)
+        _trace_number(reading["asic_temp_c"], field="telemetry asic_temp_c")
+    except (KeyError, TypeError, ValueError):
         return None
+    return reading
 
 
 def telemetry_csv_row(
@@ -328,7 +593,7 @@ def telemetry_csv_row(
     timestamp: str,
     node_resolver: Callable[[str], object] | None = None,
 ) -> str | None:
-    """One CSV row in the order of CSV_HEADER, or None if nothing was read."""
+    """One finite CSV row from the requested board, or None if unusable."""
     reading = parse_telemetry(snapshot, node_resolver=node_resolver)
     if reading is None:
         return None
@@ -347,12 +612,27 @@ def parse_environment(
             "board_snapshot_error": "no verifiable device information in the snapshot",
             "device_node": _requested_device_node(),
         }
-    return {key: device[key] for key in ("board_info", "firmwares", "limits") if key in device} | {
+    environment = {
+        key: device[key] for key in ("board_info", "firmwares", "limits") if key in device
+    } | {
         "board": device.get("board_info"),
         "firmware": device.get("firmwares"),
         "limits": device.get("limits"),
         "device_node": _requested_device_node(),
     }
+    reading = parse_telemetry(snapshot, node_resolver=node_resolver)
+    if reading is not None:
+        observed = _finite_integer(
+            reading["aiclk_mhz"], field="aiclk_mhz", positive=True
+        )
+        if observed is not None:
+            environment["aiclk_mhz_observed"] = [observed]
+    return environment
+
+
+def sampler_metadata(mode: str, interval: float | None = None) -> dict[str, object]:
+    """Validate and describe the wrapper's telemetry-sampler mode."""
+    return normalize_sampler_metadata({"mode": mode, "interval_seconds": interval})
 
 
 def _run(command: tuple[str, ...] | str) -> str:
@@ -444,12 +724,19 @@ def harness_identity() -> dict:
     return {"harness_commit": commit, "harness_dirty": bool(status)}
 
 
-def capture_environment(image: str, image_pinned: bool) -> dict:
+def capture_environment(
+    image: str,
+    image_pinned: bool,
+    *,
+    sampler_mode: str = "default",
+    sampler_interval: float | None = None,
+) -> dict:
     """Everything needed to name the environment a measurement came from."""
     environment = {
         "captured_at": _now(),
         "image": image,
         "image_pinned": image_pinned,
+        "telemetry_sampler": sampler_metadata(sampler_mode, sampler_interval),
         "kernel": _run("uname -sr").strip(),
         "kmd_version": _run(
             "modinfo tenstorrent 2>/dev/null | awk '/^version:/{print $2}'"
@@ -507,10 +794,12 @@ def main(argv: list[str] | None = None) -> None:
     capture.add_argument("--out", type=Path, required=True)
     capture.add_argument("--image", required=True)
     capture.add_argument("--image-pinned", action="store_true")
+    capture.add_argument("--sampler-mode", choices=SAMPLER_MODES, default="default")
+    capture.add_argument("--sampler-interval", type=float, default=None)
 
     sample = sub.add_parser("sample", help="append telemetry rows until terminated")
     sample.add_argument("--out", type=Path, required=True)
-    sample.add_argument("--interval", type=float, default=2.0)
+    sample.add_argument("--interval", type=float, default=DEFAULT_SAMPLER_INTERVAL_SECONDS)
 
     args = parser.parse_args(argv)
     if args.mode == "sample" and not (math.isfinite(args.interval) and args.interval > 0):
@@ -520,9 +809,21 @@ def main(argv: list[str] | None = None) -> None:
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "capture-env":
-        args.out.write_text(
-            strict_json_dumps(capture_environment(args.image, args.image_pinned), indent=2) + "\n"
-        )
+        try:
+            if args.sampler_mode == "default" and args.sampler_interval is None:
+                # Keep the two-argument call compatible with board-free callers
+                # that replace capture_environment in tests.
+                environment = capture_environment(args.image, args.image_pinned)
+            else:
+                environment = capture_environment(
+                    args.image,
+                    args.image_pinned,
+                    sampler_mode=args.sampler_mode,
+                    sampler_interval=args.sampler_interval,
+                )
+        except ValueError as exc:
+            parser.error(str(exc))
+        args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
         print(f"environment -> {args.out}")
         return
 

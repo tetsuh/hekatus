@@ -1930,6 +1930,46 @@ card (host-side timestamps would mix in host jitter).
 **Build the timestamp mechanism in from the start. Retrofitting it is
 painful.**
 
+### Issue #104 paired-outlier measurement (2026-10-06)
+
+The pinned resident harness was run for 400,000 frames at the Issue #12 final
+configuration (1 ms, no Watcher, device 0, 600-second outer cap) with telemetry
+sampling off, at the existing 2-second interval, and at an explicit 5-second
+interval. The ADR-0005 records are
+`docs/measurements/2026-10-06-p150a-issue104-sampler-off.json`,
+`docs/measurements/2026-10-06-p150a-issue104-sampler-default.json`, and
+`docs/measurements/2026-10-06-p150a-issue104-sampler-5s.json`.
+
+All three runs retain the same P50/P99/P99.9/P99.99 body (1,349,988 / 1,350,048
+/ 1,350,050 / 1,350,050 ticks) and fixed consumer work (1,072–1,098 ticks).
+The paired short/long observations count 22 with sampling off, 18 at 2 s, and
+9 at 5 s. The board-free follow-up in
+`docs/measurements/2026-10-06-p150a-issue104-wrap-analysis.md` folds the first
+interval endpoints by the exact `2^32`-tick period
+(`2^32 / 1,350,000,000 = 3.1814572563 s`): all pair starts are immediately
+after a wall-clock wrap, with measured Rayleigh R 0.9999999999999996–
+0.9999999999999998 and circular width 0.0000296296–0.0000422222 ms. The
+sampler-off run has the same phase lock, so a host sampler is not a necessary
+condition. A frame-gap gcd of 1 does not reject this period because it is
+3,181.4572563 configured 1-ms frames, not an integer frame count.
+The off run is diagnostic-only because it intentionally has no power trace.
+Together with PR #103's controlled clock-path experiment, this evidence shows
+that the paired events are phase-locked to the wall-clock wrap and disappear
+after switching to low-word-only reads with software wrap tracking. This
+supports the clock-read path as the cause. Direct producer-versus-consumer
+attribution remains open because there is no producer stamp on the same clock.
+The short-first order is consistent with an early producer send, but does not
+establish producer-side attribution. The PR #103 record
+`docs/measurements/2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json`
+reports 500,000 frames, zero pairs, and min/max 1,349,924..1,350,068 ticks,
+versus 27 pairs before the low-word-only 32-bit read with software wrap tracking.
+A shared tile latch being overwritten remains a hypothesis inferred from the
+evidence, not a proven mechanism. The current-wrap 500,000-frame record is the
+intermediate controlled comparison; the final accepted Stage 1 authority is the
+corrected-drain
+`docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json`
+record, which also reports zero paired outliers.
+
 ---
 
 ## 13. Core partitioning and organ recognition

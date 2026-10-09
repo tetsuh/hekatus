@@ -1,0 +1,694 @@
+{
+  "schema": "issue-12-stage-1-resident-final-v2",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "summary": "Current semaphore+barrier+wrap-tracked in-cap no-Watcher 500000-frame timing run.",
+  "environment": {
+    "captured_at": "2026-10-06T23:28:16.286283+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "b0dec92728b69f87ab78ee1ef991a00a43b528ec",
+    "harness_dirty": false,
+    "board": {
+      "board_type": "p150a",
+      "serial": "000004033191411c",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ]
+  },
+  "parameters": {
+    "frame_count": 500000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "run_budget": {
+      "frame_count": 500000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 675000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 50000000000,
+      "critical_path_ticks": 675000000000,
+      "schedule_ticks": 675135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 67513500000,
+      "run_budget_ticks": 742648500000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK_L",
+    "timestamp_api": "get_timestamp_32b",
+    "timestamp_semantics": "32-bit low word, software-extended (wrap-tracked)",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "semaphore_protocol": {
+    "ready_semaphore_id": 0,
+    "free_semaphore_id": 1,
+    "done_semaphore_id": 2,
+    "error_semaphore_id": 3,
+    "remote_signaling": "noc_semaphore_inc with noc_async_atomic_barrier",
+    "local_observation": "invalidate_l1_cache before semaphore reads"
+  },
+  "startup": {
+    "configured_allowance_ms": 100,
+    "configured_allowance_ticks": 135000000,
+    "budget_aiclk_mhz": 1350,
+    "observed_ticks": 11903,
+    "observed_valid": true,
+    "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK_L; 32-bit low word, software-extended (wrap-tracked)"
+  },
+  "termination": {
+    "reason": "frame_count",
+    "cycle_budget_error": false,
+    "kernel_error_flag": 0,
+    "failure_check": {
+      "code": 0,
+      "name": "none",
+      "source": "none"
+    }
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 500000,
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "consumed_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers plus receiving-core standard semaphores and control metadata",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 742648500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "work_ticks": {
+    "minimum": 1063,
+    "maximum": 1087,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "histogram": {
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded.",
+    "N": 499999,
+    "min_ticks": 1349924,
+    "max_ticks": 1350068,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349988.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350033.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350059.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350061.0
+      }
+    },
+    "fine_bin_width_ticks": 1,
+    "fine_bins": [
+      {
+        "start_ticks": 1349924,
+        "end_ticks": 1349925,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349938,
+        "end_ticks": 1349939,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349940,
+        "end_ticks": 1349941,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349944,
+        "end_ticks": 1349945,
+        "count": 6
+      },
+      {
+        "start_ticks": 1349945,
+        "end_ticks": 1349946,
+        "count": 5
+      },
+      {
+        "start_ticks": 1349946,
+        "end_ticks": 1349947,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349949,
+        "end_ticks": 1349950,
+        "count": 17
+      },
+      {
+        "start_ticks": 1349950,
+        "end_ticks": 1349951,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349951,
+        "end_ticks": 1349952,
+        "count": 3
+      },
+      {
+        "start_ticks": 1349952,
+        "end_ticks": 1349953,
+        "count": 5
+      },
+      {
+        "start_ticks": 1349953,
+        "end_ticks": 1349954,
+        "count": 1787
+      },
+      {
+        "start_ticks": 1349954,
+        "end_ticks": 1349955,
+        "count": 36
+      },
+      {
+        "start_ticks": 1349955,
+        "end_ticks": 1349956,
+        "count": 10
+      },
+      {
+        "start_ticks": 1349956,
+        "end_ticks": 1349957,
+        "count": 230
+      },
+      {
+        "start_ticks": 1349957,
+        "end_ticks": 1349958,
+        "count": 12
+      },
+      {
+        "start_ticks": 1349958,
+        "end_ticks": 1349959,
+        "count": 34
+      },
+      {
+        "start_ticks": 1349959,
+        "end_ticks": 1349960,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349962,
+        "end_ticks": 1349963,
+        "count": 12
+      },
+      {
+        "start_ticks": 1349969,
+        "end_ticks": 1349970,
+        "count": 2
+      },
+      {
+        "start_ticks": 1349970,
+        "end_ticks": 1349971,
+        "count": 1
+      },
+      {
+        "start_ticks": 1349971,
+        "end_ticks": 1349972,
+        "count": 9
+      },
+      {
+        "start_ticks": 1349972,
+        "end_ticks": 1349973,
+        "count": 18
+      },
+      {
+        "start_ticks": 1349973,
+        "end_ticks": 1349974,
+        "count": 12
+      },
+      {
+        "start_ticks": 1349974,
+        "end_ticks": 1349975,
+        "count": 8
+      },
+      {
+        "start_ticks": 1349975,
+        "end_ticks": 1349976,
+        "count": 24
+      },
+      {
+        "start_ticks": 1349976,
+        "end_ticks": 1349977,
+        "count": 13
+      },
+      {
+        "start_ticks": 1349977,
+        "end_ticks": 1349978,
+        "count": 18
+      },
+      {
+        "start_ticks": 1349978,
+        "end_ticks": 1349979,
+        "count": 707
+      },
+      {
+        "start_ticks": 1349979,
+        "end_ticks": 1349980,
+        "count": 227
+      },
+      {
+        "start_ticks": 1349980,
+        "end_ticks": 1349981,
+        "count": 2920
+      },
+      {
+        "start_ticks": 1349981,
+        "end_ticks": 1349982,
+        "count": 5069
+      },
+      {
+        "start_ticks": 1349982,
+        "end_ticks": 1349983,
+        "count": 4113
+      },
+      {
+        "start_ticks": 1349983,
+        "end_ticks": 1349984,
+        "count": 16529
+      },
+      {
+        "start_ticks": 1349984,
+        "end_ticks": 1349985,
+        "count": 32318
+      },
+      {
+        "start_ticks": 1349985,
+        "end_ticks": 1349986,
+        "count": 51850
+      },
+      {
+        "start_ticks": 1349986,
+        "end_ticks": 1349987,
+        "count": 36714
+      },
+      {
+        "start_ticks": 1349987,
+        "end_ticks": 1349988,
+        "count": 36301
+      },
+      {
+        "start_ticks": 1349988,
+        "end_ticks": 1349989,
+        "count": 63100
+      },
+      {
+        "start_ticks": 1349989,
+        "end_ticks": 1349990,
+        "count": 28933
+      },
+      {
+        "start_ticks": 1349990,
+        "end_ticks": 1349991,
+        "count": 19514
+      },
+      {
+        "start_ticks": 1349991,
+        "end_ticks": 1349992,
+        "count": 12041
+      },
+      {
+        "start_ticks": 1349992,
+        "end_ticks": 1349993,
+        "count": 2850
+      },
+      {
+        "start_ticks": 1349993,
+        "end_ticks": 1349994,
+        "count": 7829
+      },
+      {
+        "start_ticks": 1349994,
+        "end_ticks": 1349995,
+        "count": 306
+      },
+      {
+        "start_ticks": 1349995,
+        "end_ticks": 1349996,
+        "count": 156
+      },
+      {
+        "start_ticks": 1349996,
+        "end_ticks": 1349997,
+        "count": 2664
+      },
+      {
+        "start_ticks": 1349999,
+        "end_ticks": 1350000,
+        "count": 2
+      },
+      {
+        "start_ticks": 1350005,
+        "end_ticks": 1350006,
+        "count": 4
+      },
+      {
+        "start_ticks": 1350009,
+        "end_ticks": 1350010,
+        "count": 2
+      },
+      {
+        "start_ticks": 1350010,
+        "end_ticks": 1350011,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350011,
+        "end_ticks": 1350012,
+        "count": 3
+      },
+      {
+        "start_ticks": 1350012,
+        "end_ticks": 1350013,
+        "count": 30
+      },
+      {
+        "start_ticks": 1350013,
+        "end_ticks": 1350014,
+        "count": 15
+      },
+      {
+        "start_ticks": 1350014,
+        "end_ticks": 1350015,
+        "count": 15
+      },
+      {
+        "start_ticks": 1350015,
+        "end_ticks": 1350016,
+        "count": 25
+      },
+      {
+        "start_ticks": 1350016,
+        "end_ticks": 1350017,
+        "count": 70
+      },
+      {
+        "start_ticks": 1350017,
+        "end_ticks": 1350018,
+        "count": 19
+      },
+      {
+        "start_ticks": 1350018,
+        "end_ticks": 1350019,
+        "count": 238
+      },
+      {
+        "start_ticks": 1350019,
+        "end_ticks": 1350020,
+        "count": 1258
+      },
+      {
+        "start_ticks": 1350020,
+        "end_ticks": 1350021,
+        "count": 1857
+      },
+      {
+        "start_ticks": 1350021,
+        "end_ticks": 1350022,
+        "count": 6523
+      },
+      {
+        "start_ticks": 1350022,
+        "end_ticks": 1350023,
+        "count": 26499
+      },
+      {
+        "start_ticks": 1350023,
+        "end_ticks": 1350024,
+        "count": 17854
+      },
+      {
+        "start_ticks": 1350024,
+        "end_ticks": 1350025,
+        "count": 50766
+      },
+      {
+        "start_ticks": 1350025,
+        "end_ticks": 1350026,
+        "count": 24260
+      },
+      {
+        "start_ticks": 1350026,
+        "end_ticks": 1350027,
+        "count": 3662
+      },
+      {
+        "start_ticks": 1350027,
+        "end_ticks": 1350028,
+        "count": 14298
+      },
+      {
+        "start_ticks": 1350028,
+        "end_ticks": 1350029,
+        "count": 4348
+      },
+      {
+        "start_ticks": 1350029,
+        "end_ticks": 1350030,
+        "count": 4471
+      },
+      {
+        "start_ticks": 1350030,
+        "end_ticks": 1350031,
+        "count": 11059
+      },
+      {
+        "start_ticks": 1350031,
+        "end_ticks": 1350032,
+        "count": 19
+      },
+      {
+        "start_ticks": 1350032,
+        "end_ticks": 1350033,
+        "count": 633
+      },
+      {
+        "start_ticks": 1350033,
+        "end_ticks": 1350034,
+        "count": 2083
+      },
+      {
+        "start_ticks": 1350034,
+        "end_ticks": 1350035,
+        "count": 20
+      },
+      {
+        "start_ticks": 1350035,
+        "end_ticks": 1350036,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350040,
+        "end_ticks": 1350041,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350041,
+        "end_ticks": 1350042,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350044,
+        "end_ticks": 1350045,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350046,
+        "end_ticks": 1350047,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350049,
+        "end_ticks": 1350050,
+        "count": 6
+      },
+      {
+        "start_ticks": 1350050,
+        "end_ticks": 1350051,
+        "count": 5
+      },
+      {
+        "start_ticks": 1350051,
+        "end_ticks": 1350052,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350052,
+        "end_ticks": 1350053,
+        "count": 9
+      },
+      {
+        "start_ticks": 1350053,
+        "end_ticks": 1350054,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350054,
+        "end_ticks": 1350055,
+        "count": 7
+      },
+      {
+        "start_ticks": 1350055,
+        "end_ticks": 1350056,
+        "count": 18
+      },
+      {
+        "start_ticks": 1350056,
+        "end_ticks": 1350057,
+        "count": 472
+      },
+      {
+        "start_ticks": 1350057,
+        "end_ticks": 1350058,
+        "count": 448
+      },
+      {
+        "start_ticks": 1350058,
+        "end_ticks": 1350059,
+        "count": 1477
+      },
+      {
+        "start_ticks": 1350059,
+        "end_ticks": 1350060,
+        "count": 729
+      },
+      {
+        "start_ticks": 1350060,
+        "end_ticks": 1350061,
+        "count": 7
+      },
+      {
+        "start_ticks": 1350061,
+        "end_ticks": 1350062,
+        "count": 364
+      },
+      {
+        "start_ticks": 1350062,
+        "end_ticks": 1350063,
+        "count": 2
+      },
+      {
+        "start_ticks": 1350063,
+        "end_ticks": 1350064,
+        "count": 1
+      },
+      {
+        "start_ticks": 1350068,
+        "end_ticks": 1350069,
+        "count": 1
+      }
+    ]
+  },
+  "raw_timestamps": {
+    "count": 500000,
+    "sha256": "19bc5c0f346253ce0855b4ceb36d9760a556b80dc1202de9a9019ac1b8ef5fa6",
+    "retained_outside_repository": true
+  },
+  "power_trace": "2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005-power.csv",
+  "power_trace_sample_count": 226,
+  "power_trace_sha256": "0b4ede33357e5aa52e0795d115de2567f58f157388f34601dca0c8b9bab4bf35",
+  "hardware": {
+    "device_id": 0,
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": false,
+    "health_probe": "not run"
+  },
+  "first_frame_exclusion": true,
+  "frame_interval_note": "The device-clock frame interval is a harness parameter, not a real acquisition-rate claim.",
+  "timing_evidence": true,
+  "harness_commit": "b0dec92728b69f87ab78ee1ef991a00a43b528ec",
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "status": "observation_only_no_causal_claim",
+    "pair_count": 0,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sums": [],
+    "frame_gaps": [],
+    "period_frames": 6363,
+    "periodicity": "Current pair count is 0 versus prior 27; no 6363 phase distribution is observable in this run; prediction outcome: zero pairs in the current Watcher and 500000-frame runs.",
+    "comparison_to_prior": {
+      "prior_pair_count": 27,
+      "prior_common_gap_frames": 6363,
+      "prior_gap_distribution": "previous 27-pair record had 6363 as 11 of 26 gaps, gcd 1"
+    },
+    "aggregate_by_quotient_remainder": {}
+  }
+}

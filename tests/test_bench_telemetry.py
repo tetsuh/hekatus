@@ -11,7 +11,12 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench import telemetry
-from enodia.tt.bench.telemetry import parse_environment, parse_telemetry, telemetry_csv_row
+from enodia.tt.bench.telemetry import (
+    parse_environment,
+    parse_telemetry,
+    sampler_metadata,
+    telemetry_csv_row,
+)
 
 SNAPSHOT = json.dumps(
     {
@@ -55,6 +60,40 @@ def test_environment_keeps_the_identity_of_the_board_and_its_firmware():
     assert env["board"]["board_type"] == "p100a"
     assert env["firmware"]["fw_bundle_version"] == "19.4.1.0"
     assert env["limits"]["tdp_limit"] == "150"
+    assert env["aiclk_mhz_observed"] == [800]
+
+
+def test_sampler_metadata_distinguishes_default_explicit_and_off_modes():
+    assert sampler_metadata("default") == {
+        "mode": "default",
+        "interval_seconds": 2.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    assert sampler_metadata("explicit", 5.0)["interval_seconds"] == 5.0
+    assert sampler_metadata("off")["power_trace"] == "absent_by_design"
+    assert sampler_metadata("off")["timing_evidence"] == "diagnostic_only"
+    with pytest.raises(ValueError, match="default sampler"):
+        sampler_metadata("default", 5.0)
+    with pytest.raises(ValueError, match="off"):
+        sampler_metadata("off", 5.0)
+
+
+def test_capture_environment_records_sampler_mode(monkeypatch):
+    monkeypatch.setattr(telemetry, "_run", lambda command: SNAPSHOT)
+    environment = telemetry.capture_environment(
+        "image@sha256:" + "a" * 64,
+        True,
+        sampler_mode="explicit",
+        sampler_interval=5.0,
+    )
+
+    assert environment["telemetry_sampler"] == {
+        "mode": "explicit",
+        "interval_seconds": 5.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
 
 
 def _two_board_snapshot() -> str:

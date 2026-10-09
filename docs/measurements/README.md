@@ -24,6 +24,222 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #104 paired-outlier records
+
+The wrapper supports the existing telemetry sampler as `default` (2 seconds),
+`explicit` with a bounded `HEKATUS_TT_TELEMETRY_INTERVAL_S` in the supported
+0.1–3600.0 second range, and `off` with no sampler or power trace. Sampler-off
+output is diagnostic-only; sampled output retains its same-stem power trace.
+New canonical outlier records contain numeric measurements; human conclusions
+remain in this wrap-analysis document. The three Issue #104 runs below were produced
+by kernel/harness commit `487bc36fa30e870b6cd9b2a62199275397cde004`, exactly as
+recorded in each JSON record. That commit predates PR #103's synchronization-
+protocol fix, so these runs must not be described as having used that fix.
+
+| File | What it is |
+|---|---|
+| `2026-10-06-p150a-issue104-sampler-off.json` | 400,000-frame sampler-off diagnostic run: 22 paired outliers, no power trace by design, and `timing_evidence=false`. |
+| `2026-10-06-p150a-issue104-sampler-default.json` | 400,000-frame run with the unchanged 2-second sampler: 18 paired outliers, N=399,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 26,829/2,673,133 ticks, and 181 power samples. |
+| `2026-10-06-p150a-issue104-sampler-default-power.csv` | Companion power/AICLK/temperature trace for the default-sampler run. |
+| `2026-10-06-p150a-issue104-sampler-5s.json` | 400,000-frame run with an explicit 5-second sampler: 9 paired outliers, N=399,999, the same percentile body, min/max 27,285/2,672,693 ticks, and 77 power samples. |
+| `2026-10-06-p150a-issue104-sampler-5s-power.csv` | Companion power/AICLK/temperature trace for the explicit-interval run. |
+| `2026-10-06-p150a-issue104-wrap-analysis.md` | Board-free supplement that verifies the raw format and pair endpoints, folds event phases by the exact `2^32`-tick wall-clock period, and analyzes the available Issue #12 500,000-frame artifact without changing any JSON or CSV leaf. |
+
+### Issue #104 invariant revalidation
+
+The shared board-free `validate_resident_record` field matrix and invariant
+catalog in `enodia/tt/bench/resident_record.py` are scoped to records written
+by the current runner, which carry top-level `resident_record_schema: 1`.
+The final Issue #12 evidence record and all three committed Issue #104 records
+predate that marker, so validation reports them as `out_of_scope` historical
+records rather than invalid records. No JSON or CSV leaf is rewritten. A new
+runner-shaped record still receives the ordinary required-field, type/range,
+and relationship checks; full record-kind consistency and agreement between
+declared coverage flags and parsed trace facts remain deferred to Issue #110.
+
+The board-free analyzer still analyzes the two historical sampled records even
+though they have no explicit `run_start`/`run_end` bounds or persisted
+`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as
+`legacy_unverified` elapsed-time provenance. It never selects an environment
+snapshot AICLK, and this historical path is not timing evidence. The historical
+sampler-off record uses its configured budget AICLK for elapsed-time display and
+remains diagnostic-only. The external raw-timestamp-byte limitation applies to
+all three records because the referenced `raw-timestamps.bin` files are not
+committed, although the sampled records retain their committed count and
+histogram relationships.
+
+The wrap analysis gives `2^32 / 1,350,000,000 = 3.1814572563` seconds,
+or 3,181.4572563 configured 1-ms frames, so a frame-gap gcd of 1 does not
+reject a strict wall-clock period. Pair starts in all three runs have Rayleigh
+R `0.9999999999999996`–`0.9999999999999998` and circular widths
+`0.0000296296`–`0.0000422222 ms` immediately after the wrap; the short interval
+comes first and the long catch-up interval follows. The same phase lock in the
+off run means a host sampler is not necessary. Together with PR #103's
+controlled low-word-only clock experiment, the paired events are phase-locked to
+the wall-clock wrap and disappear after switching to low-word-only reads with
+software wrap tracking. This supports the clock-read path as the cause. Direct
+producer-versus-consumer attribution remains open because there is no producer
+stamp on the same clock. The short-first order is consistent with an early
+producer send, but does not establish producer-side attribution. A shared
+tile-latch overwrite remains a hypothesis only.
+
+The `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` record
+is the **intermediate controlled comparison**: it has `pair_count=0` and
+min/max `1,349,924..1,350,068` ticks after the low-word-only clock change, but
+it is superseded for accepted Stage 1 evidence because the later drain decision
+fix was not yet present. The
+`2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` record is
+the **final authority**: it includes the corrected drain/provenance path, has
+N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,061/1,350,065/1,350,065
+ticks, min/max `1,349,889..1,350,065` ticks, and zero paired outliers. Both
+records remain immutable; no Issue #104 measurement JSON or CSV is rewritten.
+
+## Issue #12 recovery runbook (owner approval required)
+
+The resident harness must not return to hardware without a new owner approval.
+When approved, the bounded procedure below uses device 0 through the
+named-container wrapper. Each resident invocation uses a separate explicit host
+output directory and the wrapper's standard custom-runner result path inside
+the container; the mounted output directories are retained on the development
+machine.
+
+### Cleanup gate
+
+Before and after each invocation, run the following shell inspection command and
+require zero running containers. Never stop another container:
+
+```bash
+docker ps --format '{{.Names}}'
+```
+
+Prior cycle-budget records collapsed producer/consumer causes and did not
+serialize elapsed/limit ticks, so their startup attribution remains uncertain;
+new runs serialize named failure checks and diagnostics.
+
+### Watcher validation
+
+After the owner approval and a clean cleanup gate, run one Watcher-enabled,
+one-frame validation on device 0 with a 1 ms harness interval and a separate
+60-second outer cap. It is not timing evidence. The explicit invocation is:
+
+```bash
+TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
+  enodia/tt/bench/run_in_container.sh out/bench/issue12-watcher -- \
+  --out /out/runner-result.json \
+  --device-id 0 \
+  --frame-count 1 \
+  --frame-interval-ticks 1350000 \
+  --budget-aiclk-mhz 1350 \
+  --outer-timeout-seconds 60 \
+  --watcher
+```
+
+Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
+mode-specific 60-second cap. The command names the runner, result path, device,
+frame count, interval, clock used for the conversion, outer cap, and Watcher
+mode instead of relying on runner defaults.
+
+### No-Watcher timing
+
+Only if the Watcher validation passes, and still under the owner approval, run
+one no-Watcher timing attempt on device 0. It uses 500,000 frames, a 1 ms
+harness interval at the documented 1,350 MHz clock, and a 600-second outer cap.
+It writes the result and raw timestamps to container-internal `/out` paths:
+
+```bash
+env -u TT_METAL_WATCHER HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
+  enodia/tt/bench/run_in_container.sh out/bench/issue12-timing -- \
+  --out /out/runner-result.json \
+  --device-id 0 \
+  --frame-count 500000 \
+  --frame-interval-ticks 1350000 \
+  --budget-aiclk-mhz 1350 \
+  --outer-timeout-seconds 600 \
+  --raw-timestamps-out /out/issue12-timing-500000.bin
+```
+
+The margin-inclusive run budget must fit the 600-second cap; there is no
+override for a schedule that exceeds it. `env -u TT_METAL_WATCHER` and the
+absence of `--watcher` are both intentional: this is the no-Watcher timing
+run, not a second Watcher validation.
+
+### Record creation and output retention (host-side shell commands)
+
+The wrapper bind-mounts each explicit output directory at container `/out`.
+On the development machine, verify the resident JSON records, raw timestamp
+bytes, and the wrapper's environment and power provenance before analysis.
+Retain the `out/bench/issue12-watcher/runner-result.json`,
+`out/bench/issue12-timing/runner-result.json`, and
+`out/bench/issue12-timing/issue12-timing-500000.bin` files:
+
+```bash
+find out/bench/issue12-watcher out/bench/issue12-timing -maxdepth 1 -type f \
+  \( -name 'runner-result.json' \
+     -o -name 'issue12-timing-500000.bin' \
+     -o -name 'env-*.json' \
+     -o -name 'power-*.csv' \) -print
+mkdir -p issue12-retained
+cp -a out/bench/issue12-watcher out/bench/issue12-timing issue12-retained/
+sha256sum issue12-retained/issue12-timing/runner-result.json \
+  issue12-retained/issue12-timing/issue12-timing-500000.bin
+```
+
+The raw timestamp file is a companion to the timing result and is copied to
+the development machine before any analysis. Keep each result, its matching
+`env-*.json`, matching `power-*.csv`, and any raw timestamp companion together;
+these outputs are evidence only when their provenance remains together.
+
+### Abnormal exit or timeout: one-reset recovery
+
+On an abnormal exit or timeout, stop the planned run and do not start another
+hardware run. After the owner approves recovery, perform at most one reset of
+device 0, then run exactly one fixed-image Stage-1 health probe. Inspect the
+container state before and after recovery as well:
+
+```bash
+docker ps --format '{{.Names}}'
+tt-smi -r /dev/tenstorrent/0
+env \
+  TT_METAL_WATCHER=1 \
+  HEKATUS_TT_RUNNER=tools/newton_schulz_bringup.py \
+  HEKATUS_TT_IMAGE=ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621 \
+  HEKATUS_TT_CONTAINER_TIMEOUT_S=60 \
+  enodia/tt/bench/run_in_container.sh -- \
+  --stage 1 \
+  --device-id 0 \
+  --watcher \
+  --timeout 60
+docker ps --format '{{.Names}}'
+```
+
+The health command explicitly selects the fixed image, Stage 1, device 0,
+Watcher mode, and its 60-second runner and container caps. If the health probe
+fails, stop hardware work; after this one recovery attempt, stop hardware work
+even if it passes. Do not perform a second reset. A cycle-budget error or outer
+timeout may terminate a resident run earlier than its frame count, and those
+runs are not timing evidence unless the recorded counters and raw timestamps
+support the claim.
+
+Successful non-error runs are frame-count terminated. The frame interval is a
+harness parameter, not an acquisition-rate claim. For no-Watcher timing under
+the 600-second cap, the explicit startup, overlap, and 10% margin formula gives
+a maximum safe count of 545,354 frames at both 800 and 1350 MHz for the
+corresponding 1 ms tick conversion; 545,355 is rejected. The separate first
+Watcher validation remains capped at 60 seconds. The next approved timing rerun
+must stay within 545,354 frames at 1 ms and must copy raw timestamps back to the
+development machine for retention before analysis. The owner-requested
+60,000-frame, 1 ms, 60 s configuration is preserved as a historical rejection
+record with its 54,445-frame boundary. If a future 60,000-frame run is approved
+with a suitable cap, P99.9 has sufficient N (>=20,000) while P99.99 remains
+insufficient (N < 200,000). The run budget includes an explicit 100 ms startup
+allowance converted at the configured AICLK; Watcher validation also has its
+separate explicit overhead margin. If the ring is full, the producer uses
+drop-new: the attempted frame is counted as overflow/dropped, never waits and
+never overwrites an occupied slot. Consumer-completion histograms exclude
+dropped attempts, so their N and interval samples must be interpreted beside
+the attempted/produced/consumed/dropped counts. This is a procedure only: it
+does not authorize a future device run by itself.
+
 ## Newton-Schulz reference correction
 
 Six landed Issue #63 JSON records retain the historical correctness wording
@@ -72,6 +288,23 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 
 | File | What it is |
 |---|---|
+| `2026-10-06-p150a-issue12-stage1-60000-preflight-rejected.json` | Board-free rejection of the owner-requested 60,000-frame/1 ms/60 s configuration; explicit calculations show a safe 54,445-frame maximum under the current cap. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005.json` | ADR-0005 record for the corrected semaphore 60,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-60000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 60,000-frame record. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` | ADR-0005 record for the corrected semaphore 600,000-frame run: complete zero-overflow timing statistics, provenance, hashes, and the non-acceptance work-extrema limitation. Owner decision 2026-10-07: not timing evidence (ran beyond the approved 600 s cap); retained as a historical record. The configured timeout was 660s; cap correction commit `7fda4a1` is recorded separately. This README disposition takes precedence over the JSON `timing_evidence=true` field. |
+| `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the ADR-0005 600,000-frame record. |
+| `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005.json` | Final 100-frame Watcher validation: 100/100 produced/consumed, zero overflow/cycle error, work ticks 1,073–1,084, and explicitly non-timing evidence. |
+| `2026-10-06-p150a-issue12-stage1-final-watcher-100-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the final Watcher validation. |
+| `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` | Historical final in-cap 500,000-frame no-Watcher timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 111,119/2,588,915, work ticks 1,074–1,098, and zero overflow; superseded by `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` because synchronization and clock representation changed. |
+| `2026-10-06-p150a-issue12-stage1-final-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the superseded historical 500,000-frame timing record. |
+| `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005.json` | Superseded current-wrap Watcher validation: N=99, timing evidence false, work ticks 1,063–1,073, zero overflow/cycle error. Superseded by the 2026-10-07 board-id-alias record because eaf6632 corrected the resident drain completion decision; this record remains unchanged. |
+| `2026-10-06-p150a-issue12-stage1-current-wrap-watcher-100-adr0005-power.csv` | Companion power trace for the superseded current-wrap Watcher validation; retained unchanged. |
+| `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` | Superseded current-wrap in-cap 500,000-frame timing record: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,033/1,350,059/1,350,061 ticks, min/max 1,349,924/1,350,068, work ticks 1,063–1,087, zero overflow, and zero paired short/long outliers. Superseded by the 2026-10-07 board-id-alias record because eaf6632 corrected the resident drain completion decision; this record remains unchanged. |
+| `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the superseded current-wrap 500,000-frame timing record; retained unchanged. |
+| `2026-10-07-p150a-issue12-stage1-board-id-alias-watcher-100-adr0005.json` | Current corrected-drain 100-frame Watcher validation under the board-id serial-alias fix: 100/100 produced/consumed, N=99, P50=1,350,008 ticks, min/max 1,349,787/1,350,096, work ticks 1,063–1,073, zero overflow/cycle error, and timing evidence false. |
+| `2026-10-07-p150a-issue12-stage1-board-id-alias-watcher-100-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current board-id-alias Watcher validation (2 samples). |
+| `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` | Current corrected-drain in-cap 500,000-frame no-Watcher timing record under the board-id serial-alias fix: N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,061/1,350,065/1,350,065 ticks, min/max 1,349,889/1,350,065, work ticks 1,062–1,087, zero overflow, and zero paired short/long outliers. |
+| `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005-power.csv` | Companion power, AICLK, and temperature trace for the current board-id-alias 500,000-frame timing record (226 samples). |
 | `2026-08-14-p150a-effective-efficiency.json` | The B2 measurement: 17 shapes x 2 dtypes x DRAM/L1 on one p150a, against the 332 TFLOPS BF16 peak. Summarized in docs/budget.md |
 | `2026-08-14-p150a-effective-efficiency-power.csv` | Board power, clock, and temperature sampled through that run |
 | `2026-09-20-p150a-stock-matmul-config-sweep-ttnn-0.75.0.json` | Issue #65 full stock matmul catalogue sweep: 284 rows (190 successful, 94 failed), image digest `sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621` in its environment block. The four failed `batched_dram_sharded` rows for the batch-1024 L16/L32 shapes are superseded by the 2026-09-21 record below, and the two unbatched `dram_sharded` rows for beamspace B=16, 256 channels, 4096 pixels are superseded by the 2026-09-23 record; the other 278 rows remain authoritative. |
@@ -175,7 +408,6 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-risc-profiler-diagnostic.json` | Issue #92/PR #93 diagnostic-only Tracy profile of L=32, batch 8192, block 4, fused-S, HiFi3, FP32-state one-window versus two-window runs. Reader/writer waits are primarily waits on compute; two-buffering shortens the full interval by about 15%, and compute-side instruction supply plus unpack/math/pack handoff remain cautious, non-exclusive candidates. Counter definitions do not establish pack-side causality. The recorded NoC bytes and approximately 0.774 ms launch interval derive approximately 240 GB/s aggregate and 2 GB/s/core (not a new measurement); two-window counters remain unavailable. Existing HiFi3/HiFi4, full/half-sync, and BF16/FP32-state comparisons are cited with their confounds. Not a throughput headline or replacement for prior records. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-counter-decomposition.json` | Issue #92/PR #93 diagnostic-only official Tracy all-counter multipass decomposition for both one-window and two-window L=32/batch-8192 runs. Tag-local definitions distinguish semaphore waits, instruction availability versus distinct issue-rate fields, packer efficiency/handoff, and destination-read backpressure; no distinct THREAD_INSTRUCTIONS_N-derived issue-rate field was present, and both modes retain raw replay values plus unavailable formula-branch inputs. Not a throughput headline or replacement for prior records. |
 | `2026-10-04-p150a-newton-schulz-block-double-buffer-profile-compute-decomposition.json` | Issue #92/PR #93 diagnostic-only fixed-release-image profile-only compute decomposition: eight Watcher-enabled batch-4/batch-8192 L16/L32 one/two-window captures with per-TRISC external-CB polling intervals, RISC-V-side enqueue/dispatch brackets around DEST semaphore-wait instructions, and explicitly unclassified residual work. Exact v0.75.0 source audit and official semaphore waits are recorded; no Tracy profiler or new throughput claim. |
-
 | `2026-10-05-p150a-newton-schulz-half-sync-l16-l32-catalog-1000.json` | Issue #96 same-device L16/L32 full-sync versus half-sync DEST catalogue: both state variants, admitted DEST blocks, L1 preflight rejections, BF16-rounded-R batch-4/batch-8192 correctness, 1,000-launch p50/p99/p99.9, p50/fastest TFLOPS, and official semaphore/pack counters. |
 | `2026-10-05-p150a-newton-schulz-half-sync-l16-l32-catalog-1000-power.csv` | Power, clock, and temperature trace for the Issue #96 half-sync catalogue. |
 | `2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000.json` | Historical Issue #100 same-device new-default versus previous-default comparison; superseded for the combined acceptance claim by the 2026-10-06 record below and retained unchanged. |
@@ -203,6 +435,25 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 **Issue #88 companion audit (2026-10-09).** The retake's frozen raw snapshot remains in external raw storage, while the tracked same-stem companion above contains identical bytes. The convergence-rerun direct record already has its same-stem companion; its tracked trace matches the raw trace byte-for-byte (SHA-256 `b0d9f48dad2d5527cac393f4098f6fb9d888e3f5ddcf66b15638c86f61dc159d`, 476 bytes, 9 sample rows, 10 physical lines). The convergence-rerun-summary is a derived summary and intentionally reuses that existing trace rather than duplicating it. First-launch is trace-only and has no published JSON record; its tracked trace also matches the raw trace byte-for-byte (SHA-256 `9caaedfbdf894135d5c510fe3627fe85d2050f14c7089c94d46109a021bcddfa`, 139 bytes, 2 sample rows, 3 physical lines). No other missing direct-record companion was found.
 
 **Issue #88 beam-metric correction.** The prior source JSON and reference-labeled summaries remain immutable. The runner's historical `_weight` denominator used `einsum("j,bi->b", ...)`, which independently summed steering and weights instead of computing `aᴴPa`; for the half-wavelength 16/32-element array, the steering-vector sum approaches zero at ±30°, producing singular normalization and the reported enormous complex-response errors. The corrected contraction is `einsum("j,bj->b", ...)`. Host regression checks prove `wᴴa=1` and zero self-comparison; the source audit found no complex multiply sign, conjugation, transpose, or output-reconstruction defect. The historical device beam ranking is withdrawn, and the corrected device metrics now live in the 2026-10-09 retake with retained inverse arrays.
+
+Issue 12 debugging trials from 2026-10-05 through 2026-10-06 (failed runs used to chase harness defects) were removed before merge because they support no claim; they remain in this PR branch history, in the commits that removed them.
+
+Outlier note: the minimum and maximum are determined by paired short/long intervals (3 pairs for 60,000 frames and 15 pairs for 600,000 frames), each pair summing approximately 2 × 1,350,000 ticks; the cause is out of scope and is a follow-up candidate.
+
+The corrected-drain board-id-alias runs observed zero paired short/long outliers in both the Watcher validation and 500,000-frame timing run, versus 27 pairs in the prior 2616f96 record. The timing run has no phase entries because there were no pairs; the Watcher command did not request a raw timestamp file, so its outlier audit uses the retained fine-bin histogram. This is an observation only with no causal claim.
+
+Final 500,000-frame outlier observation: 27 adjacent short/long pairs were found with pair sums 2,699,967–2,700,034 ticks (target 2,700,000); full frame endpoints, corrected elapsed seconds, and every adjacent-event quotient/remainder for period 6,363 are in the ADR-0005 record. The aggregate keys are `1,0`=11, `3,6362`=4, `0,3182`=2, `1,3182`=2, `2,0`=1, `5,0`=1, `11,3180`=1, `7,3181`=2, `5,6362`=1, and `2,3181`=1; 352,863→359,226 and 457,851→464,214→470,577 appear as q=1,r=0. This is an observation only with no causal claim; no single exact period was detected (6363 was the most common gap, 11/26, gcd 1).
+
+### Issue #12 Stage 1 numeric provenance map
+
+Every resident timing number in the README, open-issues table, and PR #103 maps to exactly one record here:
+
+- **Current corrected-drain timing record:** `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,061/1,350,065/1,350,065` ticks; min/max=`1,349,889/1,350,065`; work min/max=`1,062/1,087`; paired outliers=`0`; companion power trace is the same-stem CSV. The no-Watcher timing evidence claim is true.
+- **Current corrected-drain Watcher validation:** `2026-10-07-p150a-issue12-stage1-board-id-alias-watcher-100-adr0005.json` — N=99, timing evidence false; work min/max=`1,063/1,073`; P50=`1,350,008` ticks; P99/P99.9/P99.99 insufficient; companion power trace is the same-stem CSV. The old current-wrap records above are superseded by these corrected-drain records.
+- **Historical superseded final record:** `2026-10-06-p150a-issue12-stage1-final-500000-adr0005.json` — N=499,999; P50/P99/P99.9/P99.99=`1,349,988/1,350,048/1,350,050/1,350,050` ticks; min/max=`111,119/2,588,915`; work min/max=`1,074/1,098`; paired outliers=`27`; retained unchanged for provenance only.
+- **Historical 660-second exclusion:** `2026-10-06-p150a-issue12-stage1-semaphore-timing-600000-adr0005.json` — N=599,999; it is not timing evidence because its configured timeout exceeded the approved 600-second cap.
+
+The preceding numeric sets are historical or current exactly as labeled; no number is silently transferred between records.
 
 **Correction (peak fidelity, 2026-10-03).** `2026-09-28-p150a-newton-schulz-l32-b8192-fidelity-catalog-1000.json` associates the 332 TFLOPS BF16 peak with LoFi and derives HiFi2/HiFi3/HiFi4 reference peaks of 166.0/110.7/83.0 TFLOPS from it. The record states that association as an inference; it does not hold. tt-metal's `tech_reports/GEMM_FLOPS/GEMM_FLOPS.md` gives the ideal cycles per tile product as 16 (LoFi), 32 (HiFi2), 48 (HiFi3) and 64 (HiFi4), or about 5.4 TFLOPS per matrix engine at LoFi and 1.35 GHz, and `docs/design.md` §2 lists Block FP8 at 664 TFLOPS beside BF16 at 332. The 332 figure is therefore the HiFi2-rate BF16 peak, and the LoFi rate is about twice it. The record is not rewritten; its efficiency figures remain correct against the 332 denominator, while its derived per-fidelity reference peaks should be read as half their true values.
 

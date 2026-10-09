@@ -1,0 +1,53 @@
+{
+  "schema": "issue-12-stage-1-preflight-rejection-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "rejected",
+  "reason": "The owner-requested 60,000-frame, 1 ms, 60 s configuration exceeds the explicit run-wide tick budget at both supported AICLK choices; no device run was attempted.",
+  "parameters": {
+    "frame_count": 60000,
+    "interval_microseconds": 1000,
+    "fixed_work_ticks_per_frame": 100000,
+    "outer_timeout_seconds": 60,
+    "safety_margin_percent": 10,
+    "startup_allowance_ms": 100,
+    "p99_9_minimum_samples": 20000,
+    "p99_99_minimum_samples": 200000
+  },
+  "calculations": [
+    {
+      "aiclk_mhz": 800,
+      "frame_interval_ticks": 800000,
+      "pacing_ticks": 48000000000,
+      "fixed_work_ticks": 6000000000,
+      "critical_path_ticks": 48000000000,
+      "startup_allowance_ticks": 80000000,
+      "safety_margin_ticks": 4808000000,
+      "run_budget_ticks": 52888000000,
+      "outer_cap_ticks": 48000000000,
+      "outer_cap_seconds": 60,
+      "safe_frame_count_at_cap": 54445,
+      "status": "rejected"
+    },
+    {
+      "aiclk_mhz": 1350,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 81000000000,
+      "fixed_work_ticks": 6000000000,
+      "critical_path_ticks": 81000000000,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_ticks": 8113500000,
+      "run_budget_ticks": 89248500000,
+      "outer_cap_ticks": 81000000000,
+      "outer_cap_seconds": 60,
+      "safe_frame_count_at_cap": 54445,
+      "status": "rejected"
+    }
+  ],
+  "histogram": {
+    "status": "not_applicable",
+    "reason": "Rejected before device execution; no timestamps or timing evidence."
+  },
+  "frame_interval_note": "Frame interval is a harness parameter, not an acquisition-rate claim.",
+  "hardware_action": "none"
+}
