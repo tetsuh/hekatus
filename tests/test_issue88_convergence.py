@@ -298,6 +298,16 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
     )
     assert record["status"] == "pass"
     assert record["status_components"] == statuses
+    trace = telemetry["power_trace"]
+    provenance = record["measurement"]["power_clock_provenance"]
+    assert record["power_trace"] == trace["file"]
+    assert record["power_trace_sha256"] == trace["sha256"]
+    assert provenance["trace"] == trace["file"]
+    assert provenance["trace_sha256"] == trace["sha256"]
+    assert provenance["sample_count"] == trace["sample_count"]
+    assert provenance["coverage"] == trace["coverage"]
+    assert provenance["coverage_definition"] == runner.POWER_TRACE_COVERAGE_DEFINITION
+    assert provenance["immutable_snapshot"] is True
     assert record["measurement"]["comparison_conclusion_reference_policy"] == (
         "Each conclusion uses one declared metric_reference; metrics with "
         "different references are reported in separate conclusions."
@@ -550,6 +560,77 @@ def test_issue88_power_poll_records_incomplete_or_invalid_timestamp_failure(
         assert trace["timestamps_parse"] is False
     else:
         assert trace["covers_run_end"] is False
+
+
+def test_issue88_power_trace_snapshot_is_run_bound_hashed_and_immutable(tmp_path):
+    live_path = tmp_path / "power-run-1.csv"
+    live_path.write_text(_power_csv(["2026-01-01T00:00:01+00:00"]))
+    monotonic = [0.0]
+
+    def sleep(seconds):
+        monotonic[0] += seconds
+        live_path.write_text(
+            _power_csv(
+                [
+                    "2026-01-01T00:00:01+00:00",
+                    "2026-01-01T00:00:02+00:00",
+                ]
+            )
+        )
+
+    trace = runner._wait_for_power_trace(
+        tmp_path,
+        run_id="run-1",
+        explicit=live_path,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        timeout_s=2.0,
+        interval_s=1.0,
+        monotonic_fn=lambda: monotonic[0],
+        sleep_fn=sleep,
+    )
+
+    snapshot_path = tmp_path / trace["file"]
+    snapshot_bytes = snapshot_path.read_bytes()
+    assert trace["file"].startswith("issue88-fp32-r-power-snapshot-run-1-")
+    assert trace["file"] != live_path.name
+    assert trace["run_id"] == "run-1"
+    assert trace["immutable_snapshot"] is True
+    assert trace["sha256"] == hashlib.sha256(snapshot_bytes).hexdigest()
+    assert trace["sample_count"] == 2
+    assert trace["coverage_definition"] == runner.POWER_TRACE_COVERAGE_DEFINITION
+    assert trace["coverage"]["last_at_or_after_run_end"] is True
+
+    live_path.write_text(_power_csv(["2026-01-01T00:00:03+00:00"]))
+    assert snapshot_path.read_bytes() == snapshot_bytes
+    assert trace["sha256"] == hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
+
+
+def test_issue88_power_trace_snapshot_preserves_hash_on_partial_csv_failure(tmp_path):
+    live_path = tmp_path / "power-run-1.csv"
+    live_path.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:01+00:00,75\n"
+    )
+
+    trace = runner._wait_for_power_trace(
+        tmp_path,
+        run_id="run-1",
+        explicit=live_path,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        timeout_s=0.1,
+        interval_s=0.1,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert trace["file"].startswith("issue88-fp32-r-power-snapshot-run-1-")
+    assert trace["immutable_snapshot"] is True
+    assert trace["sha256"] == hashlib.sha256((tmp_path / trace["file"]).read_bytes()).hexdigest()
+    assert trace["readable"] is False
+    assert trace["coverage_complete"] is False
+    assert trace["coverage"]["last_at_or_after_run_end"] is False
 
 
 def test_issue88_power_poll_configuration_stays_within_row_cap():
