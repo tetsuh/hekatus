@@ -1162,6 +1162,10 @@ def _atomic_power_trace_snapshot(
     run_id = _validated_run_id(run_id)
     if not isinstance(snapshot_number, int) or isinstance(snapshot_number, bool) or snapshot_number < 1:
         raise ValueError("snapshot_number must be a positive integer")
+    output_dir = output_dir.resolve()
+    source_path = source_path.resolve()
+    if source_path.parent != output_dir:
+        raise ValueError("power trace source must be in the output directory")
     payload = (
         source_path.read_bytes()
         if read_text_fn is None
@@ -1170,7 +1174,6 @@ def _atomic_power_trace_snapshot(
     snapshot_name = f"{POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-{snapshot_number}.csv"
     if Path(snapshot_name).name != snapshot_name:
         raise ValueError("power trace snapshot name must be a basename")
-    output_dir = output_dir.resolve()
     snapshot_path = output_dir / snapshot_name
     if snapshot_path.parent != output_dir:
         raise ValueError("power trace snapshot must stay in the output directory")
