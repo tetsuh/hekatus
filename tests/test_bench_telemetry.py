@@ -253,10 +253,35 @@ def test_resolver_derives_numeric_node_identity_from_udev_devpath(tmp_path, monk
     monkeypatch.setattr(
         telemetry,
         "_udevadm_info",
-        lambda path: f"E: DEVPATH={udev_path}\\nE: DEVNAME={path}\\n",
+        lambda path: (
+            f"E: DEVPATH={udev_path}\n"
+            f"E: ID_PATH=pci-0000:09:00.0\n"
+            "E: PCI_SLOT_NAME=0000:09:00.0\n"
+            f"E: DEVNAME={path}\n"
+        ),
     )
 
     assert telemetry._resolve_device_node_to_pci(str(node)) == {"0000:09:00.0"}
+
+
+def test_resolver_rejects_conflicting_udev_identities(tmp_path, monkeypatch):
+    device_dir = tmp_path / "tenstorrent"
+    device_dir.mkdir()
+    node = device_dir / "1"
+    node.write_text("")
+    udev_path = "/devices/pci0000:00/0000:09:00.0/tenstorrent/1"
+    monkeypatch.setattr(
+        telemetry,
+        "_udevadm_info",
+        lambda path: (
+            f"E: DEVPATH={udev_path}\n"
+            "E: ID_PATH=pci-0000:06:00.0\n"
+            "E: PCI_SLOT_NAME=0000:09:00.0\n"
+            f"E: DEVNAME={path}\n"
+        ),
+    )
+
+    assert telemetry._resolve_device_node_to_pci(str(node)) == set()
 
 
 def test_resolver_rejects_conflicting_or_ambiguous_target_identity(tmp_path):
