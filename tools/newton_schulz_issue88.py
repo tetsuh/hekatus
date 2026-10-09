@@ -1167,9 +1167,13 @@ def _atomic_power_trace_snapshot(
         if read_text_fn is None
         else read_text_fn(source_path).encode()
     )
-    snapshot_path = output_dir / (
-        f"{POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-{snapshot_number}.csv"
-    )
+    snapshot_name = f"{POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-{snapshot_number}.csv"
+    if Path(snapshot_name).name != snapshot_name:
+        raise ValueError("power trace snapshot name must be a basename")
+    output_dir = output_dir.resolve()
+    snapshot_path = output_dir / snapshot_name
+    if snapshot_path.parent != output_dir:
+        raise ValueError("power trace snapshot must stay in the output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
     if snapshot_path.exists():
         raise FileExistsError(f"power trace snapshot already exists: {snapshot_path.name}")
