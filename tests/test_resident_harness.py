@@ -35,6 +35,7 @@ from enodia.tt.bench.resident_harness import (
     ResidentPreflightError,
     RingAccounting,
     build_measurement_record,
+    build_outlier_analysis,
     clock_source_audit_for_image,
     cycle_budget_exceeded,
     failure_name,
@@ -46,6 +47,7 @@ from enodia.tt.bench.resident_harness import (
     resident_l1_allocation_table,
     run_budget_breakdown,
     run_budget_exceeded,
+    select_elapsed_aiclk,
     select_failure_check,
     split_u64,
     startup_allowance_ticks,
@@ -64,9 +66,15 @@ from enodia.tt.bench.resident_harness import (
 from enodia.tt.bench.run_resident import (
     _config_from_args,
     _decode_failure,
+    _environment_output_path,
     _parser,
     _resolve_watcher_mode,
     _runtime_u32,
+)
+from enodia.tt.bench.sampler_contract import (
+    MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    normalize_sampler_metadata,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -452,6 +460,39 @@ def test_wrap_tracked_low_word_extension_is_monotonic_across_wrap():
 def test_ticks_to_seconds_uses_aiclk_hz_conversion():
     assert ticks_to_seconds(ticks=1_350_000, aiclk_mhz=1_350) == pytest.approx(0.001)
     assert ticks_to_seconds(ticks=80_000_000, aiclk_mhz=800) == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize(
+    ("mode", "trace_aiclk_mhz", "trace_source", "expected_aiclk", "expected_source"),
+    [
+        pytest.param("off", 800, "snapshot_only", 1_350, "configured", id="off-configured"),
+        pytest.param("default", 1_350, "run_trace_samples", 1_350, "run_trace_samples", id="default-trace"),
+        pytest.param("explicit", 1_350, "run_trace_samples", 1_350, "run_trace_samples", id="explicit-trace"),
+    ],
+)
+def test_elapsed_aiclk_selection_is_table_driven_by_sampler_mode(
+    mode, trace_aiclk_mhz, trace_source, expected_aiclk, expected_source
+):
+    selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=1_350,
+        sampler_mode=mode,
+        trace_aiclk_mhz=trace_aiclk_mhz,
+        trace_aiclk_source=trace_source,
+    )
+    assert selection == {
+        "aiclk_mhz": expected_aiclk,
+        "aiclk_source": expected_source,
+    }
+
+
+def test_sampled_elapsed_aiclk_selection_rejects_snapshot_provenance():
+    with pytest.raises(ValueError, match="valid in-run power-trace AICLK"):
+        select_elapsed_aiclk(
+            budget_aiclk_mhz=1_350,
+            sampler_mode="default",
+            trace_aiclk_mhz=800,
+            trace_aiclk_source="snapshot_only",
+        )
 
 
 def test_periodic_gap_decomposition_preserves_quotients_and_remainders():
@@ -1097,6 +1138,37 @@ def test_pacing_failure_accepts_one_aborted_attempt():
     assert record["cycle_budget"]["exceeded"] == classification.cycle_budget_exceeded
 
 
+def test_empty_timestamp_error_records_persist_before_first_completion():
+    environment = _environment()
+    environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    for classification in FAILURE_CODE_TABLE[1:]:
+        record = build_measurement_record(
+            config=_config(frame_count=3),
+            aiclk_mhz=1_350,
+            timestamps=[],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            kernel_error_flag=1,
+            attempted_frame_count=1,
+            produced_frame_count=0,
+            dropped_frame_count=0,
+            aborted_attempts=1,
+            failure_check=_failure(classification.code, source=classification.sources[0]),
+            harness_commit="0123456789abcdef",
+            environment=environment,
+            power_trace=None,
+        )
+        assert record["status"] == "error"
+        assert record["histogram"]["N"] == 0
+        assert record["outlier_analysis"]["interval_count"] == 0
+        assert record["failure_check"]["code"] == classification.code
+
+
 @pytest.mark.parametrize(
     "classification",
     FAILURE_CODE_TABLE[1:],
@@ -1246,21 +1318,18 @@ def test_accepted_500000_record_matches_clock_source_audit_table():
 
 
 @pytest.mark.parametrize(
-    ("image", "timing_expected"),
+    "image",
     [
-        (AUDITED_CLOCK_SOURCE_IMAGE, True),
+        AUDITED_CLOCK_SOURCE_IMAGE,
         (
             "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
-            + "sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4",
-            False,
+            + "sha256:ead7b800bdb6bebb9425c377222314447c5b2052f6e8b1e3c9caa1818cb7d8c4"
         ),
-        ("registry.example/tt@sha256:" + "a" * 64, False),
+        "registry.example/tt@sha256:" + "a" * 64,
     ],
-    ids=["audited-v0.75.0", "valid-v0.70.1", "valid-unknown"],
+    ids=["audited-v0.75.0-basename-only", "valid-v0.70.1", "valid-unknown"],
 )
-def test_clock_source_audit_binds_timing_evidence_to_exact_image(
-    image, timing_expected
-):
+def test_clock_source_audit_does_not_override_basename_trace_gate(image):
     environment = _environment()
     environment["image"] = image
     record = build_measurement_record(
@@ -1276,13 +1345,14 @@ def test_clock_source_audit_binds_timing_evidence_to_exact_image(
     )
     evidence = record["clock_source_evidence"]
     assert evidence["image"] == image
-    assert record["timing_evidence"] is timing_expected
-    if timing_expected:
+    assert record["timing_evidence"] is False
+    if image == AUDITED_CLOCK_SOURCE_IMAGE:
         assert evidence["audit_status"] == "audited"
         assert all(evidence[key] == value for key, value in CLOCK_SOURCE_AUDIT_TABLE[image].items())
     else:
         assert evidence["audit_status"] == "unaudited"
         assert CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC in evidence["diagnostic"]
+    assert record["timing_evidence_reason"] == "legacy_power_trace_unverified"
 
 
 def test_audited_watcher_record_never_claims_timing_evidence():
@@ -1452,6 +1522,229 @@ def test_record_schema_is_strict_and_excludes_raw_timestamps():
     assert parsed["parameters"]["aborted_attempts"] == 0
     assert parsed["ring"]["aborted_attempts"] == 0
     assert parsed["environment"]["image"] == "registry.example/tt@sha256:" + "a" * 64
+    assert parsed["telemetry_sampler"]["mode"] == "default"
+    assert parsed["timestamp_attribution"]["producer_write"]["available"] is False
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS, MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS],
+)
+def test_explicit_sampler_interval_accepts_supported_boundaries(interval):
+    normalized = normalize_sampler_metadata(
+        {"mode": "explicit", "interval_seconds": interval}
+    )
+    assert normalized["interval_seconds"] == float(interval)
+
+
+@pytest.mark.parametrize(
+    "interval",
+    [
+        MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS - 0.000001,
+        MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS + 0.000001,
+    ],
+)
+def test_explicit_sampler_interval_rejects_outside_supported_range(interval):
+    with pytest.raises(ValueError, match="between"):
+        normalize_sampler_metadata({"mode": "explicit", "interval_seconds": interval})
+
+
+def test_sampler_interval_measurements_reject_nonfinite_ratio_before_rounding():
+    with pytest.raises(ValueError, match="finite"):
+        build_outlier_analysis(
+            [0, 1_000_000, 2_700_000],
+            aiclk_mhz=1_350,
+            sampler_metadata={"mode": "explicit", "interval_seconds": float("inf")},
+        )
+
+
+def test_sampler_off_400000_frame_elapsed_seconds_use_configured_aiclk():
+    environment = _environment()
+    environment["aiclk_mhz_observed"] = [800]
+    environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    config = _config(frame_count=400_000, frame_interval_ticks=1_350_000)
+    timestamps = [index * config.frame_interval_ticks for index in range(config.frame_count)]
+    record = build_measurement_record(
+        config=config,
+        aiclk_mhz=800,
+        timestamps=timestamps,
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit=environment["harness_commit"],
+        environment=environment,
+        power_trace=None,
+    )
+
+    elapsed_ticks = (config.frame_count - 1) * config.frame_interval_ticks
+    assert record["clock"]["aiclk_mhz"] == 1_350
+    assert record["clock"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["aiclk_mhz_for_elapsed_seconds"] == 1_350
+    assert record["outlier_analysis"]["aiclk_source"] == "configured"
+    assert record["outlier_analysis"]["run_elapsed_seconds"] == pytest.approx(
+        elapsed_ticks / (1_350 * 1_000_000)
+    )
+    assert record["outlier_analysis"]["run_elapsed_seconds"] != pytest.approx(
+        elapsed_ticks / (800 * 1_000_000)
+    )
+    assert record["environment"]["aiclk_mhz_observed"] == [800]
+
+
+def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
+    environment = _environment()
+    environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    record = build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit=environment["harness_commit"],
+        environment=environment,
+        power_trace=None,
+    )
+
+    assert record["power_trace"] is None
+    assert record["power_trace_absent_reason"] == "sampler_off_by_design"
+    assert record["telemetry_sampler"]["mode"] == "off"
+    assert record["timing_evidence"] is False
+
+
+def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off_mode(
+    tmp_path, monkeypatch
+):
+    output_dir = tmp_path / "shared-output"
+    output_dir.mkdir()
+    sampled_environment = _environment()
+    sampled_environment["aiclk_mhz_observed"] = [1_350]
+    sampled_environment["telemetry_sampler"] = {
+        "mode": "default",
+        "interval_seconds": 2.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    off_environment = _environment()
+    off_environment["aiclk_mhz_observed"] = [800]
+    off_environment["telemetry_sampler"] = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    sampled_environment_path = output_dir / "env-sampled.json"
+    off_environment_path = output_dir / "env-off.json"
+    sampled_environment_path.write_text(json.dumps(sampled_environment))
+    off_environment_path.write_text(json.dumps(off_environment))
+    sampled_output = output_dir / "sampled-result.json"
+    off_output = output_dir / "off-result.json"
+    trace_name = "power-sampled.csv"
+
+    def fake_run_device(_ttnn, _device, config, *, watcher):
+        assert watcher is False
+        count = config.frame_count
+        return {
+            "timestamps": list(range(1_000, 1_000 + count)),
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "kernel_error_flag": 0,
+            "frames_attempted": count,
+            "frames_produced": count,
+            "frames_dropped": 0,
+            "frames_aborted": 0,
+            "frames_consumed": count,
+            "startup_ticks": 0,
+            "startup_ticks_valid": False,
+            "work_min_ticks": None,
+            "work_max_ticks": None,
+            "work_ticks_valid": False,
+            "failure_check": {"code": 0, "name": "none", "source": "none"},
+        }
+
+    selected_environment_paths = []
+    original_environment = run_resident._environment
+
+    def read_environment(path):
+        selected_environment_paths.append(path)
+        if path.parent == Path("/out"):
+            path = output_dir / path.name
+        return original_environment(path)
+
+    monkeypatch.setattr(run_resident, "_environment", read_environment)
+    monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **_: object(), close_device=lambda _device: None),
+    )
+
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "sampled")
+    assert run_resident.main(
+        [
+            "--out",
+            str(sampled_output),
+            "--power-trace",
+            trace_name,
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+    (output_dir / trace_name).write_text("old sampled trace\n")
+
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "off")
+    assert run_resident.main(
+        [
+            "--out",
+            str(off_output),
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+    sampled_record = json.loads(sampled_output.read_text())
+    off_record = json.loads(off_output.read_text())
+    assert sampled_record["power_trace"] == trace_name
+    assert off_record["power_trace"] is None
+    assert off_record["power_trace_absent_reason"] == "sampler_off_by_design"
+    assert off_record["clock"]["aiclk_mhz"] == 1_350
+    assert off_record["clock"]["aiclk_source"] == "configured"
+    assert off_record["outlier_analysis"]["aiclk_mhz_for_elapsed_seconds"] == 1_350
+    assert off_record["outlier_analysis"]["aiclk_source"] == "configured"
+    assert (output_dir / trace_name).exists()
+    assert selected_environment_paths == [
+        Path("/out/env-sampled.json"),
+        Path("/out/env-off.json"),
+    ]
+
+
+def test_environment_fallback_is_run_id_bound_and_rejects_unsafe_ids(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+    assert _environment_output_path() == Path("/out/env-current-run.json")
+
+    for run_id in ("", ".", "..", "../stale", "run/id", "run id"):
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", run_id)
+        with pytest.raises(ValueError, match="safe filename component"):
+            _environment_output_path()
+
+    monkeypatch.delenv("HEKATUS_TT_RUN_ID")
+    with pytest.raises(ValueError, match="HEKATUS_TT_RUN_ID"):
+        _environment_output_path()
+
+
+def test_resident_output_selection_contains_no_directory_globs():
+    source = Path("enodia/tt/bench/run_resident.py").read_text()
+    assert ".glob(" not in source
+    assert "env-*.json" not in source
+    assert "power-*.csv" not in source
 
 
 class TestResidentSemaphoreDecisionAudit:

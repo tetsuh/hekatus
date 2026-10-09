@@ -21,7 +21,7 @@ closing it; the record in `design.md` is what persists.
 | B4 | Card-to-card latency/jitter measurement | Track B | blocked until the two boards' link trains (#30); the boards and cabling are in place |
 | B5 | TT→host DMA write-ordering guarantee (payload → completion-flag visibility) | Track B | open |
 | B6 | Clock calibration between the TT cycle counter and host CLOCK_MONOTONIC | Track B | open |
-| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | Current accepted Stage 1 record is `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` with companion power CSV, N=499,999, P50/P99/P99.9/P99.99 1,349,988/1,350,061/1,350,065/1,350,065 ticks, work min/max 1,062–1,087 ticks, zero overflow, and wrap-tracked clock metadata; the old current-wrap records are superseded because eaf6632 corrected the resident drain completion decision |
+| B7 | Issue #12 resident producer/consumer timing protocol on pinned v0.75.0 | Track B | Final authority is `2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` with companion power CSV, N=499,999, P50/P99/P99.9/P99.99 1,349,988/1,350,061/1,350,065/1,350,065 ticks, work min/max 1,062–1,087 ticks, zero overflow, zero paired outliers, and wrap-tracked clock metadata; `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` is the intermediate controlled comparison, superseded after eaf6632 corrected the resident drain decision. Issue #104's three sampler-mode runs and board-free wrap analysis are recorded in `docs/measurements/README.md`. |
 
 The Ethernet items above were blocked on a board without ports; that is no
 longer the constraint. Two target boards are cabled together, but no link

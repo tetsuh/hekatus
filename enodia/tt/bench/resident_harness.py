@@ -1,8 +1,11 @@
 """Host-side accounting and record helpers for Issue #12 Stage 1.
 
-The device runner is intentionally kept separate from these helpers.  This
-module has no TTNN import, so ring accounting, timestamp arithmetic, and the
-measurement contract remain testable on a development machine.
+The Issue #104 record relationships and paired-outlier algorithm live in the
+single executable catalog in :mod:`enodia.tt.bench.resident_record`.  This
+module supplies the builder-side configuration, accounting, and schema
+assembly; it imports and calls that shared validator rather than maintaining a
+second invariant implementation.  It has no TTNN import, so configuration,
+ring accounting, and record construction remain board-free and testable.
 """
 
 from __future__ import annotations
@@ -14,9 +17,45 @@ import struct
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass
 from fractions import Fraction
-from pathlib import PurePath
-from types import MappingProxyType
+from pathlib import Path, PurePath
 from typing import Any
+
+from enodia.tt.bench.clock_source_audit import (
+    AUDITED_CLOCK_SOURCE_IMAGE,
+    CLOCK_SOURCE_AUDIT_TABLE,
+    CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
+    clock_source_audit_for_image,
+    source_evidence_for_image,
+)
+from enodia.tt.bench.resident_clock import (
+    AICLK_SOURCE_CONFIGURED,
+    AICLK_SOURCE_LEGACY_UNVERIFIED,
+    AICLK_SOURCE_RUN_TRACE_SAMPLES,
+    safe_aiclk_integer,
+    select_elapsed_aiclk,
+    ticks_to_seconds,
+)
+from enodia.tt.bench.resident_record import (
+    FAILURE_CODE_TABLE,
+    FAILURE_CODES,
+    RESIDENT_INVARIANT_CATALOG,
+    RESIDENT_RECORD_SCHEMA,
+    RESIDENT_RECORD_SCHEMA_MARKER,
+    TIMING_EVIDENCE_ERROR_RECORD_REASON,
+    TIMING_EVIDENCE_NOT_REQUESTED,
+    TIMING_EVIDENCE_REJECTED_RECORD_REASON,
+    TIMING_EVIDENCE_RUN_TRACE_REASON,
+    ResidentFailureClassification,
+    build_outlier_analysis,
+    validate_pair_analysis,
+    validate_resident_record,
+)
+from enodia.tt.bench.sampler_contract import (
+    MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
+    SAMPLER_CONTRACT,
+    normalize_sampler_metadata,
+)
 
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
@@ -44,90 +83,13 @@ WORK_TICKS_PER_UNIT_UPPER_BOUND = (
 RUN_BUDGET_SAFETY_MARGIN_PERCENT = 10
 WATCHER_OVERHEAD_MARGIN_PERCENT = 100
 STARTUP_ALLOWANCE_MICROSECONDS = 100_000
-AUDITED_CLOCK_SOURCE_IMAGE = (
-    "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@"
-    "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
-)
-CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC = "clock source unaudited for this image"
-
-# This immutable table is the sole authority for clock-source evidence.  Its
-# key is the complete image reference, so an audit cannot accidentally follow
-# a release tag or a different digest under the same repository name.
-CLOCK_SOURCE_AUDIT_TABLE: Mapping[str, Mapping[str, str]] = MappingProxyType(
-    {
-        AUDITED_CLOCK_SOURCE_IMAGE: MappingProxyType(
-            {
-                "toolchain": "tt-metal v0.75.0",
-                "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
-                "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
-                "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
-                "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
-                "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
-                "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
-                "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
-                "cross_core_note": (
-                    "intervals use only the designated consumer core; cross-core "
-                    "correlation is out of scope"
-                ),
-            }
-        )
-    }
-)
-
-
-@dataclass(frozen=True)
-class ResidentFailureClassification:
-    """Kernel failure semantics shared by summary decoding and record building."""
-
-    code: int
-    name: str
-    sources: tuple[str, ...]
-    termination_reason: str | None
-    cycle_budget_exceeded: bool
-    error_flag: bool
-    priority: int
-
-    @classmethod
-    def for_code(cls, code: Any) -> ResidentFailureClassification:
-        if isinstance(code, bool) or not isinstance(code, int):
-            raise TypeError("resident failure code must be an integer")
-        try:
-            return FAILURE_CODES[code]
-        except KeyError as exc:
-            raise ValueError("unknown resident failure code") from exc
-
-
-# This immutable table mirrors every failure constant defined by the resident
-# kernels.  Codes 1--3 stop on the run-wide limit; only code 4 consumes the
-# per-frame fixed-work budget.  Code 5 is producer cancellation propagated from
-# a peer error and is therefore not a budget breach.
-FAILURE_CODE_TABLE: tuple[ResidentFailureClassification, ...] = (
-    ResidentFailureClassification(
-        0, "none", ("none", "producer", "consumer"), None, False, False, 5
-    ),
-    ResidentFailureClassification(
-        1, "run_wide_budget", ("producer", "consumer"), "run_budget", False, True, 3
-    ),
-    ResidentFailureClassification(
-        2, "producer_pacing_wait", ("producer",), "run_budget", False, True, 1
-    ),
-    ResidentFailureClassification(
-        3, "consumer_empty_wait", ("consumer",), "run_budget", False, True, 2
-    ),
-    ResidentFailureClassification(
-        4, "consumer_fixed_work_budget", ("consumer",), "cycle_budget", True, True, 0
-    ),
-    ResidentFailureClassification(
-        5, "other_check", ("producer",), "cancelled", False, True, 4
-    ),
-)
-FAILURE_CODES = MappingProxyType({entry.code: entry for entry in FAILURE_CODE_TABLE})
 PERCENTILES = {
     "p50": 0.50,
     "p99": 0.99,
     "p99_9": 0.999,
     "p99_99": 0.9999,
 }
+_safe_aiclk_integer = safe_aiclk_integer
 
 
 @dataclass(frozen=True)
@@ -438,20 +400,6 @@ def run_budget_exceeded(*, elapsed_ticks: int, run_budget_ticks: int) -> bool:
     if elapsed_ticks < 0 or run_budget_ticks <= 0:
         raise ValueError("elapsed_ticks must be non-negative and run_budget_ticks positive")
     return elapsed_ticks >= run_budget_ticks
-
-
-def ticks_to_seconds(*, ticks: int, aiclk_mhz: int) -> float:
-    """Convert device-clock ticks to seconds using the observed AICLK."""
-    if (
-        isinstance(ticks, bool)
-        or not isinstance(ticks, int)
-        or ticks < 0
-        or isinstance(aiclk_mhz, bool)
-        or not isinstance(aiclk_mhz, int)
-        or aiclk_mhz <= 0
-    ):
-        raise ValueError("ticks must be non-negative and aiclk_mhz must be positive integers")
-    return ticks / (aiclk_mhz * 1_000_000)
 
 
 def periodic_gap_decomposition(
@@ -842,24 +790,28 @@ def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     authoritative only when it agrees with a present board ID; a board ID is
     copied to the canonical ``serial`` field only when that field is absent.
     Non-mapping board values are left for the required-field table to reject.
+    A sampler object is canonicalized when present, while a missing sampler is
+    retained for legacy callers that do not need a runner-side default.
     """
     if not isinstance(environment, Mapping):
         raise TypeError("environment must be an object")
     normalized = dict(environment)
     board = normalized.get("board")
-    if not isinstance(board, Mapping):
-        return normalized
-
-    normalized_board = dict(board)
-    has_serial = "serial" in normalized_board
-    has_board_id = "board_id" in normalized_board
-    if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
-        raise ResidentPreflightError(
-            "environment.board.serial and environment.board.board_id must match"
+    if isinstance(board, Mapping):
+        normalized_board = dict(board)
+        has_serial = "serial" in normalized_board
+        has_board_id = "board_id" in normalized_board
+        if has_serial and has_board_id and normalized_board["serial"] != normalized_board["board_id"]:
+            raise ResidentPreflightError(
+                "environment.board.serial and environment.board.board_id must match"
+            )
+        if not has_serial and has_board_id:
+            normalized_board["serial"] = normalized_board["board_id"]
+        normalized["board"] = normalized_board
+    if "telemetry_sampler" in normalized:
+        normalized["telemetry_sampler"] = normalize_sampler_metadata(
+            normalized["telemetry_sampler"]
         )
-    if not has_serial and has_board_id:
-        normalized_board["serial"] = normalized_board["board_id"]
-    normalized["board"] = normalized_board
     return normalized
 
 
@@ -920,54 +872,242 @@ def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
     )
 
 
-def _safe_trace_name(power_trace: str) -> str:
+def _safe_trace_name(power_trace: str | None) -> str | None:
+    if power_trace is None:
+        return None
     path = PurePath(power_trace)
     if path.is_absolute() or len(path.parts) != 1 or path.name != power_trace:
         raise ValueError("power_trace must be a repository-relative filename")
     return power_trace
 
 
+def _telemetry_sampler(environment: Mapping[str, Any]) -> dict[str, Any]:
+    """Return canonical sampler metadata, defaulting legacy records to 2 seconds."""
+    return normalize_sampler_metadata(environment.get("telemetry_sampler"))
+
+
+def _validate_sampler_trace(environment: Mapping[str, Any], power_trace: str | None) -> dict[str, Any]:
+    sampler = _telemetry_sampler(environment)
+    contract = SAMPLER_CONTRACT[sampler["mode"]]
+    sampler_off = sampler["mode"] == "off"
+    if sampler.get("power_trace") != contract["power_trace"]:
+        raise ValueError("telemetry sampler power_trace metadata does not match sampler mode")
+    if sampler.get("timing_evidence") != contract["timing_evidence"]:
+        raise ValueError("telemetry sampler timing_evidence metadata does not match sampler mode")
+    if sampler_off != (power_trace is None):
+        raise ValueError(
+            "sampler-off records must omit the power trace, and sampled records must name it"
+        )
+    return sampler
+
+
 def validate_record_inputs(
-    *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str
-) -> None:
-    """Validate record provenance before resident device execution."""
-    validate_preflight_provenance(harness_commit=harness_commit, environment=environment)
+    *, harness_commit: Any, environment: Mapping[str, Any], power_trace: str | None
+) -> dict[str, Any]:
+    """Validate and return the runner's canonical preflight environment."""
+    normalized_environment = validate_preflight_provenance(
+        harness_commit=harness_commit, environment=environment
+    )
+    sampler = _validate_sampler_trace(normalized_environment, power_trace)
+    normalized_environment["telemetry_sampler"] = sampler
     _safe_trace_name(power_trace)
+    return normalized_environment
 
 
-def clock_source_audit_for_image(image: Any) -> Mapping[str, str] | None:
-    """Return the immutable clock-source audit entry for one exact image."""
-    if not isinstance(image, str):
-        return None
-    return CLOCK_SOURCE_AUDIT_TABLE.get(image)
+def _trace_failure_reason(trace: Mapping[str, Any] | None) -> str:
+    """Return a stable reason code for a trace that cannot support timing."""
+    if not isinstance(trace, Mapping):
+        return "power_trace_missing"
+    if trace.get("readable") is not True:
+        return "power_trace_unreadable"
+    if not trace.get("nonempty"):
+        return "power_trace_empty"
+    if not isinstance(trace.get("sample_count"), int) or not isinstance(trace.get("csv_row_count"), int):
+        return "power_trace_sample_count_unavailable"
+    if trace.get("sample_count") != trace.get("csv_row_count"):
+        return "power_trace_sample_count_mismatch"
+    if not isinstance(trace.get("valid_row_count"), int):
+        return "power_trace_valid_row_count_unavailable"
+    if trace.get("valid_row_count") != trace.get("csv_row_count"):
+        return "power_trace_invalid_rows"
+    if trace.get("timestamps_parse") is not True:
+        return "power_trace_timestamp_parse_failed"
+    if trace.get("timestamps_ordered") is not True:
+        return "power_trace_timestamp_order_failed"
+    if trace.get("coverage_complete") is not True:
+        return "power_trace_coverage_incomplete"
+    if trace.get("in_run_valid_row_count", 0) < 1:
+        return "power_trace_no_valid_in_run_rows"
+    return "power_trace_coverage_complete"
+
+
+def _public_power_trace_metadata(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep file facts and coverage while excluding parser-only row arrays."""
+    public_keys = (
+        "file",
+        "columns",
+        "sha256",
+        "readable",
+        "nonempty",
+        "csv_row_count",
+        "sample_count",
+        "valid_row_count",
+        "in_run_valid_row_count",
+        "timestamps_parse",
+        "timestamps_ordered",
+        "first_timestamp",
+        "last_timestamp",
+        "run_start",
+        "run_end",
+        "covers_run_start",
+        "covers_run_end",
+        "coverage_complete",
+        "coverage",
+        "aiclk_source",
+        "aiclk_mhz",
+        "errors",
+    )
+    return {key: trace.get(key) for key in public_keys}
+
+
+def _power_trace_metadata(
+    *,
+    power_trace: str,
+    power_trace_path: Path | None,
+    power_trace_metadata: Mapping[str, Any] | None,
+    run_start: Any,
+    run_end: Any,
+) -> dict[str, Any]:
+    """Read one run-bound trace or normalize supplied board-free metadata."""
+    if power_trace_path is not None:
+        from enodia.tt.bench.telemetry import parse_power_trace
+
+        parsed = parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
+        if parsed.get("file") != power_trace:
+            raise ValueError("power_trace_path basename must match power_trace")
+        return _public_power_trace_metadata(parsed)
+    if power_trace_metadata is None:
+        return {
+            "file": power_trace,
+            "columns": [],
+            "sha256": None,
+            "readable": False,
+            "nonempty": False,
+            "csv_row_count": 0,
+            "sample_count": None,
+            "valid_row_count": 0,
+            "in_run_valid_row_count": 0,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_timestamp": None,
+            "last_timestamp": None,
+            "run_start": run_start,
+            "run_end": run_end,
+            "covers_run_start": False,
+            "covers_run_end": False,
+            "coverage_complete": False,
+            "coverage": {
+                "nonempty": False,
+                "timestamps_parse": False,
+                "timestamps_ordered": False,
+                "first_at_or_before_run_start": False,
+                "last_at_or_after_run_end": False,
+                "readable": False,
+                "complete": False,
+            },
+            "aiclk_source": "no_valid_in_run_samples",
+            "aiclk_mhz": None,
+            "errors": ["power trace metadata was not supplied"],
+        }
+    metadata = dict(power_trace_metadata)
+    metadata.setdefault("file", power_trace)
+    if metadata["file"] != power_trace:
+        raise ValueError("power trace metadata file must match power_trace")
+    if run_start is not None:
+        metadata["run_start"] = run_start
+    if run_end is not None:
+        metadata["run_end"] = run_end
+    return {key: metadata.get(key) for key in (
+        "file", "columns", "sha256", "readable", "nonempty", "csv_row_count",
+        "sample_count", "valid_row_count", "in_run_valid_row_count", "timestamps_parse",
+        "timestamps_ordered", "first_timestamp", "last_timestamp", "run_start", "run_end",
+        "covers_run_start", "covers_run_end", "coverage_complete", "coverage", "aiclk_source",
+        "aiclk_mhz", "errors"
+    )}
+
+
+def _diagnostic_trace_metadata(
+    *, run_start: Any = None, run_end: Any = None
+) -> dict[str, Any]:
+    """Return explicit trace facts for runs that have no usable trace bytes."""
+    coverage = {
+        "nonempty": False,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_at_or_before_run_start": False,
+        "last_at_or_after_run_end": False,
+        "readable": False,
+        "complete": False,
+    }
+    return {
+        "file": None,
+        "columns": [],
+        "sha256": None,
+        "readable": False,
+        "nonempty": False,
+        "csv_row_count": 0,
+        "sample_count": 0,
+        "valid_row_count": 0,
+        "in_run_valid_row_count": 0,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_timestamp": None,
+        "last_timestamp": None,
+        "run_start": run_start,
+        "run_end": run_end,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "coverage": coverage,
+        "aiclk_source": "sampler_off_diagnostic",
+        "aiclk_mhz": None,
+        "errors": [],
+    }
+
+
+def validate_outlier_analysis(
+    outlier_analysis: Mapping[str, Any], *, timestamps: Iterable[int] | None = None
+) -> None:
+    """Compatibility wrapper over the shared pair invariant checker."""
+    mismatches = validate_pair_analysis(outlier_analysis, timestamps=timestamps)
+    if mismatches:
+        first = mismatches[0]
+        if first["message"].startswith("outlier_analysis must be"):
+            raise TypeError(first["message"])
+        raise ValueError(first["message"])
 
 
 def _source_evidence(image: Any) -> dict[str, Any]:
-    audited = clock_source_audit_for_image(image)
-    if audited is None:
-        return {
-            "image": image,
-            "audit_status": "unaudited",
-            "diagnostic": CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC,
-        }
-    return {
-        **audited,
-        "image": image,
-        "audit_status": "audited",
-    }
+    return source_evidence_for_image(image)
 
 
 def build_measurement_record(
     *,
     config: ResidentConfig,
     aiclk_mhz: int,
+    aiclk_source: str | None = None,
     timestamps: Iterable[int],
     producer_full_count: int,
     consumer_empty_count: int,
     kernel_error_flag: int,
     harness_commit: str,
     environment: Mapping[str, Any],
-    power_trace: str,
+    power_trace: str | None,
+    power_trace_path: Path | None = None,
+    power_trace_metadata: Mapping[str, Any] | None = None,
+    run_start: Any = None,
+    run_end: Any = None,
+    outlier_analysis: Mapping[str, Any] | None = None,
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
     dropped_frame_count: int | None = None,
@@ -978,9 +1118,21 @@ def build_measurement_record(
     work_min_ticks: int | None = None,
     work_max_ticks: int | None = None,
     watcher: bool = False,
-    timing_evidence: bool = True,
+    timing_evidence: bool = False,
+    timing_evidence_reason: str | None = None,
 ) -> dict[str, Any]:
-    """Build the committed-schema record without retaining raw timestamps.
+    """Build and validate the committed-schema record without raw timestamps.
+
+    When ``power_trace_path`` or explicit trace metadata is supplied, the
+    power-provenance field table is strict: the actual CSV bytes, rows, timestamps,
+    run coverage, and in-run AICLK are checked here.  Calls that only provide
+    the historical basename and omit sampler metadata remain readable for
+    older board-free callers, but are marked ``legacy_unverified`` in power
+    provenance and can never claim timing evidence; the resident runner
+    always supplies the strict path and run bounds.  ``timing_evidence``
+    defaults to false.  A true request is retained only after the shared
+    validator proves the strict trace, coverage, AICLK, sampler, and run
+    invariants.
 
     Counter protocol (the current producer/consumer semaphore contract):
     ``ready_count`` is the cumulative producer-ready value and equals
@@ -1001,8 +1153,113 @@ def build_measurement_record(
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
+    sampler_metadata_supplied = "telemetry_sampler" in normalized_environment
+    sampler = _validate_sampler_trace(normalized_environment, power_trace)
+    normalized_environment["telemetry_sampler"] = dict(sampler)
+    sampler_off = sampler["mode"] == "off"
+    if sampler_off and (power_trace_path is not None or power_trace_metadata is not None):
+        raise ValueError("sampler-off records must not carry power trace metadata")
+    strict_trace = bool(
+        not sampler_off
+        and (
+            power_trace_path is not None
+            or power_trace_metadata is not None
+            or run_start is not None
+            or run_end is not None
+            or sampler_metadata_supplied
+        )
+    )
+    trace_metadata: dict[str, Any] | None = None
+    trace_reason: str
+    if sampler_off:
+        trace_metadata = _diagnostic_trace_metadata(run_start=run_start, run_end=run_end)
+        trace_reason = "sampler_off_by_design"
+    elif power_trace is None:
+        trace_reason = "power_trace_missing"
+    elif strict_trace:
+        trace_metadata = _power_trace_metadata(
+            power_trace=power_trace,
+            power_trace_path=power_trace_path,
+            power_trace_metadata=power_trace_metadata,
+            run_start=run_start,
+            run_end=run_end,
+        )
+        trace_reason = _trace_failure_reason(trace_metadata)
+        trace_aiclk = _safe_aiclk_integer(trace_metadata.get("aiclk_mhz"))
+        if trace_reason == "power_trace_coverage_complete":
+            if trace_aiclk is None:
+                trace_reason = "power_trace_no_valid_in_run_rows"
+            elif trace_aiclk != aiclk_mhz:
+                raise ValueError("aiclk_mhz must equal the maximum valid in-run power trace AICLK")
+    else:
+        # Historical direct callers supplied only a basename.  Keep that API
+        # readable, but make the unverifiable status explicit; the device
+        # runner never uses this compatibility branch.
+        trace_metadata = _power_trace_metadata(
+            power_trace=power_trace,
+            power_trace_path=None,
+            power_trace_metadata=None,
+            run_start=None,
+            run_end=None,
+        )
+        trace_metadata["aiclk_source"] = AICLK_SOURCE_LEGACY_UNVERIFIED
+        trace_reason = "legacy_power_trace_unverified"
+    selected_source = aiclk_source or (
+        trace_metadata.get("aiclk_source")
+        if not sampler_off and trace_metadata is not None
+        else (
+            AICLK_SOURCE_CONFIGURED
+            if sampler_off
+            else AICLK_SOURCE_RUN_TRACE_SAMPLES
+        )
+    )
+    strict_no_valid_rows = (
+        strict_trace
+        and not sampler_off
+        and trace_metadata is not None
+        and trace_metadata.get("aiclk_source") == "no_valid_in_run_samples"
+    )
+    selection = select_elapsed_aiclk(
+        budget_aiclk_mhz=config.budget_aiclk_mhz,
+        sampler_mode=sampler["mode"],
+        trace_aiclk_mhz=(
+            trace_metadata.get("aiclk_mhz")
+            if strict_trace and trace_metadata is not None
+            else None
+        ),
+        trace_aiclk_source=(
+            trace_metadata.get("aiclk_source")
+            if strict_trace and trace_metadata is not None
+            else None
+        ),
+        legacy_aiclk_mhz=(
+            aiclk_mhz
+            if not sampler_off
+            and not strict_no_valid_rows
+            and selected_source not in {AICLK_SOURCE_CONFIGURED, AICLK_SOURCE_RUN_TRACE_SAMPLES}
+            and (
+                not strict_trace
+                or trace_metadata is None
+                or trace_metadata.get("aiclk_source") != AICLK_SOURCE_RUN_TRACE_SAMPLES
+            )
+            else None
+        ),
+        legacy_aiclk_source=(
+            trace_metadata.get("aiclk_source", AICLK_SOURCE_LEGACY_UNVERIFIED)
+            if strict_trace and trace_metadata is not None
+            else AICLK_SOURCE_LEGACY_UNVERIFIED
+        ),
+        allow_configured_fallback=(
+            not sampler_off
+            and (
+                selected_source == AICLK_SOURCE_CONFIGURED
+                or strict_no_valid_rows
+            )
+        ),
+    )
+    aiclk_mhz = selection["aiclk_mhz"]
+    aiclk_source = selection["aiclk_source"]
     selected_image = normalized_environment["image"]
-    clock_source_audit = clock_source_audit_for_image(selected_image)
     source_evidence = _source_evidence(selected_image)
     validate_post_run_aiclk(aiclk_mhz)
     if isinstance(producer_full_count, bool) or producer_full_count < 0:
@@ -1025,17 +1282,22 @@ def build_measurement_record(
         raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
+    if outlier_analysis is None:
+        outlier_analysis = build_outlier_analysis(
+            timestamp_values,
+            aiclk_mhz=aiclk_mhz,
+            aiclk_source=aiclk_source,
+            sampler_metadata=sampler,
+        )
+    else:
+        outlier_analysis = dict(outlier_analysis)
+    outlier_analysis.setdefault("aiclk_source", aiclk_source)
     attempted = config.frame_count if attempted_frame_count is None else attempted_frame_count
     produced = len(timestamp_values) if produced_frame_count is None else produced_frame_count
     dropped = attempted - produced if dropped_frame_count is None else dropped_frame_count
-    if (
-        any(
-            isinstance(value, bool) or not isinstance(value, int) or value < 0
-            for value in (attempted, produced, dropped)
-        )
-        or produced < len(timestamp_values)
-        or produced > attempted
-        or dropped < 0
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+        for value in (attempted, produced, dropped)
     ):
         raise ValueError("attempted, produced, and dropped frame counts are inconsistent")
     if (
@@ -1044,8 +1306,6 @@ def build_measurement_record(
         or aborted_attempts not in (0, 1)
     ):
         raise ValueError("aborted_attempts must be an integer 0 or 1")
-    if producer_full_count != dropped:
-        raise ValueError("producer_full_count must equal dropped_frame_count")
     intervals = [
         wrap_delta(timestamp_values[index], timestamp_values[index - 1])
         for index in range(1, len(timestamp_values))
@@ -1060,14 +1320,6 @@ def build_measurement_record(
         reason = "incomplete"
     stats = frame_interval_statistics(intervals, bin_width_ticks=config.histogram_bin_ticks)
     failure_hint = classification.error_flag
-    if failure_hint:
-        if attempted != produced + dropped + aborted_attempts:
-            raise ValueError("error counter relation requires attempted=produced+dropped+aborted_attempts")
-    elif aborted_attempts != 0 or attempted != produced + dropped:
-        raise ValueError("normal counter relation requires attempted=produced+dropped and aborted_attempts=0")
-    consumed = len(timestamp_values)
-    if consumed > produced or produced - consumed > config.ring_pages:
-        raise ValueError("produced, consumed, and ring occupancy counters are inconsistent")
     completed = (
         not failure_hint
         and frame_count_reached
@@ -1098,8 +1350,32 @@ def build_measurement_record(
         or work_max_ticks < work_min_ticks
     ):
         raise ValueError("work minimum/maximum ticks are invalid")
-    return {
-        "schema": "issue-12-stage-1-resident-v1",
+    error_record = classification.error_flag or status == "error"
+    if error_record:
+        final_timing_reason = TIMING_EVIDENCE_ERROR_RECORD_REASON
+    elif timing_evidence_reason is not None:
+        final_timing_reason = timing_evidence_reason
+    elif sampler_off:
+        final_timing_reason = "sampler_off_by_design"
+    elif watcher:
+        final_timing_reason = "watcher_diagnostic_only"
+    elif not completed or dropped:
+        final_timing_reason = "run_incomplete_or_dropped_frames"
+    elif strict_trace and trace_reason != "power_trace_coverage_complete":
+        final_timing_reason = trace_reason
+    elif strict_trace and timing_evidence is True:
+        final_timing_reason = TIMING_EVIDENCE_RUN_TRACE_REASON
+    elif strict_trace:
+        final_timing_reason = TIMING_EVIDENCE_NOT_REQUESTED
+    else:
+        final_timing_reason = trace_reason
+    # The shared validator is the sole timing gate.  This value is only the
+    # caller's request; validate_resident_record below proves or rejects it
+    # against the actual trace, coverage, provenance, and sampler invariants.
+    timing_ok = timing_evidence is True and not error_record
+    record = {
+        "resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
+        "schema": RESIDENT_RECORD_SCHEMA,
         "issue": 12,
         "stage": 1,
         "status": status,
@@ -1126,8 +1402,35 @@ def build_measurement_record(
             "interval_unit": "device_clock_ticks",
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
+            "aiclk_source": aiclk_source,
+            "aiclk_observation": (
+                "configured run AICLK; sampler off provides no loaded-clock trace"
+                if aiclk_source == AICLK_SOURCE_CONFIGURED
+                else (
+                    "valid in-run power trace samples"
+                    if aiclk_source == AICLK_SOURCE_RUN_TRACE_SAMPLES
+                    else "unverified legacy caller value"
+                )
+            ),
             "designated_core": list(config.designated_timestamp_core),
             "cross_core_correlation": "out_of_scope",
+        },
+        "timestamp_attribution": {
+            "status": "open",
+            "consumer_completion": {
+                "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+                "core": list(config.designated_timestamp_core),
+            },
+            "producer_write": {
+                "available": False,
+                "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+                "core": list(config.producer_core),
+                "reason": (
+                    "The producer and consumer call get_timestamp_32b() on different cores. "
+                    "The source has no same-designated-core producer stamp without changing "
+                    "the pacing kernel, so producer-versus-consumer attribution remains open."
+                ),
+            },
         },
         "clock_source_evidence": source_evidence,
         "work_ticks": {
@@ -1170,45 +1473,189 @@ def build_measurement_record(
         },
         "raw_timestamps": digest,
         "power_trace": _safe_trace_name(power_trace),
+        "power_trace_sample_count": (
+            trace_metadata.get("sample_count") if trace_metadata is not None else None
+        ),
+        "power_trace_csv_row_count": (
+            trace_metadata.get("csv_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_valid_row_count": (
+            trace_metadata.get("valid_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_in_run_valid_row_count": (
+            trace_metadata.get("in_run_valid_row_count") if trace_metadata is not None else None
+        ),
+        "power_trace_sha256": (
+            trace_metadata.get("sha256") if trace_metadata is not None else None
+        ),
+        "power_trace_absent_reason": "sampler_off_by_design" if sampler_off else None,
+        "power_trace_coverage": (
+            {
+                "coverage": trace_metadata.get("coverage"),
+                "coverage_complete": trace_metadata.get("coverage_complete"),
+                "first_timestamp": trace_metadata.get("first_timestamp"),
+                "last_timestamp": trace_metadata.get("last_timestamp"),
+                "run_start": trace_metadata.get("run_start"),
+                "run_end": trace_metadata.get("run_end"),
+                "valid_row_count": trace_metadata.get("valid_row_count"),
+                "in_run_valid_row_count": trace_metadata.get("in_run_valid_row_count"),
+            }
+            if trace_metadata is not None
+            else None
+        ),
+        "power_clock_provenance": (
+            {
+                "trace": trace_metadata.get("file"),
+                **trace_metadata,
+                "aiclk_source": trace_metadata.get("aiclk_source"),
+                "timing_evidence": bool(timing_ok),
+                "timing_evidence_reason": final_timing_reason,
+            }
+            if trace_metadata is not None
+            else {
+                "trace": None,
+                "aiclk_source": "sampler_off_diagnostic",
+                "timing_evidence": False,
+                "timing_evidence_reason": final_timing_reason,
+                "run_start": run_start,
+                "run_end": run_end,
+            }
+        ),
+        "run_start": trace_metadata.get("run_start") if trace_metadata is not None else run_start,
+        "run_end": trace_metadata.get("run_end") if trace_metadata is not None else run_end,
+        "telemetry_sampler": sampler,
         "environment": normalized_environment,
         "harness_commit": harness_commit,
         "watcher": bool(watcher),
-        "timing_evidence": bool(
-            clock_source_audit is not None
-            and not watcher
-            and timing_evidence
-            and completed
-            and dropped == 0
-        ),
+        "timing_evidence": timing_ok,
+        "timing_evidence_reason": final_timing_reason,
+        "outlier_analysis": dict(outlier_analysis),
     }
+    validate_resident_record(
+        record,
+        timestamps=timestamp_values,
+        power_trace_path=power_trace_path,
+        power_trace_metadata=trace_metadata,
+        builder=True,
+        strict_trace=strict_trace,
+        raise_on_error=True,
+    )
+    return record
 
 
 def build_rejection_record(
     *, config: ResidentConfig, reason: str, environment: Mapping[str, Any] | None = None
 ) -> dict[str, Any]:
-    """Record a rejected configuration without running it on a device."""
+    """Record a rejected configuration with explicit diagnostic provenance."""
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError("rejection reason is required")
+    supplied_environment = dict(environment) if isinstance(environment, Mapping) else {}
+    image = supplied_environment.get("image")
+    try:
+        sampler = normalize_sampler_metadata(supplied_environment.get("telemetry_sampler"))
+    except (TypeError, ValueError):
+        sampler = {
+            "mode": "off",
+            "interval_seconds": None,
+            "power_trace": "absent_by_design",
+            "timing_evidence": "diagnostic_only",
+        }
+    supplied_environment["image"] = image
+    supplied_environment.setdefault("image_pinned", False)
+    supplied_environment["telemetry_sampler"] = sampler
+    supplied_environment.setdefault("harness_commit", None)
+    trace_metadata = _diagnostic_trace_metadata()
+    outlier = build_outlier_analysis([], sampler_metadata=sampler)
+    histogram = frame_interval_statistics([], bin_width_ticks=1)
+    parameters = {
+        **config.as_record(),
+        "attempted_frame_count": 0,
+        "produced_frame_count": 0,
+        "dropped_frame_count": 0,
+        "aborted_attempts": 0,
+    }
     result: dict[str, Any] = {
-        "schema": "issue-12-stage-1-resident-v1",
+        "resident_record_schema": RESIDENT_RECORD_SCHEMA_MARKER,
+        "schema": RESIDENT_RECORD_SCHEMA,
         "issue": 12,
         "stage": 1,
         "status": "rejected",
+        "termination_reason": "rejected",
         "rejection_reason": reason,
-        "parameters": config.as_record(),
+        "parameters": parameters,
         "frame_interval_is_not_acquisition_rate_claim": True,
-        "clock_source_evidence": _source_evidence(
-            environment.get("image") if isinstance(environment, Mapping) else None
-        ),
+        "clock": {
+            "aiclk_mhz": None,
+            "aiclk_source": "rejected_preflight",
+        },
+        "clock_source_evidence": _source_evidence(image),
+        "histogram": {
+            **histogram,
+            "sample_definition": (
+                "No device timestamps were collected because preflight rejected the run."
+            ),
+        },
+        "ring": {
+            "producer_full_count": 0,
+            "consumer_empty_count": 0,
+            "attempted_frame_count": 0,
+            "produced_frame_count": 0,
+            "consumed_frame_count": 0,
+            "dropped_frame_count": 0,
+            "aborted_attempts": 0,
+            "overflow_count": 0,
+        },
+        "failure_check": {"code": 0, "name": "none", "source": "none"},
+        "cycle_budget": {
+            "budget_ticks": config.cycle_budget,
+            "unit": "device_clock_ticks",
+            "scope": "preflight_not_run",
+            "run_budget_ticks": None,
+            "exceeded": False,
+            "error_flag": 0,
+        },
+        "raw_timestamps": timestamp_digest([]),
+        "power_trace": None,
+        "power_trace_sample_count": trace_metadata["sample_count"],
+        "power_trace_csv_row_count": trace_metadata["csv_row_count"],
+        "power_trace_valid_row_count": trace_metadata["valid_row_count"],
+        "power_trace_in_run_valid_row_count": trace_metadata["in_run_valid_row_count"],
+        "power_trace_sha256": trace_metadata["sha256"],
+        "power_trace_absent_reason": "rejected_preflight",
+        "power_trace_coverage": {
+            "coverage": trace_metadata["coverage"],
+            "coverage_complete": trace_metadata["coverage_complete"],
+            "first_timestamp": trace_metadata["first_timestamp"],
+            "last_timestamp": trace_metadata["last_timestamp"],
+            "run_start": trace_metadata["run_start"],
+            "run_end": trace_metadata["run_end"],
+            "valid_row_count": trace_metadata["valid_row_count"],
+            "in_run_valid_row_count": trace_metadata["in_run_valid_row_count"],
+        },
+        "power_clock_provenance": {
+            "trace": None,
+            **trace_metadata,
+            "timing_evidence": False,
+            "timing_evidence_reason": TIMING_EVIDENCE_REJECTED_RECORD_REASON,
+        },
+        "run_start": None,
+        "run_end": None,
+        "telemetry_sampler": sampler,
+        "environment": supplied_environment,
+        "harness_commit": supplied_environment.get("harness_commit"),
+        "watcher": False,
+        "timing_evidence": False,
+        "timing_evidence_reason": TIMING_EVIDENCE_REJECTED_RECORD_REASON,
+        "outlier_analysis": outlier,
     }
-    if environment:
-        result["environment"] = (
-            dict(environment) if isinstance(environment, Mapping) else environment
-        )
+    validate_resident_record(result, builder=True, raise_on_error=False)
     return result
 
 
 __all__ = [
+    "AICLK_SOURCE_CONFIGURED",
+    "AICLK_SOURCE_LEGACY_UNVERIFIED",
+    "AICLK_SOURCE_RUN_TRACE_SAMPLES",
     "AUDITED_CLOCK_SOURCE_IMAGE",
     "CLOCK_SOURCE_AUDIT_TABLE",
     "CLOCK_SOURCE_UNAUDITED_DIAGNOSTIC",
@@ -1216,15 +1663,19 @@ __all__ = [
     "CURRENT_WRAP_WORK_PER_FRAME",
     "FAILURE_CODES",
     "FAILURE_CODE_TABLE",
+    "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
+    "MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "PAGE_BYTES",
     "PAGE_WORDS",
     "PROVENANCE_PHASE_POST_RUN",
     "PROVENANCE_PHASE_PREFLIGHT",
     "REQUIRED_PROVENANCE_FIELDS",
+    "RESIDENT_INVARIANT_CATALOG",
     "RESIDENT_SEMAPHORE_COUNT",
+    "SAMPLER_CONTRACT",
     "SEMAPHORE_BYTES",
     "TIMESTAMP_GAP_LIMIT_TICKS",
     "UINT32_MAX",
@@ -1236,6 +1687,7 @@ __all__ = [
     "ResidentPreflightError",
     "RingAccounting",
     "build_measurement_record",
+    "build_outlier_analysis",
     "build_rejection_record",
     "clock_source_audit_for_image",
     "cycle_budget_exceeded",
@@ -1249,6 +1701,7 @@ __all__ = [
     "resident_l1_allocation_table",
     "run_budget_breakdown",
     "run_budget_exceeded",
+    "select_elapsed_aiclk",
     "select_failure_check",
     "split_u64",
     "startup_allowance_ticks",
@@ -1257,11 +1710,13 @@ __all__ = [
     "timestamp_digest",
     "validate_configuration",
     "validate_failure_check",
+    "validate_outlier_analysis",
     "validate_pinned_environment",
     "validate_post_run_aiclk",
     "validate_post_run_provenance",
     "validate_preflight_provenance",
     "validate_record_inputs",
+    "validate_resident_record",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",
 ]

@@ -1,0 +1,1107 @@
+{
+  "schema": "adr-0005-issue-104-paired-outliers-v1",
+  "issue": 104,
+  "related_issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "summary": "Resident run completed at the Issue #12 final configuration with an explicit 5-second telemetry sampler interval.",
+  "environment": {
+    "captured_at": "2026-10-06T22:46:07.781022+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "telemetry_sampler": {
+      "mode": "explicit",
+      "interval_seconds": 5.0,
+      "power_trace": "required",
+      "timing_evidence": "available"
+    },
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "487bc36fa30e870b6cd9b2a62199275397cde004",
+    "harness_dirty": false,
+    "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16",
+      "serial": "000004033191411c",
+      "serial_source": "board_id_alias_because_serial_field_was_absent"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "aiclk_mhz_observed": [
+      800,
+      1350
+    ],
+    "run_id": "20261006T22460775527079686637795Z",
+    "aiclk_observation": "power trace samples, including loaded clock"
+  },
+  "parameters": {
+    "frame_count": 400000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "run_budget": {
+      "frame_count": 400000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 540000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 40000000000,
+      "critical_path_ticks": 540000000000,
+      "schedule_ticks": 540135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 54013500000,
+      "run_budget_ticks": 594148500000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 400000,
+    "produced_frame_count": 400000,
+    "dropped_frame_count": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK",
+    "timestamp_api": "get_timestamp()",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "aiclk_observation": "maximum loaded AICLK in companion power trace",
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "timestamp_attribution": {
+    "status": "open",
+    "consumer_completion": {
+      "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        1,
+        0
+      ]
+    },
+    "producer_write": {
+      "available": false,
+      "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        0,
+        0
+      ],
+      "reason": "The producer and consumer call get_timestamp() on different cores. The source has no same-designated-core producer stamp without changing the pacing kernel, so producer-versus-consumer attribution remains open."
+    }
+  },
+  "clock_source_evidence": {
+    "toolchain": "tt-metal v0.75.0",
+    "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-255",
+    "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+    "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+    "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+    "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+    "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+    "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope"
+  },
+  "work_ticks": {
+    "minimum": 1074,
+    "maximum": 1098,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "histogram": {
+    "N": 399999,
+    "min_ticks": 27285,
+    "max_ticks": 2672693,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349988.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350048.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350050.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350050.0
+      }
+    },
+    "histogram": {
+      "bin_width_ticks": 1,
+      "bins": [
+        {
+          "start_ticks": 27285,
+          "end_ticks": 27286,
+          "count": 1
+        },
+        {
+          "start_ticks": 188334,
+          "end_ticks": 188335,
+          "count": 1
+        },
+        {
+          "start_ticks": 298335,
+          "end_ticks": 298336,
+          "count": 1
+        },
+        {
+          "start_ticks": 343992,
+          "end_ticks": 343993,
+          "count": 1
+        },
+        {
+          "start_ticks": 499704,
+          "end_ticks": 499705,
+          "count": 1
+        },
+        {
+          "start_ticks": 810968,
+          "end_ticks": 810969,
+          "count": 1
+        },
+        {
+          "start_ticks": 921084,
+          "end_ticks": 921085,
+          "count": 1
+        },
+        {
+          "start_ticks": 1031142,
+          "end_ticks": 1031143,
+          "count": 1
+        },
+        {
+          "start_ticks": 1192137,
+          "end_ticks": 1192138,
+          "count": 1
+        },
+        {
+          "start_ticks": 1347745,
+          "end_ticks": 1347746,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349914,
+          "end_ticks": 1349915,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349915,
+          "end_ticks": 1349916,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349916,
+          "end_ticks": 1349917,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349918,
+          "end_ticks": 1349919,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349919,
+          "end_ticks": 1349920,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349920,
+          "end_ticks": 1349921,
+          "count": 22
+        },
+        {
+          "start_ticks": 1349921,
+          "end_ticks": 1349922,
+          "count": 100
+        },
+        {
+          "start_ticks": 1349922,
+          "end_ticks": 1349923,
+          "count": 63
+        },
+        {
+          "start_ticks": 1349923,
+          "end_ticks": 1349924,
+          "count": 35
+        },
+        {
+          "start_ticks": 1349924,
+          "end_ticks": 1349925,
+          "count": 266
+        },
+        {
+          "start_ticks": 1349925,
+          "end_ticks": 1349926,
+          "count": 4313
+        },
+        {
+          "start_ticks": 1349926,
+          "end_ticks": 1349927,
+          "count": 8209
+        },
+        {
+          "start_ticks": 1349927,
+          "end_ticks": 1349928,
+          "count": 716
+        },
+        {
+          "start_ticks": 1349928,
+          "end_ticks": 1349929,
+          "count": 2439
+        },
+        {
+          "start_ticks": 1349929,
+          "end_ticks": 1349930,
+          "count": 14073
+        },
+        {
+          "start_ticks": 1349930,
+          "end_ticks": 1349931,
+          "count": 4254
+        },
+        {
+          "start_ticks": 1349931,
+          "end_ticks": 1349932,
+          "count": 8068
+        },
+        {
+          "start_ticks": 1349932,
+          "end_ticks": 1349933,
+          "count": 2018
+        },
+        {
+          "start_ticks": 1349933,
+          "end_ticks": 1349934,
+          "count": 4188
+        },
+        {
+          "start_ticks": 1349934,
+          "end_ticks": 1349935,
+          "count": 4243
+        },
+        {
+          "start_ticks": 1349935,
+          "end_ticks": 1349936,
+          "count": 5975
+        },
+        {
+          "start_ticks": 1349936,
+          "end_ticks": 1349937,
+          "count": 912
+        },
+        {
+          "start_ticks": 1349937,
+          "end_ticks": 1349938,
+          "count": 1721
+        },
+        {
+          "start_ticks": 1349938,
+          "end_ticks": 1349939,
+          "count": 742
+        },
+        {
+          "start_ticks": 1349939,
+          "end_ticks": 1349940,
+          "count": 1105
+        },
+        {
+          "start_ticks": 1349940,
+          "end_ticks": 1349941,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349941,
+          "end_ticks": 1349942,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349943,
+          "end_ticks": 1349944,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349969,
+          "end_ticks": 1349970,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349970,
+          "end_ticks": 1349971,
+          "count": 4
+        },
+        {
+          "start_ticks": 1349971,
+          "end_ticks": 1349972,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349972,
+          "end_ticks": 1349973,
+          "count": 16
+        },
+        {
+          "start_ticks": 1349973,
+          "end_ticks": 1349974,
+          "count": 11
+        },
+        {
+          "start_ticks": 1349974,
+          "end_ticks": 1349975,
+          "count": 31
+        },
+        {
+          "start_ticks": 1349975,
+          "end_ticks": 1349976,
+          "count": 82
+        },
+        {
+          "start_ticks": 1349976,
+          "end_ticks": 1349977,
+          "count": 84
+        },
+        {
+          "start_ticks": 1349977,
+          "end_ticks": 1349978,
+          "count": 81
+        },
+        {
+          "start_ticks": 1349978,
+          "end_ticks": 1349979,
+          "count": 1389
+        },
+        {
+          "start_ticks": 1349979,
+          "end_ticks": 1349980,
+          "count": 410
+        },
+        {
+          "start_ticks": 1349980,
+          "end_ticks": 1349981,
+          "count": 2333
+        },
+        {
+          "start_ticks": 1349981,
+          "end_ticks": 1349982,
+          "count": 2402
+        },
+        {
+          "start_ticks": 1349982,
+          "end_ticks": 1349983,
+          "count": 6334
+        },
+        {
+          "start_ticks": 1349983,
+          "end_ticks": 1349984,
+          "count": 394
+        },
+        {
+          "start_ticks": 1349984,
+          "end_ticks": 1349985,
+          "count": 5288
+        },
+        {
+          "start_ticks": 1349985,
+          "end_ticks": 1349986,
+          "count": 16116
+        },
+        {
+          "start_ticks": 1349986,
+          "end_ticks": 1349987,
+          "count": 43674
+        },
+        {
+          "start_ticks": 1349987,
+          "end_ticks": 1349988,
+          "count": 50738
+        },
+        {
+          "start_ticks": 1349988,
+          "end_ticks": 1349989,
+          "count": 14111
+        },
+        {
+          "start_ticks": 1349989,
+          "end_ticks": 1349990,
+          "count": 5468
+        },
+        {
+          "start_ticks": 1349990,
+          "end_ticks": 1349991,
+          "count": 7761
+        },
+        {
+          "start_ticks": 1349991,
+          "end_ticks": 1349992,
+          "count": 4553
+        },
+        {
+          "start_ticks": 1349992,
+          "end_ticks": 1349993,
+          "count": 5975
+        },
+        {
+          "start_ticks": 1349993,
+          "end_ticks": 1349994,
+          "count": 3199
+        },
+        {
+          "start_ticks": 1349994,
+          "end_ticks": 1349995,
+          "count": 448
+        },
+        {
+          "start_ticks": 1349995,
+          "end_ticks": 1349996,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349996,
+          "end_ticks": 1349997,
+          "count": 1484
+        },
+        {
+          "start_ticks": 1349997,
+          "end_ticks": 1349998,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349998,
+          "end_ticks": 1349999,
+          "count": 6
+        },
+        {
+          "start_ticks": 1350023,
+          "end_ticks": 1350024,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350024,
+          "end_ticks": 1350025,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350025,
+          "end_ticks": 1350026,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350026,
+          "end_ticks": 1350027,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350027,
+          "end_ticks": 1350028,
+          "count": 15
+        },
+        {
+          "start_ticks": 1350028,
+          "end_ticks": 1350029,
+          "count": 29
+        },
+        {
+          "start_ticks": 1350029,
+          "end_ticks": 1350030,
+          "count": 73
+        },
+        {
+          "start_ticks": 1350030,
+          "end_ticks": 1350031,
+          "count": 53
+        },
+        {
+          "start_ticks": 1350031,
+          "end_ticks": 1350032,
+          "count": 116
+        },
+        {
+          "start_ticks": 1350032,
+          "end_ticks": 1350033,
+          "count": 2196
+        },
+        {
+          "start_ticks": 1350033,
+          "end_ticks": 1350034,
+          "count": 1423
+        },
+        {
+          "start_ticks": 1350034,
+          "end_ticks": 1350035,
+          "count": 3621
+        },
+        {
+          "start_ticks": 1350035,
+          "end_ticks": 1350036,
+          "count": 2466
+        },
+        {
+          "start_ticks": 1350036,
+          "end_ticks": 1350037,
+          "count": 11805
+        },
+        {
+          "start_ticks": 1350037,
+          "end_ticks": 1350038,
+          "count": 5075
+        },
+        {
+          "start_ticks": 1350038,
+          "end_ticks": 1350039,
+          "count": 4487
+        },
+        {
+          "start_ticks": 1350039,
+          "end_ticks": 1350040,
+          "count": 21108
+        },
+        {
+          "start_ticks": 1350040,
+          "end_ticks": 1350041,
+          "count": 22009
+        },
+        {
+          "start_ticks": 1350041,
+          "end_ticks": 1350042,
+          "count": 30378
+        },
+        {
+          "start_ticks": 1350042,
+          "end_ticks": 1350043,
+          "count": 6183
+        },
+        {
+          "start_ticks": 1350043,
+          "end_ticks": 1350044,
+          "count": 19393
+        },
+        {
+          "start_ticks": 1350044,
+          "end_ticks": 1350045,
+          "count": 11033
+        },
+        {
+          "start_ticks": 1350045,
+          "end_ticks": 1350046,
+          "count": 7938
+        },
+        {
+          "start_ticks": 1350046,
+          "end_ticks": 1350047,
+          "count": 5593
+        },
+        {
+          "start_ticks": 1350047,
+          "end_ticks": 1350048,
+          "count": 78
+        },
+        {
+          "start_ticks": 1350048,
+          "end_ticks": 1350049,
+          "count": 6249
+        },
+        {
+          "start_ticks": 1350049,
+          "end_ticks": 1350050,
+          "count": 1053
+        },
+        {
+          "start_ticks": 1350050,
+          "end_ticks": 1350051,
+          "count": 1710
+        },
+        {
+          "start_ticks": 1350051,
+          "end_ticks": 1350052,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350052,
+          "end_ticks": 1350053,
+          "count": 3
+        },
+        {
+          "start_ticks": 1352231,
+          "end_ticks": 1352232,
+          "count": 1
+        },
+        {
+          "start_ticks": 1507835,
+          "end_ticks": 1507836,
+          "count": 1
+        },
+        {
+          "start_ticks": 1668887,
+          "end_ticks": 1668888,
+          "count": 1
+        },
+        {
+          "start_ticks": 1778946,
+          "end_ticks": 1778947,
+          "count": 1
+        },
+        {
+          "start_ticks": 1889008,
+          "end_ticks": 1889009,
+          "count": 1
+        },
+        {
+          "start_ticks": 2200318,
+          "end_ticks": 2200319,
+          "count": 1
+        },
+        {
+          "start_ticks": 2355984,
+          "end_ticks": 2355985,
+          "count": 1
+        },
+        {
+          "start_ticks": 2401635,
+          "end_ticks": 2401636,
+          "count": 1
+        },
+        {
+          "start_ticks": 2511648,
+          "end_ticks": 2511649,
+          "count": 1
+        },
+        {
+          "start_ticks": 2672693,
+          "end_ticks": 2672694,
+          "count": 1
+        }
+      ]
+    },
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 400000,
+    "attempted_frame_count": 400000,
+    "produced_frame_count": 400000,
+    "consumed_frame_count": 400000,
+    "dropped_frame_count": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers and control metadata only",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "failure_check": {
+    "code": 0,
+    "name": "none",
+    "source": "none"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 594148500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "raw_timestamps": {
+    "count": 400000,
+    "file": "raw-timestamps.bin",
+    "sha256": "14fbed9b02de60773c9b6c64a14e44cb0073616e8c4ace107a60036609a7a944",
+    "retained_outside_repository": true
+  },
+  "power_trace": "2026-10-06-p150a-issue104-sampler-5s-power.csv",
+  "power_trace_sample_count": 77,
+  "power_trace_sha256": "f728f53d7f64bf3a599d9abfc85161e7d66d17794c723d8f19a792f2839b6f50",
+  "power_trace_absent_reason": null,
+  "telemetry_sampler": {
+    "mode": "explicit",
+    "interval_seconds": 5.0,
+    "power_trace": "required",
+    "timing_evidence": "available"
+  },
+  "watcher": false,
+  "timing_evidence": true,
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "status": "observation_only_no_causal_claim",
+    "pair_count": 9,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sum_min_ticks": 2699970,
+    "pair_sum_max_ticks": 2700030,
+    "pair_sum_mean_ticks": 2699992.777777778,
+    "sum_delta_min_ticks": -30,
+    "sum_delta_max_ticks": 30,
+    "frame_start_indices": [
+      88245,
+      107333,
+      110515,
+      225047,
+      228229,
+      247317,
+      256862,
+      285495,
+      342761
+    ],
+    "event_frame_positions": [
+      88245,
+      88246,
+      107333,
+      107334,
+      110515,
+      110516,
+      225047,
+      225048,
+      228229,
+      228230,
+      247317,
+      247318,
+      256862,
+      256863,
+      285495,
+      285496,
+      342761,
+      342762
+    ],
+    "event_elapsed_seconds": [
+      88.24402022592592,
+      88.24599999851851,
+      107.33276379333333,
+      107.33400000592593,
+      110.51422102296296,
+      110.51600001185186,
+      225.0466822762963,
+      225.04800001407406,
+      228.22813952222222,
+      228.23000000222223,
+      247.31688307037038,
+      247.3179999851852,
+      256.8612548155556,
+      256.8629999888889,
+      285.4943701444444,
+      285.49600000962965,
+      342.76060074296294,
+      342.76200000814816
+    ],
+    "pair_start_elapsed_seconds": [
+      88.24402022592592,
+      107.33276379333333,
+      110.51422102296296,
+      225.0466822762963,
+      228.22813952222222,
+      247.31688307037038,
+      256.8612548155556,
+      285.4943701444444,
+      342.76060074296294
+    ],
+    "frame_gaps": [
+      19088,
+      3182,
+      114532,
+      3182,
+      19088,
+      9545,
+      28633,
+      57266
+    ],
+    "gap_counts": {
+      "3182": 2,
+      "9545": 1,
+      "19088": 2,
+      "28633": 1,
+      "57266": 1,
+      "114532": 1
+    },
+    "gcd_frame_gap": 1,
+    "periodicity": "No single exact period detected; the most common gap is 3182 frames (2 of 8 gaps), and the gap gcd is 1.",
+    "pairs": [
+      {
+        "first_interval_end_elapsed_seconds": 88.24402022592592,
+        "first_interval_end_elapsed_ticks": 119129427305,
+        "interval_end_frame_indices": [
+          88245,
+          88246
+        ],
+        "long_ticks": 2672693,
+        "pair_sum_ticks": 2699978,
+        "short_ticks": 27285,
+        "sum_delta_ticks": -22
+      },
+      {
+        "first_interval_end_elapsed_seconds": 107.33276379333333,
+        "first_interval_end_elapsed_ticks": 144899231121,
+        "interval_end_frame_indices": [
+          107333,
+          107334
+        ],
+        "long_ticks": 1668887,
+        "pair_sum_ticks": 2700029,
+        "short_ticks": 1031142,
+        "sum_delta_ticks": 29
+      },
+      {
+        "first_interval_end_elapsed_seconds": 110.51422102296296,
+        "first_interval_end_elapsed_ticks": 149194198381,
+        "interval_end_frame_indices": [
+          110515,
+          110516
+        ],
+        "long_ticks": 2401635,
+        "pair_sum_ticks": 2699970,
+        "short_ticks": 298335,
+        "sum_delta_ticks": -30
+      },
+      {
+        "first_interval_end_elapsed_seconds": 225.0466822762963,
+        "first_interval_end_elapsed_ticks": 303813021073,
+        "interval_end_frame_indices": [
+          225047,
+          225048
+        ],
+        "long_ticks": 1778946,
+        "pair_sum_ticks": 2700030,
+        "short_ticks": 921084,
+        "sum_delta_ticks": 30
+      },
+      {
+        "first_interval_end_elapsed_seconds": 228.22813952222222,
+        "first_interval_end_elapsed_ticks": 308107988355,
+        "interval_end_frame_indices": [
+          228229,
+          228230
+        ],
+        "long_ticks": 2511648,
+        "pair_sum_ticks": 2699982,
+        "short_ticks": 188334,
+        "sum_delta_ticks": -18
+      },
+      {
+        "first_interval_end_elapsed_seconds": 247.31688307037038,
+        "first_interval_end_elapsed_ticks": 333877792145,
+        "interval_end_frame_indices": [
+          247317,
+          247318
+        ],
+        "long_ticks": 1507835,
+        "pair_sum_ticks": 2699972,
+        "short_ticks": 1192137,
+        "sum_delta_ticks": -28
+      },
+      {
+        "first_interval_end_elapsed_seconds": 256.8612548155556,
+        "first_interval_end_elapsed_ticks": 346762694001,
+        "interval_end_frame_indices": [
+          256862,
+          256863
+        ],
+        "long_ticks": 2355984,
+        "pair_sum_ticks": 2699976,
+        "short_ticks": 343992,
+        "sum_delta_ticks": -24
+      },
+      {
+        "first_interval_end_elapsed_seconds": 285.4943701444444,
+        "first_interval_end_elapsed_ticks": 385417399695,
+        "interval_end_frame_indices": [
+          285495,
+          285496
+        ],
+        "long_ticks": 2200318,
+        "pair_sum_ticks": 2700022,
+        "short_ticks": 499704,
+        "sum_delta_ticks": 22
+      },
+      {
+        "first_interval_end_elapsed_seconds": 342.76060074296294,
+        "first_interval_end_elapsed_ticks": 462726811003,
+        "interval_end_frame_indices": [
+          342761,
+          342762
+        ],
+        "long_ticks": 1889008,
+        "pair_sum_ticks": 2699976,
+        "short_ticks": 810968,
+        "sum_delta_ticks": -24
+      }
+    ],
+    "elapsed_time_unit": "seconds",
+    "device_tick_unit": "device_clock_ticks",
+    "aiclk_mhz_for_elapsed_seconds": 1350,
+    "run_elapsed_ticks": 539998650045,
+    "run_elapsed_seconds": 399.99900003333335,
+    "sampler_interval_comparison": {
+      "status": "no_strict_alignment_observed",
+      "sampler_interval_seconds": 5.0,
+      "adjacent_gaps": [
+        {
+          "from_pair_start_frame": 88245,
+          "gap_elapsed_seconds": 19.08874356740741,
+          "gap_frames": 19088,
+          "nearest_integer_sampler_intervals": 4,
+          "residual_to_nearest_sampler_multiple_seconds": -0.9112564325925909,
+          "sampler_intervals": 3.817748713481482,
+          "to_pair_start_frame": 107333
+        },
+        {
+          "from_pair_start_frame": 107333,
+          "gap_elapsed_seconds": 3.1814572296296295,
+          "gap_frames": 3182,
+          "nearest_integer_sampler_intervals": 1,
+          "residual_to_nearest_sampler_multiple_seconds": -1.8185427703703705,
+          "sampler_intervals": 0.6362914459259259,
+          "to_pair_start_frame": 110515
+        },
+        {
+          "from_pair_start_frame": 110515,
+          "gap_elapsed_seconds": 114.53246125333334,
+          "gap_frames": 114532,
+          "nearest_integer_sampler_intervals": 23,
+          "residual_to_nearest_sampler_multiple_seconds": -0.46753874666666206,
+          "sampler_intervals": 22.906492250666666,
+          "to_pair_start_frame": 225047
+        },
+        {
+          "from_pair_start_frame": 225047,
+          "gap_elapsed_seconds": 3.181457245925926,
+          "gap_frames": 3182,
+          "nearest_integer_sampler_intervals": 1,
+          "residual_to_nearest_sampler_multiple_seconds": -1.8185427540740742,
+          "sampler_intervals": 0.6362914491851852,
+          "to_pair_start_frame": 228229
+        },
+        {
+          "from_pair_start_frame": 228229,
+          "gap_elapsed_seconds": 19.088743548148148,
+          "gap_frames": 19088,
+          "nearest_integer_sampler_intervals": 4,
+          "residual_to_nearest_sampler_multiple_seconds": -0.9112564518518518,
+          "sampler_intervals": 3.8177487096296296,
+          "to_pair_start_frame": 247317
+        },
+        {
+          "from_pair_start_frame": 247317,
+          "gap_elapsed_seconds": 9.544371745185185,
+          "gap_frames": 9545,
+          "nearest_integer_sampler_intervals": 2,
+          "residual_to_nearest_sampler_multiple_seconds": -0.4556282548148154,
+          "sampler_intervals": 1.908874349037037,
+          "to_pair_start_frame": 256862
+        },
+        {
+          "from_pair_start_frame": 256862,
+          "gap_elapsed_seconds": 28.633115328888888,
+          "gap_frames": 28633,
+          "nearest_integer_sampler_intervals": 6,
+          "residual_to_nearest_sampler_multiple_seconds": -1.3668846711111122,
+          "sampler_intervals": 5.726623065777778,
+          "to_pair_start_frame": 285495
+        },
+        {
+          "from_pair_start_frame": 285495,
+          "gap_elapsed_seconds": 57.26623059851852,
+          "gap_frames": 57266,
+          "nearest_integer_sampler_intervals": 11,
+          "residual_to_nearest_sampler_multiple_seconds": 2.2662305985185185,
+          "sampler_intervals": 11.453246119703703,
+          "to_pair_start_frame": 342761
+        }
+      ]
+    }
+  },
+  "hardware": {
+    "device_id": 0,
+    "device_node": "/dev/tenstorrent/0",
+    "named_wrapper": "enodia/tt/bench/run_in_container.sh",
+    "docker_running_before": 0,
+    "docker_running_after": 0,
+    "reset_performed": false,
+    "health_probe": "not run",
+    "outer_timeout_seconds": 600,
+    "frame_count_termination": true
+  },
+  "producer_timestamp_attribution": {
+    "status": "open",
+    "available": false,
+    "reason": "Producer and consumer get_timestamp() calls execute on different cores. No same-designated-core producer-write stamp was added because it would change the pacing kernel; producer-versus-consumer attribution remains open."
+  },
+  "conclusion": "The sampled run retains the paired short/long event pattern. Its common event gaps do not form a strict sampler-interval period; this run alone supports no causal hypothesis. Producer-versus-consumer attribution remains open.",
+  "historical_records": {
+    "existing_issue12_records_unchanged": true,
+    "supersedes": []
+  },
+  "harness_commit": "487bc36fa30e870b6cd9b2a62199275397cde004"
+}

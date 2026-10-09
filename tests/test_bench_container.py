@@ -958,6 +958,151 @@ def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     assert re.search(r"results     -> .*/results-[0-9TZ]+\.json", completed.stdout)
 
 
+def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "off"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_TELEMETRY_MODE": "off",
+            "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+            "HEKATUS_TT_CONTAINER_TIMEOUT_S": "600",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    assert "HEKATUS_TT_TELEMETRY_MODE=off" in docker_args
+    assert "--out" in docker_args
+    assert docker_args[docker_args.index("--out") + 1] == "/out/runner-result.json"
+    assert "--power-trace" not in docker_args
+    assert not list(output_dir.glob("power-*.csv"))
+    assert "sampler -> off (diagnostic-only; no power trace by design)" in completed.stdout
+
+
+def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_path):
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    output_dir = tmp_path / "shared-output"
+    sampled_tools = tmp_path / "sampled-tools"
+    sampled_tools.mkdir()
+    sampled_bindir = _fake_tools(sampled_tools)
+    sampled_args = sampled_tools / "docker-args"
+    common_environment = {
+        **os.environ,
+        "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+        "HEKATUS_TT_CONTAINER_TIMEOUT_S": "600",
+    }
+
+    sampled = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **common_environment,
+            "PATH": f"{sampled_bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(sampled_args),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert sampled.returncode == 0, sampled.stderr
+    sampled_docker_args = sampled_args.read_text().splitlines()
+    trace_index = sampled_docker_args.index("--power-trace")
+    sampled_trace = sampled_docker_args[trace_index + 1]
+    assert sampled_trace.startswith("power-")
+    assert sampled_trace.endswith(".csv")
+    environment_files = sorted(output_dir.glob("env-*.json"))
+    assert len(environment_files) == 1
+    sampled_environment = environment_files[0]
+    environment_index = sampled_docker_args.index("--env-json")
+    assert sampled_docker_args[environment_index + 1] == f"/out/{sampled_environment.name}"
+    run_id = sampled_environment.stem.removeprefix("env-")
+    assert sampled_trace == f"power-{run_id}.csv"
+    old_trace = output_dir / sampled_trace
+    old_trace.write_text("old trace\n")
+
+    off_tools = tmp_path / "off-tools"
+    off_tools.mkdir()
+    off_bindir = _fake_tools(off_tools)
+    off_args = off_tools / "docker-args"
+    off = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--", "--env-json", "/out/env-stale.json"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **common_environment,
+            "PATH": f"{off_bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(off_args),
+            "HEKATUS_TT_TELEMETRY_MODE": "off",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert off.returncode == 0, off.stderr
+    off_docker_args = off_args.read_text().splitlines()
+    assert "--power-trace" not in off_docker_args
+    off_environment_files = sorted(output_dir.glob("env-*.json"))
+    assert len(off_environment_files) == 2
+    off_environment = next(path for path in off_environment_files if path != sampled_environment)
+    off_environment_index = off_docker_args.index("--env-json")
+    assert off_docker_args[off_environment_index + 1] == f"/out/{off_environment.name}"
+    assert "/out/env-stale.json" not in off_docker_args
+    assert [path.name for path in output_dir.glob("power-*.csv")] == [old_trace.name]
+    assert "sampler -> off (diagnostic-only; no power trace by design)" in off.stdout
+
+
+def test_wrapper_forwards_explicit_sampler_interval_and_keeps_default_trace_contract(tmp_path):
+    bindir = _fake_tools(tmp_path)
+    args_log = tmp_path / "docker-args"
+    output_dir = tmp_path / "explicit"
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+
+    completed = subprocess.run(
+        [str(copied_wrapper), str(output_dir), "--", "--iters", "1"],
+        cwd=copied_wrapper.parents[3],
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(args_log),
+            "HEKATUS_TT_TELEMETRY_MODE": "explicit",
+            "HEKATUS_TT_TELEMETRY_INTERVAL_S": "5",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    docker_args = args_log.read_text().splitlines()
+    assert "HEKATUS_TT_TELEMETRY_MODE=explicit" in docker_args
+    assert "HEKATUS_TT_TELEMETRY_INTERVAL_S=5" in docker_args
+    assert "--power-trace" in docker_args
+    assert "sampler -> explicit (5s)" in completed.stdout
+
+
 def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1156,6 +1301,10 @@ else:
             "--image",
             expected_image,
             "--image-pinned",
+            "--sampler-mode",
+            "default",
+            "--sampler-interval",
+            "2",
         ],
         "image": expected_image,
         "image_pinned": True,

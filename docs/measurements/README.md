@@ -24,6 +24,76 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #104 paired-outlier records
+
+The wrapper supports the existing telemetry sampler as `default` (2 seconds),
+`explicit` with a bounded `HEKATUS_TT_TELEMETRY_INTERVAL_S` in the supported
+0.1–3600.0 second range, and `off` with no sampler or power trace. Sampler-off
+output is diagnostic-only; sampled output retains its same-stem power trace.
+New canonical outlier records contain numeric measurements; human conclusions
+remain in this wrap-analysis document. The three Issue #104 runs below were produced
+by kernel/harness commit `487bc36fa30e870b6cd9b2a62199275397cde004`, exactly as
+recorded in each JSON record. That commit predates PR #103's synchronization-
+protocol fix, so these runs must not be described as having used that fix.
+
+| File | What it is |
+|---|---|
+| `2026-10-06-p150a-issue104-sampler-off.json` | 400,000-frame sampler-off diagnostic run: 22 paired outliers, no power trace by design, and `timing_evidence=false`. |
+| `2026-10-06-p150a-issue104-sampler-default.json` | 400,000-frame run with the unchanged 2-second sampler: 18 paired outliers, N=399,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,048/1,350,050/1,350,050 ticks, min/max 26,829/2,673,133 ticks, and 181 power samples. |
+| `2026-10-06-p150a-issue104-sampler-default-power.csv` | Companion power/AICLK/temperature trace for the default-sampler run. |
+| `2026-10-06-p150a-issue104-sampler-5s.json` | 400,000-frame run with an explicit 5-second sampler: 9 paired outliers, N=399,999, the same percentile body, min/max 27,285/2,672,693 ticks, and 77 power samples. |
+| `2026-10-06-p150a-issue104-sampler-5s-power.csv` | Companion power/AICLK/temperature trace for the explicit-interval run. |
+| `2026-10-06-p150a-issue104-wrap-analysis.md` | Board-free supplement that verifies the raw format and pair endpoints, folds event phases by the exact `2^32`-tick wall-clock period, and analyzes the available Issue #12 500,000-frame artifact without changing any JSON or CSV leaf. |
+
+### Issue #104 invariant revalidation
+
+The shared board-free `validate_resident_record` field matrix and invariant
+catalog in `enodia/tt/bench/resident_record.py` are scoped to records written
+by the current runner, which carry top-level `resident_record_schema: 1`.
+The final Issue #12 evidence record and all three committed Issue #104 records
+predate that marker, so validation reports them as `out_of_scope` historical
+records rather than invalid records. No JSON or CSV leaf is rewritten. A new
+runner-shaped record still receives the ordinary required-field, type/range,
+and relationship checks; full record-kind consistency and agreement between
+declared coverage flags and parsed trace facts remain deferred to Issue #110.
+
+The board-free analyzer still analyzes the two historical sampled records even
+though they have no explicit `run_start`/`run_end` bounds or persisted
+`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as
+`legacy_unverified` elapsed-time provenance. It never selects an environment
+snapshot AICLK, and this historical path is not timing evidence. The historical
+sampler-off record uses its configured budget AICLK for elapsed-time display and
+remains diagnostic-only. The external raw-timestamp-byte limitation applies to
+all three records because the referenced `raw-timestamps.bin` files are not
+committed, although the sampled records retain their committed count and
+histogram relationships.
+
+The wrap analysis gives `2^32 / 1,350,000,000 = 3.1814572563` seconds,
+or 3,181.4572563 configured 1-ms frames, so a frame-gap gcd of 1 does not
+reject a strict wall-clock period. Pair starts in all three runs have Rayleigh
+R `0.9999999999999996`–`0.9999999999999998` and circular widths
+`0.0000296296`–`0.0000422222 ms` immediately after the wrap; the short interval
+comes first and the long catch-up interval follows. The same phase lock in the
+off run means a host sampler is not necessary. Together with PR #103's
+controlled low-word-only clock experiment, the paired events are phase-locked to
+the wall-clock wrap and disappear after switching to low-word-only reads with
+software wrap tracking. This supports the clock-read path as the cause. Direct
+producer-versus-consumer attribution remains open because there is no producer
+stamp on the same clock. The short-first order is consistent with an early
+producer send, but does not establish producer-side attribution. A shared
+tile-latch overwrite remains a hypothesis only.
+
+The `2026-10-06-p150a-issue12-stage1-current-wrap-500000-adr0005.json` record
+is the **intermediate controlled comparison**: it has `pair_count=0` and
+min/max `1,349,924..1,350,068` ticks after the low-word-only clock change, but
+it is superseded for accepted Stage 1 evidence because the later drain decision
+fix was not yet present. The
+`2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json` record is
+the **final authority**: it includes the corrected drain/provenance path, has
+N=499,999, P50/P99/P99.9/P99.99 = 1,349,988/1,350,061/1,350,065/1,350,065
+ticks, min/max `1,349,889..1,350,065` ticks, and zero paired outliers. Both
+records remain immutable; no Issue #104 measurement JSON or CSV is rewritten.
+
 ## Issue #12 recovery runbook (owner approval required)
 
 The resident harness must not return to hardware without a new owner approval.
