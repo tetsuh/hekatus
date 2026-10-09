@@ -38,6 +38,7 @@ from typing import Any
 import numpy as np
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench import telemetry as bench_telemetry
 from enodia.tt.bench.configs import P150_COMPUTE_GRID
 from enodia.tt.bench.newton_schulz_reference import (
     NEWTON_SCHULZ_ITERATIONS,
@@ -136,10 +137,12 @@ POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
 POWER_TRACE_COVERAGE_DEFINITION = (
-    "Coverage is complete when the immutable per-run snapshot is readable and "
-    "nonempty, timestamps parse in order, its first sample is at or before the "
-    "recorded run start, and its last sample timestamp is at or after the "
-    "recorded run end; the run interval is covered through its end."
+    "Coverage is complete when the immutable per-run snapshot has at least one "
+    "usable finite telemetry row, usable timestamps parse in order, its first "
+    "usable sample is at or before the recorded run start, and its last usable "
+    "sample timestamp is at or after the recorded run end; the run interval is "
+    "covered through its end. Rows with unusable power, AICLK, or temperature "
+    "values are excluded from these checks."
 )
 _PCI_BUS_ID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
@@ -188,8 +191,16 @@ _PRIVATE_METADATA_KEYS = frozenset(
         "private_key",
     }
 )
+_PATH_TEXT = r"[^\s,;\"'<>]+"
+_POSIX_PATH_PREFIX = r"(?<![A-Za-z0-9_./])/(?![\\/\s])(?![A-Za-z0-9._~+@%=-]*\()"
 _ABSOLUTE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9:])/(?:home|Users|tmp|var/tmp|workspace|workspaces|work|out|mnt|opt|root|run/user|dev|build|src)/[^\s,;\"']+"
+    rf"(?:"
+    rf"(?<![A-Za-z0-9_:/])~(?:[\\/]|[A-Za-z0-9._-]+[\\/]){_PATH_TEXT}"
+    rf"|(?<![A-Za-z0-9_:/])[A-Za-z]:[\\/]{_PATH_TEXT}"
+    rf"|(?<![A-Za-z0-9_:/])\\\\{_PATH_TEXT}"
+    rf"|(?<![A-Za-z0-9_:/])//{_PATH_TEXT}"
+    rf"|{_POSIX_PATH_PREFIX}{_PATH_TEXT}"
+    rf")"
 )
 _ROW_ARTIFACT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1126,16 +1137,19 @@ def _sanitize_metadata(value: Any, *, key: str | None = None) -> Any:
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for child_key, child_value in value.items():
-            if str(child_key).lower() in _PRIVATE_METADATA_KEYS:
+            child_key_text = str(child_key)
+            if child_key_text.lower() in _PRIVATE_METADATA_KEYS:
                 continue
-            result[str(child_key)] = _sanitize_metadata(child_value, key=str(child_key))
+            result[_sanitize_text(child_key_text)] = _sanitize_metadata(
+                child_value, key=child_key_text
+            )
         return result
     if isinstance(value, (list, tuple)):
         return [_sanitize_metadata(item) for item in value]
     if isinstance(value, Path):
         return value.name
     if isinstance(value, str):
-        return _ABSOLUTE_PATH_RE.sub("<redacted-path>", value)
+        return _sanitize_text(value)
     return value
 
 
@@ -1302,7 +1316,10 @@ def _power_trace_base(
         "sha256_definition": POWER_TRACE_SHA256_DEFINITION,
         "byte_count": None,
         "immutable_snapshot": immutable_snapshot,
+        "csv_row_count": 0,
         "sample_count": 0,
+        "valid_row_count": 0,
+        "invalid_row_count": 0,
         "first_timestamp": None,
         "last_timestamp": None,
         "run_start": run_start,
@@ -1316,6 +1333,7 @@ def _power_trace_base(
         "coverage_complete": False,
         "coverage_definition": POWER_TRACE_COVERAGE_DEFINITION,
         "poll_complete": False,
+        "errors": [],
         "coverage": {
             "definition": POWER_TRACE_COVERAGE_DEFINITION,
             "nonempty": False,
@@ -1439,56 +1457,79 @@ def _read_power_trace(
         return trace
 
     trace["readable"] = True
-    trace["samples"] = _sanitize_metadata(samples)
-    trace["sample_count"] = len(samples)
-    trace["nonempty"] = bool(samples)
-    if samples:
-        trace["first_timestamp"] = _sanitize_text(samples[0].get("timestamp_utc"))
-        trace["last_timestamp"] = _sanitize_text(samples[-1].get("timestamp_utc"))
-
-    parsed_timestamps: list[datetime.datetime] = []
-    try:
-        parsed_timestamps = [
-            _parse_utc_timestamp(
+    trace["csv_row_count"] = len(samples)
+    errors: list[str] = []
+    timestamp_error: str | None = None
+    usable_rows: list[tuple[dict[str, str], datetime.datetime]] = []
+    for index, sample in enumerate(samples):
+        try:
+            timestamp = _parse_utc_timestamp(
                 sample.get("timestamp_utc"),
                 field=f"power sample {index} timestamp_utc",
             )
-            for index, sample in enumerate(samples)
-        ]
-    except ValueError as exc:
-        trace["error"] = _sanitize_text(exc)
+        except ValueError as exc:
+            timestamp_error = timestamp_error or str(exc)
+            errors.append(str(exc))
+            continue
+        try:
+            # Keep this validation shared with the main telemetry sampler.  In
+            # particular, AICLK uses the same finite-positive contract.
+            bench_telemetry._trace_number(
+                sample.get("power_w"), field=f"power sample {index} power_w"
+            )
+            bench_telemetry._trace_number(
+                sample.get("aiclk_mhz"),
+                field=f"power sample {index} aiclk_mhz",
+                positive=True,
+            )
+            bench_telemetry._trace_number(
+                sample.get("asic_temp_c"), field=f"power sample {index} asic_temp_c"
+            )
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            usable_rows.append((sample, timestamp))
+
+    usable_samples = [sample for sample, _timestamp in usable_rows]
+    parsed_timestamps = [timestamp for _sample, timestamp in usable_rows]
+    trace["samples"] = _sanitize_metadata(usable_samples)
+    trace["sample_count"] = len(usable_samples)
+    trace["valid_row_count"] = len(usable_samples)
+    trace["invalid_row_count"] = len(samples) - len(usable_samples)
+    trace["nonempty"] = bool(usable_samples)
+    trace["errors"] = _sanitize_metadata(errors)
+    if not usable_samples:
+        trace["error"] = timestamp_error or "power trace contains no usable telemetry rows"
+    elif timestamp_error is not None:
+        trace["error"] = timestamp_error
     else:
         trace["timestamps_parse"] = True
-        if parsed_timestamps:
-            trace["first_timestamp"] = parsed_timestamps[0].isoformat()
-            trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
-            trace["timestamps_ordered"] = all(
-                left <= right
-                for left, right in itertools.pairwise(parsed_timestamps)
-            )
-            trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
+        trace["first_timestamp"] = parsed_timestamps[0].isoformat()
+        trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
+        trace["timestamps_ordered"] = all(
+            left <= right for left, right in itertools.pairwise(parsed_timestamps)
+        )
+        trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
         try:
             start = _parse_utc_timestamp(run_start, field="run_start")
             end = _parse_utc_timestamp(run_end, field="run_end")
         except ValueError as exc:
             trace["error"] = _sanitize_text(exc)
         else:
-            if parsed_timestamps:
-                trace["covers_run_start"] = (
-                    parsed_timestamps[0] <= start <= end
+            trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
+            trace["covers_run_end"] = parsed_timestamps[-1] >= end
+            trace["coverage_complete"] = all(
+                (
+                    trace["readable"],
+                    trace["nonempty"],
+                    trace["valid_row_count"] > 0,
+                    trace["timestamps_parse"],
+                    trace["timestamps_ordered"],
+                    parsed_timestamps[0] <= start,
+                    start <= end,
+                    end <= parsed_timestamps[-1],
                 )
-                trace["covers_run_end"] = parsed_timestamps[-1] >= end
-                trace["coverage_complete"] = all(
-                    (
-                        trace["readable"],
-                        trace["nonempty"],
-                        trace["timestamps_parse"],
-                        trace["timestamps_ordered"],
-                        parsed_timestamps[0] <= start,
-                        start <= end,
-                        end <= parsed_timestamps[-1],
-                    )
-                )
+            )
 
     trace["coverage"] = {
         "definition": POWER_TRACE_COVERAGE_DEFINITION,
@@ -1498,6 +1539,8 @@ def _read_power_trace(
         "first_at_or_before_run_start": trace["covers_run_start"],
         "last_at_or_after_run_end": trace["covers_run_end"],
         "readable": trace["readable"],
+        "usable_row_count": trace["valid_row_count"],
+        "invalid_row_count": trace["invalid_row_count"],
         "complete": trace["coverage_complete"],
     }
     return trace
@@ -1603,12 +1646,13 @@ def _wait_for_power_trace(
                 last_trace = trace
                 final_timestamp = trace.get("_last_timestamp_datetime")
                 if (
-                    isinstance(final_timestamp, datetime.datetime)
+                    trace.get("coverage_complete") is True
+                    and isinstance(final_timestamp, datetime.datetime)
                     and final_timestamp >= end_value
                 ):
                     trace["poll_complete"] = True
                     return _public_power_trace(trace)
-                last_error = trace.get("error") or "power trace final sample is before run_end"
+                last_error = trace.get("error") or _power_trace_failure_reason(trace)
 
         remaining = deadline - monotonic_fn()
         if remaining <= 0.0:
@@ -1644,7 +1688,7 @@ def _power_trace_failure_reason(trace: Any) -> str:
     if not trace.get("readable"):
         return trace.get("error") or "power trace is not readable"
     if not trace.get("nonempty"):
-        return "power trace contains no samples"
+        return trace.get("error") or "power trace contains no usable telemetry rows"
     if not trace.get("timestamps_parse"):
         return trace.get("error") or "power trace timestamps do not parse"
     if not trace.get("timestamps_ordered"):
@@ -2185,7 +2229,18 @@ def run_comparison(
 run_issue88_comparison = run_comparison
 
 
+def _serialize_record(payload: dict[str, Any]) -> str:
+    """Serialize one publication and reject any path left after sanitization."""
+    serialized = strict_json_dumps(payload, indent=2)
+    if _ABSOLUTE_PATH_RE.search(serialized):
+        raise ValueError(
+            "record serialization rejected: an absolute path remains after sanitization"
+        )
+    return serialized
+
+
 def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
+    serialized = _serialize_record(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -2193,7 +2248,7 @@ def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w") as handle:
-            handle.write(strict_json_dumps(payload, indent=2) + "\n")
+            handle.write(serialized + "\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
@@ -2503,7 +2558,9 @@ def _status_components(
         if not isinstance(power_trace.get("byte_count"), int) or power_trace["byte_count"] < 1:
             power_failures.append("power trace snapshot byte count is missing or invalid")
         if not isinstance(power_trace.get("samples"), list) or not power_trace["samples"]:
-            power_failures.append("power trace contains no samples")
+            power_failures.append(
+                power_trace.get("error") or "power trace contains no usable telemetry rows"
+            )
         if power_trace.get("sample_count") != len(power_trace.get("samples", [])):
             power_failures.append("power trace sample count is inconsistent")
         if power_trace.get("coverage_definition") != POWER_TRACE_COVERAGE_DEFINITION:

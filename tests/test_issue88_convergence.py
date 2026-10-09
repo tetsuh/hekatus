@@ -44,6 +44,7 @@ def _environment(run_id: str = "run-1") -> dict:
 
 
 def _power_trace(tmp_path: Path, run_id: str = "run-1") -> dict:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     path = tmp_path / f"power-{run_id}.csv"
     path.write_text(
         "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
@@ -493,6 +494,126 @@ def _power_csv(timestamps: list[str]) -> str:
     return "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n" + "".join(
         f"{timestamp},75,1350,60\n" for timestamp in timestamps
     )
+
+
+def _trace_for_rows(tmp_path: Path, rows: list[str], *, run_id: str = "run-1") -> dict:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    source = tmp_path / f"power-{run_id}.csv"
+    source.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n" + "".join(rows)
+    )
+    snapshot = runner._atomic_power_trace_snapshot(
+        source,
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+    )
+    trace = runner._read_power_trace(
+        snapshot,
+        run_id=run_id,
+        source_path=source,
+        run_start=RUN_START.isoformat(),
+        run_end=RUN_END.isoformat(),
+    )
+    trace["poll_complete"] = True
+    return trace
+
+
+def test_issue88_power_trace_excludes_each_nonfinite_or_non_numeric_field(tmp_path):
+    invalid_values = {
+        "power_w": ("", "NaN", "inf", "-inf", "garbage"),
+        "aiclk_mhz": ("", "NaN", "inf", "-inf", "garbage", "0"),
+        "asic_temp_c": ("", "NaN", "inf", "-inf", "garbage"),
+    }
+    for field, values in invalid_values.items():
+        column = {"power_w": 1, "aiclk_mhz": 2, "asic_temp_c": 3}[field]
+        for value in values:
+            fields = ["2026-01-01T00:00:01+00:00", "75", "1350", "60"]
+            fields[column] = value
+            trace = _trace_for_rows(
+                tmp_path / f"{field}-{value or 'empty'}".replace("/", "-"),
+                [
+                    "2026-01-01T00:00:00+00:00,75,1350,60\n",
+                    ",".join(fields) + "\n",
+                    "2026-01-01T00:00:02+00:00,76,1350,61\n",
+                ],
+            )
+            assert trace["sample_count"] == 2
+            assert trace["csv_row_count"] == 3
+            assert trace["valid_row_count"] == 2
+            assert trace["invalid_row_count"] == 1
+            assert trace["coverage_complete"] is True
+            assert trace["first_timestamp"] == "2026-01-01T00:00:00+00:00"
+            assert trace["last_timestamp"] == "2026-01-01T00:00:02+00:00"
+            assert all(
+                sample[field] != value for sample in trace["samples"]
+            )
+
+
+def test_issue88_power_trace_coverage_uses_only_usable_rows(tmp_path):
+    trace = _trace_for_rows(
+        tmp_path,
+        [
+            "2026-01-01T00:00:00+00:00,75,1350,60\n",
+            "2026-01-01T00:00:02+00:00,NaN,1350,61\n",
+        ],
+    )
+
+    assert trace["sample_count"] == 1
+    assert trace["invalid_row_count"] == 1
+    assert trace["last_timestamp"] == "2026-01-01T00:00:00+00:00"
+    assert trace["covers_run_end"] is False
+    assert trace["coverage_complete"] is False
+    assert "power trace ends before run_end" in runner._power_trace_failure_reason(trace)
+
+    run, telemetry, cleanup = _passing_parts(tmp_path / "status")
+    telemetry["power_trace"] = trace
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert statuses["power_trace"]["ok"] is False
+    assert not runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id="run-1",
+        raw_path=tmp_path / "raw-run-1.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["status"] == "failed"
+
+
+def test_issue88_power_trace_with_no_usable_rows_fails_closed(tmp_path):
+    trace = _trace_for_rows(
+        tmp_path,
+        [
+            "2026-01-01T00:00:00+00:00,NaN,1350,60\n",
+            "2026-01-01T00:00:02+00:00,76,garbage,61\n",
+        ],
+    )
+
+    assert trace["sample_count"] == 0
+    assert trace["valid_row_count"] == 0
+    assert trace["nonempty"] is False
+    assert trace["coverage_complete"] is False
+    assert "no usable telemetry rows" in trace["error"]
+    assert "no usable telemetry rows" in runner._power_trace_failure_reason(trace)
+
+
+def test_issue88_valid_power_trace_rows_remain_publishable(tmp_path):
+    trace = _trace_for_rows(
+        tmp_path,
+        [
+            "2026-01-01T00:00:00+00:00,75,1350,60\n",
+            "2026-01-01T00:00:02+00:00,76,1350,61\n",
+        ],
+    )
+    run, telemetry, cleanup = _passing_parts(tmp_path / "status")
+    telemetry["power_trace"] = trace
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+
+    assert trace["coverage_complete"] is True
+    assert statuses["power_trace"]["ok"] is True
+    assert runner._status_components_pass(statuses)
 
 
 def _write_environment(path: Path, *, run_id: str, embedded_run_id: str | None = None) -> None:
@@ -959,3 +1080,88 @@ def test_issue88_power_trace_snapshot_preserves_hash_on_partial_csv_failure(tmp_
 
 def test_issue88_power_poll_configuration_stays_within_row_cap():
     assert runner.POWER_TRACE_POLL_TIMEOUT_S <= runner.ROW_TIMEOUT_S
+
+
+@pytest.mark.parametrize(
+    "path_text",
+    [
+        "/srv/private/result.json",
+        "/data/telemetry/power.csv",
+        "/opt/tool/cache.bin",
+        "/home/alice/secret.txt",
+        "/tmp/run-1/error.log",
+        r"C:\Users\alice\secret.json",
+        "D:/data/secret.json",
+        r"\\server\share\secret.json",
+        "~/private/secret.json",
+        "~alice/private/secret.json",
+        r"~\private\secret.json",
+    ],
+)
+def test_issue88_sanitize_text_redacts_absolute_paths_without_allow_list(path_text):
+    sanitized = runner._sanitize_text(f"failure: {path_text}")
+
+    assert "<redacted-path>" in sanitized
+    assert path_text not in sanitized
+
+
+@pytest.mark.parametrize(
+    "ordinary_text",
+    [
+        "ordinary non-path text",
+        "relative/path.txt",
+        "./relative/path.txt",
+        "ratio 1/2 remains readable",
+        "device-1-retake.json",
+    ],
+)
+def test_issue88_sanitize_text_preserves_ordinary_and_basename_text(ordinary_text):
+    assert runner._sanitize_text(ordinary_text) == ordinary_text
+
+
+def test_issue88_final_serialization_guard_rejects_nested_unsanitized_paths(tmp_path):
+    output = tmp_path / "record.json"
+    payload = {
+        "status": "pass",
+        "failure": {"error": r"C:\Users\alice\secret.json"},
+        "metadata": {
+            "source": "/srv/private/source.csv",
+            "items": [{"path": "~/private/notes.txt"}],
+        },
+    }
+
+    with pytest.raises(ValueError, match="record serialization rejected"):
+        runner._atomic_json_write(output, payload)
+
+    assert not output.exists()
+
+
+def test_issue88_sanitized_record_serializes_without_absolute_paths(tmp_path):
+    output = tmp_path / "record.json"
+    payload = runner._sanitize_metadata(
+        {
+            "status": "failed",
+            "failure": {"error": "/data/private/source.csv"},
+            "metadata": {"source": "device-1-retake.json"},
+        }
+    )
+
+    runner._atomic_json_write(output, payload)
+    serialized = output.read_text()
+    assert "<redacted-path>" in serialized
+    assert runner._ABSOLUTE_PATH_RE.search(serialized) is None
+    assert "device-1-retake.json" in serialized
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+        "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json",
+        "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv",
+    ],
+)
+def test_issue88_device1_retake_artifacts_have_no_absolute_paths(filename):
+    artifact = Path(__file__).parents[1] / "docs/measurements" / filename
+
+    assert runner._ABSOLUTE_PATH_RE.search(artifact.read_text()) is None
