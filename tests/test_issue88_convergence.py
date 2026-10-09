@@ -21,10 +21,11 @@ DERIVED_SUMMARY = Path(__file__).parents[1] / (
 )
 
 
-def _environment() -> dict:
+def _environment(run_id: str = "run-1") -> dict:
     return runner._normalize_environment(
         {
             "image": "ghcr.io/example/image@sha256:" + "a" * 64,
+            "run_id": run_id,
             "image_pinned": True,
             "kernel": "Linux 6.8.0-test",
             "kmd_version": "2.11.0",
@@ -38,20 +39,27 @@ def _environment() -> dict:
             },
             "firmwares": {"fw_bundle_version": "19.6.0.0"},
         },
-        "run-1",
+        run_id,
     )
 
 
-def _power_trace(tmp_path: Path) -> dict:
-    path = tmp_path / "power-run-1.csv"
+def _power_trace(tmp_path: Path, run_id: str = "run-1") -> dict:
+    path = tmp_path / f"power-{run_id}.csv"
     path.write_text(
         "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
         "2026-01-01T00:00:00+00:00,75,1350,60\n"
         "2026-01-01T00:00:02+00:00,76,1350,61\n"
     )
-    trace = runner._read_power_trace(
+    snapshot = runner._atomic_power_trace_snapshot(
         path,
-        run_id="run-1",
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+    )
+    trace = runner._read_power_trace(
+        snapshot,
+        run_id=run_id,
+        source_path=path,
         run_start=RUN_START.isoformat(),
         run_end=RUN_END.isoformat(),
     )
@@ -404,6 +412,7 @@ def _write_main_artifacts(tmp_path: Path) -> tuple[Path, Path, Path]:
         json.dumps(
             {
                 "image": "ghcr.io/example/image@sha256:" + "a" * 64,
+                "run_id": "run-1",
                 "image_pinned": True,
                 "kernel": "Linux 6.8.0-test",
                 "kmd_version": "2.11.0",
@@ -484,6 +493,321 @@ def _power_csv(timestamps: list[str]) -> str:
     return "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n" + "".join(
         f"{timestamp},75,1350,60\n" for timestamp in timestamps
     )
+
+
+def _write_environment(path: Path, *, run_id: str, embedded_run_id: str | None = None) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "image": "ghcr.io/example/image@sha256:" + "a" * 64,
+                "run_id": run_id if embedded_run_id is None else embedded_run_id,
+                "image_pinned": True,
+                "kernel": "Linux 6.8.0-test",
+                "kmd_version": "2.11.0",
+                "tt_env_active_release": "0.75.0",
+                "harness_commit": "b" * 40,
+                "harness_dirty": False,
+                "board_info": {
+                    "board_type": "p150a",
+                    "board_id": "board-serial",
+                    "bus_id": "0000:09:00.0",
+                },
+                "firmwares": {"fw_bundle_version": "19.6.0.0"},
+            }
+        )
+    )
+
+
+def _assert_failed_publication(tmp_path: Path, run_id: str, telemetry: dict) -> None:
+    run = _passing_run(run_id=run_id)
+    cleanup = {
+        "device_opened": True,
+        "close_attempted": True,
+        "close_succeeded": True,
+    }
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert not runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=tmp_path / f"raw-{run_id}.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["status"] == "failed"
+
+
+def test_issue88_exact_current_pair_is_valid_and_publishable(tmp_path):
+    run_id = "run-current"
+    _write_environment(tmp_path / f"env-{run_id}.json", run_id=run_id)
+    (tmp_path / f"power-{run_id}.csv").write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["status"] == "complete"
+    assert telemetry["normalized_environment"]["run_id"] == run_id
+    assert telemetry["power_trace"]["run_id"] == run_id
+    assert telemetry["power_trace"]["source_file"] == f"power-{run_id}.csv"
+    run = _passing_run(run_id=run_id)
+    cleanup = {
+        "device_opened": True,
+        "close_attempted": True,
+        "close_succeeded": True,
+    }
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=tmp_path / f"raw-{run_id}.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["status"] == "pass"
+
+
+def test_issue88_old_environment_is_not_paired_with_current_power(tmp_path):
+    run_id = "run-current"
+    _write_environment(tmp_path / "env-run-old.json", run_id="run-old")
+    (tmp_path / f"power-{run_id}.csv").write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["normalized_environment"] is None
+    assert any(
+        failure["stage"] == "telemetry.environment"
+        and "glob fallback is disabled" in failure["error"]
+        for failure in telemetry["failures"]
+    )
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_explicit_artifact_path_must_be_current_run_path(tmp_path):
+    run_id = "run-current"
+    old_environment = tmp_path / "env-run-old.json"
+    current_environment = tmp_path / f"env-{run_id}.json"
+    _write_environment(old_environment, run_id="run-old")
+    _write_environment(current_environment, run_id=run_id)
+    current_power = tmp_path / f"power-{run_id}.csv"
+    current_power.write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        environment_path=old_environment,
+        power_path=current_power,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["environment"] is None
+    assert any(
+        failure["stage"] == "telemetry.environment"
+        and "exact current run artifact" in failure["error"]
+        for failure in telemetry["failures"]
+    )
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_embedded_environment_run_id_mismatch_is_not_repaired(tmp_path):
+    run_id = "run-current"
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(
+        environment_path,
+        run_id=run_id,
+        embedded_run_id="run-old",
+    )
+    raw_before = json.loads(environment_path.read_text())
+    (tmp_path / f"power-{run_id}.csv").write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["environment"]["run_id"] == "run-old"
+    assert telemetry["normalized_environment"] is None
+    assert json.loads(environment_path.read_text()) == raw_before
+    assert any(
+        failure["stage"] == "telemetry.environment"
+        and "does not match the current run" in failure["error"]
+        for failure in telemetry["failures"]
+    )
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_missing_environment_run_id_is_rejected(tmp_path):
+    run_id = "run-current"
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(environment_path, run_id=run_id)
+    raw = json.loads(environment_path.read_text())
+    raw.pop("run_id")
+    environment_path.write_text(json.dumps(raw))
+    (tmp_path / f"power-{run_id}.csv").write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["environment"]["image"]
+    assert telemetry["normalized_environment"] is None
+    assert any(
+        failure["stage"] == "telemetry.environment"
+        and "run_id is missing" in failure["error"]
+        for failure in telemetry["failures"]
+    )
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_power_source_run_id_mismatch_rejects_snapshot_and_publish(tmp_path):
+    run_id = "run-current"
+    _write_environment(tmp_path / f"env-{run_id}.json", run_id=run_id)
+    old_power = tmp_path / "power-run-old.csv"
+    old_power.write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        power_path=old_power,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["power_trace"]["immutable_snapshot"] is False
+    assert any(
+        failure["stage"] == "telemetry.power"
+        and "exact current run artifact" in failure["error"]
+        for failure in telemetry["failures"]
+    )
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_glob_only_artifacts_are_rejected_without_publication(tmp_path):
+    run_id = "run-current"
+    _write_environment(tmp_path / "env-run-old.json", run_id="run-old")
+    (tmp_path / "power-run-old.csv").write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+    missing_environment = tmp_path / f"env-{run_id}.json"
+    missing_power = tmp_path / f"power-{run_id}.csv"
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        environment_path=missing_environment,
+        power_path=missing_power,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert len(telemetry["failures"]) == 2
+    assert all("glob fallback is disabled" in failure["error"] for failure in telemetry["failures"])
+    _assert_failed_publication(tmp_path, run_id, telemetry)
+
+
+def test_issue88_snapshot_with_mismatched_run_id_is_rejected(tmp_path):
+    old_run_id = "run-old"
+    source = tmp_path / f"power-{old_run_id}.csv"
+    source.write_text(
+        _power_csv(
+            [
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:02+00:00",
+            ]
+        )
+    )
+    snapshot = runner._atomic_power_trace_snapshot(
+        source,
+        tmp_path,
+        run_id=old_run_id,
+        snapshot_number=1,
+    )
+
+    with pytest.raises(ValueError, match="does not match the current run"):
+        runner._read_power_trace(
+            snapshot,
+            run_id="run-current",
+            run_start=RUN_START.isoformat(),
+            run_end=RUN_END.isoformat(),
+        )
 
 
 def test_issue88_power_poll_waits_for_sample_covering_run_end(tmp_path):

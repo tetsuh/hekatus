@@ -44,6 +44,13 @@ from enodia.tt.bench.newton_schulz_reference import (
     newton_schulz_reference,
     random_hpd_batch,
 )
+from enodia.tt.bench.run_binding import (
+    RUN_ID_PATTERN,
+    RunBindingError,
+    require_run_artifact,
+    run_artifact_name,
+    validate_run_id,
+)
 
 DEVICE_ID = 0
 LAUNCHES_PER_ROW = 1_000
@@ -119,6 +126,10 @@ INVERSE_ARRAY_HASH_DEFINITION = (
 INVERSE_NPY_HASH_DEFINITION = "SHA-256 of the complete .npy file bytes, including header and payload"
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 POWER_TRACE_SNAPSHOT_PREFIX = "issue88-fp32-r-power-snapshot"
+_POWER_TRACE_SNAPSHOT_RE = re.compile(
+    rf"^{re.escape(POWER_TRACE_SNAPSHOT_PREFIX)}-(?P<run_id>{RUN_ID_PATTERN})-"
+    rf"(?P<number>[1-9][0-9]*)\.csv$"
+)
 POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
@@ -178,7 +189,6 @@ _PRIVATE_METADATA_KEYS = frozenset(
 _ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9:])/(?:home|Users|tmp|var/tmp|workspace|workspaces|work|out|mnt|opt|root|run/user|dev|build|src)/[^\s,;\"']+"
 )
-_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _ROW_ARTIFACT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -1004,9 +1014,7 @@ def _sanitize_metadata(value: Any, *, key: str | None = None) -> Any:
 
 
 def _validated_run_id(value: Any) -> str:
-    if not isinstance(value, str) or not _RUN_ID_RE.fullmatch(value):
-        raise ValueError("run_id must be a safe artifact identifier")
-    return value
+    return validate_run_id(value)
 
 
 def _new_run_id() -> str:
@@ -1023,24 +1031,37 @@ def _read_one_artifact(
     run_id: str,
     explicit: Path | None = None,
 ) -> Path:
-    if explicit is not None:
-        return explicit
-    exact = output_dir / pattern.format(run_id=run_id)
-    if exact.exists():
-        return exact
-    matches = sorted(output_dir.glob(pattern.format(run_id="*")))
-    if len(matches) == 1:
-        return matches[0]
-    if not matches:
-        raise FileNotFoundError(f"no {pattern} telemetry artifact")
-    raise RuntimeError(f"ambiguous {pattern} telemetry artifacts")
+    """Select one exact run artifact; never scan output files for a fallback."""
+    if pattern == "env-{run_id}.json":
+        prefix, suffix, kind = "env-", ".json", "environment"
+    elif pattern == "power-{run_id}.csv":
+        prefix, suffix, kind = "power-", ".csv", "power trace source"
+    else:
+        raise ValueError(f"unsupported run artifact pattern: {pattern}")
+    return require_run_artifact(
+        output_dir,
+        prefix=prefix,
+        suffix=suffix,
+        run_id=run_id,
+        explicit=explicit,
+        kind=kind,
+    )
 
 
 def _normalize_environment(raw: dict[str, Any], run_id: str) -> dict[str, Any]:
-    """Normalize wrapper metadata while retaining no path-bearing raw values."""
-    environment = _sanitize_metadata(raw)
-    if not isinstance(environment, dict):
+    """Normalize wrapper metadata without repairing its embedded run identity."""
+    run_id = _validated_run_id(run_id)
+    if not isinstance(raw, dict):
         raise TypeError("environment artifact must contain an object")
+    embedded_run_id = raw.get("run_id")
+    if embedded_run_id is None:
+        raise ValueError("environment artifact run_id is missing")
+    if embedded_run_id != run_id:
+        raise ValueError(
+            "environment artifact run_id does not match the current run "
+            f"({embedded_run_id!r} != {run_id!r})"
+        )
+    environment = _sanitize_metadata(raw)
     image = environment.get("image")
     if isinstance(image, str) and "@" in image:
         environment["image_digest"] = image.rsplit("@", 1)[1]
@@ -1071,7 +1092,6 @@ def _normalize_environment(raw: dict[str, Any], run_id: str) -> dict[str, Any]:
     firmware = environment.get("firmware") or environment.get("firmwares")
     if isinstance(firmware, dict):
         environment["firmware"] = dict(firmware)
-    environment["run_id"] = run_id
     return _sanitize_metadata(environment)
 
 
@@ -1105,6 +1125,37 @@ def _timestamp_text(value: datetime.datetime | str | None, *, field: str) -> str
     return _parse_utc_timestamp(value, field=field).isoformat()
 
 
+def _validate_power_snapshot_path(
+    path: Path,
+    *,
+    run_id: str,
+    output_dir: Path | None = None,
+) -> Path:
+    """Require a snapshot basename and parent that encode the current run."""
+    run_id = _validated_run_id(run_id)
+    if output_dir is not None:
+        expected_dir = Path(output_dir).resolve()
+        try:
+            same_directory = path.resolve().parent == expected_dir
+        except (OSError, RuntimeError):
+            same_directory = False
+        if not same_directory or path.is_symlink():
+            raise RunBindingError(
+                "power trace snapshot is not in the current run output directory"
+            )
+    match = _POWER_TRACE_SNAPSHOT_RE.fullmatch(path.name)
+    if match is None:
+        raise RunBindingError(
+            "power trace snapshot filename does not encode a run-bound snapshot"
+        )
+    if match.group("run_id") != run_id:
+        raise RunBindingError(
+            "power trace snapshot run_id does not match the current run "
+            f"({match.group('run_id')!r} != {run_id!r})"
+        )
+    return path
+
+
 def _power_trace_base(
     path: Path | None,
     *,
@@ -1112,9 +1163,11 @@ def _power_trace_base(
     run_start: str | None,
     run_end: str | None,
     immutable_snapshot: bool = False,
+    source_file: str | None = None,
 ) -> dict[str, Any]:
     return {
         "file": path.name if path is not None else None,
+        "source_file": source_file,
         "run_id": run_id,
         "columns": list(POWER_TRACE_COLUMNS),
         "samples": [],
@@ -1163,9 +1216,14 @@ def _atomic_power_trace_snapshot(
     if not isinstance(snapshot_number, int) or isinstance(snapshot_number, bool) or snapshot_number < 1:
         raise ValueError("snapshot_number must be a positive integer")
     output_dir = output_dir.resolve()
-    source_path = source_path.resolve()
-    if source_path.parent != output_dir:
-        raise ValueError("power trace source must be in the output directory")
+    source_path = require_run_artifact(
+        output_dir,
+        prefix="power-",
+        suffix=".csv",
+        run_id=run_id,
+        explicit=source_path,
+        kind="power trace source",
+    )
     payload = (
         source_path.read_bytes()
         if read_text_fn is None
@@ -1201,6 +1259,7 @@ def _read_power_trace(
     run_id: str,
     run_start: str | None,
     run_end: str | None,
+    source_path: Path | None = None,
     read_text_fn: Callable[[Path], str] | None = None,
 ) -> dict[str, Any]:
     """Read one immutable snapshot and retain honest coverage metadata.
@@ -1209,12 +1268,25 @@ def _read_power_trace(
     rather than being promoted to a successful artifact.  The snapshot hash
     and all parsed fields therefore describe the same immutable bytes.
     """
+    path = _validate_power_snapshot_path(path, run_id=run_id)
+    source_file = None
+    if source_path is not None:
+        source_path = require_run_artifact(
+            path.parent,
+            prefix="power-",
+            suffix=".csv",
+            run_id=run_id,
+            explicit=source_path,
+            kind="power trace source",
+        )
+        source_file = source_path.name
     trace = _power_trace_base(
         path,
         run_id=run_id,
         run_start=run_start,
         run_end=run_end,
         immutable_snapshot=True,
+        source_file=source_file,
     )
     try:
         raw_bytes = (
@@ -1348,6 +1420,28 @@ def _wait_for_power_trace(
                 run_id=run_id,
                 explicit=explicit,
             )
+        except RunBindingError as exc:
+            failed = _power_trace_base(
+                None,
+                run_id=run_id,
+                run_start=start_text,
+                run_end=end_text,
+            )
+            failed["binding_error"] = _sanitize_text(exc)
+            failed["poll_count"] = poll_count
+            return _public_power_trace(failed)
+        except FileNotFoundError as exc:
+            if explicit is not None:
+                failed = _power_trace_base(
+                    None,
+                    run_id=run_id,
+                    run_start=start_text,
+                    run_end=end_text,
+                )
+                failed["binding_error"] = _sanitize_text(exc)
+                failed["poll_count"] = poll_count
+                return _public_power_trace(failed)
+            last_error = _sanitize_text(exc)
         except Exception as exc:  # noqa: BLE001 - sampler may not have created it yet
             last_error = _sanitize_text(exc)
         else:
@@ -1364,7 +1458,18 @@ def _wait_for_power_trace(
                     run_id=run_id,
                     run_start=start_text,
                     run_end=end_text,
+                    source_path=selected,
                 )
+            except RunBindingError as exc:
+                failed = _power_trace_base(
+                    None,
+                    run_id=run_id,
+                    run_start=start_text,
+                    run_end=end_text,
+                )
+                failed["binding_error"] = _sanitize_text(exc)
+                failed["poll_count"] = poll_count
+                return _public_power_trace(failed)
             except Exception as exc:  # noqa: BLE001 - retry the sampler read
                 last_error = _sanitize_text(exc)
             else:
@@ -1401,6 +1506,8 @@ def _wait_for_power_trace(
 def _power_trace_failure_reason(trace: Any) -> str:
     if not isinstance(trace, dict):
         return "power trace is missing"
+    if trace.get("binding_error"):
+        return str(trace["binding_error"])
     if trace.get("immutable_snapshot") is not True:
         return "power trace is not an immutable per-run snapshot"
     filename = trace.get("file")
@@ -2215,8 +2322,26 @@ def _status_components(
         filename = power_trace.get("file")
         if not isinstance(filename, str) or Path(filename).name != filename:
             power_failures.append("power trace snapshot filename is missing or not a basename")
+        else:
+            try:
+                _validate_power_snapshot_path(
+                    Path(filename), run_id=run.get("run_id", "")
+                )
+            except (RunBindingError, ValueError) as exc:
+                power_failures.append(_sanitize_text(exc))
         if power_trace.get("run_id") != run.get("run_id"):
             power_failures.append("power trace snapshot run_id does not match the run")
+        try:
+            expected_source = run_artifact_name(
+                prefix="power-", suffix=".csv", run_id=run.get("run_id", "")
+            )
+        except ValueError as exc:
+            expected_source = None
+            power_failures.append(_sanitize_text(exc))
+        if power_trace.get("source_file") != expected_source:
+            power_failures.append(
+                "power trace source artifact is not the exact current run artifact"
+            )
         if power_trace.get("immutable_snapshot") is not True:
             power_failures.append("power trace is not an immutable per-run snapshot")
         if power_trace.get("sha256_definition") != POWER_TRACE_SHA256_DEFINITION:
@@ -2406,6 +2531,7 @@ def _record_payload(
             "power_trace_sha256": power_trace.get("sha256"),
             "power_clock_provenance": {
                 "trace": power_trace.get("file"),
+                "source_file": power_trace.get("source_file"),
                 "trace_sha256": power_trace.get("sha256"),
                 "trace_byte_count": power_trace.get("byte_count"),
                 "columns": power_trace.get("columns"),
