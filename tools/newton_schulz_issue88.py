@@ -32,11 +32,13 @@ import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.configs import P150_COMPUTE_GRID
 from enodia.tt.bench.newton_schulz_reference import (
     NEWTON_SCHULZ_ITERATIONS,
     bf16_round_complex,
@@ -344,6 +346,130 @@ def validate_comparison_rows(
 def shape_name(row: dict[str, Any]) -> str:
     """Return the kernel catalogue shape name represented by one row."""
     return f"newton_schulz_L{row['size']}_b{row['batch']}"
+
+
+def _accounting_ttnn(ttnn: Any | None) -> Any:
+    """Provide dtype markers for board-free accounting when a stub has none."""
+    return SimpleNamespace(
+        bfloat16=getattr(ttnn, "bfloat16", "bfloat16"),
+        float32=getattr(ttnn, "float32", "float32"),
+        uint32=getattr(ttnn, "uint32", "uint32"),
+    )
+
+
+def _preflight_accounting(
+    config: dict[str, Any], ttnn: Any | None = None
+) -> dict[str, Any]:
+    """Serialize the kernel's exact L1 ledger for one Issue #88 row."""
+    from enodia.tt.bench.newton_schulz_kernel import (
+        _L1_CB_BUDGET_BYTES,
+        _padded_tile_count,
+        _physical_tile_count,
+        _r_dtype,
+        _state_dtype,
+        l1_preflight_breakdown,
+    )
+
+    accounting_ttnn = _accounting_ttnn(ttnn)
+    size = int(config["size"])
+    matrix_block = int(config["matrix_block"])
+    physical_tile_count = _physical_tile_count(config["batch"], size)
+    padded_tile_count = _padded_tile_count(physical_tile_count, matrix_block)
+    raw = l1_preflight_breakdown(
+        accounting_ttnn,
+        batch=padded_tile_count,
+        core_count=P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
+        state_dtype=_state_dtype(accounting_ttnn, config["variant"]),
+        fuse_s=config["fuse_s"],
+        output_memory=config["output_memory"],
+        input_memory=config["input_memory"],
+        r_memory=config["r_memory"],
+        x0_memory=config["x0_memory"],
+        matrix_block=matrix_block,
+        double_buffer=config["double_buffer"],
+        r_dtype=_r_dtype(accounting_ttnn, config["variant"]),
+        variant=config["variant"],
+        fp32_dest_acc_en=config["fp32_dest_acc_en"],
+        dst_full_sync_en=config["dst_full_sync_en"],
+    )
+    overage_bytes = raw["total_budget_overage"]
+    headroom_bytes = max(0, raw["budget_bytes"] - raw["total_bytes"])
+    accepted = not (raw["cb_budget_overage"] or overage_bytes)
+    status = "admitted" if accepted else "rejected_before_allocation"
+    placement = {
+        name: value.upper()
+        for name, value in {
+            "R": raw["placement"]["R"],
+            "X0": raw["placement"]["X0"],
+            "identity": raw["placement"]["identity"],
+            "zero": raw["placement"]["zero"],
+            "output": raw["placement"]["output"],
+            "compute": "l1",
+        }.items()
+    }
+    tensor_bytes_by_name = dict(raw["tensor_bytes_by_name"])
+    tensor_items = {
+        name: {
+            "bytes": tensor_bytes_by_name[name],
+            "placement": placement[name],
+        }
+        for name in ("R", "X0", "identity", "zero", "output")
+    }
+    circular_buffers = dict(raw["cb_bytes_by_name"])
+    byte_breakdown = {
+        "circular_buffers": circular_buffers,
+        "cb_bytes": raw["cb_bytes"],
+        "cb_entries": [
+            {"name": name, "bytes": value} for name, value in raw["cb_entries"]
+        ],
+        "tensor_items": tensor_items,
+        "tensor_bytes": raw["tensor_bytes"],
+        "static_prefix_bytes": raw["static_prefix_bytes"],
+        "total_bytes": raw["total_bytes"],
+        "budget_bytes": raw["budget_bytes"],
+        "cb_budget_bytes": _L1_CB_BUDGET_BYTES,
+        "cb_budget_overage_bytes": raw["cb_budget_overage"],
+        "cb_budget_headroom_bytes": max(0, _L1_CB_BUDGET_BYTES - raw["cb_bytes"]),
+        "overage_bytes": overage_bytes,
+        "headroom_bytes": headroom_bytes,
+    }
+    result = {
+        "status": status,
+        "accepted": accepted,
+        "bytes": raw["total_bytes"],
+        "total_bytes": raw["total_bytes"],
+        "budget_bytes": raw["budget_bytes"],
+        "over_budget_bytes": overage_bytes,
+        "overage_bytes": overage_bytes,
+        "headroom_bytes": headroom_bytes,
+        "static_prefix_bytes": raw["static_prefix_bytes"],
+        "cb_bytes": raw["cb_bytes"],
+        "cb_bytes_by_name": circular_buffers,
+        "cb_entries": byte_breakdown["cb_entries"],
+        "cb_budget_bytes": byte_breakdown["cb_budget_bytes"],
+        "cb_budget_overage_bytes": byte_breakdown["cb_budget_overage_bytes"],
+        "cb_budget_headroom_bytes": byte_breakdown["cb_budget_headroom_bytes"],
+        "tensor_bytes": raw["tensor_bytes"],
+        "tensor_bytes_by_name": tensor_bytes_by_name,
+        "tensor_items": tensor_items,
+        "placement": placement,
+        "batch": config["batch"],
+        "physical_tile_count": physical_tile_count,
+        "padded_tile_count": padded_tile_count,
+        "core_count": P150_COMPUTE_GRID[0] * P150_COMPUTE_GRID[1],
+        "breakdown": byte_breakdown,
+    }
+    expected_bytes = config.get("preflight_bytes")
+    expected_overage = config.get("preflight_over_budget_bytes")
+    if expected_bytes is not None and expected_bytes != result["total_bytes"]:
+        raise ValueError(
+            f"{config['name']} preflight bytes disagree with kernel accounting"
+        )
+    if expected_overage is not None and expected_overage != result["overage_bytes"]:
+        raise ValueError(
+            f"{config['name']} preflight overage disagrees with kernel accounting"
+        )
+    return result
 
 
 def percentile(samples: list[float] | tuple[float, ...], quantile: float) -> float:
@@ -1630,10 +1756,29 @@ def _failed_row(
     return row
 
 
-def _preflight_rejected_row(config: dict[str, Any]) -> dict[str, Any]:
+def _preflight_rejected_row(
+    config: dict[str, Any], preflight: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Represent the expected FP32-R L=32 L1 rejection without a launch."""
     if not config.get("expected_preflight_rejection"):
         raise ValueError("row is not an expected preflight rejection")
+    preflight = _preflight_accounting(config) if preflight is None else dict(preflight)
+    if preflight["accepted"]:
+        raise ValueError(f"{config['name']} unexpectedly fits the L1 preflight")
+    preflight.update(
+        {
+            "status": config["preflight_status"],
+            "bytes": preflight["total_bytes"],
+            "over_budget_bytes": preflight["overage_bytes"],
+            "variant": config["variant"],
+            "size": config["size"],
+            "matrix_block": config["matrix_block"],
+            "r_memory": config["r_memory"],
+            "fallback": False,
+            "allocation_attempted": False,
+            "launches": 0,
+        }
+    )
     result = dict(config)
     result.update(
         {
@@ -1643,18 +1788,7 @@ def _preflight_rejected_row(config: dict[str, Any]) -> dict[str, Any]:
             "failure_stage": None,
             "launches_requested": 0,
             "launches_measured": 0,
-            "preflight": {
-                "status": config["preflight_status"],
-                "bytes": config["preflight_bytes"],
-                "over_budget_bytes": config["preflight_over_budget_bytes"],
-                "variant": config["variant"],
-                "size": config["size"],
-                "matrix_block": config["matrix_block"],
-                "r_memory": config["r_memory"],
-                "fallback": False,
-                "allocation_attempted": False,
-                "launches": 0,
-            },
+            "preflight": preflight,
         }
     )
     return result
@@ -1669,6 +1803,7 @@ def _run_row(
     artifact_dir: Path,
     run_id: str,
     reference: dict[str, np.ndarray] | None = None,
+    preflight: dict[str, Any] | None = None,
     launches: int = LAUNCHES_PER_ROW,
     timeout_s: float = ROW_TIMEOUT_S,
     first_launch: bool = False,
@@ -1688,6 +1823,8 @@ def _run_row(
     result["launches_requested"] = 0 if first_launch else launches
     result["row_timeout_s"] = timeout_s
     result["status"] = "failed"
+    preflight = _preflight_accounting(config, ttnn) if preflight is None else dict(preflight)
+    result["preflight"] = preflight
     kernel = None
     samples: list[float] = []
     row_started = time_fn()
@@ -1703,6 +1840,7 @@ def _run_row(
                     "flops_per_launch": flops_per_launch,
                     "launches_requested": 0 if first_launch else launches,
                     "row_timeout_s": timeout_s,
+                    "preflight": preflight,
                 }
             )
             return result
@@ -1841,6 +1979,7 @@ def _run_row(
         result["flops_per_launch"] = flops_per_launch
         result["launches_requested"] = 0 if first_launch else launches
         result["row_timeout_s"] = timeout_s
+        result["preflight"] = preflight
         if reference is not None:
             result["reference_available"] = True
         if samples:
@@ -1933,8 +2072,17 @@ def run_comparison(
     comparison: list[dict[str, Any]] = []
     stopped = False
     for config in selected:
+        try:
+            preflight = _preflight_accounting(config, ttnn)
+        except Exception as exc:  # noqa: BLE001 - retain a host preflight failure as a row
+            row = _failed_row(config, "preflight", exc)
+            row["row"] = config["name"]
+            row["shape_name"] = shape_name(config)
+            comparison.append(row)
+            stopped = True
+            break
         if config.get("expected_preflight_rejection"):
-            comparison.append(_preflight_rejected_row(config))
+            comparison.append(_preflight_rejected_row(config, preflight=preflight))
             continue
         try:
             size, matrices, reference = _prepare_comparison_input(
@@ -1949,6 +2097,7 @@ def run_comparison(
             row = _failed_row(config, "host_preparation", exc)
             row["row"] = config["name"]
             row["shape_name"] = shape_name(config)
+            row["preflight"] = preflight
             comparison.append(row)
             stopped = True
             break
@@ -1960,6 +2109,7 @@ def run_comparison(
             artifact_dir=artifact_dir,
             run_id=run_id,
             reference=reference,
+            preflight=preflight,
             launches=launches,
             timeout_s=timeout_s,
             first_launch=first_launch,

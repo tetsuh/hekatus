@@ -167,6 +167,85 @@ def test_fp32_r_tensor_and_cb_accounting_double_only_r_bytes():
         )
 
 
+def test_issue88_preflight_breakdown_is_the_runner_accounting_ledger():
+    expected = {
+        "bf16-r-L16": (885504, 358400, 415744, 0, 687360, "l1"),
+        "fp32-r-L16": (1229568, 456704, 661504, 0, 343296, "l1"),
+        "bf16-r-L32": (1295104, 358400, 825344, 0, 277760, "l1"),
+        "bf16-r-L32-r-dram": (803584, 358400, 333824, 0, 769280, "dram"),
+        "fp32-r-L32-r-dram": (901888, 456704, 333824, 0, 670976, "dram"),
+        "fp32-r-L32": (1884928, 456704, 1316864, 312064, 0, "l1"),
+    }
+    for config in issue88_runner.ISSUE88_COMPARISON_ROWS:
+        serialized = issue88_runner._preflight_accounting(config, TTNN)
+        total, cb, tensors, overage, headroom, r_memory = expected[config["name"]]
+        assert (
+            serialized["total_bytes"],
+            serialized["cb_bytes"],
+            serialized["tensor_bytes"],
+            serialized["overage_bytes"],
+            serialized["headroom_bytes"],
+            serialized["placement"]["R"].lower(),
+        ) == (total, cb, tensors, overage, headroom, r_memory)
+        direct = newton_schulz_kernel.l1_preflight_breakdown(
+            TTNN,
+            batch=serialized["padded_tile_count"],
+            core_count=110,
+            state_dtype=newton_schulz_kernel._state_dtype(TTNN, config["variant"]),
+            fuse_s=config["fuse_s"],
+            output_memory=config["output_memory"],
+            input_memory=config["input_memory"],
+            r_memory=config["r_memory"],
+            x0_memory=config["x0_memory"],
+            matrix_block=config["matrix_block"],
+            double_buffer=config["double_buffer"],
+            r_dtype=newton_schulz_kernel._r_dtype(TTNN, config["variant"]),
+            variant=config["variant"],
+            fp32_dest_acc_en=config["fp32_dest_acc_en"],
+            dst_full_sync_en=config["dst_full_sync_en"],
+        )
+        assert direct["cb_bytes_by_name"] == serialized["cb_bytes_by_name"]
+        assert direct["tensor_bytes_by_name"] == serialized["tensor_bytes_by_name"]
+        assert direct["total_bytes"] == serialized["total_bytes"]
+        if serialized["accepted"]:
+            assert newton_schulz_kernel._validate_l1_preflight(
+                TTNN,
+                batch=serialized["padded_tile_count"],
+                core_count=110,
+                state_dtype=newton_schulz_kernel._state_dtype(TTNN, config["variant"]),
+                fuse_s=config["fuse_s"],
+                output_memory=config["output_memory"],
+                input_memory=config["input_memory"],
+                r_memory=config["r_memory"],
+                x0_memory=config["x0_memory"],
+                matrix_block=config["matrix_block"],
+                double_buffer=config["double_buffer"],
+                r_dtype=newton_schulz_kernel._r_dtype(TTNN, config["variant"]),
+                variant=config["variant"],
+                fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                dst_full_sync_en=config["dst_full_sync_en"],
+            ) == total
+        else:
+            with pytest.raises(ValueError, match=f"total={total} bytes"):
+                newton_schulz_kernel._validate_l1_preflight(
+                    TTNN,
+                    batch=serialized["padded_tile_count"],
+                    core_count=110,
+                    state_dtype=newton_schulz_kernel._state_dtype(TTNN, config["variant"]),
+                    fuse_s=config["fuse_s"],
+                    output_memory=config["output_memory"],
+                    input_memory=config["input_memory"],
+                    r_memory=config["r_memory"],
+                    x0_memory=config["x0_memory"],
+                    matrix_block=config["matrix_block"],
+                    double_buffer=config["double_buffer"],
+                    r_dtype=newton_schulz_kernel._r_dtype(TTNN, config["variant"]),
+                    variant=config["variant"],
+                    fp32_dest_acc_en=config["fp32_dest_acc_en"],
+                    dst_full_sync_en=config["dst_full_sync_en"],
+                )
+
+
 def test_fp32_r_parser_and_independent_reference_are_explicit():
     args = run_matmul._build_parser().parse_args(["--custom-variant", "fp32-r"])
     assert args.custom_variant == "fp32-r"

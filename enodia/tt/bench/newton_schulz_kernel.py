@@ -731,7 +731,7 @@ def _cb_l1_bytes(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
     return sum(_cb_l1_bytes_by_name(ttnn, definitions).values())
 
 
-def _tensor_l1_bytes(
+def _tensor_l1_bytes_by_name(
     ttnn,
     *,
     batch: int,
@@ -744,8 +744,8 @@ def _tensor_l1_bytes(
     x0_memory: str | None = None,
     matrix_block: int = 1,
     r_dtype=None,
-) -> int:
-    """Estimate the largest assigned core's tensor footprint.
+) -> dict[str, int]:
+    """Return the largest assigned core's tensor footprint by tensor item.
 
     Reader inputs and the identity/zero constants are device tensors.  R and
     X0 use independent placements; the compatibility shorthand controls both
@@ -770,15 +770,55 @@ def _tensor_l1_bytes(
     x0_bytes = 0
     if x0_memory == "l1":
         x0_bytes = 2 * _cb_page_size(ttnn, state_dtype)
-    resident_bytes = 0
+    identity_bytes = 0
+    zero_bytes = 0
     if input_memory == "l1":
         identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
-        resident_bytes = _cb_page_size(ttnn, identity_dtype) + _cb_page_size(ttnn, ttnn.float32)
+        identity_bytes = _cb_page_size(ttnn, identity_dtype)
+        zero_bytes = _cb_page_size(ttnn, ttnn.float32)
     _validate_memory(output_memory, name="output_memory")
     output_bytes = 0
     if output_memory == "l1":
         output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
-    return tiles_per_core * (r_bytes + x0_bytes + output_bytes) + resident_bytes
+    return {
+        "R": tiles_per_core * r_bytes,
+        "X0": tiles_per_core * x0_bytes,
+        "identity": identity_bytes,
+        "zero": zero_bytes,
+        "output": tiles_per_core * output_bytes,
+    }
+
+
+def _tensor_l1_bytes(
+    ttnn,
+    *,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    fuse_s: bool,
+    output_memory: str,
+    input_memory: str = "l1",
+    r_memory: str | None = None,
+    x0_memory: str | None = None,
+    matrix_block: int = 1,
+    r_dtype=None,
+) -> int:
+    """Estimate the largest assigned core's total tensor footprint."""
+    return sum(
+        _tensor_l1_bytes_by_name(
+            ttnn,
+            batch=batch,
+            core_count=core_count,
+            state_dtype=state_dtype,
+            fuse_s=fuse_s,
+            output_memory=output_memory,
+            input_memory=input_memory,
+            r_memory=r_memory,
+            x0_memory=x0_memory,
+            matrix_block=matrix_block,
+            r_dtype=r_dtype,
+        ).values()
+    )
 
 
 def _format_cb_bytes(entries: list[tuple[str, int]]) -> str:
@@ -793,6 +833,7 @@ def _l1_budget_breakdown(
     definitions: dict[int, tuple[Any, int]],
     *,
     tensor_bytes: int,
+    tensor_bytes_by_name: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Return all host-side L1 accounting fields used by the preflight error."""
     cb_bytes_by_name = _cb_l1_bytes_by_name(ttnn, definitions)
@@ -815,6 +856,7 @@ def _l1_budget_breakdown(
         "cb_entries": cb_entries,
         "static_prefix_bytes": _L1_STATIC_BASE_BYTES,
         "tensor_bytes": tensor_bytes,
+        "tensor_bytes_by_name": dict(tensor_bytes_by_name or {}),
         "total_bytes": total_bytes,
         "budget_bytes": _L1_TOTAL_BUDGET_BYTES,
         "largest_cbs": largest_cbs,
@@ -824,15 +866,82 @@ def _l1_budget_breakdown(
     }
 
 
-def _validate_l1_budget(
+def l1_preflight_breakdown(
     ttnn,
-    definitions: dict[int, tuple[Any, int]],
     *,
-    tensor_bytes: int = 0,
-    matrix_block: int | None = None,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    profile: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
+    output_memory: str = DEFAULT_OUTPUT_MEMORY,
+    input_memory: str = "l1",
+    r_memory: str | None = None,
+    x0_memory: str | None = None,
+    matrix_block: int = DEFAULT_MATRIX_BLOCK,
+    double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
+    r_dtype=None,
+    variant: str | None = DEFAULT_VARIANT,
+    fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+    dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
+) -> dict[str, Any]:
+    """Return the exact host-side L1 preflight ledger without allocating."""
+    input_memory, r_memory, x0_memory = _resolve_input_memories(
+        input_memory, r_memory=r_memory, x0_memory=x0_memory
+    )
+    if output_memory is None:
+        output_memory = DEFAULT_OUTPUT_MEMORY
+    _validate_memory(output_memory, name="output_memory")
+    _validate_matrix_block(
+        matrix_block,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+        variant=variant,
+    )
+    if r_dtype is None:
+        r_dtype = _r_dtype(ttnn, variant) if variant is not None else ttnn.bfloat16
+    definitions = _cb_definitions(
+        ttnn,
+        state_dtype,
+        profile=profile,
+        fuse_s=fuse_s,
+        matrix_block=matrix_block,
+        double_buffer=double_buffer,
+        r_dtype=r_dtype,
+    )
+    tensor_bytes_by_name = _tensor_l1_bytes_by_name(
+        ttnn,
+        batch=batch,
+        core_count=core_count,
+        state_dtype=state_dtype,
+        fuse_s=fuse_s,
+        output_memory=output_memory,
+        input_memory=input_memory,
+        r_memory=r_memory,
+        x0_memory=x0_memory,
+        matrix_block=matrix_block,
+        r_dtype=r_dtype,
+    )
+    breakdown = _l1_budget_breakdown(
+        ttnn,
+        definitions,
+        tensor_bytes=sum(tensor_bytes_by_name.values()),
+        tensor_bytes_by_name=tensor_bytes_by_name,
+    )
+    breakdown["placement"] = {
+        "R": r_memory,
+        "X0": x0_memory,
+        "identity": input_memory,
+        "zero": input_memory,
+        "output": output_memory,
+    }
+    return breakdown
+
+
+def _validate_l1_breakdown(
+    breakdown: dict[str, Any], *, matrix_block: int | None = None
 ) -> int:
-    """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
-    breakdown = _l1_budget_breakdown(ttnn, definitions, tensor_bytes=tensor_bytes)
+    """Reject one already-computed CB/tensor ledger when it exceeds a budget."""
     if breakdown["cb_budget_overage"] or breakdown["total_budget_overage"]:
         largest = _format_cb_bytes(breakdown["largest_cbs"])
         over_budget = _format_cb_bytes(breakdown["over_budget_cbs"]) or "none"
@@ -855,6 +964,18 @@ def _validate_l1_budget(
             f"CB breakdown: {_format_cb_bytes(breakdown['cb_entries'])}"
         )
     return breakdown["total_bytes"]
+
+
+def _validate_l1_budget(
+    ttnn,
+    definitions: dict[int, tuple[Any, int]],
+    *,
+    tensor_bytes: int = 0,
+    matrix_block: int | None = None,
+) -> int:
+    """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
+    breakdown = _l1_budget_breakdown(ttnn, definitions, tensor_bytes=tensor_bytes)
+    return _validate_l1_breakdown(breakdown, matrix_block=matrix_block)
 
 
 def _validate_l1_preflight(
@@ -881,48 +1002,25 @@ def _validate_l1_preflight(
     The Issue #100 defaults fail fast when this budget is exceeded; callers must
     select an explicit block or memory placement rather than receiving a fallback.
     """
-    input_memory, r_memory, x0_memory = _resolve_input_memories(
-        input_memory, r_memory=r_memory, x0_memory=x0_memory
-    )
-    if output_memory is None:
-        output_memory = DEFAULT_OUTPUT_MEMORY
-    _validate_memory(output_memory, name="output_memory")
-    _validate_matrix_block(
-        matrix_block,
-        fp32_dest_acc_en=fp32_dest_acc_en,
-        dst_full_sync_en=dst_full_sync_en,
-        variant=variant,
-    )
-    if r_dtype is None:
-        r_dtype = _r_dtype(ttnn, variant) if variant is not None else ttnn.bfloat16
-    definitions = _cb_definitions(
-        ttnn,
-        state_dtype,
-        profile=profile,
-        fuse_s=fuse_s,
-        matrix_block=matrix_block,
-        double_buffer=double_buffer,
-        r_dtype=r_dtype,
-    )
-    tensor_bytes = _tensor_l1_bytes(
+    breakdown = l1_preflight_breakdown(
         ttnn,
         batch=batch,
         core_count=core_count,
         state_dtype=state_dtype,
+        profile=profile,
         fuse_s=fuse_s,
         output_memory=output_memory,
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,
         matrix_block=matrix_block,
+        double_buffer=double_buffer,
         r_dtype=r_dtype,
+        variant=variant,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
     )
-    return _validate_l1_budget(
-        ttnn,
-        definitions,
-        tensor_bytes=tensor_bytes,
-        matrix_block=matrix_block,
-    )
+    return _validate_l1_breakdown(breakdown, matrix_block=matrix_block)
 
 
 def _decode_counter_page(

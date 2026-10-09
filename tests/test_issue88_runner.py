@@ -395,6 +395,29 @@ def test_issue88_full_selection_retains_measured_outputs_not_preflight_output(tm
     rejected_row = result["comparison_rows"][-1]
     assert all(row["status"] == "ok" for row in measured_rows)
     assert all("device_inverse_artifact" in row for row in measured_rows)
+    expected_accounting = {
+        "bf16-r-L16": (885504, 0, 687360, 358400, 415744, "admitted", "L1"),
+        "fp32-r-L16": (1229568, 0, 343296, 456704, 661504, "admitted", "L1"),
+        "bf16-r-L32": (1295104, 0, 277760, 358400, 825344, "admitted", "L1"),
+        "bf16-r-L32-r-dram": (803584, 0, 769280, 358400, 333824, "admitted", "DRAM"),
+        "fp32-r-L32-r-dram": (901888, 0, 670976, 456704, 333824, "admitted", "DRAM"),
+        "fp32-r-L32": (1884928, 312064, 0, 456704, 1316864, "rejected_before_allocation", "L1"),
+    }
+    for row in result["comparison_rows"]:
+        preflight = row["preflight"]
+        expected = expected_accounting[row["row"]]
+        assert (
+            preflight["total_bytes"],
+            preflight["overage_bytes"],
+            preflight["headroom_bytes"],
+            preflight["cb_bytes"],
+            preflight["tensor_bytes"],
+            preflight["status"],
+            preflight["placement"]["R"],
+        ) == expected
+        assert preflight["bytes"] == preflight["total_bytes"]
+        assert preflight["breakdown"]["circular_buffers"] == preflight["cb_bytes_by_name"]
+        assert preflight["breakdown"]["tensor_items"] == preflight["tensor_items"]
     assert rejected_row["status"] == "preflight_rejected"
     assert "device_inverse_artifact" not in rejected_row
     assert rejected_row["launches_requested"] == 0
@@ -403,6 +426,50 @@ def test_issue88_full_selection_retains_measured_outputs_not_preflight_output(tm
         row["row"] for row in measured_rows
     ]
     assert len(list(tmp_path.glob("*.npy"))) == 5
+
+
+def test_issue88_l1_accounting_artifact_matches_runner_and_immutable_source():
+    artifact_path = (
+        Path(__file__).parents[1]
+        / "docs/measurements/2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-l1-accounting.json"
+    )
+    source_path = artifact_path.with_name(
+        "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json"
+    )
+    artifact = json.loads(artifact_path.read_text())
+    assert artifact["harness_commit"] == "79d215141e4d64752c8cdc048dcaccc73be1e013"
+    assert artifact["derivation"]["accounting_module"] == (
+        "enodia.tt.bench.newton_schulz_kernel"
+    )
+    assert artifact["derivation"]["board_run_performed"] is False
+    assert artifact["source_record"]["sha256"] == hashlib.sha256(
+        source_path.read_bytes()
+    ).hexdigest()
+
+    source_rows = {row["row"]: row for row in artifact["rows"]}
+    for config in runner.ISSUE88_COMPARISON_ROWS:
+        serialized = runner._preflight_accounting(config)
+        source = source_rows[config["name"]]
+        breakdown = source["byte_breakdown"]
+        assert breakdown["circular_buffers"] == serialized["cb_bytes_by_name"]
+        assert breakdown["tensor_items"] == serialized["tensor_items"]
+        for key in ("cb_bytes", "tensor_bytes", "total_bytes", "budget_bytes"):
+            assert breakdown[key] == serialized[key]
+        for key in ("overage_bytes", "headroom_bytes"):
+            assert breakdown[key] == serialized[key]
+        assert source["placement"] == serialized["placement"]
+        assert source["preflight"]["status"] == serialized["status"]
+        assert source["status"] == ("accepted" if serialized["accepted"] else "rejected")
+
+    assert [item["name"] for item in artifact["matched_configuration_differences"]] == [
+        "BF16-R/L16 vs FP32-R/L16 (same R-in-L1)",
+        "BF16-R/L32/R-in-DRAM vs FP32-R/L32/R-in-DRAM",
+        "BF16-R/L32/R-in-L1 vs rejected FP32-R/L32/R-in-L1",
+    ]
+    assert [
+        item["byte_differences_right_minus_left"]["total"]
+        for item in artifact["matched_configuration_differences"]
+    ] == [344064, 98304, 589824]
 
 
 def test_issue88_inverse_persistence_failure_fails_run_before_pass(tmp_path):
