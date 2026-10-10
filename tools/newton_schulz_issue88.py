@@ -2114,6 +2114,40 @@ def _append_row_failure(
         row["stop_condition"] = ISSUE88_STOP_CONDITION_ROW_ERROR
 
 
+class RowDeadlineExceeded(Exception):
+    """Signal that a row-local operation must not start after its deadline."""
+
+    def __init__(self, operation: str):
+        super().__init__(operation)
+        self.operation = operation
+
+
+class RowDeadline:
+    """Share one row deadline check across device work and artifact persistence."""
+
+    def __init__(
+        self,
+        *,
+        row_started_at: float,
+        timeout_s: float,
+        time_fn: Callable[[], float],
+    ) -> None:
+        self.row_started_at = row_started_at
+        self.timeout_s = min(timeout_s, ROW_TIMEOUT_S)
+        self.time_fn = time_fn
+
+    def expired(self) -> bool:
+        """Return whether the row has passed its effective deadline."""
+        return self.time_fn() - self.row_started_at > self.timeout_s
+
+    def check_before(self, operation: str) -> float:
+        """Return the current time or reject an operation past the deadline."""
+        now = self.time_fn()
+        if now - self.row_started_at > self.timeout_s:
+            raise RowDeadlineExceeded(operation)
+        return now
+
+
 def _finalize_row(
     row: dict[str, Any],
     *,
@@ -2122,13 +2156,18 @@ def _finalize_row(
     time_fn: Callable[[], float],
     run_id: str,
     cleanup_errors: tuple[Exception, ...] | list[Exception] = (),
+    deadline: RowDeadline | None = None,
 ) -> dict[str, Any]:
     """Enforce the row deadline and turn cleanup failures into row failures."""
-    effective_timeout_s = min(timeout_s, ROW_TIMEOUT_S)
+    deadline = deadline or RowDeadline(
+        row_started_at=row_started_at,
+        timeout_s=timeout_s,
+        time_fn=time_fn,
+    )
+    effective_timeout_s = deadline.timeout_s
     if row.get("status") not in SUCCESSFUL_ROW_STATUSES or "row_timeout_s" in row:
         row["row_timeout_s"] = effective_timeout_s
-    elapsed_s = time_fn() - row_started_at
-    if elapsed_s > effective_timeout_s:
+    if deadline.expired():
         _append_row_failure(
             row,
             stage="row_timeout",
@@ -2203,6 +2242,7 @@ def _run_row(
     kernel_class: Any | None = None,
     time_fn: Callable[[], float] = time.perf_counter,
     row_started_at: float | None = None,
+    deadline: RowDeadline | None = None,
 ) -> dict[str, Any]:
     """Run correctness, warm-up, and timed launches for one exact row."""
     if launches != LAUNCHES_PER_ROW and not first_launch:
@@ -2212,6 +2252,13 @@ def _run_row(
     timeout_s = min(timeout_s, ROW_TIMEOUT_S)
     if row_started_at is None:
         row_started_at = time_fn()
+    deadline = deadline or RowDeadline(
+        row_started_at=row_started_at,
+        timeout_s=timeout_s,
+        time_fn=time_fn,
+    )
+    row_started_at = deadline.row_started_at
+    timeout_s = deadline.timeout_s
     flops_per_launch = 8192 * 4 * 2 * config["size"] ** 3 * (2 * FIXED_ITERATIONS)
     result: dict[str, Any] = dict(config)
     result["row"] = config["name"]
@@ -2231,20 +2278,7 @@ def _run_row(
         result["preflight"] = preflight
         if reference is None:
             reference = reference_context(matrices, config["variant"])
-        if time_fn() - row_started_at > timeout_s:
-            result = _failed_row(config, "row_timeout", "row exceeded 60 seconds before device launch")
-            result.update(
-                {
-                    "row": config["name"],
-                    "shape_name": shape_name(config),
-                    "flops_per_launch": flops_per_launch,
-                    "launches_requested": 0 if first_launch else launches,
-                    "row_timeout_s": timeout_s,
-                    "preflight": preflight,
-                }
-            )
-            return result
-
+        deadline.check_before("kernel preparation")
         if kernel_class is None:
             from enodia.tt.bench.newton_schulz_kernel import NewtonSchulzKernel
 
@@ -2268,6 +2302,10 @@ def _run_row(
             iterations=FIXED_ITERATIONS,
         )
 
+        # Device-work inventory: correctness launch, one warm-up launch, and
+        # each timed launch below.  Every launch is guarded by this shared
+        # row-deadline helper immediately before it starts.
+        deadline.check_before("correctness launch")
         kernel.launch()
         ttnn.synchronize_device(device)
         actual = kernel.result()
@@ -2279,12 +2317,15 @@ def _run_row(
             "finite": correctness["finite"],
         }
         try:
+            deadline.check_before("inverse artifact persistence")
             result["device_inverse_artifact"] = _atomic_inverse_artifact_write(
                 artifact_dir,
                 run_id=run_id,
                 row_name=config["name"],
                 downloaded_inverse=actual,
             )
+        except RowDeadlineExceeded:
+            raise
         except Exception as exc:  # noqa: BLE001 - persistence is a row-level acceptance requirement
             result.update(_failed_row(config, "inverse_artifact_persistence", exc))
             result.update(
@@ -2324,11 +2365,12 @@ def _run_row(
         # Correctness is not counted as the warm-up.  This makes the timing
         # protocol explicit: one additional synchronized warm-up, then exactly
         # 1,000 synchronized samples.
+        deadline.check_before("warm-up launch")
         kernel.launch()
         ttnn.synchronize_device(device)
         result["warmup"] = {"launches": 1, "synchronized": True}
 
-        if time_fn() - row_started_at > timeout_s:
+        if deadline.expired():
             result.update(
                 _failed_row(config, "row_timeout", "row exceeded 60 seconds before timed launches")
             )
@@ -2337,11 +2379,11 @@ def _run_row(
             return result
 
         for _ in range(launches):
-            launch_started = time_fn()
+            launch_started = deadline.check_before("timed launch")
             kernel.launch()
             ttnn.synchronize_device(device)
             samples.append(time_fn() - launch_started)
-            if time_fn() - row_started_at > timeout_s:
+            if deadline.expired():
                 result.update(
                     _failed_row(
                         config,
@@ -2360,6 +2402,18 @@ def _run_row(
         result.update(timing_summary(samples, flops_per_launch))
         result["warmup"] = {"launches": 1, "synchronized": True}
         result["timing_protocol"] = ISSUE88_TIMING_PROTOCOL
+        return result
+    except RowDeadlineExceeded:
+        _append_row_failure(
+            result,
+            stage="row_timeout",
+            code=ISSUE88_ERROR_CODE_VALUES["row_timeout"],
+            error=TimeoutError("row exceeded its configured time limit"),
+            run_id=run_id,
+        )
+        if samples:
+            result.update(timing_summary(samples, flops_per_launch))
+        result["stop_condition"] = ISSUE88_STOP_CONDITION_TIMEOUT
         return result
     except Exception as exc:  # noqa: BLE001 - preserve row-local device failures
         inverse_artifact = result.get("device_inverse_artifact")
@@ -2397,6 +2451,7 @@ def _run_row(
             time_fn=time_fn,
             run_id=run_id,
             cleanup_errors=cleanup_errors,
+            deadline=deadline,
         )
 
 
@@ -2478,6 +2533,11 @@ def run_comparison(
     stopped = False
     for config in selected:
         row_started_at = time_fn()
+        deadline = RowDeadline(
+            row_started_at=row_started_at,
+            timeout_s=timeout_s,
+            time_fn=time_fn,
+        )
         try:
             preflight = _preflight_accounting(config, ttnn)
         except Exception as exc:  # noqa: BLE001 - retain a host preflight failure as a row
@@ -2490,6 +2550,7 @@ def run_comparison(
                 timeout_s=timeout_s,
                 time_fn=time_fn,
                 run_id=run_id,
+                deadline=deadline,
             )
             comparison.append(row)
             stopped = True
@@ -2502,6 +2563,7 @@ def run_comparison(
                 timeout_s=timeout_s,
                 time_fn=time_fn,
                 run_id=run_id,
+                deadline=deadline,
             )
             comparison.append(row)
             if row.get("status") not in SUCCESSFUL_ROW_STATUSES:
@@ -2528,6 +2590,7 @@ def run_comparison(
                 timeout_s=timeout_s,
                 time_fn=time_fn,
                 run_id=run_id,
+                deadline=deadline,
             )
             comparison.append(row)
             stopped = True
@@ -2547,6 +2610,7 @@ def run_comparison(
             kernel_class=kernel_class,
             time_fn=time_fn,
             row_started_at=row_started_at,
+            deadline=deadline,
         )
         row["input_fingerprint"] = dict(fingerprints[str(size)])
         row["reference_fingerprint"] = {

@@ -505,6 +505,186 @@ def test_issue88_every_row_route_finalizes_and_stops_after_failure(
     )
 
 
+def test_issue88_every_row_device_work_site_uses_the_shared_deadline(
+    tmp_path, monkeypatch
+):
+    config = runner.ISSUE88_COMPARISON_ROWS[0]
+    matrices = np.broadcast_to(
+        np.eye(config["size"], dtype=np.complex64),
+        (2, config["size"], config["size"]),
+    ).copy()
+    operations = []
+    original_check_before = runner.RowDeadline.check_before
+
+    def record_check_before(self, operation):
+        operations.append(operation)
+        return original_check_before(self, operation)
+
+    monkeypatch.setattr(runner.RowDeadline, "check_before", record_check_before)
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            kernel.launches = 0
+            return kernel
+
+        def launch(self):
+            self.launches += 1
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            return None
+
+    clock = [0.0]
+
+    def time_fn():
+        clock[0] += 0.001
+        return clock[0]
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path,
+        run_id="run-deadline-inventory",
+        rows=(config,),
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == runner.ISSUE88_STATUS_PASS
+    assert result["comparison_rows"][0]["launches_measured"] == runner.LAUNCHES_PER_ROW
+    assert len(list(tmp_path.glob("*.npy"))) == 1
+    assert operations == [
+        "kernel preparation",
+        "correctness launch",
+        "inverse artifact persistence",
+        "warm-up launch",
+        *("timed launch",) * runner.LAUNCHES_PER_ROW,
+    ]
+
+
+def test_issue88_deadline_expiry_after_correctness_result_blocks_warmup_and_timed_work(
+    tmp_path, monkeypatch
+):
+    selected = runner.ISSUE88_COMPARISON_ROWS[:2]
+    matrices = np.broadcast_to(
+        np.eye(selected[0]["size"], dtype=np.complex64),
+        (2, selected[0]["size"], selected[0]["size"]),
+    ).copy()
+    clock = [0.0]
+    launches = []
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            return kernel
+
+        def launch(self):
+            launches.append("correctness" if not launches else "unexpected")
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            return None
+
+    original_persist = runner._atomic_inverse_artifact_write
+
+    def persist_then_expire(*args, **kwargs):
+        metadata = original_persist(*args, **kwargs)
+        clock[0] = 2.0
+        return metadata
+
+    monkeypatch.setattr(runner, "_atomic_inverse_artifact_write", persist_then_expire)
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path,
+        run_id="run-deadline-after-correctness",
+        rows=selected,
+        timeout_s=1.0,
+        kernel_class=FakeKernel,
+        time_fn=lambda: clock[0],
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == runner.ISSUE88_STATUS_FAILED
+    assert result["stopped_on_failure"] is True
+    assert result["rows_completed"] == 1
+    failed_row = result["comparison_rows"][0]
+    assert failed_row["status"] == runner.ISSUE88_STATUS_FAILED
+    assert failed_row["failure_stage"] == "row_timeout"
+    assert failed_row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES["row_timeout"]
+    assert failed_row["stop_condition"] == runner.ISSUE88_STOP_CONDITION_TIMEOUT
+    assert failed_row.get("warmup") is None
+    assert failed_row.get("launches_measured") is None
+    assert launches == ["correctness"]
+    assert len(list(tmp_path.glob("*.npy"))) == 1
+
+
+def test_issue88_deadline_expiry_before_artifact_persistence_writes_no_artifact(
+    tmp_path
+):
+    config = runner.ISSUE88_COMPARISON_ROWS[0]
+    matrices = np.broadcast_to(
+        np.eye(config["size"], dtype=np.complex64),
+        (2, config["size"], config["size"]),
+    ).copy()
+    clock = [0.0]
+    launches = []
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            return kernel
+
+        def launch(self):
+            launches.append("correctness")
+
+        def result(self):
+            clock[0] = 2.0
+            return self.actual
+
+        def close(self):
+            return None
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path,
+        run_id="run-deadline-before-artifact",
+        rows=(config,),
+        timeout_s=1.0,
+        kernel_class=FakeKernel,
+        time_fn=lambda: clock[0],
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == runner.ISSUE88_STATUS_FAILED
+    assert result["comparison_rows"][0]["failure_stage"] == "row_timeout"
+    assert result["comparison_rows"][0]["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+        "row_timeout"
+    ]
+    assert launches == ["correctness"]
+    assert list(tmp_path.glob("*.npy")) == []
+
+
 def test_issue88_actual_runner_undefined_diagnostic_shapes_publish(tmp_path):
     run_id = "run-actual-undefined"
     run = _actual_producer_run(tmp_path, run_id, mode="undefined")
