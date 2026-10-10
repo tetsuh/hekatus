@@ -696,6 +696,51 @@ def test_issue88_deadline_expiry_after_correctness_result_blocks_warmup_and_time
     assert len(list(tmp_path.glob("*.npy"))) == 1
 
 
+def test_issue88_publication_marks_secondary_timeout_after_primary_row_error(
+    tmp_path,
+):
+    config = runner.ISSUE88_COMPARISON_ROWS[0]
+    matrices = np.broadcast_to(
+        np.eye(config["size"], dtype=np.complex64),
+        (2, config["size"], config["size"]),
+    ).copy()
+    expired = [False]
+
+    def time_fn():
+        return runner.ROW_TIMEOUT_S + 1.0 if expired[0] else 0.0
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            expired[0] = True
+            raise RuntimeError("injected row error before deadline expiry")
+
+    run = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path / "inverse",
+        run_id="run-secondary-timeout-publication",
+        rows=(config,),
+        timeout_s=runner.ROW_TIMEOUT_S,
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    row = run["comparison_rows"][0]
+    assert row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES["row_execution_failed"]
+    assert row["secondary_failures"] == [
+        {"code": runner.ISSUE88_ERROR_CODE_VALUES["row_timeout"], "exception_type": "TimeoutError"}
+    ]
+    record, _raw = _publish_producer_output(
+        tmp_path, run, "run-secondary-timeout-publication"
+    )
+
+    assert record["run_protocol"]["timeout"] is True
+    assert record["run_protocol"]["timed_out_rows"] == [config["name"]]
+    assert record["run_protocol"]["timed_out_stages"] == ["row_timeout"]
+
+
 def test_issue88_deadline_expiry_before_artifact_persistence_writes_no_artifact(
     tmp_path
 ):

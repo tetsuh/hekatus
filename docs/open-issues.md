@@ -103,12 +103,15 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   MV normalization contraction; the host-only correction found no kernel or
   reconstruction conjugation/transpose defect. The final runner retake is
   `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`
-  with same-stem power companion
+  with authoritative derived companion
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
+  and same-stem power companion
   `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
-  It supersedes the immutable 2026-10-09 retake, summary, and derived L1
-  accounting artifacts because its primary record carries every row's full L1
-  breakdown and total, while paired BF16-R/FP32-R values provide mechanical
-  matched deltas. It retains every measured inverse and compares inverse error,
+  It supersedes the immutable 2026-10-09 retake JSON, summary JSON, derived
+  L1-accounting JSON, and companion CSV because its primary record carries
+  every row's complete L1 ledger and final evidence, while the summary
+  mechanically derives paired BF16-R/FP32-R deltas. It retains every measured
+  inverse and compares inverse error,
   MV direction, phase-sensitive complex response, best-complex-scalar
   phase-aligned complex response, magnitude response, and normalized dB/floored
   pattern against one common original-R true inverse. The R representation

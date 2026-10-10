@@ -2566,19 +2566,23 @@ downloads, and complex reconstruction found no conjugation or transpose defect.
 
 The final runner retake is
 `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`,
-with same-stem power companion
+with authoritative derived companion
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
+and same-stem power companion
 `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
-It supersedes the immutable 2026-10-09 retake, summary, and derived L1
-accounting artifacts because the primary record now carries each row's full L1
-breakdown and total, while retaining the paired BF16-R/FP32-R values needed for
-mechanical matched deltas. It retains every measured inverse and compares all
-four beam diagnostics, MV weight direction, and inverse error against one common
-true inverse of the original FP32 `R`; the dB pattern uses the explicit -120 dB
-amplitude floor. The historical conclusion that FP32-`R` worsens beam-pattern
-error is withdrawn and replaced by this corrected device evidence. The `R`
-representation remains open for owner decision, and the final record's
-immutable power snapshot records its SHA-256, sample count, and end-coverage
-definition.
+The summary names and hashes the byte-preserved primary, inherits its ADR-0005
+provenance, and mechanically derives matched-placement inverse, MV, all four
+beam, P50 TFLOPS, latency, and L1 differences. The primary supersedes the
+immutable 2026-10-09 retake JSON, summary JSON, L1-accounting JSON, and
+companion CSV because it carries the complete L1 ledger and final evidence;
+none of those historical artifacts is rewritten. It retains every measured
+inverse and compares all four beam diagnostics, MV weight direction, and
+inverse error against one common true inverse of the original FP32 `R`; the dB
+pattern uses the explicit -120 dB amplitude floor. The historical conclusion
+that FP32-`R` worsens beam-pattern error is withdrawn and replaced by this
+corrected device evidence. The `R` representation remains open for owner
+decision, and the final record's immutable power snapshot records its SHA-256,
+sample count, and end-coverage definition.
 
 ### Investigation items
 

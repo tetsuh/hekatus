@@ -80,6 +80,7 @@ from tools.issue88_record_policy import (
     ISSUE88_TELEMETRY_STATUS_COMPLETE,
     ISSUE88_TIMING_PROTOCOL,
     ISSUE88_TRUE_INVERSE_METRIC_REFERENCE,
+    issue88_row_has_timeout,
 )
 
 DEVICE_ID = 0
@@ -1271,6 +1272,10 @@ def _is_public_string(field: str, value: str) -> bool:
         return _SAFE_KERNEL_RE.fullmatch(value) is not None
     if field == "device_node":
         return value == "<redacted-path>"
+    if field == "timed_out_rows":
+        return _ROW_ARTIFACT_NAME_RE.fullmatch(value) is not None
+    if field == "timed_out_stages":
+        return value in ISSUE88_FAILURE_STAGES
     if field == "coords":
         return value == "N/A"
     if field in _VERSION_FIELDS:
@@ -3121,6 +3126,23 @@ def _status_components_pass(status_components: dict[str, dict[str, Any]]) -> boo
     )
 
 
+def _timed_out_rows_and_stages(
+    rows: list[dict[str, Any]] | tuple[dict[str, Any], ...],
+) -> tuple[list[str], list[str]]:
+    """Collect stable timeout provenance from primary and secondary row failures."""
+    timed_out_rows: list[str] = []
+    timed_out_stages: list[str] = []
+    for row in rows:
+        if not issue88_row_has_timeout(row):
+            continue
+        row_name = row.get("row")
+        if isinstance(row_name, str) and row_name not in timed_out_rows:
+            timed_out_rows.append(row_name)
+        if "row_timeout" not in timed_out_stages:
+            timed_out_stages.append("row_timeout")
+    return timed_out_rows, timed_out_stages
+
+
 def _record_payload(
     run: dict[str, Any],
     *,
@@ -3136,7 +3158,8 @@ def _record_payload(
     if status_components is None:
         status_components = _status_components(run, telemetry=telemetry, cleanup=cleanup)
     overall_pass = _status_components_pass(status_components)
-    timed_out = any(row.get("failure_stage") == "row_timeout" for row in rows)
+    timed_out = any(issue88_row_has_timeout(row) for row in rows)
+    timed_out_rows, timed_out_stages = _timed_out_rows_and_stages(rows)
     failure = None
     if run.get("failure") is not None:
         failure = run["failure"]
@@ -3282,6 +3305,8 @@ def _record_payload(
         },
         "run_protocol": {
             "timeout": timed_out,
+            "timed_out_rows": timed_out_rows,
+            "timed_out_stages": timed_out_stages,
             "abnormal_exit": not overall_pass,
             "reset_performed": False,
             "cleanup": cleanup,

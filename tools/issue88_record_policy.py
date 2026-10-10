@@ -1,5 +1,7 @@
 """Explicit Issue #88 measurement-record field and string allowlist."""
 
+from collections.abc import Mapping
+
 # Runner output vocabularies live here so both the producer and the final
 # publication validator consume the same symbols instead of maintaining
 # separate, drift-prone spellings.
@@ -95,6 +97,25 @@ ISSUE88_ERROR_CODE_VALUES = {
     "run_id_mismatch": "run_id_mismatch",
 }
 ISSUE88_ERROR_CODES = frozenset(ISSUE88_ERROR_CODE_VALUES.values())
+
+
+def issue88_row_has_timeout(row: Mapping[str, object]) -> bool:
+    """Return whether a row records a deadline expiry in any failure position."""
+    if row.get("stop_condition") == ISSUE88_STOP_CONDITION_TIMEOUT:
+        return True
+    timeout_code = ISSUE88_ERROR_CODE_VALUES["row_timeout"]
+    entries = [row.get("error"), row.get("cleanup_error")]
+    secondary = row.get("secondary_failures")
+    if isinstance(secondary, Mapping):
+        entries.append(secondary)
+    elif isinstance(secondary, (list, tuple)):
+        entries.extend(secondary)
+    for entry in entries:
+        if isinstance(entry, Mapping) and entry.get("code") == timeout_code:
+            return True
+    return False
+
+
 ISSUE88_STAGE_ERROR_CODES = {
     "close": ISSUE88_ERROR_CODE_VALUES["device_close_failed"],
     "correctness": ISSUE88_ERROR_CODE_VALUES["correctness_failed"],
@@ -557,6 +578,8 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'therm_trip_l1_limit': frozenset(('string',)),
     'thm_limit': frozenset(('string',)),
     'timeout': frozenset(('boolean',)),
+    'timed_out_rows': frozenset(('array', 'string')),
+    'timed_out_stages': frozenset(('array', 'string')),
     'timestamp_utc': frozenset(('string',)),
     'timestamps_ordered': frozenset(('boolean',)),
     'timestamps_parse': frozenset(('boolean',)),
