@@ -98,6 +98,7 @@ def _passing_run(run_id: str = "run-1") -> dict:
             {
                 "row": config["name"],
                 "status": "ok",
+                "correctness": {"device_test_gate": {"pass": True}},
                 "device_inverse_artifact": artifact,
             }
         )
@@ -249,6 +250,67 @@ def _publish_producer_output(
     )
     assert json.loads(raw_path.read_text()) == json.loads(runner._serialize_record(raw))
     return record, raw
+
+
+def test_issue88_finite_device_gate_failure_stops_before_timing_and_later_rows(tmp_path):
+    selected = runner.ISSUE88_COMPARISON_ROWS[:2]
+    matrices = np.broadcast_to(
+        np.eye(selected[0]["size"], dtype=np.complex64),
+        (2, selected[0]["size"], selected[0]["size"]),
+    ).copy()
+    launches = []
+    prepared = []
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            prepared.append(kwargs["variant"])
+            kernel = cls()
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"] * 1.02
+            return kernel
+
+        def launch(self):
+            launches.append("launch")
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            return None
+
+    clock = [0.0]
+
+    def time_fn():
+        clock[0] += 0.001
+        return clock[0]
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path,
+        run_id="run-device-gate-failure",
+        rows=selected,
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda *args, **kwargs: matrices,
+    )
+
+    assert result["status"] == runner.ISSUE88_STATUS_FAILED
+    assert result["stopped_on_failure"] is True
+    assert result["rows_completed"] == 1
+    assert prepared == [selected[0]["variant"]]
+    assert launches == ["launch"]
+    row = result["comparison_rows"][0]
+    assert row["status"] == runner.ISSUE88_STATUS_FAILED
+    assert row["failure_stage"] == "device_test_gate"
+    assert row["error"]["code"] == "device_test_gate_failed"
+    assert row["correctness"]["finite"] is True
+    assert row["correctness"]["relative_error"] > runner.DEVICE_TEST_RELATIVE_ERROR_GATE
+    assert row["correctness"]["device_test_gate"]["pass"] is False
+    assert "warmup" not in row
+    assert "launches_measured" not in row
 
 
 def test_issue88_actual_runner_success_rejection_and_first_launch_paths_publish(tmp_path):
@@ -688,7 +750,10 @@ def test_issue88_deadline_expiry_before_artifact_persistence_writes_no_artifact(
 def test_issue88_actual_runner_undefined_diagnostic_shapes_publish(tmp_path):
     run_id = "run-actual-undefined"
     run = _actual_producer_run(tmp_path, run_id, mode="undefined")
-    assert run["comparison_rows"][0]["status"] == runner.ISSUE88_ROW_STATUS_CORRECTNESS_ONLY
+    row = run["comparison_rows"][0]
+    assert row["status"] == runner.ISSUE88_STATUS_FAILED
+    assert row["failure_stage"] == "device_test_gate"
+    assert row["error"]["code"] == "device_test_gate_failed"
     record, _raw = _publish_producer_output(tmp_path, run, run_id)
     beam = record["measurement"]["comparison_rows"][0]["correctness"][
         "quality_vs_true_inverse"
@@ -775,6 +840,7 @@ def test_issue88_shared_publication_vocabularies_are_exact():
         "device_close_succeeded",
         "device_open_failed",
         "device_session_failed",
+        "device_test_gate_failed",
         "environment_artifact_unreadable",
         "environment_run_id_missing",
         "harness_failed",
@@ -1072,6 +1138,25 @@ def test_issue88_each_provenance_failure_forces_failed_record(
     assert record["status"] == "failed"
     assert set(record["failure"]) == {"code", "exception_type"}
     assert record["failure"]["code"] == statuses[component]["code"]
+
+
+def test_issue88_status_components_require_each_completed_device_test_gate(tmp_path):
+    run, telemetry, cleanup = _passing_parts(tmp_path)
+    run["comparison_rows"][0]["correctness"]["device_test_gate"]["pass"] = False
+
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+
+    assert statuses["rows"] == {"ok": False, "code": "rows_failed"}
+    assert not runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id="run-1",
+        raw_path=tmp_path / "raw-run-1.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["status"] == runner.ISSUE88_STATUS_FAILED
 
 
 def test_issue88_close_failure_is_a_status_component_failure(tmp_path):

@@ -64,6 +64,7 @@ ISSUE88_ERROR_CODE_VALUES = {
     "device_close_failed": "device_close_failed",
     "device_close_succeeded": "device_close_succeeded",
     "device_open_failed": "device_open_failed",
+    "device_test_gate_failed": "device_test_gate_failed",
     "device_session_failed": "device_session_failed",
     "environment_artifact_unreadable": "environment_artifact_unreadable",
     "environment_run_id_missing": "environment_run_id_missing",
@@ -97,6 +98,7 @@ ISSUE88_ERROR_CODES = frozenset(ISSUE88_ERROR_CODE_VALUES.values())
 ISSUE88_STAGE_ERROR_CODES = {
     "close": ISSUE88_ERROR_CODE_VALUES["device_close_failed"],
     "correctness": ISSUE88_ERROR_CODE_VALUES["correctness_failed"],
+    "device_test_gate": ISSUE88_ERROR_CODE_VALUES["device_test_gate_failed"],
     "device_session": ISSUE88_ERROR_CODE_VALUES["device_session_failed"],
     "host_preparation": ISSUE88_ERROR_CODE_VALUES["host_preparation_failed"],
     "inverse_artifact_persistence": ISSUE88_ERROR_CODE_VALUES[
@@ -119,6 +121,7 @@ ISSUE88_FAILURE_STAGES = frozenset(
     {
         "close",
         "correctness",
+        "device_test_gate",
         "device_session",
         "host_preparation",
         "inverse_artifact_persistence",
@@ -764,6 +767,8 @@ ISSUE88_FIXED_PUBLIC_STRINGS = frozenset((
     'preflight_rejected',
     'recorded metric/gate only',
     'recorded metric/gate only; existing device-test assertion is unchanged',
+    'row correctness and run status gate; existing device-test assertion is unchanged',
+    'row correctness and run status gate; unchanged 1e-2 threshold',
     'rejected_before_allocation',
     'selected block-8 L1 budget rejects before allocation; no fallback',
     'timestamp_utc',

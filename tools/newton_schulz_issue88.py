@@ -103,6 +103,12 @@ FP32_R_L32_L1_PREFLIGHT_BYTES = 1_884_928
 FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES = 312_064
 FP32_R_L32_L1_PREFLIGHT_STATUS = ISSUE88_PREFLIGHT_STATUS_REJECTED
 SUCCESSFUL_ROW_STATUSES = ISSUE88_SUCCESSFUL_ROW_STATUSES
+# Preflight rejection is a successful catalogue outcome without a device
+# result. Every row that completed a device correctness launch must carry a
+# passing device-test gate before the run can publish as passing.
+DEVICE_CORRECTNESS_ROW_STATUSES = frozenset(
+    {ISSUE88_ROW_STATUS_OK, ISSUE88_ROW_STATUS_CORRECTNESS_ONLY}
+)
 
 LOOK_DIRECTIONS_DEG = (-30.0, -15.0, 0.0, 15.0, 30.0)
 PATTERN_DIRECTIONS_DEG = (
@@ -179,7 +185,10 @@ _HARNESS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 # iterates this table when it emits status_components, and board-free tests
 # iterate it rather than maintaining a second list of required checks.
 ISSUE88_STATUS_COMPONENTS = (
-    ("rows", "every selected comparison row succeeds"),
+    (
+        "rows",
+        "every selected comparison row succeeds and each device correctness gate passes",
+    ),
     (
         "inverse_outputs",
         "every downloaded inverse has matching raw artifact metadata and the expected rejection has none",
@@ -789,6 +798,7 @@ def _weight_ratio_diagnostics(candidate: np.ndarray, reference: np.ndarray) -> d
     if candidate.shape != reference.shape or candidate.ndim < 1:
         raise ValueError("candidate and reference weights must have matching shapes")
     reference_scale = np.max(np.abs(reference), axis=-1, keepdims=True)
+    # Informational ratio filtering only; this threshold never determines row or run status.
     threshold = reference_scale * 1e-12
     defined = np.isfinite(candidate) & np.isfinite(reference) & (np.abs(reference) > threshold)
     ratios = candidate[defined] / reference[defined]
@@ -1123,7 +1133,7 @@ def correctness_metrics(
                 and np.isfinite(matching_error)
                 and matching_error <= DEVICE_TEST_RELATIVE_ERROR_GATE
             ),
-            "application": "recorded metric/gate only; existing device-test assertion is unchanged",
+            "application": "row correctness and run status gate; existing device-test assertion is unchanged",
         },
     }
     if finite and reference_finite:
@@ -1139,6 +1149,15 @@ def correctness_metrics(
     else:
         metrics["quality_vs_true_inverse"] = None
     return metrics
+
+
+def _device_test_gate_passes(row: dict[str, Any]) -> bool:
+    """Return whether a completed device-correctness row passed its gate."""
+    if row.get("status") not in DEVICE_CORRECTNESS_ROW_STATUSES:
+        return True
+    correctness = row.get("correctness")
+    gate = correctness.get("device_test_gate") if isinstance(correctness, dict) else None
+    return isinstance(gate, dict) and gate.get("pass") is True
 
 
 _DROP_METADATA = object()
@@ -2356,6 +2375,22 @@ def _run_row(
             }
             return result
 
+        if not correctness["device_test_gate"]["pass"]:
+            result.update(
+                _failed_row(
+                    config,
+                    "device_test_gate",
+                    "device_test_gate_failed",
+                )
+            )
+            result["correctness"] = correctness
+            result["correctness_launch"] = {
+                "synchronized": True,
+                "downloaded": True,
+                "finite": correctness["finite"],
+            }
+            return result
+
         if first_launch:
             result["status"] = ISSUE88_ROW_STATUS_CORRECTNESS_ONLY
             result["launches_measured"] = 0
@@ -2646,6 +2681,7 @@ def run_comparison(
         bool(comparison)
         and len(comparison) == len(selected)
         and all(row.get("status") in SUCCESSFUL_ROW_STATUSES for row in comparison)
+        and all(_device_test_gate_passes(row) for row in comparison)
         and inverse_outputs_pass
     )
     return {
@@ -2904,6 +2940,10 @@ def _status_components(
                     f"{row.get('row', row.get('name', '<unknown>'))} status is "
                     f"{row.get('status')!r}: {row.get('error', 'row did not succeed')}"
                 )
+            elif not _device_test_gate_passes(row):
+                row_failures.append(
+                    f"{row.get('row', row.get('name', '<unknown>'))} device correctness gate did not pass"
+                )
         if run.get("stopped_on_failure"):
             row_failures.append("run stopped on a row failure")
     row_ok = not row_failures
@@ -3161,7 +3201,7 @@ def _record_payload(
             "correctness_device_test_gate": {
                 "relative_error_max": DEVICE_TEST_RELATIVE_ERROR_GATE,
                 "unchanged": True,
-                "application": "recorded metric/gate only",
+                "application": "row correctness and run status gate; unchanged 1e-2 threshold",
             },
             "comparison_rows": rows,
             "device_inverse_artifacts": run.get("device_inverse_artifacts", []),
