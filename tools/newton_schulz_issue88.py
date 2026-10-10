@@ -55,8 +55,31 @@ from enodia.tt.bench.run_binding import (
     validate_run_id,
 )
 from tools.issue88_record_policy import (
+    ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+    ISSUE88_ERROR_CODE_VALUES,
+    ISSUE88_ERROR_CODES,
+    ISSUE88_ERROR_OBJECT_FIELDS,
+    ISSUE88_FAILURE_STAGES,
+    ISSUE88_FIRST_LAUNCH_TIMING,
     ISSUE88_FIXED_PUBLIC_STRINGS,
+    ISSUE88_FP32_MATCHING_METRIC_REFERENCE,
+    ISSUE88_PREFLIGHT_STATUS_ADMITTED,
+    ISSUE88_PREFLIGHT_STATUS_REJECTED,
+    ISSUE88_PUBLIC_STRING_VALUES,
     ISSUE88_RECORD_FIELD_TYPES,
+    ISSUE88_ROW_STATUS_CORRECTNESS_ONLY,
+    ISSUE88_ROW_STATUS_OK,
+    ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
+    ISSUE88_STAGE_ERROR_CODES,
+    ISSUE88_STATUS_COMPONENT_CODES,
+    ISSUE88_STATUS_FAILED,
+    ISSUE88_STATUS_PASS,
+    ISSUE88_STOP_CONDITION_ROW_ERROR,
+    ISSUE88_STOP_CONDITION_TIMEOUT,
+    ISSUE88_SUCCESSFUL_ROW_STATUSES,
+    ISSUE88_TELEMETRY_STATUS_COMPLETE,
+    ISSUE88_TIMING_PROTOCOL,
+    ISSUE88_TRUE_INVERSE_METRIC_REFERENCE,
 )
 
 DEVICE_ID = 0
@@ -78,8 +101,8 @@ ISSUE88_ITERATIONS = FIXED_ITERATIONS
 DEVICE_TEST_RELATIVE_ERROR_GATE = 1e-2
 FP32_R_L32_L1_PREFLIGHT_BYTES = 1_884_928
 FP32_R_L32_L1_PREFLIGHT_OVERAGE_BYTES = 312_064
-FP32_R_L32_L1_PREFLIGHT_STATUS = "rejected_before_allocation"
-SUCCESSFUL_ROW_STATUSES = frozenset({"ok", "correctness_only", "preflight_rejected"})
+FP32_R_L32_L1_PREFLIGHT_STATUS = ISSUE88_PREFLIGHT_STATUS_REJECTED
+SUCCESSFUL_ROW_STATUSES = ISSUE88_SUCCESSFUL_ROW_STATUSES
 
 LOOK_DIRECTIONS_DEG = (-30.0, -15.0, 0.0, 15.0, 30.0)
 PATTERN_DIRECTIONS_DEG = (
@@ -97,7 +120,7 @@ PATTERN_DIRECTIONS_DEG = (
 ISSUE88_RECORD_SCHEMA = "adr-0005-issue88-fp32-r-v3"
 ISSUE88_RAW_SCHEMA = "adr-0005-issue88-fp32-r-raw-v3"
 ISSUE88_RUNNER = "tools/newton_schulz_issue88.py"
-TRUE_INVERSE_METRIC_REFERENCE = "NumPy complex128 inverse of original FP32 R"
+TRUE_INVERSE_METRIC_REFERENCE = ISSUE88_TRUE_INVERSE_METRIC_REFERENCE
 BEAM_RESPONSE_METRIC_DEFINITIONS = {
     "phase_sensitive_complex_response_relative_frobenius_error": (
         "||response_candidate - response_reference||_F / ||response_reference||_F; "
@@ -173,73 +196,6 @@ ISSUE88_STATUS_COMPONENTS = (
     ("power_trace", "the power trace is readable, nonempty, and covers the device run"),
     ("device_close", "device close succeeds"),
 )
-ISSUE88_ERROR_CODES = frozenset(
-    {
-        "artifact_binding_failed",
-        "board_selection_failed",
-        "board_selection_succeeded",
-        "correctness_failed",
-        "device_close_failed",
-        "device_close_succeeded",
-        "device_open_failed",
-        "device_session_failed",
-        "environment_artifact_unreadable",
-        "environment_run_id_missing",
-        "harness_failed",
-        "harness_succeeded",
-        "host_preparation_failed",
-        "image_toolchain_failed",
-        "image_toolchain_succeeded",
-        "inverse_artifact_persistence_failed",
-        "inverse_outputs_failed",
-        "inverse_outputs_succeeded",
-        "power_sample_invalid",
-        "power_timestamp_invalid",
-        "power_trace_failed",
-        "power_trace_incomplete",
-        "power_trace_invalid",
-        "power_trace_no_usable_rows",
-        "power_trace_succeeded",
-        "power_trace_timeout",
-        "power_trace_unreadable",
-        "preflight_rejected",
-        "record_publication_failed",
-        "row_cleanup_failed",
-        "row_execution_failed",
-        "row_timeout",
-        "rows_failed",
-        "rows_succeeded",
-        "run_id_mismatch",
-    }
-)
-ISSUE88_FAILURE_STAGES = frozenset(
-    {
-        "close",
-        "correctness",
-        "device_session",
-        "host_preparation",
-        "inverse_artifact_persistence",
-        "open",
-        "preflight",
-        "row",
-        "row_cleanup",
-        "row_timeout",
-        "telemetry.environment",
-        "telemetry.power",
-    }
-)
-ISSUE88_STATUS_COMPONENT_CODES = {
-    "rows": ("rows_succeeded", "rows_failed"),
-    "inverse_outputs": ("inverse_outputs_succeeded", "inverse_outputs_failed"),
-    "board_selection": ("board_selection_succeeded", "board_selection_failed"),
-    "image_toolchain": ("image_toolchain_succeeded", "image_toolchain_failed"),
-    "harness": ("harness_succeeded", "harness_failed"),
-    "power_trace": ("power_trace_succeeded", "power_trace_failed"),
-    "device_close": ("device_close_succeeded", "device_close_failed"),
-}
-ISSUE88_ERROR_OBJECT_FIELDS = frozenset(
-    {"error", "failure", "binding_error", "poll_error", "close_error", "cleanup_error"}
-)
 ISSUE88_RAW_LOG_ROOT = Path.home() / "hekatus-raw" / "issue88"
 _ACTIVE_ISSUE88_RUN_ID: str | None = None
 _PATH_TEXT = r"[^\s,;\"'<>]+"
@@ -262,7 +218,9 @@ _SAFE_IMAGE_RE = re.compile(
     r"^ghcr\.io/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*@sha256:[0-9a-f]{64}$"
 )
 _SAFE_KERNEL_RE = re.compile(r"^Linux [0-9][A-Za-z0-9.-]{0,63}$")
-_SAFE_NUMERIC_TEXT_RE = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
+_SAFE_NUMERIC_TEXT_RE = re.compile(
+    r"^[+-]?(?:(?:[0-9]+(?:\.[0-9]*)?)|(?:\.[0-9]+))(?:[eE][+-]?[0-9]+)?$"
+)
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -466,7 +424,7 @@ def _preflight_accounting(
     overage_bytes = raw["total_budget_overage"]
     headroom_bytes = max(0, raw["budget_bytes"] - raw["total_bytes"])
     accepted = not (raw["cb_budget_overage"] or overage_bytes)
-    status = "admitted" if accepted else "rejected_before_allocation"
+    status = ISSUE88_PREFLIGHT_STATUS_ADMITTED if accepted else ISSUE88_PREFLIGHT_STATUS_REJECTED
     placement = {
         name: value.upper()
         for name, value in {
@@ -1089,11 +1047,9 @@ def reference_context(
     if true_inverse is None:
         true_inverse = np.linalg.inv(matrices.astype(np.complex128))
     matching_reference = (
-        "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
-        "X0=I/||original FP32 R||_infinity"
+        ISSUE88_BF16_MATCHING_METRIC_REFERENCE
         if variant == "bf16"
-        else "fixed-N=12 Newton-Schulz reference using original FP32 R and "
-        "X0=I/||original FP32 R||_infinity"
+        else ISSUE88_FP32_MATCHING_METRIC_REFERENCE
     )
     return {
         "reference_r": reference_r,
@@ -1143,7 +1099,7 @@ def correctness_metrics(
     )
     metrics: dict[str, Any] = {
         "finite": finite,
-        "finite_status": "pass" if finite else "failed",
+        "finite_status": ISSUE88_STATUS_PASS if finite else ISSUE88_STATUS_FAILED,
         "reference_finite": reference_finite,
         "true_inverse_finite": true_inverse_finite,
         "relative_frobenius_error_vs_matching_reference": matching_error,
@@ -1258,19 +1214,10 @@ def _json_shape(value: Any) -> str:
 
 def _is_public_string(field: str, value: str) -> bool:
     """Check one string against its explicit field-specific publication shape."""
+    if field in ISSUE88_PUBLIC_STRING_VALUES:
+        return value in ISSUE88_PUBLIC_STRING_VALUES[field]
     if field == "code":
         return value in ISSUE88_ERROR_CODES
-    if field in {"status", "artifact_status", "finite_status"}:
-        return value in {
-            "complete",
-            "correctness_only",
-            "failed",
-            "ok",
-            "pass",
-            "preflight_rejected",
-            "passed before allocation",
-            "rejected_before_allocation",
-        }
     if field in {"stage", "failure_stage"}:
         return value in ISSUE88_FAILURE_STAGES
     if field == "exception_type":
@@ -1285,14 +1232,10 @@ def _is_public_string(field: str, value: str) -> bool:
         return re.fullmatch(RUN_ID_PATTERN, value) is not None
     if field in _TIMESTAMP_FIELDS:
         try:
-            parsed = datetime.datetime.fromisoformat(value)
+            _parse_utc_timestamp(value, field=field)
         except ValueError:
             return False
-        return (
-            parsed.tzinfo is not None
-            and parsed.utcoffset() == datetime.timedelta(0)
-            and parsed.isoformat() == value
-        )
+        return True
     if field in _HASH_FIELDS:
         return _SHA256_RE.fullmatch(value) is not None
     if field in {"harness_commit"}:
@@ -1437,34 +1380,21 @@ def _error_entry(code: str, error: Any = None, *, run_id: str | None = None) -> 
 
 def _error_code_for_stage(stage: str, error: Any) -> str:
     if isinstance(error, RunIdMismatchError):
-        return "run_id_mismatch"
+        return ISSUE88_ERROR_CODE_VALUES["run_id_mismatch"]
     if stage == "telemetry.environment" and isinstance(error, ValueError):
         if "run_id is missing" in str(error):
-            return "environment_run_id_missing"
+            return ISSUE88_ERROR_CODE_VALUES["environment_run_id_missing"]
         if "run_id does not match" in str(error):
-            return "run_id_mismatch"
+            return ISSUE88_ERROR_CODE_VALUES["run_id_mismatch"]
     if isinstance(error, RunBindingError):
-        return "artifact_binding_failed"
-    stage_codes = {
-        "close": "device_close_failed",
-        "correctness": "correctness_failed",
-        "device_session": "device_session_failed",
-        "host_preparation": "host_preparation_failed",
-        "inverse_artifact_persistence": "inverse_artifact_persistence_failed",
-        "open": "device_open_failed",
-        "preflight": "preflight_rejected",
-        "row": "row_execution_failed",
-        "row_cleanup": "row_cleanup_failed",
-        "row_timeout": "row_timeout",
-        "telemetry.environment": "environment_artifact_unreadable",
-        "telemetry.power": (
-            "power_trace_unreadable" if isinstance(error, OSError) else "power_trace_invalid"
-        ),
-    }
+        return ISSUE88_ERROR_CODE_VALUES["artifact_binding"]
     try:
-        return stage_codes[stage]
+        stage_code = ISSUE88_STAGE_ERROR_CODES[stage]
     except KeyError as exc:
         raise ValueError("unknown Issue #88 failure stage") from exc
+    if isinstance(stage_code, tuple):
+        return stage_code[0] if isinstance(error, OSError) else stage_code[1]
+    return stage_code
 
 
 def _failure(stage: str, error: Any) -> dict[str, Any]:
@@ -1773,7 +1703,11 @@ def _read_power_trace(
                 raise ValueError(f"power trace sample {index} is an incomplete CSV row")
             samples.append(dict(row))
     except Exception as exc:  # noqa: BLE001 - expose trace failures without free text
-        code = "power_trace_unreadable" if isinstance(exc, OSError) else "power_trace_invalid"
+        code = (
+            ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"]
+            if isinstance(exc, OSError)
+            else ISSUE88_ERROR_CODE_VALUES["power_trace_invalid"]
+        )
         trace["error"] = _error_entry(code, exc, run_id=run_id)
         return trace
 
@@ -1789,7 +1723,9 @@ def _read_power_trace(
                 field=f"power sample {index} timestamp_utc",
             )
         except ValueError as exc:
-            error = _error_entry("power_timestamp_invalid", exc, run_id=run_id)
+            error = _error_entry(
+                ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"], exc, run_id=run_id
+            )
             timestamp_error = timestamp_error or error
             errors.append(error)
             continue
@@ -1808,7 +1744,9 @@ def _read_power_trace(
                 sample.get("asic_temp_c"), field=f"power sample {index} asic_temp_c"
             )
         except ValueError as exc:
-            errors.append(_error_entry("power_sample_invalid", exc, run_id=run_id))
+            errors.append(
+                _error_entry(ISSUE88_ERROR_CODE_VALUES["power_sample_invalid"], exc, run_id=run_id)
+            )
         else:
             usable_rows.append((sample, timestamp))
 
@@ -1822,7 +1760,7 @@ def _read_power_trace(
     trace["errors"] = _sanitize_metadata(errors)
     if not usable_samples:
         trace["error"] = timestamp_error or _error_entry(
-            "power_trace_no_usable_rows", None, run_id=run_id
+            ISSUE88_ERROR_CODE_VALUES["power_trace_no_usable_rows"], None, run_id=run_id
         )
     elif timestamp_error is not None:
         trace["error"] = timestamp_error
@@ -1839,7 +1777,7 @@ def _read_power_trace(
             end = _parse_utc_timestamp(run_end, field="run_end")
         except ValueError as exc:
             trace["error"] = _error_entry(
-                "power_timestamp_invalid", exc, run_id=run_id
+                ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"], exc, run_id=run_id
             )
         else:
             trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
@@ -1922,7 +1860,7 @@ def _wait_for_power_trace(
                 run_end=end_text,
             )
             failed["binding_error"] = _error_entry(
-                "artifact_binding_failed", exc, run_id=run_id
+                ISSUE88_ERROR_CODE_VALUES["artifact_binding"], exc, run_id=run_id
             )
             failed["poll_count"] = poll_count
             return _public_power_trace(failed)
@@ -1935,11 +1873,13 @@ def _wait_for_power_trace(
                     run_end=end_text,
                 )
                 failed["binding_error"] = _error_entry(
-                    "power_trace_unreadable", exc, run_id=run_id
+                    ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"], exc, run_id=run_id
                 )
                 failed["poll_count"] = poll_count
                 return _public_power_trace(failed)
-            _error_entry("power_trace_unreadable", exc, run_id=run_id)
+            _error_entry(
+                ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"], exc, run_id=run_id
+            )
         except Exception as exc:  # noqa: BLE001 - sampler may not have created it yet
             _error_entry(_error_code_for_stage("telemetry.power", exc), exc, run_id=run_id)
         else:
@@ -1966,7 +1906,7 @@ def _wait_for_power_trace(
                     run_end=end_text,
                 )
                 failed["binding_error"] = _error_entry(
-                    "artifact_binding_failed", exc, run_id=run_id
+                    ISSUE88_ERROR_CODE_VALUES["artifact_binding"], exc, run_id=run_id
                 )
                 failed["poll_count"] = poll_count
                 return _public_power_trace(failed)
@@ -1998,36 +1938,37 @@ def _wait_for_power_trace(
         )
     last_trace["poll_count"] = poll_count
     last_trace["poll_error"] = _error_entry(
-        "power_trace_timeout", None, run_id=run_id
+        ISSUE88_ERROR_CODE_VALUES["power_trace_timeout"], None, run_id=run_id
     )
     return _public_power_trace(last_trace)
 
 
 def _power_trace_failure_reason(trace: Any) -> str:
+    codes = ISSUE88_ERROR_CODE_VALUES
     if not isinstance(trace, dict):
-        return "power_trace_unreadable"
+        return codes["power_trace_unreadable"]
     for key in ("binding_error", "error", "poll_error"):
         error = trace.get(key)
         if isinstance(error, dict) and error.get("code") in ISSUE88_ERROR_CODES:
             return error["code"]
     if trace.get("immutable_snapshot") is not True:
-        return "power_trace_incomplete"
+        return codes["power_trace_incomplete"]
     filename = trace.get("file")
     if not isinstance(filename, str) or not _is_public_string("file", filename):
-        return "artifact_binding_failed"
+        return codes["artifact_binding"]
     if not isinstance(trace.get("sha256"), str) or not _SHA256_RE.fullmatch(trace["sha256"]):
-        return "power_trace_invalid"
+        return codes["power_trace_invalid"]
     if not trace.get("readable"):
-        return "power_trace_unreadable"
+        return codes["power_trace_unreadable"]
     if not trace.get("nonempty"):
-        return "power_trace_no_usable_rows"
+        return codes["power_trace_no_usable_rows"]
     if not trace.get("timestamps_parse") or not trace.get("timestamps_ordered"):
-        return "power_timestamp_invalid"
+        return codes["power_timestamp_invalid"]
     if not trace.get("covers_run_start") or not trace.get("covers_run_end"):
-        return "power_trace_incomplete"
+        return codes["power_trace_incomplete"]
     if not trace.get("coverage_complete"):
-        return "power_trace_incomplete"
-    return "power_trace_succeeded"
+        return codes["power_trace_incomplete"]
+    return codes["power_trace_succeeded"]
 
 
 def _read_telemetry(
@@ -2046,7 +1987,7 @@ def _read_telemetry(
     start_text = _timestamp_text(run_start, field="run_start") if run_start is not None else None
     end_text = _timestamp_text(run_end, field="run_end") if run_end is not None else None
     telemetry: dict[str, Any] = {
-        "status": "failed",
+        "status": ISSUE88_STATUS_FAILED,
         "run_id": run_id,
         "run_start": start_text,
         "run_end": end_text,
@@ -2107,7 +2048,7 @@ def _read_telemetry(
             {"stage": "telemetry.power", "error": _failure("telemetry.power", exc)}
         )
     if not telemetry["failures"]:
-        telemetry["status"] = "complete"
+        telemetry["status"] = ISSUE88_TELEMETRY_STATUS_COMPLETE
     return telemetry
 
 
@@ -2128,7 +2069,7 @@ def _failed_row(
     row = dict(config)
     row.update(
         {
-            "status": "failed",
+            "status": ISSUE88_STATUS_FAILED,
             "failure_stage": stage,
             "error": _error_entry(_error_code_for_stage(stage, error), error),
         }
@@ -2166,7 +2107,7 @@ def _preflight_rejected_row(
         {
             "row": config["name"],
             "shape_name": shape_name(config),
-            "status": "preflight_rejected",
+            "status": ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
             "failure_stage": None,
             "launches_requested": 0,
             "launches_measured": 0,
@@ -2204,7 +2145,7 @@ def _run_row(
     result["flops_per_launch"] = flops_per_launch
     result["launches_requested"] = 0 if first_launch else launches
     result["row_timeout_s"] = timeout_s
-    result["status"] = "failed"
+    result["status"] = ISSUE88_STATUS_FAILED
     preflight = _preflight_accounting(config, ttnn) if preflight is None else dict(preflight)
     result["preflight"] = preflight
     kernel = None
@@ -2298,9 +2239,9 @@ def _run_row(
             return result
 
         if first_launch:
-            result["status"] = "correctness_only"
+            result["status"] = ISSUE88_ROW_STATUS_CORRECTNESS_ONLY
             result["launches_measured"] = 0
-            result["timing"] = "not run (--first-launch)"
+            result["timing"] = ISSUE88_FIRST_LAUNCH_TIMING
             return result
 
         # Correctness is not counted as the warm-up.  This makes the timing
@@ -2335,15 +2276,13 @@ def _run_row(
                 )
                 result["correctness"] = correctness
                 result["warmup"] = {"launches": 1, "synchronized": True}
-                result["stop_condition"] = "row_timeout_s_exceeded"
+                result["stop_condition"] = ISSUE88_STOP_CONDITION_TIMEOUT
                 return result
 
-        result["status"] = "ok"
+        result["status"] = ISSUE88_ROW_STATUS_OK
         result.update(timing_summary(samples, flops_per_launch))
         result["warmup"] = {"launches": 1, "synchronized": True}
-        result["timing_protocol"] = (
-            "one synchronized warm-up followed by exactly 1,000 synchronized launches"
-        )
+        result["timing_protocol"] = ISSUE88_TIMING_PROTOCOL
         return result
     except Exception as exc:  # noqa: BLE001 - preserve row-local device failures
         inverse_artifact = result.get("device_inverse_artifact")
@@ -2365,20 +2304,25 @@ def _run_row(
         if reference is not None:
             result["reference_available"] = True
         if samples:
-            result["stop_condition"] = "row_error"
+            result["stop_condition"] = ISSUE88_STOP_CONDITION_ROW_ERROR
         return result
     finally:
         if kernel is not None:
             try:
                 kernel.close()
             except Exception as exc:  # noqa: BLE001 - cleanup is part of the row result
-                if result.get("status") == "ok":
-                    result["status"] = "failed"
+                if result.get("status") == ISSUE88_ROW_STATUS_OK:
+                    result["status"] = ISSUE88_STATUS_FAILED
                     result["failure_stage"] = "row_cleanup"
-                    result["error"] = _error_entry("row_cleanup_failed", exc, run_id=run_id)
+                    result["error"] = _error_entry(
+                        ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"], exc, run_id=run_id
+                    )
                 else:
                     result.setdefault(
-                        "cleanup_error", _error_entry("row_cleanup_failed", exc, run_id=run_id)
+                        "cleanup_error",
+                        _error_entry(
+                            ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"], exc, run_id=run_id
+                        ),
                     )
 
 
@@ -2537,7 +2481,7 @@ def run_comparison(
         and inverse_outputs_pass
     )
     return {
-        "status": "pass" if passed and not stopped else "failed",
+        "status": ISSUE88_STATUS_PASS if passed and not stopped else ISSUE88_STATUS_FAILED,
         "run_id": run_id,
         "comparison_rows": comparison,
         "device_inverse_artifacts": device_inverse_artifacts,
@@ -2559,7 +2503,9 @@ def run_comparison(
                 "size": 32,
                 "matrix_block": 8,
                 "r_memory": "l1",
-                "error": _error_entry("preflight_rejected", None),
+                "error": _error_entry(
+                    ISSUE88_ERROR_CODE_VALUES["preflight_rejected"], None
+                ),
             },
         },
     }
@@ -2733,7 +2679,7 @@ def _inverse_output_failures(run: dict[str, Any]) -> list[str]:
         row_name = row.get("row", row.get("name", "<unknown>"))
         metadata = row.get("device_inverse_artifact")
         status = row.get("status")
-        if status == "preflight_rejected":
+        if status == ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED:
             if metadata is not None:
                 failures.append(f"{row_name} preflight rejection has an inverse output artifact")
             preflight = row.get("preflight")
@@ -2746,7 +2692,10 @@ def _inverse_output_failures(run: dict[str, Any]) -> list[str]:
             ):
                 failures.append(f"{row_name} preflight rejection did not prove zero allocation and launches")
             continue
-        if status in {"ok", "correctness_only"} or metadata is not None:
+        if status in {
+            ISSUE88_ROW_STATUS_OK,
+            ISSUE88_ROW_STATUS_CORRECTNESS_ONLY,
+        } or metadata is not None:
             error = _inverse_artifact_metadata_error(
                 metadata, row_name=row_name, run_id=run_id
             )
@@ -2775,7 +2724,7 @@ def _status_components(
     if not isinstance(rows, list) or not rows:
         row_failures.append("no selected rows completed")
     else:
-        if run.get("status") != "pass":
+        if run.get("status") != ISSUE88_STATUS_PASS:
             row_failures.append(f"run status is {run.get('status')!r}")
         if not isinstance(requested, int) or len(rows) != requested:
             row_failures.append(
@@ -2876,7 +2825,9 @@ def _status_components(
                 )
             except (RunBindingError, ValueError) as exc:
                 power_failures.append(
-                    "artifact_binding_failed" if isinstance(exc, RunBindingError) else "power_trace_invalid"
+                    ISSUE88_ERROR_CODE_VALUES[
+                        "artifact_binding" if isinstance(exc, RunBindingError) else "power_trace_invalid"
+                    ]
                 )
         if power_trace.get("run_id") != run.get("run_id"):
             power_failures.append("power trace snapshot run_id does not match the run")
@@ -2886,7 +2837,7 @@ def _status_components(
             )
         except ValueError:
             expected_source = None
-            power_failures.append("run_id_mismatch")
+            power_failures.append(ISSUE88_ERROR_CODE_VALUES["run_id_mismatch"])
         if power_trace.get("source_file") != expected_source:
             power_failures.append(
                 "power trace source artifact is not the exact current run artifact"
@@ -2925,7 +2876,9 @@ def _status_components(
                 power_trace.get("last_timestamp"), field="power last_timestamp"
             )
         except ValueError:
-            power_failures.append("power_timestamp_invalid")
+            power_failures.append(
+                ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"]
+            )
         else:
             if not first <= start <= end <= last:
                 power_failures.append(
@@ -2988,12 +2941,12 @@ def _record_payload(
                 for component in status_components.values()
                 if not component.get("ok")
             ),
-            {"code": "record_publication_failed"},
+            {"code": ISSUE88_ERROR_CODE_VALUES["record_publication_failed"]},
         )
         failure = _error_entry(failed_component["code"], None)
     record: dict[str, Any] = {
         "record_schema": ISSUE88_RECORD_SCHEMA,
-        "status": "pass" if overall_pass else "failed",
+        "status": ISSUE88_STATUS_PASS if overall_pass else ISSUE88_STATUS_FAILED,
         "status_components": status_components,
         "issue": "#88",
         "adr": "ADR-0005",
@@ -3097,14 +3050,8 @@ def _record_payload(
             "metric_reference_labels": {
                 "quality_vs_true_inverse": TRUE_INVERSE_METRIC_REFERENCE,
                 "quality_vs_matching_reference": {
-                    "bf16": (
-                        "fixed-N=12 Newton-Schulz reference using BF16-rounded R "
-                        "and X0=I/||original FP32 R||_infinity"
-                    ),
-                    "fp32-r": (
-                        "fixed-N=12 Newton-Schulz reference using original FP32 R "
-                        "and X0=I/||original FP32 R||_infinity"
-                    ),
+                    "bf16": ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+                    "fp32-r": ISSUE88_FP32_MATCHING_METRIC_REFERENCE,
                 },
             },
             "steering_array": {
@@ -3161,7 +3108,11 @@ def _raw_payload(
     """Capture all result-builder inputs while retaining only safe metadata."""
     if status_components is None:
         status_components = _status_components(run, telemetry=telemetry, cleanup=cleanup)
-    record_status = "pass" if _status_components_pass(status_components) else "failed"
+    record_status = (
+        ISSUE88_STATUS_PASS
+        if _status_components_pass(status_components)
+        else ISSUE88_STATUS_FAILED
+    )
     raw_telemetry = dict(telemetry)
     if isinstance(raw_telemetry.get("power_trace"), dict):
         raw_telemetry["power_trace"] = _public_power_trace(raw_telemetry["power_trace"])
@@ -3196,14 +3147,14 @@ def _raw_payload(
     }
     if run.get("failure") is not None:
         payload["failure"] = run["failure"]
-    elif record_status != "pass":
+    elif record_status != ISSUE88_STATUS_PASS:
         failed_component = next(
             (
                 component
                 for component in status_components.values()
                 if not component.get("ok")
             ),
-            {"code": "record_publication_failed"},
+            {"code": ISSUE88_ERROR_CODE_VALUES["record_publication_failed"]},
         )
         payload["failure"] = _error_entry(failed_component["code"], None)
     return payload
@@ -3220,7 +3171,7 @@ def _mark_failed(run: dict[str, Any], stage: str, error: Any) -> dict[str, Any]:
     else:
         updated["failure"] = details
         updated["failure_stage"] = stage
-    updated["status"] = "failed"
+    updated["status"] = ISSUE88_STATUS_FAILED
     return updated
 
 
@@ -3352,7 +3303,7 @@ def main(
     sleep = time.sleep if sleep_fn is None else sleep_fn
     run_start = now()
     run: dict[str, Any] = {
-        "status": "failed",
+        "status": ISSUE88_STATUS_FAILED,
         "run_id": run_id,
         "comparison_rows": [],
         "device_inverse_artifacts": [],
@@ -3413,7 +3364,9 @@ def main(
                 close_error = exc
                 run = _mark_failed(run, "close", exc)
                 cleanup["close_succeeded"] = False
-                cleanup["close_error"] = _error_entry("device_close_failed", exc, run_id=run_id)
+                cleanup["close_error"] = _error_entry(
+            ISSUE88_ERROR_CODE_VALUES["device_close_failed"], exc, run_id=run_id
+        )
         run["cleanup"] = cleanup
 
     run_end = now()
@@ -3459,7 +3412,7 @@ def main(
     _atomic_json_write(result_path, record)
     print(f"issue88 result -> {result_path}", flush=True)
     print(f"issue88 raw -> {raw_path.name}", flush=True)
-    return 0 if record["status"] == "pass" else 1
+    return 0 if record["status"] == ISSUE88_STATUS_PASS else 1
 
 
 if __name__ == "__main__":

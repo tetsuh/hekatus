@@ -1,5 +1,170 @@
 """Explicit Issue #88 measurement-record field and string allowlist."""
 
+# Runner output vocabularies live here so both the producer and the final
+# publication validator consume the same symbols instead of maintaining
+# separate, drift-prone spellings.
+ISSUE88_STATUS_PASS = "pass"
+ISSUE88_STATUS_FAILED = "failed"
+ISSUE88_ROW_STATUS_OK = "ok"
+ISSUE88_ROW_STATUS_CORRECTNESS_ONLY = "correctness_only"
+ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED = "preflight_rejected"
+ISSUE88_PREFLIGHT_STATUS_ADMITTED = "admitted"
+ISSUE88_PREFLIGHT_STATUS_REJECTED = "rejected_before_allocation"
+ISSUE88_TELEMETRY_STATUS_COMPLETE = "complete"
+ISSUE88_FIRST_LAUNCH_TIMING = "not run (--first-launch)"
+ISSUE88_TIMING_PROTOCOL = "one synchronized warm-up followed by exactly 1,000 synchronized launches"
+ISSUE88_STOP_CONDITION_ROW_ERROR = "row_error"
+ISSUE88_STOP_CONDITION_TIMEOUT = "row_timeout_s_exceeded"
+ISSUE88_STATUS_ROW_VALUES = frozenset(
+    {
+        ISSUE88_STATUS_PASS,
+        ISSUE88_STATUS_FAILED,
+        ISSUE88_ROW_STATUS_OK,
+        ISSUE88_ROW_STATUS_CORRECTNESS_ONLY,
+        ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
+        ISSUE88_PREFLIGHT_STATUS_ADMITTED,
+        ISSUE88_PREFLIGHT_STATUS_REJECTED,
+        ISSUE88_TELEMETRY_STATUS_COMPLETE,
+        "passed before allocation",
+    }
+)
+ISSUE88_SUCCESSFUL_ROW_STATUSES = frozenset(
+    {
+        ISSUE88_ROW_STATUS_OK,
+        ISSUE88_ROW_STATUS_CORRECTNESS_ONLY,
+        ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
+    }
+)
+ISSUE88_TIMING_VALUES = frozenset({ISSUE88_FIRST_LAUNCH_TIMING})
+ISSUE88_STOP_CONDITIONS = frozenset(
+    {ISSUE88_STOP_CONDITION_ROW_ERROR, ISSUE88_STOP_CONDITION_TIMEOUT}
+)
+ISSUE88_PUBLIC_STRING_VALUES = {
+    "status": ISSUE88_STATUS_ROW_VALUES,
+    "artifact_status": ISSUE88_STATUS_ROW_VALUES,
+    "finite_status": frozenset({ISSUE88_STATUS_PASS, ISSUE88_STATUS_FAILED}),
+    "timing": ISSUE88_TIMING_VALUES,
+    "stop_condition": ISSUE88_STOP_CONDITIONS,
+}
+ISSUE88_TRUE_INVERSE_METRIC_REFERENCE = "NumPy complex128 inverse of original FP32 R"
+ISSUE88_BF16_MATCHING_METRIC_REFERENCE = (
+    "fixed-N=12 Newton-Schulz reference using BF16-rounded R and "
+    "X0=I/||original FP32 R||_infinity"
+)
+ISSUE88_FP32_MATCHING_METRIC_REFERENCE = (
+    "fixed-N=12 Newton-Schulz reference using original FP32 R and "
+    "X0=I/||original FP32 R||_infinity"
+)
+
+ISSUE88_ERROR_CODE_VALUES = {
+    "artifact_binding": "artifact_binding_failed",
+    "board_selection_failed": "board_selection_failed",
+    "board_selection_succeeded": "board_selection_succeeded",
+    "correctness_failed": "correctness_failed",
+    "device_close_failed": "device_close_failed",
+    "device_close_succeeded": "device_close_succeeded",
+    "device_open_failed": "device_open_failed",
+    "device_session_failed": "device_session_failed",
+    "environment_artifact_unreadable": "environment_artifact_unreadable",
+    "environment_run_id_missing": "environment_run_id_missing",
+    "harness_failed": "harness_failed",
+    "harness_succeeded": "harness_succeeded",
+    "host_preparation_failed": "host_preparation_failed",
+    "image_toolchain_failed": "image_toolchain_failed",
+    "image_toolchain_succeeded": "image_toolchain_succeeded",
+    "inverse_artifact_persistence_failed": "inverse_artifact_persistence_failed",
+    "inverse_outputs_failed": "inverse_outputs_failed",
+    "inverse_outputs_succeeded": "inverse_outputs_succeeded",
+    "power_sample_invalid": "power_sample_invalid",
+    "power_timestamp_invalid": "power_timestamp_invalid",
+    "power_trace_failed": "power_trace_failed",
+    "power_trace_incomplete": "power_trace_incomplete",
+    "power_trace_invalid": "power_trace_invalid",
+    "power_trace_no_usable_rows": "power_trace_no_usable_rows",
+    "power_trace_succeeded": "power_trace_succeeded",
+    "power_trace_timeout": "power_trace_timeout",
+    "power_trace_unreadable": "power_trace_unreadable",
+    "preflight_rejected": ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
+    "record_publication_failed": "record_publication_failed",
+    "row_cleanup_failed": "row_cleanup_failed",
+    "row_execution_failed": "row_execution_failed",
+    "row_timeout": "row_timeout",
+    "rows_failed": "rows_failed",
+    "rows_succeeded": "rows_succeeded",
+    "run_id_mismatch": "run_id_mismatch",
+}
+ISSUE88_ERROR_CODES = frozenset(ISSUE88_ERROR_CODE_VALUES.values())
+ISSUE88_STAGE_ERROR_CODES = {
+    "close": ISSUE88_ERROR_CODE_VALUES["device_close_failed"],
+    "correctness": ISSUE88_ERROR_CODE_VALUES["correctness_failed"],
+    "device_session": ISSUE88_ERROR_CODE_VALUES["device_session_failed"],
+    "host_preparation": ISSUE88_ERROR_CODE_VALUES["host_preparation_failed"],
+    "inverse_artifact_persistence": ISSUE88_ERROR_CODE_VALUES[
+        "inverse_artifact_persistence_failed"
+    ],
+    "open": ISSUE88_ERROR_CODE_VALUES["device_open_failed"],
+    "preflight": ISSUE88_ERROR_CODE_VALUES["preflight_rejected"],
+    "row": ISSUE88_ERROR_CODE_VALUES["row_execution_failed"],
+    "row_cleanup": ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"],
+    "row_timeout": ISSUE88_ERROR_CODE_VALUES["row_timeout"],
+    "telemetry.environment": ISSUE88_ERROR_CODE_VALUES[
+        "environment_artifact_unreadable"
+    ],
+    "telemetry.power": (
+        ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"],
+        ISSUE88_ERROR_CODE_VALUES["power_trace_invalid"],
+    ),
+}
+ISSUE88_FAILURE_STAGES = frozenset(
+    {
+        "close",
+        "correctness",
+        "device_session",
+        "host_preparation",
+        "inverse_artifact_persistence",
+        "open",
+        "preflight",
+        "row",
+        "row_cleanup",
+        "row_timeout",
+        "telemetry.environment",
+        "telemetry.power",
+    }
+)
+ISSUE88_STATUS_COMPONENT_CODES = {
+    "rows": (
+        ISSUE88_ERROR_CODE_VALUES["rows_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["rows_failed"],
+    ),
+    "inverse_outputs": (
+        ISSUE88_ERROR_CODE_VALUES["inverse_outputs_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["inverse_outputs_failed"],
+    ),
+    "board_selection": (
+        ISSUE88_ERROR_CODE_VALUES["board_selection_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["board_selection_failed"],
+    ),
+    "image_toolchain": (
+        ISSUE88_ERROR_CODE_VALUES["image_toolchain_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["image_toolchain_failed"],
+    ),
+    "harness": (
+        ISSUE88_ERROR_CODE_VALUES["harness_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["harness_failed"],
+    ),
+    "power_trace": (
+        ISSUE88_ERROR_CODE_VALUES["power_trace_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["power_trace_failed"],
+    ),
+    "device_close": (
+        ISSUE88_ERROR_CODE_VALUES["device_close_succeeded"],
+        ISSUE88_ERROR_CODE_VALUES["device_close_failed"],
+    ),
+}
+ISSUE88_ERROR_OBJECT_FIELDS = frozenset(
+    {"error", "failure", "binding_error", "poll_error", "close_error", "cleanup_error"}
+)
+
 ISSUE88_RECORD_FIELD_TYPES = {
     '16': frozenset(('object',)),
     '32': frozenset(('object',)),
@@ -32,6 +197,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'aiclk_mhz': frozenset(('string',)),
     'algorithm': frozenset(('object',)),
     'all_lower_is_better': frozenset(('boolean',)),
+    'alignment_undefined': frozenset(('boolean',)),
     'allocation_attempted': frozenset(('boolean',)),
     'amplitude_floor': frozenset(('number',)),
     'application': frozenset(('string',)),
@@ -44,10 +210,10 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'beam_metrics': frozenset(('object',)),
     'beam_pattern': frozenset(('object', 'string')),
     'beam_response_metrics': frozenset(('object',)),
-    'best_complex_scalar': frozenset(('object',)),
+    'best_complex_scalar': frozenset(('null', 'object')),
     'best_complex_scalar_phase_aligned_complex_response': frozenset(('string',)),
     'best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error': frozenset(('number',)),
-    'best_global_complex_scalar_candidate_from_reference': frozenset(('object',)),
+    'best_global_complex_scalar_candidate_from_reference': frozenset(('null', 'object')),
     'bf16': frozenset(('string',)),
     'bf16-r-L16': frozenset(('number', 'object', 'string')),
     'bf16-r-L32': frozenset(('number', 'object', 'string')),
@@ -63,15 +229,15 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'budget_bytes': frozenset(('integer',)),
     'bus_id': frozenset(('string',)),
     'bus_peak_limit': frozenset(('integer',)),
-    'by_look_direction': frozenset(('array', 'number')),
+    'by_look_direction': frozenset(('array', 'null', 'number')),
     'byte_count': frozenset(('integer',)),
     'bytes': frozenset(('integer',)),
     'candidate_finite_values': frozenset(('integer',)),
     'candidate_floored_values': frozenset(('integer',)),
-    'candidate_max_absolute_error': frozenset(('number',)),
+    'candidate_max_absolute_error': frozenset(('null', 'number')),
     'candidate_undefined_look_peaks': frozenset(('integer',)),
-    'candidate_vs_conjugate_reference_relative_error_after_scalar': frozenset(('number',)),
-    'candidate_vs_transpose_reference_relative_error_after_scalar': frozenset(('number',)),
+    'candidate_vs_conjugate_reference_relative_error_after_scalar': frozenset(('null', 'number')),
+    'candidate_vs_transpose_reference_relative_error_after_scalar': frozenset(('null', 'number')),
     'captured_at': frozenset(('string',)),
     'cb_budget_bytes': frozenset(('integer',)),
     'cb_budget_headroom_bytes': frozenset(('integer',)),
@@ -85,7 +251,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'close_succeeded': frozenset(('boolean',)),
     'cm_fw': frozenset(('string',)),
     'cm_fw_date': frozenset(('string',)),
-    'columns': frozenset(('array', 'string')),
+    'columns': frozenset(('array', 'null', 'string')),
     'commands': frozenset(('object',)),
     'common_metric_reference': frozenset(('object',)),
     'companion_metadata': frozenset(('string',)),
@@ -105,9 +271,9 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'correctness_device_test_gate': frozenset(('object',)),
     'correctness_launch': frozenset(('object',)),
     'correctness_reference': frozenset(('string',)),
-    'coverage': frozenset(('object',)),
+    'coverage': frozenset(('null', 'object')),
     'coverage_complete': frozenset(('boolean',)),
-    'coverage_definition': frozenset(('string',)),
+    'coverage_definition': frozenset(('null', 'string')),
     'covers_run_end': frozenset(('boolean',)),
     'covers_run_start': frozenset(('boolean',)),
     'csv_row_count': frozenset(('integer',)),
@@ -137,7 +303,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'dtype': frozenset(('string',)),
     'element_count': frozenset(('integer',)),
     'element_spacing': frozenset(('string',)),
-    'environment': frozenset(('object',)),
+    'environment': frozenset(('null', 'object')),
     'errors': frozenset(('array', 'object')),
     'eth_fw': frozenset(('string',)),
     'expected_preflight_rejection': frozenset(('boolean',)),
@@ -220,16 +386,16 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'magnitude_p05': frozenset(('number',)),
     'magnitude_p95': frozenset(('number',)),
     'magnitude_response': frozenset(('string',)),
-    'magnitude_response_max_absolute_error': frozenset(('number',)),
-    'magnitude_response_relative_frobenius_error': frozenset(('number', 'string')),
+    'magnitude_response_max_absolute_error': frozenset(('null', 'number')),
+    'magnitude_response_relative_frobenius_error': frozenset(('null', 'number', 'string')),
     'math_fidelity': frozenset(('string',)),
     'matrix_block': frozenset(('integer',)),
     'matrix_count': frozenset(('integer',)),
     'matrix_sha256': frozenset(('string',)),
-    'max_absolute_error_db': frozenset(('number',)),
-    'max_cosine_deficit': frozenset(('number',)),
-    'mean_by_look_direction': frozenset(('array', 'number')),
-    'mean_cosine_deficit': frozenset(('number',)),
+    'max_absolute_error_db': frozenset(('null', 'number')),
+    'max_cosine_deficit': frozenset(('null', 'number')),
+    'mean_by_look_direction': frozenset(('array', 'null', 'number')),
+    'mean_cosine_deficit': frozenset(('null', 'number')),
     'measured_rows': frozenset(('object',)),
     'measurement': frozenset(('object',)),
     'measurement_scope': frozenset(('string',)),
@@ -245,8 +411,8 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'nonempty': frozenset(('boolean',)),
     'nonfinite_ratios': frozenset(('integer',)),
     'normalized_db_floored_pattern': frozenset(('object', 'string')),
-    'normalized_environment': frozenset(('object',)),
-    'normalized_magnitude_pattern_relative_frobenius_error': frozenset(('number', 'string')),
+    'normalized_environment': frozenset(('null', 'object')),
+    'normalized_magnitude_pattern_relative_frobenius_error': frozenset(('null', 'number', 'string')),
     'not_committed': frozenset(('boolean',)),
     'notes': frozenset(('array', 'string')),
     'npy_file_byte_count': frozenset(('integer',)),
@@ -266,16 +432,16 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'pcie_speed': frozenset(('integer',)),
     'pcie_width': frozenset(('string',)),
     'performance': frozenset(('object',)),
-    'phase_aligned_complex_response_relative_frobenius_error': frozenset(('number', 'string')),
+    'phase_aligned_complex_response_relative_frobenius_error': frozenset(('null', 'number', 'string')),
     'phase_circular_mean_radians': frozenset(('number',)),
     'phase_circular_resultant_length': frozenset(('number',)),
     'phase_degrees': frozenset(('number',)),
     'phase_radians': frozenset(('number',)),
     'phase_sensitive_complex_response': frozenset(('string',)),
-    'phase_sensitive_complex_response_max_absolute_error': frozenset(('number',)),
-    'phase_sensitive_complex_response_max_relative_error_by_look_direction': frozenset(('array', 'number')),
-    'phase_sensitive_complex_response_relative_error_by_look_direction': frozenset(('array', 'number')),
-    'phase_sensitive_complex_response_relative_frobenius_error': frozenset(('number', 'string')),
+    'phase_sensitive_complex_response_max_absolute_error': frozenset(('null', 'number')),
+    'phase_sensitive_complex_response_max_relative_error_by_look_direction': frozenset(('array', 'null', 'number')),
+    'phase_sensitive_complex_response_relative_error_by_look_direction': frozenset(('array', 'null', 'number')),
+    'phase_sensitive_complex_response_relative_frobenius_error': frozenset(('null', 'number', 'string')),
     'physical_device': frozenset(('string',)),
     'physical_tile_count': frozenset(('integer',)),
     'placement': frozenset(('object', 'string')),
@@ -292,11 +458,11 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'provenance': frozenset(('object',)),
     'python': frozenset(('string',)),
     'quality_metric_reference_policy': frozenset(('string',)),
-    'quality_vs_matching_reference': frozenset(('object',)),
-    'quality_vs_true_inverse': frozenset(('object', 'string')),
+    'quality_vs_matching_reference': frozenset(('null', 'object')),
+    'quality_vs_true_inverse': frozenset(('null', 'object', 'string')),
     'r_format': frozenset(('string',)),
     'r_memory': frozenset(('string',)),
-    'ratio_summary': frozenset(('object',)),
+    'ratio_summary': frozenset(('null', 'object')),
     'raw_artifact': frozenset(('object',)),
     'raw_record': frozenset(('object',)),
     'raw_schema': frozenset(('string',)),
@@ -313,18 +479,19 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'reference_max_absolute_error': frozenset(('number',)),
     'reference_r_sha256': frozenset(('string',)),
     'reference_undefined_look_peaks': frozenset(('integer',)),
-    'relative_error': frozenset(('number', 'string')),
+    'relative_error': frozenset(('null', 'number', 'string')),
     'relative_error_max': frozenset(('number',)),
+    'reference_available': frozenset(('boolean',)),
     'relative_frobenius_error': frozenset(('number',)),
-    'relative_frobenius_error_vs_matching_reference': frozenset(('number', 'string')),
-    'relative_frobenius_error_vs_true_inverse': frozenset(('number', 'string')),
-    'relative_residual_after_best_global_scalar': frozenset(('number',)),
+    'relative_frobenius_error_vs_matching_reference': frozenset(('null', 'number', 'string')),
+    'relative_frobenius_error_vs_true_inverse': frozenset(('null', 'number', 'string')),
+    'relative_residual_after_best_global_scalar': frozenset(('null', 'number')),
     'reset_performed': frozenset(('boolean',)),
     'response_metric_finite_values': frozenset(('integer',)),
     'response_metric_total_values': frozenset(('integer',)),
     'response_metric_undefined_values': frozenset(('integer',)),
     'results': frozenset(('array', 'object')),
-    'rms_absolute_error_db': frozenset(('number',)),
+    'rms_absolute_error_db': frozenset(('null', 'number')),
     'row': frozenset(('string',)),
     'row_statuses': frozenset(('object',)),
     'row_timeout_s': frozenset(('number',)),
@@ -342,7 +509,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'same_python_process': frozenset(('boolean',)),
     'sample_count': frozenset(('integer',)),
     'samples': frozenset(('array', 'integer', 'object')),
-    'sampling_source': frozenset(('string',)),
+    'sampling_source': frozenset(('null', 'string')),
     'schema': frozenset(('string',)),
     'scope': frozenset(('string',)),
     'seconds_per_launch_min': frozenset(('number',)),
@@ -354,7 +521,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'selected_controls': frozenset(('object',)),
     'serial': frozenset(('string',)),
     'sha256': frozenset(('string',)),
-    'sha256_definition': frozenset(('string',)),
+    'sha256_definition': frozenset(('null', 'string')),
     'shape': frozenset(('array', 'integer')),
     'shape_name': frozenset(('string',)),
     'size': frozenset(('integer',)),
@@ -365,6 +532,7 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'static_prefix_bytes': frozenset(('integer',)),
     'status': frozenset(('string',)),
     'status_components': frozenset(('object',)),
+    'stop_condition': frozenset(('string',)),
     'steering_array': frozenset(('object',)),
     'stopped_on_failure': frozenset(('boolean',)),
     'storage': frozenset(('string',)),
@@ -389,15 +557,15 @@ ISSUE88_RECORD_FIELD_TYPES = {
     'timestamp_utc': frozenset(('string',)),
     'timestamps_ordered': frozenset(('boolean',)),
     'timestamps_parse': frozenset(('boolean',)),
-    'timing': frozenset(('object',)),
+    'timing': frozenset(('object', 'string')),
     'timing_protocol': frozenset(('string',)),
     'toolchain_release': frozenset(('string',)),
     'total_bytes': frozenset(('integer',)),
     'total_ratios': frozenset(('integer',)),
     'total_values': frozenset(('integer',)),
-    'trace': frozenset(('string',)),
-    'trace_byte_count': frozenset(('integer',)),
-    'trace_sha256': frozenset(('string',)),
+    'trace': frozenset(('null', 'string')),
+    'trace_byte_count': frozenset(('integer', 'null')),
+    'trace_sha256': frozenset(('null', 'string')),
     'true_inverse': frozenset(('string',)),
     'true_inverse_finite': frozenset(('boolean',)),
     'true_inverse_sha256': frozenset(('string',)),
@@ -531,6 +699,12 @@ ISSUE88_FIXED_PUBLIC_STRINGS = frozenset((
     'The five measured rows each retained one synchronized inverse array as a basename-only external .npy artifact.',
     'The four beam metrics are device-output diagnostics under the common original-R true-inverse reference; variant-matched fixed-N metrics are not used for conclusions.',
     'The historical beam metrics used the defective batched _weight einsum denominator and are not evidence.',
+    ISSUE88_FIRST_LAUNCH_TIMING,
+    ISSUE88_TIMING_PROTOCOL,
+    ISSUE88_TRUE_INVERSE_METRIC_REFERENCE,
+    ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+    ISSUE88_FP32_MATCHING_METRIC_REFERENCE,
+    ISSUE88_PREFLIGHT_STATUS_ADMITTED,
     'The power trace is an immutable per-run CSV snapshot; its hash, sample count, and coverage fields refer to that snapshot.',
     'The synchronized correctness-launch inverse for each downloaded row is retained as a basename-only NumPy .npy file in the wrapper output directory; the expected preflight rejection has no inverse artifact.',
     'This device-1 retake supersedes the prior Issue #88 device records; every predecessor remains immutable and visible.',

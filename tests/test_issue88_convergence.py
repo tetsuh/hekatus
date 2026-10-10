@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from tools import newton_schulz_issue88 as runner
@@ -125,6 +126,345 @@ def _passing_parts(tmp_path: Path) -> tuple[dict, dict, dict]:
         "close_succeeded": True,
     }
     return run, telemetry, cleanup
+
+
+def _actual_producer_run(
+    tmp_path: Path,
+    run_id: str,
+    *,
+    mode: str = "success",
+    first_launch: bool = False,
+    time_fn=None,
+):
+    selected = (runner.ISSUE88_COMPARISON_ROWS[0],) if first_launch or mode != "success" else runner.ISSUE88_COMPARISON_ROWS
+    matrices_by_size = {
+        size: np.broadcast_to(
+            np.eye(size, dtype=np.complex64), (2, size, size)
+        ).copy()
+        for size in (16, 32)
+    }
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            if mode == "prepare_error":
+                raise RuntimeError(r"C:\Users\alice\kernel error")
+            kernel = cls()
+            kernel.launch_count = 0
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            if mode == "undefined":
+                kernel.actual = np.zeros_like(kernel.actual)
+            elif mode == "nonfinite":
+                kernel.actual = np.full_like(kernel.actual, np.nan)
+            return kernel
+
+        def launch(self):
+            self.launch_count += 1
+            if mode == "row_error" and self.launch_count == 4:
+                raise RuntimeError(r"C:\Users\alice\timed launch error")
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            if mode == "cleanup_error":
+                raise RuntimeError(r"C:\Users\alice\close error")
+
+    if time_fn is None:
+        clock = [0.0]
+
+        def time_fn():
+            clock[0] += 0.00001
+            return clock[0]
+
+    if mode == "timeout":
+        timeout_clock = [0.0]
+
+        def time_fn():
+            timeout_clock[0] += 0.0001
+            return timeout_clock[0]
+
+        timeout_s = 0.0005
+    else:
+        timeout_s = runner.ROW_TIMEOUT_S
+    return runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path / "inverse",
+        run_id=run_id,
+        rows=selected,
+        first_launch=first_launch or mode in {"undefined", "nonfinite"},
+        launches=1 if first_launch or mode in {"undefined", "nonfinite"} else runner.LAUNCHES_PER_ROW,
+        timeout_s=timeout_s,
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda batch, size, **kwargs: matrices_by_size[size],
+    )
+
+
+def _publication_telemetry(tmp_path: Path, run_id: str) -> dict:
+    normalized = _environment(run_id)
+    return {
+        "status": "complete",
+        "environment": normalized,
+        "normalized_environment": normalized,
+        "power_trace": _power_trace(tmp_path / "trace", run_id),
+        "failures": [],
+    }
+
+
+def _publish_producer_output(
+    tmp_path: Path, run: dict, run_id: str, telemetry: dict | None = None
+) -> tuple[dict, dict]:
+    telemetry = telemetry or _publication_telemetry(tmp_path, run_id)
+    cleanup = {
+        "device_opened": True,
+        "close_attempted": True,
+        "close_succeeded": True,
+    }
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    raw_path = tmp_path / f"raw-{run_id}.json"
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=raw_path,
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    raw = runner._raw_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=raw_path,
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    runner._atomic_json_write(tmp_path / f"record-{run_id}.json", record)
+    runner._atomic_json_write(raw_path, raw)
+    assert json.loads((tmp_path / f"record-{run_id}.json").read_text()) == json.loads(
+        runner._serialize_record(record)
+    )
+    assert json.loads(raw_path.read_text()) == json.loads(runner._serialize_record(raw))
+    return record, raw
+
+
+def test_issue88_actual_runner_success_rejection_and_first_launch_paths_publish(tmp_path):
+    full = _actual_producer_run(tmp_path, "run-actual-full")
+    assert full["status"] == "pass"
+    assert [row["status"] for row in full["comparison_rows"]] == [
+        runner.ISSUE88_ROW_STATUS_OK,
+        runner.ISSUE88_ROW_STATUS_OK,
+        runner.ISSUE88_ROW_STATUS_OK,
+        runner.ISSUE88_ROW_STATUS_OK,
+        runner.ISSUE88_ROW_STATUS_OK,
+        runner.ISSUE88_ROW_STATUS_PREFLIGHT_REJECTED,
+    ]
+    full_record, full_raw = _publish_producer_output(
+        tmp_path, full, "run-actual-full"
+    )
+    assert full_record["status"] == "pass"
+    assert full_raw["run"]["rows_requested"] == 6
+    assert len(full_record["measurement"]["device_inverse_artifacts"]) == 5
+    rows = full_record["measurement"]["comparison_rows"]
+    assert tuple(row["row"] for row in rows) == tuple(
+        config["name"] for config in runner.ISSUE88_COMPARISON_ROWS
+    )
+    assert tuple(
+        row["correctness"]["quality_vs_matching_reference"]["metric_reference"]
+        for row in rows[:-1]
+    ) == (
+        runner.ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+        runner.ISSUE88_FP32_MATCHING_METRIC_REFERENCE,
+        runner.ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+        runner.ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
+        runner.ISSUE88_FP32_MATCHING_METRIC_REFERENCE,
+    )
+    assert tuple(
+        row["correctness"]["quality_vs_true_inverse"]["metric_reference"]
+        for row in rows[:-1]
+    ) == (runner.ISSUE88_TRUE_INVERSE_METRIC_REFERENCE,) * 5
+
+    first = _actual_producer_run(
+        tmp_path, "run-actual-first", first_launch=True
+    )
+    assert first["status"] == "pass"
+    assert first["comparison_rows"][0]["timing"] == runner.ISSUE88_FIRST_LAUNCH_TIMING
+    first_record, first_raw = _publish_producer_output(
+        tmp_path, first, "run-actual-first"
+    )
+    assert first_record["measurement"]["comparison_rows"][0]["timing"] == (
+        runner.ISSUE88_FIRST_LAUNCH_TIMING
+    )
+    assert first_raw["run"]["comparison_rows"][0]["status"] == (
+        runner.ISSUE88_ROW_STATUS_CORRECTNESS_ONLY
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected_code", "expected_stage"),
+    [
+        ("prepare_error", "row_execution_failed", "row"),
+        ("row_error", "row_execution_failed", "row"),
+        ("timeout", "row_timeout", "row_timeout"),
+        ("cleanup_error", "row_cleanup_failed", "row_cleanup"),
+        ("nonfinite", "correctness_failed", "correctness"),
+    ],
+)
+def test_issue88_actual_runner_failure_paths_publish_private_diagnostics_safely(
+    tmp_path, monkeypatch, mode, expected_code, expected_stage
+):
+    run_id = f"run-actual-{mode}"
+    monkeypatch.setattr(runner, "ISSUE88_RAW_LOG_ROOT", tmp_path / "private-logs")
+    monkeypatch.setattr(runner, "_ACTIVE_ISSUE88_RUN_ID", run_id)
+    run = _actual_producer_run(
+        tmp_path,
+        run_id,
+        mode=mode,
+    )
+    assert run["status"] == "failed"
+    row = run["comparison_rows"][0]
+    assert row["failure_stage"] == expected_stage
+    assert row["error"]["code"] == expected_code
+    if mode == "prepare_error":
+        assert row["reference_available"] is True
+    if mode == "timeout":
+        assert row["stop_condition"] == runner.ISSUE88_STOP_CONDITION_TIMEOUT
+    if mode == "row_error":
+        assert row["stop_condition"] == runner.ISSUE88_STOP_CONDITION_ROW_ERROR
+    record, raw = _publish_producer_output(tmp_path, run, run_id)
+    assert record["status"] == "failed"
+    assert raw["run"]["comparison_rows"][0]["error"]["code"] == expected_code
+    serialized = (tmp_path / f"record-{run_id}.json").read_text()
+    assert "C:\\Users\\alice" not in serialized
+    assert "kernel error" not in serialized
+    log_text = (tmp_path / "private-logs" / f"issue88-{run_id}.log").read_text()
+    if mode == "prepare_error":
+        assert r"C:\Users\alice\kernel error" in log_text
+    if mode == "cleanup_error":
+        assert r"C:\Users\alice\close error" in log_text
+
+
+def test_issue88_actual_runner_undefined_diagnostic_shapes_publish(tmp_path):
+    run_id = "run-actual-undefined"
+    run = _actual_producer_run(tmp_path, run_id, mode="undefined")
+    assert run["comparison_rows"][0]["status"] == runner.ISSUE88_ROW_STATUS_CORRECTNESS_ONLY
+    record, _raw = _publish_producer_output(tmp_path, run, run_id)
+    beam = record["measurement"]["comparison_rows"][0]["correctness"][
+        "quality_vs_true_inverse"
+    ]["beam_pattern"]
+    assert beam["response_metric_undefined_values"] > 0
+    assert beam["phase_aligned_complex_response_relative_frobenius_error"] is None
+
+
+def test_issue88_missing_telemetry_and_power_trace_failure_shape_publishes(tmp_path):
+    run_id = "run-missing-telemetry"
+    run = _actual_producer_run(tmp_path, run_id, first_launch=True)
+    telemetry = {"status": "failed", "failures": []}
+    record, raw = _publish_producer_output(tmp_path, run, run_id, telemetry)
+    assert record["status"] == "failed"
+    assert record["status_components"]["power_trace"]["ok"] is False
+    assert "power_trace" not in raw["telemetry"]
+
+
+def test_issue88_actual_telemetry_reader_missing_environment_and_trace_publish(tmp_path):
+    run_id = "run-missing-artifacts"
+    missing_dir = tmp_path / "missing"
+    monotonic = [0.0]
+    telemetry = runner._read_telemetry(
+        missing_dir,
+        run_id=run_id,
+        environment_path=missing_dir / f"env-{run_id}.json",
+        power_path=missing_dir / f"power-{run_id}.csv",
+        run_start=RUN_START,
+        run_end=RUN_END,
+        monotonic_fn=lambda: monotonic[0],
+        sleep_fn=lambda seconds: monotonic.__setitem__(0, monotonic[0] + seconds),
+    )
+    run = _actual_producer_run(tmp_path, run_id, first_launch=True)
+    record, raw = _publish_producer_output(tmp_path, run, run_id, telemetry)
+
+    assert record["status"] == "failed"
+    assert telemetry["normalized_environment"] is None
+    assert telemetry["power_trace"]["readable"] is False
+    assert raw["telemetry"]["power_trace"]["readable"] is False
+    assert telemetry["failures"]
+
+
+def test_issue88_shared_publication_vocabularies_are_exact():
+    assert tuple(runner.ISSUE88_PUBLIC_STRING_VALUES) == (
+        "status",
+        "artifact_status",
+        "finite_status",
+        "timing",
+        "stop_condition",
+    )
+    assert tuple(sorted(runner.ISSUE88_PUBLIC_STRING_VALUES["status"])) == (
+        "admitted",
+        "complete",
+        "correctness_only",
+        "failed",
+        "ok",
+        "pass",
+        "passed before allocation",
+        "preflight_rejected",
+        "rejected_before_allocation",
+    )
+    assert tuple(sorted(runner.ISSUE88_PUBLIC_STRING_VALUES["timing"])) == (
+        "not run (--first-launch)",
+    )
+    assert tuple(sorted(runner.ISSUE88_PUBLIC_STRING_VALUES["stop_condition"])) == (
+        "row_error",
+        "row_timeout_s_exceeded",
+    )
+    assert tuple(runner.ISSUE88_STATUS_COMPONENT_CODES.items()) == (
+        ("rows", ("rows_succeeded", "rows_failed")),
+        ("inverse_outputs", ("inverse_outputs_succeeded", "inverse_outputs_failed")),
+        ("board_selection", ("board_selection_succeeded", "board_selection_failed")),
+        ("image_toolchain", ("image_toolchain_succeeded", "image_toolchain_failed")),
+        ("harness", ("harness_succeeded", "harness_failed")),
+        ("power_trace", ("power_trace_succeeded", "power_trace_failed")),
+        ("device_close", ("device_close_succeeded", "device_close_failed")),
+    )
+    assert tuple(sorted(runner.ISSUE88_ERROR_CODES)) == (
+        "artifact_binding_failed",
+        "board_selection_failed",
+        "board_selection_succeeded",
+        "correctness_failed",
+        "device_close_failed",
+        "device_close_succeeded",
+        "device_open_failed",
+        "device_session_failed",
+        "environment_artifact_unreadable",
+        "environment_run_id_missing",
+        "harness_failed",
+        "harness_succeeded",
+        "host_preparation_failed",
+        "image_toolchain_failed",
+        "image_toolchain_succeeded",
+        "inverse_artifact_persistence_failed",
+        "inverse_outputs_failed",
+        "inverse_outputs_succeeded",
+        "power_sample_invalid",
+        "power_timestamp_invalid",
+        "power_trace_failed",
+        "power_trace_incomplete",
+        "power_trace_invalid",
+        "power_trace_no_usable_rows",
+        "power_trace_succeeded",
+        "power_trace_timeout",
+        "power_trace_unreadable",
+        "preflight_rejected",
+        "record_publication_failed",
+        "row_cleanup_failed",
+        "row_execution_failed",
+        "row_timeout",
+        "rows_failed",
+        "rows_succeeded",
+        "run_id_mismatch",
+    )
 
 
 def test_issue88_derived_summary_maps_values_to_source_rows_and_references():
@@ -624,6 +964,35 @@ def test_issue88_valid_power_trace_rows_remain_publishable(tmp_path):
     assert trace["coverage_complete"] is True
     assert statuses["power_trace"]["ok"] is True
     assert runner._status_components_pass(statuses)
+
+
+def test_issue88_alternate_valid_numeric_and_timestamp_encodings_publish(tmp_path):
+    trace = _trace_for_rows(
+        tmp_path,
+        [
+            "2025-12-31T19:00:00-05:00,+7.5e1,1.35E3,6e1\n",
+            "2026-01-01T00:00:02Z,76.0,1350.0,61.0\n",
+        ],
+    )
+
+    assert trace["coverage_complete"] is True
+    assert trace["samples"] == [
+        {
+            "timestamp_utc": "2025-12-31T19:00:00-05:00",
+            "power_w": "+7.5e1",
+            "aiclk_mhz": "1.35E3",
+            "asic_temp_c": "6e1",
+        },
+        {
+            "timestamp_utc": "2026-01-01T00:00:02Z",
+            "power_w": "76.0",
+            "aiclk_mhz": "1350.0",
+            "asic_temp_c": "61.0",
+        },
+    ]
+    assert runner._serialize_record(
+        {"power_trace": runner._public_power_trace(trace)}
+    )
 
 
 def _write_environment(path: Path, *, run_id: str, embedded_run_id: str | None = None) -> None:
@@ -1200,8 +1569,10 @@ def test_issue88_final_allowlist_rejects_unknown_fields_and_error_members(tmp_pa
         "exception_type": "TimeoutError",
         "message": "unapproved text",
     }
+    invalid_public_text = copy.deepcopy(record)
+    invalid_public_text["measurement"]["description"] = "unapproved ordinary text"
 
-    for payload in (invalid_key, invalid_error):
+    for payload in (invalid_key, invalid_error, invalid_public_text):
         with pytest.raises(ValueError, match="record serialization rejected"):
             runner._serialize_record(payload)
 
