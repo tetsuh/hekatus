@@ -9,6 +9,7 @@ import unittest
 from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -588,6 +589,64 @@ class ReferenceTests(unittest.TestCase):
                 None, None, np.zeros((1, 32, 32), dtype=np.complex64), variant="packed_fused"
             )
 
+    def test_prepare_rejects_fp32_r_nonfused_before_device_access_or_allocation(self):
+        for matrix_block in newton_schulz_kernel.MATRIX_BLOCK_CHOICES:
+            for fp32_dest_acc_en in (True, False):
+                with self.subTest(
+                    matrix_block=matrix_block, fp32_dest_acc_en=fp32_dest_acc_en
+                ):
+                    device_calls = []
+                    tensor_allocations = []
+
+                    def compute_grid(calls=device_calls):
+                        calls.append("grid")
+
+                    def record_tensor_allocation(
+                        *_args, allocations=tensor_allocations, **_kwargs
+                    ):
+                        allocations.append("input")
+
+                    device = SimpleNamespace(compute_with_storage_grid_size=compute_grid)
+                    error_pattern = (
+                        "FP32-R.*fuse_s=True.*non-fused data-format reconfiguration "
+                        "precondition is not established"
+                    )
+                    with (
+                        patch.object(
+                            newton_schulz_kernel,
+                            "_device_tensor",
+                            side_effect=record_tensor_allocation,
+                        ),
+                        self.assertRaisesRegex(ValueError, error_pattern),
+                    ):
+                        newton_schulz_kernel.NewtonSchulzKernel.prepare(
+                            SimpleNamespace(),
+                            device,
+                            np.zeros((8, 32, 32), dtype=np.complex64),
+                            variant="fp32-r",
+                            fuse_s=False,
+                            matrix_block=matrix_block,
+                            fp32_dest_acc_en=fp32_dest_acc_en,
+                        )
+
+                    self.assertEqual(device_calls, [])
+                    self.assertEqual(tensor_allocations, [])
+
+    def test_fp32_r_nonfused_l1_preflight_rejects_before_ledger_accounting(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "FP32-R is supported only with fuse_s=True.*precondition is not established",
+        ):
+            newton_schulz_kernel._validate_l1_preflight(
+                SimpleNamespace(),
+                batch=8,
+                core_count=1,
+                state_dtype="bf16",
+                variant="fp32-r",
+                fuse_s=False,
+                matrix_block=8,
+            )
+
     def test_prepare_rejects_empty_batch_before_device_access(self):
         with self.assertRaisesRegex(ValueError, "batch must be positive"):
             newton_schulz_kernel.NewtonSchulzKernel.prepare(
@@ -756,6 +815,89 @@ def test_prepare_deallocates_inputs_when_a_later_input_allocation_fails(monkeypa
     with pytest.raises(RuntimeError, match="input allocation failed"):
         newton_schulz_kernel.NewtonSchulzKernel.prepare(ttnn, None, matrices)
     assert ttnn.deallocated == ["input-0"]
+
+
+def test_prepare_accepts_measured_fp32_r_fused_configuration_with_host_stubs(monkeypatch):
+    class _KernelDescriptor:
+        class SourceType:
+            FILE_PATH = "file"
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _Tensor:
+        def buffer_address(self):
+            return 1
+
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_core_grid",
+        lambda *_args, **_kwargs: ([(0, 0)], object(), [(0, 8)]),
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel, "_validate_core_group_capacities", lambda *_args: None
+    )
+    monkeypatch.setattr(newton_schulz_kernel, "_cb_definitions", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(newton_schulz_kernel, "_tensor_l1_bytes", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(newton_schulz_kernel, "_validate_l1_budget", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_reader_input_dtypes",
+        lambda *_args, **_kwargs: ["bf16"] * 7,
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_reader_input_memories",
+        lambda **_kwargs: ["l1"] * 7,
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel, "_device_tensor", lambda *_args, **_kwargs: _Tensor()
+    )
+    monkeypatch.setattr(newton_schulz_kernel, "_runtime_args", lambda *_args: [])
+
+    ttnn = SimpleNamespace(
+        bfloat16="bf16",
+        float32="fp32",
+        uint32="u32",
+        TILE_LAYOUT="tile",
+        ROW_MAJOR_LAYOUT="row-major",
+        DRAM_MEMORY_CONFIG="dram",
+        L1_MEMORY_CONFIG="l1",
+        MathFidelity=SimpleNamespace(HiFi3="hifi3"),
+        Shape=lambda dimensions: dimensions,
+        allocate_tensor_on_device=lambda *_args: _Tensor(),
+        TensorAccessorArgs=lambda _tensor: SimpleNamespace(get_compile_time_args=list),
+        KernelDescriptor=_KernelDescriptor,
+        ReaderConfigDescriptor=lambda: "reader-config",
+        WriterConfigDescriptor=lambda: "writer-config",
+        ComputeConfigDescriptor=lambda **kwargs: SimpleNamespace(**kwargs),
+        ProgramDescriptor=lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    kernel = newton_schulz_kernel.NewtonSchulzKernel.prepare(
+        ttnn,
+        object(),
+        np.ones((8, 16, 16), dtype=np.complex64),
+        variant="fp32-r",
+        math_fidelity="HiFi3",
+        fuse_s=True,
+        matrix_block=8,
+        double_buffer=True,
+        input_memory="l1",
+        r_memory="l1",
+        x0_memory="l1",
+        output_memory="dram",
+        fp32_dest_acc_en=True,
+        dst_full_sync_en=True,
+    )
+
+    assert kernel.variant == "fp32-r"
+    assert kernel.fuse_s is True
+    assert kernel.matrix_block == 8
+    assert kernel.program.kernels[2].compile_time_args[1] == 0
+    assert kernel.program.kernels[2].config.fp32_dest_acc_en is True
+    assert newton_schulz_kernel._state_dtype(ttnn, kernel.variant) == "bf16"
+    assert newton_schulz_kernel._r_dtype(ttnn, kernel.variant) == "fp32"
 
 
 @pytest.mark.tt_device

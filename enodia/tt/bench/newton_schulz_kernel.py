@@ -244,6 +244,18 @@ def _dest_slots_required(matrix_block: int) -> int:
     return (1 if matrix_block == 8 else 2) * matrix_block
 
 
+def _validate_variant_configuration(variant: str, *, fuse_s: bool) -> None:
+    """Reject variant/fusion combinations without an established data-format path."""
+    if variant not in _SUPPORTED_VARIANTS:
+        raise ValueError(f"unknown kernel variant {variant!r}")
+    if variant == "fp32-r" and not fuse_s:
+        raise ValueError(
+            "variant='fp32-r' with fuse_s=False is unsupported: FP32-R is supported "
+            "only with fuse_s=True because the non-fused data-format reconfiguration "
+            "precondition is not established"
+        )
+
+
 def _validate_matrix_block(
     matrix_block: int,
     *,
@@ -892,6 +904,8 @@ def l1_preflight_breakdown(
     if output_memory is None:
         output_memory = DEFAULT_OUTPUT_MEMORY
     _validate_memory(output_memory, name="output_memory")
+    if variant is not None:
+        _validate_variant_configuration(variant, fuse_s=fuse_s)
     _validate_matrix_block(
         matrix_block,
         fp32_dest_acc_en=fp32_dest_acc_en,
@@ -1195,8 +1209,7 @@ class NewtonSchulzKernel:
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
         iterations = _validate_iterations(iterations, fixed=True)
-        if variant not in _SUPPORTED_VARIANTS:
-            raise ValueError(f"unknown kernel variant {variant!r}")
+        _validate_variant_configuration(variant, fuse_s=fuse_s)
         if output_memory is None:
             output_memory = _output_memory_name()
         else:

@@ -74,6 +74,7 @@ from enodia.tt.bench.newton_schulz_kernel import (
     MATRIX_BLOCK_CHOICES,
     _r_format,
     _resolve_input_memories,
+    _validate_variant_configuration,
 )
 from enodia.tt.bench.profiling import parse_device_profile_csv
 from enodia.tt.bench.shapes import MatmulShape, default_catalogue, total_flops
@@ -601,6 +602,7 @@ def run_custom_newton_schulz(
     )
 
     try:
+        _validate_variant_configuration(variant, fuse_s=fuse_s)
         _validate_matrix_block(
             matrix_block,
             variant=variant,
@@ -1057,6 +1059,12 @@ def _validate(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None
         )
     if args.acceptance_catalogue or issue94_modes:
         return
+
+    if args.kind is None or CUSTOM_KIND in args.kind:
+        try:
+            _validate_variant_configuration(args.custom_variant, fuse_s=args.fuse_s)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     shapes = _select_shapes(default_catalogue(), args.only)
     if not shapes:
