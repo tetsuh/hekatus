@@ -2548,10 +2548,41 @@ diagnostics:
 `docs/measurements/2026-10-04-p150a-newton-schulz-stage2-bf16-provenance-supplement.json`.
 
 The same record separates input representation from solver error: at κ=100,
-BF16 rounding of `R` moves the inverse by about 2.03e-2, the MV direction by
-2.52e-4, and the beam pattern by 1.42e-2 against the unrounded truth, while the
-kernel is about 3.67e-3 from the BF16-`R` reference. The production `R` format
-remains a follow-up decision; no FP32-`R` device variant has been measured.
+BF16 rounding of `R` moves the inverse by about 2.03e-2 and the MV direction by
+2.52e-4 against the unrounded truth, while the kernel is about 3.67e-3 from the
+BF16-`R` reference. The historical Issue #88 source beam-pattern result in
+`docs/measurements/2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json`
+and its prior derived summary remain unchanged, but their beam values are
+invalid: `_weight` used `einsum("j,bi->b", ...)`, summing independent steering
+and weight vectors rather than computing `aᴴPa`. For the equal-spaced
+half-wavelength 16/32-element array, the steering-vector sum approaches zero
+at ±30°, making that mistaken denominator singular and producing huge
+phase-sensitive response errors. The corrected contraction is
+`einsum("j,bj->b", ...)`, and output labels phase-sensitive complex response
+separately from best-complex-scalar phase-aligned complex response, magnitude
+response, and normalized dB/floored pattern metrics. The source audit of the
+separate real/imaginary planes, complex multiply signs, L=16 packing/unpacking,
+downloads, and complex reconstruction found no conjugation or transpose defect.
+
+The final runner retake is
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`,
+with authoritative derived companion
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
+and same-stem power companion
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
+The summary names and hashes the byte-preserved primary, inherits its ADR-0005
+provenance, and mechanically derives matched-placement inverse, MV, all four
+beam, P50 TFLOPS, latency, and L1 differences. The primary supersedes the
+immutable 2026-10-09 retake JSON, summary JSON, L1-accounting JSON, and
+companion CSV because it carries the complete L1 ledger and final evidence;
+none of those historical artifacts is rewritten. It retains every measured
+inverse and compares all four beam diagnostics, MV weight direction, and
+inverse error against one common true inverse of the original FP32 `R`; the dB
+pattern uses the explicit -120 dB amplitude floor. The historical conclusion
+that FP32-`R` worsens beam-pattern error is withdrawn and replaced by this
+corrected device evidence. The `R` representation remains open for owner
+decision, and the final record's immutable power snapshot records its SHA-256,
+sample count, and end-coverage definition.
 
 ### Investigation items
 

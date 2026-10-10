@@ -5,9 +5,10 @@ accounting and reference tests therefore do not acquire a toolchain dependency.
 The throughput variants use 32x32 tiles and a fixed twelve-iteration inverse.
 Issue #100's block-8 default is fail-fast when DEST or L1 preflight rejects it;
 no implicit block or memory fallback is performed.
-L=16 inputs are paired on the diagonal of each 32x32 tile.  The first variant
-keeps BF16 state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X, S,
-products, state, and outputs.
+L=16 inputs are paired on the diagonal of each 32x32 tile.  ``bf16`` keeps
+BF16 R and state; ``bf16-fp32state`` keeps R in BF16 while using FP32 for X,
+S, products, state, and outputs; ``fp32-r`` keeps BF16 state while storing R in
+FP32.
 """
 
 from __future__ import annotations
@@ -21,8 +22,9 @@ import numpy as np
 
 NEWTON_SCHULZ_ITERATIONS = 12
 COMPLEX_MATMULS_PER_INVERSE = 2 * NEWTON_SCHULZ_ITERATIONS
+BENCHMARK_INPUT_SEED = 6300
 MATH_FIDELITY_CHOICES = ("LoFi", "HiFi2", "HiFi3", "HiFi4")
-_SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state")
+_SUPPORTED_VARIANTS = ("bf16", "bf16-fp32state", "fp32-r")
 _VARIANTS = {name: name == "bf16-fp32state" for name in _SUPPORTED_VARIANTS}
 MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
 INPUT_MEMORY_CHOICES = ("l1", "dram")
@@ -242,6 +244,18 @@ def _dest_slots_required(matrix_block: int) -> int:
     return (1 if matrix_block == 8 else 2) * matrix_block
 
 
+def _validate_variant_configuration(variant: str, *, fuse_s: bool) -> None:
+    """Reject variant/fusion combinations without an established data-format path."""
+    if variant not in _SUPPORTED_VARIANTS:
+        raise ValueError(f"unknown kernel variant {variant!r}")
+    if variant == "fp32-r" and not fuse_s:
+        raise ValueError(
+            "variant='fp32-r' with fuse_s=False is unsupported: FP32-R is supported "
+            "only with fuse_s=True because the non-fused data-format reconfiguration "
+            "precondition is not established"
+        )
+
+
 def _validate_matrix_block(
     matrix_block: int,
     *,
@@ -400,12 +414,16 @@ def _reader_input_values(
     return r_inputs
 
 
-def _reader_input_dtypes(ttnn, state_dtype, *, fuse_s: bool) -> list[Any]:
+def _reader_input_dtypes(
+    ttnn, state_dtype, *, fuse_s: bool, r_dtype=None
+) -> list[Any]:
     """Return dtypes matching ``_reader_input_values`` and its constants."""
+    if r_dtype is None:
+        r_dtype = ttnn.bfloat16
     return [
-        ttnn.bfloat16,
-        ttnn.bfloat16,
-        ttnn.bfloat16,
+        r_dtype,
+        r_dtype,
+        r_dtype,
         state_dtype,
         state_dtype,
         ttnn.bfloat16 if fuse_s else ttnn.float32,
@@ -554,6 +572,20 @@ def _state_dtype(ttnn, variant: str):
     return ttnn.float32 if variant == "bf16-fp32state" else ttnn.bfloat16
 
 
+def _r_dtype(ttnn, variant: str):
+    """Return the R dtype selected by a throughput variant."""
+    if variant not in _SUPPORTED_VARIANTS:
+        raise ValueError(f"unknown kernel variant {variant!r}")
+    return ttnn.float32 if variant == "fp32-r" else ttnn.bfloat16
+
+
+def _r_format(variant: str) -> str:
+    """Return the serialized R format name for a throughput variant."""
+    if variant not in _SUPPORTED_VARIANTS:
+        raise ValueError(f"unknown kernel variant {variant!r}")
+    return "FP32" if variant == "fp32-r" else "BF16"
+
+
 def _output_memory_name() -> str:
     """Return the default output placement for the public API."""
     return DEFAULT_OUTPUT_MEMORY
@@ -613,12 +645,15 @@ def _cb_definitions(
     fuse_s: bool = False,
     matrix_block: int = 1,
     double_buffer: bool = False,
+    r_dtype=None,
 ) -> dict[int, tuple[Any, int]]:
     """Describe CB formats, optionally exposing two block input/output windows."""
     _validate_matrix_block(matrix_block)
+    if r_dtype is None:
+        r_dtype = ttnn.bfloat16
     definitions = {
-        CB_R_NEG_IMAG: (ttnn.bfloat16, 2),
-        CB_R_IMAG: (ttnn.bfloat16, 2),
+        CB_R_NEG_IMAG: (r_dtype, 2),
+        CB_R_IMAG: (r_dtype, 2),
         CB_X0_REAL: (state_dtype, 2),
         CB_X0_IMAG: (state_dtype, 2),
         # Fused S starts each DEST tile from host-prepared BF16 2I.  The
@@ -633,7 +668,7 @@ def _cb_definitions(
         CB_PRODUCT_IMAG: (ttnn.float32, 1),
         CB_NEG_X_IMAG: (state_dtype, 1),
         # CB14 is a second resident R input only for fused S.
-        CB_R_NEG_REAL: (ttnn.bfloat16, 1),
+        CB_R_NEG_REAL: (r_dtype, 1),
         CB_OUTPUT_REAL: (state_dtype, 2),
         CB_OUTPUT_IMAG: (state_dtype, 2),
     }
@@ -641,7 +676,7 @@ def _cb_definitions(
         # Preserve the baseline descriptor and its ABI index exactly.  Fused S
         # has no positive R-real reader input, so CB index 0 is intentionally
         # absent rather than renumbering any shared CB.
-        definitions[CB_R_REAL] = (ttnn.bfloat16, 2)
+        definitions[CB_R_REAL] = (r_dtype, 2)
         definitions = {CB_R_REAL: definitions.pop(CB_R_REAL), **definitions}
     if profile:
         definitions.update(
@@ -708,6 +743,64 @@ def _cb_l1_bytes(ttnn, definitions: dict[int, tuple[Any, int]]) -> int:
     return sum(_cb_l1_bytes_by_name(ttnn, definitions).values())
 
 
+def _tensor_l1_bytes_by_name(
+    ttnn,
+    *,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    fuse_s: bool,
+    output_memory: str,
+    input_memory: str = "l1",
+    r_memory: str | None = None,
+    x0_memory: str | None = None,
+    matrix_block: int = 1,
+    r_dtype=None,
+) -> dict[str, int]:
+    """Return the largest assigned core's tensor footprint by tensor item.
+
+    Reader inputs and the identity/zero constants are device tensors.  R and
+    X0 use independent placements; the compatibility shorthand controls both
+    groups when their explicit values are absent.  The resident constants
+    continue to follow that shorthand.  Interleaved DRAM inputs contribute no
+    tensor bytes here because their pages are fetched into the CBs.
+    """
+    input_memory, r_memory, x0_memory = _resolve_input_memories(
+        input_memory, r_memory=r_memory, x0_memory=x0_memory
+    )
+    _validate_matrix_block(matrix_block)
+    if r_dtype is None:
+        r_dtype = ttnn.bfloat16
+    tiles_per_core = max(
+        count for _, count in _balanced_ranges(batch, core_count, matrix_block)
+    )
+    r_bytes = 0
+    if r_memory == "l1":
+        # Fused S uses signed (-R_re, +R_im, -R_im) pages; the positive
+        # R-real tensor is omitted.  The non-fused ABI also has three R pages.
+        r_bytes = 3 * _cb_page_size(ttnn, r_dtype)
+    x0_bytes = 0
+    if x0_memory == "l1":
+        x0_bytes = 2 * _cb_page_size(ttnn, state_dtype)
+    identity_bytes = 0
+    zero_bytes = 0
+    if input_memory == "l1":
+        identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
+        identity_bytes = _cb_page_size(ttnn, identity_dtype)
+        zero_bytes = _cb_page_size(ttnn, ttnn.float32)
+    _validate_memory(output_memory, name="output_memory")
+    output_bytes = 0
+    if output_memory == "l1":
+        output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
+    return {
+        "R": tiles_per_core * r_bytes,
+        "X0": tiles_per_core * x0_bytes,
+        "identity": identity_bytes,
+        "zero": zero_bytes,
+        "output": tiles_per_core * output_bytes,
+    }
+
+
 def _tensor_l1_bytes(
     ttnn,
     *,
@@ -720,39 +813,24 @@ def _tensor_l1_bytes(
     r_memory: str | None = None,
     x0_memory: str | None = None,
     matrix_block: int = 1,
+    r_dtype=None,
 ) -> int:
-    """Estimate the largest assigned core's tensor footprint.
-
-    Reader inputs and the identity/zero constants are device tensors.  R and
-    X0 use independent placements; the compatibility shorthand controls both
-    groups when their explicit values are absent.  The resident constants
-    continue to follow that shorthand.  Interleaved DRAM inputs contribute no
-    tensor bytes here because their pages are fetched into the CBs.
-    """
-    input_memory, r_memory, x0_memory = _resolve_input_memories(
-        input_memory, r_memory=r_memory, x0_memory=x0_memory
+    """Estimate the largest assigned core's total tensor footprint."""
+    return sum(
+        _tensor_l1_bytes_by_name(
+            ttnn,
+            batch=batch,
+            core_count=core_count,
+            state_dtype=state_dtype,
+            fuse_s=fuse_s,
+            output_memory=output_memory,
+            input_memory=input_memory,
+            r_memory=r_memory,
+            x0_memory=x0_memory,
+            matrix_block=matrix_block,
+            r_dtype=r_dtype,
+        ).values()
     )
-    _validate_matrix_block(matrix_block)
-    tiles_per_core = max(
-        count for _, count in _balanced_ranges(batch, core_count, matrix_block)
-    )
-    r_bytes = 0
-    if r_memory == "l1":
-        # Fused S uses signed (-R_re, +R_im, -R_im) pages; the positive
-        # R-real tensor is omitted.  The non-fused ABI also has three R pages.
-        r_bytes = 3 * _cb_page_size(ttnn, ttnn.bfloat16)
-    x0_bytes = 0
-    if x0_memory == "l1":
-        x0_bytes = 2 * _cb_page_size(ttnn, state_dtype)
-    resident_bytes = 0
-    if input_memory == "l1":
-        identity_dtype = ttnn.bfloat16 if fuse_s else ttnn.float32
-        resident_bytes = _cb_page_size(ttnn, identity_dtype) + _cb_page_size(ttnn, ttnn.float32)
-    _validate_memory(output_memory, name="output_memory")
-    output_bytes = 0
-    if output_memory == "l1":
-        output_bytes = 2 * _cb_page_size(ttnn, state_dtype)
-    return tiles_per_core * (r_bytes + x0_bytes + output_bytes) + resident_bytes
 
 
 def _format_cb_bytes(entries: list[tuple[str, int]]) -> str:
@@ -767,6 +845,7 @@ def _l1_budget_breakdown(
     definitions: dict[int, tuple[Any, int]],
     *,
     tensor_bytes: int,
+    tensor_bytes_by_name: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Return all host-side L1 accounting fields used by the preflight error."""
     cb_bytes_by_name = _cb_l1_bytes_by_name(ttnn, definitions)
@@ -789,6 +868,7 @@ def _l1_budget_breakdown(
         "cb_entries": cb_entries,
         "static_prefix_bytes": _L1_STATIC_BASE_BYTES,
         "tensor_bytes": tensor_bytes,
+        "tensor_bytes_by_name": dict(tensor_bytes_by_name or {}),
         "total_bytes": total_bytes,
         "budget_bytes": _L1_TOTAL_BUDGET_BYTES,
         "largest_cbs": largest_cbs,
@@ -798,15 +878,84 @@ def _l1_budget_breakdown(
     }
 
 
-def _validate_l1_budget(
+def l1_preflight_breakdown(
     ttnn,
-    definitions: dict[int, tuple[Any, int]],
     *,
-    tensor_bytes: int = 0,
-    matrix_block: int | None = None,
+    batch: int,
+    core_count: int,
+    state_dtype,
+    profile: bool = False,
+    fuse_s: bool = DEFAULT_FUSE_S,
+    output_memory: str = DEFAULT_OUTPUT_MEMORY,
+    input_memory: str = "l1",
+    r_memory: str | None = None,
+    x0_memory: str | None = None,
+    matrix_block: int = DEFAULT_MATRIX_BLOCK,
+    double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
+    r_dtype=None,
+    variant: str | None = DEFAULT_VARIANT,
+    fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
+    dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
+) -> dict[str, Any]:
+    """Return the exact host-side L1 preflight ledger without allocating."""
+    input_memory, r_memory, x0_memory = _resolve_input_memories(
+        input_memory, r_memory=r_memory, x0_memory=x0_memory
+    )
+    if output_memory is None:
+        output_memory = DEFAULT_OUTPUT_MEMORY
+    _validate_memory(output_memory, name="output_memory")
+    if variant is not None:
+        _validate_variant_configuration(variant, fuse_s=fuse_s)
+    _validate_matrix_block(
+        matrix_block,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
+        variant=variant,
+    )
+    if r_dtype is None:
+        r_dtype = _r_dtype(ttnn, variant) if variant is not None else ttnn.bfloat16
+    definitions = _cb_definitions(
+        ttnn,
+        state_dtype,
+        profile=profile,
+        fuse_s=fuse_s,
+        matrix_block=matrix_block,
+        double_buffer=double_buffer,
+        r_dtype=r_dtype,
+    )
+    tensor_bytes_by_name = _tensor_l1_bytes_by_name(
+        ttnn,
+        batch=batch,
+        core_count=core_count,
+        state_dtype=state_dtype,
+        fuse_s=fuse_s,
+        output_memory=output_memory,
+        input_memory=input_memory,
+        r_memory=r_memory,
+        x0_memory=x0_memory,
+        matrix_block=matrix_block,
+        r_dtype=r_dtype,
+    )
+    breakdown = _l1_budget_breakdown(
+        ttnn,
+        definitions,
+        tensor_bytes=sum(tensor_bytes_by_name.values()),
+        tensor_bytes_by_name=tensor_bytes_by_name,
+    )
+    breakdown["placement"] = {
+        "R": r_memory,
+        "X0": x0_memory,
+        "identity": input_memory,
+        "zero": input_memory,
+        "output": output_memory,
+    }
+    return breakdown
+
+
+def _validate_l1_breakdown(
+    breakdown: dict[str, Any], *, matrix_block: int | None = None
 ) -> int:
-    """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
-    breakdown = _l1_budget_breakdown(ttnn, definitions, tensor_bytes=tensor_bytes)
+    """Reject one already-computed CB/tensor ledger when it exceeds a budget."""
     if breakdown["cb_budget_overage"] or breakdown["total_budget_overage"]:
         largest = _format_cb_bytes(breakdown["largest_cbs"])
         over_budget = _format_cb_bytes(breakdown["over_budget_cbs"]) or "none"
@@ -831,6 +980,18 @@ def _validate_l1_budget(
     return breakdown["total_bytes"]
 
 
+def _validate_l1_budget(
+    ttnn,
+    definitions: dict[int, tuple[Any, int]],
+    *,
+    tensor_bytes: int = 0,
+    matrix_block: int | None = None,
+) -> int:
+    """Reject CBs plus tensors that cannot coexist in one Tensix L1."""
+    breakdown = _l1_budget_breakdown(ttnn, definitions, tensor_bytes=tensor_bytes)
+    return _validate_l1_breakdown(breakdown, matrix_block=matrix_block)
+
+
 def _validate_l1_preflight(
     ttnn,
     *,
@@ -845,6 +1006,7 @@ def _validate_l1_preflight(
     x0_memory: str | None = None,
     matrix_block: int = DEFAULT_MATRIX_BLOCK,
     double_buffer: bool = DEFAULT_DOUBLE_BUFFER,
+    r_dtype=None,
     variant: str | None = DEFAULT_VARIANT,
     fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
     dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
@@ -854,44 +1016,25 @@ def _validate_l1_preflight(
     The Issue #100 defaults fail fast when this budget is exceeded; callers must
     select an explicit block or memory placement rather than receiving a fallback.
     """
-    input_memory, r_memory, x0_memory = _resolve_input_memories(
-        input_memory, r_memory=r_memory, x0_memory=x0_memory
-    )
-    if output_memory is None:
-        output_memory = DEFAULT_OUTPUT_MEMORY
-    _validate_memory(output_memory, name="output_memory")
-    _validate_matrix_block(
-        matrix_block,
-        fp32_dest_acc_en=fp32_dest_acc_en,
-        dst_full_sync_en=dst_full_sync_en,
-        variant=variant,
-    )
-    definitions = _cb_definitions(
-        ttnn,
-        state_dtype,
-        profile=profile,
-        fuse_s=fuse_s,
-        matrix_block=matrix_block,
-        double_buffer=double_buffer,
-    )
-    tensor_bytes = _tensor_l1_bytes(
+    breakdown = l1_preflight_breakdown(
         ttnn,
         batch=batch,
         core_count=core_count,
         state_dtype=state_dtype,
+        profile=profile,
         fuse_s=fuse_s,
         output_memory=output_memory,
         input_memory=input_memory,
         r_memory=r_memory,
         x0_memory=x0_memory,
         matrix_block=matrix_block,
+        double_buffer=double_buffer,
+        r_dtype=r_dtype,
+        variant=variant,
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=dst_full_sync_en,
     )
-    return _validate_l1_budget(
-        ttnn,
-        definitions,
-        tensor_bytes=tensor_bytes,
-        matrix_block=matrix_block,
-    )
+    return _validate_l1_breakdown(breakdown, matrix_block=matrix_block)
 
 
 def _decode_counter_page(
@@ -989,7 +1132,9 @@ def _decode_counter_page(
     }
 
 
-def benchmark_matrices(batch: int, size: int = _TILE, *, seed: int = 6300) -> np.ndarray:
+def benchmark_matrices(
+    batch: int, size: int = _TILE, *, seed: int = BENCHMARK_INPUT_SEED
+) -> np.ndarray:
     """Return deterministic non-zero inputs for a throughput run."""
     if batch < 1 or size not in (16, _TILE):
         raise ValueError(f"benchmark inputs require a positive batch and size 16 or {_TILE}")
@@ -1064,8 +1209,7 @@ class NewtonSchulzKernel:
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
         iterations = _validate_iterations(iterations, fixed=True)
-        if variant not in _SUPPORTED_VARIANTS:
-            raise ValueError(f"unknown kernel variant {variant!r}")
+        _validate_variant_configuration(variant, fuse_s=fuse_s)
         if output_memory is None:
             output_memory = _output_memory_name()
         else:
@@ -1086,6 +1230,7 @@ class NewtonSchulzKernel:
             raise ValueError("batch must be positive")
         if size not in (16, _TILE):
             raise ValueError(f"the throughput kernel only supports L=16 or L={_TILE}, got {size}")
+        r_dtype = _r_dtype(ttnn, variant)
         packed = size == 16
         physical_tile_count = _physical_tile_count(batch, size)
         tile_count = _padded_tile_count(physical_tile_count, matrix_block)
@@ -1112,6 +1257,7 @@ class NewtonSchulzKernel:
             fuse_s=fuse_s,
             matrix_block=matrix_block,
             double_buffer=double_buffer,
+            r_dtype=r_dtype,
         )
         tensor_l1_bytes = _tensor_l1_bytes(
             ttnn,
@@ -1124,6 +1270,7 @@ class NewtonSchulzKernel:
             r_memory=r_memory,
             x0_memory=x0_memory,
             matrix_block=matrix_block,
+            r_dtype=r_dtype,
         )
         _validate_l1_budget(
             ttnn,
@@ -1131,7 +1278,9 @@ class NewtonSchulzKernel:
             tensor_bytes=tensor_l1_bytes,
             matrix_block=matrix_block,
         )
-        input_dtypes = _reader_input_dtypes(ttnn, state_dtype, fuse_s=fuse_s)
+        input_dtypes = _reader_input_dtypes(
+            ttnn, state_dtype, fuse_s=fuse_s, r_dtype=r_dtype
+        )
         input_memories = _reader_input_memories(
             input_memory=input_memory, r_memory=r_memory, x0_memory=x0_memory
         )

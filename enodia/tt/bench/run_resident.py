@@ -13,7 +13,6 @@ import datetime
 import json
 import math
 import os
-import re
 import struct
 import sys
 from pathlib import Path
@@ -46,6 +45,7 @@ from enodia.tt.bench.resident_harness import (
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
+from enodia.tt.bench.run_binding import current_run_id, run_artifact_path
 from enodia.tt.bench.telemetry import parse_power_trace
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
@@ -422,17 +422,11 @@ def _run_device(
                 pass
 
 
-_SAFE_RUN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\Z")
-
-
 def _environment_output_path() -> Path:
-    run_id = os.environ.get("HEKATUS_TT_RUN_ID")
-    if run_id is None or _SAFE_RUN_ID.fullmatch(run_id) is None:
-        raise ValueError(
-            "HEKATUS_TT_RUN_ID must be a nonempty safe filename component "
-            "when --env-json is omitted"
-        )
-    return Path("/out") / f"env-{run_id}.json"
+    """Return the wrapper's exact environment artifact for this run."""
+    return run_artifact_path(
+        Path("/out"), prefix="env-", suffix=".json", run_id=current_run_id()
+    )
 
 
 def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:

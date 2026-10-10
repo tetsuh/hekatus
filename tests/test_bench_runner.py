@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from enodia.tt.bench import run_matmul
+from enodia.tt.bench import newton_schulz_kernel, run_matmul
 from enodia.tt.bench.configs import configuration_catalogue
 from enodia.tt.bench.newton_schulz_reference import (
     COMPLEX_MATMULS_PER_INVERSE,
@@ -741,6 +741,91 @@ def test_inputs_are_released_even_when_a_shape_fails():
     )
 
     assert len([n for n in ttnn.deallocated if n.startswith(("rand", "ones", "zeros"))]) == 2
+
+
+def test_fp32_r_nonfused_cli_fails_before_ttnn_import(monkeypatch, capsys):
+    original_import = builtins.__import__
+
+    def reject_ttnn_import(name, *args, **kwargs):
+        if name == "ttnn":
+            raise AssertionError("invalid FP32-R arguments imported ttnn")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", reject_ttnn_import)
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_matmul.main(["--custom-variant", "fp32-r", "--no-fuse-s"])
+
+    assert excinfo.value.code == 2
+    assert "FP32-R is supported only with fuse_s=True" in capsys.readouterr().err
+
+
+def test_fp32_r_measured_cli_configuration_is_accepted_before_device_import():
+    parser = run_matmul._build_parser()
+    args = parser.parse_args(
+        ["--custom-variant", "fp32-r", "--fuse-s", "--matrix-block", "8"]
+    )
+
+    run_matmul._validate(parser, args)
+    newton_schulz_kernel._validate_variant_configuration(
+        args.custom_variant, fuse_s=args.fuse_s
+    )
+    newton_schulz_kernel._validate_matrix_block(
+        args.matrix_block,
+        variant=args.custom_variant,
+        fp32_dest_acc_en=args.fp32_dest_acc_en,
+        dst_full_sync_en=args.dst_full_sync_en,
+    )
+    assert newton_schulz_kernel._state_dtype(
+        SimpleNamespace(bfloat16="bf16", float32="fp32"), args.custom_variant
+    ) == "bf16"
+    assert args.fp32_dest_acc_en is True
+    assert args.dst_full_sync_en is True
+
+
+@pytest.mark.parametrize("matrix_block", newton_schulz_kernel.MATRIX_BLOCK_CHOICES)
+@pytest.mark.parametrize("fp32_dest_acc_en", [True, False])
+def test_fp32_r_fused_variant_keeps_host_supported_block_and_dest_controls(
+    matrix_block, fp32_dest_acc_en
+):
+    newton_schulz_kernel._validate_variant_configuration("fp32-r", fuse_s=True)
+    newton_schulz_kernel._validate_matrix_block(
+        matrix_block,
+        variant="fp32-r",
+        fp32_dest_acc_en=fp32_dest_acc_en,
+        dst_full_sync_en=True,
+    )
+
+
+def test_fp32_r_nonfused_runner_preflight_rejects_before_l1_accounting(monkeypatch):
+    shape = MatmulShape(
+        name="newton_schulz_L32_b8192",
+        batch=8192,
+        m=32,
+        k=32,
+        n=32,
+        real_matmuls=1,
+        family="newton_schulz",
+        note="",
+    )
+    monkeypatch.setattr(
+        newton_schulz_kernel,
+        "_validate_l1_preflight",
+        lambda *_args, **_kwargs: pytest.fail("invalid configuration reached L1 preflight"),
+    )
+
+    record = run_matmul.run_custom_newton_schulz(
+        SimpleNamespace(),
+        object(),
+        shape,
+        dtype_name="bfloat16",
+        memory_name="l1",
+        variant="fp32-r",
+        fuse_s=False,
+    )
+
+    assert record["status"] == "failed"
+    assert "FP32-R is supported only with fuse_s=True" in record["error"]
 
 
 @pytest.mark.parametrize(

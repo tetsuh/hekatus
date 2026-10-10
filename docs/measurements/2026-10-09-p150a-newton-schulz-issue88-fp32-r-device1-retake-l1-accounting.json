@@ -1,0 +1,860 @@
+{
+  "artifact_schema": "issue88-l1-accounting-v1",
+  "finding": "CONV-109-L1-ACCOUNTING",
+  "issue": "#88",
+  "source_record": {
+    "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+    "sha256": "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567",
+    "immutable": true
+  },
+  "harness_commit": "79d215141e4d64752c8cdc048dcaccc73be1e013",
+  "derivation": {
+    "kind": "host-derived deterministic evidence",
+    "board_run_performed": false,
+    "accounting_module": "enodia.tt.bench.newton_schulz_kernel",
+    "accounting_functions": [
+      "_physical_tile_count",
+      "_padded_tile_count",
+      "_cb_definitions",
+      "_cb_l1_bytes_by_name",
+      "_cb_page_size",
+      "_tensor_l1_bytes",
+      "_l1_budget_breakdown",
+      "_validate_l1_preflight"
+    ],
+    "method": "Executed the pinned harness module at harness_commit. CB entries and total come directly from its definitions and _l1_budget_breakdown. Tensor item bytes are exact placement-isolation calls to _tensor_l1_bytes, with singleton identity/zero pages returned by _cb_page_size; no manual formulas or rounding.",
+    "accounting_scope": "largest assigned core; interleaved DRAM tensor pages contribute zero L1 tensor bytes",
+    "source_record_unchanged": true
+  },
+  "fixed_controls": {
+    "core_count": 110,
+    "batch": 8192,
+    "iterations": 12,
+    "initial_value": "I/||R||inf",
+    "state_format": "BF16",
+    "destination_format": "FP32",
+    "fp32_dest_acc_en": true,
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "matrix_block": 8,
+    "double_buffer": true,
+    "dst_full_sync_en": true,
+    "input_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "profile": false,
+    "batch_reads": false,
+    "reload_r": false
+  },
+  "input_sizes": [
+    {
+      "L": 16,
+      "logical_batch": 8192,
+      "physical_tile_count": 4096,
+      "padded_tile_count": 4096
+    },
+    {
+      "L": 32,
+      "logical_batch": 8192,
+      "physical_tile_count": 8192,
+      "padded_tile_count": 8192
+    }
+  ],
+  "l1_budget": {
+    "total_bytes": 1572864,
+    "circular_buffer_bytes": 1300000,
+    "static_prefix_bytes": 111360,
+    "unit": "bytes"
+  },
+  "rows": [
+    {
+      "row": "bf16-r-L16",
+      "variant": "BF16-R",
+      "L": 16,
+      "batch": 8192,
+      "physical_tile_count": 4096,
+      "padded_tile_count": 4096,
+      "R_placement": "L1",
+      "placement": {
+        "R": "L1",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 358400,
+        "tensor_items": {
+          "R": {
+            "bytes": 245760,
+            "placement": "L1"
+          },
+          "X0": {
+            "bytes": 163840,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 415744,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 885504,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 941600,
+        "overage_bytes": 0,
+        "headroom_bytes": 687360
+      },
+      "preflight": {
+        "status": "admitted",
+        "accepted": true,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "accepted",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    },
+    {
+      "row": "fp32-r-L16",
+      "variant": "FP32-R",
+      "L": 16,
+      "batch": 8192,
+      "physical_tile_count": 4096,
+      "padded_tile_count": 4096,
+      "R_placement": "L1",
+      "placement": {
+        "R": "L1",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 65536,
+          "CB_R_IMAG": 65536,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 65536,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 456704,
+        "tensor_items": {
+          "R": {
+            "bytes": 491520,
+            "placement": "L1"
+          },
+          "X0": {
+            "bytes": 163840,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 661504,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 1229568,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 843296,
+        "overage_bytes": 0,
+        "headroom_bytes": 343296
+      },
+      "preflight": {
+        "status": "admitted",
+        "accepted": true,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "accepted",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    },
+    {
+      "row": "bf16-r-L32",
+      "variant": "BF16-R",
+      "L": 32,
+      "batch": 8192,
+      "physical_tile_count": 8192,
+      "padded_tile_count": 8192,
+      "R_placement": "L1",
+      "placement": {
+        "R": "L1",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 358400,
+        "tensor_items": {
+          "R": {
+            "bytes": 491520,
+            "placement": "L1"
+          },
+          "X0": {
+            "bytes": 327680,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 825344,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 1295104,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 941600,
+        "overage_bytes": 0,
+        "headroom_bytes": 277760
+      },
+      "preflight": {
+        "status": "admitted",
+        "accepted": true,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "accepted",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    },
+    {
+      "row": "bf16-r-L32-r-dram",
+      "variant": "BF16-R",
+      "L": 32,
+      "batch": 8192,
+      "physical_tile_count": 8192,
+      "padded_tile_count": 8192,
+      "R_placement": "DRAM",
+      "placement": {
+        "R": "DRAM",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 358400,
+        "tensor_items": {
+          "R": {
+            "bytes": 0,
+            "placement": "DRAM"
+          },
+          "X0": {
+            "bytes": 327680,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 803584,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 941600,
+        "overage_bytes": 0,
+        "headroom_bytes": 769280
+      },
+      "preflight": {
+        "status": "admitted",
+        "accepted": true,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "accepted",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    },
+    {
+      "row": "fp32-r-L32-r-dram",
+      "variant": "FP32-R",
+      "L": 32,
+      "batch": 8192,
+      "physical_tile_count": 8192,
+      "padded_tile_count": 8192,
+      "R_placement": "DRAM",
+      "placement": {
+        "R": "DRAM",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 65536,
+          "CB_R_IMAG": 65536,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 65536,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 456704,
+        "tensor_items": {
+          "R": {
+            "bytes": 0,
+            "placement": "DRAM"
+          },
+          "X0": {
+            "bytes": 327680,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 901888,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 843296,
+        "overage_bytes": 0,
+        "headroom_bytes": 670976
+      },
+      "preflight": {
+        "status": "admitted",
+        "accepted": true,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "accepted",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    },
+    {
+      "row": "fp32-r-L32",
+      "variant": "FP32-R",
+      "L": 32,
+      "batch": 8192,
+      "physical_tile_count": 8192,
+      "padded_tile_count": 8192,
+      "R_placement": "L1",
+      "placement": {
+        "R": "L1",
+        "X0": "L1",
+        "identity": "L1",
+        "zero": "L1",
+        "output": "DRAM",
+        "compute": "L1"
+      },
+      "byte_breakdown": {
+        "circular_buffers": {
+          "CB_R_NEG_IMAG": 65536,
+          "CB_R_IMAG": 65536,
+          "CB_X0_REAL": 32768,
+          "CB_X0_IMAG": 32768,
+          "CB_IDENTITY": 2048,
+          "CB_ZERO": 4096,
+          "CB_STATE_REAL": 32768,
+          "CB_STATE_IMAG": 32768,
+          "CB_S_REAL": 16384,
+          "CB_S_IMAG": 16384,
+          "CB_PRODUCT_REAL": 4096,
+          "CB_PRODUCT_IMAG": 4096,
+          "CB_NEG_X_IMAG": 16384,
+          "CB_R_NEG_REAL": 65536,
+          "CB_OUTPUT_REAL": 32768,
+          "CB_OUTPUT_IMAG": 32768
+        },
+        "cb_bytes": 456704,
+        "tensor_items": {
+          "R": {
+            "bytes": 983040,
+            "placement": "L1"
+          },
+          "X0": {
+            "bytes": 327680,
+            "placement": "L1"
+          },
+          "identity": {
+            "bytes": 2048,
+            "placement": "L1"
+          },
+          "zero": {
+            "bytes": 4096,
+            "placement": "L1"
+          },
+          "output": {
+            "bytes": 0,
+            "placement": "DRAM"
+          }
+        },
+        "tensor_bytes": 1316864,
+        "static_prefix_bytes": 111360,
+        "total_bytes": 1884928,
+        "budget_bytes": 1572864,
+        "cb_budget_bytes": 1300000,
+        "cb_budget_overage_bytes": 0,
+        "cb_budget_headroom_bytes": 843296,
+        "overage_bytes": 312064,
+        "headroom_bytes": 0
+      },
+      "preflight": {
+        "status": "rejected_before_allocation",
+        "accepted": false,
+        "allocation_attempted": false,
+        "launches": 0
+      },
+      "status": "rejected",
+      "controls": {
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "input_memory": "l1",
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      }
+    }
+  ],
+  "matched_configuration_differences": [
+    {
+      "name": "BF16-R/L16 vs FP32-R/L16 (same R-in-L1)",
+      "rows": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "same_controls": [
+        "batch",
+        "iterations",
+        "initial_value",
+        "state_format",
+        "destination_format",
+        "fp32_dest_acc_en",
+        "math_fidelity",
+        "fuse_s",
+        "matrix_block",
+        "double_buffer",
+        "dst_full_sync_en",
+        "input_memory",
+        "x0_memory",
+        "output_memory"
+      ],
+      "same_placement_except_R_format": true,
+      "R_placement": "L1",
+      "R_format_change": [
+        "BF16-R",
+        "FP32-R"
+      ],
+      "status": [
+        "accepted",
+        "accepted"
+      ],
+      "byte_differences_right_minus_left": {
+        "circular_buffers_total": 98304,
+        "circular_buffers_by_name": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 0,
+          "CB_X0_IMAG": 0,
+          "CB_IDENTITY": 0,
+          "CB_ZERO": 0,
+          "CB_STATE_REAL": 0,
+          "CB_STATE_IMAG": 0,
+          "CB_S_REAL": 0,
+          "CB_S_IMAG": 0,
+          "CB_PRODUCT_REAL": 0,
+          "CB_PRODUCT_IMAG": 0,
+          "CB_NEG_X_IMAG": 0,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 0,
+          "CB_OUTPUT_IMAG": 0
+        },
+        "tensor_items": {
+          "R": 245760,
+          "X0": 0,
+          "identity": 0,
+          "zero": 0,
+          "output": 0
+        },
+        "tensor_total": 245760,
+        "total": 344064,
+        "overage": 0,
+        "headroom": -344064
+      },
+      "accounting_values": {
+        "bf16-r-L16": {
+          "total_bytes": 885504,
+          "budget_bytes": 1572864,
+          "overage_bytes": 0,
+          "headroom_bytes": 687360
+        },
+        "fp32-r-L16": {
+          "total_bytes": 1229568,
+          "budget_bytes": 1572864,
+          "overage_bytes": 0,
+          "headroom_bytes": 343296
+        }
+      }
+    },
+    {
+      "name": "BF16-R/L32/R-in-DRAM vs FP32-R/L32/R-in-DRAM",
+      "rows": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "same_controls": [
+        "batch",
+        "iterations",
+        "initial_value",
+        "state_format",
+        "destination_format",
+        "fp32_dest_acc_en",
+        "math_fidelity",
+        "fuse_s",
+        "matrix_block",
+        "double_buffer",
+        "dst_full_sync_en",
+        "input_memory",
+        "x0_memory",
+        "output_memory"
+      ],
+      "same_placement_except_R_format": true,
+      "R_placement": "DRAM",
+      "R_format_change": [
+        "BF16-R",
+        "FP32-R"
+      ],
+      "status": [
+        "accepted",
+        "accepted"
+      ],
+      "byte_differences_right_minus_left": {
+        "circular_buffers_total": 98304,
+        "circular_buffers_by_name": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 0,
+          "CB_X0_IMAG": 0,
+          "CB_IDENTITY": 0,
+          "CB_ZERO": 0,
+          "CB_STATE_REAL": 0,
+          "CB_STATE_IMAG": 0,
+          "CB_S_REAL": 0,
+          "CB_S_IMAG": 0,
+          "CB_PRODUCT_REAL": 0,
+          "CB_PRODUCT_IMAG": 0,
+          "CB_NEG_X_IMAG": 0,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 0,
+          "CB_OUTPUT_IMAG": 0
+        },
+        "tensor_items": {
+          "R": 0,
+          "X0": 0,
+          "identity": 0,
+          "zero": 0,
+          "output": 0
+        },
+        "tensor_total": 0,
+        "total": 98304,
+        "overage": 0,
+        "headroom": -98304
+      },
+      "accounting_values": {
+        "bf16-r-L32-r-dram": {
+          "total_bytes": 803584,
+          "budget_bytes": 1572864,
+          "overage_bytes": 0,
+          "headroom_bytes": 769280
+        },
+        "fp32-r-L32-r-dram": {
+          "total_bytes": 901888,
+          "budget_bytes": 1572864,
+          "overage_bytes": 0,
+          "headroom_bytes": 670976
+        }
+      }
+    },
+    {
+      "name": "BF16-R/L32/R-in-L1 vs rejected FP32-R/L32/R-in-L1",
+      "rows": [
+        "bf16-r-L32",
+        "fp32-r-L32"
+      ],
+      "same_controls": [
+        "batch",
+        "iterations",
+        "initial_value",
+        "state_format",
+        "destination_format",
+        "fp32_dest_acc_en",
+        "math_fidelity",
+        "fuse_s",
+        "matrix_block",
+        "double_buffer",
+        "dst_full_sync_en",
+        "input_memory",
+        "x0_memory",
+        "output_memory"
+      ],
+      "same_placement_except_R_format": true,
+      "R_placement": "L1",
+      "R_format_change": [
+        "BF16-R",
+        "FP32-R"
+      ],
+      "status": [
+        "accepted",
+        "rejected"
+      ],
+      "byte_differences_right_minus_left": {
+        "circular_buffers_total": 98304,
+        "circular_buffers_by_name": {
+          "CB_R_NEG_IMAG": 32768,
+          "CB_R_IMAG": 32768,
+          "CB_X0_REAL": 0,
+          "CB_X0_IMAG": 0,
+          "CB_IDENTITY": 0,
+          "CB_ZERO": 0,
+          "CB_STATE_REAL": 0,
+          "CB_STATE_IMAG": 0,
+          "CB_S_REAL": 0,
+          "CB_S_IMAG": 0,
+          "CB_PRODUCT_REAL": 0,
+          "CB_PRODUCT_IMAG": 0,
+          "CB_NEG_X_IMAG": 0,
+          "CB_R_NEG_REAL": 32768,
+          "CB_OUTPUT_REAL": 0,
+          "CB_OUTPUT_IMAG": 0
+        },
+        "tensor_items": {
+          "R": 491520,
+          "X0": 0,
+          "identity": 0,
+          "zero": 0,
+          "output": 0
+        },
+        "tensor_total": 491520,
+        "total": 589824,
+        "overage": 312064,
+        "headroom": -277760
+      },
+      "accounting_values": {
+        "bf16-r-L32": {
+          "total_bytes": 1295104,
+          "budget_bytes": 1572864,
+          "overage_bytes": 0,
+          "headroom_bytes": 277760
+        },
+        "fp32-r-L32": {
+          "total_bytes": 1884928,
+          "budget_bytes": 1572864,
+          "overage_bytes": 312064,
+          "headroom_bytes": 0
+        }
+      }
+    }
+  ],
+  "notes": [
+    "R placement is DRAM for both explicit L=32 DRAM rows; X0, identity, and zero remain L1-accounted, while DRAM R contributes zero tensor bytes to the L1 total.",
+    "This artifact is host-derived deterministic evidence only; no board run was performed for the derivation."
+  ]
+}

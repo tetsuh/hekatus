@@ -1,0 +1,1482 @@
+{
+  "summary_schema": "adr-0005-issue88-fp32-r-final-runner-retake-summary-v1",
+  "issue": "#88",
+  "adr": "ADR-0005",
+  "status": "pass",
+  "authoritative": true,
+  "source_record": {
+    "file": "2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json",
+    "sha256": "04743a45c41405b8123db0f9ce6022557b83e22e7c8e2ffeb345cf84a9cb08f6"
+  },
+  "provenance": {
+    "inherits_primary_record": true,
+    "statement": "This companion inherits the primary record provenance and adds no hardware measurement.",
+    "primary_record": {
+      "file": "2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json",
+      "sha256": "04743a45c41405b8123db0f9ce6022557b83e22e7c8e2ffeb345cf84a9cb08f6"
+    },
+    "harness_commit": "0242b31238c6642131e3a806c805f97c22126e6d",
+    "board_type": "p150a",
+    "serial": "0000040331914124",
+    "board_id": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "firmware_bundle": "19.6.0.0",
+    "kernel_driver_version": "2.11.0",
+    "toolchain_release": "0.75.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "watcher": false,
+    "device_close_succeeded": true,
+    "reset_performed": false
+  },
+  "measurement_scope": "All quality, throughput, and L1 values below are mechanically derived from the final primary record; the preflight-rejected row has no device result.",
+  "common_metric_reference": {
+    "inverse": "NumPy complex128 inverse of original FP32 R",
+    "mv_weight_direction": "NumPy complex128 inverse of original FP32 R",
+    "beam_metrics": {
+      "names": {
+        "phase_sensitive_complex_response": "phase-sensitive complex response",
+        "best_complex_scalar_phase_aligned_complex_response": "best-complex-scalar phase-aligned complex response",
+        "magnitude_response": "magnitude response",
+        "normalized_db_floored_pattern": "normalized dB/floored pattern"
+      },
+      "definitions": {
+        "phase_sensitive_complex_response_relative_frobenius_error": "||response_candidate - response_reference||_F / ||response_reference||_F; complex phase and response scale are retained",
+        "phase_aligned_complex_response_relative_frobenius_error": "Fit alpha = vdot(response_candidate, response_reference) / vdot(response_candidate, response_candidate), then report ||alpha * response_candidate - response_reference||_F / ||response_reference||_F",
+        "magnitude_response_relative_frobenius_error": "||abs(response_candidate) - abs(response_reference)||_F / ||abs(response_reference)||_F, before per-look peak normalization",
+        "db_pattern": "Normalize candidate and reference magnitudes separately by each look's sampled look-direction magnitude; compare 20*log10(max(magnitude, 10**(floor_db/20))) using RMS and maximum absolute dB error; floor_db=-120 by default"
+      },
+      "all_lower_is_better": true,
+      "db_floor_db": -120.0,
+      "db_definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+    }
+  },
+  "supersedes": {
+    "records": [
+      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json",
+      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-l1-accounting.json",
+      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv"
+    ],
+    "immutable": true,
+    "scope": "The 2026-10-09 retake JSON, summary JSON, L1-accounting JSON, and companion CSV remain immutable historical artifacts.",
+    "reason": "The final runner primary record embeds the complete L1 ledger and final evidence.",
+    "artifact_sha256": [
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+        "sha256": "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json",
+        "sha256": "27186c518b7382a0d05edc15d87876c1300be18af2de3edd498e4261b810d851"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-l1-accounting.json",
+        "sha256": "0f22bc6f0592410c4dceaf4b7159e82241083bcce86e2693a63c40c8de59d28e"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv",
+        "sha256": "1086480d4cec82e0efaf309221e0a254f9390c5f5e85c9a192dac2c43a484df1"
+      }
+    ]
+  },
+  "rows": [
+    {
+      "row": "bf16-r-L16",
+      "variant": "BF16-R",
+      "L": 16,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021145014741766808
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.001703048708917354
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.014484562453349288,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.014467498923345494,
+        "magnitude_response_relative_frobenius_error": 0.010390255456242838,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.352116530875629,
+          "max_absolute_error_db": 21.779487459998897,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0003945534999729716,
+        "tflops_p50_derived": 16.328459751190476
+      },
+      "l1": {
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 885504,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 687360,
+        "cb_bytes": 358400,
+        "tensor_bytes": 415744,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    },
+    {
+      "row": "fp32-r-L16",
+      "variant": "FP32-R",
+      "L": 16,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.005721162451479609
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.00020398768972718084
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.004476757514726064,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.004461229596227211,
+        "magnitude_response_relative_frobenius_error": 0.0031990948256200224,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.11352141025577425,
+          "max_absolute_error_db": 12.281650629881504,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.00040135349900083384,
+        "tflops_p50_derived": 16.051812080967096
+      },
+      "l1": {
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 1229568,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 343296,
+        "cb_bytes": 456704,
+        "tensor_bytes": 661504,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    },
+    {
+      "row": "bf16-r-L32",
+      "variant": "BF16-R",
+      "L": 32,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.0010762611385012333
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+        "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.3780454422994577,
+          "max_absolute_error_db": 27.657654618162553,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006548675000885851,
+        "tflops_p50_derived": 78.7023444361312
+      },
+      "l1": {
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 1295104,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 277760,
+        "cb_bytes": 358400,
+        "tensor_bytes": 825344,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    },
+    {
+      "row": "bf16-r-L32-r-dram",
+      "variant": "BF16-R",
+      "L": 32,
+      "R_placement": "DRAM",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.0010762611385012333
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+        "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.3780454422994577,
+          "max_absolute_error_db": 27.657654618162553,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006596765006179339,
+        "tflops_p50_derived": 78.1286092557817
+      },
+      "l1": {
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 803584,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 769280,
+        "cb_bytes": 358400,
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "DRAM",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    },
+    {
+      "row": "fp32-r-L32-r-dram",
+      "variant": "FP32-R",
+      "L": 32,
+      "R_placement": "DRAM",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.005290290299383328
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 7.21114591603067e-05
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+        "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.13320564230170404,
+          "max_absolute_error_db": 27.101233945403187,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006920739988345304,
+        "tflops_p50_derived": 74.4712381028531
+      },
+      "l1": {
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 901888,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 670976,
+        "cb_bytes": 456704,
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "DRAM",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "FP32-R effect at L=16 with R in L1",
+      "rows": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "kind": "variant",
+      "matched_placement": true,
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "values": {
+        "left": {
+          "row": "bf16-r-L16",
+          "variant": "BF16-R",
+          "L": 16,
+          "R_placement": "L1",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.021145014741766808
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.001703048708917354
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.014484562453349288,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.014467498923345494,
+            "magnitude_response_relative_frobenius_error": 0.010390255456242838,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.352116530875629,
+              "max_absolute_error_db": 21.779487459998897,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0003945534999729716,
+            "tflops_p50_derived": 16.328459751190476
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 885504,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 687360,
+            "cb_bytes": 358400,
+            "tensor_bytes": 415744,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "L1",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        },
+        "right": {
+          "row": "fp32-r-L16",
+          "variant": "FP32-R",
+          "L": 16,
+          "R_placement": "L1",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.005721162451479609
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.00020398768972718084
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.004476757514726064,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.004461229596227211,
+            "magnitude_response_relative_frobenius_error": 0.0031990948256200224,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.11352141025577425,
+              "max_absolute_error_db": 12.281650629881504,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.00040135349900083384,
+            "tflops_p50_derived": 16.051812080967096
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 1229568,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 343296,
+            "cb_bytes": 456704,
+            "tensor_bytes": 661504,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "L1",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        }
+      },
+      "differences": {
+        "inverse_error": {
+          "left_minus_right": 0.015423852290287199
+        },
+        "mv_direction_max_cosine_deficit": {
+          "left_minus_right": 0.0014990610191901732
+        },
+        "beam_metrics": {
+          "phase_sensitive_error": {
+            "left_minus_right": 0.010007804938623223
+          },
+          "phase_aligned_error": {
+            "left_minus_right": 0.010006269327118282
+          },
+          "magnitude_error": {
+            "left_minus_right": 0.0071911606306228155
+          },
+          "normalized_db_floored_pattern": {
+            "db_rms_error": {
+              "left_minus_right": 0.23859512061985474
+            },
+            "db_max_error": {
+              "left_minus_right": 9.497836830117393
+            }
+          }
+        },
+        "performance": {
+          "p50_tflops": {
+            "right_minus_left": -0.27664767022337955
+          },
+          "p50_latency_seconds": {
+            "right_minus_left": 6.7999990278622136e-06
+          }
+        },
+        "l1": {
+          "l1_total_bytes_delta": {
+            "right_minus_left": 344064
+          },
+          "l1_headroom_bytes_delta": {
+            "right_minus_left": -344064
+          },
+          "l1_cb_bytes_delta": {
+            "right_minus_left": 98304
+          },
+          "l1_tensor_bytes_delta": {
+            "right_minus_left": 245760
+          }
+        }
+      },
+      "difference_convention": {
+        "quality": "left minus right; positive means lower FP32-R error when left is BF16-R",
+        "performance_and_l1": "right minus left; negative P50 TFLOPS is an FP32-R throughput cost"
+      }
+    },
+    {
+      "name": "FP32-R effect at L=32 with R in DRAM",
+      "rows": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "kind": "variant",
+      "matched_placement": true,
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "values": {
+        "left": {
+          "row": "bf16-r-L32-r-dram",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.021826325072699795
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.0010762611385012333
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+            "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.3780454422994577,
+              "max_absolute_error_db": 27.657654618162553,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006596765006179339,
+            "tflops_p50_derived": 78.1286092557817
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 803584,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 769280,
+            "cb_bytes": 358400,
+            "tensor_bytes": 333824,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "DRAM",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        },
+        "right": {
+          "row": "fp32-r-L32-r-dram",
+          "variant": "FP32-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.005290290299383328
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 7.21114591603067e-05
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+            "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.13320564230170404,
+              "max_absolute_error_db": 27.101233945403187,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006920739988345304,
+            "tflops_p50_derived": 74.4712381028531
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 901888,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 670976,
+            "cb_bytes": 456704,
+            "tensor_bytes": 333824,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "DRAM",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        }
+      },
+      "differences": {
+        "inverse_error": {
+          "left_minus_right": 0.016536034773316468
+        },
+        "mv_direction_max_cosine_deficit": {
+          "left_minus_right": 0.0010041496793409266
+        },
+        "beam_metrics": {
+          "phase_sensitive_error": {
+            "left_minus_right": 0.008455392080970412
+          },
+          "phase_aligned_error": {
+            "left_minus_right": 0.008422513652293236
+          },
+          "magnitude_error": {
+            "left_minus_right": 0.006092070127539371
+          },
+          "normalized_db_floored_pattern": {
+            "db_rms_error": {
+              "left_minus_right": 0.24483979999775365
+            },
+            "db_max_error": {
+              "left_minus_right": 0.5564206727593657
+            }
+          }
+        },
+        "performance": {
+          "p50_tflops": {
+            "right_minus_left": -3.65737115292859
+          },
+          "p50_latency_seconds": {
+            "right_minus_left": 3.239749821659643e-05
+          }
+        },
+        "l1": {
+          "l1_total_bytes_delta": {
+            "right_minus_left": 98304
+          },
+          "l1_headroom_bytes_delta": {
+            "right_minus_left": -98304
+          },
+          "l1_cb_bytes_delta": {
+            "right_minus_left": 98304
+          },
+          "l1_tensor_bytes_delta": {
+            "right_minus_left": 0
+          }
+        }
+      },
+      "difference_convention": {
+        "quality": "left minus right; positive means lower FP32-R error when left is BF16-R",
+        "performance_and_l1": "right minus left; negative P50 TFLOPS is an FP32-R throughput cost"
+      }
+    },
+    {
+      "name": "BF16-R placement effect at L=32",
+      "rows": [
+        "bf16-r-L32",
+        "bf16-r-L32-r-dram"
+      ],
+      "kind": "placement",
+      "matched_placement": true,
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "values": {
+        "left": {
+          "row": "bf16-r-L32",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "L1",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.021826325072699795
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.0010762611385012333
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+            "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.3780454422994577,
+              "max_absolute_error_db": 27.657654618162553,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006548675000885851,
+            "tflops_p50_derived": 78.7023444361312
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 1295104,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 277760,
+            "cb_bytes": 358400,
+            "tensor_bytes": 825344,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "L1",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        },
+        "right": {
+          "row": "bf16-r-L32-r-dram",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.021826325072699795
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.0010762611385012333
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+            "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.3780454422994577,
+              "max_absolute_error_db": 27.657654618162553,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006596765006179339,
+            "tflops_p50_derived": 78.1286092557817
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 803584,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 769280,
+            "cb_bytes": 358400,
+            "tensor_bytes": 333824,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "DRAM",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        }
+      },
+      "differences": {
+        "inverse_error": {
+          "left_minus_right": 0.0
+        },
+        "mv_direction_max_cosine_deficit": {
+          "left_minus_right": 0.0
+        },
+        "beam_metrics": {
+          "phase_sensitive_error": {
+            "left_minus_right": 0.0
+          },
+          "phase_aligned_error": {
+            "left_minus_right": 0.0
+          },
+          "magnitude_error": {
+            "left_minus_right": 0.0
+          },
+          "normalized_db_floored_pattern": {
+            "db_rms_error": {
+              "left_minus_right": 0.0
+            },
+            "db_max_error": {
+              "left_minus_right": 0.0
+            }
+          }
+        },
+        "performance": {
+          "p50_tflops": {
+            "right_minus_left": -0.5737351803495017
+          },
+          "p50_latency_seconds": {
+            "right_minus_left": 4.80900052934885e-06
+          }
+        },
+        "l1": {
+          "l1_total_bytes_delta": {
+            "right_minus_left": -491520
+          },
+          "l1_headroom_bytes_delta": {
+            "right_minus_left": 491520
+          },
+          "l1_cb_bytes_delta": {
+            "right_minus_left": 0
+          },
+          "l1_tensor_bytes_delta": {
+            "right_minus_left": -491520
+          }
+        }
+      },
+      "difference_convention": {
+        "quality": "left minus right; positive means lower FP32-R error when left is BF16-R",
+        "performance_and_l1": "right minus left; negative P50 TFLOPS is an FP32-R throughput cost"
+      }
+    },
+    {
+      "name": "default BF16-R/L1 versus FP32-R/DRAM at L=32",
+      "rows": [
+        "bf16-r-L32",
+        "fp32-r-L32-r-dram"
+      ],
+      "kind": "context",
+      "matched_placement": false,
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "values": {
+        "left": {
+          "row": "bf16-r-L32",
+          "variant": "BF16-R",
+          "L": 32,
+          "R_placement": "L1",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.021826325072699795
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 0.0010762611385012333
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+            "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.3780454422994577,
+              "max_absolute_error_db": 27.657654618162553,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006548675000885851,
+            "tflops_p50_derived": 78.7023444361312
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 1295104,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 277760,
+            "cb_bytes": 358400,
+            "tensor_bytes": 825344,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "L1",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        },
+        "right": {
+          "row": "fp32-r-L32-r-dram",
+          "variant": "FP32-R",
+          "L": 32,
+          "R_placement": "DRAM",
+          "status": "ok",
+          "selected_controls": {
+            "batch": 8192,
+            "iterations": 12,
+            "initial_value": "I/||R||inf",
+            "state_format": "BF16",
+            "destination_format": "FP32",
+            "fp32_dest_acc_en": true,
+            "math_fidelity": "HiFi3",
+            "fuse_s": true,
+            "matrix_block": 8,
+            "double_buffer": true,
+            "dst_full_sync_en": true,
+            "x0_memory": "l1",
+            "output_memory": "dram"
+          },
+          "allocation_attempted": true,
+          "launched_work": 1000,
+          "inverse": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "relative_frobenius_error": 0.005290290299383328
+          },
+          "mv_weight_direction": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "definition": "1 - absolute normalized direction cosine",
+            "max_cosine_deficit": 7.21114591603067e-05
+          },
+          "beam_metrics": {
+            "metric_reference": "NumPy complex128 inverse of original FP32 R",
+            "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+            "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+            "normalized_db_floored_pattern": {
+              "rms_absolute_error_db": 0.13320564230170404,
+              "max_absolute_error_db": 27.101233945403187,
+              "floor_db": -120.0,
+              "amplitude_floor": 1e-06,
+              "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+            }
+          },
+          "timing": {
+            "launches_measured": 1000,
+            "row_timeout_s": 60.0,
+            "seconds_per_launch_p50": 0.0006920739988345304,
+            "tflops_p50_derived": 74.4712381028531
+          },
+          "l1": {
+            "status": "admitted",
+            "accepted": true,
+            "total_bytes": 901888,
+            "budget_bytes": 1572864,
+            "overage_bytes": 0,
+            "headroom_bytes": 670976,
+            "cb_bytes": 456704,
+            "tensor_bytes": 333824,
+            "static_prefix_bytes": 111360,
+            "placement": {
+              "R": "DRAM",
+              "X0": "L1",
+              "identity": "L1",
+              "zero": "L1",
+              "output": "DRAM",
+              "compute": "L1"
+            }
+          }
+        }
+      },
+      "differences": {
+        "inverse_error": {
+          "left_minus_right": 0.016536034773316468
+        },
+        "mv_direction_max_cosine_deficit": {
+          "left_minus_right": 0.0010041496793409266
+        },
+        "beam_metrics": {
+          "phase_sensitive_error": {
+            "left_minus_right": 0.008455392080970412
+          },
+          "phase_aligned_error": {
+            "left_minus_right": 0.008422513652293236
+          },
+          "magnitude_error": {
+            "left_minus_right": 0.006092070127539371
+          },
+          "normalized_db_floored_pattern": {
+            "db_rms_error": {
+              "left_minus_right": 0.24483979999775365
+            },
+            "db_max_error": {
+              "left_minus_right": 0.5564206727593657
+            }
+          }
+        },
+        "performance": {
+          "p50_tflops": {
+            "right_minus_left": -4.231106333278092
+          },
+          "p50_latency_seconds": {
+            "right_minus_left": 3.720649874594528e-05
+          }
+        },
+        "l1": {
+          "l1_total_bytes_delta": {
+            "right_minus_left": -393216
+          },
+          "l1_headroom_bytes_delta": {
+            "right_minus_left": 393216
+          },
+          "l1_cb_bytes_delta": {
+            "right_minus_left": 98304
+          },
+          "l1_tensor_bytes_delta": {
+            "right_minus_left": -491520
+          }
+        }
+      },
+      "difference_convention": {
+        "quality": "left minus right; positive means lower FP32-R error when left is BF16-R",
+        "performance_and_l1": "right minus left; negative P50 TFLOPS is an FP32-R throughput cost"
+      }
+    }
+  ],
+  "matched_placement_differences": [
+    {
+      "rows": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "placement": "L16/L1",
+      "quality_error_reduction": {
+        "inverse_error_reduction": 0.015423852290287199,
+        "mv_direction_deficit_reduction": 0.0014990610191901732,
+        "phase_sensitive_reduction": 0.010007804938623223,
+        "phase_aligned_reduction": 0.010006269327118282,
+        "magnitude_reduction": 0.0071911606306228155,
+        "normalized_db_floored_pattern_rms_db": 0.23859512061985474,
+        "normalized_db_floored_pattern_max_db": 9.497836830117393
+      },
+      "all_quality_indicators_improve": true,
+      "costs": {
+        "l1_total_increase_bytes": 344064,
+        "p50_tflops_delta": -0.27664767022337955,
+        "p50_tflops_decrease": 0.27664767022337955,
+        "p50_latency_seconds_delta": 6.7999990278622136e-06
+      }
+    },
+    {
+      "rows": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "placement": "L32/DRAM",
+      "quality_error_reduction": {
+        "inverse_error_reduction": 0.016536034773316468,
+        "mv_direction_deficit_reduction": 0.0010041496793409266,
+        "phase_sensitive_reduction": 0.008455392080970412,
+        "phase_aligned_reduction": 0.008422513652293236,
+        "magnitude_reduction": 0.006092070127539371,
+        "normalized_db_floored_pattern_rms_db": 0.24483979999775365,
+        "normalized_db_floored_pattern_max_db": 0.5564206727593657
+      },
+      "all_quality_indicators_improve": true,
+      "costs": {
+        "l1_total_increase_bytes": 98304,
+        "p50_tflops_delta": -3.65737115292859,
+        "p50_tflops_decrease": 3.65737115292859,
+        "p50_latency_seconds_delta": 3.239749821659643e-05
+      }
+    }
+  ],
+  "fp32_r_outcome_under_common_true_inverse_reference": {
+    "inverse_error_improves": true,
+    "mv_direction_deficit_improves": true,
+    "all_four_beam_indicators_improve": true,
+    "conclusion": "FP32-R lowers inverse error, MV cosine deficit, and all four beam indicators at both matched placements; it costs L1 bytes and P50 throughput."
+  },
+  "l1_preflight_accounting": {
+    "source_record": {
+      "file": "2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json",
+      "sha256": "04743a45c41405b8123db0f9ce6022557b83e22e7c8e2ffeb345cf84a9cb08f6"
+    },
+    "budget_bytes": 1572864,
+    "rows": [
+      {
+        "row": "bf16-r-L16",
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 885504,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 687360,
+        "cb_bytes": 358400,
+        "tensor_bytes": 415744,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      },
+      {
+        "row": "fp32-r-L16",
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 1229568,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 343296,
+        "cb_bytes": 456704,
+        "tensor_bytes": 661504,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      },
+      {
+        "row": "bf16-r-L32",
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 1295104,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 277760,
+        "cb_bytes": 358400,
+        "tensor_bytes": 825344,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      },
+      {
+        "row": "bf16-r-L32-r-dram",
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 803584,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 769280,
+        "cb_bytes": 358400,
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "DRAM",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      },
+      {
+        "row": "fp32-r-L32-r-dram",
+        "status": "admitted",
+        "accepted": true,
+        "total_bytes": 901888,
+        "budget_bytes": 1572864,
+        "overage_bytes": 0,
+        "headroom_bytes": 670976,
+        "cb_bytes": 456704,
+        "tensor_bytes": 333824,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "DRAM",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      },
+      {
+        "row": "fp32-r-L32",
+        "status": "rejected_before_allocation",
+        "accepted": false,
+        "total_bytes": 1884928,
+        "budget_bytes": 1572864,
+        "overage_bytes": 312064,
+        "headroom_bytes": 0,
+        "cb_bytes": 456704,
+        "tensor_bytes": 1316864,
+        "static_prefix_bytes": 111360,
+        "placement": {
+          "R": "L1",
+          "X0": "L1",
+          "identity": "L1",
+          "zero": "L1",
+          "output": "DRAM",
+          "compute": "L1"
+        }
+      }
+    ]
+  },
+  "power_snapshot": {
+    "file": "issue88-fp32-r-power-snapshot-20261010T0356528751606238822231592Z-4.csv",
+    "sha256": "ef12ca4972a7467c75ea8d35b735f1bb8bee78ad2cbd73f19bbcdac9d1c30cd5",
+    "byte_count": 523,
+    "sample_count": 10,
+    "first_timestamp": "2026-10-10T03:56:53.599796+00:00",
+    "last_timestamp": "2026-10-10T03:57:14.281011+00:00",
+    "run_start": "2026-10-10T03:56:53.785058+00:00",
+    "run_end": "2026-10-10T03:57:13.057222+00:00",
+    "immutable_snapshot": true,
+    "coverage_definition": "Coverage is complete when the immutable per-run snapshot has at least one usable finite telemetry row, usable timestamps parse in order, its first usable sample is at or before the recorded run start, and its last usable sample timestamp is at or after the recorded run end; the run interval is covered through its end. Rows with unusable power, AICLK, or temperature values are excluded from these checks.",
+    "coverage": {
+      "definition": "Coverage is complete when the immutable per-run snapshot has at least one usable finite telemetry row, usable timestamps parse in order, its first usable sample is at or before the recorded run start, and its last usable sample timestamp is at or after the recorded run end; the run interval is covered through its end. Rows with unusable power, AICLK, or temperature values are excluded from these checks.",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": true,
+      "readable": true,
+      "usable_row_count": 10,
+      "invalid_row_count": 0,
+      "complete": true
+    },
+    "coverage_complete": true
+  },
+  "notes": [
+    "The primary record is the byte-preserved measurement authority; this file is a derived companion.",
+    "FP32-R quality reductions are reported as BF16-R minus FP32-R; throughput and L1 costs are FP32-R minus BF16-R.",
+    "The expected FP32-R/L32/R-in-L1 row remains a zero-launch preflight rejection and is included only in the L1 ledger."
+  ]
+}

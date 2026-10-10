@@ -1,0 +1,878 @@
+{
+  "summary_schema": "adr-0005-issue88-fp32-r-device1-retake-summary-v1",
+  "issue": "#88",
+  "source_record": {
+    "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+    "sha256": "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567"
+  },
+  "status": "pass",
+  "measurement_scope": "Every measured row below is a downloaded device inverse compared with one common original-R true inverse. The preflight-rejected row has no device result; host-only fixed-N metrics are not presented as device results.",
+  "supersedes": {
+    "records": [
+      "2026-10-08-p150a-newton-schulz-issue88-fp32-r.json",
+      "2026-10-08-p150a-newton-schulz-issue88-fp32-r-placement-followup.json",
+      "2026-10-08-p150a-newton-schulz-issue88-fp32-r-convergence-rerun.json"
+    ],
+    "scope": "This device-1 retake supersedes the prior Issue #88 device records; every predecessor remains immutable and visible.",
+    "reasons": [
+      "The historical beam metrics used the defective batched _weight einsum denominator and are not evidence.",
+      "The earlier device records did not retain the downloaded device inverse arrays needed to recompute corrected beam diagnostics."
+    ]
+  },
+  "common_metric_reference": {
+    "inverse": "NumPy complex128 inverse of original FP32 R",
+    "mv_weight_direction": "NumPy complex128 inverse of original FP32 R",
+    "beam_metrics": {
+      "names": {
+        "phase_sensitive_complex_response": "phase-sensitive complex response",
+        "best_complex_scalar_phase_aligned_complex_response": "best-complex-scalar phase-aligned complex response",
+        "magnitude_response": "magnitude response",
+        "normalized_db_floored_pattern": "normalized dB/floored pattern"
+      },
+      "definitions": {
+        "phase_sensitive_complex_response": "||response_candidate - response_reference||_F / ||response_reference||_F; complex phase and response scale are retained",
+        "best_complex_scalar_phase_aligned_complex_response": "Fit alpha = vdot(response_candidate, response_reference) / vdot(response_candidate, response_candidate), then report ||alpha * response_candidate - response_reference||_F / ||response_reference||_F",
+        "magnitude_response": "||abs(response_candidate) - abs(response_reference)||_F / ||abs(response_reference)||_F, before per-look peak normalization",
+        "normalized_db_floored_pattern": "Normalize candidate and reference magnitudes separately by each look's sampled look-direction magnitude; compare 20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20)))"
+      },
+      "all_lower_is_better": true,
+      "db_floor_db": -120.0,
+      "db_definition": "Normalize candidate and reference magnitudes separately by each look's sampled look-direction magnitude; compare 20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20)))"
+    }
+  },
+  "provenance": {
+    "physical_device": "device-1 only",
+    "container_device_id": 0,
+    "board_type": "p150a",
+    "serial": "0000040331914124",
+    "board_id": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "firmware_bundle": "19.6.0.0",
+    "kernel_driver_version": "2.11.0",
+    "toolchain_release": "0.75.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "harness_commit": "79d215141e4d64752c8cdc048dcaccc73be1e013",
+    "harness_dirty": false,
+    "watcher": false,
+    "device_close_succeeded": true,
+    "reset_performed": false
+  },
+  "algorithm": {
+    "iterations": 12,
+    "initial_value": "I / ||R||_infinity",
+    "state_format": "BF16",
+    "destination_format": "FP32",
+    "math_fidelity": "HiFi3",
+    "matrix_block": 8,
+    "double_buffer": true,
+    "dst_full_sync_en": true,
+    "output_memory": "dram",
+    "batch": 8192,
+    "x0_memory": "l1",
+    "input_memory": "l1"
+  },
+  "input_generation": {
+    "generator": "enodia.tt.bench.newton_schulz_reference.random_hpd_batch",
+    "condition_number": 100.0,
+    "seed": 6300,
+    "same_matrix_for_matching_size_variants": true,
+    "fingerprints": {
+      "16": {
+        "size": 16,
+        "batch": 8192,
+        "condition_number": 100.0,
+        "seed": 6300,
+        "matrix_sha256": "2b6d686ad2abbd50fa2be3720f9008a1ce489d5004e50301a9ad2c8512bd8d9e"
+      },
+      "32": {
+        "size": 32,
+        "batch": 8192,
+        "condition_number": 100.0,
+        "seed": 6300,
+        "matrix_sha256": "9090de124092616bb43320a8cc6743b3782cd14950e3b16be7c211a6ee03f866"
+      }
+    },
+    "fp32_r_l32_default_l1_preflight": {
+      "status": "rejected_before_allocation",
+      "bytes": 1884928,
+      "over_budget_bytes": 312064,
+      "variant": "fp32-r",
+      "size": 32,
+      "matrix_block": 8,
+      "r_memory": "l1",
+      "reason": "selected block-8 L1 budget rejects before allocation; no fallback"
+    }
+  },
+  "l1_preflight_accounting": {
+    "fp32-r-L32": {
+      "status": "rejected_before_allocation",
+      "bytes": 1884928,
+      "over_budget_bytes": 312064,
+      "variant": "fp32-r",
+      "size": 32,
+      "matrix_block": 8,
+      "r_memory": "l1",
+      "fallback": false,
+      "allocation_attempted": false,
+      "launches": 0
+    },
+    "measured_rows": {
+      "bf16-r-L16": {
+        "status": "passed before allocation",
+        "R_placement": "L1",
+        "matrix_block": 8
+      },
+      "fp32-r-L16": {
+        "status": "passed before allocation",
+        "R_placement": "L1",
+        "matrix_block": 8
+      },
+      "bf16-r-L32": {
+        "status": "passed before allocation",
+        "R_placement": "L1",
+        "matrix_block": 8
+      },
+      "bf16-r-L32-r-dram": {
+        "status": "passed before allocation",
+        "R_placement": "DRAM",
+        "matrix_block": 8
+      },
+      "fp32-r-L32-r-dram": {
+        "status": "passed before allocation",
+        "R_placement": "DRAM",
+        "matrix_block": 8
+      }
+    },
+    "fallback": false
+  },
+  "row_statuses": {
+    "bf16-r-L16": "ok",
+    "fp32-r-L16": "ok",
+    "bf16-r-L32": "ok",
+    "bf16-r-L32-r-dram": "ok",
+    "fp32-r-L32-r-dram": "ok",
+    "fp32-r-L32": "preflight_rejected"
+  },
+  "rows": [
+    {
+      "row": "bf16-r-L16",
+      "variant": "BF16-R",
+      "L": 16,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021145014741766808
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.001703048708917354
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.014484562453349288,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.014467498923345494,
+        "magnitude_response_relative_frobenius_error": 0.010390255456242838,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.352116530875629,
+          "max_absolute_error_db": 21.779487459998897,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.00039511900001798494,
+        "seconds_per_launch_p99": 0.00040425688005825574,
+        "seconds_per_launch_p99_9": 0.0004913296339846055,
+        "tflops_p50_derived": 16.3050902227095,
+        "tflops_fastest_launch_derived": 16.468054022545925
+      },
+      "inverse_artifact": {
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L16.npy",
+        "sha256": "21945996487799523f94113d22de930bc241f845fea1536a3f3b0fe07e14a9a2",
+        "npy_file_sha256": "1485d3d0ae0b3d2db28d1ba6530be3edf50c8b279c69ee543bd1752f723de653",
+        "shape": [
+          8192,
+          16,
+          16
+        ],
+        "dtype": "<c8"
+      }
+    },
+    {
+      "row": "fp32-r-L16",
+      "variant": "FP32-R",
+      "L": 16,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.005721162451479609
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.00020398768972718084
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.004476757514726064,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.004461229596227211,
+        "magnitude_response_relative_frobenius_error": 0.0031990948256200224,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.11352141025577425,
+          "max_absolute_error_db": 12.281650629881504,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.00040314599993962474,
+        "seconds_per_launch_p99": 0.00040970234010046625,
+        "seconds_per_launch_p99_9": 0.0004828094090046306,
+        "tflops_p50_derived": 15.980441192433569,
+        "tflops_fastest_launch_derived": 16.1240250258601
+      },
+      "inverse_artifact": {
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-fp32-r-L16.npy",
+        "sha256": "1ebc4fb85e7e96606200fb9ae75f3b27fadcce798d2114cfac868fd283d8900e",
+        "npy_file_sha256": "568baaa2168cafe7f1faec291166a85aff0ba97b4f1ee9595d78fb64ad172ead",
+        "shape": [
+          8192,
+          16,
+          16
+        ],
+        "dtype": "<c8"
+      }
+    },
+    {
+      "row": "bf16-r-L32",
+      "variant": "BF16-R",
+      "L": 32,
+      "R_placement": "L1",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.0010762611385012333
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+        "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.3780454422994577,
+          "max_absolute_error_db": 27.657654618162553,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006546710000066014,
+        "seconds_per_launch_p99": 0.0006681683700571737,
+        "seconds_per_launch_p99_9": 0.0007328280878916752,
+        "tflops_p50_derived": 78.72596701469944,
+        "tflops_fastest_launch_derived": 79.30158610855585
+      },
+      "inverse_artifact": {
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L32.npy",
+        "sha256": "e467d12b67a012c342786e7ea5f2b6e4ef65f6b15735d511bc9715fa383927c6",
+        "npy_file_sha256": "1e1539c83c155a8564e09e4fbd0e4cf35d5f4d5ceffa7b0b2f78d9b40a0ab86c",
+        "shape": [
+          8192,
+          32,
+          32
+        ],
+        "dtype": "<c8"
+      }
+    },
+    {
+      "row": "bf16-r-L32-r-dram",
+      "variant": "BF16-R",
+      "L": 32,
+      "R_placement": "DRAM",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.021826325072699795
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 0.0010762611385012333
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+        "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.3780454422994577,
+          "max_absolute_error_db": 27.657654618162553,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006611999999677209,
+        "seconds_per_launch_p99": 0.0007297068699745068,
+        "seconds_per_launch_p99_9": 0.0007490771749094165,
+        "tflops_p50_derived": 77.9485897678707,
+        "tflops_fastest_launch_derived": 78.63408105891199
+      },
+      "inverse_artifact": {
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L32-r-dram.npy",
+        "sha256": "e467d12b67a012c342786e7ea5f2b6e4ef65f6b15735d511bc9715fa383927c6",
+        "npy_file_sha256": "1e1539c83c155a8564e09e4fbd0e4cf35d5f4d5ceffa7b0b2f78d9b40a0ab86c",
+        "shape": [
+          8192,
+          32,
+          32
+        ],
+        "dtype": "<c8"
+      }
+    },
+    {
+      "row": "fp32-r-L32-r-dram",
+      "variant": "FP32-R",
+      "L": 32,
+      "R_placement": "DRAM",
+      "status": "ok",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": true,
+      "launched_work": 1000,
+      "inverse": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "relative_frobenius_error": 0.005290290299383328
+      },
+      "mv_weight_direction": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "definition": "1 - absolute normalized direction cosine",
+        "max_cosine_deficit": 7.21114591603067e-05
+      },
+      "beam_metrics": {
+        "metric_reference": "NumPy complex128 inverse of original FP32 R",
+        "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+        "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+        "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+        "normalized_db_floored_pattern": {
+          "rms_absolute_error_db": 0.13320564230170404,
+          "max_absolute_error_db": 27.101233945403187,
+          "floor_db": -120.0,
+          "amplitude_floor": 1e-06,
+          "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+        }
+      },
+      "timing": {
+        "launches_measured": 1000,
+        "row_timeout_s": 60.0,
+        "seconds_per_launch_p50": 0.0006935420000218073,
+        "seconds_per_launch_p99": 0.0007587193798917724,
+        "seconds_per_launch_p99_9": 0.0007794955369661233,
+        "tflops_p50_derived": 74.31360689097333,
+        "tflops_fastest_launch_derived": 75.03972237213208
+      },
+      "inverse_artifact": {
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-fp32-r-L32-r-dram.npy",
+        "sha256": "bdf2ce17c0e582652014365433db34cfc103e66d22fe249e07bd34deef853e9c",
+        "npy_file_sha256": "909471e48dd23f1b96504a3203b74587b59920127063123426e70326a482267d",
+        "shape": [
+          8192,
+          32,
+          32
+        ],
+        "dtype": "<c8"
+      }
+    },
+    {
+      "row": "fp32-r-L32",
+      "variant": "FP32-R",
+      "L": 32,
+      "R_placement": "L1",
+      "status": "preflight_rejected",
+      "selected_controls": {
+        "batch": 8192,
+        "iterations": 12,
+        "initial_value": "I/||R||inf",
+        "state_format": "BF16",
+        "destination_format": "FP32",
+        "fp32_dest_acc_en": true,
+        "math_fidelity": "HiFi3",
+        "fuse_s": true,
+        "matrix_block": 8,
+        "double_buffer": true,
+        "dst_full_sync_en": true,
+        "x0_memory": "l1",
+        "output_memory": "dram"
+      },
+      "allocation_attempted": false,
+      "launched_work": 0,
+      "preflight": {
+        "status": "rejected_before_allocation",
+        "bytes": 1884928,
+        "over_budget_bytes": 312064,
+        "variant": "fp32-r",
+        "size": 32,
+        "matrix_block": 8,
+        "r_memory": "l1",
+        "fallback": false,
+        "allocation_attempted": false,
+        "launches": 0
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "name": "FP32-R effect at L=16 with R in L1",
+      "rows": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "inverse_error": {
+        "bf16-r-L16": 0.021145014741766808,
+        "fp32-r-L16": 0.005721162451479609
+      },
+      "mv_direction_max_cosine_deficit": {
+        "bf16-r-L16": 0.001703048708917354,
+        "fp32-r-L16": 0.00020398768972718084
+      },
+      "beam_metrics": {
+        "bf16-r-L16": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.014484562453349288,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.014467498923345494,
+          "magnitude_response_relative_frobenius_error": 0.010390255456242838,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.352116530875629,
+            "max_absolute_error_db": 21.779487459998897,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        },
+        "fp32-r-L16": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.004476757514726064,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.004461229596227211,
+          "magnitude_response_relative_frobenius_error": 0.0031990948256200224,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.11352141025577425,
+            "max_absolute_error_db": 12.281650629881504,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        }
+      },
+      "performance": {
+        "bf16-r-L16": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.00039511900001798494,
+          "seconds_per_launch_p99": 0.00040425688005825574,
+          "seconds_per_launch_p99_9": 0.0004913296339846055,
+          "tflops_p50_derived": 16.3050902227095,
+          "tflops_fastest_launch_derived": 16.468054022545925
+        },
+        "fp32-r-L16": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.00040314599993962474,
+          "seconds_per_launch_p99": 0.00040970234010046625,
+          "seconds_per_launch_p99_9": 0.0004828094090046306,
+          "tflops_p50_derived": 15.980441192433569,
+          "tflops_fastest_launch_derived": 16.1240250258601
+        }
+      }
+    },
+    {
+      "name": "FP32-R effect at L=32 with R in DRAM",
+      "rows": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "inverse_error": {
+        "bf16-r-L32-r-dram": 0.021826325072699795,
+        "fp32-r-L32-r-dram": 0.005290290299383328
+      },
+      "mv_direction_max_cosine_deficit": {
+        "bf16-r-L32-r-dram": 0.0010762611385012333,
+        "fp32-r-L32-r-dram": 7.21114591603067e-05
+      },
+      "beam_metrics": {
+        "bf16-r-L32-r-dram": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+          "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.3780454422994577,
+            "max_absolute_error_db": 27.657654618162553,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        },
+        "fp32-r-L32-r-dram": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+          "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.13320564230170404,
+            "max_absolute_error_db": 27.101233945403187,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        }
+      },
+      "performance": {
+        "bf16-r-L32-r-dram": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006611999999677209,
+          "seconds_per_launch_p99": 0.0007297068699745068,
+          "seconds_per_launch_p99_9": 0.0007490771749094165,
+          "tflops_p50_derived": 77.9485897678707,
+          "tflops_fastest_launch_derived": 78.63408105891199
+        },
+        "fp32-r-L32-r-dram": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006935420000218073,
+          "seconds_per_launch_p99": 0.0007587193798917724,
+          "seconds_per_launch_p99_9": 0.0007794955369661233,
+          "tflops_p50_derived": 74.31360689097333,
+          "tflops_fastest_launch_derived": 75.03972237213208
+        }
+      }
+    },
+    {
+      "name": "BF16-R placement effect at L=32",
+      "rows": [
+        "bf16-r-L32",
+        "bf16-r-L32-r-dram"
+      ],
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "inverse_error": {
+        "bf16-r-L32": 0.021826325072699795,
+        "bf16-r-L32-r-dram": 0.021826325072699795
+      },
+      "mv_direction_max_cosine_deficit": {
+        "bf16-r-L32": 0.0010762611385012333,
+        "bf16-r-L32-r-dram": 0.0010762611385012333
+      },
+      "beam_metrics": {
+        "bf16-r-L32": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+          "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.3780454422994577,
+            "max_absolute_error_db": 27.657654618162553,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        },
+        "bf16-r-L32-r-dram": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+          "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.3780454422994577,
+            "max_absolute_error_db": 27.657654618162553,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        }
+      },
+      "performance": {
+        "bf16-r-L32": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006546710000066014,
+          "seconds_per_launch_p99": 0.0006681683700571737,
+          "seconds_per_launch_p99_9": 0.0007328280878916752,
+          "tflops_p50_derived": 78.72596701469944,
+          "tflops_fastest_launch_derived": 79.30158610855585
+        },
+        "bf16-r-L32-r-dram": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006611999999677209,
+          "seconds_per_launch_p99": 0.0007297068699745068,
+          "seconds_per_launch_p99_9": 0.0007490771749094165,
+          "tflops_p50_derived": 77.9485897678707,
+          "tflops_fastest_launch_derived": 78.63408105891199
+        }
+      }
+    },
+    {
+      "name": "default BF16-R/L1 versus FP32-R/DRAM at L=32",
+      "rows": [
+        "bf16-r-L32",
+        "fp32-r-L32-r-dram"
+      ],
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "inverse_error": {
+        "bf16-r-L32": 0.021826325072699795,
+        "fp32-r-L32-r-dram": 0.005290290299383328
+      },
+      "mv_direction_max_cosine_deficit": {
+        "bf16-r-L32": 0.0010762611385012333,
+        "fp32-r-L32-r-dram": 7.21114591603067e-05
+      },
+      "beam_metrics": {
+        "bf16-r-L32": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.01190406911306459,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.011870385884553034,
+          "magnitude_response_relative_frobenius_error": 0.008533065373463032,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.3780454422994577,
+            "max_absolute_error_db": 27.657654618162553,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        },
+        "fp32-r-L32-r-dram": {
+          "metric_reference": "NumPy complex128 inverse of original FP32 R",
+          "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+          "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+          "normalized_db_floored_pattern": {
+            "rms_absolute_error_db": 0.13320564230170404,
+            "max_absolute_error_db": 27.101233945403187,
+            "floor_db": -120.0,
+            "amplitude_floor": 1e-06,
+            "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+          }
+        }
+      },
+      "performance": {
+        "bf16-r-L32": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006546710000066014,
+          "seconds_per_launch_p99": 0.0006681683700571737,
+          "seconds_per_launch_p99_9": 0.0007328280878916752,
+          "tflops_p50_derived": 78.72596701469944,
+          "tflops_fastest_launch_derived": 79.30158610855585
+        },
+        "fp32-r-L32-r-dram": {
+          "launches_measured": 1000,
+          "row_timeout_s": 60.0,
+          "seconds_per_launch_p50": 0.0006935420000218073,
+          "seconds_per_launch_p99": 0.0007587193798917724,
+          "seconds_per_launch_p99_9": 0.0007794955369661233,
+          "tflops_p50_derived": 74.31360689097333,
+          "tflops_fastest_launch_derived": 75.03972237213208
+        }
+      }
+    }
+  ],
+  "fp32_r_beam_metric_rows": {
+    "L16_R_L1": {
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "phase_sensitive_complex_response_relative_frobenius_error": 0.004476757514726064,
+      "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.004461229596227211,
+      "magnitude_response_relative_frobenius_error": 0.0031990948256200224,
+      "normalized_db_floored_pattern": {
+        "rms_absolute_error_db": 0.11352141025577425,
+        "max_absolute_error_db": 12.281650629881504,
+        "floor_db": -120.0,
+        "amplitude_floor": 1e-06,
+        "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+      }
+    },
+    "L32_R_DRAM": {
+      "metric_reference": "NumPy complex128 inverse of original FP32 R",
+      "phase_sensitive_complex_response_relative_frobenius_error": 0.003448677032094179,
+      "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": 0.003447872232259798,
+      "magnitude_response_relative_frobenius_error": 0.0024409952459236617,
+      "normalized_db_floored_pattern": {
+        "rms_absolute_error_db": 0.13320564230170404,
+        "max_absolute_error_db": 27.101233945403187,
+        "floor_db": -120.0,
+        "amplitude_floor": 1e-06,
+        "definition": "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20))); candidate and reference normalized separately"
+      }
+    }
+  },
+  "power_snapshot": {
+    "storage": "external raw storage; not tracked",
+    "file": "issue88-fp32-r-power-snapshot-20261009T161013132476761435322545Z-4.csv",
+    "sha256": "1086480d4cec82e0efaf309221e0a254f9390c5f5e85c9a192dac2c43a484df1",
+    "byte_count": 523,
+    "sample_count": 10,
+    "first_timestamp": "2026-10-09T16:10:13.817990+00:00",
+    "last_timestamp": "2026-10-09T16:10:34.587419+00:00",
+    "run_start": "2026-10-09T16:10:14.048367+00:00",
+    "run_end": "2026-10-09T16:10:33.458213+00:00",
+    "immutable_snapshot": true,
+    "coverage_definition": "Coverage is complete when the immutable per-run snapshot is readable and nonempty, timestamps parse in order, its first sample is at or before the recorded run start, and its last sample timestamp is at or after the recorded run end; the run interval is covered through its end.",
+    "coverage": {
+      "definition": "Coverage is complete when the immutable per-run snapshot is readable and nonempty, timestamps parse in order, its first sample is at or before the recorded run start, and its last sample timestamp is at or after the recorded run end; the run interval is covered through its end.",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": true,
+      "readable": true,
+      "complete": true
+    },
+    "coverage_complete": true
+  },
+  "external_artifacts": {
+    "storage": "external raw storage; not tracked",
+    "raw_record": {
+      "file": "issue88-fp32-r-raw-20261009T161013132476761435322545Z.json",
+      "sha256": "7d3f31099a96af260a3c77aa7e51189a1b959af2e1ba1ecf225a317365b93dbb"
+    },
+    "power_snapshot": {
+      "file": "issue88-fp32-r-power-snapshot-20261009T161013132476761435322545Z-4.csv",
+      "sha256": "1086480d4cec82e0efaf309221e0a254f9390c5f5e85c9a192dac2c43a484df1",
+      "coverage_definition": "Coverage is complete when the immutable per-run snapshot is readable and nonempty, timestamps parse in order, its first sample is at or before the recorded run start, and its last sample timestamp is at or after the recorded run end; the run interval is covered through its end."
+    },
+    "inverse_arrays": [
+      {
+        "row": "bf16-r-L16",
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L16.npy",
+        "sha256": "1485d3d0ae0b3d2db28d1ba6530be3edf50c8b279c69ee543bd1752f723de653"
+      },
+      {
+        "row": "fp32-r-L16",
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-fp32-r-L16.npy",
+        "sha256": "568baaa2168cafe7f1faec291166a85aff0ba97b4f1ee9595d78fb64ad172ead"
+      },
+      {
+        "row": "bf16-r-L32",
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L32.npy",
+        "sha256": "1e1539c83c155a8564e09e4fbd0e4cf35d5f4d5ceffa7b0b2f78d9b40a0ab86c"
+      },
+      {
+        "row": "bf16-r-L32-r-dram",
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-bf16-r-L32-r-dram.npy",
+        "sha256": "1e1539c83c155a8564e09e4fbd0e4cf35d5f4d5ceffa7b0b2f78d9b40a0ab86c"
+      },
+      {
+        "row": "fp32-r-L32-r-dram",
+        "file": "issue88-fp32-r-inverse-20261009T161013132476761435322545Z-fp32-r-L32-r-dram.npy",
+        "sha256": "909471e48dd23f1b96504a3203b74587b59920127063123426e70326a482267d"
+      }
+    ]
+  },
+  "notes": [
+    "The five measured rows each retained one synchronized inverse array as a basename-only external .npy artifact.",
+    "The FP32-R/L=32/R-in-L1 row allocated and launched zero work because host preflight rejected it before allocation.",
+    "The four beam metrics are device-output diagnostics under the common original-R true-inverse reference; variant-matched fixed-N metrics are not used for conclusions."
+  ]
+}

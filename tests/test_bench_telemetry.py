@@ -96,6 +96,234 @@ def test_capture_environment_records_sampler_mode(monkeypatch):
     }
 
 
+def _two_board_snapshot() -> str:
+    return json.dumps(
+        {
+            "device_info": [
+                {
+                    "board_info": {
+                        "board_type": "p150a",
+                        "board_id": "board-zero",
+                        "bus_id": "0000:01:00.0",
+                    },
+                    "telemetry": {
+                        "power": "10",
+                        "aiclk": "800",
+                        "asic_temperature": "50",
+                    },
+                },
+                {
+                    "board_info": {
+                        "board_type": "p150a",
+                        "board_id": "board-one",
+                        "bus_id": "0000:02:00.0",
+                    },
+                    "telemetry": {
+                        "power": "20",
+                        "aiclk": "900",
+                        "asic_temperature": "60",
+                    },
+                },
+            ]
+        }
+    )
+
+
+def test_explicit_numeric_node_uses_a_verified_pci_mapping(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:02:00.0"},
+    )
+
+    assert telemetry.parse_telemetry(_two_board_snapshot()) == {
+        "power_w": "20",
+        "aiclk_mhz": "900",
+        "asic_temp_c": "60",
+    }
+    environment = telemetry.parse_environment(_two_board_snapshot())
+    assert environment["device_node"] == "/dev/tenstorrent/1"
+    assert environment["board"]["board_id"] == "board-one"
+
+
+def test_default_device_node_keeps_first_board_behavior(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+
+    assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-zero"
+
+
+def test_unverifiable_or_ambiguous_explicit_node_is_rejected(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", lambda node: set())
+    assert telemetry.parse_telemetry(_two_board_snapshot()) is None
+
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:01:00.0", "0000:02:00.0"},
+    )
+    assert telemetry.parse_telemetry(_two_board_snapshot()) is None
+
+    conflicting = json.loads(_two_board_snapshot())
+    conflicting["device_info"][1]["board_info"]["pci_bdf"] = "0000:03:00.0"
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda node: {"0000:02:00.0"},
+    )
+    assert telemetry.parse_telemetry(json.dumps(conflicting)) is None
+
+
+def test_numeric_node_does_not_fall_back_to_snapshot_position(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", "/dev/tenstorrent/1")
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", lambda node: set())
+
+    snapshot = json.loads(_two_board_snapshot())
+    snapshot["device_info"][0]["device_id"] = 1
+    assert telemetry.parse_environment(json.dumps(snapshot))["board_snapshot_error"]
+
+
+def test_resolver_accepts_only_a_real_by_id_symlink(tmp_path):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "pci-0000:02:00.0"
+    link.symlink_to("../1")
+    identity = lambda path: {"0000:02:00.0"}
+
+    assert telemetry._resolve_device_node_to_pci(str(node), identity_resolver=identity) == {
+        "0000:02:00.0"
+    }
+    assert telemetry._resolve_device_node_to_pci(str(link), identity_resolver=identity) == {
+        "0000:02:00.0"
+    }
+
+
+def test_resolver_accepts_blackhole_by_id_link_from_target_identity(tmp_path):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "blackhole-80A3FF7BA86938B3"
+    link.symlink_to("../1")
+    seen_targets = []
+
+    def resolve_identity(path):
+        seen_targets.append(path)
+        return {"0000:09:00.0"}
+
+    assert telemetry._resolve_device_node_to_pci(str(link), identity_resolver=resolve_identity) == {
+        "0000:09:00.0"
+    }
+    assert seen_targets == [node.resolve()]
+
+
+def test_blackhole_by_id_selects_the_board_with_matching_snapshot_bus(tmp_path, monkeypatch):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "blackhole-80A3FF7BA86938B3"
+    link.symlink_to("../1")
+    monkeypatch.setenv("HEKATUS_TT_DEVICE_NODE", str(link))
+    monkeypatch.setattr(telemetry, "_device_pci_bus_ids", lambda path: {"0000:09:00.0"})
+
+    snapshot = json.loads(_two_board_snapshot())
+    snapshot["device_info"][0]["board_info"]["bus_id"] = "0000:06:00.0"
+    snapshot["device_info"][1]["board_info"]["bus_id"] = "0000:09:00.0"
+
+    assert telemetry.parse_telemetry(json.dumps(snapshot)) == {
+        "power_w": "20",
+        "aiclk_mhz": "900",
+        "asic_temp_c": "60",
+    }
+
+
+def test_resolver_derives_numeric_node_identity_from_udev_devpath(tmp_path, monkeypatch):
+    device_dir = tmp_path / "tenstorrent"
+    device_dir.mkdir()
+    node = device_dir / "1"
+    node.write_text("")
+    udev_path = "/devices/pci0000:00/0000:09:00.0/tenstorrent/1"
+    monkeypatch.setattr(
+        telemetry,
+        "_udevadm_info",
+        lambda path: (
+            f"E: DEVPATH={udev_path}\n"
+            f"E: ID_PATH=pci-0000:09:00.0\n"
+            "E: PCI_SLOT_NAME=0000:09:00.0\n"
+            f"E: DEVNAME={path}\n"
+        ),
+    )
+
+    assert telemetry._resolve_device_node_to_pci(str(node)) == {"0000:09:00.0"}
+
+
+def test_resolver_rejects_conflicting_udev_identities(tmp_path, monkeypatch):
+    device_dir = tmp_path / "tenstorrent"
+    device_dir.mkdir()
+    node = device_dir / "1"
+    node.write_text("")
+    udev_path = "/devices/pci0000:00/0000:09:00.0/tenstorrent/1"
+    monkeypatch.setattr(
+        telemetry,
+        "_udevadm_info",
+        lambda path: (
+            f"E: DEVPATH={udev_path}\n"
+            "E: ID_PATH=pci-0000:06:00.0\n"
+            "E: PCI_SLOT_NAME=0000:09:00.0\n"
+            f"E: DEVNAME={path}\n"
+        ),
+    )
+
+    assert telemetry._resolve_device_node_to_pci(str(node)) == set()
+
+
+def test_resolver_rejects_conflicting_or_ambiguous_target_identity(tmp_path):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "blackhole-80A3FF7BA86938B3"
+    link.symlink_to("../1")
+
+    assert (
+        telemetry._resolve_device_node_to_pci(
+            str(link), identity_resolver=lambda path: {"0000:06:00.0", "0000:09:00.0"}
+        )
+        == set()
+    )
+    assert (
+        telemetry._resolve_device_node_to_pci(
+            str(link), identity_resolver=lambda path: {"not-a-bdf"}
+        )
+        == set()
+    )
+
+
+def test_resolver_rejects_a_pci_label_that_conflicts_with_target_identity(tmp_path):
+    device_dir = tmp_path / "tenstorrent"
+    by_id = device_dir / "by-id"
+    by_id.mkdir(parents=True)
+    node = device_dir / "1"
+    node.write_text("")
+    link = by_id / "pci-0000:06:00.0"
+    link.symlink_to("../1")
+
+    assert (
+        telemetry._resolve_device_node_to_pci(
+            str(link), identity_resolver=lambda path: {"0000:09:00.0"}
+        )
+        == set()
+    )
+
+
 def test_environment_survives_a_snapshot_it_cannot_read():
     env = parse_environment("")
 

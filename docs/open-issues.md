@@ -97,9 +97,28 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   BF16-rounded-R input representation already bounds error against the true
   inverse, so FP32 state does not remove the dominant input-precision bound.
   The implementation default is therefore `variant=bf16` with
-  `fp32_dest_acc_en=true`; the R representation itself remains open in #88.
-  Issue #100's board record confirms the defaults and supplies a new-default
-  throughput denominator without changing the R-format decision.
+  `fp32_dest_acc_en=true`. Issue #88 measured FP32-R on device and showed
+  lower inverse error against the original-R true inverse. The historical
+  beam-pattern comparison was invalid because the host metric used an incorrect
+  MV normalization contraction; the host-only correction found no kernel or
+  reconstruction conjugation/transpose defect. The final runner retake is
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`
+  with authoritative derived companion
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
+  and same-stem power companion
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
+  It supersedes the immutable 2026-10-09 retake JSON, summary JSON, derived
+  L1-accounting JSON, and companion CSV because its primary record carries
+  every row's complete L1 ledger and final evidence, while the summary
+  mechanically derives paired BF16-R/FP32-R deltas. It retains every measured
+  inverse and compares inverse error,
+  MV direction, phase-sensitive complex response, best-complex-scalar
+  phase-aligned complex response, magnitude response, and normalized dB/floored
+  pattern against one common original-R true inverse. The R representation
+  remains open for owner decision; these corrected quality and throughput
+  results are evidence, not an owner decision. Issue #100's board record
+  confirms the defaults and supplies a new-default throughput denominator
+  without changing the R-format decision.
 - Beamspace: basis design and dimension. **The dimension is no longer a free
   choice on compute grounds alone, and the planning claim has changed.** The
   stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16
