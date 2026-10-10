@@ -347,6 +347,164 @@ def test_issue88_actual_runner_failure_paths_publish_private_diagnostics_safely(
         assert r"C:\Users\alice\close error" in log_text
 
 
+@pytest.mark.parametrize(
+    "route",
+    ("first_launch", "correctness_only", "timing", "preflight_rejection", "ordinary_exception"),
+)
+@pytest.mark.parametrize("fault", ("timeout", "cleanup"))
+def test_issue88_every_row_route_finalizes_and_stops_after_failure(
+    tmp_path, monkeypatch, route, fault
+):
+    run_id = f"run-finalize-{route}-{fault}"
+    rows = runner.ISSUE88_COMPARISON_ROWS
+    normal_rows = (rows[0], rows[1])
+    rejected = next(row for row in rows if row.get("expected_preflight_rejection"))
+    selected = (rejected, rows[0]) if route == "preflight_rejection" else normal_rows
+    first_launch = route in {"first_launch", "correctness_only"}
+    expired = [False]
+    clock = [0.0]
+    started_sizes = []
+    kernel_prepares = []
+
+    def time_fn():
+        if expired[0]:
+            return runner.ROW_TIMEOUT_S + 1.0
+        clock[0] += 0.001
+        return clock[0]
+
+    class FakeKernel:
+        @classmethod
+        def prepare(cls, ttnn, device, input_matrices, **kwargs):
+            kernel_prepares.append(input_matrices.shape[-1])
+            if route == "ordinary_exception":
+                if fault == "timeout":
+                    expired[0] = True
+                raise RuntimeError("injected row execution failure")
+            kernel = cls()
+            kernel.launch_count = 0
+            kernel.actual = runner.reference_context(
+                input_matrices, kwargs["variant"]
+            )["fixed_reference"]
+            if route == "correctness_only":
+                kernel.actual = np.full_like(kernel.actual, np.nan)
+            return kernel
+
+        def launch(self):
+            self.launch_count += 1
+
+        def result(self):
+            return self.actual
+
+        def close(self):
+            if fault == "timeout":
+                expired[0] = True
+            elif route not in {"preflight_rejection", "ordinary_exception"}:
+                raise RuntimeError("injected row cleanup failure")
+
+    if route == "preflight_rejection" and fault == "timeout":
+        original_rejected_row = runner._preflight_rejected_row
+
+        def delayed_rejected_row(*args, **kwargs):
+            row = original_rejected_row(*args, **kwargs)
+            expired[0] = True
+            return row
+
+        monkeypatch.setattr(runner, "_preflight_rejected_row", delayed_rejected_row)
+
+    if fault == "cleanup" and route in {"preflight_rejection", "ordinary_exception"}:
+        original_finalize = runner._finalize_row
+
+        def fail_during_finalization(row, **kwargs):
+            cleanup_errors = list(kwargs.pop("cleanup_errors", ()))
+            cleanup_errors.append(RuntimeError("injected row finalization cleanup failure"))
+            return original_finalize(row, cleanup_errors=cleanup_errors, **kwargs)
+
+        monkeypatch.setattr(runner, "_finalize_row", fail_during_finalization)
+
+    result = runner.run_comparison(
+        SimpleNamespace(synchronize_device=lambda device: None),
+        object(),
+        artifact_dir=tmp_path / "inverse" / run_id,
+        run_id=run_id,
+        rows=selected,
+        first_launch=first_launch,
+        launches=1 if first_launch else runner.LAUNCHES_PER_ROW,
+        timeout_s=runner.ROW_TIMEOUT_S,
+        kernel_class=FakeKernel,
+        time_fn=time_fn,
+        matrices_factory=lambda batch, size, **kwargs: (
+            started_sizes.append(size)
+            or np.broadcast_to(np.eye(size, dtype=np.complex64), (batch, size, size)).copy()
+        ),
+    )
+
+    assert result["status"] == "failed"
+    assert result["stopped_on_failure"] is True
+    assert result["rows_completed"] == 1
+    assert len(result["comparison_rows"]) == 1
+    failed_row = result["comparison_rows"][0]
+    assert failed_row["status"] == runner.ISSUE88_STATUS_FAILED
+    assert failed_row["row_timeout_s"] == runner.ROW_TIMEOUT_S
+    if fault == "timeout":
+        assert (
+            failed_row.get("error", {}).get("code")
+            == runner.ISSUE88_ERROR_CODE_VALUES["row_timeout"]
+            or any(
+                item["code"] == runner.ISSUE88_ERROR_CODE_VALUES["row_timeout"]
+                for item in failed_row.get("secondary_failures", [])
+            )
+        )
+        if route == "ordinary_exception":
+            assert failed_row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_execution_failed"
+            ]
+            assert failed_row["secondary_failures"][0]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_timeout"
+            ]
+        if route == "correctness_only":
+            assert failed_row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "correctness_failed"
+            ]
+            assert failed_row["secondary_failures"][0]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_timeout"
+            ]
+    else:
+        assert (
+            failed_row.get("error", {}).get("code")
+            == runner.ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"]
+            or failed_row.get("cleanup_error", {}).get("code")
+            == runner.ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"]
+        )
+        if route == "ordinary_exception":
+            assert failed_row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_execution_failed"
+            ]
+            assert failed_row["cleanup_error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_cleanup_failed"
+            ]
+        if route == "correctness_only":
+            assert failed_row["error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "correctness_failed"
+            ]
+            assert failed_row["cleanup_error"]["code"] == runner.ISSUE88_ERROR_CODE_VALUES[
+                "row_cleanup_failed"
+            ]
+
+    if route == "preflight_rejection":
+        assert failed_row["row"] == rejected["name"]
+        assert started_sizes == []
+        assert kernel_prepares == []
+    else:
+        assert len(kernel_prepares) == 1
+        assert started_sizes == [selected[0]["size"]]
+
+    record, _raw = _publish_producer_output(tmp_path, result, run_id)
+    assert record["status"] == runner.ISSUE88_STATUS_FAILED
+    assert record["measurement"]["comparison_rows"][0]["status"] == (
+        runner.ISSUE88_STATUS_FAILED
+    )
+
+
 def test_issue88_actual_runner_undefined_diagnostic_shapes_publish(tmp_path):
     run_id = "run-actual-undefined"
     run = _actual_producer_run(tmp_path, run_id, mode="undefined")

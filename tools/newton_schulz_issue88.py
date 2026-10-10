@@ -2079,6 +2079,76 @@ def _failed_row(
     return row
 
 
+def _append_row_failure(
+    row: dict[str, Any],
+    *,
+    stage: str,
+    code: str,
+    error: Any,
+    run_id: str,
+) -> None:
+    """Record a row failure without replacing an earlier failure reason."""
+    failure = _error_entry(code, error, run_id=run_id)
+    already_failed = row.get("status") == ISSUE88_STATUS_FAILED
+    if not already_failed:
+        row["status"] = ISSUE88_STATUS_FAILED
+        row["failure_stage"] = stage
+        row["error"] = failure
+    elif not isinstance(row.get("error"), dict):
+        row["failure_stage"] = stage
+        row["error"] = failure
+    elif stage == "row_cleanup" and "cleanup_error" not in row:
+        row["cleanup_error"] = failure
+    else:
+        secondary = list(row.get("secondary_failures", []))
+        primary_code = row.get("error", {}).get("code")
+        if primary_code != code and not any(
+            item.get("code") == code for item in secondary if isinstance(item, dict)
+        ):
+            secondary.append(failure)
+        if secondary:
+            row["secondary_failures"] = secondary
+    if stage == "row_timeout" and row.get("stop_condition") is None:
+        row["stop_condition"] = ISSUE88_STOP_CONDITION_TIMEOUT
+    elif stage == "row_cleanup" and row.get("stop_condition") is None:
+        row["stop_condition"] = ISSUE88_STOP_CONDITION_ROW_ERROR
+
+
+def _finalize_row(
+    row: dict[str, Any],
+    *,
+    row_started_at: float,
+    timeout_s: float,
+    time_fn: Callable[[], float],
+    run_id: str,
+    cleanup_errors: tuple[Exception, ...] | list[Exception] = (),
+) -> dict[str, Any]:
+    """Enforce the row deadline and turn cleanup failures into row failures."""
+    effective_timeout_s = min(timeout_s, ROW_TIMEOUT_S)
+    if row.get("status") not in SUCCESSFUL_ROW_STATUSES or "row_timeout_s" in row:
+        row["row_timeout_s"] = effective_timeout_s
+    elapsed_s = time_fn() - row_started_at
+    if elapsed_s > effective_timeout_s:
+        _append_row_failure(
+            row,
+            stage="row_timeout",
+            code=ISSUE88_ERROR_CODE_VALUES["row_timeout"],
+            error=TimeoutError("row exceeded its configured time limit"),
+            run_id=run_id,
+        )
+    for error in cleanup_errors:
+        _append_row_failure(
+            row,
+            stage="row_cleanup",
+            code=ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"],
+            error=error,
+            run_id=run_id,
+        )
+    if row.get("status") == ISSUE88_STATUS_FAILED:
+        row.setdefault("row_timeout_s", effective_timeout_s)
+    return row
+
+
 def _preflight_rejected_row(
     config: dict[str, Any], preflight: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -2132,12 +2202,16 @@ def _run_row(
     first_launch: bool = False,
     kernel_class: Any | None = None,
     time_fn: Callable[[], float] = time.perf_counter,
+    row_started_at: float | None = None,
 ) -> dict[str, Any]:
     """Run correctness, warm-up, and timed launches for one exact row."""
     if launches != LAUNCHES_PER_ROW and not first_launch:
         raise ValueError(f"Issue #88 requires exactly {LAUNCHES_PER_ROW} timed launches")
     if not math.isfinite(timeout_s) or timeout_s <= 0.0:
         raise ValueError("timeout_s must be finite and positive")
+    timeout_s = min(timeout_s, ROW_TIMEOUT_S)
+    if row_started_at is None:
+        row_started_at = time_fn()
     flops_per_launch = 8192 * 4 * 2 * config["size"] ** 3 * (2 * FIXED_ITERATIONS)
     result: dict[str, Any] = dict(config)
     result["row"] = config["name"]
@@ -2146,15 +2220,18 @@ def _run_row(
     result["launches_requested"] = 0 if first_launch else launches
     result["row_timeout_s"] = timeout_s
     result["status"] = ISSUE88_STATUS_FAILED
-    preflight = _preflight_accounting(config, ttnn) if preflight is None else dict(preflight)
-    result["preflight"] = preflight
+    preflight = None if preflight is None else dict(preflight)
+    if preflight is not None:
+        result["preflight"] = preflight
     kernel = None
     samples: list[float] = []
-    row_started = time_fn()
+    cleanup_errors: list[Exception] = []
     try:
+        preflight = _preflight_accounting(config, ttnn) if preflight is None else preflight
+        result["preflight"] = preflight
         if reference is None:
             reference = reference_context(matrices, config["variant"])
-        if time_fn() - row_started > timeout_s:
+        if time_fn() - row_started_at > timeout_s:
             result = _failed_row(config, "row_timeout", "row exceeded 60 seconds before device launch")
             result.update(
                 {
@@ -2251,7 +2328,7 @@ def _run_row(
         ttnn.synchronize_device(device)
         result["warmup"] = {"launches": 1, "synchronized": True}
 
-        if time_fn() - row_started > timeout_s:
+        if time_fn() - row_started_at > timeout_s:
             result.update(
                 _failed_row(config, "row_timeout", "row exceeded 60 seconds before timed launches")
             )
@@ -2264,7 +2341,7 @@ def _run_row(
             kernel.launch()
             ttnn.synchronize_device(device)
             samples.append(time_fn() - launch_started)
-            if time_fn() - row_started > timeout_s:
+            if time_fn() - row_started_at > timeout_s:
                 result.update(
                     _failed_row(
                         config,
@@ -2300,7 +2377,8 @@ def _run_row(
         result["flops_per_launch"] = flops_per_launch
         result["launches_requested"] = 0 if first_launch else launches
         result["row_timeout_s"] = timeout_s
-        result["preflight"] = preflight
+        if preflight is not None:
+            result["preflight"] = preflight
         if reference is not None:
             result["reference_available"] = True
         if samples:
@@ -2311,19 +2389,15 @@ def _run_row(
             try:
                 kernel.close()
             except Exception as exc:  # noqa: BLE001 - cleanup is part of the row result
-                if result.get("status") == ISSUE88_ROW_STATUS_OK:
-                    result["status"] = ISSUE88_STATUS_FAILED
-                    result["failure_stage"] = "row_cleanup"
-                    result["error"] = _error_entry(
-                        ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"], exc, run_id=run_id
-                    )
-                else:
-                    result.setdefault(
-                        "cleanup_error",
-                        _error_entry(
-                            ISSUE88_ERROR_CODE_VALUES["row_cleanup_failed"], exc, run_id=run_id
-                        ),
-                    )
+                cleanup_errors.append(exc)
+        _finalize_row(
+            result,
+            row_started_at=row_started_at,
+            timeout_s=timeout_s,
+            time_fn=time_fn,
+            run_id=run_id,
+            cleanup_errors=cleanup_errors,
+        )
 
 
 def _prepare_comparison_input(
@@ -2386,6 +2460,9 @@ def run_comparison(
     if not selected:
         raise ValueError("at least one Issue #88 row is required")
     validate_comparison_rows(selected)
+    if not math.isfinite(timeout_s) or timeout_s <= 0.0:
+        raise ValueError("timeout_s must be finite and positive")
+    timeout_s = min(timeout_s, ROW_TIMEOUT_S)
     if not first_launch:
         if launches != LAUNCHES_PER_ROW:
             raise ValueError(f"Issue #88 requires exactly {LAUNCHES_PER_ROW} timed launches")
@@ -2400,17 +2477,36 @@ def run_comparison(
     comparison: list[dict[str, Any]] = []
     stopped = False
     for config in selected:
+        row_started_at = time_fn()
         try:
             preflight = _preflight_accounting(config, ttnn)
         except Exception as exc:  # noqa: BLE001 - retain a host preflight failure as a row
             row = _failed_row(config, "preflight", exc)
             row["row"] = config["name"]
             row["shape_name"] = shape_name(config)
+            _finalize_row(
+                row,
+                row_started_at=row_started_at,
+                timeout_s=timeout_s,
+                time_fn=time_fn,
+                run_id=run_id,
+            )
             comparison.append(row)
             stopped = True
             break
         if config.get("expected_preflight_rejection"):
-            comparison.append(_preflight_rejected_row(config, preflight=preflight))
+            row = _preflight_rejected_row(config, preflight=preflight)
+            _finalize_row(
+                row,
+                row_started_at=row_started_at,
+                timeout_s=timeout_s,
+                time_fn=time_fn,
+                run_id=run_id,
+            )
+            comparison.append(row)
+            if row.get("status") not in SUCCESSFUL_ROW_STATUSES:
+                stopped = True
+                break
             continue
         try:
             size, matrices, reference = _prepare_comparison_input(
@@ -2426,6 +2522,13 @@ def run_comparison(
             row["row"] = config["name"]
             row["shape_name"] = shape_name(config)
             row["preflight"] = preflight
+            _finalize_row(
+                row,
+                row_started_at=row_started_at,
+                timeout_s=timeout_s,
+                time_fn=time_fn,
+                run_id=run_id,
+            )
             comparison.append(row)
             stopped = True
             break
@@ -2443,6 +2546,7 @@ def run_comparison(
             first_launch=first_launch,
             kernel_class=kernel_class,
             time_fn=time_fn,
+            row_started_at=row_started_at,
         )
         row["input_fingerprint"] = dict(fingerprints[str(size)])
         row["reference_fingerprint"] = {
