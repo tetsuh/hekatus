@@ -60,12 +60,24 @@
     "immutable": true,
     "scope": "The 2026-10-09 retake JSON, summary JSON, L1-accounting JSON, and companion CSV remain immutable historical artifacts.",
     "reason": "The final runner primary record embeds the complete L1 ledger and final evidence.",
-    "artifact_sha256": {
-      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json": "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567",
-      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json": "27186c518b7382a0d05edc15d87876c1300be18af2de3edd498e4261b810d851",
-      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-l1-accounting.json": "0f22bc6f0592410c4dceaf4b7159e82241083bcce86e2693a63c40c8de59d28e",
-      "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv": "1086480d4cec82e0efaf309221e0a254f9390c5f5e85c9a192dac2c43a484df1"
-    }
+    "artifact_sha256": [
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json",
+        "sha256": "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json",
+        "sha256": "27186c518b7382a0d05edc15d87876c1300be18af2de3edd498e4261b810d851"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-l1-accounting.json",
+        "sha256": "0f22bc6f0592410c4dceaf4b7159e82241083bcce86e2693a63c40c8de59d28e"
+      },
+      {
+        "file": "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv",
+        "sha256": "1086480d4cec82e0efaf309221e0a254f9390c5f5e85c9a192dac2c43a484df1"
+      }
+    ]
   },
   "rows": [
     {
@@ -422,58 +434,6 @@
           "compute": "L1"
         }
       }
-    },
-    {
-      "row": "fp32-r-L32",
-      "variant": "FP32-R",
-      "L": 32,
-      "R_placement": "L1",
-      "status": "preflight_rejected",
-      "selected_controls": {
-        "batch": 8192,
-        "iterations": 12,
-        "initial_value": "I/||R||inf",
-        "state_format": "BF16",
-        "destination_format": "FP32",
-        "fp32_dest_acc_en": true,
-        "math_fidelity": "HiFi3",
-        "fuse_s": true,
-        "matrix_block": 8,
-        "double_buffer": true,
-        "dst_full_sync_en": true,
-        "x0_memory": "l1",
-        "output_memory": "dram"
-      },
-      "allocation_attempted": false,
-      "launched_work": 0,
-      "inverse": null,
-      "mv_weight_direction": null,
-      "beam_metrics": null,
-      "timing": {
-        "launches_measured": 0,
-        "row_timeout_s": 60.0,
-        "seconds_per_launch_p50": null,
-        "tflops_p50_derived": null
-      },
-      "l1": {
-        "status": "rejected_before_allocation",
-        "accepted": false,
-        "total_bytes": 1884928,
-        "budget_bytes": 1572864,
-        "overage_bytes": 312064,
-        "headroom_bytes": 0,
-        "cb_bytes": 456704,
-        "tensor_bytes": 1316864,
-        "static_prefix_bytes": 111360,
-        "placement": {
-          "R": "L1",
-          "X0": "L1",
-          "identity": "L1",
-          "zero": "L1",
-          "output": "DRAM",
-          "compute": "L1"
-        }
-      }
     }
   ],
   "comparisons": [
@@ -638,20 +598,20 @@
           "left_minus_right": 0.0014990610191901732
         },
         "beam_metrics": {
-          "phase_sensitive_complex_response_relative_frobenius_error": {
+          "phase_sensitive_error": {
             "left_minus_right": 0.010007804938623223
           },
-          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": {
+          "phase_aligned_error": {
             "left_minus_right": 0.010006269327118282
           },
-          "magnitude_response_relative_frobenius_error": {
+          "magnitude_error": {
             "left_minus_right": 0.0071911606306228155
           },
           "normalized_db_floored_pattern": {
-            "rms_absolute_error_db": {
+            "db_rms_error": {
               "left_minus_right": 0.23859512061985474
             },
-            "max_absolute_error_db": {
+            "db_max_error": {
               "left_minus_right": 9.497836830117393
             }
           }
@@ -665,16 +625,16 @@
           }
         },
         "l1": {
-          "total_bytes": {
+          "l1_total_bytes_delta": {
             "right_minus_left": 344064
           },
-          "headroom_bytes": {
+          "l1_headroom_bytes_delta": {
             "right_minus_left": -344064
           },
-          "cb_bytes": {
+          "l1_cb_bytes_delta": {
             "right_minus_left": 98304
           },
-          "tensor_bytes": {
+          "l1_tensor_bytes_delta": {
             "right_minus_left": 245760
           }
         }
@@ -845,20 +805,20 @@
           "left_minus_right": 0.0010041496793409266
         },
         "beam_metrics": {
-          "phase_sensitive_complex_response_relative_frobenius_error": {
+          "phase_sensitive_error": {
             "left_minus_right": 0.008455392080970412
           },
-          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": {
+          "phase_aligned_error": {
             "left_minus_right": 0.008422513652293236
           },
-          "magnitude_response_relative_frobenius_error": {
+          "magnitude_error": {
             "left_minus_right": 0.006092070127539371
           },
           "normalized_db_floored_pattern": {
-            "rms_absolute_error_db": {
+            "db_rms_error": {
               "left_minus_right": 0.24483979999775365
             },
-            "max_absolute_error_db": {
+            "db_max_error": {
               "left_minus_right": 0.5564206727593657
             }
           }
@@ -872,16 +832,16 @@
           }
         },
         "l1": {
-          "total_bytes": {
+          "l1_total_bytes_delta": {
             "right_minus_left": 98304
           },
-          "headroom_bytes": {
+          "l1_headroom_bytes_delta": {
             "right_minus_left": -98304
           },
-          "cb_bytes": {
+          "l1_cb_bytes_delta": {
             "right_minus_left": 98304
           },
-          "tensor_bytes": {
+          "l1_tensor_bytes_delta": {
             "right_minus_left": 0
           }
         }
@@ -1052,20 +1012,20 @@
           "left_minus_right": 0.0
         },
         "beam_metrics": {
-          "phase_sensitive_complex_response_relative_frobenius_error": {
+          "phase_sensitive_error": {
             "left_minus_right": 0.0
           },
-          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": {
+          "phase_aligned_error": {
             "left_minus_right": 0.0
           },
-          "magnitude_response_relative_frobenius_error": {
+          "magnitude_error": {
             "left_minus_right": 0.0
           },
           "normalized_db_floored_pattern": {
-            "rms_absolute_error_db": {
+            "db_rms_error": {
               "left_minus_right": 0.0
             },
-            "max_absolute_error_db": {
+            "db_max_error": {
               "left_minus_right": 0.0
             }
           }
@@ -1079,16 +1039,16 @@
           }
         },
         "l1": {
-          "total_bytes": {
+          "l1_total_bytes_delta": {
             "right_minus_left": -491520
           },
-          "headroom_bytes": {
+          "l1_headroom_bytes_delta": {
             "right_minus_left": 491520
           },
-          "cb_bytes": {
+          "l1_cb_bytes_delta": {
             "right_minus_left": 0
           },
-          "tensor_bytes": {
+          "l1_tensor_bytes_delta": {
             "right_minus_left": -491520
           }
         }
@@ -1259,20 +1219,20 @@
           "left_minus_right": 0.0010041496793409266
         },
         "beam_metrics": {
-          "phase_sensitive_complex_response_relative_frobenius_error": {
+          "phase_sensitive_error": {
             "left_minus_right": 0.008455392080970412
           },
-          "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error": {
+          "phase_aligned_error": {
             "left_minus_right": 0.008422513652293236
           },
-          "magnitude_response_relative_frobenius_error": {
+          "magnitude_error": {
             "left_minus_right": 0.006092070127539371
           },
           "normalized_db_floored_pattern": {
-            "rms_absolute_error_db": {
+            "db_rms_error": {
               "left_minus_right": 0.24483979999775365
             },
-            "max_absolute_error_db": {
+            "db_max_error": {
               "left_minus_right": 0.5564206727593657
             }
           }
@@ -1286,16 +1246,16 @@
           }
         },
         "l1": {
-          "total_bytes": {
+          "l1_total_bytes_delta": {
             "right_minus_left": -393216
           },
-          "headroom_bytes": {
+          "l1_headroom_bytes_delta": {
             "right_minus_left": 393216
           },
-          "cb_bytes": {
+          "l1_cb_bytes_delta": {
             "right_minus_left": 98304
           },
-          "tensor_bytes": {
+          "l1_tensor_bytes_delta": {
             "right_minus_left": -491520
           }
         }
@@ -1314,11 +1274,11 @@
       ],
       "placement": "L16/L1",
       "quality_error_reduction": {
-        "inverse_error": 0.015423852290287199,
-        "mv_direction_max_cosine_deficit": 0.0014990610191901732,
-        "phase_sensitive_complex_response": 0.010007804938623223,
-        "best_complex_scalar_phase_aligned_complex_response": 0.010006269327118282,
-        "magnitude_response": 0.0071911606306228155,
+        "inverse_error_reduction": 0.015423852290287199,
+        "mv_direction_deficit_reduction": 0.0014990610191901732,
+        "phase_sensitive_reduction": 0.010007804938623223,
+        "phase_aligned_reduction": 0.010006269327118282,
+        "magnitude_reduction": 0.0071911606306228155,
         "normalized_db_floored_pattern_rms_db": 0.23859512061985474,
         "normalized_db_floored_pattern_max_db": 9.497836830117393
       },
@@ -1337,11 +1297,11 @@
       ],
       "placement": "L32/DRAM",
       "quality_error_reduction": {
-        "inverse_error": 0.016536034773316468,
-        "mv_direction_max_cosine_deficit": 0.0010041496793409266,
-        "phase_sensitive_complex_response": 0.008455392080970412,
-        "best_complex_scalar_phase_aligned_complex_response": 0.008422513652293236,
-        "magnitude_response": 0.006092070127539371,
+        "inverse_error_reduction": 0.016536034773316468,
+        "mv_direction_deficit_reduction": 0.0010041496793409266,
+        "phase_sensitive_reduction": 0.008455392080970412,
+        "phase_aligned_reduction": 0.008422513652293236,
+        "magnitude_reduction": 0.006092070127539371,
         "normalized_db_floored_pattern_rms_db": 0.24483979999775365,
         "normalized_db_floored_pattern_max_db": 0.5564206727593657
       },
@@ -1355,16 +1315,6 @@
     }
   ],
   "fp32_r_outcome_under_common_true_inverse_reference": {
-    "matched_placements": [
-      [
-        "bf16-r-L16",
-        "fp32-r-L16"
-      ],
-      [
-        "bf16-r-L32-r-dram",
-        "fp32-r-L32-r-dram"
-      ]
-    ],
     "inverse_error_improves": true,
     "mv_direction_deficit_improves": true,
     "all_four_beam_indicators_improve": true,
@@ -1376,8 +1326,9 @@
       "sha256": "04743a45c41405b8123db0f9ce6022557b83e22e7c8e2ffeb345cf84a9cb08f6"
     },
     "budget_bytes": 1572864,
-    "rows": {
-      "bf16-r-L16": {
+    "rows": [
+      {
+        "row": "bf16-r-L16",
         "status": "admitted",
         "accepted": true,
         "total_bytes": 885504,
@@ -1396,7 +1347,8 @@
           "compute": "L1"
         }
       },
-      "fp32-r-L16": {
+      {
+        "row": "fp32-r-L16",
         "status": "admitted",
         "accepted": true,
         "total_bytes": 1229568,
@@ -1415,7 +1367,8 @@
           "compute": "L1"
         }
       },
-      "bf16-r-L32": {
+      {
+        "row": "bf16-r-L32",
         "status": "admitted",
         "accepted": true,
         "total_bytes": 1295104,
@@ -1434,7 +1387,8 @@
           "compute": "L1"
         }
       },
-      "bf16-r-L32-r-dram": {
+      {
+        "row": "bf16-r-L32-r-dram",
         "status": "admitted",
         "accepted": true,
         "total_bytes": 803584,
@@ -1453,7 +1407,8 @@
           "compute": "L1"
         }
       },
-      "fp32-r-L32-r-dram": {
+      {
+        "row": "fp32-r-L32-r-dram",
         "status": "admitted",
         "accepted": true,
         "total_bytes": 901888,
@@ -1472,7 +1427,8 @@
           "compute": "L1"
         }
       },
-      "fp32-r-L32": {
+      {
+        "row": "fp32-r-L32",
         "status": "rejected_before_allocation",
         "accepted": false,
         "total_bytes": 1884928,
@@ -1491,7 +1447,7 @@
           "compute": "L1"
         }
       }
-    }
+    ]
   },
   "power_snapshot": {
     "file": "issue88-fp32-r-power-snapshot-20261010T0356528751606238822231592Z-4.csv",

@@ -6,6 +6,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from tools import newton_schulz_issue88 as runner
+
 ROOT = Path(__file__).parents[1]
 MEASUREMENTS = ROOT / "docs/measurements"
 PRIMARY = MEASUREMENTS / (
@@ -15,7 +17,7 @@ SUMMARY = MEASUREMENTS / (
     "2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json"
 )
 PRIMARY_SHA256 = "04743a45c41405b8123db0f9ce6022557b83e22e7c8e2ffeb345cf84a9cb08f6"
-SUMMARY_SHA256 = "3871fcc22cce39ad6ad90afb97126f779f28ad9e02061baa3e3172fe3fdb901a"
+SUMMARY_SHA256 = "26583bedd319f894526b6c9e3ec6986a74f2523672073cea395b026cd9adfb97"
 SUPERSEDED_HASHES = {
     "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json": (
         "50ceddd6bff5afff972d393451fec86931bbb1ba1c9916f481c12ab2eee44567"
@@ -143,26 +145,6 @@ def _differences(left: dict, right: dict) -> dict:
     right_beam = right["beam_metrics"]
     left_db = left_beam["normalized_db_floored_pattern"]
     right_db = right_beam["normalized_db_floored_pattern"]
-    beam = {
-        field: {
-            "left_minus_right": left_beam[field] - right_beam[field]
-        }
-        for field in (
-            "phase_sensitive_complex_response_relative_frobenius_error",
-            "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error",
-            "magnitude_response_relative_frobenius_error",
-        )
-    }
-    beam["normalized_db_floored_pattern"] = {
-        "rms_absolute_error_db": {
-            "left_minus_right": left_db["rms_absolute_error_db"]
-            - right_db["rms_absolute_error_db"]
-        },
-        "max_absolute_error_db": {
-            "left_minus_right": left_db["max_absolute_error_db"]
-            - right_db["max_absolute_error_db"]
-        },
-    }
     return {
         "inverse_error": {
             "left_minus_right": left["inverse"]["relative_frobenius_error"]
@@ -172,7 +154,40 @@ def _differences(left: dict, right: dict) -> dict:
             "left_minus_right": left["mv_weight_direction"]["max_cosine_deficit"]
             - right["mv_weight_direction"]["max_cosine_deficit"]
         },
-        "beam_metrics": beam,
+        "beam_metrics": {
+            "phase_sensitive_error": {
+                "left_minus_right": left_beam[
+                    "phase_sensitive_complex_response_relative_frobenius_error"
+                ]
+                - right_beam[
+                    "phase_sensitive_complex_response_relative_frobenius_error"
+                ]
+            },
+            "phase_aligned_error": {
+                "left_minus_right": left_beam[
+                    "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error"
+                ]
+                - right_beam[
+                    "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error"
+                ]
+            },
+            "magnitude_error": {
+                "left_minus_right": left_beam[
+                    "magnitude_response_relative_frobenius_error"
+                ]
+                - right_beam["magnitude_response_relative_frobenius_error"]
+            },
+            "normalized_db_floored_pattern": {
+                "db_rms_error": {
+                    "left_minus_right": left_db["rms_absolute_error_db"]
+                    - right_db["rms_absolute_error_db"]
+                },
+                "db_max_error": {
+                    "left_minus_right": left_db["max_absolute_error_db"]
+                    - right_db["max_absolute_error_db"]
+                },
+            },
+        },
         "performance": {
             "p50_tflops": {
                 "right_minus_left": right["timing"]["tflops_p50_derived"]
@@ -184,10 +199,22 @@ def _differences(left: dict, right: dict) -> dict:
             },
         },
         "l1": {
-            field: {
-                "right_minus_left": right["l1"][field] - left["l1"][field]
-            }
-            for field in ("total_bytes", "headroom_bytes", "cb_bytes", "tensor_bytes")
+            "l1_total_bytes_delta": {
+                "right_minus_left": right["l1"]["total_bytes"]
+                - left["l1"]["total_bytes"]
+            },
+            "l1_headroom_bytes_delta": {
+                "right_minus_left": right["l1"]["headroom_bytes"]
+                - left["l1"]["headroom_bytes"]
+            },
+            "l1_cb_bytes_delta": {
+                "right_minus_left": right["l1"]["cb_bytes"]
+                - left["l1"]["cb_bytes"]
+            },
+            "l1_tensor_bytes_delta": {
+                "right_minus_left": right["l1"]["tensor_bytes"]
+                - left["l1"]["tensor_bytes"]
+            },
         },
     }
 
@@ -203,6 +230,7 @@ def test_final_companion_recomputes_every_value_from_primary_record():
 
     assert _sha256(PRIMARY) == PRIMARY_SHA256
     assert _sha256(SUMMARY) == SUMMARY_SHA256
+    assert json.loads(runner._serialize_record(summary)) == summary
     assert summary["source_record"] == {
         "file": PRIMARY.name,
         "sha256": hashlib.sha256(primary_bytes).hexdigest(),
@@ -217,13 +245,18 @@ def test_final_companion_recomputes_every_value_from_primary_record():
         row["row"]: _row_view(row, primary["measurement"])
         for row in source_rows
     }
-    assert summary["rows"] == [expected_rows[row["row"]] for row in source_rows]
+    assert summary["rows"] == [
+        expected_rows[row["row"]]
+        for row in source_rows
+        if row["status"] == "ok"
+    ]
     assert summary["l1_preflight_accounting"]["source_record"] == summary[
         "source_record"
     ]
-    assert summary["l1_preflight_accounting"]["rows"] == {
-        row_name: expected["l1"] for row_name, expected in expected_rows.items()
-    }
+    assert summary["l1_preflight_accounting"]["rows"] == [
+        {"row": row_name, **expected["l1"]}
+        for row_name, expected in expected_rows.items()
+    ]
 
     expected_superceded = list(SUPERSEDED_HASHES)
     assert summary["supersedes"]["records"] == expected_superceded
@@ -231,7 +264,10 @@ def test_final_companion_recomputes_every_value_from_primary_record():
     assert summary["supersedes"]["reason"] == (
         "The final runner primary record embeds the complete L1 ledger and final evidence."
     )
-    assert summary["supersedes"]["artifact_sha256"] == SUPERSEDED_HASHES
+    assert summary["supersedes"]["artifact_sha256"] == [
+        {"file": name, "sha256": SUPERSEDED_HASHES[name]}
+        for name in expected_superceded
+    ]
     assert {
         name: _sha256(MEASUREMENTS / name) for name in expected_superceded
     } == SUPERSEDED_HASHES
@@ -266,31 +302,30 @@ def test_final_companion_recomputes_every_value_from_primary_record():
         differences = _differences(left, right)
         quality = item["quality_error_reduction"]
         expected_quality = {
-            "inverse_error": differences["inverse_error"]["left_minus_right"],
-            "mv_direction_max_cosine_deficit": differences[
+            "inverse_error_reduction": differences["inverse_error"]["left_minus_right"],
+            "mv_direction_deficit_reduction": differences[
                 "mv_direction_max_cosine_deficit"
             ]["left_minus_right"],
-            "phase_sensitive_complex_response": differences["beam_metrics"][
-                "phase_sensitive_complex_response_relative_frobenius_error"
+            "phase_sensitive_reduction": differences["beam_metrics"][
+                "phase_sensitive_error"
             ]["left_minus_right"],
-            "best_complex_scalar_phase_aligned_complex_response": differences[
-                "beam_metrics"][
-                    "best_complex_scalar_phase_aligned_complex_response_relative_frobenius_error"
-                ]["left_minus_right"],
-            "magnitude_response": differences["beam_metrics"][
-                "magnitude_response_relative_frobenius_error"
+            "phase_aligned_reduction": differences["beam_metrics"][
+                "phase_aligned_error"
+            ]["left_minus_right"],
+            "magnitude_reduction": differences["beam_metrics"][
+                "magnitude_error"
             ]["left_minus_right"],
             "normalized_db_floored_pattern_rms_db": differences["beam_metrics"][
                 "normalized_db_floored_pattern"
-            ]["rms_absolute_error_db"]["left_minus_right"],
+            ]["db_rms_error"]["left_minus_right"],
             "normalized_db_floored_pattern_max_db": differences["beam_metrics"][
                 "normalized_db_floored_pattern"
-            ]["max_absolute_error_db"]["left_minus_right"],
+            ]["db_max_error"]["left_minus_right"],
         }
         assert quality == expected_quality
         assert item["all_quality_indicators_improve"] is True
         assert item["costs"]["l1_total_increase_bytes"] == differences["l1"][
-            "total_bytes"
+            "l1_total_bytes_delta"
         ]["right_minus_left"]
         assert item["costs"]["p50_tflops_delta"] == differences[
             "performance"
