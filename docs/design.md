@@ -2564,17 +2564,21 @@ response, and normalized dB/floored pattern metrics. The source audit of the
 separate real/imaginary planes, complex multiply signs, L=16 packing/unpacking,
 downloads, and complex reconstruction found no conjugation or transpose defect.
 
-The corrected device retake is
-`docs/measurements/2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json`,
-with companion metadata in
-`docs/measurements/2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json`.
-It retains every measured inverse and compares all four beam diagnostics, MV
-weight direction, and inverse error against one common true inverse of the
-original FP32 `R`; the dB pattern uses the explicit -120 dB amplitude floor.
-The historical conclusion that FP32-`R` worsens beam-pattern error is withdrawn
-and replaced by this corrected device evidence. The `R` representation remains
-open for owner decision, and the retake's immutable power snapshot records its
-SHA-256, sample count, and end-coverage definition.
+The final runner retake is
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`,
+with same-stem power companion
+`docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
+It supersedes the immutable 2026-10-09 retake, summary, and derived L1
+accounting artifacts because the primary record now carries each row's full L1
+breakdown and total, while retaining the paired BF16-R/FP32-R values needed for
+mechanical matched deltas. It retains every measured inverse and compares all
+four beam diagnostics, MV weight direction, and inverse error against one common
+true inverse of the original FP32 `R`; the dB pattern uses the explicit -120 dB
+amplitude floor. The historical conclusion that FP32-`R` worsens beam-pattern
+error is withdrawn and replaced by this corrected device evidence. The `R`
+representation remains open for owner decision, and the final record's
+immutable power snapshot records its SHA-256, sample count, and end-coverage
+definition.
 
 ### Investigation items
 

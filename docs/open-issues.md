@@ -101,18 +101,21 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   lower inverse error against the original-R true inverse. The historical
   beam-pattern comparison was invalid because the host metric used an incorrect
   MV normalization contraction; the host-only correction found no kernel or
-  reconstruction conjugation/transpose defect. The corrected device retake is
-  `docs/measurements/2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json`
-  with companion metadata in
-  `docs/measurements/2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-summary.json`.
-  It retains every measured inverse and compares inverse error, MV direction,
-  phase-sensitive complex response, best-complex-scalar phase-aligned complex
-  response, magnitude response, and normalized dB/floored pattern against one
-  common original-R true inverse. The R representation remains open for owner
-  decision; these corrected quality and throughput results are evidence, not
-  an owner decision. Issue #100's board
-  record confirms the defaults and supplies a new-default throughput
-  denominator without changing the R-format decision.
+  reconstruction conjugation/transpose defect. The final runner retake is
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json`
+  with same-stem power companion
+  `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-power.csv`.
+  It supersedes the immutable 2026-10-09 retake, summary, and derived L1
+  accounting artifacts because its primary record carries every row's full L1
+  breakdown and total, while paired BF16-R/FP32-R values provide mechanical
+  matched deltas. It retains every measured inverse and compares inverse error,
+  MV direction, phase-sensitive complex response, best-complex-scalar
+  phase-aligned complex response, magnitude response, and normalized dB/floored
+  pattern against one common original-R true inverse. The R representation
+  remains open for owner decision; these corrected quality and throughput
+  results are evidence, not an owner decision. Issue #100's board record
+  confirms the defaults and supplies a new-default throughput denominator
+  without changing the R-format decision.
 - Beamspace: basis design and dimension. **The dimension is no longer a free
   choice on compute grounds alone, and the planning claim has changed.** The
   stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16
