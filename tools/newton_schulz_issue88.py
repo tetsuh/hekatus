@@ -54,6 +54,10 @@ from enodia.tt.bench.run_binding import (
     run_artifact_name,
     validate_run_id,
 )
+from tools.issue88_record_policy import (
+    ISSUE88_FIXED_PUBLIC_STRINGS,
+    ISSUE88_RECORD_FIELD_TYPES,
+)
 
 DEVICE_ID = 0
 LAUNCHES_PER_ROW = 1_000
@@ -169,28 +173,75 @@ ISSUE88_STATUS_COMPONENTS = (
     ("power_trace", "the power trace is readable, nonempty, and covers the device run"),
     ("device_close", "device close succeeds"),
 )
-_PRIVATE_METADATA_KEYS = frozenset(
+ISSUE88_ERROR_CODES = frozenset(
     {
-        "hostname",
-        "host_name",
-        "machine",
-        "machine_name",
-        "node_name",
-        "username",
-        "user_name",
-        "user",
-        "home",
-        "home_directory",
-        "cwd",
-        "working_directory",
-        "password",
-        "secret",
-        "token",
-        "access_token",
-        "api_key",
-        "private_key",
+        "artifact_binding_failed",
+        "board_selection_failed",
+        "board_selection_succeeded",
+        "correctness_failed",
+        "device_close_failed",
+        "device_close_succeeded",
+        "device_open_failed",
+        "device_session_failed",
+        "environment_artifact_unreadable",
+        "environment_run_id_missing",
+        "harness_failed",
+        "harness_succeeded",
+        "host_preparation_failed",
+        "image_toolchain_failed",
+        "image_toolchain_succeeded",
+        "inverse_artifact_persistence_failed",
+        "inverse_outputs_failed",
+        "inverse_outputs_succeeded",
+        "power_sample_invalid",
+        "power_timestamp_invalid",
+        "power_trace_failed",
+        "power_trace_incomplete",
+        "power_trace_invalid",
+        "power_trace_no_usable_rows",
+        "power_trace_succeeded",
+        "power_trace_timeout",
+        "power_trace_unreadable",
+        "preflight_rejected",
+        "record_publication_failed",
+        "row_cleanup_failed",
+        "row_execution_failed",
+        "row_timeout",
+        "rows_failed",
+        "rows_succeeded",
+        "run_id_mismatch",
     }
 )
+ISSUE88_FAILURE_STAGES = frozenset(
+    {
+        "close",
+        "correctness",
+        "device_session",
+        "host_preparation",
+        "inverse_artifact_persistence",
+        "open",
+        "preflight",
+        "row",
+        "row_cleanup",
+        "row_timeout",
+        "telemetry.environment",
+        "telemetry.power",
+    }
+)
+ISSUE88_STATUS_COMPONENT_CODES = {
+    "rows": ("rows_succeeded", "rows_failed"),
+    "inverse_outputs": ("inverse_outputs_succeeded", "inverse_outputs_failed"),
+    "board_selection": ("board_selection_succeeded", "board_selection_failed"),
+    "image_toolchain": ("image_toolchain_succeeded", "image_toolchain_failed"),
+    "harness": ("harness_succeeded", "harness_failed"),
+    "power_trace": ("power_trace_succeeded", "power_trace_failed"),
+    "device_close": ("device_close_succeeded", "device_close_failed"),
+}
+ISSUE88_ERROR_OBJECT_FIELDS = frozenset(
+    {"error", "failure", "binding_error", "poll_error", "close_error", "cleanup_error"}
+)
+ISSUE88_RAW_LOG_ROOT = Path.home() / "hekatus-raw" / "issue88"
+_ACTIVE_ISSUE88_RUN_ID: str | None = None
 _PATH_TEXT = r"[^\s,;\"'<>]+"
 _POSIX_PATH_PREFIX = r"(?<![A-Za-z0-9_./])/(?![\\/\s])(?![A-Za-z0-9._~+@%=-]*\()"
 _ABSOLUTE_PATH_RE = re.compile(
@@ -203,6 +254,15 @@ _ABSOLUTE_PATH_RE = re.compile(
     rf")"
 )
 _ROW_ARTIFACT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_SAFE_BASENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
+_SAFE_BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
+_SAFE_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$")
+_EXCEPTION_TYPE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
+_SAFE_IMAGE_RE = re.compile(
+    r"^ghcr\.io/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*@sha256:[0-9a-f]{64}$"
+)
+_SAFE_KERNEL_RE = re.compile(r"^Linux [0-9][A-Za-z0-9.-]{0,63}$")
+_SAFE_NUMERIC_TEXT_RE = re.compile(r"^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -1125,32 +1185,292 @@ def correctness_metrics(
     return metrics
 
 
+_DROP_METADATA = object()
+_FILENAME_FIELDS = frozenset(
+    {"file", "source_file", "environment_file", "artifact_file", "companion_metadata", "trace", "power_trace"}
+)
+_TIMESTAMP_FIELDS = frozenset(
+    {"captured_at", "first_timestamp", "last_timestamp", "run_start", "run_end", "timestamp_utc"}
+)
+_HASH_FIELDS = frozenset(
+    {
+        "sha256",
+        "trace_sha256",
+        "power_trace_sha256",
+        "npy_file_sha256",
+        "matrix_sha256",
+        "reference_r_sha256",
+        "x0_sha256",
+        "true_inverse_sha256",
+        "fixed_reference_sha256",
+    }
+)
+_VERSION_FIELDS = frozenset(
+    {
+        "kmd_version",
+        "kernel_driver_version",
+        "tt_env_active_release",
+        "toolchain_release",
+        "fw_bundle_version",
+        "tt_flash_version",
+        "cm_fw",
+        "cm_fw_date",
+        "eth_fw",
+        "dm_bl_fw",
+        "dm_app_fw",
+        "gddr_fw",
+        "dram_speed",
+        "pcie_width",
+        "asic_fmax",
+        "board_power_limit",
+        "tdp_limit",
+        "tdc_limit",
+        "therm_trip_l1_limit",
+        "thm_limit",
+        "vdd_min",
+        "vdd_max",
+        "python",
+    }
+)
+
+
+class RunIdMismatchError(ValueError):
+    """An environment artifact names a different run than the active run."""
+
+
+def _json_shape(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return "unknown"
+
+
+def _is_public_string(field: str, value: str) -> bool:
+    """Check one string against its explicit field-specific publication shape."""
+    if field == "code":
+        return value in ISSUE88_ERROR_CODES
+    if field in {"status", "artifact_status", "finite_status"}:
+        return value in {
+            "complete",
+            "correctness_only",
+            "failed",
+            "ok",
+            "pass",
+            "preflight_rejected",
+            "passed before allocation",
+            "rejected_before_allocation",
+        }
+    if field in {"stage", "failure_stage"}:
+        return value in ISSUE88_FAILURE_STAGES
+    if field == "exception_type":
+        return _EXCEPTION_TYPE_RE.fullmatch(value) is not None
+    if field in _FILENAME_FIELDS:
+        return (
+            _SAFE_BASENAME_RE.fullmatch(value) is not None
+            and Path(value).name == value
+            and "\\" not in value
+        )
+    if field == "run_id":
+        return re.fullmatch(RUN_ID_PATTERN, value) is not None
+    if field in _TIMESTAMP_FIELDS:
+        try:
+            parsed = datetime.datetime.fromisoformat(value)
+        except ValueError:
+            return False
+        return (
+            parsed.tzinfo is not None
+            and parsed.utcoffset() == datetime.timedelta(0)
+            and parsed.isoformat() == value
+        )
+    if field in _HASH_FIELDS:
+        return _SHA256_RE.fullmatch(value) is not None
+    if field in {"harness_commit"}:
+        return _HARNESS_COMMIT_RE.fullmatch(value) is not None
+    if field in {"serial", "board_id"}:
+        return _SAFE_BOARD_ID_RE.fullmatch(value) is not None
+    if field in {"bus_id", "pci_bus_id"}:
+        return _PCI_BUS_ID_RE.fullmatch(value) is not None
+    if field == "image":
+        return _SAFE_IMAGE_RE.fullmatch(value) is not None
+    if field == "image_digest":
+        return _IMAGE_DIGEST_RE.fullmatch(value) is not None
+    if field in {"kernel", "host_kernel"}:
+        return _SAFE_KERNEL_RE.fullmatch(value) is not None
+    if field == "device_node":
+        return value == "<redacted-path>"
+    if field == "coords":
+        return value == "N/A"
+    if field in _VERSION_FIELDS:
+        return value == "N/A" or _SAFE_VERSION_RE.fullmatch(value) is not None
+    if field in {"power_w", "aiclk_mhz", "asic_temp_c"}:
+        if _SAFE_NUMERIC_TEXT_RE.fullmatch(value) is None:
+            return False
+        numeric = float(value)
+        return math.isfinite(numeric) and (field != "aiclk_mhz" or numeric > 0.0)
+    return value in ISSUE88_FIXED_PUBLIC_STRINGS
+
+
+def _validate_record_node(value: Any, *, field: str | None = None) -> None:
+    """Validate every serialized field name, shape, and string value."""
+    if field is not None:
+        allowed_types = ISSUE88_RECORD_FIELD_TYPES.get(field)
+        if allowed_types is None or _json_shape(value) not in allowed_types:
+            raise ValueError("record serialization rejected: field is outside the publication schema")
+    if isinstance(value, dict):
+        if field in ISSUE88_ERROR_OBJECT_FIELDS and set(value) != {"code", "exception_type"}:
+            raise ValueError("record serialization rejected: error entry has an unknown field")
+        for child_key, child_value in value.items():
+            if not isinstance(child_key, str) or child_key not in ISSUE88_RECORD_FIELD_TYPES:
+                raise ValueError("record serialization rejected: unknown field")
+            _validate_record_node(child_value, field=child_key)
+    elif isinstance(value, list):
+        allowed_item_types = (
+            ISSUE88_RECORD_FIELD_TYPES.get(field, frozenset()) - {"array"}
+            if field is not None
+            else frozenset()
+        )
+        for item in value:
+            if _json_shape(item) not in allowed_item_types:
+                raise ValueError("record serialization rejected: array item is outside the publication schema")
+            if isinstance(item, dict) and field in {"errors", "secondary_failures"}:
+                _validate_record_node(item, field="error")
+            elif isinstance(item, dict) and field == "failures":
+                if set(item) != {"stage", "error"}:
+                    raise ValueError("record serialization rejected: failure entry has an unknown field")
+                _validate_record_node(item)
+            else:
+                _validate_record_node(item, field=field if not isinstance(item, dict) else None)
+    elif isinstance(value, str):
+        if field is None or not _is_public_string(field, value):
+            raise ValueError("record serialization rejected: string is outside the field allowlist")
+    elif isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("record serialization rejected: non-finite number")
+
+
 def _sanitize_text(value: Any) -> str:
-    text = str(value)
-    return _ABSOLUTE_PATH_RE.sub("<redacted-path>", text)
+    """Legacy redaction utility retained only as a final safety net."""
+    return _ABSOLUTE_PATH_RE.sub("<redacted-path>", str(value))
 
 
 def _sanitize_metadata(value: Any, *, key: str | None = None) -> Any:
-    """Remove private metadata and host paths before JSON publication."""
-    if key is not None and key.lower() in _PRIVATE_METADATA_KEYS:
-        return None
+    """Project incoming metadata onto the allowlisted fields and value shapes."""
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for child_key, child_value in value.items():
-            child_key_text = str(child_key)
-            if child_key_text.lower() in _PRIVATE_METADATA_KEYS:
+            if not isinstance(child_key, str) or child_key not in ISSUE88_RECORD_FIELD_TYPES:
                 continue
-            result[_sanitize_text(child_key_text)] = _sanitize_metadata(
-                child_value, key=child_key_text
-            )
+            if child_key == "device_node":
+                result[child_key] = "<redacted-path>"
+                continue
+            sanitized = _sanitize_metadata(child_value, key=child_key)
+            if sanitized is not _DROP_METADATA:
+                result[child_key] = sanitized
         return result
     if isinstance(value, (list, tuple)):
-        return [_sanitize_metadata(item) for item in value]
+        items = []
+        for item in value:
+            sanitized = _sanitize_metadata(item, key=key)
+            if sanitized is not _DROP_METADATA:
+                items.append(sanitized)
+        return items
     if isinstance(value, Path):
-        return value.name
+        if key in _FILENAME_FIELDS:
+            value = value.name
+        else:
+            return _DROP_METADATA
     if isinstance(value, str):
-        return _sanitize_text(value)
+        if key is not None and _is_public_string(key, value):
+            return value
+        return _DROP_METADATA
+    if key is None or key not in ISSUE88_RECORD_FIELD_TYPES:
+        return _DROP_METADATA
+    if _json_shape(value) not in ISSUE88_RECORD_FIELD_TYPES[key]:
+        return _DROP_METADATA
+    if isinstance(value, float) and not math.isfinite(value):
+        return _DROP_METADATA
     return value
+
+
+def _log_private_diagnostic(code: str, error: Any, run_id: str | None = None) -> None:
+    """Append the unredacted diagnostic only to the current run's local raw log."""
+    selected_run_id = run_id or _ACTIVE_ISSUE88_RUN_ID
+    if not selected_run_id:
+        return
+    try:
+        validate_run_id(selected_run_id)
+        ISSUE88_RAW_LOG_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = ISSUE88_RAW_LOG_ROOT / f"issue88-{selected_run_id}.log"
+        exception_type = type(error).__name__ if isinstance(error, BaseException) else "none"
+        message = str(error) if error is not None else ""
+        line = f"{code}\\t{exception_type}\\t{message}\\n".encode("utf-8", "backslashreplace")
+        descriptor = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            with os.fdopen(descriptor, "ab") as handle:
+                handle.write(line)
+                handle.flush()
+        except Exception:
+            os.close(descriptor)
+            raise
+    except (OSError, ValueError, TypeError, RuntimeError):
+        # A local diagnostic-log failure must not put private text in the record.
+        return
+
+
+def _error_entry(code: str, error: Any = None, *, run_id: str | None = None) -> dict[str, Any]:
+    if code not in ISSUE88_ERROR_CODES:
+        raise ValueError("unknown Issue #88 error code")
+    _log_private_diagnostic(code, error, run_id)
+    exception_type = type(error).__name__ if isinstance(error, BaseException) else None
+    return {"code": code, "exception_type": exception_type}
+
+
+def _error_code_for_stage(stage: str, error: Any) -> str:
+    if isinstance(error, RunIdMismatchError):
+        return "run_id_mismatch"
+    if stage == "telemetry.environment" and isinstance(error, ValueError):
+        if "run_id is missing" in str(error):
+            return "environment_run_id_missing"
+        if "run_id does not match" in str(error):
+            return "run_id_mismatch"
+    if isinstance(error, RunBindingError):
+        return "artifact_binding_failed"
+    stage_codes = {
+        "close": "device_close_failed",
+        "correctness": "correctness_failed",
+        "device_session": "device_session_failed",
+        "host_preparation": "host_preparation_failed",
+        "inverse_artifact_persistence": "inverse_artifact_persistence_failed",
+        "open": "device_open_failed",
+        "preflight": "preflight_rejected",
+        "row": "row_execution_failed",
+        "row_cleanup": "row_cleanup_failed",
+        "row_timeout": "row_timeout",
+        "telemetry.environment": "environment_artifact_unreadable",
+        "telemetry.power": (
+            "power_trace_unreadable" if isinstance(error, OSError) else "power_trace_invalid"
+        ),
+    }
+    try:
+        return stage_codes[stage]
+    except KeyError as exc:
+        raise ValueError("unknown Issue #88 failure stage") from exc
+
+
+def _failure(stage: str, error: Any) -> dict[str, Any]:
+    if stage not in ISSUE88_FAILURE_STAGES:
+        raise ValueError("unknown Issue #88 failure stage")
+    return _error_entry(_error_code_for_stage(stage, error), error)
 
 
 def _validated_run_id(value: Any) -> str:
@@ -1197,7 +1517,7 @@ def _normalize_environment(raw: dict[str, Any], run_id: str) -> dict[str, Any]:
     if embedded_run_id is None:
         raise ValueError("environment artifact run_id is missing")
     if embedded_run_id != run_id:
-        raise ValueError(
+        raise RunIdMismatchError(
             "environment artifact run_id does not match the current run "
             f"({embedded_run_id!r} != {run_id!r})"
         )
@@ -1452,14 +1772,15 @@ def _read_power_trace(
             ):
                 raise ValueError(f"power trace sample {index} is an incomplete CSV row")
             samples.append(dict(row))
-    except Exception as exc:  # noqa: BLE001 - expose unreadable traces as failures
-        trace["error"] = _sanitize_text(exc)
+    except Exception as exc:  # noqa: BLE001 - expose trace failures without free text
+        code = "power_trace_unreadable" if isinstance(exc, OSError) else "power_trace_invalid"
+        trace["error"] = _error_entry(code, exc, run_id=run_id)
         return trace
 
     trace["readable"] = True
     trace["csv_row_count"] = len(samples)
-    errors: list[str] = []
-    timestamp_error: str | None = None
+    errors: list[dict[str, Any]] = []
+    timestamp_error: dict[str, Any] | None = None
     usable_rows: list[tuple[dict[str, str], datetime.datetime]] = []
     for index, sample in enumerate(samples):
         try:
@@ -1468,8 +1789,9 @@ def _read_power_trace(
                 field=f"power sample {index} timestamp_utc",
             )
         except ValueError as exc:
-            timestamp_error = timestamp_error or str(exc)
-            errors.append(str(exc))
+            error = _error_entry("power_timestamp_invalid", exc, run_id=run_id)
+            timestamp_error = timestamp_error or error
+            errors.append(error)
             continue
         try:
             # Keep this validation shared with the main telemetry sampler.  In
@@ -1486,7 +1808,7 @@ def _read_power_trace(
                 sample.get("asic_temp_c"), field=f"power sample {index} asic_temp_c"
             )
         except ValueError as exc:
-            errors.append(str(exc))
+            errors.append(_error_entry("power_sample_invalid", exc, run_id=run_id))
         else:
             usable_rows.append((sample, timestamp))
 
@@ -1499,7 +1821,9 @@ def _read_power_trace(
     trace["nonempty"] = bool(usable_samples)
     trace["errors"] = _sanitize_metadata(errors)
     if not usable_samples:
-        trace["error"] = timestamp_error or "power trace contains no usable telemetry rows"
+        trace["error"] = timestamp_error or _error_entry(
+            "power_trace_no_usable_rows", None, run_id=run_id
+        )
     elif timestamp_error is not None:
         trace["error"] = timestamp_error
     else:
@@ -1514,7 +1838,9 @@ def _read_power_trace(
             start = _parse_utc_timestamp(run_start, field="run_start")
             end = _parse_utc_timestamp(run_end, field="run_end")
         except ValueError as exc:
-            trace["error"] = _sanitize_text(exc)
+            trace["error"] = _error_entry(
+                "power_timestamp_invalid", exc, run_id=run_id
+            )
         else:
             trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
             trace["covers_run_end"] = parsed_timestamps[-1] >= end
@@ -1549,7 +1875,7 @@ def _read_power_trace(
 def _public_power_trace(trace: dict[str, Any]) -> dict[str, Any]:
     public = dict(trace)
     public.pop("_last_timestamp_datetime", None)
-    return _sanitize_metadata(public)
+    return public
 
 
 def _wait_for_power_trace(
@@ -1578,7 +1904,6 @@ def _wait_for_power_trace(
     poll_count = 0
     max_polls = max(1, math.ceil(timeout_s / interval_s) + 1)
     last_trace: dict[str, Any] | None = None
-    last_error = "no power trace was readable"
 
     while poll_count < max_polls:
         poll_count += 1
@@ -1596,7 +1921,9 @@ def _wait_for_power_trace(
                 run_start=start_text,
                 run_end=end_text,
             )
-            failed["binding_error"] = _sanitize_text(exc)
+            failed["binding_error"] = _error_entry(
+                "artifact_binding_failed", exc, run_id=run_id
+            )
             failed["poll_count"] = poll_count
             return _public_power_trace(failed)
         except FileNotFoundError as exc:
@@ -1607,12 +1934,14 @@ def _wait_for_power_trace(
                     run_start=start_text,
                     run_end=end_text,
                 )
-                failed["binding_error"] = _sanitize_text(exc)
+                failed["binding_error"] = _error_entry(
+                    "power_trace_unreadable", exc, run_id=run_id
+                )
                 failed["poll_count"] = poll_count
                 return _public_power_trace(failed)
-            last_error = _sanitize_text(exc)
+            _error_entry("power_trace_unreadable", exc, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - sampler may not have created it yet
-            last_error = _sanitize_text(exc)
+            _error_entry(_error_code_for_stage("telemetry.power", exc), exc, run_id=run_id)
         else:
             try:
                 snapshot_path = _atomic_power_trace_snapshot(
@@ -1636,11 +1965,13 @@ def _wait_for_power_trace(
                     run_start=start_text,
                     run_end=end_text,
                 )
-                failed["binding_error"] = _sanitize_text(exc)
+                failed["binding_error"] = _error_entry(
+                    "artifact_binding_failed", exc, run_id=run_id
+                )
                 failed["poll_count"] = poll_count
                 return _public_power_trace(failed)
             except Exception as exc:  # noqa: BLE001 - retry the sampler read
-                last_error = _sanitize_text(exc)
+                _error_entry(_error_code_for_stage("telemetry.power", exc), exc, run_id=run_id)
             else:
                 trace["poll_count"] = poll_count
                 last_trace = trace
@@ -1652,7 +1983,6 @@ def _wait_for_power_trace(
                 ):
                     trace["poll_complete"] = True
                     return _public_power_trace(trace)
-                last_error = trace.get("error") or _power_trace_failure_reason(trace)
 
         remaining = deadline - monotonic_fn()
         if remaining <= 0.0:
@@ -1667,39 +1997,37 @@ def _wait_for_power_trace(
             run_end=end_text,
         )
     last_trace["poll_count"] = poll_count
-    last_trace["poll_error"] = _sanitize_text(
-        f"power trace did not reach run_end within {timeout_s:g} seconds: {last_error}"
+    last_trace["poll_error"] = _error_entry(
+        "power_trace_timeout", None, run_id=run_id
     )
     return _public_power_trace(last_trace)
 
 
 def _power_trace_failure_reason(trace: Any) -> str:
     if not isinstance(trace, dict):
-        return "power trace is missing"
-    if trace.get("binding_error"):
-        return str(trace["binding_error"])
+        return "power_trace_unreadable"
+    for key in ("binding_error", "error", "poll_error"):
+        error = trace.get(key)
+        if isinstance(error, dict) and error.get("code") in ISSUE88_ERROR_CODES:
+            return error["code"]
     if trace.get("immutable_snapshot") is not True:
-        return "power trace is not an immutable per-run snapshot"
+        return "power_trace_incomplete"
     filename = trace.get("file")
-    if not isinstance(filename, str) or Path(filename).name != filename:
-        return "power trace snapshot filename is missing or not a basename"
+    if not isinstance(filename, str) or not _is_public_string("file", filename):
+        return "artifact_binding_failed"
     if not isinstance(trace.get("sha256"), str) or not _SHA256_RE.fullmatch(trace["sha256"]):
-        return "power trace snapshot SHA-256 is missing or invalid"
+        return "power_trace_invalid"
     if not trace.get("readable"):
-        return trace.get("error") or "power trace is not readable"
+        return "power_trace_unreadable"
     if not trace.get("nonempty"):
-        return trace.get("error") or "power trace contains no usable telemetry rows"
-    if not trace.get("timestamps_parse"):
-        return trace.get("error") or "power trace timestamps do not parse"
-    if not trace.get("timestamps_ordered"):
-        return "power trace timestamps are not ordered"
-    if not trace.get("covers_run_start"):
-        return "power trace starts after run_start"
-    if not trace.get("covers_run_end"):
-        return trace.get("poll_error") or "power trace ends before run_end"
+        return "power_trace_no_usable_rows"
+    if not trace.get("timestamps_parse") or not trace.get("timestamps_ordered"):
+        return "power_timestamp_invalid"
+    if not trace.get("covers_run_start") or not trace.get("covers_run_end"):
+        return "power_trace_incomplete"
     if not trace.get("coverage_complete"):
-        return "power trace coverage is incomplete"
-    return "power trace coverage is complete"
+        return "power_trace_incomplete"
+    return "power_trace_succeeded"
 
 
 def _read_telemetry(
@@ -1746,9 +2074,9 @@ def _read_telemetry(
         telemetry["environment_file"] = selected_environment.name
         telemetry["environment"] = _sanitize_metadata(raw_environment)
         telemetry["normalized_environment"] = _normalize_environment(raw_environment, run_id)
-    except Exception as exc:  # noqa: BLE001 - publish a truthful partial artifact
+    except Exception as exc:  # noqa: BLE001 - publish a safe partial artifact
         telemetry["failures"].append(
-            {"stage": "telemetry.environment", "error": _sanitize_text(exc)}
+            {"stage": "telemetry.environment", "error": _failure("telemetry.environment", exc)}
         )
 
     try:
@@ -1769,20 +2097,24 @@ def _read_telemetry(
             telemetry["failures"].append(
                 {
                     "stage": "telemetry.power",
-                    "error": _power_trace_failure_reason(power_trace),
+                    "error": _error_entry(
+                        _power_trace_failure_reason(power_trace), None, run_id=run_id
+                    ),
                 }
             )
     except Exception as exc:  # noqa: BLE001 - preserve environment failure separately
         telemetry["failures"].append(
-            {"stage": "telemetry.power", "error": _sanitize_text(exc)}
+            {"stage": "telemetry.power", "error": _failure("telemetry.power", exc)}
         )
     if not telemetry["failures"]:
         telemetry["status"] = "complete"
     return telemetry
 
 
-def _failure(stage: str, error: Any) -> dict[str, str]:
-    return {"stage": stage, "error": _sanitize_text(error)}
+def _failure(stage: str, error: Any) -> dict[str, Any]:
+    if stage not in ISSUE88_FAILURE_STAGES:
+        raise ValueError("unknown Issue #88 failure stage")
+    return _error_entry(_error_code_for_stage(stage, error), error)
 
 
 def _failed_row(
@@ -1794,7 +2126,13 @@ def _failed_row(
     flops_per_launch: int | None = None,
 ) -> dict[str, Any]:
     row = dict(config)
-    row.update({"status": "failed", "failure_stage": stage, "error": _sanitize_text(error)})
+    row.update(
+        {
+            "status": "failed",
+            "failure_stage": stage,
+            "error": _error_entry(_error_code_for_stage(stage, error), error),
+        }
+    )
     if samples and flops_per_launch is not None:
         row.update(timing_summary(samples, flops_per_launch))
     return row
@@ -2037,9 +2375,11 @@ def _run_row(
                 if result.get("status") == "ok":
                     result["status"] = "failed"
                     result["failure_stage"] = "row_cleanup"
-                    result["error"] = _sanitize_text(exc)
+                    result["error"] = _error_entry("row_cleanup_failed", exc, run_id=run_id)
                 else:
-                    result.setdefault("cleanup_error", _sanitize_text(exc))
+                    result.setdefault(
+                        "cleanup_error", _error_entry("row_cleanup_failed", exc, run_id=run_id)
+                    )
 
 
 def _prepare_comparison_input(
@@ -2219,7 +2559,7 @@ def run_comparison(
                 "size": 32,
                 "matrix_block": 8,
                 "r_memory": "l1",
-                "reason": "selected block-8 L1 budget rejects before allocation; no fallback",
+                "error": _error_entry("preflight_rejected", None),
             },
         },
     }
@@ -2230,12 +2570,14 @@ run_issue88_comparison = run_comparison
 
 
 def _serialize_record(payload: dict[str, Any]) -> str:
-    """Serialize one publication and reject any path left after sanitization."""
+    """Validate the complete allowlisted record before JSON publication."""
     serialized = strict_json_dumps(payload, indent=2)
+    decoded = json.loads(serialized)
+    if not isinstance(decoded, dict):
+        raise TypeError("record serialization rejected: root must be an object")
+    _validate_record_node(decoded)
     if _ABSOLUTE_PATH_RE.search(serialized):
-        raise ValueError(
-            "record serialization rejected: an absolute path remains after sanitization"
-        )
+        raise ValueError("record serialization rejected: final path safety check failed")
     return serialized
 
 
@@ -2533,16 +2875,18 @@ def _status_components(
                     Path(filename), run_id=run.get("run_id", "")
                 )
             except (RunBindingError, ValueError) as exc:
-                power_failures.append(_sanitize_text(exc))
+                power_failures.append(
+                    "artifact_binding_failed" if isinstance(exc, RunBindingError) else "power_trace_invalid"
+                )
         if power_trace.get("run_id") != run.get("run_id"):
             power_failures.append("power trace snapshot run_id does not match the run")
         try:
             expected_source = run_artifact_name(
                 prefix="power-", suffix=".csv", run_id=run.get("run_id", "")
             )
-        except ValueError as exc:
+        except ValueError:
             expected_source = None
-            power_failures.append(_sanitize_text(exc))
+            power_failures.append("run_id_mismatch")
         if power_trace.get("source_file") != expected_source:
             power_failures.append(
                 "power trace source artifact is not the exact current run artifact"
@@ -2580,8 +2924,8 @@ def _status_components(
             last = _parse_utc_timestamp(
                 power_trace.get("last_timestamp"), field="power last_timestamp"
             )
-        except ValueError as exc:
-            power_failures.append(_sanitize_text(exc))
+        except ValueError:
+            power_failures.append("power_timestamp_invalid")
         else:
             if not first <= start <= end <= last:
                 power_failures.append(
@@ -2590,51 +2934,21 @@ def _status_components(
         if power_trace.get("coverage_complete") is not True:
             power_failures.append("power trace coverage_complete is not true")
     power_ok = not power_failures
-    power_reason = (
-        "power trace coverage is complete"
-        if power_ok
-        else "; ".join(power_failures)
-    )
     close_ok = cleanup.get("close_succeeded") is True
-    close_reason = (
-        "device close returned normally"
-        if close_ok
-        else "device close was not completed successfully"
-    )
     checks = {
-        "rows": (
-            row_ok,
-            "all selected rows succeeded" if row_ok else "; ".join(row_failures),
-        ),
-        "inverse_outputs": (
-            inverse_outputs_ok,
-            "all downloaded inverses have valid retained artifacts"
-            if inverse_outputs_ok
-            else "; ".join(inverse_failures),
-        ),
-        "board_selection": (
-            not board_failures,
-            "board selection and firmware are verifiable"
-            if not board_failures
-            else "; ".join(board_failures),
-        ),
-        "image_toolchain": (
-            not image_failures,
-            "digest-pinned image and toolchain metadata are present"
-            if not image_failures
-            else "; ".join(image_failures),
-        ),
-        "harness": (
-            not harness_failures,
-            "harness commit is valid and the tree is clean"
-            if not harness_failures
-            else "; ".join(harness_failures),
-        ),
-        "power_trace": (power_ok, power_reason),
-        "device_close": (close_ok, close_reason),
+        "rows": row_ok,
+        "inverse_outputs": inverse_outputs_ok,
+        "board_selection": not board_failures,
+        "image_toolchain": not image_failures,
+        "harness": not harness_failures,
+        "power_trace": power_ok,
+        "device_close": close_ok,
     }
     return {
-        name: {"ok": bool(checks[name][0]), "reason": _sanitize_text(checks[name][1])}
+        name: {
+            "ok": bool(checks[name]),
+            "code": ISSUE88_STATUS_COMPONENT_CODES[name][0 if checks[name] else 1],
+        }
         for name, _description in ISSUE88_STATUS_COMPONENTS
     }
 
@@ -2666,21 +2980,17 @@ def _record_payload(
     if run.get("failure") is not None:
         failure = run["failure"]
     elif telemetry.get("failures"):
-        failure = telemetry["failures"][0]
+        failure = telemetry["failures"][0]["error"]
     elif not overall_pass:
         failed_component = next(
             (
-                (name, component)
-                for name, component in status_components.items()
+                component
+                for component in status_components.values()
                 if not component.get("ok")
             ),
-            ("unknown", {"reason": "record publication gate failed"}),
+            {"code": "record_publication_failed"},
         )
-        failure = {
-            "stage": "status_component",
-            "component": failed_component[0],
-            "error": failed_component[1].get("reason", "component failed"),
-        }
+        failure = _error_entry(failed_component["code"], None)
     record: dict[str, Any] = {
         "record_schema": ISSUE88_RECORD_SCHEMA,
         "status": "pass" if overall_pass else "failed",
@@ -2836,7 +3146,7 @@ def _record_payload(
     }
     if failure is not None:
         record["failure"] = failure
-    return _sanitize_metadata(record)
+    return record
 
 
 def _raw_payload(
@@ -2852,6 +3162,9 @@ def _raw_payload(
     if status_components is None:
         status_components = _status_components(run, telemetry=telemetry, cleanup=cleanup)
     record_status = "pass" if _status_components_pass(status_components) else "failed"
+    raw_telemetry = dict(telemetry)
+    if isinstance(raw_telemetry.get("power_trace"), dict):
+        raw_telemetry["power_trace"] = _public_power_trace(raw_telemetry["power_trace"])
     payload = {
         "raw_schema": ISSUE88_RAW_SCHEMA,
         "captured_at": _utc_now().isoformat(),
@@ -2878,7 +3191,7 @@ def _raw_payload(
             "condition_number": CONDITION_NUMBER,
             "seed": INPUT_SEED,
         },
-        "telemetry": telemetry,
+        "telemetry": raw_telemetry,
         "cleanup": cleanup,
     }
     if run.get("failure") is not None:
@@ -2886,18 +3199,14 @@ def _raw_payload(
     elif record_status != "pass":
         failed_component = next(
             (
-                (name, component)
-                for name, component in status_components.items()
+                component
+                for component in status_components.values()
                 if not component.get("ok")
             ),
-            ("unknown", {"reason": "record publication gate failed"}),
+            {"code": "record_publication_failed"},
         )
-        payload["failure"] = {
-            "stage": "status_component",
-            "component": failed_component[0],
-            "error": failed_component[1].get("reason", "component failed"),
-        }
-    return _sanitize_metadata(payload)
+        payload["failure"] = _error_entry(failed_component["code"], None)
+    return payload
 
 
 def _mark_failed(run: dict[str, Any], stage: str, error: Any) -> dict[str, Any]:
@@ -2911,7 +3220,6 @@ def _mark_failed(run: dict[str, Any], stage: str, error: Any) -> dict[str, Any]:
     else:
         updated["failure"] = details
         updated["failure_stage"] = stage
-        updated["error"] = details["error"]
     updated["status"] = "failed"
     return updated
 
@@ -3036,6 +3344,8 @@ def main(
         or "/out/issue88-fp32-r.json"
     )
     run_id = _new_run_id()
+    global _ACTIVE_ISSUE88_RUN_ID
+    _ACTIVE_ISSUE88_RUN_ID = run_id
     output_dir = result_path.parent
     now = _utc_now if now_fn is None else now_fn
     monotonic = time.monotonic if monotonic_fn is None else monotonic_fn
@@ -3103,7 +3413,7 @@ def main(
                 close_error = exc
                 run = _mark_failed(run, "close", exc)
                 cleanup["close_succeeded"] = False
-                cleanup["close_error"] = _sanitize_text(exc)
+                cleanup["close_error"] = _error_entry("device_close_failed", exc, run_id=run_id)
         run["cleanup"] = cleanup
 
     run_end = now()

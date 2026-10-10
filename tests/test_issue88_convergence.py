@@ -1,5 +1,6 @@
 """Board-free coverage for Issue #88 convergence and publication gates."""
 
+import copy
 import datetime
 import hashlib
 import json
@@ -295,7 +296,8 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
     statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
 
     assert tuple(statuses) == tuple(name for name, _description in runner.ISSUE88_STATUS_COMPONENTS)
-    assert all(set(component) == {"ok", "reason"} for component in statuses.values())
+    assert all(set(component) == {"ok", "code"} for component in statuses.values())
+    assert all(component["code"] in runner.ISSUE88_ERROR_CODES for component in statuses.values())
     assert runner._status_components_pass(statuses)
 
     record = runner._record_payload(
@@ -349,7 +351,8 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
         (
             "rows",
             lambda run, telemetry: run["comparison_rows"][0].update(
-                status="failed", error="row injected"
+                status="failed",
+                error={"code": "row_execution_failed", "exception_type": "RuntimeError"}
             ),
         ),
         (
@@ -377,7 +380,7 @@ def test_issue88_each_provenance_failure_forces_failed_record(
 
     statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
     assert statuses[component]["ok"] is False
-    assert statuses[component]["reason"]
+    assert statuses[component]["code"] in runner.ISSUE88_ERROR_CODES
     assert not runner._status_components_pass(statuses)
 
     record = runner._record_payload(
@@ -389,8 +392,8 @@ def test_issue88_each_provenance_failure_forces_failed_record(
         status_components=statuses,
     )
     assert record["status"] == "failed"
-    assert component in record["failure"]["component"] or component == "rows"
-    assert statuses[component]["reason"] in json.dumps(record)
+    assert set(record["failure"]) == {"code", "exception_type"}
+    assert record["failure"]["code"] == statuses[component]["code"]
 
 
 def test_issue88_close_failure_is_a_status_component_failure(tmp_path):
@@ -400,7 +403,7 @@ def test_issue88_close_failure_is_a_status_component_failure(tmp_path):
 
     assert statuses["device_close"] == {
         "ok": False,
-        "reason": "device close was not completed successfully",
+        "code": "device_close_failed",
     }
     assert not runner._status_components_pass(statuses)
 
@@ -438,6 +441,7 @@ def _write_main_artifacts(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 def _run_main_with_close(tmp_path, monkeypatch, close_device):
+    monkeypatch.setattr(runner, "ISSUE88_RAW_LOG_ROOT", tmp_path / "raw-log")
     environment_path, power_path, result_path = _write_main_artifacts(tmp_path)
     monkeypatch.setenv("HEKATUS_TT_RUN_ID", "run-1")
     monkeypatch.setitem(
@@ -487,7 +491,13 @@ def test_issue88_close_exception_keeps_false_cleanup_metadata(tmp_path, monkeypa
     record = json.loads(result_path.read_text())
     assert record["run_protocol"]["cleanup"]["close_succeeded"] is False
     assert record["status_components"]["device_close"]["ok"] is False
-    assert "close injected" in json.dumps(record)
+    assert record["failure"] == {
+        "code": "device_close_failed",
+        "exception_type": "RuntimeError",
+    }
+    assert "close injected" not in json.dumps(record)
+    raw_log = next((tmp_path / "raw-log").glob("issue88-*.log"))
+    assert "close injected" in raw_log.read_text()
 
 
 def _power_csv(timestamps: list[str]) -> str:
@@ -564,7 +574,7 @@ def test_issue88_power_trace_coverage_uses_only_usable_rows(tmp_path):
     assert trace["last_timestamp"] == "2026-01-01T00:00:00+00:00"
     assert trace["covers_run_end"] is False
     assert trace["coverage_complete"] is False
-    assert "power trace ends before run_end" in runner._power_trace_failure_reason(trace)
+    assert runner._power_trace_failure_reason(trace) == "power_trace_incomplete"
 
     run, telemetry, cleanup = _passing_parts(tmp_path / "status")
     telemetry["power_trace"] = trace
@@ -595,8 +605,8 @@ def test_issue88_power_trace_with_no_usable_rows_fails_closed(tmp_path):
     assert trace["valid_row_count"] == 0
     assert trace["nonempty"] is False
     assert trace["coverage_complete"] is False
-    assert "no usable telemetry rows" in trace["error"]
-    assert "no usable telemetry rows" in runner._power_trace_failure_reason(trace)
+    assert trace["error"]["code"] == "power_trace_no_usable_rows"
+    assert runner._power_trace_failure_reason(trace) == "power_trace_no_usable_rows"
 
 
 def test_issue88_valid_power_trace_rows_remain_publishable(tmp_path):
@@ -727,7 +737,7 @@ def test_issue88_old_environment_is_not_paired_with_current_power(tmp_path):
     assert telemetry["normalized_environment"] is None
     assert any(
         failure["stage"] == "telemetry.environment"
-        and "glob fallback is disabled" in failure["error"]
+        and failure["error"]["code"] == "environment_artifact_unreadable"
         for failure in telemetry["failures"]
     )
     _assert_failed_publication(tmp_path, run_id, telemetry)
@@ -763,7 +773,7 @@ def test_issue88_explicit_artifact_path_must_be_current_run_path(tmp_path):
     assert telemetry["environment"] is None
     assert any(
         failure["stage"] == "telemetry.environment"
-        and "exact current run artifact" in failure["error"]
+        and failure["error"]["code"] == "artifact_binding_failed"
         for failure in telemetry["failures"]
     )
     _assert_failed_publication(tmp_path, run_id, telemetry)
@@ -801,7 +811,7 @@ def test_issue88_embedded_environment_run_id_mismatch_is_not_repaired(tmp_path):
     assert json.loads(environment_path.read_text()) == raw_before
     assert any(
         failure["stage"] == "telemetry.environment"
-        and "does not match the current run" in failure["error"]
+        and failure["error"]["code"] == "run_id_mismatch"
         for failure in telemetry["failures"]
     )
     _assert_failed_publication(tmp_path, run_id, telemetry)
@@ -836,7 +846,7 @@ def test_issue88_missing_environment_run_id_is_rejected(tmp_path):
     assert telemetry["normalized_environment"] is None
     assert any(
         failure["stage"] == "telemetry.environment"
-        and "run_id is missing" in failure["error"]
+        and failure["error"]["code"] == "environment_run_id_missing"
         for failure in telemetry["failures"]
     )
     _assert_failed_publication(tmp_path, run_id, telemetry)
@@ -868,7 +878,7 @@ def test_issue88_power_source_run_id_mismatch_rejects_snapshot_and_publish(tmp_p
     assert telemetry["power_trace"]["immutable_snapshot"] is False
     assert any(
         failure["stage"] == "telemetry.power"
-        and "exact current run artifact" in failure["error"]
+        and failure["error"]["code"] == "artifact_binding_failed"
         for failure in telemetry["failures"]
     )
     _assert_failed_publication(tmp_path, run_id, telemetry)
@@ -900,7 +910,10 @@ def test_issue88_glob_only_artifacts_are_rejected_without_publication(tmp_path):
     )
 
     assert len(telemetry["failures"]) == 2
-    assert all("glob fallback is disabled" in failure["error"] for failure in telemetry["failures"])
+    assert {failure["error"]["code"] for failure in telemetry["failures"]} == {
+        "environment_artifact_unreadable",
+        "power_trace_unreadable",
+    }
     _assert_failed_publication(tmp_path, run_id, telemetry)
 
 
@@ -1082,27 +1095,83 @@ def test_issue88_power_poll_configuration_stays_within_row_cap():
     assert runner.POWER_TRACE_POLL_TIMEOUT_S <= runner.ROW_TIMEOUT_S
 
 
-@pytest.mark.parametrize(
-    "path_text",
-    [
-        "/srv/private/result.json",
-        "/data/telemetry/power.csv",
-        "/opt/tool/cache.bin",
-        "/home/alice/secret.txt",
-        "/tmp/run-1/error.log",
-        r"C:\Users\alice\secret.json",
-        "D:/data/secret.json",
-        r"\\server\share\secret.json",
-        "~/private/secret.json",
-        "~alice/private/secret.json",
-        r"~\private\secret.json",
-    ],
+PATH_PRIVACY_BOUNDARY_CASES = (
+    r"C:\Users\alice\secret.json",
+    "~alice/private/secret.json",
+    r"~alice\private\secret.json",
+    "/alice(private)",
+    "/(alice)",
+    "/home/Alice Smith/log.json",
+    "/home/Alice;Smith/log.json",
+    "/home/Alice,Smith/log.json",
 )
-def test_issue88_sanitize_text_redacts_absolute_paths_without_allow_list(path_text):
-    sanitized = runner._sanitize_text(f"failure: {path_text}")
 
-    assert "<redacted-path>" in sanitized
-    assert path_text not in sanitized
+
+def _privacy_test_environment(tmp_path: Path, run_id: str = "run-1") -> dict:
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(environment_path, run_id=run_id)
+    return json.loads(environment_path.read_text())
+
+
+def _record_with_raw_environment(tmp_path: Path, raw_environment: dict) -> dict:
+    run, telemetry, cleanup = _passing_parts(tmp_path / "parts")
+    telemetry["environment"] = runner._sanitize_metadata(raw_environment)
+    telemetry["normalized_environment"] = runner._normalize_environment(
+        raw_environment, "run-1"
+    )
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    return runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id="run-1",
+        raw_path=tmp_path / "raw-run-1.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+
+
+@pytest.mark.parametrize("path_text", PATH_PRIVACY_BOUNDARY_CASES)
+@pytest.mark.parametrize("injection", ("value", "nested-key"))
+def test_issue88_structural_metadata_projection_omits_path_inputs(
+    tmp_path, path_text, injection
+):
+    raw = _privacy_test_environment(tmp_path)
+    if injection == "value":
+        raw["kernel"] = path_text
+    else:
+        raw["board_info"][path_text] = path_text
+
+    sanitized_environment = runner._sanitize_metadata(raw)
+    normalized_environment = runner._normalize_environment(raw, "run-1")
+    assert path_text not in json.dumps(sanitized_environment)
+    assert path_text not in json.dumps(normalized_environment)
+
+    record = _record_with_raw_environment(tmp_path, raw)
+    output = tmp_path / "record.json"
+    runner._atomic_json_write(output, record)
+    serialized = output.read_text()
+    assert path_text not in serialized
+    assert runner._ABSOLUTE_PATH_RE.search(serialized) is None
+
+
+@pytest.mark.parametrize("path_text", PATH_PRIVACY_BOUNDARY_CASES)
+@pytest.mark.parametrize("injection", ("nested-value", "nested-key"))
+def test_issue88_final_allowlist_rejects_unsanitized_nested_paths(
+    tmp_path, path_text, injection
+):
+    record = _record_with_raw_environment(
+        tmp_path, _privacy_test_environment(tmp_path)
+    )
+    if injection == "nested-value":
+        record["notes"][0] = path_text
+    else:
+        record["environment"]["board"][path_text] = "p150a"
+    output = tmp_path / f"rejected-{injection}.json"
+
+    with pytest.raises(ValueError, match="record serialization rejected"):
+        runner._atomic_json_write(output, record)
+
+    assert not output.exists()
 
 
 @pytest.mark.parametrize(
@@ -1119,38 +1188,79 @@ def test_issue88_sanitize_text_preserves_ordinary_and_basename_text(ordinary_tex
     assert runner._sanitize_text(ordinary_text) == ordinary_text
 
 
-def test_issue88_final_serialization_guard_rejects_nested_unsanitized_paths(tmp_path):
-    output = tmp_path / "record.json"
-    payload = {
-        "status": "pass",
-        "failure": {"error": r"C:\Users\alice\secret.json"},
-        "metadata": {
-            "source": "/srv/private/source.csv",
-            "items": [{"path": "~/private/notes.txt"}],
-        },
+def test_issue88_final_allowlist_rejects_unknown_fields_and_error_members(tmp_path):
+    record = _record_with_raw_environment(
+        tmp_path, _privacy_test_environment(tmp_path)
+    )
+    invalid_key = copy.deepcopy(record)
+    invalid_key["measurement"]["unknown-path"] = "relative"
+    invalid_error = copy.deepcopy(record)
+    invalid_error["failure"] = {
+        "code": "row_timeout",
+        "exception_type": "TimeoutError",
+        "message": "unapproved text",
     }
 
-    with pytest.raises(ValueError, match="record serialization rejected"):
-        runner._atomic_json_write(output, payload)
+    for payload in (invalid_key, invalid_error):
+        with pytest.raises(ValueError, match="record serialization rejected"):
+            runner._serialize_record(payload)
 
-    assert not output.exists()
 
-
-def test_issue88_sanitized_record_serializes_without_absolute_paths(tmp_path):
-    output = tmp_path / "record.json"
-    payload = runner._sanitize_metadata(
-        {
-            "status": "failed",
-            "failure": {"error": "/data/private/source.csv"},
-            "metadata": {"source": "device-1-retake.json"},
-        }
+def test_issue88_error_entries_use_fixed_vocabulary_and_private_raw_log(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(runner, "ISSUE88_RAW_LOG_ROOT", tmp_path / "raw-log")
+    message = r"C:\Users\alice\secret.json; /home/Alice Smith/log.json"
+    error = runner._error_entry(
+        "row_execution_failed", RuntimeError(message), run_id="run-private"
     )
 
-    runner._atomic_json_write(output, payload)
-    serialized = output.read_text()
-    assert "<redacted-path>" in serialized
+    assert error == {
+        "code": "row_execution_failed",
+        "exception_type": "RuntimeError",
+    }
+    serialized = runner._serialize_record({"error": error})
+    assert message not in serialized
+    raw_log = tmp_path / "raw-log" / "issue88-run-private.log"
+    assert message in raw_log.read_text()
+    assert {
+        "power_trace_unreadable",
+        "run_id_mismatch",
+        "preflight_rejected",
+    } <= runner.ISSUE88_ERROR_CODES
+
+
+def test_issue88_error_arrays_validate_closed_entry_shapes():
+    safe = {
+        "errors": [{"code": "row_execution_failed", "exception_type": "RuntimeError"}],
+        "failures": [
+            {
+                "stage": "row",
+                "error": {"code": "row_execution_failed", "exception_type": "RuntimeError"},
+            }
+        ],
+    }
+    serialized = runner._serialize_record(safe)
+    assert json.loads(serialized) == safe
+
+    invalid = copy.deepcopy(safe)
+    invalid["failures"][0]["error"] = {
+        "code": "row_execution_failed",
+        "exception_type": "RuntimeError",
+        "message": r"C:\Users\alice\private.log",
+    }
+    with pytest.raises(ValueError, match="record serialization rejected"):
+        runner._serialize_record(invalid)
+
+
+def test_issue88_safe_record_passes_full_publication_validation(tmp_path):
+    record = _record_with_raw_environment(
+        tmp_path, _privacy_test_environment(tmp_path)
+    )
+    serialized = runner._serialize_record(record)
+
+    assert json.loads(serialized) == record
     assert runner._ABSOLUTE_PATH_RE.search(serialized) is None
-    assert "device-1-retake.json" in serialized
 
 
 @pytest.mark.parametrize(
@@ -1161,7 +1271,29 @@ def test_issue88_sanitized_record_serializes_without_absolute_paths(tmp_path):
         "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake-power.csv",
     ],
 )
-def test_issue88_device1_retake_artifacts_have_no_absolute_paths(filename):
-    artifact = Path(__file__).parents[1] / "docs/measurements" / filename
+def test_issue88_device1_retake_artifacts_have_no_absolute_paths(filename, tmp_path):
+    measurements = Path(__file__).parents[1] / "docs/measurements"
+    artifact = measurements / filename
+    original_bytes = artifact.read_bytes()
 
     assert runner._ABSOLUTE_PATH_RE.search(artifact.read_text()) is None
+    if filename.endswith(".json"):
+        runner._serialize_record(json.loads(original_bytes))
+    else:
+        record = json.loads(
+            (measurements / "2026-10-09-p150a-newton-schulz-issue88-fp32-r-device1-retake.json").read_text()
+        )
+        provenance = record["measurement"]["power_clock_provenance"]
+        snapshot = tmp_path / (
+            f"{runner.POWER_TRACE_SNAPSHOT_PREFIX}-{record['run_id']}-1.csv"
+        )
+        snapshot.write_bytes(original_bytes)
+        trace = runner._read_power_trace(
+            snapshot,
+            run_id=record["run_id"],
+            run_start=provenance["run_start"],
+            run_end=provenance["run_end"],
+        )
+        runner._validate_record_node(runner._public_power_trace(trace))
+        assert trace["coverage_complete"] is True
+    assert artifact.read_bytes() == original_bytes
