@@ -539,6 +539,18 @@ def _host_join_timeout_seconds(*, repeat_count: int, outer_timeout_seconds: int)
     return float(outer_timeout_seconds)
 
 
+def _merged_program_io_tensors(resident_tensors: dict[str, Any]) -> list[Any]:
+    """Supply a homogeneous GenericOp IO pair for custom merged programs.
+
+    GenericOp uses only the final IO tensor for its output specification; all
+    custom kernel addresses are explicit RuntimeArgs. The pair is therefore a
+    deliberate uint32 resident tensor duplicate, avoiding v0.75.0 mixed-dtype
+    GenericOp validation while retaining every allocated load/resident tensor.
+    """
+    consumer_stats = resident_tensors["consumer_stats"]
+    return [consumer_stats, consumer_stats]
+
+
 def _run_loaded_device(
     ttnn: Any,
     device: Any,
@@ -570,7 +582,12 @@ def _run_loaded_device(
                 ttnn, device, repeat_count=repeat_count, profile=True
             )
             load_parts = load_kernel.program_parts()
-            load_tensors = [*load_kernel.inputs, *load_kernel.outputs]
+            load_tensors = [*load_kernel.inputs]
+            if load_kernel.profile_output is not None:
+                load_tensors.append(load_kernel.profile_output)
+                load_tensors.extend(load_kernel.outputs[:2])
+            else:
+                load_tensors.extend(load_kernel.outputs)
         elif condition == "dram":
             load_kernel = prepare_dram_load(ttnn, device, repeat_count=repeat_count)
             load_parts = load_kernel.program_parts()
@@ -604,7 +621,7 @@ def _run_loaded_device(
                 raise RuntimeError("host load did not start")
         measurement_start_ns = host_start_holder.get("start_ns", time.monotonic_ns())
         try:
-            ttnn.generic_op([*resident_tensors.values(), *load_tensors], program)
+            ttnn.generic_op(_merged_program_io_tensors(resident_tensors), program)
         finally:
             resident_launched.set()
         ttnn.synchronize_device(device, cq_id=0)

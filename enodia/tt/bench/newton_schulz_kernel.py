@@ -1539,8 +1539,19 @@ class NewtonSchulzKernel:
         )
 
     def launch(self) -> None:
-        """Launch once for the complete batch."""
-        self.ttnn.generic_op([*self.inputs, *self.outputs], self.program)
+        """Launch once for the complete batch.
+
+        GenericOp treats the final tensor as its output. Keep the optional raw
+        uint32 profile tensor before the two state outputs so the operation's
+        output dtype remains the selected state dtype.
+        """
+        io_tensors = [*self.inputs]
+        if self.profile_output is not None:
+            io_tensors.append(self.profile_output)
+            io_tensors.extend(self.outputs[:2])
+        else:
+            io_tensors.extend(self.outputs)
+        self.ttnn.generic_op(io_tensors, self.program)
 
     def program_parts(self) -> tuple[tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]:
         """Return descriptor parts for one merged resident/load program."""

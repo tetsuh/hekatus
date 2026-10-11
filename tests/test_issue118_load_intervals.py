@@ -204,6 +204,10 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "prepare_newton_schulz_load" in resident_source
     assert "prepare_dram_load" in resident_source
     assert "merge_program_parts" in resident_source
+    assert "_merged_program_io_tensors(resident_tensors)" in resident_source
+    assert "return [consumer_stats, consumer_stats]" in resident_source
+    assert "load_tensors.append(load_kernel.profile_output)" in resident_source
+    assert "io_tensors.append(self.profile_output)" in (ROOT / "enodia/tt/bench/newton_schulz_kernel.py").read_text()
     assert "queue_id=queue_id" in resident_source
     assert 'record["timing_evidence"] = False' in resident_source
     assert "load_record=resident_load_record" in resident_source
@@ -215,6 +219,14 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
+
+
+def test_merged_generic_io_pair_is_homogeneous():
+    from enodia.tt.bench.run_resident import _merged_program_io_tensors
+
+    tensor = object()
+    pair = _merged_program_io_tensors({"consumer_stats": tensor})
+    assert pair == [tensor, tensor]
 
 
 def test_program_plans_use_one_program_and_disjoint_core_ranges():
