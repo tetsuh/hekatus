@@ -272,6 +272,7 @@ def read_power_trace_snapshot(
     source_path: Path | None = None,
     sampler_interval_seconds: float | None = None,
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    require_all_rows_valid: bool = False,
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
 ) -> dict[str, Any]:
@@ -281,7 +282,10 @@ def read_power_trace_snapshot(
     ``one_interval_bound`` accepts a final usable sample in the inclusive
     interval ``run_end - sampler_interval_seconds <= sample_timestamp <=
     run_end``.  The interval is an explicit caller/record setting and is never
-    inferred from CSV timestamps.
+    inferred from CSV timestamps.  When ``require_all_rows_valid`` is true,
+    invalid rows do not contribute timestamp, coverage, or in-run AICLK facts;
+    this is the resident-run contract.  The default retains the Issue #88
+    usable-row compatibility behavior.
     """
     definition = canonical_coverage_definition(coverage_definition)
     path = validate_power_trace_snapshot_path(
@@ -308,6 +312,14 @@ def read_power_trace_snapshot(
         coverage_definition=definition,
         source_file=source_file,
     )
+    if definition == ONE_INTERVAL_BOUND:
+        try:
+            interval = float(sampler_interval_seconds)
+        except (TypeError, ValueError, OverflowError):
+            interval = float("nan")
+        trace["sampler_interval_seconds"] = (
+            interval if math.isfinite(interval) and interval > 0.0 else None
+        )
     try:
         raw_bytes = (
             path.read_bytes() if read_text_fn is None else read_text_fn(path).encode()
@@ -369,14 +381,20 @@ def read_power_trace_snapshot(
     trace["sample_count"] = len(usable_samples)
     trace["valid_row_count"] = len(usable_samples)
     trace["invalid_row_count"] = len(samples) - len(usable_samples)
-    trace["nonempty"] = bool(usable_samples)
+    trace["nonempty"] = bool(samples) if require_all_rows_valid else bool(usable_samples)
     trace["errors"] = errors
+    all_rows_valid = trace["valid_row_count"] == trace["csv_row_count"]
     if not usable_samples:
         trace["error"] = timestamp_error or _error_value(
             error_factory, "power_trace_no_usable_rows"
         )
     elif timestamp_error is not None:
         trace["error"] = timestamp_error
+    elif require_all_rows_valid and not all_rows_valid:
+        # Resident timing metadata must have the same all-row validity gate as
+        # telemetry.parse_power_trace.  Leave all facts at their diagnostic
+        # defaults instead of deriving them from only the usable rows.
+        pass
     else:
         trace["timestamps_parse"] = True
         trace["first_timestamp"] = parsed_timestamps[0].isoformat()
@@ -420,6 +438,7 @@ def read_power_trace_snapshot(
                     trace["readable"],
                     trace["nonempty"],
                     trace["valid_row_count"] > 0,
+                    not require_all_rows_valid or all_rows_valid,
                     trace["timestamps_parse"],
                     trace["timestamps_ordered"],
                     parsed_timestamps[0] <= start,

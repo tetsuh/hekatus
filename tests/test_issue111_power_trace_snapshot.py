@@ -539,3 +539,96 @@ def test_resident_main_records_run_bound_snapshot_and_ignores_later_live_growth(
     )
     assert snapshot.read_bytes() == snapshot_bytes
     assert json.loads(output.read_text()) == record_before_growth
+
+
+def test_resident_main_rejects_invalid_snapshot_rows_as_timing_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_dir = tmp_path / "runner-output"
+    output_dir.mkdir()
+    environment_path = output_dir / "env-current.json"
+    environment_path.write_text(json.dumps(_environment()))
+    live = output_dir / "power-current-run.csv"
+    live.write_text(
+        CSV_HEADER
+        + "2026-01-01T00:00:00+00:00,75,1350,60\n"
+        "2026-01-01T00:00:00.500000+00:00,NaN,1350,60\n"
+        "2026-01-01T00:00:01+00:00,75,1350,60\n"
+    )
+    output = tmp_path / "resident-invalid.json"
+    monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+    _patch_fake_resident_device(monkeypatch)
+
+    real_datetime = datetime.datetime
+
+    class FixedDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = next(run_times)
+            return value if tz is None else value.astimezone(tz)
+
+    run_times = iter(
+        (
+            FixedDatetime(2026, 1, 1, tzinfo=datetime.UTC),
+            FixedDatetime(2026, 1, 1, 0, 0, 1, tzinfo=datetime.UTC),
+        )
+    )
+    monkeypatch.setattr(run_resident.datetime, "datetime", FixedDatetime)
+
+    assert run_resident.main(
+        [
+            "--out",
+            str(output),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            live.name,
+            "--frame-count",
+            "3",
+        ]
+    ) == 0
+
+    record = json.loads(output.read_text())
+    snapshot = output_dir / record["power_trace"]
+    telemetry_trace = parse_power_trace(
+        snapshot,
+        run_start="2026-01-01T00:00:00+00:00",
+        run_end="2026-01-01T00:00:01+00:00",
+        coverage_definition=ONE_INTERVAL_BOUND,
+        sampler_interval_seconds=2.0,
+    )
+    provenance = record["power_clock_provenance"]
+    assert telemetry_trace["coverage_complete"] is False
+    assert record["power_trace_coverage"]["coverage_complete"] is False
+    assert provenance["coverage_complete"] is False
+    assert record["timing_evidence"] is False
+    assert provenance["timing_evidence"] is False
+    assert record["timing_evidence_reason"] == "power_trace_no_valid_in_run_rows"
+    assert provenance["timing_evidence_reason"] == "power_trace_no_valid_in_run_rows"
+    assert record["clock"]["aiclk_source"] == "configured"
+    for field in (
+        "sample_count",
+        "csv_row_count",
+        "valid_row_count",
+        "in_run_valid_row_count",
+        "timestamps_parse",
+        "timestamps_ordered",
+        "first_timestamp",
+        "last_timestamp",
+        "covers_run_start",
+        "covers_run_end",
+        "coverage_complete",
+        "aiclk_source",
+        "aiclk_mhz",
+    ):
+        assert provenance[field] == telemetry_trace[field]
+
+    report = validate_resident_record(
+        record,
+        timestamps=[1_000, 2_000, 3_000],
+        power_trace_path=snapshot,
+    )
+    assert report["valid"] is False
+    assert report["checks"]["power_trace.metadata_duplicates"]["ok"] is True
+    assert report["checks"]["clock.timing_evidence"]["ok"] is True

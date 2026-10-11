@@ -689,6 +689,7 @@ def main(argv: list[str] | None = None) -> int:
                 source_path=live_power_trace_path,
                 sampler_interval_seconds=sampler_interval,
                 coverage_definition=ONE_INTERVAL_BOUND,
+                require_all_rows_valid=True,
                 error_factory=lambda kind, error: kind,
             )
             power_trace_path = snapshot_path
