@@ -1205,7 +1205,7 @@ def _validate_calibration_load_inputs(
 ) -> None:
     if normalized_workers and canonical not in _DEVICE_LOAD_CONDITIONS:
         raise LoadEvidenceError("host calibration cannot claim card worker intervals")
-    if canonical == "dram" and normalized_workers and len(normalized_workers) != DRAM_BANK_COUNT:
+    if canonical == "dram" and len(normalized_workers) != DRAM_BANK_COUNT:
         raise LoadEvidenceError("DRAM calibration must retain all eight worker intervals")
     if canonical == "unloaded":
         raise LoadConfigurationError("unloaded control does not need calibration")
@@ -1319,6 +1319,8 @@ def _validate_worker_interval_records(
 ) -> None:
     rows = record.get("card_load_worker_intervals")
     if rows is None:
+        if condition == "dram":
+            raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
         return
     normalized = _normalize_worker_intervals(rows)
     if condition == "dram":
@@ -1326,6 +1328,35 @@ def _validate_worker_interval_records(
             raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
         if {row["worker_index"] for row in normalized} != set(range(DRAM_BANK_COUNT)):
             raise LoadEvidenceError("DRAM worker indexes must cover all eight banks")
+        load_metadata = record.get("load")
+        if not isinstance(load_metadata, Mapping):
+            raise LoadEvidenceError("DRAM worker rows require load metadata")
+        expected_repeat_count = load_metadata.get("repeat_count")
+        if (
+            isinstance(expected_repeat_count, bool)
+            or not isinstance(expected_repeat_count, int)
+            or expected_repeat_count <= 0
+        ):
+            raise LoadEvidenceError("DRAM worker rows require a positive load repeat_count")
+        expected_pages = DRAM_PAGES_PER_BANK * expected_repeat_count
+        for row in normalized:
+            statistics = row.get("statistics")
+            if not isinstance(statistics, Mapping):
+                raise LoadEvidenceError("DRAM worker rows require read/write page counters")
+            for field, expected in (
+                ("repeat_count", expected_repeat_count),
+                ("read_pages", expected_pages),
+                ("write_pages", expected_pages),
+            ):
+                actual = statistics.get(field, _MISSING)
+                if (
+                    isinstance(actual, bool)
+                    or not isinstance(actual, int)
+                    or actual != expected
+                ):
+                    raise LoadEvidenceError(
+                        f"DRAM worker statistics {field} must equal the fixed load count"
+                    )
     aggregate = record.get("card_load_interval")
     if not isinstance(aggregate, Mapping):
         raise LoadEvidenceError("worker intervals require aggregate card interval metadata")

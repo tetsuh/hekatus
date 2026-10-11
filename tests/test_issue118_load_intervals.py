@@ -18,6 +18,7 @@ from enodia.tt.bench.load_harness import (
     CARD_THROUGHPUT_UNIT_DEFINITION,
     DEVICE_OPEN_SETTINGS,
     DRAM_BANK_COUNT,
+    DRAM_PAGES_PER_BANK,
     HOST_RESIDENT_SUB_DEVICE_ID,
     HOST_TRANSFER_CORE,
     HOST_TRANSFER_SUB_DEVICE_ID,
@@ -77,6 +78,26 @@ from enodia.tt.bench.run_resident import _parser as resident_parser
 
 ROOT = Path(__file__).parents[1]
 KERNEL_DIR = ROOT / "enodia/tt/bench/kernels"
+
+
+def _dram_worker_intervals(
+    *, repeat_count: int = 1, start_ticks: int = 90, end_ticks: int = 210, step_ticks: int = 0
+) -> list[CardWorkerInterval]:
+    statistics = {
+        "read_pages": DRAM_PAGES_PER_BANK * repeat_count,
+        "write_pages": DRAM_PAGES_PER_BANK * repeat_count,
+        "repeat_count": repeat_count,
+    }
+    return [
+        CardWorkerInterval(
+            index,
+            start_ticks + index * step_ticks,
+            end_ticks + index * step_ticks,
+            core=P150_RESIDUAL_WORKER_COORDINATES[index],
+            statistics=statistics,
+        )
+        for index in range(DRAM_BANK_COUNT)
+    ]
 
 
 def test_p150_worker_model_reserves_resident_cores_and_fails_closed():
@@ -827,6 +848,7 @@ def test_uncovered_calibration_is_not_main_timing_evidence():
         repeat_count=1,
         resident_timestamps=[100, 200, 300],
         card_interval=CardLoadInterval(150, 250),
+        worker_intervals=_dram_worker_intervals(start_ticks=150, end_ticks=250),
         calibration=calibration,
         achieved_throughput=10,
         throughput_unit="repeats_per_card_second",
@@ -956,21 +978,12 @@ def test_persisted_coverage_recomputes_resident_and_load_endpoints():
     with pytest.raises(LoadEvidenceError, match="endpoint"):
         validate_load_record(missing_resident_endpoint)
 
-    worker_rows = [
-        CardWorkerInterval(
-            index,
-            90,
-            210,
-            core=P150_RESIDUAL_WORKER_COORDINATES[index],
-        )
-        for index in range(DRAM_BANK_COUNT)
-    ]
     dram = build_load_record(
         condition="dram",
         repeat_count=1,
         resident_timestamps=[100, 200],
         card_interval=CardLoadInterval(90, 210),
-        worker_intervals=worker_rows,
+        worker_intervals=_dram_worker_intervals(),
     )
     other_run_worker = copy.deepcopy(dram)
     other_run_worker["card_load_worker_intervals"][0].update(
@@ -978,6 +991,53 @@ def test_persisted_coverage_recomputes_resident_and_load_endpoints():
     )
     with pytest.raises(LoadEvidenceError, match="aggregate|belong"):
         validate_load_record(other_run_worker)
+
+
+def test_dram_measurement_rejects_missing_worker_rows_and_page_counters():
+    record = build_load_record(
+        condition="dram",
+        repeat_count=3,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+        worker_intervals=_dram_worker_intervals(repeat_count=3),
+    )
+    missing_rows = copy.deepcopy(record)
+    missing_rows.pop("card_load_worker_intervals")
+    with pytest.raises(LoadEvidenceError, match="eight worker intervals"):
+        validate_load_record(missing_rows)
+
+    missing_counter = copy.deepcopy(record)
+    missing_counter["card_load_worker_intervals"][0]["statistics"].pop("read_pages")
+    with pytest.raises(LoadEvidenceError, match="read_pages"):
+        validate_load_record(missing_counter)
+
+
+def test_dram_calibration_rejects_missing_worker_rows_and_page_counters():
+    calibration = CalibrationMetadata(
+        condition="dram",
+        duration_seconds=5,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=12,
+        target_seconds=500,
+    )
+    record = build_calibration_load_record(
+        condition="dram",
+        repeat_count=3,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+        worker_intervals=_dram_worker_intervals(repeat_count=3),
+        calibration=calibration,
+    )
+    missing_rows = copy.deepcopy(record)
+    missing_rows.pop("card_load_worker_intervals")
+    with pytest.raises(LoadEvidenceError, match="eight worker intervals"):
+        validate_calibration_load_record(missing_rows)
+
+    missing_counter = copy.deepcopy(record)
+    missing_counter["card_load_worker_intervals"][0]["statistics"].pop("write_pages")
+    with pytest.raises(LoadEvidenceError, match="write_pages"):
+        validate_calibration_load_record(missing_counter)
 
 
 def test_two_cq_setting_is_present_on_all_four_mode_records():
@@ -994,6 +1054,7 @@ def test_two_cq_setting_is_present_on_all_four_mode_records():
             repeat_count=1,
             resident_timestamps=[100, 200],
             card_interval=CardLoadInterval(90, 210),
+            worker_intervals=_dram_worker_intervals(),
         ),
         "host_cpu_transfer": build_load_record(
             condition="host_cpu_transfer",
@@ -1227,16 +1288,14 @@ def test_delayed_worker_uses_slowest_worker_interval_not_aggregate_span():
 
 
 def test_dram_record_retains_all_worker_rows_and_aggregate_coverage_span():
-    workers = [
-        CardWorkerInterval(index, index * 10, 300 + index * 10)
-        for index in range(8)
-    ]
     record = build_load_record(
         condition="dram",
         repeat_count=1,
         resident_timestamps=[100, 200],
         card_interval=CardLoadInterval(0, 370),
-        worker_intervals=workers,
+        worker_intervals=_dram_worker_intervals(
+            start_ticks=0, end_ticks=300, step_ticks=10
+        ),
     )
     assert len(record["card_load_worker_intervals"]) == 8
     assert record["card_load_interval_statistics"]["aggregate_span_role"] == "coverage_only"
@@ -1258,6 +1317,7 @@ def test_calibration_record_is_schema_valid_and_annotates_card_tick_unit():
         repeat_count=1,
         resident_timestamps=[100, 200],
         card_interval=CardLoadInterval(0, 300),
+        worker_intervals=_dram_worker_intervals(start_ticks=0, end_ticks=300),
         calibration=calibration,
         achieved_throughput=2,
         throughput_unit="repeats_per_card_second",
@@ -1355,6 +1415,12 @@ def test_compute_timeout_cap_is_selectable_at_600_or_800_and_watcher_stays_60():
     config = _config_from_args(args)
     assert config.outer_timeout_cap_seconds == 600
     assert config.outer_timeout_cap_source == "issue12_timing_600s"
+
+
+def test_committed_dram_measurement_load_validates_worker_contract():
+    path = ROOT / "docs/measurements/2026-10-11-p150a-issue118-dram-500000-adr0005.json"
+    record = json.loads(path.read_text())
+    validate_load_record(record["load"])
 
 
 def test_issue118_committed_records_match_fixed_work_and_profile_accounting():
