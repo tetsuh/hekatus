@@ -33,6 +33,7 @@ from enodia.tt.bench.load_harness import (
     LoadConfigurationError,
     calibration_metadata,
     normalize_condition,
+    repeat_throughput_unit,
 )
 
 
@@ -63,7 +64,7 @@ def _parser() -> argparse.ArgumentParser:
         default=500.0,
     )
     parser.add_argument("--achieved-throughput", type=float, default=None)
-    parser.add_argument("--throughput-unit", default="repeats_per_host_second")
+    parser.add_argument("--throughput-unit", default=None)
     parser.add_argument("--safety-factor", type=float, default=1.10)
     parser.add_argument("--repeat-count", type=int, default=None)
     parser.add_argument("--out", type=Path, required=True)
@@ -130,7 +131,7 @@ def build_calibration(
     condition: str,
     duration_seconds: float,
     achieved_throughput: float | None = None,
-    throughput_unit: str = "repeats_per_host_second",
+    throughput_unit: str | None = None,
     target_seconds: float = 500.0,
     safety_factor: float = 1.10,
     watcher_enabled: bool = False,
@@ -147,11 +148,17 @@ def build_calibration(
         if achieved_throughput is None
         else achieved_throughput
     )
+    expected_unit = repeat_throughput_unit(canonical)
+    selected_unit = expected_unit if throughput_unit is None else throughput_unit
+    if selected_unit != expected_unit:
+        raise LoadConfigurationError(
+            f"throughput-unit must be {expected_unit} for {canonical}"
+        )
     calibration = calibration_metadata(
         condition=canonical,
         duration_seconds=duration,
         achieved_throughput=throughput,
-        throughput_unit=throughput_unit,
+        throughput_unit=selected_unit,
         target_seconds=target_seconds,
         safety_factor=safety_factor,
     )

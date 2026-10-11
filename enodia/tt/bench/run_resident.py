@@ -530,6 +530,15 @@ def _run_host_transfers(
     return work
 
 
+def _host_join_timeout_seconds(*, repeat_count: int, outer_timeout_seconds: int) -> float:
+    """Bound host-load cleanup by the configured resident run cap."""
+    if repeat_count <= 0 or outer_timeout_seconds <= 0:
+        raise LoadConfigurationError("host join timeout inputs must be positive")
+    # The configured outer cap is the only validated upper bound available
+    # without relying on an untrusted throughput estimate.
+    return float(outer_timeout_seconds)
+
+
 def _run_loaded_device(
     ttnn: Any,
     device: Any,
@@ -604,7 +613,10 @@ def _run_loaded_device(
         # resident interval without making the endpoint host-load-dependent.
         measurement_end_ns = time.monotonic_ns()
         if host_thread is not None:
-            join_timeout = min(600.0, max(60.0, repeat_count * 0.01))
+            join_timeout = _host_join_timeout_seconds(
+                repeat_count=repeat_count,
+                outer_timeout_seconds=config.outer_timeout_seconds,
+            )
             host_thread.join(timeout=join_timeout)
             if host_thread.is_alive():
                 raise RuntimeError("host load transfer thread did not finish")

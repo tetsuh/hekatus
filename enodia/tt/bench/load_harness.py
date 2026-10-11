@@ -99,6 +99,11 @@ _CONDITION_ALIASES = {
     "c": "host_cpu_transfer",
 }
 _DEVICE_LOAD_CONDITIONS = frozenset({"newton_schulz", "dram"})
+_REPEAT_THROUGHPUT_UNITS = {
+    "newton_schulz": "repeats_per_card_second",
+    "dram": "repeats_per_card_second",
+    "host_cpu_transfer": "repeats_per_host_second",
+}
 
 
 class LoadConfigurationError(ValueError):
@@ -107,6 +112,14 @@ class LoadConfigurationError(ValueError):
 
 class LoadEvidenceError(ValueError):
     """A record does not contain valid interval coverage evidence."""
+
+
+def repeat_throughput_unit(condition: str) -> str:
+    """Return the only valid calibration unit for one condition."""
+    canonical = normalize_condition(condition)
+    if canonical == "unloaded":
+        raise LoadConfigurationError("unloaded control has no repeat throughput unit")
+    return _REPEAT_THROUGHPUT_UNITS[canonical]
 
 
 def normalize_condition(condition: str) -> str:
@@ -342,12 +355,9 @@ class CalibrationMetadata:
         if duration > MAX_CALIBRATION_SECONDS:
             raise LoadConfigurationError("calibration duration must be <= 60 seconds")
         _finite_positive(self.achieved_throughput, "achieved_throughput")
-        if (
-            not isinstance(self.throughput_unit, str)
-            or not self.throughput_unit.startswith("repeats_per_")
-        ):
+        if self.throughput_unit != repeat_throughput_unit(self.condition):
             raise LoadConfigurationError(
-                "throughput_unit must report calibrated load repeats per second"
+                "throughput_unit does not match the calibration condition"
             )
         _positive_int(self.repeat_count, "repeat_count")
         if not isinstance(self.source, str) or not self.source.strip():
@@ -956,6 +966,7 @@ __all__ = [
     "normalize_condition",
     "ns_work_distribution",
     "p150_core_partition",
+    "repeat_throughput_unit",
     "validate_device_open_settings",
     "validate_load_record",
     "validate_mode_records",

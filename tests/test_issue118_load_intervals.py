@@ -39,6 +39,7 @@ from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
 from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
+    _host_join_timeout_seconds,
     _load_achieved_throughput,
 )
 from enodia.tt.bench.run_resident import _parser as resident_parser
@@ -188,6 +189,12 @@ def test_fixed_repeat_reaches_reader_and_compute_runtime_args():
         ttnn, [(2, 0)], [123], [(0, 8)], [3]
     )
     assert args.values[(2, 0)] == [123, 0, 8, 3]
+
+
+def test_host_join_timeout_never_exceeds_resident_outer_cap():
+    assert _host_join_timeout_seconds(repeat_count=550, outer_timeout_seconds=60) == 60.0
+    assert _host_join_timeout_seconds(repeat_count=550, outer_timeout_seconds=600) == 600.0
+
 
 
 def test_actual_program_plumbing_names_repeat_and_interval_outputs():
@@ -405,7 +412,12 @@ def test_actual_runner_reports_repeat_rate_not_work_rate():
 
 
 def test_calibration_repeat_rate_is_not_work_rate():
-    for condition in ("newton_schulz", "dram", "host_cpu_transfer"):
+    expected_units = {
+        "newton_schulz": "repeats_per_card_second",
+        "dram": "repeats_per_card_second",
+        "host_cpu_transfer": "repeats_per_host_second",
+    }
+    for condition, expected_unit in expected_units.items():
         calibration = build_calibration(
             condition=condition,
             duration_seconds=5,
@@ -413,7 +425,15 @@ def test_calibration_repeat_rate_is_not_work_rate():
             target_seconds=10,
         )
         assert calibration["calibration"]["repeat_count"] == 22
-        assert calibration["calibration"]["throughput_unit"] == "repeats_per_host_second"
+        assert calibration["calibration"]["throughput_unit"] == expected_unit
+    with pytest.raises(ValueError, match="throughput-unit"):
+        build_calibration(
+            condition="dram",
+            duration_seconds=5,
+            achieved_throughput=2,
+            throughput_unit="repeats_per_host_second",
+            target_seconds=10,
+        )
     bounded = build_calibration(
         condition="dram",
         duration_seconds=5,
