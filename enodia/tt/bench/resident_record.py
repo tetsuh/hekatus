@@ -213,6 +213,8 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "issue",
     "stage",
     "status",
+    "num_command_queues",
+    "device_open",
     "termination_reason",
     "parameters",
     "parameters.frame_count",
@@ -607,12 +609,15 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
             "frame_count", "run_budget", "cycle_budget", "cancelled", "outer_timeout", "incomplete", "rejected", "running"
         ), "a termination-reason enum"
         invalid_range = "unknown-termination"
-    elif path in {"parameters", "clock", "clock_source_evidence", "histogram", "histogram.histogram", "ring", "cycle_budget", "failure_check", "raw_timestamps", "power_trace_coverage", "power_trace_coverage.coverage", "power_clock_provenance", "power_clock_provenance.coverage", "telemetry_sampler", "environment", "environment.telemetry_sampler", "outlier_analysis", "outlier_analysis.pair_order_counts", "outlier_analysis.sampler_interval_comparison", "timestamp_attribution", "timestamp_attribution.consumer_completion", "timestamp_attribution.producer_write", "work_ticks", "startup"}:
+    elif path in {"parameters", "clock", "clock_source_evidence", "histogram", "histogram.histogram", "ring", "cycle_budget", "failure_check", "raw_timestamps", "power_trace_coverage", "power_trace_coverage.coverage", "power_clock_provenance", "power_clock_provenance.coverage", "telemetry_sampler", "environment", "environment.telemetry_sampler", "outlier_analysis", "outlier_analysis.pair_order_counts", "outlier_analysis.sampler_interval_comparison", "timestamp_attribution", "timestamp_attribution.consumer_completion", "timestamp_attribution.producer_write", "work_ticks", "startup", "device_open"}:
         type_rule, range_rule, expected = mapping, _always, "an object"
         invalid_range = []
     elif path in {"parameters.producer_core", "parameters.consumer_core", "parameters.designated_timestamp_core", "clock.designated_core"}:
         type_rule, range_rule, expected = list_value, _list_of(integer_nonnegative), "a list of non-negative integers"
         invalid_range = [-1]
+    elif path == "num_command_queues":
+        type_rule, range_rule, expected = _is_int, _enum(2), "the integer 2"
+        invalid_range = 1
     elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", "outlier_analysis.aiclk_mhz_for_elapsed_seconds", "outlier_analysis.run_elapsed_ticks", "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
         type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
         invalid_range = -1
@@ -855,6 +860,16 @@ SAMPLER_GAP_FIELD_SPECS: Mapping[str, ResidentRecordField] = MappingProxyType(
 # warnings, not hard schema failures, because telemetry and production tools
 # can add fields without changing the required resident contract.
 _COMMON_ALLOWED_EXTRA_FIELDS = (
+    "num_command_queues",
+    "device_open",
+    "device_open.*",
+    "load",
+    "load.*",
+    "card_load_interval",
+    "host_load_interval",
+    "load_coverage",
+    "load_repeat_count",
+    "calibration",
     "parameters.producer_core",
     "parameters.consumer_core",
     "parameters.work_per_frame",
@@ -1231,6 +1246,31 @@ def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> 
                 )
             )
     return mismatches
+
+
+def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    """Validate Issue #118 load metadata when a resident record carries it."""
+    del ctx
+    if "load" not in record or record.get("load") is None:
+        return []
+    load = record.get("load")
+    if not isinstance(load, Mapping):
+        return [_mismatch("load.evidence", ("load",), "load metadata must be an object")]
+    if record.get("num_command_queues") != 2:
+        return [
+            _mismatch(
+                "load.command_queues",
+                ("num_command_queues",),
+                "Issue #118 load records require num_command_queues=2",
+            )
+        ]
+    try:
+        from enodia.tt.bench.load_harness import validate_load_record
+
+        validate_load_record(load)
+    except (TypeError, ValueError, KeyError) as exc:
+        return [_mismatch("load.evidence", ("load",), str(exc))]
+    return []
 
 
 def _validate_field_value(
@@ -3392,6 +3432,12 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
         ("record",),
         "unknown fields are retained and reported as warnings; declared fields remain strict",
         _check_unknown_fields,
+    ),
+    ResidentInvariant(
+        "load.evidence",
+        ("num_command_queues", "load", "load.coverage"),
+        "Issue #118 load intervals, repeat metadata, and coverage are fail-closed",
+        _check_load_evidence,
     ),
     ResidentInvariant(
         "clock_source_evidence",

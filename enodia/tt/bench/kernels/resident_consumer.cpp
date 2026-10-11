@@ -5,7 +5,8 @@
 #include "api/dataflow/dataflow_api.h"
 
 namespace {
-constexpr std::uint32_t cb_timestamp = 1;
+// Keep resident CBs above the Newton-Schulz 0--19 ABI in a merged program.
+constexpr std::uint32_t cb_timestamp = 21;
 constexpr std::uint32_t page_words = 32 * 32;
 constexpr std::uint32_t ready_semaphore_id = 0;
 constexpr std::uint32_t free_semaphore_id = 1;

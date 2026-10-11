@@ -22,6 +22,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.load_harness import build_load_record
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
     atomic_power_trace_snapshot,
@@ -122,6 +123,12 @@ def _sharded_pages_config(
     )
 
 
+# Resident CB indices stay above the 0--19 Newton-Schulz ABI so a merged
+# ProgramDescriptor cannot alias a resident queue with a load queue.
+RESIDENT_PRODUCER_CB_INDEX = 20
+RESIDENT_CONSUMER_CB_INDEX = 21
+
+
 def _cb(ttnn: Any, *, index: int, core_ranges):
     format_descriptor = ttnn.CBFormatDescriptor(
         buffer_index=index,
@@ -162,7 +169,12 @@ def _resolve_watcher_mode(watcher_flag: bool, env_value: str | None) -> bool:
 
 
 def _program(
-    ttnn: Any, config: ResidentConfig, tensors: dict[str, Any], *, watcher: bool
+    ttnn: Any,
+    config: ResidentConfig,
+    tensors: dict[str, Any],
+    *,
+    watcher: bool,
+    return_parts: bool = False,
 ):
     producer_ranges = _core_range(ttnn, config.producer_core)
     consumer_ranges = _core_range(ttnn, config.consumer_core)
@@ -250,19 +262,19 @@ def _program(
             config=ttnn.ReaderConfigDescriptor(),
         ),
     ]
-    return ttnn.ProgramDescriptor(
-        kernels=kernels,
-        semaphores=[
-            ttnn.SemaphoreDescriptor(0, ttnn.CoreType.WORKER, consumer_ranges, 0),
-            ttnn.SemaphoreDescriptor(1, ttnn.CoreType.WORKER, producer_ranges, 0),
-            ttnn.SemaphoreDescriptor(2, ttnn.CoreType.WORKER, consumer_ranges, 0),
-            ttnn.SemaphoreDescriptor(3, ttnn.CoreType.WORKER, producer_ranges, 0),
-        ],
-        cbs=[
-            _cb(ttnn, index=0, core_ranges=producer_ranges),
-            _cb(ttnn, index=1, core_ranges=consumer_ranges),
-        ],
-    )
+    semaphores = [
+        ttnn.SemaphoreDescriptor(0, ttnn.CoreType.WORKER, consumer_ranges, 0),
+        ttnn.SemaphoreDescriptor(1, ttnn.CoreType.WORKER, producer_ranges, 0),
+        ttnn.SemaphoreDescriptor(2, ttnn.CoreType.WORKER, consumer_ranges, 0),
+        ttnn.SemaphoreDescriptor(3, ttnn.CoreType.WORKER, producer_ranges, 0),
+    ]
+    cbs = [
+        _cb(ttnn, index=RESIDENT_PRODUCER_CB_INDEX, core_ranges=producer_ranges),
+        _cb(ttnn, index=RESIDENT_CONSUMER_CB_INDEX, core_ranges=consumer_ranges),
+    ]
+    if return_parts:
+        return kernels, semaphores, cbs
+    return ttnn.ProgramDescriptor(kernels=kernels, semaphores=semaphores, cbs=cbs)
 
 
 def _decode_failure(values, *, base: int, source: str) -> dict[str, Any]:
@@ -300,9 +312,8 @@ def _download(ttnn: Any, tensor):
     return row_major.to_numpy()
 
 
-def _run_device(
-    ttnn: Any, device, config: ResidentConfig, *, watcher: bool
-) -> dict[str, Any]:
+def _allocate_resident_tensors(ttnn: Any, device: Any, config: ResidentConfig) -> dict[str, Any]:
+    """Allocate resident tensors for either the control or merged load run."""
     ring_shape = (1, config.ring_pages, PAGE_WORDS)
     control_shape = (1, 1, PAGE_WORDS)
     timestamp_shape = (config.frame_count, 1, 1, PAGE_WORDS)
@@ -353,7 +364,7 @@ def _run_device(
         device,
         ttnn.DRAM_MEMORY_CONFIG,
     )
-    tensors = {
+    return {
         "ring": ring,
         "control": control,
         "producer_anchor": producer_anchor,
@@ -361,13 +372,19 @@ def _run_device(
         "producer_stats": producer_stats,
         "consumer_stats": consumer_stats,
     }
+
+
+def _run_device(
+    ttnn: Any, device, config: ResidentConfig, *, watcher: bool
+) -> dict[str, Any]:
+    tensors = _allocate_resident_tensors(ttnn, device, config)
     try:
         program = _program(ttnn, config, tensors, watcher=watcher)
         ttnn.generic_op(list(tensors.values()), program)
         ttnn.synchronize_device(device)
-        timestamp_values = _download(ttnn, timestamps)
-        producer_values = _download(ttnn, producer_stats).reshape(-1)
-        consumer_values = _download(ttnn, consumer_stats).reshape(-1)
+        timestamp_values = _download(ttnn, tensors["timestamps"])
+        producer_values = _download(ttnn, tensors["producer_stats"]).reshape(-1)
+        consumer_values = _download(ttnn, tensors["consumer_stats"]).reshape(-1)
         producer_failure = _decode_failure(producer_values, base=6, source="producer")
         consumer_failure = _decode_failure(consumer_values, base=7, source="consumer")
         producer_full_count = _device_word(producer_values[0], "producer full count")
@@ -617,7 +634,9 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError("run_resident.py requires the pinned TTNN image") from exc
 
     run_start = datetime.datetime.now(datetime.UTC)
-    device = ttnn.open_device(device_id=args.device_id)
+    # Issue #118 keeps the unloaded control on the same two-CQ device-open
+    # contract as every eventual loaded mode; CQ0 remains the resident queue.
+    device = ttnn.open_device(device_id=args.device_id, num_command_queues=2)
     try:
         try:
             result = _run_device(ttnn, device, config, watcher=watcher)
@@ -748,6 +767,11 @@ def main(argv: list[str] | None = None) -> int:
         aiclk_source=aiclk_source,
         sampler_metadata=sampler,
     )
+    unloaded_load_record = build_load_record(
+        condition="unloaded",
+        repeat_count=0,
+        resident_timestamps=result["timestamps"],
+    )
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
@@ -783,6 +807,7 @@ def main(argv: list[str] | None = None) -> int:
             and not validate_failure_check(result["failure_check"]).error_flag
         ),
         timing_evidence_reason=trace_timing_reason,
+        load_record=unloaded_load_record,
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]

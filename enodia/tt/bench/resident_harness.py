@@ -1121,6 +1121,9 @@ def build_measurement_record(
     watcher: bool = False,
     timing_evidence: bool = False,
     timing_evidence_reason: str | None = None,
+    num_command_queues: int = 2,
+    load_record: Mapping[str, Any] | None = None,
+    load_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build and validate the committed-schema record without raw timestamps.
 
@@ -1151,6 +1154,15 @@ def build_measurement_record(
     ``dropped`` and never overwrite ring data.
     """
     config = validate_configuration(config, watcher=watcher)
+    if isinstance(num_command_queues, bool) or num_command_queues != 2:
+        raise ValueError("Issue #118 resident records require num_command_queues=2")
+    if load_record is not None and load_metadata is not None:
+        raise ValueError("provide only one of load_record or load_metadata")
+    load_record = load_record if load_record is not None else load_metadata
+    if load_record is not None:
+        from enodia.tt.bench.load_harness import validate_load_record
+
+        validate_load_record(load_record)
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
@@ -1380,6 +1392,13 @@ def build_measurement_record(
         "issue": 12,
         "stage": 1,
         "status": status,
+        "num_command_queues": num_command_queues,
+        "device_open": {
+            "num_command_queues": num_command_queues,
+            "resident_command_queue": 0,
+            "transfer_command_queue": 1,
+        },
+        "load": dict(load_record) if load_record is not None else None,
         "termination_reason": reason,
         "parameters": {
             **config.as_record(),
@@ -1539,6 +1558,12 @@ def build_measurement_record(
         "timing_evidence_reason": final_timing_reason,
         "outlier_analysis": dict(outlier_analysis),
     }
+    if load_record is not None:
+        record["card_load_interval"] = load_record.get("card_load_interval")
+        record["host_load_interval"] = load_record.get("host_load_interval")
+        record["load_coverage"] = load_record.get("coverage")
+        record["load_repeat_count"] = load_record.get("load", {}).get("repeat_count")
+        record["calibration"] = load_record.get("calibration")
     validate_resident_record(
         record,
         timestamps=timestamp_values,
@@ -1589,6 +1614,12 @@ def build_rejection_record(
         "stage": 1,
         "status": "rejected",
         "termination_reason": "rejected",
+        "num_command_queues": 2,
+        "device_open": {
+            "num_command_queues": 2,
+            "resident_command_queue": 0,
+            "transfer_command_queue": 1,
+        },
         "rejection_reason": reason,
         "parameters": parameters,
         "frame_interval_is_not_acquisition_rate_claim": True,

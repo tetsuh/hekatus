@@ -51,6 +51,12 @@ constexpr std::uint32_t profile_block_input_cb_reserve_offset = 14;
 constexpr std::uint32_t profile_block_output_cb_reserve_offset = 15;
 constexpr std::uint32_t profile_block_dest_acquire_wait_offset = 16;
 constexpr std::uint32_t profile_block_dest_pack_wait_offset = 17;
+// Four words outside the section table retain a software-extended card-clock
+// load interval for Issue #118 coverage validation.
+constexpr std::uint32_t profile_load_start_low_offset = 20;
+constexpr std::uint32_t profile_load_start_high_offset = 21;
+constexpr std::uint32_t profile_load_end_low_offset = 22;
+constexpr std::uint32_t profile_load_end_high_offset = 23;
 
 // Counters use the lower 32-bit wall-clock API. All sections accumulate over
 // the assigned tiles and twelve iterations; the warmup fields retain the first
@@ -89,6 +95,20 @@ struct ProfileCounters {
     std::uint32_t warmup_block_output_cb_reserve = 0;
     std::uint32_t warmup_block_dest_acquire_wait = 0;
     std::uint32_t warmup_block_dest_pack_wait = 0;
+    std::uint64_t load_start_extended = 0;
+    std::uint64_t load_end_extended = 0;
+};
+
+struct WrapTrackedClock {
+    std::uint64_t extended = 0;
+
+    void initialize() { extended = get_timestamp_32b(); }
+
+    std::uint64_t read() {
+        const std::uint32_t low = get_timestamp_32b();
+        extended += static_cast<std::uint32_t>(low - static_cast<std::uint32_t>(extended));
+        return extended;
+    }
 };
 
 void add_profile_cycles(std::uint32_t& total, std::uint32_t& warmup, std::uint32_t cycles, bool is_warmup) {
@@ -1258,6 +1278,10 @@ void write_profile_counters(ProfileCounters& counters) {
         0,
         0);
     write_block_profile_fields(profile, 0, counters);
+    profile[profile_load_start_low_offset] = static_cast<std::uint32_t>(counters.load_start_extended);
+    profile[profile_load_start_high_offset] = static_cast<std::uint32_t>(counters.load_start_extended >> 32);
+    profile[profile_load_end_low_offset] = static_cast<std::uint32_t>(counters.load_end_extended);
+    profile[profile_load_end_high_offset] = static_cast<std::uint32_t>(counters.load_end_extended >> 32);
 #elif defined(COMPILE_FOR_TRISC) && COMPILE_FOR_TRISC == 1
     write_profile_slot(
         profile,
@@ -1340,6 +1364,7 @@ void kernel_main_impl() {
     static_assert(iterations == 12, "the throughput kernel has a fixed twelve-iteration count");
     using CounterState = std::conditional_t<profile_sample, ProfileCounters, EmptyProfileCounters>;
     CounterState counters{};
+    WrapTrackedClock load_clock;
 
     DeviceZoneScopedN("NS-COMPUTE-TOTAL");
     if constexpr (fuse_s) {
@@ -1355,11 +1380,18 @@ void kernel_main_impl() {
         if (start_tile == 0) {
             counters.total_start = get_timestamp_32b();
             counters.warmup_start = counters.total_start;
+            load_clock.initialize();
+            counters.load_start_extended = load_clock.read();
         }
     }
 
     if constexpr (matrix_block == 1) {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
+        if constexpr (profile_sample) {
+            if (start_tile == 0) {
+                load_clock.read();
+            }
+        }
         if constexpr (!reload_r) {
             if constexpr (profile_sample) {
                 if (start_tile == 0) {
@@ -1551,6 +1583,11 @@ void kernel_main_impl() {
     }
     } else {
         for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
+            if constexpr (profile_sample) {
+                if (start_tile == 0) {
+                    load_clock.read();
+                }
+            }
             const std::uint32_t block_count =
                 (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
             if constexpr (profile_sample) {
@@ -1586,6 +1623,7 @@ void kernel_main_impl() {
     if constexpr (profile_sample) {
         if (start_tile == 0) {
             counters.total_end = get_timestamp_32b();
+            counters.load_end_extended = load_clock.read();
             write_profile_counters(counters);
         }
     }

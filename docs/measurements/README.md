@@ -24,6 +24,32 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #118 board-free calibration configuration
+
+The board-free CLI emits one calibration record or one run configuration and
+never opens a device. A calibration is watcher-off and capped at 60 seconds;
+its `selected_repeat_count` is the only repeat count to carry into the later
+run. The target duration may describe the later long measurement, while the
+calibration observation itself remains capped:
+
+```bash
+uv run python -m enodia.tt.bench.run_load \
+  --condition newton_schulz --calibrate --duration-seconds 60 \
+  --target-seconds 600 --achieved-throughput 100 \
+  --out calibration-newton-schulz.json
+uv run python -m enodia.tt.bench.run_load \
+  --condition newton_schulz --run-config \
+  --calibration-json calibration-newton-schulz.json \
+  --out run-config-newton-schulz.json
+```
+
+The throughput argument is the Watcher-off measurement reported by the
+calibration runner. The emitted metadata retains that value, the condition,
+the two-CQ device setting, and the chosen repeat count. A later device record
+is not evidence until it adds a wrap-tracked card-clock load interval for
+`newton_schulz`/`dram`, or a host monotonic interval for
+`host_cpu_transfer`, and the corresponding coverage verdict is `covered`.
+
 ## Issue #104 paired-outlier records
 
 The wrapper supports the existing telemetry sampler as `default` (2 seconds),
