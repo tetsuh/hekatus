@@ -120,6 +120,10 @@ _CALIBRATION_FIELDS = frozenset(
         "safety_factor",
         "throughput_reference_aiclk_mhz",
         "throughput_unit_definition",
+        "load_card_ticks",
+        "load_measurement_repeat_count",
+        "load_interval_aiclk_mhz",
+        "load_interval_aiclk_source",
     }
 )
 

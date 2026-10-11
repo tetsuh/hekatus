@@ -48,10 +48,12 @@ board-free configuration path; it does not claim board evidence. The parent
 runs the bounded board calibration once per device load with no Watcher and a
 60-second cap using the resident runner. The emitted calibration record
 retains the measured throughput and the calibration-selected repeat count for
-the later run. A later loaded resident invocation selects an explicit 600-second cap, or
-800 seconds for the compute-loaded Newton-Schulz condition when the measured
-AICLK requires the amended allowance. Watcher remains capped at 60 seconds.
-The selected cap and its provenance are persisted in the resident record; the
+the later run. A later loaded resident invocation requires an explicit
+outer-timeout cap: 600 seconds for control/DRAM, or 800 seconds for the
+compute-loaded Newton-Schulz condition when its calibrated load-time estimate
+needs the amended allowance. The runner never selects the cap automatically.
+Watcher remains capped at 60 seconds. The selected cap and its provenance are
+persisted in the resident record; the
 wrapper rejects a value above the selected cap. A later device record is not
 evidence until it adds a wrap-tracked card-clock load interval for
 `newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
@@ -69,10 +71,12 @@ program launch/completion beside the card tick spans. DRAM records retain all
 eight worker rows and use the slowest worker's own elapsed interval for
 calibration; the aggregate worker span is coverage metadata only.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
-plus 256 fixed 64 KiB host/device transfer pairs on CQ1. A fixed four-slot
-reusable host/device pool and per-repeat CQ1 completion keep transfer buffering
-bounded while targeting approximately one-second calibration granularity; the
-work remains data-independent. A calibration record may therefore be
+plus 256 fixed 64 KiB host/device transfer pairs on CQ1. The retained host-load
+implementation is a #120 starting point only: non-calibration host runs are
+rejected and cannot produce Issue #118 evidence. A fixed four-slot reusable
+host/device pool and per-repeat CQ1 completion keep transfer buffering bounded
+while targeting approximately one-second calibration granularity; the work
+remains data-independent. A calibration record may therefore be
 `uncovered` when its single measurement repeat finishes before the full resident
 interval; it remains `status=calibration` and `valid_evidence=false`. The
 calibration interval is not promoted to timing evidence, while the later
@@ -112,9 +116,11 @@ Calibration provenance: the NS run used 18,000 repeats and 40,052,430,488
 card ticks; the DRAM run used 138,076 repeats and its slowest worker interval
 was 40,172,897,738 card ticks (aggregate span 42,081,820,472 ticks). Both
 records are `status=calibration`, `valid_evidence=false`, and uncovered by
-design. These are pre-measurement predictions, not evidence. Both loaded
-predictions are below the required 40-second cap margin and the 560-second
-loaded-run gate; the three runs may proceed only on this pushed commit.
+design. These are pre-measurement predictions, not evidence. The control and
+DRAM predictions are below the required 40-second margin and the <=560-second
+prediction gate for their 600-second caps. Newton-Schulz uses the amended
+800-second cap and a <=760-second prediction gate; its predicted whole-run time
+is 728.391 seconds. The three runs may proceed only on this pushed commit.
 
 ## Issue #118 measured results (2026-10-11)
 
@@ -187,8 +193,10 @@ The frozen ADR-0005 records and their #111 power-trace snapshots are:
 
 Each companion is the immutable snapshot referenced by its record; the record
 contains its SHA-256, sampler coverage, host monotonic interval, and in-run
-AICLK trace. The host-load condition (c) was moved to
-[Issue #120](https://github.com/tetsuh/hekatus/issues/120). Broader AICLK
+AICLK trace. The host-load condition (c) implementation is retained as a #120
+starting point, but it cannot produce #118 evidence; non-calibration host runs
+are rejected. See [Issue #120](https://github.com/tetsuh/hekatus/issues/120).
+Broader AICLK
 transition and conversion audits belong to
 [Issue #121](https://github.com/tetsuh/hekatus/issues/121) and
 [Issue #122](https://github.com/tetsuh/hekatus/issues/122).
@@ -199,6 +207,25 @@ outer timeout (exit 137), and the unloaded control at that commit is excluded
 because its harness commit differs from the accepted three-run sequence.
 No pass/fail threshold is imposed on these measurements; the results are
 observations for the latency and budget discussion.
+
+### Watcher-enabled first confirmations
+
+No board rerun is part of this correction. The existing first confirmations
+are:
+
+- Newton-Schulz — commit `f1a4eb8f803112559bf0030eb14d2f8a69c4a693`,
+  2026-10-11, `status=ok`, 100/100 frames, Watcher enabled, 60-second cap.
+- DRAM — commit `be11135b51f6b34402b30652a6bead5be2e6d688`, 2026-10-11,
+  `status=ok`, 100/100 frames, Watcher enabled, 60-second cap.
+
+For kernel-source provenance, `enodia/tt/bench/kernels/` has no diff from
+`be11135b51f6b34402b30652a6bead5be2e6d688` to `2e143f8`. The Newton-Schulz
+run record names `f1a4eb8f803112559bf0030eb14d2f8a69c4a693`; the Newton-Schulz
+load-kernel files themselves are unchanged from that run to `2e143f8`. The
+only later kernel-directory change before `be11135b` was the DRAM address fix,
+unrelated to the Newton-Schulz confirmation. This distinction keeps the run commit and
+the final kernel baseline traceable without claiming a false whole-directory
+comparison.
 
 ## Issue #104 paired-outlier records
 

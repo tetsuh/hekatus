@@ -11,6 +11,8 @@ import pytest
 from enodia.tt.bench import load_generators, newton_schulz_kernel
 from enodia.tt.bench import run_resident as resident_runner
 from enodia.tt.bench.load_harness import (
+    CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS,
     CARD_THROUGHPUT_UNIT_DEFINITION,
     DEVICE_OPEN_SETTINGS,
     HOST_RESIDENT_SUB_DEVICE_ID,
@@ -36,6 +38,7 @@ from enodia.tt.bench.load_harness import (
     load_evidence_valid,
     newton_schulz_l1_ledger,
     ns_work_distribution,
+    predicted_load_time_seconds,
     validate_calibration_load_record,
     validate_load_record,
     validate_mode_records,
@@ -489,6 +492,10 @@ def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path
         repeat_count=1100,
         target_seconds=500,
         safety_factor=1.10,
+        load_card_ticks=1_000_000_000,
+        load_measurement_repeat_count=2,
+        load_interval_aiclk_mhz=1_000,
+        load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
     )
     path = tmp_path / "calibration.json"
     path.write_text(json.dumps({"calibration": calibration.as_record()}))
@@ -503,6 +510,83 @@ def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path
         _load_execution_selection(args)
     args.outer_timeout_seconds = 600
     assert _load_execution_selection(args)[1] == 1100
+
+
+def test_newton_schulz_cap_guard_uses_calibrated_ticks_and_sampler_aiclk(tmp_path):
+    calibration = CalibrationMetadata(
+        condition="newton_schulz",
+        duration_seconds=60,
+        achieved_throughput=606.704754,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=333_688,
+        target_seconds=500,
+        load_card_ticks=40_052_430_488,
+        load_measurement_repeat_count=18_000,
+        load_interval_aiclk_mhz=1_191.2587677857841,
+        load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    )
+    path = tmp_path / "ns-calibration.json"
+    path.write_text(json.dumps({"calibration": calibration.as_record()}))
+    predicted = predicted_load_time_seconds(calibration)
+    assert predicted == pytest.approx(623.2909901739931)
+    assert predicted + CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS > 600
+    assert predicted + CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS < 800
+    args = SimpleNamespace(
+        condition="newton_schulz",
+        calibrate=False,
+        calibration_json=path,
+        repeat_count=None,
+        outer_timeout_seconds=600,
+    )
+    with pytest.raises(ValueError, match="calibrated real load time"):
+        _load_execution_selection(args)
+    assert args.outer_timeout_seconds == 600
+    args.outer_timeout_seconds = 800
+    selected_condition, selected_repeat, selected_calibration = _load_execution_selection(args)
+    assert selected_condition == "newton_schulz"
+    assert selected_repeat == 333_688
+    assert selected_calibration is not None
+    assert selected_calibration.load_interval_aiclk_source == (
+        CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE
+    )
+    assert selected_calibration.load_card_ticks == 40_052_430_488
+
+
+def test_host_measurement_is_rejected_for_issue_120_but_calibration_remains_available(
+    tmp_path,
+):
+    calibration = CalibrationMetadata(
+        condition="host_cpu_transfer",
+        duration_seconds=60,
+        achieved_throughput=1,
+        throughput_unit="repeats_per_host_second",
+        repeat_count=2,
+        target_seconds=500,
+    )
+    path = tmp_path / "host-calibration.json"
+    path.write_text(json.dumps({"calibration": calibration.as_record()}))
+    args = SimpleNamespace(
+        condition="host_cpu_transfer",
+        calibrate=False,
+        calibration_json=path,
+        repeat_count=None,
+        outer_timeout_seconds=600,
+    )
+    with pytest.raises(ValueError, match="#120"):
+        _load_execution_selection(args)
+    calibration_args = SimpleNamespace(
+        condition="host_cpu_transfer",
+        calibrate=True,
+        calibration_json=None,
+        repeat_count=1,
+        calibration_duration_seconds=60,
+        outer_timeout_seconds=60,
+    )
+    assert _load_execution_selection(calibration_args) == (
+        "host_cpu_transfer",
+        1,
+        None,
+    )
 
 
 def test_host_load_clock_uses_launch_once_and_fresh_endpoint():

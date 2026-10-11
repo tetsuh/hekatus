@@ -34,6 +34,7 @@ from enodia.tt.bench.load_generators import (
     prepare_newton_schulz_load,
 )
 from enodia.tt.bench.load_harness import (
+    CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS,
     CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
     DRAM_STREAM_TOTAL_BYTES,
     HOST_ARITHMETIC_ROUNDS,
@@ -56,6 +57,7 @@ from enodia.tt.bench.load_harness import (
     build_calibration_load_record,
     build_load_record,
     calibration_metadata,
+    predicted_load_time_seconds,
 )
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
@@ -1300,6 +1302,69 @@ def _load_achieved_throughput(
     return repeat_count / max(elapsed_seconds, 1e-12), "repeats_per_card_second"
 
 
+def _calibration_timing_metadata(
+    payload: Mapping[str, Any], calibration: CalibrationMetadata
+) -> CalibrationMetadata:
+    """Recover calibrated card ticks and trace AICLK from a resident record."""
+    if calibration.condition not in {"newton_schulz", "dram"}:
+        return calibration
+    nested_load = payload.get("load")
+    load = nested_load if isinstance(nested_load, Mapping) else {}
+    interval = load.get("card_load_interval")
+    if not isinstance(interval, Mapping):
+        interval = payload.get("card_load_interval")
+    throughput_interval = load.get("throughput_interval")
+    if not isinstance(throughput_interval, Mapping):
+        throughput_interval = payload.get("throughput_interval")
+    card_ticks = (
+        throughput_interval.get("elapsed_ticks")
+        if isinstance(throughput_interval, Mapping)
+        else None
+    )
+    if not isinstance(card_ticks, int) or card_ticks <= 0:
+        start = interval.get("start_ticks") if isinstance(interval, Mapping) else None
+        end = interval.get("end_ticks") if isinstance(interval, Mapping) else None
+        if isinstance(start, int) and isinstance(end, int) and end > start:
+            card_ticks = end - start
+    measurement_repeat_count = calibration.load_measurement_repeat_count
+    if measurement_repeat_count is None:
+        measurement_repeat_count = payload.get("load_repeat_count")
+        if not isinstance(measurement_repeat_count, int) or measurement_repeat_count <= 0:
+            measurement_repeat_count = load.get("repeat_count")
+        if not isinstance(measurement_repeat_count, int) or measurement_repeat_count <= 0:
+            raw_calibration = payload.get("calibration")
+            if isinstance(raw_calibration, Mapping):
+                measurement_repeat_count = raw_calibration.get(
+                    "measurement_repeat_count"
+                )
+    aiclk = calibration.load_interval_aiclk_mhz
+    source = calibration.load_interval_aiclk_source
+    if aiclk is None:
+        aiclk = payload.get("aiclk_mhz_load_interval_weighted")
+    if source is None:
+        source = payload.get("aiclk_mhz_load_interval_weighted_source")
+    provenance = payload.get("power_clock_provenance")
+    if isinstance(provenance, Mapping):
+        if aiclk is None:
+            aiclk = provenance.get("aiclk_mhz_load_interval_weighted")
+        if source is None:
+            source = provenance.get("aiclk_mhz_load_interval_weighted_source")
+    if card_ticks is None or measurement_repeat_count is None or aiclk is None or source is None:
+        return calibration
+    try:
+        return replace(
+            calibration,
+            load_card_ticks=card_ticks,
+            load_measurement_repeat_count=measurement_repeat_count,
+            load_interval_aiclk_mhz=aiclk,
+            load_interval_aiclk_source=source,
+        )
+    except (TypeError, ValueError) as exc:
+        raise LoadConfigurationError(
+            "calibration load-time metadata is invalid"
+        ) from exc
+
+
 def _read_load_calibration(path: Path) -> CalibrationMetadata:
     try:
         payload = json.loads(path.read_text())
@@ -1325,8 +1390,15 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
             "safety_factor",
             "throughput_reference_aiclk_mhz",
             "throughput_unit_definition",
+            "load_card_ticks",
+            "load_measurement_repeat_count",
+            "load_interval_aiclk_mhz",
+            "load_interval_aiclk_source",
         }
-        return CalibrationMetadata(**{key: calibration[key] for key in fields if key in calibration})
+        parsed = CalibrationMetadata(
+            **{key: calibration[key] for key in fields if key in calibration}
+        )
+        return _calibration_timing_metadata(payload, parsed)
     except (TypeError, ValueError) as exc:
         raise LoadConfigurationError("load calibration metadata is invalid") from exc
 
@@ -1346,6 +1418,11 @@ def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, Calib
         if args.calibration_duration_seconds <= 0 or args.calibration_duration_seconds > 60:
             raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
         return condition, repeat_count, None
+    if condition == "host_cpu_transfer":
+        raise LoadConfigurationError(
+            "Issue #120 host_cpu_transfer measurements are retained for the #120 "
+            "starting point and cannot produce Issue #118 evidence"
+        )
     if args.calibration_json is None:
         raise LoadConfigurationError("loaded runs require calibration-json")
     calibration = _read_load_calibration(args.calibration_json)
@@ -1353,10 +1430,22 @@ def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, Calib
         raise LoadConfigurationError("calibration condition does not match --condition")
     if calibration.target_seconds is None:
         raise LoadConfigurationError("calibration metadata lacks a bounded target_seconds")
-    required_timeout = calibration.target_seconds * calibration.safety_factor
+    try:
+        predicted_load_seconds = predicted_load_time_seconds(calibration)
+    except LoadConfigurationError as exc:
+        raise LoadConfigurationError(
+            "loaded device runs require sampler-on calibration load card ticks and "
+            "load-interval AICLK provenance"
+        ) from exc
+    required_timeout = (
+        predicted_load_seconds + CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS
+    )
     if args.outer_timeout_seconds < required_timeout:
         raise LoadConfigurationError(
-            "outer-timeout-seconds is shorter than the calibrated load target"
+            "outer-timeout-seconds is shorter than the calibrated real load time "
+            f"({predicted_load_seconds:.3f}s + "
+            f"{CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS:.0f}s required margin; "
+            f"AICLK source {calibration.load_interval_aiclk_source})"
         )
     repeat_count = calibration.repeat_count
     if args.repeat_count is not None and args.repeat_count != repeat_count:
@@ -1583,6 +1672,7 @@ def main(argv: list[str] | None = None) -> int:
     resident_load_record: dict[str, Any] | None = None
     load_record: dict[str, Any] | None = None
     throughput_aiclk_mhz = aiclk_mhz
+    throughput_aiclk_source: str | None = None
     if condition in {"newton_schulz", "dram"}:
         try:
             weighted_selection = select_load_interval_aiclk(
@@ -1608,6 +1698,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"resident record rejected: {reason}", file=sys.stderr)
             return 2
         throughput_aiclk_mhz = weighted_selection["aiclk_mhz_exact"]
+        throughput_aiclk_source = weighted_selection["aiclk_source"]
     try:
         if args.calibrate:
             calibration_achieved, calibration_unit = _load_achieved_throughput(
@@ -1616,12 +1707,31 @@ def main(argv: list[str] | None = None) -> int:
                 repeat_count=repeat_count,
                 aiclk_mhz=throughput_aiclk_mhz,
             )
+            throughput_interval = result.get("throughput_interval", {})
             calibration_output = calibration_metadata(
                 condition=condition,
                 duration_seconds=args.calibration_duration_seconds,
                 achieved_throughput=calibration_achieved,
                 throughput_unit=calibration_unit,
                 target_seconds=args.target_seconds,
+                load_card_ticks=(
+                    throughput_interval.get("elapsed_ticks")
+                    if condition in {"newton_schulz", "dram"}
+                    else None
+                ),
+                load_measurement_repeat_count=(
+                    repeat_count if condition in {"newton_schulz", "dram"} else None
+                ),
+                load_interval_aiclk_mhz=(
+                    throughput_aiclk_mhz
+                    if condition in {"newton_schulz", "dram"}
+                    else None
+                ),
+                load_interval_aiclk_source=(
+                    throughput_aiclk_source
+                    if condition in {"newton_schulz", "dram"}
+                    else None
+                ),
             )
             if condition == "host_cpu_transfer":
                 load_record = build_calibration_load_record(
