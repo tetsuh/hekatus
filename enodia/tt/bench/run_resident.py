@@ -22,6 +22,11 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.power_trace_snapshot import (
+    ONE_INTERVAL_BOUND,
+    atomic_power_trace_snapshot,
+    read_power_trace_snapshot,
+)
 from enodia.tt.bench.resident_clock import (
     safe_aiclk_integer,
     select_elapsed_aiclk,
@@ -45,10 +50,15 @@ from enodia.tt.bench.resident_harness import (
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
-from enodia.tt.bench.run_binding import current_run_id, run_artifact_path
+from enodia.tt.bench.run_binding import (
+    RunBindingError,
+    current_run_id,
+    run_artifact_path,
+)
 from enodia.tt.bench.telemetry import parse_power_trace
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
+RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
 
 
 class ResidentResultUnavailable(ValueError):
@@ -594,12 +604,54 @@ def main(argv: list[str] | None = None) -> int:
     if args.raw_timestamps_out is not None:
         _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
-    power_trace_path = Path("/out") / power_trace if power_trace is not None else None
-    trace_metadata = (
-        parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
-        if power_trace_path is not None
-        else None
-    )
+    live_power_trace_path = Path("/out") / power_trace if power_trace is not None else None
+    if live_power_trace_path is not None:
+        # Freeze the live sampler bytes before constructing the record.  The
+        # wrapper may append another row while or after this construction, but
+        # every declared fact below is read from this immutable snapshot.
+        sampler_interval = sampler.get("interval_seconds")
+        try:
+            run_id = current_run_id()
+        except ValueError:
+            run_id = None
+        try:
+            if run_id is None:
+                raise FileNotFoundError("wrapper run identity is absent")
+            snapshot_path = atomic_power_trace_snapshot(
+                live_power_trace_path,
+                Path("/out"),
+                run_id=run_id,
+                snapshot_number=1,
+                snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+            )
+            trace_metadata = read_power_trace_snapshot(
+                snapshot_path,
+                run_id=run_id,
+                run_start=run_start,
+                run_end=run_end,
+                snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+                source_path=live_power_trace_path,
+                sampler_interval_seconds=sampler_interval,
+                coverage_definition=ONE_INTERVAL_BOUND,
+                error_factory=lambda kind, error: kind,
+            )
+            power_trace_path = snapshot_path
+            power_trace = snapshot_path.name
+        except (FileNotFoundError, RunBindingError):
+            # Preserve the historical diagnostic shape for direct callers that
+            # provide a basename without the wrapper-created live artifact. A
+            # real wrapper run always takes the immutable-snapshot branch.
+            trace_metadata = parse_power_trace(
+                live_power_trace_path,
+                run_start=run_start,
+                run_end=run_end,
+                coverage_definition=ONE_INTERVAL_BOUND,
+                sampler_interval_seconds=sampler_interval,
+            )
+            power_trace_path = live_power_trace_path
+    else:
+        power_trace_path = None
+        trace_metadata = None
     try:
         aiclk_selection = select_elapsed_aiclk(
             budget_aiclk_mhz=config.budget_aiclk_mhz,

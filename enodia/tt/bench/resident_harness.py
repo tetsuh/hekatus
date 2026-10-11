@@ -51,6 +51,7 @@ from enodia.tt.bench.resident_record import (
     validate_resident_record,
 )
 from enodia.tt.bench.sampler_contract import (
+    EXPLICIT_FINAL_SAMPLE,
     MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
     MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
     SAMPLER_CONTRACT,
@@ -962,7 +963,13 @@ def _public_power_trace_metadata(trace: Mapping[str, Any]) -> dict[str, Any]:
         "covers_run_start",
         "covers_run_end",
         "coverage_complete",
+        "coverage_definition",
+        "sampler_interval_seconds",
         "coverage",
+        "source_file",
+        "immutable_snapshot",
+        "byte_count",
+        "sha256_definition",
         "aiclk_source",
         "aiclk_mhz",
         "errors",
@@ -982,9 +989,34 @@ def _power_trace_metadata(
     if power_trace_path is not None:
         from enodia.tt.bench.telemetry import parse_power_trace
 
-        parsed = parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
+        supplied_definition = (
+            power_trace_metadata.get("coverage_definition", EXPLICIT_FINAL_SAMPLE)
+            if isinstance(power_trace_metadata, Mapping)
+            else EXPLICIT_FINAL_SAMPLE
+        )
+        supplied_interval = (
+            power_trace_metadata.get("sampler_interval_seconds")
+            if isinstance(power_trace_metadata, Mapping)
+            else None
+        )
+        parsed = parse_power_trace(
+            power_trace_path,
+            run_start=run_start,
+            run_end=run_end,
+            coverage_definition=supplied_definition,
+            sampler_interval_seconds=supplied_interval,
+        )
         if parsed.get("file") != power_trace:
             raise ValueError("power_trace_path basename must match power_trace")
+        if isinstance(power_trace_metadata, Mapping):
+            for field in (
+                "source_file",
+                "immutable_snapshot",
+                "byte_count",
+                "sha256_definition",
+            ):
+                if field in power_trace_metadata:
+                    parsed[field] = power_trace_metadata[field]
         return _public_power_trace_metadata(parsed)
     if power_trace_metadata is None:
         return {
@@ -1006,12 +1038,16 @@ def _power_trace_metadata(
             "covers_run_start": False,
             "covers_run_end": False,
             "coverage_complete": False,
+            "coverage_definition": EXPLICIT_FINAL_SAMPLE,
+            "sampler_interval_seconds": None,
             "coverage": {
+                "definition": EXPLICIT_FINAL_SAMPLE,
                 "nonempty": False,
                 "timestamps_parse": False,
                 "timestamps_ordered": False,
                 "first_at_or_before_run_start": False,
                 "last_at_or_after_run_end": False,
+                "last_within_interval_bound": False,
                 "readable": False,
                 "complete": False,
             },
@@ -1031,8 +1067,9 @@ def _power_trace_metadata(
         "file", "columns", "sha256", "readable", "nonempty", "csv_row_count",
         "sample_count", "valid_row_count", "in_run_valid_row_count", "timestamps_parse",
         "timestamps_ordered", "first_timestamp", "last_timestamp", "run_start", "run_end",
-        "covers_run_start", "covers_run_end", "coverage_complete", "coverage", "aiclk_source",
-        "aiclk_mhz", "errors"
+        "covers_run_start", "covers_run_end", "coverage_complete", "coverage_definition",
+        "sampler_interval_seconds", "coverage", "source_file", "immutable_snapshot",
+        "byte_count", "sha256_definition", "aiclk_source", "aiclk_mhz", "errors"
     )}
 
 
@@ -1041,11 +1078,13 @@ def _diagnostic_trace_metadata(
 ) -> dict[str, Any]:
     """Return explicit trace facts for runs that have no usable trace bytes."""
     coverage = {
+        "definition": EXPLICIT_FINAL_SAMPLE,
         "nonempty": False,
         "timestamps_parse": False,
         "timestamps_ordered": False,
         "first_at_or_before_run_start": False,
         "last_at_or_after_run_end": False,
+        "last_within_interval_bound": False,
         "readable": False,
         "complete": False,
     }
@@ -1068,6 +1107,8 @@ def _diagnostic_trace_metadata(
         "covers_run_start": False,
         "covers_run_end": False,
         "coverage_complete": False,
+        "coverage_definition": EXPLICIT_FINAL_SAMPLE,
+        "sampler_interval_seconds": None,
         "coverage": coverage,
         "aiclk_source": "sampler_off_diagnostic",
         "aiclk_mhz": None,
@@ -1493,6 +1534,9 @@ def build_measurement_record(
             {
                 "coverage": trace_metadata.get("coverage"),
                 "coverage_complete": trace_metadata.get("coverage_complete"),
+                "coverage_definition": trace_metadata.get(
+                    "coverage_definition", EXPLICIT_FINAL_SAMPLE
+                ),
                 "first_timestamp": trace_metadata.get("first_timestamp"),
                 "last_timestamp": trace_metadata.get("last_timestamp"),
                 "run_start": trace_metadata.get("run_start"),
@@ -1507,6 +1551,9 @@ def build_measurement_record(
             {
                 "trace": trace_metadata.get("file"),
                 **trace_metadata,
+                "coverage_definition": trace_metadata.get(
+                    "coverage_definition", EXPLICIT_FINAL_SAMPLE
+                ),
                 "aiclk_source": trace_metadata.get("aiclk_source"),
                 "timing_evidence": bool(timing_ok),
                 "timing_evidence_reason": final_timing_reason,
@@ -1515,6 +1562,7 @@ def build_measurement_record(
             else {
                 "trace": None,
                 "aiclk_source": "sampler_off_diagnostic",
+                "coverage_definition": EXPLICIT_FINAL_SAMPLE,
                 "timing_evidence": False,
                 "timing_evidence_reason": final_timing_reason,
                 "run_start": run_start,
