@@ -1608,7 +1608,7 @@ def _check_load_resident_bindings(
                 "resident tick endpoints must be unsigned 64-bit integers before load binding",
             )
         )
-    elif resident_end < resident_start:
+    elif resident_endpoints_valid and resident_end < resident_start:
         mismatches.append(
             _mismatch(
                 invariant,

@@ -124,6 +124,7 @@ _CALIBRATION_FIELDS = frozenset(
         "load_card_ticks",
         "load_measurement_repeat_count",
         "load_interval_aiclk_mhz",
+        "load_interval_aiclk_min_mhz",
         "load_interval_aiclk_source",
     }
 )

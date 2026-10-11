@@ -378,6 +378,7 @@ class CalibrationMetadata:
     load_card_ticks: int | None = None
     load_measurement_repeat_count: int | None = None
     load_interval_aiclk_mhz: float | None = None
+    load_interval_aiclk_min_mhz: float | None = None
     load_interval_aiclk_source: str | None = None
 
     def __post_init__(self) -> None:
@@ -420,6 +421,11 @@ class CalibrationMetadata:
                 "load_measurement_repeat_count",
             )
             _finite_positive(self.load_interval_aiclk_mhz, "load_interval_aiclk_mhz")
+            if self.load_interval_aiclk_min_mhz is not None:
+                _finite_positive(
+                    self.load_interval_aiclk_min_mhz,
+                    "load_interval_aiclk_min_mhz",
+                )
             if self.load_interval_aiclk_source != CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE:
                 raise LoadConfigurationError(
                     "calibration load-time AICLK requires sampler-on load-interval provenance"
@@ -460,7 +466,10 @@ def predicted_load_time_seconds(calibration: CalibrationMetadata) -> float:
     scaled_ticks = calibration.load_card_ticks * (
         calibration.repeat_count / calibration.load_measurement_repeat_count
     )
-    return scaled_ticks / (calibration.load_interval_aiclk_mhz * 1_000_000.0)
+    prediction_aiclk_mhz = calibration.load_interval_aiclk_mhz
+    if calibration.load_interval_aiclk_min_mhz is not None:
+        prediction_aiclk_mhz = min(prediction_aiclk_mhz, calibration.load_interval_aiclk_min_mhz)
+    return scaled_ticks / (prediction_aiclk_mhz * 1_000_000.0)
 
 
 def choose_repeat_count(
@@ -499,6 +508,7 @@ def calibration_metadata(
     load_card_ticks: int | None = None,
     load_measurement_repeat_count: int | None = None,
     load_interval_aiclk_mhz: float | None = None,
+    load_interval_aiclk_min_mhz: float | None = None,
     load_interval_aiclk_source: str | None = None,
 ) -> CalibrationMetadata:
     """Construct the persisted calibration choice and repeat count."""
@@ -521,6 +531,7 @@ def calibration_metadata(
         load_card_ticks=load_card_ticks,
         load_measurement_repeat_count=load_measurement_repeat_count,
         load_interval_aiclk_mhz=load_interval_aiclk_mhz,
+        load_interval_aiclk_min_mhz=load_interval_aiclk_min_mhz,
         load_interval_aiclk_source=load_interval_aiclk_source,
     )
 

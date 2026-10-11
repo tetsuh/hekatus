@@ -65,6 +65,8 @@ from enodia.tt.bench.resident_harness import (
 )
 from enodia.tt.bench.resident_record import (
     UINT64_MAX,
+    ValidationContext,
+    _check_load_resident_bindings,
     build_outlier_analysis,
     validate_pair_analysis,
 )
@@ -588,7 +590,7 @@ def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path
     assert _load_execution_selection(args)[1] == 1100
 
 
-def test_newton_schulz_cap_guard_uses_calibrated_ticks_and_sampler_aiclk(tmp_path):
+def test_newton_schulz_cap_guard_uses_conservative_in_run_minimum_aiclk(tmp_path):
     calibration = CalibrationMetadata(
         condition="newton_schulz",
         duration_seconds=60,
@@ -599,12 +601,13 @@ def test_newton_schulz_cap_guard_uses_calibrated_ticks_and_sampler_aiclk(tmp_pat
         load_card_ticks=40_052_430_488,
         load_measurement_repeat_count=18_000,
         load_interval_aiclk_mhz=1_191.2587677857841,
+        load_interval_aiclk_min_mhz=1_025.0,
         load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
     )
     path = tmp_path / "ns-calibration.json"
     path.write_text(json.dumps({"calibration": calibration.as_record()}))
     predicted = predicted_load_time_seconds(calibration)
-    assert predicted == pytest.approx(623.2909901739931)
+    assert predicted == pytest.approx(724.3910799284414)
     assert predicted + CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS > 600
     assert predicted + CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS < 800
     args = SimpleNamespace(
@@ -626,6 +629,36 @@ def test_newton_schulz_cap_guard_uses_calibrated_ticks_and_sampler_aiclk(tmp_pat
         CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE
     )
     assert selected_calibration.load_card_ticks == 40_052_430_488
+    assert selected_calibration.load_interval_aiclk_min_mhz == 1_025.0
+
+
+@pytest.mark.parametrize("condition", ("unloaded", "host_cpu_transfer"))
+def test_non_device_bindings_accept_missing_resident_endpoints(condition):
+    context = ValidationContext(
+        timestamps=None,
+        raw_metadata=None,
+        power_trace_path=None,
+        power_trace_metadata=None,
+        power_trace_bytes=None,
+        strict_trace=False,
+        builder=False,
+    )
+    assert _check_load_resident_bindings({}, {"condition": condition}, context) == []
+
+
+@pytest.mark.parametrize("condition", ("unloaded", "host_cpu_transfer"))
+def test_non_device_bindings_ignore_invalid_resident_endpoints(condition):
+    context = ValidationContext(
+        timestamps=None,
+        raw_metadata=None,
+        power_trace_path=None,
+        power_trace_metadata=None,
+        power_trace_bytes=None,
+        strict_trace=False,
+        builder=False,
+    )
+    record = {"resident_tick_interval": {"start_ticks": None, "end_ticks": None}}
+    assert _check_load_resident_bindings(record, {"condition": condition}, context) == []
 
 
 def test_host_measurement_is_rejected_for_issue_120_but_calibration_remains_available(

@@ -102,6 +102,8 @@ reference prediction is 550 seconds (500-second target × 1.10), and real time
 is obtained by converting the card ticks using the observed load-interval
 weighted AICLK. NS is conservatively projected at sustained 1025 MHz, based on
 the observed AICLK decline; DRAM uses its calibration weighted AICLK. The
+measured NS gate used a manual 1025 MHz projection; this PR's code guard now
+uses the conservative minimum of weighted and in-run-minimum AICLK. The
 resident schedule is 500.1 seconds and the planning allowance for device open,
 JIT, cleanup, and close is 4 seconds. Loaded work overlaps the resident
 program, so load and resident times are not added.

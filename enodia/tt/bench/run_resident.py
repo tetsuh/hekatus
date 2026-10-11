@@ -1583,6 +1583,7 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
             "load_card_ticks",
             "load_measurement_repeat_count",
             "load_interval_aiclk_mhz",
+            "load_interval_aiclk_min_mhz",
             "load_interval_aiclk_source",
         }
         parsed = CalibrationMetadata(
@@ -1951,6 +1952,12 @@ def main(argv: list[str] | None = None) -> int:
                 load_interval_aiclk_mhz=(
                     throughput_aiclk_mhz
                     if condition in {"newton_schulz", "dram"}
+                    else None
+                ),
+                load_interval_aiclk_min_mhz=(
+                    trace_metadata.get("aiclk_mhz_in_run_min")
+                    if trace_metadata is not None
+                    and condition in {"newton_schulz", "dram"}
                     else None
                 ),
                 load_interval_aiclk_source=(
