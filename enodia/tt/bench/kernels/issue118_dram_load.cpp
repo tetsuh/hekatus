@@ -52,13 +52,13 @@ void kernel_main() {
         for (std::uint32_t page = 0; page < pages_per_bank; ++page) {
             const std::uint32_t page_index = bank_index * bank_stride + page;
             cb_reserve_back(cb_stream, 1);
-            auto* local = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(
-                get_write_ptr(cb_stream));
-            noc_async_read_page(page_index, read, local);
+            const std::uint32_t local_addr = get_write_ptr(cb_stream);
+            auto* local = reinterpret_cast<volatile tt_l1_ptr std::uint32_t*>(local_addr);
+            noc_async_read_page(page_index, read, local_addr);
             noc_async_read_barrier();
             checksum ^= local[page_words - 1] ^ page_index ^ repetition;
             local[0] = checksum;
-            noc_async_write_page(page_index, write, local);
+            noc_async_write_page(page_index, write, local_addr);
             noc_async_write_barrier();
             cb_push_back(cb_stream, 1);
             cb_wait_front(cb_stream, 1);

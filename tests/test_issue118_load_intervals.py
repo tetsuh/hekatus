@@ -116,6 +116,9 @@ def test_fixed_load_sources_have_no_convergence_or_data_dependent_exit():
     assert "static_assert(dram_banks == 8" in dram_source
     assert "const std::uint32_t bank_index" in dram_source
     assert "for (std::uint32_t page = 0; page < pages_per_bank; ++page)" in dram_source
+    assert "const std::uint32_t local_addr = get_write_ptr(cb_stream);" in dram_source
+    assert "noc_async_read_page(page_index, read, local_addr);" in dram_source
+    assert "noc_async_write_page(page_index, write, local_addr);" in dram_source
     assert "clock.read();" in dram_source
     assert "break;" not in ns_source
     assert "break;" not in dram_source
