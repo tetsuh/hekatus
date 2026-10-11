@@ -114,11 +114,12 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   inverse and compares inverse error,
   MV direction, phase-sensitive complex response, best-complex-scalar
   phase-aligned complex response, magnitude response, and normalized dB/floored
-  pattern against one common original-R true inverse. The R representation
-  remains open for owner decision; these corrected quality and throughput
-  results are evidence, not an owner decision. Issue #100's board record
-  confirms the defaults and supplies a new-default throughput denominator
-  without changing the R-format decision.
+  pattern against one common original-R true inverse. The matched-placement
+  results support the owner decision recorded in `design.md` §9: BF16-R in L1
+  remains the default and FP32-R is an explicit variant. These are solver and
+  corrected beam diagnostics, not a golden-path image-quality result. Issue
+  #100's board record confirms the defaults and supplies a new-default
+  throughput denominator without changing the R-format decision.
 - Beamspace: basis design and dimension. **The dimension is no longer a free
   choice on compute grounds alone, and the planning claim has changed.** The
   stock catalogue made 32x32 faster in wall-clock than 16x16 because a 16x16
@@ -276,14 +277,19 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
 - The measured L=32/batch=8,192 new-default p50 denominator is
   **78.810716 TFLOPS/card**. The existing `100..127.5 TFLOPS` card range is
   therefore **1.2689–1.6178 cards**, or 2 physical cards when rounded up.
-  This remains an extrapolation rather than a full-system benchmark; the R
-  representation remains open in #88.
+  This remains an extrapolation rather than a full-system benchmark. The
+  R-format decision is settled: BF16-R in L1 is the default and FP32-R is an
+  explicit variant; see `design.md` §9 for the evidence and reopen conditions.
 
 ## Settled (recorded; reflected in design.md)
 
 - Newton-Schulz state precision is BF16 state with FP32 DEST for Issue #100;
-  BF16-rounded-R input precision bounds the solver error, while R format stays
-  open in #88
+  BF16-rounded-R input precision bounds the solver error
+- Newton-Schulz R representation: BF16-R in L1 remains the default and FP32-R
+  is an explicit variant; see `design.md` §9. Reopen only when (a) a kernel
+  whose limiting stage is no longer the math↔pack handoff makes FP32-R's read
+  and placement cost measurable, or (b) an image-quality comparison against
+  the golden path using gCNR shows BF16-R error is visible
 - MLA {2, 4} fixed; 8 is a color-flow experiment slot. Velocity-bias
   verification uses the flow phantom
 - Depth/focus changes assume continuous knob operation; fast re-derivation

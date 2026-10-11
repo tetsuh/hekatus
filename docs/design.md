@@ -1234,8 +1234,28 @@ L=32/batch=8,192 test remains a comparison row, not new-default evidence.
 BF16 state is selected because the BF16-rounded-R input already bounds the
 solver error against the true inverse in the Issue #94 record
 `docs/measurements/2026-10-04-p150a-newton-schulz-issue94-bf16-state-recheck.json`;
-carrying FP32 state does not remove that input-representation bound. The R
-representation itself remains open in #88.
+carrying FP32 state does not remove that input-representation bound. The input-R
+format has a separate owner decision.
+
+**R-format decision (owner, 2026-10-11).** Keep **BF16-R in L1 as the
+default**; **FP32-R remains an explicit variant**. The authoritative derived
+summary `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
+compares matched placements against the common original-FP32-R true inverse:
+FP32-R lowers inverse error by about 4×, brings MV direction about 8–15× closer,
+and reduces the three relative-Frobenius beam-response errors by about 3–3.5×. Its P50
+throughput cost is about **−2% at L=16/L1** and **−4.7% at L=32 with R in
+DRAM**. The FP32-R/L=32/R-in-L1 placement is rejected before allocation at
+**1,884,928 B** against the **1,572,864 B** L1 budget. These are solver and
+corrected beam diagnostics, not an image-quality or gCNR result.
+
+The current kernel's math↔pack handoff/queue interpretation is the leading,
+cautious explanation of its limiting stage; the steady Issue #63 record does
+not establish a unique bottleneck. While that stage remains limiting, FP32-R's
+doubled R read volume (R is read on every iteration) and its L=32 move to DRAM
+are hidden behind it. Reopen this decision only if (a) a kernel whose
+limiting stage is no longer the math↔pack handoff makes FP32-R's read and
+placement cost measurable, or (b) an image-quality comparison against the
+golden path using gCNR shows BF16-R error is visible.
 
 The boundary rule is **fail-fast, never fallback**. `prepare` checks the DEST
 slot limit and then L1 preflight before device tensor allocation. A DEST or L1
@@ -2468,7 +2488,9 @@ A record, so the same debates are not repeated.
   is the combined-record new-default L=32/batch=8,192 p50 of 78.810716 TFLOPS/card,
   yielding 1.2689–1.6178 cards (2 physical cards when rounded up). The earlier
   Issue #100 performance and PR #101 correctness-only records remain superseded.
-- Newton-Schulz precision split and iteration count (incl. X₀ choice)
+- Newton-Schulz remaining precision-split questions (TF32/FP32), iteration
+  count, and choice of the initial value X₀; the R-format choice is settled
+  above, subject to its explicit reopen conditions
 - beamspace basis design and dimension
 - compounding window width, apodization, truncation count
 - decimation ratio and interpolation tap count — **measured at 5 MHz** (#6,
@@ -2580,9 +2602,10 @@ inverse and compares all four beam diagnostics, MV weight direction, and
 inverse error against one common true inverse of the original FP32 `R`; the dB
 pattern uses the explicit -120 dB amplitude floor. The historical conclusion
 that FP32-`R` worsens beam-pattern error is withdrawn and replaced by this
-corrected device evidence. The `R` representation remains open for owner
-decision, and the final record's immutable power snapshot records its SHA-256,
-sample count, and end-coverage definition.
+corrected device evidence. The evidence is part of the owner decision recorded
+in the Newton-Schulz section above; it does not yet provide a golden-path gCNR
+image-quality result. The final record's immutable power snapshot records its
+SHA-256, sample count, and end-coverage definition.
 
 ### Investigation items
 
