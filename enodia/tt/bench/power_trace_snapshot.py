@@ -172,8 +172,6 @@ def atomic_power_trace_snapshot(
     if snapshot_path.parent != output_dir:
         raise ValueError("power trace snapshot must stay in the output directory")
     output_dir.mkdir(parents=True, exist_ok=True)
-    if snapshot_path.exists():
-        raise FileExistsError(f"power trace snapshot already exists: {snapshot_path.name}")
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{snapshot_path.name}.", suffix=".tmp", dir=output_dir
     )
@@ -183,7 +181,10 @@ def atomic_power_trace_snapshot(
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, snapshot_path)
+        # The temporary file is complete before this same-directory hard-link
+        # creates the destination.  Link creation is atomic and exclusive:
+        # competing writers get FileExistsError instead of replacing bytes.
+        os.link(temporary, snapshot_path)
     finally:
         temporary.unlink(missing_ok=True)
     return snapshot_path
@@ -277,10 +278,10 @@ def read_power_trace_snapshot(
     """Read one immutable snapshot and evaluate its named coverage contract.
 
     ``explicit_final_sample`` requires a usable sample at or after ``run_end``.
-    ``one_interval_bound`` accepts a final usable sample before ``run_end`` when
-    ``run_end - sample_timestamp <= sampler_interval_seconds``.  The boundary
-    is inclusive.  The interval is an explicit caller/record setting and is
-    never inferred from CSV timestamps.
+    ``one_interval_bound`` accepts a final usable sample in the inclusive
+    interval ``run_end - sampler_interval_seconds <= sample_timestamp <=
+    run_end``.  The interval is an explicit caller/record setting and is never
+    inferred from CSV timestamps.
     """
     definition = canonical_coverage_definition(coverage_definition)
     path = validate_power_trace_snapshot_path(
@@ -409,9 +410,8 @@ def read_power_trace_snapshot(
                 except (TypeError, ValueError, OverflowError):
                     interval = float("nan")
                 if math.isfinite(interval) and interval > 0.0:
-                    interval_bound = parsed_timestamps[-1] >= end - datetime.timedelta(
-                        seconds=interval
-                    )
+                    interval_start = end - datetime.timedelta(seconds=interval)
+                    interval_bound = interval_start <= parsed_timestamps[-1] <= end
                 trace["sampler_interval_seconds"] = (
                     interval if math.isfinite(interval) and interval > 0.0 else None
                 )

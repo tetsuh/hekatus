@@ -193,9 +193,9 @@ def parse_power_trace(
     """Parse a power CSV and validate the selected run-coverage definition.
 
     ``explicit_final_sample`` requires a usable sample at or after
-    ``run_end``.  ``one_interval_bound`` accepts a final usable sample before
-    ``run_end`` when the inclusive gap is no greater than the explicitly
-    supplied sampler interval.  The interval is never inferred from CSV
+    ``run_end``.  ``one_interval_bound`` accepts a final usable sample only in
+    the inclusive interval ``run_end - sampler_interval_seconds <=
+    sample_timestamp <= run_end``.  The interval is never inferred from CSV
     timestamps.  The returned metadata is board-free and deliberately
     separates physical file facts, timestamp facts, run coverage, and AICLK
     provenance.
@@ -284,9 +284,10 @@ def parse_power_trace(
             trace["covers_run_end"] = timestamps[-1] >= end
             interval_bound = False
             if coverage_definition == ONE_INTERVAL_BOUND:
-                interval_bound = timestamps[-1] >= end - datetime.timedelta(
+                interval_start = end - datetime.timedelta(
                     seconds=float(sampler_interval_seconds)
                 )
+                interval_bound = interval_start <= timestamps[-1] <= end
             trace["coverage"]["last_within_interval_bound"] = interval_bound
             in_run = [
                 aiclk
