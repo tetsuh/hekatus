@@ -17,11 +17,8 @@ from __future__ import annotations
 
 import argparse
 import collections
-import csv
 import datetime
 import hashlib
-import io
-import itertools
 import json
 import math
 import os
@@ -38,7 +35,6 @@ from typing import Any
 import numpy as np
 
 from enodia.strict_json import dumps as strict_json_dumps
-from enodia.tt.bench import telemetry as bench_telemetry
 from enodia.tt.bench.configs import P150_COMPUTE_GRID
 from enodia.tt.bench.newton_schulz_reference import (
     NEWTON_SCHULZ_ITERATIONS,
@@ -47,12 +43,30 @@ from enodia.tt.bench.newton_schulz_reference import (
     newton_schulz_reference,
     random_hpd_batch,
 )
+from enodia.tt.bench.power_trace_snapshot import (
+    EXPLICIT_FINAL_SAMPLE,
+    ONE_INTERVAL_BOUND,
+    POWER_TRACE_SHA256_DEFINITION,
+    atomic_power_trace_snapshot,
+    canonical_coverage_definition,
+    empty_power_trace_metadata,
+    read_power_trace_snapshot,
+    timestamp_within_interval_bound,
+    validate_power_trace_snapshot_path,
+)
+from enodia.tt.bench.power_trace_snapshot import (
+    POWER_TRACE_COLUMNS as SHARED_POWER_TRACE_COLUMNS,
+)
 from enodia.tt.bench.run_binding import (
     RUN_ID_PATTERN,
     RunBindingError,
     require_run_artifact,
     run_artifact_name,
     validate_run_id,
+)
+from enodia.tt.bench.sampler_contract import (
+    DEFAULT_SAMPLER_INTERVAL_SECONDS,
+    normalize_sampler_metadata,
 )
 from tools.issue88_record_policy import (
     ISSUE88_BF16_MATCHING_METRIC_REFERENCE,
@@ -161,16 +175,18 @@ INVERSE_ARRAY_HASH_DEFINITION = (
     "downloaded dtype byte order"
 )
 INVERSE_NPY_HASH_DEFINITION = "SHA-256 of the complete .npy file bytes, including header and payload"
-POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+POWER_TRACE_COLUMNS = SHARED_POWER_TRACE_COLUMNS
 POWER_TRACE_SNAPSHOT_PREFIX = "issue88-fp32-r-power-snapshot"
-_POWER_TRACE_SNAPSHOT_RE = re.compile(
-    rf"^{re.escape(POWER_TRACE_SNAPSHOT_PREFIX)}-(?P<run_id>{RUN_ID_PATTERN})-"
-    rf"(?P<number>[1-9][0-9]*)\.csv$"
+POWER_TRACE_COVERAGE_DEFINITION = ONE_INTERVAL_BOUND
+POWER_TRACE_COVERAGE_DESCRIPTION = (
+    "Coverage is complete when the immutable per-run snapshot has at least one "
+    "usable finite telemetry row, usable timestamps parse in order, its first "
+    "usable sample is at or before the recorded run start, and its last usable "
+    "sample timestamp is within the inclusive interval from run_end minus the "
+    "canonical sampler interval through run_end. Rows with unusable power, "
+    "AICLK, or temperature values are excluded from these checks."
 )
-POWER_TRACE_SHA256_DEFINITION = (
-    "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
-)
-POWER_TRACE_COVERAGE_DEFINITION = (
+EXPLICIT_FINAL_SAMPLE_COVERAGE_DESCRIPTION = (
     "Coverage is complete when the immutable per-run snapshot has at least one "
     "usable finite telemetry row, usable timestamps parse in order, its first "
     "usable sample is at or before the recorded run start, and its last usable "
@@ -1546,28 +1562,12 @@ def _validate_power_snapshot_path(
     output_dir: Path | None = None,
 ) -> Path:
     """Require a snapshot basename and parent that encode the current run."""
-    run_id = _validated_run_id(run_id)
-    if output_dir is not None:
-        expected_dir = Path(output_dir).resolve()
-        try:
-            same_directory = path.resolve().parent == expected_dir
-        except (OSError, RuntimeError):
-            same_directory = False
-        if not same_directory or path.is_symlink():
-            raise RunBindingError(
-                "power trace snapshot is not in the current run output directory"
-            )
-    match = _POWER_TRACE_SNAPSHOT_RE.fullmatch(path.name)
-    if match is None:
-        raise RunBindingError(
-            "power trace snapshot filename does not encode a run-bound snapshot"
-        )
-    if match.group("run_id") != run_id:
-        raise RunBindingError(
-            "power trace snapshot run_id does not match the current run "
-            f"({match.group('run_id')!r} != {run_id!r})"
-        )
-    return path
+    return validate_power_trace_snapshot_path(
+        path,
+        run_id=_validated_run_id(run_id),
+        snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
+        output_dir=output_dir,
+    )
 
 
 def _power_trace_base(
@@ -1576,49 +1576,33 @@ def _power_trace_base(
     run_id: str,
     run_start: str | None,
     run_end: str | None,
+    sampler_interval_seconds: float | None = DEFAULT_SAMPLER_INTERVAL_SECONDS,
     immutable_snapshot: bool = False,
     source_file: str | None = None,
 ) -> dict[str, Any]:
-    return {
-        "file": path.name if path is not None else None,
-        "source_file": source_file,
-        "run_id": run_id,
-        "columns": list(POWER_TRACE_COLUMNS),
-        "samples": [],
-        "sampling_source": "immutable per-run CSV snapshot captured by run_in_container.sh",
-        "sha256": None,
-        "sha256_definition": POWER_TRACE_SHA256_DEFINITION,
-        "byte_count": None,
-        "immutable_snapshot": immutable_snapshot,
-        "csv_row_count": 0,
-        "sample_count": 0,
-        "valid_row_count": 0,
-        "invalid_row_count": 0,
-        "first_timestamp": None,
-        "last_timestamp": None,
-        "run_start": run_start,
-        "run_end": run_end,
-        "readable": False,
-        "nonempty": False,
-        "timestamps_parse": False,
-        "timestamps_ordered": False,
-        "covers_run_start": False,
-        "covers_run_end": False,
-        "coverage_complete": False,
-        "coverage_definition": POWER_TRACE_COVERAGE_DEFINITION,
-        "poll_complete": False,
-        "errors": [],
-        "coverage": {
-            "definition": POWER_TRACE_COVERAGE_DEFINITION,
-            "nonempty": False,
-            "timestamps_parse": False,
-            "timestamps_ordered": False,
-            "first_at_or_before_run_start": False,
-            "last_at_or_after_run_end": False,
-            "readable": False,
-            "complete": False,
-        },
-    }
+    trace = empty_power_trace_metadata(
+        path,
+        run_id=run_id,
+        run_start=run_start,
+        run_end=run_end,
+        source_file=source_file,
+        sampler_interval_seconds=sampler_interval_seconds,
+        coverage_definition=(
+            POWER_TRACE_COVERAGE_DEFINITION
+            if sampler_interval_seconds is not None
+            else EXPLICIT_FINAL_SAMPLE
+        ),
+        immutable_snapshot=immutable_snapshot,
+    )
+    trace["coverage"].pop("last_within_interval_bound", None)
+    for field in (
+        "in_run_valid_row_count",
+        "aiclk_source",
+        "aiclk_mhz",
+        "aiclk_mhz_in_run",
+    ):
+        trace.pop(field, None)
+    return trace
 
 
 def _atomic_power_trace_snapshot(
@@ -1629,46 +1613,15 @@ def _atomic_power_trace_snapshot(
     snapshot_number: int,
     read_text_fn: Callable[[Path], str] | None = None,
 ) -> Path:
-    """Copy one sampler read to a never-overwritten, run-bound CSV snapshot."""
-    run_id = _validated_run_id(run_id)
-    if not isinstance(snapshot_number, int) or isinstance(snapshot_number, bool) or snapshot_number < 1:
-        raise ValueError("snapshot_number must be a positive integer")
-    output_dir = output_dir.resolve()
-    source_path = require_run_artifact(
+    """Copy one sampler read using the shared immutable snapshot lifecycle."""
+    return atomic_power_trace_snapshot(
+        source_path,
         output_dir,
-        prefix="power-",
-        suffix=".csv",
-        run_id=run_id,
-        explicit=source_path,
-        kind="power trace source",
+        run_id=_validated_run_id(run_id),
+        snapshot_number=snapshot_number,
+        snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
+        read_text_fn=read_text_fn,
     )
-    payload = (
-        source_path.read_bytes()
-        if read_text_fn is None
-        else read_text_fn(source_path).encode()
-    )
-    snapshot_name = f"{POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-{snapshot_number}.csv"
-    if Path(snapshot_name).name != snapshot_name:
-        raise ValueError("power trace snapshot name must be a basename")
-    snapshot_path = output_dir / snapshot_name
-    if snapshot_path.parent != output_dir:
-        raise ValueError("power trace snapshot must stay in the output directory")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    if snapshot_path.exists():
-        raise FileExistsError(f"power trace snapshot already exists: {snapshot_path.name}")
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{snapshot_path.name}.", suffix=".tmp", dir=output_dir
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, snapshot_path)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return snapshot_path
 
 
 def _read_power_trace(
@@ -1677,160 +1630,43 @@ def _read_power_trace(
     run_id: str,
     run_start: str | None,
     run_end: str | None,
+    sampler_interval_seconds: float | None = None,
     source_path: Path | None = None,
     read_text_fn: Callable[[Path], str] | None = None,
 ) -> dict[str, Any]:
-    """Read one immutable snapshot and retain honest coverage metadata.
+    """Read one immutable snapshot through the shared hash/parser lifecycle."""
 
-    A partially written sampler read is represented as an incomplete snapshot
-    rather than being promoted to a successful artifact.  The snapshot hash
-    and all parsed fields therefore describe the same immutable bytes.
-    """
-    path = _validate_power_snapshot_path(path, run_id=run_id)
-    source_file = None
-    if source_path is not None:
-        source_path = require_run_artifact(
-            path.parent,
-            prefix="power-",
-            suffix=".csv",
-            run_id=run_id,
-            explicit=source_path,
-            kind="power trace source",
-        )
-        source_file = source_path.name
-    trace = _power_trace_base(
+    def error_factory(kind: str, error: Exception | None) -> dict[str, Any]:
+        return _error_entry(ISSUE88_ERROR_CODE_VALUES[kind], error, run_id=run_id)
+
+    trace = read_power_trace_snapshot(
         path,
-        run_id=run_id,
+        run_id=_validated_run_id(run_id),
         run_start=run_start,
         run_end=run_end,
-        immutable_snapshot=True,
-        source_file=source_file,
+        snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
+        source_path=source_path,
+        sampler_interval_seconds=sampler_interval_seconds,
+        coverage_definition=(
+            POWER_TRACE_COVERAGE_DEFINITION
+            if sampler_interval_seconds is not None
+            else EXPLICIT_FINAL_SAMPLE
+        ),
+        read_text_fn=read_text_fn,
+        error_factory=error_factory,
     )
-    try:
-        raw_bytes = (
-            path.read_bytes()
-            if read_text_fn is None
-            else read_text_fn(path).encode()
-        )
-        trace["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
-        trace["byte_count"] = len(raw_bytes)
-        text = raw_bytes.decode()
-        reader = csv.DictReader(io.StringIO(text))
-        fieldnames = tuple(reader.fieldnames or ())
-        if fieldnames != POWER_TRACE_COLUMNS:
-            raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
-        samples = []
-        for index, row in enumerate(reader):
-            if set(row) != set(POWER_TRACE_COLUMNS) or any(
-                row.get(column) is None for column in POWER_TRACE_COLUMNS
-            ):
-                raise ValueError(f"power trace sample {index} is an incomplete CSV row")
-            samples.append(dict(row))
-    except Exception as exc:  # noqa: BLE001 - expose trace failures without free text
-        code = (
-            ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"]
-            if isinstance(exc, OSError)
-            else ISSUE88_ERROR_CODE_VALUES["power_trace_invalid"]
-        )
-        trace["error"] = _error_entry(code, exc, run_id=run_id)
-        return trace
-
-    trace["readable"] = True
-    trace["csv_row_count"] = len(samples)
-    errors: list[dict[str, Any]] = []
-    timestamp_error: dict[str, Any] | None = None
-    usable_rows: list[tuple[dict[str, str], datetime.datetime]] = []
-    for index, sample in enumerate(samples):
-        try:
-            timestamp = _parse_utc_timestamp(
-                sample.get("timestamp_utc"),
-                field=f"power sample {index} timestamp_utc",
-            )
-        except ValueError as exc:
-            error = _error_entry(
-                ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"], exc, run_id=run_id
-            )
-            timestamp_error = timestamp_error or error
-            errors.append(error)
-            continue
-        try:
-            # Keep this validation shared with the main telemetry sampler.  In
-            # particular, AICLK uses the same finite-positive contract.
-            bench_telemetry._trace_number(
-                sample.get("power_w"), field=f"power sample {index} power_w"
-            )
-            bench_telemetry._trace_number(
-                sample.get("aiclk_mhz"),
-                field=f"power sample {index} aiclk_mhz",
-                positive=True,
-            )
-            bench_telemetry._trace_number(
-                sample.get("asic_temp_c"), field=f"power sample {index} asic_temp_c"
-            )
-        except ValueError as exc:
-            errors.append(
-                _error_entry(ISSUE88_ERROR_CODE_VALUES["power_sample_invalid"], exc, run_id=run_id)
-            )
-        else:
-            usable_rows.append((sample, timestamp))
-
-    usable_samples = [sample for sample, _timestamp in usable_rows]
-    parsed_timestamps = [timestamp for _sample, timestamp in usable_rows]
-    trace["samples"] = _sanitize_metadata(usable_samples)
-    trace["sample_count"] = len(usable_samples)
-    trace["valid_row_count"] = len(usable_samples)
-    trace["invalid_row_count"] = len(samples) - len(usable_samples)
-    trace["nonempty"] = bool(usable_samples)
-    trace["errors"] = _sanitize_metadata(errors)
-    if not usable_samples:
-        trace["error"] = timestamp_error or _error_entry(
-            ISSUE88_ERROR_CODE_VALUES["power_trace_no_usable_rows"], None, run_id=run_id
-        )
-    elif timestamp_error is not None:
-        trace["error"] = timestamp_error
-    else:
-        trace["timestamps_parse"] = True
-        trace["first_timestamp"] = parsed_timestamps[0].isoformat()
-        trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
-        trace["timestamps_ordered"] = all(
-            left <= right for left, right in itertools.pairwise(parsed_timestamps)
-        )
-        trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
-        try:
-            start = _parse_utc_timestamp(run_start, field="run_start")
-            end = _parse_utc_timestamp(run_end, field="run_end")
-        except ValueError as exc:
-            trace["error"] = _error_entry(
-                ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"], exc, run_id=run_id
-            )
-        else:
-            trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
-            trace["covers_run_end"] = parsed_timestamps[-1] >= end
-            trace["coverage_complete"] = all(
-                (
-                    trace["readable"],
-                    trace["nonempty"],
-                    trace["valid_row_count"] > 0,
-                    trace["timestamps_parse"],
-                    trace["timestamps_ordered"],
-                    parsed_timestamps[0] <= start,
-                    start <= end,
-                    end <= parsed_timestamps[-1],
-                )
-            )
-
-    trace["coverage"] = {
-        "definition": POWER_TRACE_COVERAGE_DEFINITION,
-        "nonempty": trace["nonempty"],
-        "timestamps_parse": trace["timestamps_parse"],
-        "timestamps_ordered": trace["timestamps_ordered"],
-        "first_at_or_before_run_start": trace["covers_run_start"],
-        "last_at_or_after_run_end": trace["covers_run_end"],
-        "readable": trace["readable"],
-        "usable_row_count": trace["valid_row_count"],
-        "invalid_row_count": trace["invalid_row_count"],
-        "complete": trace["coverage_complete"],
-    }
+    trace["samples"] = _sanitize_metadata(trace.get("samples", []))
+    trace["errors"] = _sanitize_metadata(trace.get("errors", []))
+    for field in (
+        "in_run_valid_row_count",
+        "aiclk_source",
+        "aiclk_mhz",
+        "aiclk_mhz_in_run",
+    ):
+        trace.pop(field, None)
+    coverage = trace.get("coverage")
+    if isinstance(coverage, dict):
+        coverage.pop("last_within_interval_bound", None)
     return trace
 
 
@@ -1840,6 +1676,14 @@ def _public_power_trace(trace: dict[str, Any]) -> dict[str, Any]:
     return public
 
 
+def _canonical_sampler(environment: dict[str, Any]) -> dict[str, Any]:
+    """Normalize the wrapper sampler so every trace read uses its interval."""
+    sampler = normalize_sampler_metadata(environment.get("telemetry_sampler"))
+    if "telemetry_sampler" in environment:
+        environment["telemetry_sampler"] = sampler
+    return sampler
+
+
 def _wait_for_power_trace(
     output_dir: Path,
     *,
@@ -1847,6 +1691,7 @@ def _wait_for_power_trace(
     run_end: datetime.datetime | str,
     run_start: datetime.datetime | str | None = None,
     explicit: Path | None = None,
+    sampler_interval_seconds: float | None = None,
     timeout_s: float = POWER_TRACE_POLL_TIMEOUT_S,
     interval_s: float = POWER_TRACE_POLL_INTERVAL_S,
     monotonic_fn: Callable[[], float] = time.monotonic,
@@ -1858,9 +1703,24 @@ def _wait_for_power_trace(
         raise ValueError("power trace poll timeout must be between 0 and 60 seconds")
     if not math.isfinite(interval_s) or interval_s <= 0.0:
         raise ValueError("power trace poll interval must be finite and positive")
+    if sampler_interval_seconds is None:
+        sampler_interval = None
+    else:
+        try:
+            sampler_interval = float(sampler_interval_seconds)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(
+                "one_interval_bound requires a finite positive sampler interval"
+            ) from exc
+        if not math.isfinite(sampler_interval) or sampler_interval <= 0.0:
+            raise ValueError("one_interval_bound requires a finite positive sampler interval")
     start_text = _timestamp_text(run_start, field="run_start")
     end_text = _timestamp_text(run_end, field="run_end")
-    end_value = _parse_utc_timestamp(end_text, field="run_end")
+    end_value = (
+        _parse_utc_timestamp(end_text, field="run_end")
+        if sampler_interval is None
+        else None
+    )
     poll_started = monotonic_fn()
     deadline = poll_started + timeout_s
     poll_count = 0
@@ -1882,6 +1742,7 @@ def _wait_for_power_trace(
                 run_id=run_id,
                 run_start=start_text,
                 run_end=end_text,
+                sampler_interval_seconds=sampler_interval,
             )
             failed["binding_error"] = _error_entry(
                 ISSUE88_ERROR_CODE_VALUES["artifact_binding"], exc, run_id=run_id
@@ -1895,6 +1756,7 @@ def _wait_for_power_trace(
                     run_id=run_id,
                     run_start=start_text,
                     run_end=end_text,
+                    sampler_interval_seconds=sampler_interval,
                 )
                 failed["binding_error"] = _error_entry(
                     ISSUE88_ERROR_CODE_VALUES["power_trace_unreadable"], exc, run_id=run_id
@@ -1920,6 +1782,7 @@ def _wait_for_power_trace(
                     run_id=run_id,
                     run_start=start_text,
                     run_end=end_text,
+                    sampler_interval_seconds=sampler_interval,
                     source_path=selected,
                 )
             except RunBindingError as exc:
@@ -1928,6 +1791,7 @@ def _wait_for_power_trace(
                     run_id=run_id,
                     run_start=start_text,
                     run_end=end_text,
+                    sampler_interval_seconds=sampler_interval,
                 )
                 failed["binding_error"] = _error_entry(
                     ISSUE88_ERROR_CODE_VALUES["artifact_binding"], exc, run_id=run_id
@@ -1940,10 +1804,12 @@ def _wait_for_power_trace(
                 trace["poll_count"] = poll_count
                 last_trace = trace
                 final_timestamp = trace.get("_last_timestamp_datetime")
-                if (
-                    trace.get("coverage_complete") is True
-                    and isinstance(final_timestamp, datetime.datetime)
-                    and final_timestamp >= end_value
+                if trace.get("coverage_complete") is True and (
+                    sampler_interval is not None
+                    or (
+                        isinstance(final_timestamp, datetime.datetime)
+                        and final_timestamp >= end_value
+                    )
                 ):
                     trace["poll_complete"] = True
                     return _public_power_trace(trace)
@@ -1959,6 +1825,7 @@ def _wait_for_power_trace(
             run_id=run_id,
             run_start=start_text,
             run_end=end_text,
+            sampler_interval_seconds=sampler_interval,
         )
     last_trace["poll_count"] = poll_count
     last_trace["poll_error"] = _error_entry(
@@ -1988,8 +1855,25 @@ def _power_trace_failure_reason(trace: Any) -> str:
         return codes["power_trace_no_usable_rows"]
     if not trace.get("timestamps_parse") or not trace.get("timestamps_ordered"):
         return codes["power_timestamp_invalid"]
-    if not trace.get("covers_run_start") or not trace.get("covers_run_end"):
+    if not trace.get("covers_run_start"):
         return codes["power_trace_incomplete"]
+    try:
+        definition = canonical_coverage_definition(trace.get("coverage_definition"))
+    except (TypeError, ValueError):
+        return codes["power_trace_invalid"]
+    if definition == EXPLICIT_FINAL_SAMPLE and not trace.get("covers_run_end"):
+        return codes["power_trace_incomplete"]
+    if definition == ONE_INTERVAL_BOUND:
+        try:
+            interval = float(trace.get("sampler_interval_seconds"))
+            last = _parse_utc_timestamp(trace.get("last_timestamp"), field="power last_timestamp")
+            end = _parse_utc_timestamp(trace.get("run_end"), field="power run_end")
+        except (TypeError, ValueError, OverflowError):
+            return codes["power_trace_invalid"]
+        if not math.isfinite(interval) or interval <= 0.0:
+            return codes["power_trace_invalid"]
+        if not timestamp_within_interval_bound(last, end, interval):
+            return codes["power_trace_incomplete"]
     if not trace.get("coverage_complete"):
         return codes["power_trace_incomplete"]
     return codes["power_trace_succeeded"]
@@ -2010,6 +1894,7 @@ def _read_telemetry(
     """Read environment and, after the device run, a complete power trace."""
     start_text = _timestamp_text(run_start, field="run_start") if run_start is not None else None
     end_text = _timestamp_text(run_end, field="run_end") if run_end is not None else None
+    sampler_interval_seconds = DEFAULT_SAMPLER_INTERVAL_SECONDS
     telemetry: dict[str, Any] = {
         "status": ISSUE88_STATUS_FAILED,
         "run_id": run_id,
@@ -2038,7 +1923,14 @@ def _read_telemetry(
             raise TypeError("environment artifact must contain an object")
         telemetry["environment_file"] = selected_environment.name
         telemetry["environment"] = _sanitize_metadata(raw_environment)
-        telemetry["normalized_environment"] = _normalize_environment(raw_environment, run_id)
+        normalized_environment = _normalize_environment(raw_environment, run_id)
+        sampler = _canonical_sampler(normalized_environment)
+        sampler_interval_seconds = (
+            sampler["interval_seconds"]
+            if "telemetry_sampler" in raw_environment
+            else None
+        )
+        telemetry["normalized_environment"] = normalized_environment
     except Exception as exc:  # noqa: BLE001 - publish a safe partial artifact
         telemetry["failures"].append(
             {"stage": "telemetry.environment", "error": _failure("telemetry.environment", exc)}
@@ -2053,6 +1945,7 @@ def _read_telemetry(
             run_start=start_text,
             run_end=end_text,
             explicit=power_path,
+            sampler_interval_seconds=sampler_interval_seconds,
             monotonic_fn=monotonic_fn,
             sleep_fn=sleep_fn,
             read_text_fn=read_text_fn,
@@ -3024,6 +2917,9 @@ def _status_components(
             harness_failures.append("harness_dirty is not false")
 
     power_trace = telemetry.get("power_trace")
+    legacy_sampler_compatibility = (
+        isinstance(environment, dict) and "telemetry_sampler" not in environment
+    )
     power_failures: list[str] = []
     if not isinstance(power_trace, dict):
         power_failures.append("power trace is missing")
@@ -3071,11 +2967,54 @@ def _status_components(
             )
         if power_trace.get("sample_count") != len(power_trace.get("samples", [])):
             power_failures.append("power trace sample count is inconsistent")
-        if power_trace.get("coverage_definition") != POWER_TRACE_COVERAGE_DEFINITION:
+        try:
+            coverage_definition = canonical_coverage_definition(
+                power_trace.get("coverage_definition")
+            )
+        except (TypeError, ValueError):
+            coverage_definition = None
+        if coverage_definition != POWER_TRACE_COVERAGE_DEFINITION and not (
+            legacy_sampler_compatibility
+            and coverage_definition == EXPLICIT_FINAL_SAMPLE
+        ):
             power_failures.append("power trace coverage definition is missing or invalid")
+        effective_coverage_definition = (
+            EXPLICIT_FINAL_SAMPLE
+            if legacy_sampler_compatibility
+            else coverage_definition
+        )
         coverage = power_trace.get("coverage")
-        if not isinstance(coverage, dict) or coverage.get("definition") != POWER_TRACE_COVERAGE_DEFINITION:
+        try:
+            nested_definition = canonical_coverage_definition(
+                coverage.get("definition") if isinstance(coverage, dict) else None
+            )
+        except (TypeError, ValueError):
+            nested_definition = None
+        if nested_definition != POWER_TRACE_COVERAGE_DEFINITION and not (
+            legacy_sampler_compatibility
+            and nested_definition == EXPLICIT_FINAL_SAMPLE
+        ):
             power_failures.append("power trace coverage metadata is missing or invalid")
+        try:
+            expected_sampler = normalize_sampler_metadata(
+                environment.get("telemetry_sampler")
+                if isinstance(environment, dict)
+                else None
+            )
+            expected_interval = expected_sampler["interval_seconds"]
+        except (TypeError, ValueError):
+            expected_interval = None
+        if effective_coverage_definition == ONE_INTERVAL_BOUND:
+            actual_interval = power_trace.get("sampler_interval_seconds")
+            if (
+                expected_interval is None
+                or actual_interval != expected_interval
+                or not isinstance(actual_interval, (int, float))
+                or isinstance(actual_interval, bool)
+                or not math.isfinite(float(actual_interval))
+                or float(actual_interval) <= 0.0
+            ):
+                power_failures.append("power trace sampler interval is missing or invalid")
         for field in ("readable", "timestamps_parse", "timestamps_ordered", "poll_complete"):
             if power_trace.get(field) is not True:
                 power_failures.append(f"power trace {field} is not true")
@@ -3093,7 +3032,21 @@ def _status_components(
                 ISSUE88_ERROR_CODE_VALUES["power_timestamp_invalid"]
             )
         else:
-            if not first <= start <= end <= last:
+            if effective_coverage_definition == ONE_INTERVAL_BOUND:
+                interval = power_trace.get("sampler_interval_seconds")
+                if (
+                    not first <= start <= end
+                    or not isinstance(interval, (int, float))
+                    or isinstance(interval, bool)
+                    or not math.isfinite(float(interval))
+                    or float(interval) <= 0.0
+                    or not timestamp_within_interval_bound(last, end, interval)
+                ):
+                    power_failures.append(
+                        "power timestamps do not satisfy first <= run_start <= run_end "
+                        "and the inclusive sampler interval bound"
+                    )
+            elif not first <= start <= end <= last:
                 power_failures.append(
                     "power timestamps do not satisfy first <= run_start <= run_end <= last"
                 )
@@ -3175,6 +3128,12 @@ def _record_payload(
             {"code": ISSUE88_ERROR_CODE_VALUES["record_publication_failed"]},
         )
         failure = _error_entry(failed_component["code"], None)
+    record_coverage_definition = power_trace.get("coverage_definition")
+    coverage_description = (
+        EXPLICIT_FINAL_SAMPLE_COVERAGE_DESCRIPTION
+        if record_coverage_definition == EXPLICIT_FINAL_SAMPLE
+        else POWER_TRACE_COVERAGE_DESCRIPTION
+    )
     record: dict[str, Any] = {
         "record_schema": ISSUE88_RECORD_SCHEMA,
         "status": ISSUE88_STATUS_PASS if overall_pass else ISSUE88_STATUS_FAILED,
@@ -3244,8 +3203,9 @@ def _record_payload(
                 "last_timestamp": power_trace.get("last_timestamp"),
                 "run_start": power_trace.get("run_start"),
                 "run_end": power_trace.get("run_end"),
+                "sampler_interval_seconds": power_trace.get("sampler_interval_seconds"),
                 "coverage": power_trace.get("coverage"),
-                "coverage_definition": power_trace.get("coverage_definition"),
+                "coverage_definition": record_coverage_definition,
                 "coverage_complete": power_trace.get("coverage_complete", False),
                 "immutable_snapshot": power_trace.get("immutable_snapshot", False),
                 "sha256_definition": power_trace.get("sha256_definition"),
@@ -3320,7 +3280,7 @@ def _record_payload(
             "Each inverse artifact records the SHA-256 of canonical contiguous C-order array payload bytes and the SHA-256 of the complete .npy file, plus shape, dtype, element/matrix counts, and byte counts.",
             "Raw launch samples, fingerprints, correctness metrics, inverse artifact metadata, and sanitized telemetry are retained.",
             "The power trace is an immutable per-run CSV snapshot; its hash, sample count, and coverage fields refer to that snapshot.",
-            POWER_TRACE_COVERAGE_DEFINITION,
+            coverage_description,
             "No host name or user-specific absolute path is included in this record.",
         ],
     }

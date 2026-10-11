@@ -91,6 +91,12 @@ from enodia.tt.bench.clock_source_audit import (
     CLOCK_SOURCE_AUDIT_TABLE,
     clock_source_audit_for_image,
 )
+from enodia.tt.bench.power_trace_snapshot import (
+    EXPLICIT_FINAL_SAMPLE,
+    ONE_INTERVAL_BOUND,
+    canonical_coverage_definition,
+    is_coverage_definition,
+)
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_CONFIGURED,
     AICLK_SOURCE_RUN_TRACE_SAMPLES,
@@ -143,6 +149,8 @@ TIMING_EVIDENCE_ERROR_RECORD_REASON = "run_error_not_timing_evidence"
 TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
 
 _MISSING = object()
+_POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
+_POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definition"
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
 RESIDENT_RECORD_SCHEMA_MARKER = 1
@@ -518,6 +526,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_trace_coverage.run_end",
         "power_trace_coverage.coverage",
         "power_trace_coverage.coverage_complete",
+        _POWER_TRACE_COVERAGE_DEFINITION_PATH,
         "power_trace_coverage.valid_row_count",
         "power_trace_coverage.in_run_valid_row_count",
         "power_clock_provenance.trace",
@@ -529,6 +538,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_clock_provenance.run_start",
         "power_clock_provenance.run_end",
         "power_clock_provenance.coverage",
+        _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
         "power_clock_provenance.readable",
         "power_clock_provenance.nonempty",
         "power_clock_provenance.timestamps_parse",
@@ -633,6 +643,11 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path in {"telemetry_sampler.mode", "environment.telemetry_sampler.mode", "outlier_analysis.sampler_interval_comparison.mode"}:
         type_rule, range_rule, expected = string, _enum(*SAMPLER_CONTRACT), "the sampler mode enum"
         invalid_range = "unknown-mode"
+    elif path in {_POWER_TRACE_COVERAGE_DEFINITION_PATH, _POWER_CLOCK_COVERAGE_DEFINITION_PATH}:
+        type_rule, range_rule, expected = string, _enum(
+            EXPLICIT_FINAL_SAMPLE, ONE_INTERVAL_BOUND
+        ), "the power-trace coverage-definition enum"
+        invalid_range = "unknown-coverage-definition"
     elif path in {"telemetry_sampler.interval_seconds", "environment.telemetry_sampler.interval_seconds", "outlier_analysis.sampler_interval_comparison.interval_seconds", "outlier_analysis.sampler_interval_comparison.sampler_interval_seconds"}:
         type_rule, range_rule, expected = _is_number, lambda value: (
             value is None
@@ -807,6 +822,15 @@ RESIDENT_RECORD_FIELD_MATRIX: Mapping[str, tuple[ResidentRecordField, ...]] = Ma
         for kind, paths in _MATRIX_PATHS.items()
     }
 )
+# Optional named coverage fields are validated when present without becoming
+# required fields, preserving schema-marker-1 records that predate them.
+_OPTIONAL_COVERAGE_FIELDS = tuple(
+    _field(path, RECORD_KIND_SAMPLED_TIMING)
+    for path in (
+        _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+        _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
+    )
+)
 REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
 REQUIRED_PAIR_FIELDS = _REQUIRED_PAIR_FIELDS
 REQUIRED_SAMPLER_GAP_FIELDS = _REQUIRED_SAMPLER_GAP_FIELDS
@@ -931,6 +955,9 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_trace_coverage.coverage.last_at_or_after_run_end",
     "power_trace_coverage.coverage.readable",
     "power_trace_coverage.coverage.complete",
+    "power_trace_coverage.coverage.definition",
+    _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+    "power_trace_coverage.coverage.last_within_interval_bound",
     "power_clock_provenance.coverage.nonempty",
     "power_clock_provenance.coverage.timestamps_parse",
     "power_clock_provenance.coverage.timestamps_ordered",
@@ -938,8 +965,16 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.coverage.last_at_or_after_run_end",
     "power_clock_provenance.coverage.readable",
     "power_clock_provenance.coverage.complete",
+    "power_clock_provenance.coverage.last_within_interval_bound",
+    "power_clock_provenance.coverage.definition",
+    _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
     "power_clock_provenance.columns",
     "power_clock_provenance.errors",
+    "power_clock_provenance.source_file",
+    "power_clock_provenance.immutable_snapshot",
+    "power_clock_provenance.byte_count",
+    "power_clock_provenance.sha256_definition",
+    "power_clock_provenance.sampler_interval_seconds",
     "clock_source_evidence.diagnostic",
     "environment.board",
     "environment.board.serial",
@@ -1222,6 +1257,10 @@ def _check_field_values(record: Mapping[str, Any], ctx: ValidationContext) -> li
         return []
     mismatches: list[dict[str, Any]] = []
     for field in RESIDENT_RECORD_FIELD_MATRIX[kind]:
+        value = _value(record, field.path)
+        if value is not _MISSING:
+            _validate_field_value(field, value, mismatches)
+    for field in _OPTIONAL_COVERAGE_FIELDS:
         value = _value(record, field.path)
         if value is not _MISSING:
             _validate_field_value(field, value, mismatches)
@@ -2634,26 +2673,27 @@ def _check_sampler_contract(record: Mapping[str, Any], ctx: ValidationContext) -
     return mismatches
 
 
-def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
-    provenance = record.get("power_clock_provenance")
-    nested = dict(provenance) if isinstance(provenance, Mapping) else {}
-    aliases = {
-        "file": ("file", "trace"),
-        "sample_count": ("sample_count",),
-        "csv_row_count": ("csv_row_count",),
-        "valid_row_count": ("valid_row_count",),
-        "in_run_valid_row_count": ("in_run_valid_row_count",),
-        "sha256": ("sha256",),
-        "columns": ("columns",),
-        "first_timestamp": ("first_timestamp",),
-        "last_timestamp": ("last_timestamp",),
-        "run_start": ("run_start",),
-        "run_end": ("run_end",),
-        "coverage_complete": ("coverage_complete",),
-        "aiclk_source": ("aiclk_source",),
-        "aiclk_mhz": ("aiclk_mhz",),
-        "timing_evidence_reason": ("timing_evidence_reason",),
-    }
+_POWER_METADATA_ALIASES = {
+    "file": ("file", "trace"),
+    "sample_count": ("sample_count",),
+    "csv_row_count": ("csv_row_count",),
+    "valid_row_count": ("valid_row_count",),
+    "in_run_valid_row_count": ("in_run_valid_row_count",),
+    "sha256": ("sha256",),
+    "columns": ("columns",),
+    "first_timestamp": ("first_timestamp",),
+    "last_timestamp": ("last_timestamp",),
+    "run_start": ("run_start",),
+    "run_end": ("run_end",),
+    "coverage_complete": ("coverage_complete",),
+    "coverage_definition": ("coverage_definition",),
+    "aiclk_source": ("aiclk_source",),
+    "aiclk_mhz": ("aiclk_mhz",),
+    "timing_evidence_reason": ("timing_evidence_reason",),
+}
+
+
+def _top_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
     top = {
         "file": record.get("power_trace"),
         "sample_count": record.get("power_trace_sample_count", _MISSING),
@@ -2667,48 +2707,200 @@ def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         "run_start": record.get("run_start", _MISSING),
         "run_end": record.get("run_end", _MISSING),
         "coverage_complete": _MISSING,
+        "coverage_definition": _MISSING,
         "aiclk_source": _MISSING,
         "aiclk_mhz": _MISSING,
         "timing_evidence_reason": _MISSING,
     }
     coverage = record.get("power_trace_coverage")
     if isinstance(coverage, Mapping):
-        top["coverage_complete"] = coverage.get("coverage_complete", coverage.get("complete", _MISSING))
+        top["coverage_complete"] = coverage.get(
+            "coverage_complete", coverage.get("complete", _MISSING)
+        )
+        top["coverage_definition"] = coverage.get(
+            "coverage_definition", EXPLICIT_FINAL_SAMPLE
+        )
         top["first_timestamp"] = coverage.get("first_timestamp", _MISSING)
         top["last_timestamp"] = coverage.get("last_timestamp", _MISSING)
         top["run_start"] = coverage.get("run_start", top["run_start"])
         top["run_end"] = coverage.get("run_end", top["run_end"])
-    result: dict[str, Any] = {}
-    for name, keys in aliases.items():
-        value = _MISSING
-        for key in keys:
-            if key in nested:
-                value = nested[key]
-                break
-        if value is _MISSING:
-            value = top[name]
-        result[name] = value
+    return top
+
+
+def _canonical_declared_coverage(value: Any) -> Any:
+    if value is _MISSING:
+        return EXPLICIT_FINAL_SAMPLE
+    try:
+        return canonical_coverage_definition(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _declared_power_value(
+    name: str,
+    keys: tuple[str, ...],
+    nested: Mapping[str, Any],
+    top: Mapping[str, Any],
+) -> Any:
+    value = _MISSING
+    for key in keys:
+        if key in nested:
+            value = nested[key]
+            break
+    if value is _MISSING:
+        value = top[name]
+    return (
+        _canonical_declared_coverage(value)
+        if name == "coverage_definition"
+        else value
+    )
+
+
+def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
+    provenance = record.get("power_clock_provenance")
+    nested = dict(provenance) if isinstance(provenance, Mapping) else {}
+    top = _top_power_metadata(record)
+    result = {
+        name: _declared_power_value(name, keys, nested, top)
+        for name, keys in _POWER_METADATA_ALIASES.items()
+    }
     result["nested"] = nested
     result["top"] = top
     return result
 
 
-def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str, Any] | None:
-    sampler = _sampler(record)
-    mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
-    trace_name = record.get("power_trace")
-    if mode not in {"default", "explicit"} or not trace_name:
-        return None
-    declared = _declared_power_metadata(record)
-    run_start = declared.get("run_start")
-    run_end = declared.get("run_end")
+def _invalid_trace_report(
+    *,
+    trace_name: str,
+    coverage_definition: str,
+    sampler_interval: Any,
+    error: Exception | str,
+) -> dict[str, Any]:
+    """Return a closed trace diagnostic when coverage metadata is unusable."""
+    message = str(error)
+    return {
+        "file": trace_name,
+        "coverage_definition": coverage_definition,
+        "sampler_interval_seconds": sampler_interval,
+        "readable": False,
+        "nonempty": False,
+        "csv_row_count": 0,
+        "sample_count": 0,
+        "valid_row_count": 0,
+        "in_run_valid_row_count": 0,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "aiclk_source": "no_valid_in_run_samples",
+        "aiclk_mhz": None,
+        "errors": [message],
+        "error": message,
+        "coverage": {
+            "definition": coverage_definition,
+            "nonempty": False,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_at_or_before_run_start": False,
+            "last_at_or_after_run_end": False,
+            "last_within_interval_bound": False,
+            "readable": False,
+            "complete": False,
+        },
+        "actual_bytes_available": False,
+    }
+
+
+def _trace_coverage_inputs(
+    trace_name: str,
+    declared: Mapping[str, Any],
+    sampler_interval: Any,
+) -> tuple[str, Any, dict[str, Any] | None]:
+    coverage_definition = declared.get(
+        "coverage_definition", EXPLICIT_FINAL_SAMPLE
+    )
+    if not is_coverage_definition(coverage_definition):
+        coverage_definition = EXPLICIT_FINAL_SAMPLE
+    if coverage_definition != ONE_INTERVAL_BOUND:
+        return coverage_definition, sampler_interval, None
+    try:
+        interval = float(sampler_interval)
+    except (TypeError, ValueError, OverflowError):
+        return (
+            coverage_definition,
+            sampler_interval,
+            _invalid_trace_report(
+                trace_name=trace_name,
+                coverage_definition=coverage_definition,
+                sampler_interval=sampler_interval,
+                error="one_interval_bound requires a finite positive sampler interval",
+            ),
+        )
+    if not math.isfinite(interval) or interval <= 0.0:
+        return (
+            coverage_definition,
+            sampler_interval,
+            _invalid_trace_report(
+                trace_name=trace_name,
+                coverage_definition=coverage_definition,
+                sampler_interval=sampler_interval,
+                error="one_interval_bound requires a finite positive sampler interval",
+            ),
+        )
+    return coverage_definition, interval, None
+
+
+def _trace_report_from_path(
+    ctx: ValidationContext,
+    *,
+    trace_name: str,
+    run_start: Any,
+    run_end: Any,
+    coverage_definition: str,
+    sampler_interval: Any,
+) -> dict[str, Any]:
+    try:
+        report = parse_power_trace(
+            ctx.power_trace_path,
+            run_start=None if run_start is _MISSING else run_start,
+            run_end=None if run_end is _MISSING else run_end,
+            coverage_definition=coverage_definition,
+            sampler_interval_seconds=sampler_interval,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        return _invalid_trace_report(
+            trace_name=trace_name,
+            coverage_definition=coverage_definition,
+            sampler_interval=sampler_interval,
+            error=exc,
+        )
+    report["actual_bytes_available"] = True
+    return report
+
+
+def _trace_report_from_context(
+    ctx: ValidationContext,
+    *,
+    trace_name: str,
+    coverage_definition: str,
+    sampler_interval: Any,
+    run_start: Any,
+    run_end: Any,
+) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
-        report = parse_power_trace(ctx.power_trace_path, run_start=None if run_start is _MISSING else run_start, run_end=None if run_end is _MISSING else run_end)
-        report["actual_bytes_available"] = True
-        return report
+        return _trace_report_from_path(
+            ctx,
+            trace_name=trace_name,
+            run_start=run_start,
+            run_end=run_end,
+            coverage_definition=coverage_definition,
+            sampler_interval=sampler_interval,
+        )
     if ctx.power_trace_metadata is not None:
         report = dict(ctx.power_trace_metadata)
         report.setdefault("file", trace_name)
+        report.setdefault("coverage_definition", coverage_definition)
         report["actual_bytes_available"] = False
         return report
     if ctx.power_trace_bytes is not None:
@@ -2718,9 +2910,35 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
             "actual_bytes_available": True,
             "readable": False,
             "coverage_complete": False,
+            "coverage_definition": coverage_definition,
             "aiclk_source": "no_valid_in_run_samples",
         }
     return {"file": trace_name, "actual_bytes_available": False, "reason": "power_trace_bytes_unavailable"}
+
+
+def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str, Any] | None:
+    sampler = _sampler(record)
+    mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
+    trace_name = record.get("power_trace")
+    if mode not in {"default", "explicit"} or not trace_name:
+        return None
+    declared = _declared_power_metadata(record)
+    sampler_interval = (
+        sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
+    )
+    coverage_definition, sampler_interval, invalid_report = _trace_coverage_inputs(
+        trace_name, declared, sampler_interval
+    )
+    if invalid_report is not None:
+        return invalid_report
+    return _trace_report_from_context(
+        ctx,
+        trace_name=trace_name,
+        coverage_definition=coverage_definition,
+        sampler_interval=sampler_interval,
+        run_start=declared.get("run_start"),
+        run_end=declared.get("run_end"),
+    )
 
 
 def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
@@ -2793,6 +3011,17 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     if report is None:
         return []
     mismatches: list[dict[str, Any]] = []
+    if not is_coverage_definition(declared.get("coverage_definition")):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                (
+                    _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+                    _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
+                ),
+                "power trace coverage_definition is not a supported named definition",
+            )
+        )
     provenance = _mapping(record, "power_clock_provenance")
     if provenance is not None and provenance.get("trace") != provenance.get("file"):
         mismatches.append(
@@ -2833,6 +3062,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         "run_start",
         "run_end",
         "coverage_complete",
+        "coverage_definition",
         "aiclk_source",
     )
     if not actual_available and legacy_unverified:
@@ -2885,6 +3115,14 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         if nested_name == "aiclk_mhz" and top_value is _MISSING:
             clock = _mapping(record, "clock")
             top_value = clock.get("aiclk_mhz", _MISSING) if clock else _MISSING
+        if nested_name == "coverage_definition":
+            try:
+                if nested_value is not _MISSING:
+                    nested_value = canonical_coverage_definition(nested_value)
+                if top_value is not _MISSING:
+                    top_value = canonical_coverage_definition(top_value)
+            except (TypeError, ValueError):
+                pass
         if nested_value is not _MISSING and top_value is not _MISSING and nested_value != top_value:
             label = "SHA-256" if nested_name == "sha256" else nested_name
             mismatches.append(_mismatch(invariant, (f"power_clock_provenance.{nested_name}", top_name), f"power provenance {label} does not match {top_name}"))
@@ -2970,7 +3208,12 @@ def _timing_block_reason(
         return "power_trace_timestamp_order_failed"
     if report.get("coverage_complete") is not True:
         return "power_trace_coverage_incomplete"
-    if report.get("covers_run_start") is not True or report.get("covers_run_end") is not True:
+    coverage_definition = _declared_power_metadata(record).get(
+        "coverage_definition", EXPLICIT_FINAL_SAMPLE
+    )
+    if report.get("covers_run_start") is not True:
+        return "power_trace_coverage_incomplete"
+    if coverage_definition == EXPLICIT_FINAL_SAMPLE and report.get("covers_run_end") is not True:
         return "power_trace_coverage_incomplete"
     if report.get("in_run_valid_row_count", 0) < 1 or report.get("aiclk_source") != "run_trace_samples":
         return "power_trace_no_valid_in_run_rows"
@@ -3121,6 +3364,7 @@ def _check_trace_metadata_duplicates(record: Mapping[str, Any], ctx: ValidationC
         "valid_row_count": "power_trace_valid_row_count",
         "in_run_valid_row_count": "power_trace_in_run_valid_row_count",
         "sha256": "power_trace_sha256",
+        "coverage_definition": _POWER_TRACE_COVERAGE_DEFINITION_PATH,
     }.items():
         left = nested.get(nested_name, _MISSING)
         right = top.get(nested_name, _MISSING)

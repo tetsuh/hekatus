@@ -14,11 +14,7 @@ sustained load, this trace is the answer.
 from __future__ import annotations
 
 import argparse
-import csv
 import datetime
-import hashlib
-import io
-import itertools
 import json
 import math
 import os
@@ -26,7 +22,7 @@ import re
 import subprocess
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +31,10 @@ if __package__ in (None, ""):
 
 from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench.sampler_contract import (
+    COVERAGE_DEFINITIONS,
     DEFAULT_SAMPLER_INTERVAL_SECONDS,
+    EXPLICIT_FINAL_SAMPLE,
+    ONE_INTERVAL_BOUND,
     SAMPLER_MODES,
     normalize_sampler_metadata,
 )
@@ -104,12 +103,6 @@ def _finite_integer(
     return result
 
 
-def _trace_timestamp_text(value: Any, *, field: str) -> str | None:
-    if value is None:
-        return None
-    return _parse_trace_timestamp(value, field=field).isoformat()
-
-
 def _trace_number(value: Any, *, field: str, positive: bool = False) -> float:
     try:
         parsed = float(value)
@@ -121,51 +114,59 @@ def _trace_number(value: Any, *, field: str, positive: bool = False) -> float:
     return parsed
 
 
-def _power_trace_base(path: Path, *, run_start: Any, run_end: Any) -> dict[str, Any]:
-    errors: list[str] = []
-    try:
-        start_text = _trace_timestamp_text(run_start, field="run_start") if run_start is not None else None
-    except ValueError as exc:
-        start_text = None
-        errors.append(str(exc))
-    try:
-        end_text = _trace_timestamp_text(run_end, field="run_end") if run_end is not None else None
-    except ValueError as exc:
-        end_text = None
-        errors.append(str(exc))
-    return {
-        "file": path.name,
-        "columns": list(POWER_TRACE_COLUMNS),
-        "sha256": None,
-        "readable": False,
-        "nonempty": False,
-        "csv_row_count": 0,
-        "sample_count": 0,
-        "valid_row_count": 0,
-        "in_run_valid_row_count": 0,
-        "timestamps_parse": False,
-        "timestamps_ordered": False,
-        "first_timestamp": None,
-        "last_timestamp": None,
-        "run_start": start_text,
-        "run_end": end_text,
-        "covers_run_start": False,
-        "covers_run_end": False,
-        "coverage_complete": False,
-        "coverage": {
-            "nonempty": False,
-            "timestamps_parse": False,
-            "timestamps_ordered": False,
-            "first_at_or_before_run_start": False,
-            "last_at_or_after_run_end": False,
-            "readable": False,
-            "complete": False,
-        },
-        "aiclk_source": "no_valid_in_run_samples",
-        "aiclk_mhz": None,
-        "aiclk_mhz_in_run": [],
-        "errors": errors,
+def _legacy_power_trace_error(kind: str, error: Exception | None) -> str:
+    if kind == "power_trace_unreadable" and error is not None:
+        return f"power trace is not readable: {type(error).__name__}"
+    return str(error) if error is not None else kind
+
+
+def _legacy_power_trace(trace: Mapping[str, Any]) -> dict[str, Any]:
+    fields = (
+        "file",
+        "columns",
+        "sha256",
+        "readable",
+        "nonempty",
+        "csv_row_count",
+        "sample_count",
+        "valid_row_count",
+        "in_run_valid_row_count",
+        "timestamps_parse",
+        "timestamps_ordered",
+        "first_timestamp",
+        "last_timestamp",
+        "run_start",
+        "run_end",
+        "covers_run_start",
+        "covers_run_end",
+        "coverage_complete",
+        "coverage_definition",
+        "sampler_interval_seconds",
+        "aiclk_source",
+        "aiclk_mhz",
+        "aiclk_mhz_in_run",
+    )
+    public = {field: trace.get(field) for field in fields}
+    coverage = trace.get("coverage")
+    public["coverage"] = {
+        field: coverage.get(field, False) if isinstance(coverage, Mapping) else False
+        for field in (
+            "definition",
+            "nonempty",
+            "timestamps_parse",
+            "timestamps_ordered",
+            "first_at_or_before_run_start",
+            "last_at_or_after_run_end",
+            "last_within_interval_bound",
+            "readable",
+            "complete",
+        )
     }
+    errors = list(trace.get("errors", []))
+    if not trace.get("readable") and trace.get("error") is not None:
+        errors = [trace["error"]]
+    public["errors"] = errors
+    return public
 
 
 def parse_power_trace(
@@ -173,117 +174,43 @@ def parse_power_trace(
     *,
     run_start: datetime.datetime | str | None = None,
     run_end: datetime.datetime | str | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    sampler_interval_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Parse a power CSV and validate PR #109 complete run coverage.
-
-    The returned metadata is board-free and deliberately separates physical
-    file facts (byte hash and row counts), timestamp facts, run coverage, and
-    AICLK provenance.  A usable trace is nonempty, readable, fully parseable,
-    ordered, and satisfies ``first_timestamp <= run_start <= run_end <=
-    last_timestamp``.  ``aiclk_mhz_in_run`` contains only valid rows whose
-    timestamps fall inside the explicit run interval; it never falls back to a
-    pre-run environment snapshot.
-    """
+    """Parse a power CSV through the shared snapshot/read lifecycle."""
     if not isinstance(path, Path):
         path = Path(path)
-    trace = _power_trace_base(path, run_start=run_start, run_end=run_end)
-    try:
-        raw = path.read_bytes()
-    except OSError as exc:
-        trace["errors"] = [
-            f"power trace is not readable: {type(exc).__name__}"
-        ]
-        return trace
-    trace["sha256"] = hashlib.sha256(raw).hexdigest()
-    try:
-        text = raw.decode("utf-8")
-        reader = csv.DictReader(io.StringIO(text, newline=""))
-        fieldnames = tuple(reader.fieldnames or ())
-        if fieldnames != POWER_TRACE_COLUMNS:
-            raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
-        rows = [dict(row) for row in reader]
-    except (UnicodeDecodeError, csv.Error, TypeError, ValueError) as exc:
-        trace["errors"] = [str(exc)]
-        return trace
-
-    trace["readable"] = True
-    trace["csv_row_count"] = len(rows)
-    trace["sample_count"] = len(rows)
-    trace["nonempty"] = bool(rows)
-    parsed_rows: list[tuple[datetime.datetime, float]] = []
-    errors: list[str] = list(trace.get("errors", []))
-    for index, row in enumerate(rows):
-        if None in row or any(column not in row for column in POWER_TRACE_COLUMNS):
-            errors.append(f"power row {index} does not have exactly the declared columns")
-            continue
+    if coverage_definition not in COVERAGE_DEFINITIONS:
+        raise ValueError("coverage_definition is not supported")
+    if coverage_definition == ONE_INTERVAL_BOUND:
         try:
-            timestamp = _parse_trace_timestamp(
-                row["timestamp_utc"], field=f"power row {index} timestamp_utc"
+            sampler_interval_seconds = float(sampler_interval_seconds)
+        except (TypeError, ValueError, OverflowError):
+            sampler_interval_seconds = float("nan")
+        if not math.isfinite(sampler_interval_seconds) or sampler_interval_seconds <= 0.0:
+            raise ValueError(
+                "one_interval_bound requires a finite positive sampler interval"
             )
-            _trace_number(row["power_w"], field=f"power row {index} power_w")
-            aiclk = _trace_number(
-                row["aiclk_mhz"], field=f"power row {index} aiclk_mhz", positive=True
-            )
-            _trace_number(row["asic_temp_c"], field=f"power row {index} asic_temp_c")
-        except ValueError as exc:
-            errors.append(str(exc))
-        else:
-            parsed_rows.append((timestamp, aiclk))
+    from enodia.tt.bench.power_trace_snapshot import (
+        PowerTraceReadOptions,
+        read_power_trace_csv,
+    )
 
-    trace["valid_row_count"] = len(parsed_rows)
-    trace["timestamps_parse"] = bool(rows) and len(parsed_rows) == len(rows)
-    if trace["timestamps_parse"]:
-        timestamps = [timestamp for timestamp, _aiclk in parsed_rows]
-        trace["first_timestamp"] = timestamps[0].isoformat()
-        trace["last_timestamp"] = timestamps[-1].isoformat()
-        trace["timestamps_ordered"] = all(
-            left <= right for left, right in itertools.pairwise(timestamps)
-        )
-        try:
-            start = _parse_trace_timestamp(trace["run_start"], field="run_start")
-            end = _parse_trace_timestamp(trace["run_end"], field="run_end")
-        except ValueError as exc:
-            errors.append(str(exc))
-        else:
-            if start > end:
-                errors.append("run_start must be at or before run_end")
-            trace["covers_run_start"] = timestamps[0] <= start <= end
-            trace["covers_run_end"] = timestamps[-1] >= end
-            in_run = [
-                aiclk
-                for timestamp, aiclk in parsed_rows
-                if start <= timestamp <= end
-            ]
-            trace["in_run_valid_row_count"] = len(in_run)
-            trace["aiclk_mhz_in_run"] = in_run
-            if in_run:
-                trace["aiclk_source"] = "run_trace_samples"
-                trace["aiclk_mhz"] = max(in_run)
-            trace["coverage_complete"] = all(
-                (
-                    trace["readable"],
-                    trace["nonempty"],
-                    trace["valid_row_count"] == trace["csv_row_count"],
-                    trace["timestamps_parse"],
-                    trace["timestamps_ordered"],
-                    timestamps[0] <= start,
-                    start <= end,
-                    end <= timestamps[-1],
-                )
-            )
-    if not trace["timestamps_parse"] and rows:
-        trace["aiclk_source"] = "no_valid_in_run_samples"
-    trace["errors"] = errors
-    trace["coverage"] = {
-        "nonempty": trace["nonempty"],
-        "timestamps_parse": trace["timestamps_parse"],
-        "timestamps_ordered": trace["timestamps_ordered"],
-        "first_at_or_before_run_start": trace["covers_run_start"],
-        "last_at_or_after_run_end": trace["covers_run_end"],
-        "readable": trace["readable"],
-        "complete": trace["coverage_complete"],
-    }
-    return trace
+    trace = read_power_trace_csv(
+        path,
+        run_start=run_start,
+        run_end=run_end,
+        sampler_interval_seconds=sampler_interval_seconds,
+        coverage_definition=coverage_definition,
+        require_all_rows_valid=True,
+        error_factory=_legacy_power_trace_error,
+        reject_incomplete_rows=False,
+        read_options=PowerTraceReadOptions(
+            row_label="power row",
+            tolerate_invalid_run_bounds=True,
+        ),
+    )
+    return _legacy_power_trace(trace)
 
 
 def validate_power_trace_coverage(
@@ -291,9 +218,17 @@ def validate_power_trace_coverage(
     *,
     run_start: datetime.datetime | str | None = None,
     run_end: datetime.datetime | str | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    sampler_interval_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Board-free alias for :func:`parse_power_trace` used by record builders."""
-    return parse_power_trace(path, run_start=run_start, run_end=run_end)
+    return parse_power_trace(
+        path,
+        run_start=run_start,
+        run_end=run_end,
+        coverage_definition=coverage_definition,
+        sampler_interval_seconds=sampler_interval_seconds,
+    )
 
 
 # Keep both names discoverable for callers that describe the seam as parsing

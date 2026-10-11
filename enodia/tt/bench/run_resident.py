@@ -22,6 +22,13 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.power_trace_snapshot import (
+    ONE_INTERVAL_BOUND,
+    atomic_power_trace_snapshot,
+    empty_power_trace_metadata,
+    public_power_trace_metadata,
+    read_power_trace_snapshot,
+)
 from enodia.tt.bench.resident_clock import (
     safe_aiclk_integer,
     select_elapsed_aiclk,
@@ -45,10 +52,14 @@ from enodia.tt.bench.resident_harness import (
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
-from enodia.tt.bench.run_binding import current_run_id, run_artifact_path
-from enodia.tt.bench.telemetry import parse_power_trace
+from enodia.tt.bench.run_binding import (
+    RunBindingError,
+    current_run_id,
+    run_artifact_path,
+)
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
+RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
 
 
 class ResidentResultUnavailable(ValueError):
@@ -422,17 +433,54 @@ def _run_device(
                 pass
 
 
+def _runner_output_dir() -> Path:
+    """Return the wrapper output directory; tests may redirect this seam."""
+    return Path("/out")
+
+
+def _missing_power_trace_metadata(
+    path: Path, *, sampler_interval_seconds: float | None, error: Exception
+) -> dict[str, Any]:
+    """Describe an absent trace without reading a mutable artifact."""
+    trace = empty_power_trace_metadata(
+        path,
+        coverage_definition=ONE_INTERVAL_BOUND,
+        sampler_interval_seconds=sampler_interval_seconds,
+        aiclk_source="no_valid_in_run_samples",
+        errors=[f"power trace snapshot unavailable: {error}"],
+    )
+    trace["sampler_interval_seconds"] = sampler_interval_seconds
+    trace["sha256_definition"] = None
+    return public_power_trace_metadata(trace)
+
+
 def _environment_output_path() -> Path:
     """Return the wrapper's exact environment artifact for this run."""
     return run_artifact_path(
-        Path("/out"), prefix="env-", suffix=".json", run_id=current_run_id()
+        _runner_output_dir(), prefix="env-", suffix=".json", run_id=current_run_id()
     )
+
+
+def _reject_power_trace_run(
+    output_path: Path,
+    *,
+    config: ResidentConfig,
+    environment: dict[str, Any],
+    reason: str,
+) -> int:
+    """Persist one diagnostic rejection for an immutable trace failure."""
+    _write(
+        output_path,
+        build_rejection_record(config=config, reason=reason, environment=environment),
+    )
+    print(f"resident run rejected: {reason}", file=sys.stderr)
+    return 2
 
 
 def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:
     if power_trace is None:
         return []
-    path = Path("/out") / power_trace
+    path = _runner_output_dir() / power_trace
     values: list[int] = []
     try:
         with path.open(newline="") as handle:
@@ -547,9 +595,6 @@ def main(argv: list[str] | None = None) -> int:
     # The wrapper owns per-run trace selection. A missing option means that
     # sampler-off mode has no trace; it does not infer one from output files.
     power_trace = args.power_trace
-    trace_aiclk = _power_trace_aiclk_values(power_trace)
-    if trace_aiclk:
-        environment["aiclk_mhz_observed"] = sorted(set(trace_aiclk))
     config = _config_from_args(args)
     try:
         environment = validate_record_inputs(
@@ -594,12 +639,69 @@ def main(argv: list[str] | None = None) -> int:
     if args.raw_timestamps_out is not None:
         _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
 
-    power_trace_path = Path("/out") / power_trace if power_trace is not None else None
-    trace_metadata = (
-        parse_power_trace(power_trace_path, run_start=run_start, run_end=run_end)
-        if power_trace_path is not None
-        else None
+    runner_output_dir = _runner_output_dir()
+    live_power_trace_path = (
+        runner_output_dir / power_trace if power_trace is not None else None
     )
+    if live_power_trace_path is not None:
+        # Freeze the live sampler bytes before constructing the record.  The
+        # wrapper may append another row while or after this construction, but
+        # every declared fact below is read from this immutable snapshot.
+        sampler_interval = sampler.get("interval_seconds")
+        try:
+            run_id = current_run_id()
+        except ValueError:
+            run_id = None
+        try:
+            if run_id is None:
+                if live_power_trace_path.exists():
+                    raise RunBindingError(
+                        "power trace artifact exists without a wrapper run identity"
+                    )
+                raise FileNotFoundError("wrapper run identity is absent")
+            snapshot_path = atomic_power_trace_snapshot(
+                live_power_trace_path,
+                runner_output_dir,
+                run_id=run_id,
+                snapshot_number=1,
+                snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+            )
+            trace_metadata = read_power_trace_snapshot(
+                snapshot_path,
+                run_id=run_id,
+                run_start=run_start,
+                run_end=run_end,
+                snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+                source_path=live_power_trace_path,
+                sampler_interval_seconds=sampler_interval,
+                coverage_definition=ONE_INTERVAL_BOUND,
+                require_all_rows_valid=True,
+                error_factory=lambda kind, error: kind,
+            )
+            power_trace_path = snapshot_path
+            power_trace = snapshot_path.name
+        except RunBindingError as exc:
+            reason = f"power trace binding rejected: {exc}"
+            return _reject_power_trace_run(
+                args.out, config=config, environment=environment, reason=reason
+            )
+        except FileExistsError as exc:
+            reason = f"power trace snapshot installation rejected: {exc}"
+            return _reject_power_trace_run(
+                args.out, config=config, environment=environment, reason=reason
+            )
+        except FileNotFoundError as exc:
+            # A missing artifact is retained only as a diagnostic compatibility
+            # path.  It carries no bytes, no AICLK, and cannot claim timing.
+            trace_metadata = _missing_power_trace_metadata(
+                live_power_trace_path,
+                sampler_interval_seconds=sampler_interval,
+                error=exc,
+            )
+            power_trace_path = None
+    else:
+        power_trace_path = None
+        trace_metadata = None
     try:
         aiclk_selection = select_elapsed_aiclk(
             budget_aiclk_mhz=config.budget_aiclk_mhz,

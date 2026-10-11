@@ -1106,7 +1106,7 @@ def test_issue88_status_component_table_is_the_complete_publication_gate(tmp_pat
     assert provenance["trace_sha256"] == trace["sha256"]
     assert provenance["sample_count"] == trace["sample_count"]
     assert provenance["coverage"] == trace["coverage"]
-    assert provenance["coverage_definition"] == runner.POWER_TRACE_COVERAGE_DEFINITION
+    assert provenance["coverage_definition"] == runner.EXPLICIT_FINAL_SAMPLE
     assert provenance["immutable_snapshot"] is True
     assert record["measurement"]["comparison_conclusion_reference_policy"] == (
         "Each conclusion uses one declared metric_reference; metrics with "
@@ -1781,6 +1781,116 @@ def test_issue88_snapshot_with_mismatched_run_id_is_rejected(tmp_path):
         )
 
 
+def test_issue88_legacy_sampler_keeps_explicit_final_sample_for_late_row(tmp_path):
+    run_id = "run-legacy-explicit"
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(environment_path, run_id=run_id)
+    power_path = tmp_path / f"power-{run_id}.csv"
+    run_start = "2026-01-01T00:00:00+00:00"
+    run_end = "2026-01-01T00:00:01+00:00"
+    final_timestamp = "2026-01-01T00:00:04+00:00"
+    power_path.write_text(_power_csv([run_start, final_timestamp]))
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        environment_path=environment_path,
+        power_path=power_path,
+        run_start=run_start,
+        run_end=run_end,
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["normalized_environment"] is not None
+    assert "telemetry_sampler" not in telemetry["normalized_environment"]
+    assert telemetry["status"] == runner.ISSUE88_TELEMETRY_STATUS_COMPLETE
+    trace = telemetry["power_trace"]
+    assert trace["coverage_definition"] == runner.EXPLICIT_FINAL_SAMPLE
+    assert trace["coverage"]["definition"] == runner.EXPLICIT_FINAL_SAMPLE
+    assert trace.get("sampler_interval_seconds") is None
+    last = runner._parse_utc_timestamp(trace["last_timestamp"], field="last_timestamp")
+    end = runner._parse_utc_timestamp(trace["run_end"], field="run_end")
+    assert (last - end).total_seconds() > runner.DEFAULT_SAMPLER_INTERVAL_SECONDS
+    assert trace["coverage_complete"] is True
+
+    run = _passing_run(run_id=run_id)
+    cleanup = {"device_opened": True, "close_attempted": True, "close_succeeded": True}
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert statuses["power_trace"] == {
+        "ok": True,
+        "code": runner.ISSUE88_ERROR_CODE_VALUES["power_trace_succeeded"],
+    }
+    assert runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=tmp_path / f"raw-{run_id}.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    provenance = record["measurement"]["power_clock_provenance"]
+    assert provenance["coverage_definition"] == runner.EXPLICIT_FINAL_SAMPLE
+    assert provenance["sampler_interval_seconds"] is None
+    assert runner.EXPLICIT_FINAL_SAMPLE_COVERAGE_DESCRIPTION in record["notes"]
+    runner._serialize_record(record)
+
+
+def test_issue88_explicit_sampler_interval_accepts_run_end_between_samples(tmp_path):
+    run_id = "run-explicit-31"
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(environment_path, run_id=run_id)
+    environment = json.loads(environment_path.read_text())
+    environment["telemetry_sampler"] = {
+        "mode": "explicit",
+        "interval_seconds": 31.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    environment_path.write_text(json.dumps(environment))
+    power_path = tmp_path / f"power-{run_id}.csv"
+    # The next 31-second sampler tick is after run_end; the sample at run_start
+    # is the inclusive lower-bound witness for this run.
+    power_path.write_text(_power_csv(["2026-01-01T00:00:00+00:00"]))
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        environment_path=environment_path,
+        power_path=power_path,
+        run_start="2026-01-01T00:00:00+00:00",
+        run_end="2026-01-01T00:00:30+00:00",
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["status"] == runner.ISSUE88_TELEMETRY_STATUS_COMPLETE
+    trace = telemetry["power_trace"]
+    assert trace["coverage_definition"] == runner.ONE_INTERVAL_BOUND
+    assert trace["sampler_interval_seconds"] == 31.0
+    assert trace["coverage_complete"] is True
+    assert trace["poll_complete"] is True
+
+    run = _passing_run(run_id=run_id)
+    cleanup = {"device_opened": True, "close_attempted": True, "close_succeeded": True}
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=tmp_path / f"raw-{run_id}.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["measurement"]["power_clock_provenance"]["coverage_definition"] == (
+        runner.ONE_INTERVAL_BOUND
+    )
+    assert record["measurement"]["power_clock_provenance"]["sampler_interval_seconds"] == 31.0
+    runner._serialize_record(record)
+
+
 def test_issue88_power_poll_waits_for_sample_covering_run_end(tmp_path):
     path = tmp_path / "power-run-1.csv"
     path.write_text(_power_csv(["2026-01-01T00:00:01+00:00"]))
@@ -1893,7 +2003,7 @@ def test_issue88_power_trace_snapshot_is_run_bound_hashed_and_immutable(tmp_path
     assert trace["immutable_snapshot"] is True
     assert trace["sha256"] == hashlib.sha256(snapshot_bytes).hexdigest()
     assert trace["sample_count"] == 2
-    assert trace["coverage_definition"] == runner.POWER_TRACE_COVERAGE_DEFINITION
+    assert trace["coverage_definition"] == runner.EXPLICIT_FINAL_SAMPLE
     assert trace["coverage"]["last_at_or_after_run_end"] is True
 
     live_path.write_text(_power_csv(["2026-01-01T00:00:03+00:00"]))
