@@ -378,7 +378,7 @@ def read_power_trace_snapshot(
     usable_samples = [sample for sample, _timestamp, _aiclk in usable_rows]
     parsed_timestamps = [timestamp for _sample, timestamp, _aiclk in usable_rows]
     trace["samples"] = usable_samples
-    trace["sample_count"] = len(usable_samples)
+    trace["sample_count"] = len(samples) if require_all_rows_valid else len(usable_samples)
     trace["valid_row_count"] = len(usable_samples)
     trace["invalid_row_count"] = len(samples) - len(usable_samples)
     trace["nonempty"] = bool(samples) if require_all_rows_valid else bool(usable_samples)

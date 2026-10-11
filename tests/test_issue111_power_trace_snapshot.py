@@ -284,6 +284,49 @@ def test_snapshot_reader_declares_named_coverage_definition(tmp_path: Path, defi
     assert trace["sha256"] == hashlib.sha256(snapshot.read_bytes()).hexdigest()
 
 
+def test_snapshot_reader_counts_all_rows_only_for_strict_resident_mode(
+    tmp_path: Path,
+):
+    run_id = "run-111-row-count"
+    live = tmp_path / f"power-{run_id}.csv"
+    live.write_text(
+        CSV_HEADER
+        + f"{RUN_START},75,1350,60\n"
+        + "2026-01-01T00:00:00.500000+00:00,NaN,1350,60\n"
+        + f"{RUN_END},75,1350,60\n"
+    )
+    snapshot = atomic_power_trace_snapshot(
+        live,
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+        snapshot_prefix="row-count-snapshot",
+    )
+    reader_args = {
+        "run_id": run_id,
+        "run_start": RUN_START,
+        "run_end": RUN_END,
+        "snapshot_prefix": "row-count-snapshot",
+        "coverage_definition": EXPLICIT_FINAL_SAMPLE,
+    }
+
+    strict = read_power_trace_snapshot(
+        snapshot, require_all_rows_valid=True, **reader_args
+    )
+    compatible = read_power_trace_snapshot(snapshot, **reader_args)
+
+    assert strict["sample_count"] == 3
+    assert strict["csv_row_count"] == 3
+    assert strict["valid_row_count"] == 2
+    assert strict["invalid_row_count"] == 1
+    assert strict["coverage_complete"] is False
+    assert compatible["sample_count"] == 2
+    assert compatible["csv_row_count"] == 3
+    assert compatible["valid_row_count"] == 2
+    assert compatible["invalid_row_count"] == 1
+    assert compatible["coverage_complete"] is True
+
+
 def test_competing_snapshot_writers_keep_the_first_installed_bytes(tmp_path: Path):
     run_id = "run-111-race"
     live = tmp_path / f"power-{run_id}.csv"
