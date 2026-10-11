@@ -107,6 +107,21 @@ def _board_free_throughput(condition: str, duration_seconds: float) -> float:
     return 1.0 / elapsed
 
 
+_CALIBRATION_FIELDS = frozenset(
+    {
+        "condition",
+        "duration_seconds",
+        "achieved_throughput",
+        "throughput_unit",
+        "repeat_count",
+        "watcher_enabled",
+        "source",
+        "target_seconds",
+        "safety_factor",
+    }
+)
+
+
 def _read_calibration(path: Path) -> CalibrationMetadata:
     try:
         payload = json.loads(path.read_text())
@@ -116,7 +131,8 @@ def _read_calibration(path: Path) -> CalibrationMetadata:
     if not isinstance(calibration, dict):
         raise LoadConfigurationError("calibration JSON has no calibration object")
     try:
-        return CalibrationMetadata(**calibration)
+        filtered = {key: calibration[key] for key in _CALIBRATION_FIELDS if key in calibration}
+        return CalibrationMetadata(**filtered)
     except (TypeError, ValueError) as exc:
         raise LoadConfigurationError("calibration metadata is invalid") from exc
 
@@ -143,9 +159,10 @@ def build_calibration(
     if canonical == "unloaded":
         raise LoadConfigurationError("unloaded control does not need calibration")
     duration = _validate_duration(duration_seconds)
+    board_free_fallback = achieved_throughput is None
     throughput = (
         _board_free_throughput(canonical, duration)
-        if achieved_throughput is None
+        if board_free_fallback
         else achieved_throughput
     )
     expected_unit = repeat_throughput_unit(canonical)
@@ -161,6 +178,7 @@ def build_calibration(
         throughput_unit=selected_unit,
         target_seconds=target_seconds,
         safety_factor=safety_factor,
+        source="board_free_model" if board_free_fallback else "watcher_off_calibration",
     )
     return {
         "schema": "issue-118-load-calibration-v1",

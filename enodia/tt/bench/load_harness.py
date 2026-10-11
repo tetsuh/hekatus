@@ -406,6 +406,7 @@ def calibration_metadata(
     throughput_unit: str,
     target_seconds: float,
     safety_factor: float = 1.10,
+    source: str = "watcher_off_calibration",
 ) -> CalibrationMetadata:
     """Construct the persisted calibration choice and repeat count."""
     canonical = normalize_condition(condition)
@@ -423,6 +424,7 @@ def calibration_metadata(
         repeat_count=repeats,
         target_seconds=target_seconds,
         safety_factor=safety_factor,
+        source=source,
     )
 
 

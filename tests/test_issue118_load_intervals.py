@@ -36,11 +36,13 @@ from enodia.tt.bench.load_harness import (
 )
 from enodia.tt.bench.resident_harness import ResidentConfig, run_budget_breakdown
 from enodia.tt.bench.run_load import _parser as load_parser
+from enodia.tt.bench.run_load import _read_calibration as read_load_calibration
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
 from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
     _host_join_timeout_seconds,
     _load_achieved_throughput,
+    _read_load_calibration,
 )
 from enodia.tt.bench.run_resident import _parser as resident_parser
 
@@ -189,6 +191,42 @@ def test_fixed_repeat_reaches_reader_and_compute_runtime_args():
         ttnn, [(2, 0)], [123], [(0, 8)], [3]
     )
     assert args.values[(2, 0)] == [123, 0, 8, 3]
+
+
+def test_resident_calibration_reader_filters_extra_fields_and_rejects_model_source(tmp_path):
+    payload = build_calibration(
+        condition="dram",
+        duration_seconds=5,
+        achieved_throughput=2,
+        target_seconds=500,
+    )
+    payload["calibration"].update(
+        {
+            "requested_duration_seconds": 60,
+            "actual_frame_count": 123,
+            "actual_duration_seconds": 52.0,
+            "measurement_repeat_count": 1,
+        }
+    )
+    path = tmp_path / "resident-calibration.json"
+    path.write_text(json.dumps(payload))
+    parsed = _read_load_calibration(path)
+    parsed_board_free = read_load_calibration(path)
+    assert parsed.condition == "dram"
+    assert parsed_board_free.condition == "dram"
+    model_payload = dict(payload)
+    model_payload["calibration"] = {**payload["calibration"], "source": "board_free_model"}
+    path.write_text(json.dumps(model_payload))
+    with pytest.raises(ValueError, match="watcher_off_calibration"):
+        _read_load_calibration(path)
+
+
+def test_host_cleanup_stop_and_join_are_in_outer_finally():
+    source = (ROOT / "enodia/tt/bench/run_resident.py").read_text()
+    assert "stop_event.is_set()" in source
+    assert "host_stop.set()" in source
+    assert source.rfind("host_stop.set()") < source.rfind("host_thread.join")
+    assert "HostCleanupUnsafe" in source
 
 
 def test_host_join_timeout_never_exceeds_resident_outer_cap():

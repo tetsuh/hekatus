@@ -91,6 +91,10 @@ class ResidentResultUnavailable(ValueError):
     """A device result contained a numeric value that cannot be classified."""
 
 
+class HostCleanupUnsafe(RuntimeError):
+    """The CQ1 host thread could not be joined before device cleanup."""
+
+
 _safe_aiclk_integer = safe_aiclk_integer
 
 
@@ -487,6 +491,7 @@ def _run_host_transfers(
     repetitions: int = 1,
     started_event: threading.Event | None = None,
     resident_launched: threading.Event | None = None,
+    stop_event: threading.Event | None = None,
     start_holder: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     """Perform fixed arithmetic and explicit CQ1 host/device transfers."""
@@ -510,8 +515,12 @@ def _run_host_transfers(
     def transfer(_payload: bytes, queue_id: int) -> None:
         if queue_id != 1:
             raise RuntimeError("host condition transfer was not assigned to CQ1")
-        if resident_launched is not None and not resident_launched.wait(timeout=60.0):
-            raise RuntimeError("resident program was not launched before CQ1 transfer")
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("host load stopped before CQ1 transfer")
+        if resident_launched is not None:
+            while not resident_launched.wait(timeout=0.1):
+                if stop_event is not None and stop_event.is_set():
+                    raise RuntimeError("host load stopped before CQ1 transfer")
         device_tensor = ttnn.to_device(
             host,
             device,
@@ -570,6 +579,7 @@ def _run_loaded_device(
     host_thread: threading.Thread | None = None
     host_started = threading.Event()
     resident_launched = threading.Event()
+    host_stop = threading.Event()
     host_result: dict[str, Any] = {}
     host_error: list[BaseException] = []
     host_start_holder: dict[str, int] = {}
@@ -608,6 +618,7 @@ def _run_loaded_device(
                             device,
                             started_event=host_started,
                             resident_launched=resident_launched,
+                            stop_event=host_stop,
                             start_holder=host_start_holder,
                             repetitions=repeat_count,
                         )
@@ -674,11 +685,20 @@ def _run_loaded_device(
             )
         return result
     finally:
+        if host_thread is not None:
+            host_stop.set()
+            resident_launched.set()
+            cleanup_timeout = _host_join_timeout_seconds(
+                repeat_count=repeat_count,
+                outer_timeout_seconds=config.outer_timeout_seconds,
+            )
+            host_thread.join(timeout=cleanup_timeout)
+            if host_thread.is_alive():
+                raise HostCleanupUnsafe(
+                    "CQ1 host thread remained active; device cleanup was not attempted"
+                )
         if load_kernel is not None:
-            if condition == "newton_schulz":
-                load_kernel.close()
-            else:
-                load_kernel.close()
+            load_kernel.close()
         _deallocate_resident_tensors(ttnn, resident_tensors)
 def _runner_output_dir() -> Path:
     """Return the wrapper output directory; tests may redirect this seam."""
@@ -906,6 +926,10 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
     calibration = payload.get("calibration") if isinstance(payload, dict) else None
     if not isinstance(calibration, dict):
         raise LoadConfigurationError("load calibration metadata has no calibration object")
+    if calibration.get("source") != "watcher_off_calibration":
+        raise LoadConfigurationError(
+            "board runs require watcher_off_calibration source metadata"
+        )
     try:
         fields = {
             "condition",
@@ -989,6 +1013,7 @@ def main(argv: list[str] | None = None) -> int:
     # Issue #118 keeps the unloaded control on the same two-CQ device-open
     # contract as every eventual loaded mode; CQ0 remains the resident queue.
     device = ttnn.open_device(device_id=args.device_id, num_command_queues=2)
+    device_cleanup_safe = True
     try:
         try:
             result = (
@@ -1003,6 +1028,18 @@ def main(argv: list[str] | None = None) -> int:
                     watcher=watcher,
                 )
             )
+        except HostCleanupUnsafe as exc:
+            device_cleanup_safe = False
+            _write(
+                args.out,
+                build_rejection_record(
+                    config=config,
+                    reason=f"host cleanup unsafe: {exc}",
+                    environment=environment,
+                ),
+            )
+            print(f"host cleanup unsafe: {exc}", file=sys.stderr)
+            return 2
         except (IndexError, OverflowError, RuntimeError, TypeError, ValueError) as exc:
             _write(
                 args.out,
@@ -1015,7 +1052,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"resident result unavailable: {exc}", file=sys.stderr)
             return 2
     finally:
-        ttnn.close_device(device)
+        if device_cleanup_safe:
+            ttnn.close_device(device)
     run_end = datetime.datetime.now(datetime.UTC)
 
     if args.raw_timestamps_out is not None:
