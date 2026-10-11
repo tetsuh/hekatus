@@ -12,6 +12,7 @@ import argparse
 import json
 import math
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -130,6 +131,20 @@ _CALIBRATION_FIELDS = frozenset(
 
 def _read_calibration(path: Path) -> CalibrationMetadata:
     try:
+        resolved_path = path.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise LoadConfigurationError("calibration metadata path cannot be resolved") from exc
+    trusted_roots = (
+        Path.cwd().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+        Path("/out").resolve(),
+    )
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise LoadConfigurationError(
+            "calibration metadata must be beneath the current, temporary, or /out directory"
+        )
+    path = resolved_path
+    try:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise LoadConfigurationError(f"cannot read calibration metadata: {path}") from exc
@@ -144,8 +159,21 @@ def _read_calibration(path: Path) -> CalibrationMetadata:
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    try:
+        resolved_path = path.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise LoadConfigurationError("load configuration output path cannot be resolved") from exc
+    trusted_roots = (
+        Path.cwd().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+        Path("/out").resolve(),
+    )
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise LoadConfigurationError(
+            "load configuration output must be beneath the current, temporary, or /out directory"
+        )
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
 def build_calibration(
@@ -317,7 +345,11 @@ def main(argv: list[str] | None = None) -> int:
     except LoadConfigurationError as exc:
         print(f"load configuration rejected: {exc}")
         return 2
-    _write(args.out, payload)
+    try:
+        _write(args.out, payload)
+    except LoadConfigurationError as exc:
+        print(f"load configuration rejected: {exc}")
+        return 2
     print(strict_json_dumps(payload, indent=2))
     return 0
 

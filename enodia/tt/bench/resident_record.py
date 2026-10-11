@@ -149,6 +149,7 @@ TIMING_EVIDENCE_NOT_REQUESTED = "timing_evidence_not_requested"
 TIMING_EVIDENCE_RUN_TRACE_REASON = "power_trace_run_samples"
 TIMING_EVIDENCE_ERROR_RECORD_REASON = "run_error_not_timing_evidence"
 TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
+LOAD_EVIDENCE_INVARIANT = "load.evidence"
 
 _MISSING = object()
 _POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
@@ -1428,7 +1429,7 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
         return []
     load = record.get("load")
     if not isinstance(load, Mapping):
-        return [_mismatch("load.evidence", ("load",), "load metadata must be an object")]
+        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), "load metadata must be an object")]
     if record.get("num_command_queues") != 2:
         return [
             _mismatch(
@@ -1442,7 +1443,7 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
 
         validate_load_record(load)
     except (TypeError, ValueError, KeyError) as exc:
-        return [_mismatch("load.evidence", ("load",), str(exc))]
+        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), str(exc))]
     condition = load.get("condition")
     if condition in {"newton_schulz", "dram"}:
         clock = _mapping(record, "clock")
@@ -1453,7 +1454,7 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
         if not _is_number(weighted) or weighted <= 0 or source != "load_interval_trace_samples":
             return [
                 _mismatch(
-                    "load.evidence",
+                    LOAD_EVIDENCE_INVARIANT,
                     (
                         "clock.aiclk_mhz_load_interval_weighted",
                         "clock.aiclk_mhz_load_interval_weighted_source",
@@ -1907,7 +1908,6 @@ def build_outlier_analysis(
             selection_mode != "off" and selected_source == AICLK_SOURCE_CONFIGURED
         ),
     )
-    aiclk_mhz = aiclk_selection["aiclk_mhz"]
     selected_source = aiclk_selection["aiclk_source"]
     elapsed_selection = aiclk_selection
     if elapsed_aiclk_mhz is not None:
@@ -3739,7 +3739,7 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
         _check_unknown_fields,
     ),
     ResidentInvariant(
-        "load.evidence",
+        LOAD_EVIDENCE_INVARIANT,
         ("num_command_queues", "load", "load.coverage"),
         "Issue #118 load intervals, repeat metadata, and coverage are fail-closed",
         _check_load_evidence,

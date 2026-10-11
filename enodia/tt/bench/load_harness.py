@@ -88,6 +88,10 @@ MAX_CALIBRATION_SECONDS = 60.0
 MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS = 40.0
 CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE = "load_interval_trace_samples"
+_CARD_LOAD_START_FIELD = "card load start_ticks"
+_CARD_LOAD_END_FIELD = "card load end_ticks"
+_HOST_LOAD_START_FIELD = "host load start_ns"
+_HOST_LOAD_END_FIELD = "host load end_ns"
 CARD_THROUGHPUT_REFERENCE_AICLK_MHZ = 1_350
 CARD_THROUGHPUT_UNIT_DEFINITION = (
     "load repeats per 1.35e9 card-clock ticks (historical unit name "
@@ -531,8 +535,8 @@ class CardLoadInterval:
     wrap_tracked: bool = True
 
     def __post_init__(self) -> None:
-        _uint64(self.start_ticks, "card load start_ticks")
-        _uint64(self.end_ticks, "card load end_ticks")
+        _uint64(self.start_ticks, _CARD_LOAD_START_FIELD)
+        _uint64(self.end_ticks, _CARD_LOAD_END_FIELD)
         if self.end_ticks < self.start_ticks:
             raise LoadEvidenceError("card load interval end precedes start")
         if self.width_bits != 64:
@@ -623,8 +627,8 @@ class HostLoadInterval:
     clock: str = "host_monotonic_ns"
 
     def __post_init__(self) -> None:
-        _nonnegative_int(self.start_ns, "host load start_ns")
-        _nonnegative_int(self.end_ns, "host load end_ns")
+        _nonnegative_int(self.start_ns, _HOST_LOAD_START_FIELD)
+        _nonnegative_int(self.end_ns, _HOST_LOAD_END_FIELD)
         if self.end_ns < self.start_ns:
             raise LoadEvidenceError("host load interval end precedes start")
         if self.clock != "host_monotonic_ns":
@@ -779,6 +783,45 @@ def validate_device_open_settings(settings: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _worker_interval_row(item: Any) -> dict[str, Any]:
+    if isinstance(item, CardWorkerInterval):
+        return item.as_record()
+    if isinstance(item, Mapping):
+        return dict(item)
+    raise LoadEvidenceError("worker interval rows must be objects")
+
+
+def _normalize_worker_interval(item: Any) -> dict[str, Any]:
+    row = _worker_interval_row(item)
+    index = _nonnegative_int(row.get("worker_index"), "worker_index")
+    try:
+        interval = CardLoadInterval(
+            _uint64(row.get("start_ticks"), _CARD_LOAD_START_FIELD),
+            _uint64(row.get("end_ticks"), _CARD_LOAD_END_FIELD),
+        )
+    except (LoadEvidenceError, TypeError) as exc:
+        raise LoadEvidenceError(str(exc)) from exc
+    canonical = interval.as_record()
+    canonical["worker_index"] = index
+    for field in ("core", "label", "statistics", "risc", "profile_worker"):
+        if field in row:
+            canonical[field] = row[field]
+    if "core" in canonical:
+        core = canonical["core"]
+        valid_core = (
+            isinstance(core, (list, tuple))
+            and len(core) == 2
+            and all(
+                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                for value in core
+            )
+        )
+        if not valid_core:
+            raise LoadEvidenceError("worker core must be a non-negative coordinate pair")
+        canonical["core"] = list(core)
+    return canonical
+
+
 def _normalize_worker_intervals(
     worker_intervals: Any,
 ) -> list[dict[str, Any]]:
@@ -790,40 +833,11 @@ def _normalize_worker_intervals(
     normalized: list[dict[str, Any]] = []
     seen: set[int] = set()
     for item in worker_intervals:
-        if isinstance(item, CardWorkerInterval):
-            row = item.as_record()
-        elif isinstance(item, Mapping):
-            row = dict(item)
-        else:
-            raise LoadEvidenceError("worker interval rows must be objects")
-        index = _nonnegative_int(row.get("worker_index"), "worker_index")
+        canonical = _normalize_worker_interval(item)
+        index = canonical["worker_index"]
         if index in seen:
             raise LoadEvidenceError("worker interval indexes must be unique")
         seen.add(index)
-        try:
-            interval = CardLoadInterval(
-                _uint64(row.get("start_ticks"), "worker start_ticks"),
-                _uint64(row.get("end_ticks"), "worker end_ticks"),
-            )
-        except (LoadEvidenceError, TypeError) as exc:
-            raise LoadEvidenceError(str(exc)) from exc
-        canonical = interval.as_record()
-        canonical["worker_index"] = index
-        for field in ("core", "label", "statistics", "risc", "profile_worker"):
-            if field in row:
-                canonical[field] = row[field]
-        if "core" in canonical:
-            core = canonical["core"]
-            if (
-                not isinstance(core, (list, tuple))
-                or len(core) != 2
-                or any(
-                    isinstance(value, bool) or not isinstance(value, int) or value < 0
-                    for value in core
-                )
-            ):
-                raise LoadEvidenceError("worker core must be a non-negative coordinate pair")
-            canonical["core"] = list(core)
         normalized.append(canonical)
     return sorted(normalized, key=lambda row: row["worker_index"])
 
@@ -846,27 +860,16 @@ def _worker_interval_statistics(
     }
 
 
-def build_load_record(
-    *,
-    condition: str,
+def _load_record_coverage(
+    canonical: str,
     repeat_count: int,
     resident_timestamps: list[int] | tuple[int, ...] | None,
-    device_open_settings: Mapping[str, Any] | None = None,
-    card_interval: CardLoadInterval | None = None,
-    host_interval: HostLoadInterval | None = None,
-    worker_intervals: list[Mapping[str, Any] | CardWorkerInterval] | None = None,
-    measurement_start_ns: int | None = None,
-    measurement_end_ns: int | None = None,
-    calibration: CalibrationMetadata | None = None,
-    achieved_throughput: float | None = None,
-    throughput_unit: str | None = None,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+    normalized_workers: list[dict[str, Any]],
+    measurement_start_ns: int | None,
+    measurement_end_ns: int | None,
 ) -> dict[str, Any]:
-    """Assemble one condition record and fail closed on interval omissions."""
-    canonical = normalize_condition(condition)
-    open_settings = validate_device_open_settings(
-        DEVICE_OPEN_SETTINGS if device_open_settings is None else device_open_settings
-    )
-    normalized_workers = _normalize_worker_intervals(worker_intervals)
     if canonical == "unloaded":
         if normalized_workers:
             raise LoadConfigurationError("unloaded control cannot claim worker intervals")
@@ -874,39 +877,116 @@ def build_load_record(
             raise LoadConfigurationError("unloaded control must record repeat_count=0")
         if card_interval is not None or host_interval is not None:
             raise LoadConfigurationError("unloaded control cannot claim a load interval")
-        coverage = {"verdict": "not_applicable", "valid": True, "covered": True}
-    elif canonical in _DEVICE_LOAD_CONDITIONS:
+        return {"verdict": "not_applicable", "valid": True, "covered": True}
+    if canonical in _DEVICE_LOAD_CONDITIONS:
         _positive_int(repeat_count, "repeat_count")
         if host_interval is not None:
             raise LoadEvidenceError("device-load coverage cannot use a host interval")
         coverage = _card_coverage(card_interval, resident_timestamps)
-        if not coverage["valid"] or not coverage["covered"]:
-            raise LoadEvidenceError(coverage["reason"])
     else:
         _positive_int(repeat_count, "repeat_count")
         if card_interval is not None:
             raise LoadEvidenceError("host condition cannot claim a card-clock load interval")
         coverage = _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
-        if not coverage["valid"] or not coverage["covered"]:
-            raise LoadEvidenceError(coverage["reason"])
-
-    if calibration is not None:
-        if calibration.condition != canonical:
-            raise LoadConfigurationError("calibration condition does not match the load condition")
-        if canonical != "unloaded" and repeat_count != calibration.repeat_count:
-            raise LoadConfigurationError("repeat_count must match calibration-selected repeat_count")
-    if achieved_throughput is not None:
-        _finite_positive(achieved_throughput, "achieved_throughput")
-        if not isinstance(throughput_unit, str) or not throughput_unit.strip():
-            raise LoadConfigurationError("throughput_unit is required with achieved_throughput")
-
+    if not coverage["valid"] or not coverage["covered"]:
+        raise LoadEvidenceError(coverage["reason"])
     if canonical in _DEVICE_LOAD_CONDITIONS and normalized_workers:
         if card_interval is None:
             raise LoadEvidenceError("worker intervals require an aggregate card interval")
         if canonical == "dram" and len(normalized_workers) != DRAM_BANK_COUNT:
             raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+    return coverage
 
-    record: dict[str, Any] = {
+
+def _validate_load_calibration(
+    canonical: str, repeat_count: int, calibration: CalibrationMetadata | None
+) -> None:
+    if calibration is None:
+        return
+    if calibration.condition != canonical:
+        raise LoadConfigurationError("calibration condition does not match the load condition")
+    if canonical != "unloaded" and repeat_count != calibration.repeat_count:
+        raise LoadConfigurationError("repeat_count must match calibration-selected repeat_count")
+
+
+def _validate_achieved_throughput(
+    achieved_throughput: float | None, throughput_unit: str | None
+) -> None:
+    if achieved_throughput is None:
+        return
+    _finite_positive(achieved_throughput, "achieved_throughput")
+    if not isinstance(throughput_unit, str) or not throughput_unit.strip():
+        raise LoadConfigurationError("throughput_unit is required with achieved_throughput")
+
+
+def _add_load_condition_metadata(
+    record: dict[str, Any], canonical: str, repeat_count: int
+) -> None:
+    if canonical == "newton_schulz":
+        record["newton_schulz"] = {
+            "shape": NS_LOAD_SHAPE,
+            "L": NS_LOAD_L,
+            "batch": NS_LOAD_BATCH,
+            "iterations": NS_LOAD_ITERATIONS,
+            "outer_repetitions": NS_LOAD_OUTER_REPETITIONS,
+            "effective_outer_repetitions": NS_LOAD_OUTER_REPETITIONS * repeat_count,
+            "variant": NS_LOAD_VARIANT,
+            "math_fidelity": NS_LOAD_MATH_FIDELITY,
+            "fuse_s": NS_LOAD_FUSE_S,
+            "fp32_dest_acc_en": NS_LOAD_FP32_DEST_ACC_EN,
+            "matrix_block": NS_LOAD_MATRIX_BLOCK,
+            "double_buffer": NS_LOAD_DOUBLE_BUFFER,
+            "dst_full_sync_en": NS_LOAD_DST_FULL_SYNC_EN,
+            "r_memory": NS_LOAD_R_MEMORY,
+            "x0_memory": NS_LOAD_X0_MEMORY,
+            "output_memory": NS_LOAD_OUTPUT_MEMORY,
+            "l1_ledger": newton_schulz_l1_ledger(),
+            "work_distribution": list(ns_work_distribution()),
+        }
+    elif canonical == "dram":
+        record["dram_stream"] = dram_stream_work()
+    elif canonical == "host_cpu_transfer":
+        record["host_work"] = {
+            **host_transfer_work(),
+            "outer_repetitions": repeat_count,
+            "effective_transfer_count": HOST_TRANSFER_COUNT * repeat_count,
+        }
+
+
+def _add_load_throughput_metadata(
+    record: dict[str, Any],
+    canonical: str,
+    achieved_throughput: float | None,
+    throughput_unit: str | None,
+) -> None:
+    if achieved_throughput is None:
+        return
+    record["achieved_throughput"] = achieved_throughput
+    record["throughput_unit"] = throughput_unit
+    record["throughput_reference_aiclk_mhz"] = (
+        CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else None
+    )
+    record["throughput_unit_definition"] = (
+        CARD_THROUGHPUT_UNIT_DEFINITION
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else "host monotonic interval repeats per second"
+    )
+
+
+def _load_record_payload(
+    *,
+    canonical: str,
+    repeat_count: int,
+    open_settings: Mapping[str, Any],
+    resident_timestamps: list[int] | tuple[int, ...] | None,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+    normalized_workers: list[dict[str, Any]],
+    coverage: dict[str, Any],
+) -> dict[str, Any]:
+    return {
         "schema": "issue-118-load-v1",
         "issue": 118,
         "condition": canonical,
@@ -956,71 +1036,65 @@ def build_load_record(
             else None
         ),
     }
-    if canonical == "newton_schulz":
-        record["newton_schulz"] = {
-            "shape": NS_LOAD_SHAPE,
-            "L": NS_LOAD_L,
-            "batch": NS_LOAD_BATCH,
-            "iterations": NS_LOAD_ITERATIONS,
-            "outer_repetitions": NS_LOAD_OUTER_REPETITIONS,
-            "effective_outer_repetitions": NS_LOAD_OUTER_REPETITIONS * repeat_count,
-            "variant": NS_LOAD_VARIANT,
-            "math_fidelity": NS_LOAD_MATH_FIDELITY,
-            "fuse_s": NS_LOAD_FUSE_S,
-            "fp32_dest_acc_en": NS_LOAD_FP32_DEST_ACC_EN,
-            "matrix_block": NS_LOAD_MATRIX_BLOCK,
-            "double_buffer": NS_LOAD_DOUBLE_BUFFER,
-            "dst_full_sync_en": NS_LOAD_DST_FULL_SYNC_EN,
-            "r_memory": NS_LOAD_R_MEMORY,
-            "x0_memory": NS_LOAD_X0_MEMORY,
-            "output_memory": NS_LOAD_OUTPUT_MEMORY,
-            "l1_ledger": newton_schulz_l1_ledger(),
-            "work_distribution": list(ns_work_distribution()),
-        }
-    elif canonical == "dram":
-        record["dram_stream"] = dram_stream_work()
-    elif canonical == "host_cpu_transfer":
-        record["host_work"] = {
-            **host_transfer_work(),
-            "outer_repetitions": repeat_count,
-            "effective_transfer_count": HOST_TRANSFER_COUNT * repeat_count,
-        }
-    if calibration is not None:
-        record["calibration"] = calibration.as_record()
-    if achieved_throughput is not None:
-        record["achieved_throughput"] = achieved_throughput
-        record["throughput_unit"] = throughput_unit
-        record["throughput_reference_aiclk_mhz"] = (
-            CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
-            if canonical in _DEVICE_LOAD_CONDITIONS
-            else None
-        )
-        record["throughput_unit_definition"] = (
-            CARD_THROUGHPUT_UNIT_DEFINITION
-            if canonical in _DEVICE_LOAD_CONDITIONS
-            else "host monotonic interval repeats per second"
-        )
-    validate_load_record(record)
-    return record
 
 
-def build_calibration_load_record(
+def build_load_record(
     *,
     condition: str,
     repeat_count: int,
     resident_timestamps: list[int] | tuple[int, ...] | None,
-    calibration: CalibrationMetadata,
+    device_open_settings: Mapping[str, Any] | None = None,
     card_interval: CardLoadInterval | None = None,
     host_interval: HostLoadInterval | None = None,
     worker_intervals: list[Mapping[str, Any] | CardWorkerInterval] | None = None,
     measurement_start_ns: int | None = None,
     measurement_end_ns: int | None = None,
+    calibration: CalibrationMetadata | None = None,
     achieved_throughput: float | None = None,
     throughput_unit: str | None = None,
 ) -> dict[str, Any]:
-    """Build a calibration result without promoting coverage to timing evidence."""
+    """Assemble one condition record and fail closed on interval omissions."""
     canonical = normalize_condition(condition)
+    open_settings = validate_device_open_settings(
+        DEVICE_OPEN_SETTINGS if device_open_settings is None else device_open_settings
+    )
     normalized_workers = _normalize_worker_intervals(worker_intervals)
+    coverage = _load_record_coverage(
+        canonical,
+        repeat_count,
+        resident_timestamps,
+        card_interval,
+        host_interval,
+        normalized_workers,
+        measurement_start_ns,
+        measurement_end_ns,
+    )
+    _validate_load_calibration(canonical, repeat_count, calibration)
+    _validate_achieved_throughput(achieved_throughput, throughput_unit)
+    record = _load_record_payload(
+        canonical=canonical,
+        repeat_count=repeat_count,
+        open_settings=open_settings,
+        resident_timestamps=resident_timestamps,
+        card_interval=card_interval,
+        host_interval=host_interval,
+        normalized_workers=normalized_workers,
+        coverage=coverage,
+    )
+    _add_load_condition_metadata(record, canonical, repeat_count)
+    if calibration is not None:
+        record["calibration"] = calibration.as_record()
+    _add_load_throughput_metadata(record, canonical, achieved_throughput, throughput_unit)
+    validate_load_record(record)
+    return record
+
+
+def _validate_calibration_load_inputs(
+    canonical: str,
+    repeat_count: int,
+    calibration: CalibrationMetadata,
+    normalized_workers: list[dict[str, Any]],
+) -> None:
     if normalized_workers and canonical not in _DEVICE_LOAD_CONDITIONS:
         raise LoadEvidenceError("host calibration cannot claim card worker intervals")
     if canonical == "dram" and normalized_workers and len(normalized_workers) != DRAM_BANK_COUNT:
@@ -1031,12 +1105,20 @@ def build_calibration_load_record(
         raise LoadConfigurationError("calibration condition does not match the load condition")
     if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadConfigurationError("calibration measurement repeat_count must be positive")
-    coverage = (
-        _card_coverage(card_interval, resident_timestamps)
-        if canonical in _DEVICE_LOAD_CONDITIONS
-        else _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
-    )
-    record: dict[str, Any] = {
+
+
+def _calibration_load_payload(
+    *,
+    canonical: str,
+    repeat_count: int,
+    calibration: CalibrationMetadata,
+    coverage: dict[str, Any],
+    resident_timestamps: list[int] | tuple[int, ...] | None,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+    normalized_workers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
         "schema": "issue-118-load-calibration-v1",
         "issue": 118,
         "status": "calibration",
@@ -1081,22 +1163,45 @@ def build_calibration_load_record(
             else None
         ),
     }
-    if achieved_throughput is not None:
-        _finite_positive(achieved_throughput, "achieved_throughput")
-        if not isinstance(throughput_unit, str) or not throughput_unit.strip():
-            raise LoadConfigurationError("throughput_unit is required with achieved_throughput")
-        record["achieved_throughput"] = achieved_throughput
-        record["throughput_unit"] = throughput_unit
-        record["throughput_reference_aiclk_mhz"] = (
-            CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
-            if canonical in _DEVICE_LOAD_CONDITIONS
-            else None
-        )
-        record["throughput_unit_definition"] = (
-            CARD_THROUGHPUT_UNIT_DEFINITION
-            if canonical in _DEVICE_LOAD_CONDITIONS
-            else "host monotonic interval repeats per second"
-        )
+
+
+def build_calibration_load_record(
+    *,
+    condition: str,
+    repeat_count: int,
+    resident_timestamps: list[int] | tuple[int, ...] | None,
+    calibration: CalibrationMetadata,
+    card_interval: CardLoadInterval | None = None,
+    host_interval: HostLoadInterval | None = None,
+    worker_intervals: list[Mapping[str, Any] | CardWorkerInterval] | None = None,
+    measurement_start_ns: int | None = None,
+    measurement_end_ns: int | None = None,
+    achieved_throughput: float | None = None,
+    throughput_unit: str | None = None,
+) -> dict[str, Any]:
+    """Build a calibration result without promoting coverage to timing evidence."""
+    canonical = normalize_condition(condition)
+    normalized_workers = _normalize_worker_intervals(worker_intervals)
+    _validate_calibration_load_inputs(
+        canonical, repeat_count, calibration, normalized_workers
+    )
+    coverage = (
+        _card_coverage(card_interval, resident_timestamps)
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
+    )
+    record = _calibration_load_payload(
+        canonical=canonical,
+        repeat_count=repeat_count,
+        calibration=calibration,
+        coverage=coverage,
+        resident_timestamps=resident_timestamps,
+        card_interval=card_interval,
+        host_interval=host_interval,
+        normalized_workers=normalized_workers,
+    )
+    _validate_achieved_throughput(achieved_throughput, throughput_unit)
+    _add_load_throughput_metadata(record, canonical, achieved_throughput, throughput_unit)
     validate_calibration_load_record(record)
     return record
 
@@ -1127,10 +1232,7 @@ def _validate_worker_interval_records(
         raise LoadEvidenceError("aggregate worker span is coverage-only")
 
 
-def validate_calibration_load_record(record: Mapping[str, Any]) -> None:
-    """Validate a calibration record without requiring full resident coverage."""
-    if not isinstance(record, Mapping):
-        raise LoadEvidenceError("calibration load record must be an object")
+def _calibration_record_header(record: Mapping[str, Any]) -> tuple[str, int]:
     if record.get("schema") != "issue-118-load-calibration-v1" or record.get("issue") != 118:
         raise LoadEvidenceError("record is not an Issue #118 calibration record")
     validate_device_open_settings(
@@ -1147,6 +1249,10 @@ def validate_calibration_load_record(record: Mapping[str, Any]) -> None:
         raise LoadEvidenceError("calibration repeat_count must be positive")
     if load.get("repeat_count") != repeat_count:
         raise LoadEvidenceError("calibration load repeat metadata is inconsistent")
+    return condition, repeat_count
+
+
+def _validate_calibration_metadata(record: Mapping[str, Any]) -> None:
     calibration = record.get("calibration")
     if not isinstance(calibration, Mapping):
         raise LoadEvidenceError("calibration metadata is missing")
@@ -1154,39 +1260,44 @@ def validate_calibration_load_record(record: Mapping[str, Any]) -> None:
         CalibrationMetadata(**dict(calibration))
     except (TypeError, ValueError) as exc:
         raise LoadEvidenceError("calibration metadata is invalid") from exc
-    coverage = record.get("coverage")
-    if not isinstance(coverage, Mapping):
+    if not isinstance(record.get("coverage"), Mapping):
         raise LoadEvidenceError("calibration coverage metadata is missing or invalid")
+
+
+def _validate_calibration_intervals(record: Mapping[str, Any], condition: str) -> None:
     if condition in _DEVICE_LOAD_CONDITIONS:
         interval = record.get("card_load_interval")
         if interval is not None:
             CardLoadInterval(
-                _uint64(interval.get("start_ticks"), "card load start_ticks"),
-                _uint64(interval.get("end_ticks"), "card load end_ticks"),
+                _uint64(interval.get("start_ticks"), _CARD_LOAD_START_FIELD),
+                _uint64(interval.get("end_ticks"), _CARD_LOAD_END_FIELD),
             )
         if record.get("host_load_interval") is not None:
             raise LoadEvidenceError("device calibration cannot claim host interval metadata")
         _validate_worker_interval_records(record, condition=condition)
-    else:
-        interval = record.get("host_load_interval")
-        if interval is not None:
-            HostLoadInterval(
-                _nonnegative_int(interval.get("start_ns"), "host load start_ns"),
-                _nonnegative_int(interval.get("end_ns"), "host load end_ns"),
-            )
-        if record.get("card_load_interval") is not None:
-            raise LoadEvidenceError("host calibration must not claim card interval metadata")
+        return
+    interval = record.get("host_load_interval")
+    if interval is not None:
+        HostLoadInterval(
+            _nonnegative_int(interval.get("start_ns"), _HOST_LOAD_START_FIELD),
+            _nonnegative_int(interval.get("end_ns"), _HOST_LOAD_END_FIELD),
+        )
+    if record.get("card_load_interval") is not None:
+        raise LoadEvidenceError("host calibration must not claim card interval metadata")
+
+
+def validate_calibration_load_record(record: Mapping[str, Any]) -> None:
+    """Validate a calibration record without requiring full resident coverage."""
+    if not isinstance(record, Mapping):
+        raise LoadEvidenceError("calibration load record must be an object")
+    condition, _repeat_count = _calibration_record_header(record)
+    _validate_calibration_metadata(record)
+    _validate_calibration_intervals(record, condition)
     if record.get("valid_evidence") is not False or record.get("status") != "calibration":
         raise LoadEvidenceError("calibration record must remain non-evidence")
 
 
-def validate_load_record(record: Mapping[str, Any]) -> None:
-    """Reject malformed, uncovered, or one-CQ records as condition evidence."""
-    if isinstance(record, Mapping) and record.get("schema") == "issue-118-load-calibration-v1":
-        validate_calibration_load_record(record)
-        return
-    if not isinstance(record, Mapping):
-        raise LoadEvidenceError("load record must be an object")
+def _load_record_header(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any], Any]:
     if record.get("schema") != "issue-118-load-v1" or record.get("issue") != 118:
         raise LoadEvidenceError("record is not an Issue #118 load record")
     settings = record.get("device_open")
@@ -1205,57 +1316,82 @@ def validate_load_record(record: Mapping[str, Any]) -> None:
             raise LoadEvidenceError("unloaded control must record repeat_count=0")
     elif isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadEvidenceError("loaded conditions must retain a positive fixed repeat_count")
+    return canonical, load, repeat_count
+
+
+def _validate_load_coverage(record: Mapping[str, Any], canonical: str) -> None:
     coverage = record.get("coverage")
     if not isinstance(coverage, Mapping) or coverage.get("valid") is not True:
         raise LoadEvidenceError("load coverage metadata is missing or invalid")
-    if canonical != "unloaded":
-        if coverage.get("covered") is not True or coverage.get("verdict") != "covered":
-            raise LoadEvidenceError("uncovered load interval is invalid evidence")
-        expected_clock = (
-            "card_riscv_wall_clock"
-            if canonical in _DEVICE_LOAD_CONDITIONS
-            else "host_monotonic_ns"
-        )
-        if coverage.get("clock") != expected_clock:
-            raise LoadEvidenceError("load coverage clock does not match the condition")
+    if canonical == "unloaded":
+        return
+    if coverage.get("covered") is not True or coverage.get("verdict") != "covered":
+        raise LoadEvidenceError("uncovered load interval is invalid evidence")
+    expected_clock = (
+        "card_riscv_wall_clock"
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else "host_monotonic_ns"
+    )
+    if coverage.get("clock") != expected_clock:
+        raise LoadEvidenceError("load coverage clock does not match the condition")
+
+
+def _validate_device_load_record(record: Mapping[str, Any], canonical: str) -> None:
+    interval = record.get("card_load_interval")
+    if not isinstance(interval, Mapping) or interval.get("clock") != "card_riscv_wall_clock":
+        raise LoadEvidenceError("device load evidence requires card-clock interval metadata")
+    start = _uint64(interval.get("start_ticks"), _CARD_LOAD_START_FIELD)
+    end = _uint64(interval.get("end_ticks"), _CARD_LOAD_END_FIELD)
+    valid_interval = (
+        interval.get("width_bits") == 64
+        and interval.get("timestamp_semantics") == "wrap-tracked_extended"
+        and interval.get("wrap_tracked") is True
+        and interval.get("elapsed_ticks") == end - start
+        and end >= start
+    )
+    if not valid_interval:
+        raise LoadEvidenceError("card load interval metadata is not wrap-tracked and extended")
+    if record.get("host_load_interval") is not None:
+        raise LoadEvidenceError("device-load coverage cannot substitute host interval metadata")
+    _validate_worker_interval_records(record, condition=canonical)
+    if "throughput_reference_aiclk_mhz" in record and record.get(
+        "throughput_reference_aiclk_mhz"
+    ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
+        raise LoadEvidenceError("device throughput reference AICLK must be 1350 MHz")
+    if "throughput_unit_definition" in record and record.get(
+        "throughput_unit_definition"
+    ) != CARD_THROUGHPUT_UNIT_DEFINITION:
+        raise LoadEvidenceError("device throughput unit definition is inconsistent")
+
+
+def _validate_host_load_record(record: Mapping[str, Any]) -> None:
+    interval = record.get("host_load_interval")
+    if not isinstance(interval, Mapping) or interval.get("clock") != "host_monotonic_ns":
+        raise LoadEvidenceError("host condition requires host interval metadata")
+    try:
+        start = _nonnegative_int(interval.get("start_ns"), _HOST_LOAD_START_FIELD)
+        end = _nonnegative_int(interval.get("end_ns"), _HOST_LOAD_END_FIELD)
+    except LoadConfigurationError as exc:
+        raise LoadEvidenceError(str(exc)) from exc
+    if end < start or interval.get("elapsed_ns") != end - start:
+        raise LoadEvidenceError("host load interval elapsed_ns is inconsistent")
+    if record.get("card_load_interval") is not None:
+        raise LoadEvidenceError("host condition must not claim a device load interval")
+
+
+def validate_load_record(record: Mapping[str, Any]) -> None:
+    """Reject malformed, uncovered, or one-CQ records as condition evidence."""
+    if isinstance(record, Mapping) and record.get("schema") == "issue-118-load-calibration-v1":
+        validate_calibration_load_record(record)
+        return
+    if not isinstance(record, Mapping):
+        raise LoadEvidenceError("load record must be an object")
+    canonical, _load, _repeat_count = _load_record_header(record)
+    _validate_load_coverage(record, canonical)
     if canonical in _DEVICE_LOAD_CONDITIONS:
-        interval = record.get("card_load_interval")
-        if not isinstance(interval, Mapping) or interval.get("clock") != "card_riscv_wall_clock":
-            raise LoadEvidenceError("device load evidence requires card-clock interval metadata")
-        start = _uint64(interval.get("start_ticks"), "card load start_ticks")
-        end = _uint64(interval.get("end_ticks"), "card load end_ticks")
-        if (
-            interval.get("width_bits") != 64
-            or interval.get("timestamp_semantics") != "wrap-tracked_extended"
-            or interval.get("wrap_tracked") is not True
-            or interval.get("elapsed_ticks") != end - start
-            or end < start
-        ):
-            raise LoadEvidenceError("card load interval metadata is not wrap-tracked and extended")
-        if record.get("host_load_interval") is not None:
-            raise LoadEvidenceError("device-load coverage cannot substitute host interval metadata")
-        _validate_worker_interval_records(record, condition=canonical)
-        if "throughput_reference_aiclk_mhz" in record and record.get(
-            "throughput_reference_aiclk_mhz"
-        ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
-            raise LoadEvidenceError("device throughput reference AICLK must be 1350 MHz")
-        if "throughput_unit_definition" in record and record.get(
-            "throughput_unit_definition"
-        ) != CARD_THROUGHPUT_UNIT_DEFINITION:
-            raise LoadEvidenceError("device throughput unit definition is inconsistent")
+        _validate_device_load_record(record, canonical)
     elif canonical == "host_cpu_transfer":
-        interval = record.get("host_load_interval")
-        if not isinstance(interval, Mapping) or interval.get("clock") != "host_monotonic_ns":
-            raise LoadEvidenceError("host condition requires host interval metadata")
-        try:
-            start = _nonnegative_int(interval.get("start_ns"), "host load start_ns")
-            end = _nonnegative_int(interval.get("end_ns"), "host load end_ns")
-        except LoadConfigurationError as exc:
-            raise LoadEvidenceError(str(exc)) from exc
-        if end < start or interval.get("elapsed_ns") != end - start:
-            raise LoadEvidenceError("host load interval elapsed_ns is inconsistent")
-        if record.get("card_load_interval") is not None:
-            raise LoadEvidenceError("host condition must not claim a device load interval")
+        _validate_host_load_record(record)
     if record.get("valid_evidence") is not True or record.get("status") != "valid":
         raise LoadEvidenceError("record is not marked as valid evidence")
 

@@ -456,6 +456,70 @@ def _time_weighted_aiclk(
     return weighted / covered, covered, "load_interval_trace_samples"
 
 
+def _set_in_run_trace_facts(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    parsed_timestamps: list[datetime.datetime],
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> None:
+    trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
+    trace["covers_run_end"] = parsed_timestamps[-1] >= end
+    in_run = [
+        aiclk
+        for _sample, timestamp, aiclk in usable_rows
+        if start <= timestamp <= end
+    ]
+    trace["in_run_valid_row_count"] = len(in_run)
+    trace["aiclk_mhz_in_run"] = in_run
+    trace["in_run_samples"] = [
+        dict(sample)
+        for sample, timestamp, _aiclk in usable_rows
+        if start <= timestamp <= end
+    ]
+    trace["aiclk_trace_in_run"] = list(trace["in_run_samples"])
+    if in_run:
+        trace["aiclk_source"] = "run_trace_samples"
+        trace["aiclk_mhz"] = max(in_run)
+        trace["aiclk_mhz_in_run_min"] = min(in_run)
+        trace["aiclk_mhz_in_run_max"] = max(in_run)
+
+
+def _set_load_interval_trace_facts(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    *,
+    start_text: str | None,
+    end_text: str | None,
+    source: str | None,
+    error_factory: Callable[[str, Exception | None], Any] | None,
+) -> None:
+    load_start_text = start_text
+    load_end_text = end_text
+    trace["load_interval_start"] = load_start_text
+    trace["load_interval_end"] = load_end_text
+    trace["load_interval_source"] = source or (
+        "run_bounds" if load_start_text is not None and load_end_text is not None else None
+    )
+    try:
+        load_start = _parse_trace_timestamp(load_start_text, field="load_interval_start")
+        load_end = _parse_trace_timestamp(load_end_text, field="load_interval_end")
+    except ValueError as exc:
+        trace["aiclk_mhz_load_interval_weighted_source"] = "unavailable"
+        trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
+        trace["errors"].append(_error_value(error_factory, "load_interval_invalid", exc))
+        return
+    weighted, covered, reason = _time_weighted_aiclk(
+        usable_rows, start=load_start, end=load_end
+    )
+    trace["aiclk_mhz_load_interval_weighted_seconds"] = covered
+    if weighted is not None:
+        trace["aiclk_mhz_load_interval_weighted"] = weighted
+        trace["aiclk_mhz_load_interval_weighted_source"] = "load_interval_trace_samples"
+    else:
+        trace["aiclk_mhz_load_interval_weighted_source"] = reason
+
+
 def _set_trace_run_facts(
     trace: dict[str, Any],
     usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
@@ -485,59 +549,19 @@ def _set_trace_run_facts(
 
     if start > end and append_run_errors:
         trace["errors"].append("run_start must be at or before run_end")
-    trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
-    trace["covers_run_end"] = parsed_timestamps[-1] >= end
-    in_run = [
-        aiclk
-        for _sample, timestamp, aiclk in usable_rows
-        if start <= timestamp <= end
-    ]
-    trace["in_run_valid_row_count"] = len(in_run)
-    trace["aiclk_mhz_in_run"] = in_run
-    trace["in_run_samples"] = [
-        dict(sample)
-        for sample, timestamp, _aiclk in usable_rows
-        if start <= timestamp <= end
-    ]
-    trace["aiclk_trace_in_run"] = list(trace["in_run_samples"])
-    if in_run:
-        trace["aiclk_source"] = "run_trace_samples"
-        trace["aiclk_mhz"] = max(in_run)
-        trace["aiclk_mhz_in_run_min"] = min(in_run)
-        trace["aiclk_mhz_in_run_max"] = max(in_run)
-
-    load_start_text = load_interval_start_text or start_text
-    load_end_text = load_interval_end_text or end_text
-    trace["load_interval_start"] = load_start_text
-    trace["load_interval_end"] = load_end_text
-    trace["load_interval_source"] = load_interval_source or (
-        "run_bounds" if load_start_text is not None and load_end_text is not None else None
+    _set_in_run_trace_facts(trace, usable_rows, parsed_timestamps, start, end)
+    _set_load_interval_trace_facts(
+        trace,
+        usable_rows,
+        start_text=load_interval_start_text or start_text,
+        end_text=load_interval_end_text or end_text,
+        source=load_interval_source,
+        error_factory=error_factory,
     )
-    try:
-        load_start = _parse_trace_timestamp(load_start_text, field="load_interval_start")
-        load_end = _parse_trace_timestamp(load_end_text, field="load_interval_end")
-    except ValueError as exc:
-        trace["aiclk_mhz_load_interval_weighted_source"] = "unavailable"
-        trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
-        trace["errors"].append(_error_value(error_factory, "load_interval_invalid", exc))
-    else:
-        weighted, covered, reason = _time_weighted_aiclk(
-            usable_rows, start=load_start, end=load_end
-        )
-        trace["aiclk_mhz_load_interval_weighted_seconds"] = covered
-        if weighted is not None:
-            trace["aiclk_mhz_load_interval_weighted"] = weighted
-            trace["aiclk_mhz_load_interval_weighted_source"] = (
-                "load_interval_trace_samples"
-            )
-        else:
-            trace["aiclk_mhz_load_interval_weighted_source"] = reason
-
-    interval_bound = False
+    interval_bound = interval is not None and timestamp_within_interval_bound(
+        parsed_timestamps[-1], end, interval
+    )
     if interval is not None:
-        interval_bound = timestamp_within_interval_bound(
-            parsed_timestamps[-1], end, interval
-        )
         trace["sampler_interval_seconds"] = interval
     trace["coverage_complete"] = all(
         (
@@ -549,11 +573,9 @@ def _set_trace_run_facts(
             trace["timestamps_ordered"],
             parsed_timestamps[0] <= start,
             start <= end,
-            (
-                end <= parsed_timestamps[-1]
-                if definition == EXPLICIT_FINAL_SAMPLE
-                else interval_bound
-            ),
+            end <= parsed_timestamps[-1]
+            if definition == EXPLICIT_FINAL_SAMPLE
+            else interval_bound,
         )
     )
     trace["coverage"]["last_within_interval_bound"] = interval_bound

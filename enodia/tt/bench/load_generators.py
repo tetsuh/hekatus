@@ -384,6 +384,29 @@ def host_cpu_transfer_work() -> dict[str, Any]:
     }
 
 
+def _run_host_arithmetic(repetitions: int) -> int:
+    accumulator = 0
+    for _ in range(repetitions):
+        for _ in range(HOST_ARITHMETIC_ROUNDS):
+            for word in range(HOST_ARITHMETIC_WORDS):
+                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
+    return accumulator
+
+
+def _run_host_transfers(
+    payload: bytes,
+    repetitions: int,
+    transfer: Callable[[bytes, int], None] | None,
+) -> None:
+    for _ in range(repetitions):
+        if transfer is None:
+            for _ in range(HOST_TRANSFER_COUNT):
+                payload = bytes(payload)
+        else:
+            for _ in range(HOST_TRANSFER_COUNT):
+                transfer(payload, TRANSFER_COMMAND_QUEUE)
+
+
 def run_host_cpu_transfer_work(
     *,
     repetitions: int = 1,
@@ -400,17 +423,8 @@ def run_host_cpu_transfer_work(
         raise LoadConfigurationError("host repetitions must be a positive integer")
     payload = bytes(HOST_TRANSFER_BYTES)
     started = clock_ns()
-    accumulator = 0
-    for _ in range(repetitions):
-        for _ in range(HOST_ARITHMETIC_ROUNDS):
-            for word in range(HOST_ARITHMETIC_WORDS):
-                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
-        if transfer is None:
-            for _ in range(HOST_TRANSFER_COUNT):
-                bytes(payload)
-        else:
-            for _ in range(HOST_TRANSFER_COUNT):
-                transfer(payload, TRANSFER_COMMAND_QUEUE)
+    accumulator = _run_host_arithmetic(repetitions)
+    _run_host_transfers(payload, repetitions, transfer)
     ended = clock_ns()
     if not isinstance(started, int) or not isinstance(ended, int) or ended < started:
         raise LoadConfigurationError("host clock interval is invalid")

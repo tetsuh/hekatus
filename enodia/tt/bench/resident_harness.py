@@ -297,6 +297,67 @@ def resident_l1_allocation_bytes(*, ring_pages: int, watcher: bool = False) -> i
     return sum(row["bytes"] for row in resident_l1_allocation_table(ring_pages=ring_pages, watcher=watcher))
 
 
+def _validate_timestamp_limits(interval: int, budget: int, work: int) -> None:
+    if interval >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"frame_interval_ticks must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if budget >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            f"cycle_budget must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
+        )
+    if work * WORK_TICKS_PER_UNIT_UPPER_BOUND >= TIMESTAMP_GAP_LIMIT_TICKS:
+        raise ResidentPreflightError(
+            "work_per_frame upper bound would reach the 2**31 wrap-tracked timestamp gap"
+        )
+
+
+def _timeout_cap(config: ResidentConfig, watcher: bool) -> tuple[int, str]:
+    if watcher:
+        return MAX_WATCHER_TIMEOUT_SECONDS, "watcher_60s"
+    timeout_cap = config.outer_timeout_cap_seconds
+    if timeout_cap not in {MAX_TIMING_TIMEOUT_SECONDS, MAX_COMPUTE_LOAD_TIMEOUT_SECONDS}:
+        raise ResidentPreflightError(
+            "outer_timeout_cap_seconds must be 600 or 800 for timing runs"
+        )
+    if (
+        timeout_cap == MAX_COMPUTE_LOAD_TIMEOUT_SECONDS
+        and config.outer_timeout_cap_source != "issue118_compute_load_800s"
+    ):
+        raise ResidentPreflightError(
+            "800-second timing cap requires issue118_compute_load_800s provenance"
+        )
+    return timeout_cap, config.outer_timeout_cap_source
+
+
+def _validate_core_configuration(
+    config: ResidentConfig, interval: int, fixed_work_ticks: int
+) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
+    producer = _core(config.producer_core, "producer_core")
+    consumer = _core(config.consumer_core, "consumer_core")
+    designated = _core(config.designated_timestamp_core, "designated_timestamp_core")
+    if fixed_work_ticks * 2 > interval:
+        raise ResidentPreflightError(
+            "fixed_work_ticks_per_frame must be <= half the frame interval in device ticks"
+        )
+    if producer == consumer:
+        raise ResidentPreflightError("producer and consumer must run on different cores")
+    if designated != consumer:
+        raise ResidentPreflightError(
+            "designated_timestamp_core must equal consumer_core; all intervals use one clock"
+        )
+    return producer, consumer, designated
+
+
+def _validate_l1_capacity(ring_pages: int, watcher: bool) -> None:
+    l1_bytes = resident_l1_allocation_bytes(ring_pages=ring_pages, watcher=watcher)
+    if l1_bytes > MAX_RING_L1_BYTES:
+        raise ResidentPreflightError(
+            f"ring_pages={ring_pages} exceeds the L1 preflight budget "
+            f"({MAX_RING_L1_BYTES} bytes including scratch pages and semaphores)"
+        )
+
+
 def validate_configuration(
     config: ResidentConfig, *, watcher: bool = False
 ) -> ResidentConfig:
@@ -320,18 +381,7 @@ def validate_configuration(
     ring_pages = _uint32_positive_int(config.ring_pages, "ring_pages")
     work = _uint32_positive_int(config.work_per_frame, "work_per_frame")
     budget = _uint32_positive_int(config.cycle_budget, "cycle_budget")
-    if interval >= TIMESTAMP_GAP_LIMIT_TICKS:
-        raise ResidentPreflightError(
-            f"frame_interval_ticks must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
-        )
-    if budget >= TIMESTAMP_GAP_LIMIT_TICKS:
-        raise ResidentPreflightError(
-            f"cycle_budget must be < {TIMESTAMP_GAP_LIMIT_TICKS} for wrap-tracked timestamp gaps"
-        )
-    if work * WORK_TICKS_PER_UNIT_UPPER_BOUND >= TIMESTAMP_GAP_LIMIT_TICKS:
-        raise ResidentPreflightError(
-            "work_per_frame upper bound would reach the 2**31 wrap-tracked timestamp gap"
-        )
+    _validate_timestamp_limits(interval, budget, work)
     fixed_work_ticks = _positive_int(
         config.fixed_work_ticks_per_frame, "fixed_work_ticks_per_frame"
     )
@@ -340,44 +390,16 @@ def validate_configuration(
     bin_width = _positive_int(config.histogram_bin_ticks, "histogram_bin_ticks")
     if ring_pages < MIN_RING_PAGES:
         raise ResidentPreflightError(f"ring_pages must be >= {MIN_RING_PAGES}")
-    if watcher:
-        timeout_cap = MAX_WATCHER_TIMEOUT_SECONDS
-        cap_source = "watcher_60s"
-    else:
-        timeout_cap = config.outer_timeout_cap_seconds
-        if timeout_cap not in {MAX_TIMING_TIMEOUT_SECONDS, MAX_COMPUTE_LOAD_TIMEOUT_SECONDS}:
-            raise ResidentPreflightError(
-                "outer_timeout_cap_seconds must be 600 or 800 for timing runs"
-            )
-        if timeout_cap == MAX_COMPUTE_LOAD_TIMEOUT_SECONDS and config.outer_timeout_cap_source != "issue118_compute_load_800s":
-            raise ResidentPreflightError(
-                "800-second timing cap requires issue118_compute_load_800s provenance"
-            )
-        cap_source = config.outer_timeout_cap_source
+    timeout_cap, cap_source = _timeout_cap(config, watcher)
     if timeout > timeout_cap:
         mode = "Watcher" if watcher else "timing"
         raise ResidentPreflightError(
             f"outer_timeout_seconds={timeout} exceeds the {timeout_cap}s Stage 1 {mode} cap"
         )
-    producer = _core(config.producer_core, "producer_core")
-    consumer = _core(config.consumer_core, "consumer_core")
-    designated = _core(config.designated_timestamp_core, "designated_timestamp_core")
-    if fixed_work_ticks * 2 > interval:
-        raise ResidentPreflightError(
-            "fixed_work_ticks_per_frame must be <= half the frame interval in device ticks"
-        )
-    if producer == consumer:
-        raise ResidentPreflightError("producer and consumer must run on different cores")
-    if designated != consumer:
-        raise ResidentPreflightError(
-            "designated_timestamp_core must equal consumer_core; all intervals use one clock"
-        )
-    l1_bytes = resident_l1_allocation_bytes(ring_pages=ring_pages, watcher=watcher)
-    if l1_bytes > MAX_RING_L1_BYTES:
-        raise ResidentPreflightError(
-            f"ring_pages={ring_pages} exceeds the L1 preflight budget "
-            f"({MAX_RING_L1_BYTES} bytes including scratch pages and semaphores)"
-        )
+    producer, consumer, designated = _validate_core_configuration(
+        config, interval, fixed_work_ticks
+    )
+    _validate_l1_capacity(ring_pages, watcher)
     return ResidentConfig(
         frame_count=frame_count,
         frame_interval_ticks=interval,

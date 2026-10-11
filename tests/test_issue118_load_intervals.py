@@ -592,10 +592,8 @@ def test_host_measurement_is_rejected_for_issue_120_but_calibration_remains_avai
 def test_host_load_clock_uses_launch_once_and_fresh_endpoint():
     import threading
 
-    launched = threading.Event()
     start_holder = {}
     clock = _host_load_clock(
-        resident_launched=launched,
         stop_event=threading.Event(),
         start_holder=start_holder,
         monotonic_ns=iter((250, 400)).__next__,
@@ -639,16 +637,19 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     host_runner_end = resident_source.index("def _host_join_timeout_seconds(")
     host_runner_source = resident_source[host_runner_start:host_runner_end]
     assert host_runner_source.index("started_event.set()") < host_runner_source.index(
-        "for _ in range(HOST_ARITHMETIC_ROUNDS)"
+        "_run_host_transfer_repetitions("
     )
-    assert host_runner_source.index("for _ in range(HOST_ARITHMETIC_ROUNDS)") < host_runner_source.index(
-        "resident_launched.wait"
+    transfer_source = resident_source[
+        resident_source.index("def _run_host_transfer_repetitions(") : host_runner_end
+    ]
+    assert transfer_source.index("_run_host_arithmetic_repeat(") < transfer_source.index(
+        "_wait_for_resident_launch"
     )
-    assert host_runner_source.index("resident_launched.wait") < host_runner_source.index(
+    assert transfer_source.index("_wait_for_resident_launch") < transfer_source.index(
         "_queue_host_transfer_batch("
     )
-    assert host_runner_source.index("_queue_host_transfer_batch(") < host_runner_source.index(
-        "ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)"
+    assert transfer_source.index("_queue_host_transfer_batch(") < transfer_source.index(
+        "_synchronize_transfer_queue("
     )
     assert "if transfer_index and slot == 0" not in resident_source
     assert resident_source.index("started_event.set()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
@@ -714,8 +715,13 @@ def test_merged_program_rejects_cb_collisions_and_keeps_all_groups():
     )
     assert merged.kernels == ["resident", "load"]
     assert [descriptor.format_descriptors[0].buffer_index for descriptor in merged.cbs] == [20, 0]
+    duplicate_ttnn = Ttnn()
+    duplicate_first = Program(20, "a")
+    duplicate_second = Program(20, "b")
     with pytest.raises(ValueError, match="collision"):
-        load_generators.merge_program_descriptors(Ttnn(), Program(20, "a"), Program(20, "b"))
+        load_generators.merge_program_descriptors(
+            duplicate_ttnn, duplicate_first, duplicate_second
+        )
 
 
 def test_fixed_dram_and_host_work_metadata():
@@ -829,12 +835,13 @@ def test_card_interval_wrap_extension_and_coverage_are_card_only():
     uncovered["coverage"] = {**record["coverage"], "covered": False, "verdict": "uncovered"}
     uncovered["valid_evidence"] = False
     assert not load_evidence_valid(uncovered)
+    invalid_dram_interval = CardLoadInterval(101, 310)
     with pytest.raises(LoadEvidenceError):
         build_load_record(
             condition="dram",
             repeat_count=1,
             resident_timestamps=[100, 200, 300],
-            card_interval=CardLoadInterval(101, 310),
+            card_interval=invalid_dram_interval,
         )
 
 
@@ -850,12 +857,13 @@ def test_host_condition_uses_host_interval_for_measurement_coverage():
     assert record["coverage"]["clock"] == "host_monotonic_ns"
     assert record["coverage"]["verdict"] == "covered"
     validate_load_record(record)
+    invalid_host_interval = HostLoadInterval(101, 310)
     with pytest.raises(LoadEvidenceError):
         build_load_record(
             condition="host_cpu_transfer",
             repeat_count=7,
             resident_timestamps=None,
-            host_interval=HostLoadInterval(101, 310),
+            host_interval=invalid_host_interval,
             measurement_start_ns=100,
             measurement_end_ns=300,
         )
