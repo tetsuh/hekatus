@@ -19,6 +19,7 @@ import os
 import re
 import tempfile
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,14 @@ DEFAULT_SNAPSHOT_PREFIX = "power-trace-snapshot"
 POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
+
+
+@dataclass(frozen=True)
+class PowerTraceReadOptions:
+    """Parser settings that apply to the CSV rows rather than run identity."""
+
+    row_label: str = "power sample"
+    tolerate_invalid_run_bounds: bool = False
 
 # These descriptions were emitted by Issue #88 before coverage definitions
 # became named contract values.  They remain readable as explicit-final-
@@ -271,6 +280,19 @@ def _valid_interval_seconds(value: float | None) -> float | None:
     return interval if math.isfinite(interval) and interval > 0.0 else None
 
 
+def timestamp_within_interval_bound(
+    sample_timestamp: datetime.datetime,
+    run_end: datetime.datetime,
+    sampler_interval_seconds: float | None,
+) -> bool:
+    """Return whether a sample is inside the inclusive one-interval bound."""
+    interval = _valid_interval_seconds(sampler_interval_seconds)
+    if interval is None:
+        return False
+    interval_start = run_end - datetime.timedelta(seconds=interval)
+    return interval_start <= sample_timestamp <= run_end
+
+
 def _run_timestamp_text(
     value: datetime.datetime | str | None,
     *,
@@ -425,8 +447,9 @@ def _set_trace_run_facts(
 
     interval_bound = False
     if interval is not None:
-        interval_start = end - datetime.timedelta(seconds=interval)
-        interval_bound = interval_start <= parsed_timestamps[-1] <= end
+        interval_bound = timestamp_within_interval_bound(
+            parsed_timestamps[-1], end, interval
+        )
         trace["sampler_interval_seconds"] = interval
     trace["coverage_complete"] = all(
         (
@@ -500,7 +523,7 @@ def _evaluate_trace_rows(
     elif timestamp_error is not None:
         trace["error"] = timestamp_error
     elif require_all_rows_valid and not all_rows_valid:
-        pass
+        trace["error"] = errors[0]
     else:
         _set_trace_timestamp_facts(trace, parsed_timestamps)
         _set_trace_run_facts(
@@ -533,17 +556,17 @@ def read_power_trace_csv(
     error_factory: Callable[[str, Exception | None], Any] | None = None,
     immutable_snapshot: bool = False,
     reject_incomplete_rows: bool = True,
-    row_label: str = "power sample",
-    tolerate_invalid_run_bounds: bool = False,
+    read_options: PowerTraceReadOptions | None = None,
 ) -> dict[str, Any]:
     """Read power CSV bytes and evaluate one named run-coverage contract."""
+    options = read_options or PowerTraceReadOptions()
     definition = canonical_coverage_definition(coverage_definition)
     path = Path(path)
     start_text, start_error = _run_timestamp_text(
-        run_start, field="run_start", tolerate_invalid=tolerate_invalid_run_bounds
+        run_start, field="run_start", tolerate_invalid=options.tolerate_invalid_run_bounds
     )
     end_text, end_error = _run_timestamp_text(
-        run_end, field="run_end", tolerate_invalid=tolerate_invalid_run_bounds
+        run_end, field="run_end", tolerate_invalid=options.tolerate_invalid_run_bounds
     )
     initial_errors = [
         _error_value(error_factory, "power_timestamp_invalid", error)
@@ -589,9 +612,9 @@ def read_power_trace_csv(
         interval=interval,
         require_all_rows_valid=require_all_rows_valid,
         error_factory=error_factory,
-        row_label=row_label,
+        row_label=options.row_label,
         initial_errors=initial_errors,
-        append_run_errors=tolerate_invalid_run_bounds,
+        append_run_errors=options.tolerate_invalid_run_bounds,
     )
 
 
@@ -742,6 +765,7 @@ __all__ = [
     "ONE_INTERVAL_BOUND",
     "POWER_TRACE_COLUMNS",
     "POWER_TRACE_SHA256_DEFINITION",
+    "PowerTraceReadOptions",
     "atomic_power_trace_snapshot",
     "canonical_coverage_definition",
     "empty_power_trace_metadata",
@@ -750,5 +774,6 @@ __all__ = [
     "public_power_trace_snapshot",
     "read_power_trace_csv",
     "read_power_trace_snapshot",
+    "timestamp_within_interval_bound",
     "validate_power_trace_snapshot_path",
 ]

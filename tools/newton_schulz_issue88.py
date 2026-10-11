@@ -51,6 +51,7 @@ from enodia.tt.bench.power_trace_snapshot import (
     canonical_coverage_definition,
     empty_power_trace_metadata,
     read_power_trace_snapshot,
+    timestamp_within_interval_bound,
     validate_power_trace_snapshot_path,
 )
 from enodia.tt.bench.power_trace_snapshot import (
@@ -1872,7 +1873,7 @@ def _power_trace_failure_reason(trace: Any) -> str:
             return codes["power_trace_invalid"]
         if not math.isfinite(interval) or interval <= 0.0:
             return codes["power_trace_invalid"]
-        if last > end or (end - last).total_seconds() > interval:
+        if not timestamp_within_interval_bound(last, end, interval):
             return codes["power_trace_incomplete"]
     if not trace.get("coverage_complete"):
         return codes["power_trace_incomplete"]
@@ -3040,8 +3041,7 @@ def _status_components(
                     or isinstance(interval, bool)
                     or not math.isfinite(float(interval))
                     or float(interval) <= 0.0
-                    or last > end
-                    or (end - last).total_seconds() > float(interval)
+                    or not timestamp_within_interval_bound(last, end, interval)
                 ):
                     power_failures.append(
                         "power timestamps do not satisfy first <= run_start <= run_end "

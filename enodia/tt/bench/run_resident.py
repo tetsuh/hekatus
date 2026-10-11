@@ -461,6 +461,22 @@ def _environment_output_path() -> Path:
     )
 
 
+def _reject_power_trace_run(
+    output_path: Path,
+    *,
+    config: ResidentConfig,
+    environment: dict[str, Any],
+    reason: str,
+) -> int:
+    """Persist one diagnostic rejection for an immutable trace failure."""
+    _write(
+        output_path,
+        build_rejection_record(config=config, reason=reason, environment=environment),
+    )
+    print(f"resident run rejected: {reason}", file=sys.stderr)
+    return 2
+
+
 def _power_trace_aiclk_values(power_trace: str | None) -> list[int]:
     if power_trace is None:
         return []
@@ -666,24 +682,14 @@ def main(argv: list[str] | None = None) -> int:
             power_trace = snapshot_path.name
         except RunBindingError as exc:
             reason = f"power trace binding rejected: {exc}"
-            _write(
-                args.out,
-                build_rejection_record(
-                    config=config, reason=reason, environment=environment
-                ),
+            return _reject_power_trace_run(
+                args.out, config=config, environment=environment, reason=reason
             )
-            print(f"resident run rejected: {reason}", file=sys.stderr)
-            return 2
         except FileExistsError as exc:
             reason = f"power trace snapshot installation rejected: {exc}"
-            _write(
-                args.out,
-                build_rejection_record(
-                    config=config, reason=reason, environment=environment
-                ),
+            return _reject_power_trace_run(
+                args.out, config=config, environment=environment, reason=reason
             )
-            print(f"resident run rejected: {reason}", file=sys.stderr)
-            return 2
         except FileNotFoundError as exc:
             # A missing artifact is retained only as a diagnostic compatibility
             # path.  It carries no bytes, no AICLK, and cannot claim timing.

@@ -191,7 +191,10 @@ def parse_power_trace(
             raise ValueError(
                 "one_interval_bound requires a finite positive sampler interval"
             )
-    from enodia.tt.bench.power_trace_snapshot import read_power_trace_csv
+    from enodia.tt.bench.power_trace_snapshot import (
+        PowerTraceReadOptions,
+        read_power_trace_csv,
+    )
 
     trace = read_power_trace_csv(
         path,
@@ -202,8 +205,10 @@ def parse_power_trace(
         require_all_rows_valid=True,
         error_factory=_legacy_power_trace_error,
         reject_incomplete_rows=False,
-        row_label="power row",
-        tolerate_invalid_run_bounds=True,
+        read_options=PowerTraceReadOptions(
+            row_label="power row",
+            tolerate_invalid_run_bounds=True,
+        ),
     )
     return _legacy_power_trace(trace)
 
