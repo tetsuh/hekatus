@@ -504,12 +504,22 @@ def _run_host_transfers(
     host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
     device_tensors: list[Any] = []
 
+    # Signal readiness before the first timing clock. The launch boundary is
+    # supplied by the main thread after GenericOp submission returns.
+    if started_event is not None:
+        started_event.set()
+
     def clock_ns() -> int:
-        value = time.monotonic_ns()
-        if start_holder is not None:
-            start_holder["start_ns"] = value
-        if started_event is not None:
-            started_event.set()
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("host load stopped before launch boundary")
+        if resident_launched is not None:
+            while not resident_launched.wait(timeout=0.1):
+                if stop_event is not None and stop_event.is_set():
+                    raise RuntimeError("host load stopped before launch boundary")
+        if start_holder is None or "launch_ns" not in start_holder:
+            raise RuntimeError("host launch boundary was not recorded")
+        value = start_holder["launch_ns"]
+        start_holder["start_ns"] = value
         return value
 
     def transfer(_payload: bytes, queue_id: int) -> None:
@@ -630,11 +640,22 @@ def _run_loaded_device(
             host_thread.start()
             if not host_started.wait(timeout=60.0):
                 raise RuntimeError("host load did not start")
-        measurement_start_ns = host_start_holder.get("start_ns", time.monotonic_ns())
+        measurement_start_ns: int | None = None
         try:
             ttnn.generic_op(_merged_program_io_tensors(resident_tensors), program)
+        except BaseException:
+            host_stop.set()
+            resident_launched.set()
+            raise
+        else:
+            launch_ns = time.monotonic_ns()
+            if host_thread is not None:
+                host_start_holder["launch_ns"] = launch_ns
+                measurement_start_ns = launch_ns
         finally:
             resident_launched.set()
+        if measurement_start_ns is None:
+            measurement_start_ns = time.monotonic_ns()
         ttnn.synchronize_device(device, cq_id=0)
         # Capture the CQ0 resident endpoint before waiting for any host-load
         # tail. This lets coverage accept a host load that extends beyond the

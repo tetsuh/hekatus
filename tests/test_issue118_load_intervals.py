@@ -280,7 +280,10 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
         "if calibration_output is not None:"
     )
     assert 'record["status"] = "calibration"' in resident_source
+    assert resident_source.rindex('host_start_holder["launch_ns"] = launch_ns') < resident_source.rindex("resident_launched.set()")
+    assert resident_source.rindex('host_start_holder["launch_ns"] = launch_ns') < resident_source.rindex("ttnn.synchronize_device(device, cq_id=0)")
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
+    assert resident_source.index('"launch_ns" not in start_holder') < resident_source.rindex("run_host_cpu_transfer_work")
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
