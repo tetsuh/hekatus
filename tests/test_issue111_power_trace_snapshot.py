@@ -675,3 +675,99 @@ def test_resident_main_rejects_invalid_snapshot_rows_as_timing_evidence(
     assert report["valid"] is False
     assert report["checks"]["power_trace.metadata_duplicates"]["ok"] is True
     assert report["checks"]["clock.timing_evidence"]["ok"] is True
+
+
+@pytest.mark.parametrize("invalid_interval", [None, 0, "not-a-number"])
+def test_resident_validation_fails_closed_for_invalid_one_interval_sampler_metadata(
+    tmp_path: Path, invalid_interval: object
+):
+    run_id = "run-111-invalid-interval"
+    live = tmp_path / f"power-{run_id}.csv"
+    _write_trace(live, RUN_START)
+    snapshot = atomic_power_trace_snapshot(
+        live,
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+        snapshot_prefix="resident-power-snapshot",
+    )
+    trace = read_power_trace_snapshot(
+        snapshot,
+        run_id=run_id,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        snapshot_prefix="resident-power-snapshot",
+        source_path=live,
+        sampler_interval_seconds=2.0,
+        coverage_definition=ONE_INTERVAL_BOUND,
+    )
+    record = build_measurement_record(
+        config=_config(),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="0123456789abcdef",
+        environment=_environment(),
+        power_trace=snapshot.name,
+        power_trace_path=snapshot,
+        power_trace_metadata=trace,
+        run_start=RUN_START,
+        run_end=RUN_END,
+        timing_evidence=False,
+    )
+    record["telemetry_sampler"]["interval_seconds"] = invalid_interval
+    record["environment"]["telemetry_sampler"]["interval_seconds"] = invalid_interval
+
+    report = validate_resident_record(
+        record,
+        timestamps=[1_000, 2_000, 3_000],
+        power_trace_path=snapshot,
+    )
+
+    assert report["valid"] is False
+    assert report["power_trace"]["coverage_complete"] is False
+    assert isinstance(report["power_trace"]["error"], str)
+    assert "finite positive sampler interval" in report["power_trace"]["error"]
+
+
+def test_resident_main_rejects_preexisting_snapshot_without_live_trace_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_dir = tmp_path / "runner-output"
+    output_dir.mkdir()
+    environment_path = output_dir / "env-current-run.json"
+    environment_path.write_text(json.dumps(_environment()))
+    live = output_dir / "power-current-run.csv"
+    _write_trace(live, RUN_START)
+    snapshot = output_dir / "resident-power-snapshot-current-run-1.csv"
+    snapshot_bytes = b"pre-existing snapshot bytes\n"
+    snapshot.write_bytes(snapshot_bytes)
+    output = tmp_path / "resident-rejected.json"
+    monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+    monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+    _patch_fake_resident_device(monkeypatch)
+
+    def fail_if_snapshot_is_read(*_args, **_kwargs):
+        raise AssertionError("pre-existing snapshot must stop before trace parsing")
+
+    monkeypatch.setattr(run_resident, "read_power_trace_snapshot", fail_if_snapshot_is_read)
+    assert run_resident.main(
+        [
+            "--out",
+            str(output),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            live.name,
+            "--frame-count",
+            "3",
+        ]
+    ) == 2
+
+    rejection = json.loads(output.read_text())
+    assert rejection["status"] == "rejected"
+    assert rejection["power_trace"] is None
+    assert "snapshot installation rejected" in rejection["rejection_reason"]
+    assert snapshot.read_bytes() == snapshot_bytes

@@ -2769,6 +2769,49 @@ def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _invalid_trace_report(
+    *,
+    trace_name: str,
+    coverage_definition: str,
+    sampler_interval: Any,
+    error: Exception | str,
+) -> dict[str, Any]:
+    """Return a closed trace diagnostic when coverage metadata is unusable."""
+    message = str(error)
+    return {
+        "file": trace_name,
+        "coverage_definition": coverage_definition,
+        "sampler_interval_seconds": sampler_interval,
+        "readable": False,
+        "nonempty": False,
+        "csv_row_count": 0,
+        "sample_count": 0,
+        "valid_row_count": 0,
+        "in_run_valid_row_count": 0,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "aiclk_source": "no_valid_in_run_samples",
+        "aiclk_mhz": None,
+        "errors": [message],
+        "error": message,
+        "coverage": {
+            "definition": coverage_definition,
+            "nonempty": False,
+            "timestamps_parse": False,
+            "timestamps_ordered": False,
+            "first_at_or_before_run_start": False,
+            "last_at_or_after_run_end": False,
+            "last_within_interval_bound": False,
+            "readable": False,
+            "complete": False,
+        },
+        "actual_bytes_available": False,
+    }
+
+
 def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str, Any] | None:
     sampler = _sampler(record)
     mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
@@ -2786,14 +2829,40 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
     sampler_interval = (
         sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
     )
+    if coverage_definition == ONE_INTERVAL_BOUND:
+        try:
+            interval = float(sampler_interval)
+        except (TypeError, ValueError, OverflowError):
+            return _invalid_trace_report(
+                trace_name=trace_name,
+                coverage_definition=coverage_definition,
+                sampler_interval=sampler_interval,
+                error="one_interval_bound requires a finite positive sampler interval",
+            )
+        if not math.isfinite(interval) or interval <= 0.0:
+            return _invalid_trace_report(
+                trace_name=trace_name,
+                coverage_definition=coverage_definition,
+                sampler_interval=sampler_interval,
+                error="one_interval_bound requires a finite positive sampler interval",
+            )
+        sampler_interval = interval
     if ctx.power_trace_path is not None:
-        report = parse_power_trace(
-            ctx.power_trace_path,
-            run_start=None if run_start is _MISSING else run_start,
-            run_end=None if run_end is _MISSING else run_end,
-            coverage_definition=coverage_definition,
-            sampler_interval_seconds=sampler_interval,
-        )
+        try:
+            report = parse_power_trace(
+                ctx.power_trace_path,
+                run_start=None if run_start is _MISSING else run_start,
+                run_end=None if run_end is _MISSING else run_end,
+                coverage_definition=coverage_definition,
+                sampler_interval_seconds=sampler_interval,
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            return _invalid_trace_report(
+                trace_name=trace_name,
+                coverage_definition=coverage_definition,
+                sampler_interval=sampler_interval,
+                error=exc,
+            )
         report["actual_bytes_available"] = True
         return report
     if ctx.power_trace_metadata is not None:

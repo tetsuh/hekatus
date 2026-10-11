@@ -1781,6 +1781,60 @@ def test_issue88_snapshot_with_mismatched_run_id_is_rejected(tmp_path):
         )
 
 
+def test_issue88_explicit_sampler_interval_accepts_run_end_between_samples(tmp_path):
+    run_id = "run-explicit-31"
+    environment_path = tmp_path / f"env-{run_id}.json"
+    _write_environment(environment_path, run_id=run_id)
+    environment = json.loads(environment_path.read_text())
+    environment["telemetry_sampler"] = {
+        "mode": "explicit",
+        "interval_seconds": 31.0,
+        "power_trace": "required",
+        "timing_evidence": "available",
+    }
+    environment_path.write_text(json.dumps(environment))
+    power_path = tmp_path / f"power-{run_id}.csv"
+    # The next 31-second sampler tick is after run_end; the sample at run_start
+    # is the inclusive lower-bound witness for this run.
+    power_path.write_text(_power_csv(["2026-01-01T00:00:00+00:00"]))
+
+    telemetry = runner._read_telemetry(
+        tmp_path,
+        run_id=run_id,
+        environment_path=environment_path,
+        power_path=power_path,
+        run_start="2026-01-01T00:00:00+00:00",
+        run_end="2026-01-01T00:00:30+00:00",
+        monotonic_fn=lambda: 0.0,
+        sleep_fn=lambda seconds: None,
+    )
+
+    assert telemetry["status"] == runner.ISSUE88_TELEMETRY_STATUS_COMPLETE
+    trace = telemetry["power_trace"]
+    assert trace["coverage_definition"] == runner.ONE_INTERVAL_BOUND
+    assert trace["sampler_interval_seconds"] == 31.0
+    assert trace["coverage_complete"] is True
+    assert trace["poll_complete"] is True
+
+    run = _passing_run(run_id=run_id)
+    cleanup = {"device_opened": True, "close_attempted": True, "close_succeeded": True}
+    statuses = runner._status_components(run, telemetry=telemetry, cleanup=cleanup)
+    assert runner._status_components_pass(statuses)
+    record = runner._record_payload(
+        run,
+        telemetry=telemetry,
+        run_id=run_id,
+        raw_path=tmp_path / f"raw-{run_id}.json",
+        cleanup=cleanup,
+        status_components=statuses,
+    )
+    assert record["measurement"]["power_clock_provenance"]["coverage_definition"] == (
+        runner.ONE_INTERVAL_BOUND
+    )
+    assert record["measurement"]["power_clock_provenance"]["sampler_interval_seconds"] == 31.0
+    runner._serialize_record(record)
+
+
 def test_issue88_power_poll_waits_for_sample_covering_run_end(tmp_path):
     path = tmp_path / "power-run-1.csv"
     path.write_text(_power_csv(["2026-01-01T00:00:01+00:00"]))

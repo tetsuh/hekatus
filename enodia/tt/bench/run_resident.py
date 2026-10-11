@@ -674,6 +674,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"resident run rejected: {reason}", file=sys.stderr)
             return 2
+        except FileExistsError as exc:
+            reason = f"power trace snapshot installation rejected: {exc}"
+            _write(
+                args.out,
+                build_rejection_record(
+                    config=config, reason=reason, environment=environment
+                ),
+            )
+            print(f"resident run rejected: {reason}", file=sys.stderr)
+            return 2
         except FileNotFoundError as exc:
             # A missing artifact is retained only as a diagnostic compatibility
             # path.  It carries no bytes, no AICLK, and cannot claim timing.
