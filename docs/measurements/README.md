@@ -59,15 +59,15 @@ and the corresponding coverage verdict is `covered`.
 
 The immutable power snapshot retains every usable in-run sample, the in-run
 minimum and maximum, and a left-held time-weighted AICLK over the explicit
-load interval. Issue #118 frame-interval seconds and card-load throughput are
-converted from that weighted value, never from the existing public maximum
-`aiclk_mhz`; missing load-interval bounds or provenance fail closed. The
-record also retains host `CLOCK_MONOTONIC` program launch/completion beside
-the card tick spans. DRAM records retain all eight worker rows and use the
-slowest worker's own elapsed interval for calibration; the aggregate worker
-span is coverage metadata only. The historical
-`repeats_per_card_second` spelling remains accepted for old records, while
-new calibration metadata annotates its card-tick/1.35e9-reference basis.
+load interval. Issue #118 frame-interval seconds use that weighted value,
+never the existing public maximum `aiclk_mhz`; missing load-interval bounds or
+provenance fail closed. Card-load calibration throughput keeps the historical
+`repeats_per_card_second` spelling but means repeats per 1.35e9 card-clock
+ticks; its card ticks are converted to real seconds with the observed
+load-interval AICLK. The record also retains host `CLOCK_MONOTONIC`
+program launch/completion beside the card tick spans. DRAM records retain all
+eight worker rows and use the slowest worker's own elapsed interval for
+calibration; the aggregate worker span is coverage metadata only.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. A fixed four-slot
 reusable host/device pool and per-repeat CQ1 completion keep transfer buffering

@@ -828,10 +828,10 @@ def test_actual_runner_reports_repeat_rate_not_work_rate():
     }
     assert _load_achieved_throughput(
         ns_result, condition="newton_schulz", repeat_count=1, aiclk_mhz=1000
-    ) == (1000.0, "repeats_per_card_second")
+    ) == (1350.0, "repeats_per_card_second")
     assert _load_achieved_throughput(
         dram_result, condition="dram", repeat_count=1, aiclk_mhz=1000
-    ) == (1000.0, "repeats_per_card_second")
+    ) == (1350.0, "repeats_per_card_second")
     assert _load_achieved_throughput(
         host_result, condition="host_cpu_transfer", repeat_count=1, aiclk_mhz=1000
     ) == (1000.0, "repeats_per_host_second")
@@ -973,7 +973,7 @@ def test_delayed_worker_uses_slowest_worker_interval_not_aggregate_span():
     throughput, unit = _load_achieved_throughput(
         result, condition="dram", repeat_count=1, aiclk_mhz=1_000
     )
-    assert throughput == pytest.approx(500_000.0)
+    assert throughput == pytest.approx(675_000.0)
     assert unit == "repeats_per_card_second"
     assert result["throughput_interval"]["source"] == (
         "slowest_worker_own_elapsed_interval"

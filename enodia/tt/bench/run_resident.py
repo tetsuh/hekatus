@@ -34,6 +34,7 @@ from enodia.tt.bench.load_generators import (
     prepare_newton_schulz_load,
 )
 from enodia.tt.bench.load_harness import (
+    CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
     DRAM_STREAM_TOTAL_BYTES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
@@ -1239,7 +1240,7 @@ def _bound_calibration_config(config: ResidentConfig, duration_seconds: float) -
 def _load_achieved_throughput(
     result: dict[str, Any], *, condition: str, repeat_count: int, aiclk_mhz: float
 ) -> tuple[float, str]:
-    """Convert actual load work using the slowest worker's own interval."""
+    """Convert load work to the historical 1.35e9-tick reference unit."""
     if condition == "host_cpu_transfer":
         interval = result.get("host_load_interval")
         elapsed_seconds = (interval.end_ns - interval.start_ns) / 1_000_000_000.0
@@ -1265,6 +1266,10 @@ def _load_achieved_throughput(
         result["throughput_interval"] = {
             "source": "slowest_worker_own_elapsed_interval",
             "elapsed_ticks": elapsed_ticks,
+            "elapsed_seconds_at_reference_aiclk": elapsed_ticks
+            / (CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0),
+            "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+            "load_interval_aiclk_mhz": aiclk_mhz,
             "aggregate_span_elapsed_ticks": interval.elapsed_ticks,
         }
     else:
@@ -1272,8 +1277,14 @@ def _load_achieved_throughput(
         result["throughput_interval"] = {
             "source": "aggregate_card_interval_legacy_compatibility",
             "elapsed_ticks": elapsed_ticks,
+            "elapsed_seconds_at_reference_aiclk": elapsed_ticks
+            / (CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0),
+            "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+            "load_interval_aiclk_mhz": aiclk_mhz,
         }
-    elapsed_seconds = elapsed_ticks / (aiclk_mhz * 1_000_000.0)
+    elapsed_seconds = elapsed_ticks / (
+        CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0
+    )
     if condition == "dram":
         work_rate = (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12)
         result["load_work_rate"] = {

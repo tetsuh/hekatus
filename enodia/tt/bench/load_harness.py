@@ -88,8 +88,9 @@ MAX_CALIBRATION_SECONDS = 60.0
 MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 CARD_THROUGHPUT_REFERENCE_AICLK_MHZ = 1_350
 CARD_THROUGHPUT_UNIT_DEFINITION = (
-    "load repeats per real second reconstructed from card ticks using the "
-    "load-interval AICLK; 1.35e9 Hz is the reference normalization"
+    "load repeats per 1.35e9 card-clock ticks (historical unit name "
+    "repeats_per_card_second); convert those ticks to real seconds with the "
+    "observed load-interval AICLK"
 )
 
 LOAD_CONDITIONS = (
