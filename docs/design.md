@@ -1242,7 +1242,7 @@ default**; **FP32-R remains an explicit variant**. The authoritative derived
 summary `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json`
 compares matched placements against the common original-FP32-R true inverse:
 FP32-R lowers inverse error by about 4×, brings MV direction about 8–15× closer,
-and reduces the corrected beam-metric errors by about 3–3.5×. Its P50
+and reduces the three relative-Frobenius beam-response errors by about 3–3.5×. Its P50
 throughput cost is about **−2% at L=16/L1** and **−4.7% at L=32 with R in
 DRAM**. The FP32-R/L=32/R-in-L1 placement is rejected before allocation at
 **1,884,928 B** against the **1,572,864 B** L1 budget. These are solver and
