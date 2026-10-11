@@ -186,6 +186,14 @@ POWER_TRACE_COVERAGE_DESCRIPTION = (
     "canonical sampler interval through run_end. Rows with unusable power, "
     "AICLK, or temperature values are excluded from these checks."
 )
+EXPLICIT_FINAL_SAMPLE_COVERAGE_DESCRIPTION = (
+    "Coverage is complete when the immutable per-run snapshot has at least one "
+    "usable finite telemetry row, usable timestamps parse in order, its first "
+    "usable sample is at or before the recorded run start, and its last usable "
+    "sample timestamp is at or after the recorded run end; the run interval is "
+    "covered through its end. Rows with unusable power, AICLK, or temperature "
+    "values are excluded from these checks."
+)
 _PCI_BUS_ID_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _HARNESS_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
@@ -1647,15 +1655,6 @@ def _read_power_trace(
         read_text_fn=read_text_fn,
         error_factory=error_factory,
     )
-    if sampler_interval_seconds is None:
-        # Historical board-free callers omitted the wrapper sampler object.
-        # Keep their usable-row publication shape while the wrapper path above
-        # always supplies the canonical interval to the one-bound contract.
-        trace["coverage_definition"] = POWER_TRACE_COVERAGE_DEFINITION
-        trace["sampler_interval_seconds"] = DEFAULT_SAMPLER_INTERVAL_SECONDS
-        coverage = trace.get("coverage")
-        if isinstance(coverage, dict):
-            coverage["definition"] = POWER_TRACE_COVERAGE_DEFINITION
     trace["samples"] = _sanitize_metadata(trace.get("samples", []))
     trace["errors"] = _sanitize_metadata(trace.get("errors", []))
     for field in (
@@ -3129,12 +3128,12 @@ def _record_payload(
             {"code": ISSUE88_ERROR_CODE_VALUES["record_publication_failed"]},
         )
         failure = _error_entry(failed_component["code"], None)
-    legacy_sampler_compatibility = (
-        isinstance(environment, dict) and "telemetry_sampler" not in environment
-    )
     record_coverage_definition = power_trace.get("coverage_definition")
-    if legacy_sampler_compatibility and record_coverage_definition == EXPLICIT_FINAL_SAMPLE:
-        record_coverage_definition = POWER_TRACE_COVERAGE_DEFINITION
+    coverage_description = (
+        EXPLICIT_FINAL_SAMPLE_COVERAGE_DESCRIPTION
+        if record_coverage_definition == EXPLICIT_FINAL_SAMPLE
+        else POWER_TRACE_COVERAGE_DESCRIPTION
+    )
     record: dict[str, Any] = {
         "record_schema": ISSUE88_RECORD_SCHEMA,
         "status": ISSUE88_STATUS_PASS if overall_pass else ISSUE88_STATUS_FAILED,
@@ -3281,7 +3280,7 @@ def _record_payload(
             "Each inverse artifact records the SHA-256 of canonical contiguous C-order array payload bytes and the SHA-256 of the complete .npy file, plus shape, dtype, element/matrix counts, and byte counts.",
             "Raw launch samples, fingerprints, correctness metrics, inverse artifact metadata, and sanitized telemetry are retained.",
             "The power trace is an immutable per-run CSV snapshot; its hash, sample count, and coverage fields refer to that snapshot.",
-            POWER_TRACE_COVERAGE_DESCRIPTION,
+            coverage_description,
             "No host name or user-specific absolute path is included in this record.",
         ],
     }
