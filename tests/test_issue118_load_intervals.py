@@ -357,6 +357,48 @@ def test_host_transfer_ring_keeps_allocations_fixed_and_synchronizes_repeats(mon
     assert allocation_counts[0] == allocation_counts[1]
 
 
+def test_host_transfer_waits_for_resident_submission_before_first_cq1_batch(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(resident_runner, "HOST_TRANSFER_COUNT", 1)
+    monkeypatch.setattr(resident_runner, "HOST_ARITHMETIC_ROUNDS", 1)
+    monkeypatch.setattr(resident_runner, "HOST_ARITHMETIC_WORDS", 1)
+    ttnn = _FakeHostTransferTtnn()
+    device_tensors = []
+    host_tensors = []
+    started = threading.Event()
+    resident_launched = threading.Event()
+    result_holder = {}
+
+    def run():
+        result_holder.update(
+            _run_host_transfers(
+                ttnn,
+                object(),
+                started_event=started,
+                resident_launched=resident_launched,
+                start_holder={},
+                device_tensors_holder=device_tensors,
+                host_tensors_holder=host_tensors,
+            )
+        )
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert started.wait(timeout=1.0)
+    assert ttnn.events == []
+    resident_launched.set()
+    thread.join(timeout=1.0)
+    assert not thread.is_alive()
+    assert result_holder["transfer_count"] == 1
+    assert [event[0] for event in ttnn.events] == [
+        "host_to_device",
+        "device_to_host",
+        "synchronize",
+    ]
+    _complete_host_transfers(ttnn, object(), device_tensors, host_tensors)
+
+
 def test_host_transfer_runner_queues_256_pairs_per_repeat(monkeypatch):
     ttnn, device_tensors, host_tensors, _started, result = _run_fake_host_transfer(
         monkeypatch,
@@ -468,6 +510,9 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
         "for _ in range(HOST_ARITHMETIC_ROUNDS)"
     )
     assert host_runner_source.index("for _ in range(HOST_ARITHMETIC_ROUNDS)") < host_runner_source.index(
+        "resident_launched.wait"
+    )
+    assert host_runner_source.index("resident_launched.wait") < host_runner_source.index(
         "_queue_host_transfer_batch("
     )
     assert host_runner_source.index("_queue_host_transfer_batch(") < host_runner_source.index(

@@ -586,7 +586,6 @@ def _run_host_transfers(
     host_tensors_holder: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Run fixed arithmetic, one CQ1 batch, and one CQ1 completion per repeat."""
-    del resident_launched  # Host work deliberately starts before resident launch.
     if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
         raise LoadConfigurationError("host repetitions must be a positive integer")
     device_tensors = device_tensors_holder if device_tensors_holder is not None else []
@@ -607,12 +606,18 @@ def _run_host_transfers(
         started_event.set()
 
     accumulator = 0
-    for _ in range(repetitions):
+    for repetition in range(repetitions):
         for _ in range(HOST_ARITHMETIC_ROUNDS):
             if stop_event is not None and stop_event.is_set():
                 raise RuntimeError("host load stopped during CPU work")
             for word in range(HOST_ARITHMETIC_WORDS):
                 accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
+        if repetition == 0 and resident_launched is not None:
+            # Arithmetic starts before GenericOp, but keep the first CQ1 batch
+            # behind its submission so the transfer path cannot serialize CQ0.
+            while not resident_launched.wait(timeout=0.1):
+                if stop_event is not None and stop_event.is_set():
+                    raise RuntimeError("host load stopped before queuing CQ1 transfers")
         _queue_host_transfer_batch(
             ttnn,
             device,
