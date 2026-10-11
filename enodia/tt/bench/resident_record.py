@@ -2812,59 +2812,91 @@ def _invalid_trace_report(
     }
 
 
-def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str, Any] | None:
-    sampler = _sampler(record)
-    mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
-    trace_name = record.get("power_trace")
-    if mode not in {"default", "explicit"} or not trace_name:
-        return None
-    declared = _declared_power_metadata(record)
-    run_start = declared.get("run_start")
-    run_end = declared.get("run_end")
+def _trace_coverage_inputs(
+    trace_name: str,
+    declared: Mapping[str, Any],
+    sampler_interval: Any,
+) -> tuple[str, Any, dict[str, Any] | None]:
     coverage_definition = declared.get(
         "coverage_definition", EXPLICIT_FINAL_SAMPLE
     )
     if not is_coverage_definition(coverage_definition):
         coverage_definition = EXPLICIT_FINAL_SAMPLE
-    sampler_interval = (
-        sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
-    )
-    if coverage_definition == ONE_INTERVAL_BOUND:
-        try:
-            interval = float(sampler_interval)
-        except (TypeError, ValueError, OverflowError):
-            return _invalid_trace_report(
+    if coverage_definition != ONE_INTERVAL_BOUND:
+        return coverage_definition, sampler_interval, None
+    try:
+        interval = float(sampler_interval)
+    except (TypeError, ValueError, OverflowError):
+        return (
+            coverage_definition,
+            sampler_interval,
+            _invalid_trace_report(
                 trace_name=trace_name,
                 coverage_definition=coverage_definition,
                 sampler_interval=sampler_interval,
                 error="one_interval_bound requires a finite positive sampler interval",
-            )
-        if not math.isfinite(interval) or interval <= 0.0:
-            return _invalid_trace_report(
+            ),
+        )
+    if not math.isfinite(interval) or interval <= 0.0:
+        return (
+            coverage_definition,
+            sampler_interval,
+            _invalid_trace_report(
                 trace_name=trace_name,
                 coverage_definition=coverage_definition,
                 sampler_interval=sampler_interval,
                 error="one_interval_bound requires a finite positive sampler interval",
-            )
-        sampler_interval = interval
+            ),
+        )
+    return coverage_definition, interval, None
+
+
+def _trace_report_from_path(
+    ctx: ValidationContext,
+    *,
+    trace_name: str,
+    run_start: Any,
+    run_end: Any,
+    coverage_definition: str,
+    sampler_interval: Any,
+) -> dict[str, Any]:
+    try:
+        report = parse_power_trace(
+            ctx.power_trace_path,
+            run_start=None if run_start is _MISSING else run_start,
+            run_end=None if run_end is _MISSING else run_end,
+            coverage_definition=coverage_definition,
+            sampler_interval_seconds=sampler_interval,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        return _invalid_trace_report(
+            trace_name=trace_name,
+            coverage_definition=coverage_definition,
+            sampler_interval=sampler_interval,
+            error=exc,
+        )
+    report["actual_bytes_available"] = True
+    return report
+
+
+def _trace_report_from_context(
+    ctx: ValidationContext,
+    *,
+    trace_name: str,
+    coverage_definition: str,
+    sampler_interval: Any,
+    run_start: Any,
+    run_end: Any,
+) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
-        try:
-            report = parse_power_trace(
-                ctx.power_trace_path,
-                run_start=None if run_start is _MISSING else run_start,
-                run_end=None if run_end is _MISSING else run_end,
-                coverage_definition=coverage_definition,
-                sampler_interval_seconds=sampler_interval,
-            )
-        except (TypeError, ValueError, OverflowError) as exc:
-            return _invalid_trace_report(
-                trace_name=trace_name,
-                coverage_definition=coverage_definition,
-                sampler_interval=sampler_interval,
-                error=exc,
-            )
-        report["actual_bytes_available"] = True
-        return report
+        return _trace_report_from_path(
+            ctx,
+            trace_name=trace_name,
+            run_start=run_start,
+            run_end=run_end,
+            coverage_definition=coverage_definition,
+            sampler_interval=sampler_interval,
+        )
     if ctx.power_trace_metadata is not None:
         report = dict(ctx.power_trace_metadata)
         report.setdefault("file", trace_name)
@@ -2882,6 +2914,31 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
             "aiclk_source": "no_valid_in_run_samples",
         }
     return {"file": trace_name, "actual_bytes_available": False, "reason": "power_trace_bytes_unavailable"}
+
+
+def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str, Any] | None:
+    sampler = _sampler(record)
+    mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
+    trace_name = record.get("power_trace")
+    if mode not in {"default", "explicit"} or not trace_name:
+        return None
+    declared = _declared_power_metadata(record)
+    sampler_interval = (
+        sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
+    )
+    coverage_definition, sampler_interval, invalid_report = _trace_coverage_inputs(
+        trace_name, declared, sampler_interval
+    )
+    if invalid_report is not None:
+        return invalid_report
+    return _trace_report_from_context(
+        ctx,
+        trace_name=trace_name,
+        coverage_definition=coverage_definition,
+        sampler_interval=sampler_interval,
+        run_start=declared.get("run_start"),
+        run_end=declared.get("run_end"),
+    )
 
 
 def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
