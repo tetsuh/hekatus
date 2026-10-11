@@ -45,13 +45,15 @@ from enodia.tt.bench.newton_schulz_reference import (
 )
 from enodia.tt.bench.power_trace_snapshot import (
     EXPLICIT_FINAL_SAMPLE,
+    POWER_TRACE_SHA256_DEFINITION,
     atomic_power_trace_snapshot,
     canonical_coverage_definition,
+    empty_power_trace_metadata,
     read_power_trace_snapshot,
     validate_power_trace_snapshot_path,
 )
 from enodia.tt.bench.power_trace_snapshot import (
-    POWER_TRACE_SHA256_DEFINITION as SHARED_POWER_TRACE_SHA256_DEFINITION,
+    POWER_TRACE_COLUMNS as SHARED_POWER_TRACE_COLUMNS,
 )
 from enodia.tt.bench.run_binding import (
     RUN_ID_PATTERN,
@@ -167,13 +169,8 @@ INVERSE_ARRAY_HASH_DEFINITION = (
     "downloaded dtype byte order"
 )
 INVERSE_NPY_HASH_DEFINITION = "SHA-256 of the complete .npy file bytes, including header and payload"
-POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+POWER_TRACE_COLUMNS = SHARED_POWER_TRACE_COLUMNS
 POWER_TRACE_SNAPSHOT_PREFIX = "issue88-fp32-r-power-snapshot"
-_POWER_TRACE_SNAPSHOT_RE = re.compile(
-    rf"^{re.escape(POWER_TRACE_SNAPSHOT_PREFIX)}-(?P<run_id>{RUN_ID_PATTERN})-"
-    rf"(?P<number>[1-9][0-9]*)\.csv$"
-)
-POWER_TRACE_SHA256_DEFINITION = SHARED_POWER_TRACE_SHA256_DEFINITION
 POWER_TRACE_COVERAGE_DEFINITION = EXPLICIT_FINAL_SAMPLE
 POWER_TRACE_COVERAGE_DESCRIPTION = (
     "Coverage is complete when the immutable per-run snapshot has at least one "
@@ -1568,46 +1565,24 @@ def _power_trace_base(
     immutable_snapshot: bool = False,
     source_file: str | None = None,
 ) -> dict[str, Any]:
-    return {
-        "file": path.name if path is not None else None,
-        "source_file": source_file,
-        "run_id": run_id,
-        "columns": list(POWER_TRACE_COLUMNS),
-        "samples": [],
-        "sampling_source": "immutable per-run CSV snapshot captured by run_in_container.sh",
-        "sha256": None,
-        "sha256_definition": POWER_TRACE_SHA256_DEFINITION,
-        "byte_count": None,
-        "immutable_snapshot": immutable_snapshot,
-        "csv_row_count": 0,
-        "sample_count": 0,
-        "valid_row_count": 0,
-        "invalid_row_count": 0,
-        "first_timestamp": None,
-        "last_timestamp": None,
-        "run_start": run_start,
-        "run_end": run_end,
-        "readable": False,
-        "nonempty": False,
-        "timestamps_parse": False,
-        "timestamps_ordered": False,
-        "covers_run_start": False,
-        "covers_run_end": False,
-        "coverage_complete": False,
-        "coverage_definition": POWER_TRACE_COVERAGE_DEFINITION,
-        "poll_complete": False,
-        "errors": [],
-        "coverage": {
-            "definition": POWER_TRACE_COVERAGE_DEFINITION,
-            "nonempty": False,
-            "timestamps_parse": False,
-            "timestamps_ordered": False,
-            "first_at_or_before_run_start": False,
-            "last_at_or_after_run_end": False,
-            "readable": False,
-            "complete": False,
-        },
-    }
+    trace = empty_power_trace_metadata(
+        path,
+        run_id=run_id,
+        run_start=run_start,
+        run_end=run_end,
+        source_file=source_file,
+        coverage_definition=POWER_TRACE_COVERAGE_DEFINITION,
+        immutable_snapshot=immutable_snapshot,
+    )
+    trace["coverage"].pop("last_within_interval_bound", None)
+    for field in (
+        "in_run_valid_row_count",
+        "aiclk_source",
+        "aiclk_mhz",
+        "aiclk_mhz_in_run",
+    ):
+        trace.pop(field, None)
+    return trace
 
 
 def _atomic_power_trace_snapshot(

@@ -25,6 +25,8 @@ from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
     atomic_power_trace_snapshot,
+    empty_power_trace_metadata,
+    public_power_trace_metadata,
     read_power_trace_snapshot,
 )
 from enodia.tt.bench.resident_clock import (
@@ -55,7 +57,6 @@ from enodia.tt.bench.run_binding import (
     current_run_id,
     run_artifact_path,
 )
-from enodia.tt.bench.telemetry import POWER_TRACE_COLUMNS
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
@@ -441,47 +442,16 @@ def _missing_power_trace_metadata(
     path: Path, *, sampler_interval_seconds: float | None, error: Exception
 ) -> dict[str, Any]:
     """Describe an absent trace without reading a mutable artifact."""
-    coverage = {
-        "definition": ONE_INTERVAL_BOUND,
-        "nonempty": False,
-        "timestamps_parse": False,
-        "timestamps_ordered": False,
-        "first_at_or_before_run_start": False,
-        "last_at_or_after_run_end": False,
-        "last_within_interval_bound": False,
-        "readable": False,
-        "complete": False,
-    }
-    return {
-        "file": path.name,
-        "columns": list(POWER_TRACE_COLUMNS),
-        "sha256": None,
-        "readable": False,
-        "nonempty": False,
-        "csv_row_count": 0,
-        "sample_count": 0,
-        "valid_row_count": 0,
-        "in_run_valid_row_count": 0,
-        "timestamps_parse": False,
-        "timestamps_ordered": False,
-        "first_timestamp": None,
-        "last_timestamp": None,
-        "run_start": None,
-        "run_end": None,
-        "covers_run_start": False,
-        "covers_run_end": False,
-        "coverage_complete": False,
-        "coverage_definition": ONE_INTERVAL_BOUND,
-        "sampler_interval_seconds": sampler_interval_seconds,
-        "coverage": coverage,
-        "source_file": None,
-        "immutable_snapshot": False,
-        "byte_count": None,
-        "sha256_definition": None,
-        "aiclk_source": "no_valid_in_run_samples",
-        "aiclk_mhz": None,
-        "errors": [f"power trace snapshot unavailable: {error}"],
-    }
+    trace = empty_power_trace_metadata(
+        path,
+        coverage_definition=ONE_INTERVAL_BOUND,
+        sampler_interval_seconds=sampler_interval_seconds,
+        aiclk_source="no_valid_in_run_samples",
+        errors=[f"power trace snapshot unavailable: {error}"],
+    )
+    trace["sampler_interval_seconds"] = sampler_interval_seconds
+    trace["sha256_definition"] = None
+    return public_power_trace_metadata(trace)
 
 
 def _environment_output_path() -> Path:

@@ -207,16 +207,17 @@ def _error_value(
 
 
 def _trace_base(
-    path: Path,
+    path: Path | None,
     *,
-    run_id: str,
+    run_id: str | None,
     run_start: str | None,
     run_end: str | None,
     coverage_definition: str,
     source_file: str | None,
+    immutable_snapshot: bool = True,
 ) -> dict[str, Any]:
     return {
-        "file": path.name,
+        "file": path.name if path is not None else None,
         "source_file": source_file,
         "run_id": run_id,
         "columns": list(POWER_TRACE_COLUMNS),
@@ -225,7 +226,7 @@ def _trace_base(
         "sha256": None,
         "sha256_definition": POWER_TRACE_SHA256_DEFINITION,
         "byte_count": None,
-        "immutable_snapshot": True,
+        "immutable_snapshot": immutable_snapshot,
         "csv_row_count": 0,
         "sample_count": 0,
         "valid_row_count": 0,
@@ -262,6 +263,381 @@ def _trace_base(
     }
 
 
+def _valid_interval_seconds(value: float | None) -> float | None:
+    try:
+        interval = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return interval if math.isfinite(interval) and interval > 0.0 else None
+
+
+def _run_timestamp_text(
+    value: datetime.datetime | str | None,
+    *,
+    field: str,
+    tolerate_invalid: bool,
+) -> tuple[str | None, ValueError | None]:
+    try:
+        return _timestamp_text(value, field=field), None
+    except ValueError as exc:
+        if not tolerate_invalid:
+            raise
+        return None, exc
+
+
+def _read_trace_samples(
+    raw_bytes: bytes, *, reject_incomplete_rows: bool
+) -> list[dict[str, Any]]:
+    text = raw_bytes.decode()
+    reader = csv.DictReader(io.StringIO(text))
+    fieldnames = tuple(reader.fieldnames or ())
+    if fieldnames != POWER_TRACE_COLUMNS:
+        raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
+    samples: list[dict[str, Any]] = []
+    for index, row in enumerate(reader):
+        incomplete = set(row) != set(POWER_TRACE_COLUMNS) or any(
+            row.get(column) is None for column in POWER_TRACE_COLUMNS
+        )
+        if reject_incomplete_rows and incomplete:
+            raise ValueError(f"power trace sample {index} is an incomplete CSV row")
+        samples.append(dict(row))
+    return samples
+
+
+def _usable_trace_rows(
+    samples: list[dict[str, Any]],
+    *,
+    error_factory: Callable[[str, Exception | None], Any] | None,
+    row_label: str,
+) -> tuple[
+    list[tuple[dict[str, Any], datetime.datetime, float]],
+    list[Any],
+    Any | None,
+]:
+    errors: list[Any] = []
+    timestamp_error: Any | None = None
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]] = []
+    for index, sample in enumerate(samples):
+        if None in sample or any(column not in sample for column in POWER_TRACE_COLUMNS):
+            message = f"{row_label} {index} does not have exactly the declared columns"
+            errors.append(
+                _error_value(error_factory, "power_row_incomplete", ValueError(message))
+            )
+            continue
+        try:
+            timestamp = _parse_trace_timestamp(
+                sample.get("timestamp_utc"),
+                field=f"{row_label} {index} timestamp_utc",
+            )
+        except ValueError as exc:
+            timestamp_error = timestamp_error or _error_value(
+                error_factory, "power_timestamp_invalid", exc
+            )
+            errors.append(_error_value(error_factory, "power_timestamp_invalid", exc))
+            continue
+        try:
+            _trace_number(sample.get("power_w"), field=f"{row_label} {index} power_w")
+            aiclk = _trace_number(
+                sample.get("aiclk_mhz"),
+                field=f"{row_label} {index} aiclk_mhz",
+                positive=True,
+            )
+            _trace_number(
+                sample.get("asic_temp_c"), field=f"{row_label} {index} asic_temp_c"
+            )
+        except ValueError as exc:
+            errors.append(_error_value(error_factory, "power_sample_invalid", exc))
+        else:
+            usable_rows.append((sample, timestamp, aiclk))
+    return usable_rows, errors, timestamp_error
+
+
+def _set_trace_row_facts(
+    trace: dict[str, Any],
+    samples: list[dict[str, Any]],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    errors: list[Any],
+    *,
+    require_all_rows_valid: bool,
+) -> bool:
+    usable_samples = [sample for sample, _timestamp, _aiclk in usable_rows]
+    trace["samples"] = usable_samples
+    trace["sample_count"] = (
+        len(samples) if require_all_rows_valid else len(usable_samples)
+    )
+    trace["valid_row_count"] = len(usable_samples)
+    trace["invalid_row_count"] = len(samples) - len(usable_samples)
+    trace["nonempty"] = bool(samples) if require_all_rows_valid else bool(usable_samples)
+    trace["errors"] = errors
+    return trace["valid_row_count"] == trace["csv_row_count"]
+
+
+def _set_trace_timestamp_facts(
+    trace: dict[str, Any], parsed_timestamps: list[datetime.datetime]
+) -> None:
+    trace["timestamps_parse"] = True
+    trace["first_timestamp"] = parsed_timestamps[0].isoformat()
+    trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
+    trace["timestamps_ordered"] = all(
+        left <= right for left, right in itertools.pairwise(parsed_timestamps)
+    )
+    trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
+
+
+def _set_trace_run_facts(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    parsed_timestamps: list[datetime.datetime],
+    *,
+    start_text: str | None,
+    end_text: str | None,
+    definition: str,
+    interval: float | None,
+    require_all_rows_valid: bool,
+    all_rows_valid: bool,
+    error_factory: Callable[[str, Exception | None], Any] | None,
+    append_run_errors: bool,
+) -> None:
+    try:
+        start = _parse_trace_timestamp(start_text, field="run_start")
+        end = _parse_trace_timestamp(end_text, field="run_end")
+    except ValueError as exc:
+        error = _error_value(error_factory, "power_timestamp_invalid", exc)
+        trace["error"] = error
+        if append_run_errors:
+            trace["errors"].append(error)
+        return
+
+    if start > end and append_run_errors:
+        trace["errors"].append("run_start must be at or before run_end")
+    trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
+    trace["covers_run_end"] = parsed_timestamps[-1] >= end
+    in_run = [
+        aiclk
+        for _sample, timestamp, aiclk in usable_rows
+        if start <= timestamp <= end
+    ]
+    trace["in_run_valid_row_count"] = len(in_run)
+    trace["aiclk_mhz_in_run"] = in_run
+    if in_run:
+        trace["aiclk_source"] = "run_trace_samples"
+        trace["aiclk_mhz"] = max(in_run)
+
+    interval_bound = False
+    if interval is not None:
+        interval_start = end - datetime.timedelta(seconds=interval)
+        interval_bound = interval_start <= parsed_timestamps[-1] <= end
+        trace["sampler_interval_seconds"] = interval
+    trace["coverage_complete"] = all(
+        (
+            trace["readable"],
+            trace["nonempty"],
+            trace["valid_row_count"] > 0,
+            not require_all_rows_valid or all_rows_valid,
+            trace["timestamps_parse"],
+            trace["timestamps_ordered"],
+            parsed_timestamps[0] <= start,
+            start <= end,
+            (
+                end <= parsed_timestamps[-1]
+                if definition == EXPLICIT_FINAL_SAMPLE
+                else interval_bound
+            ),
+        )
+    )
+    trace["coverage"]["last_within_interval_bound"] = interval_bound
+
+
+def _set_trace_coverage(trace: dict[str, Any], definition: str) -> dict[str, Any]:
+    trace["coverage"] = {
+        **trace["coverage"],
+        "definition": definition,
+        "nonempty": trace["nonempty"],
+        "timestamps_parse": trace["timestamps_parse"],
+        "timestamps_ordered": trace["timestamps_ordered"],
+        "first_at_or_before_run_start": trace["covers_run_start"],
+        "last_at_or_after_run_end": trace["covers_run_end"],
+        "readable": trace["readable"],
+        "usable_row_count": trace["valid_row_count"],
+        "invalid_row_count": trace["invalid_row_count"],
+        "complete": trace["coverage_complete"],
+    }
+    return trace
+
+
+def _evaluate_trace_rows(
+    trace: dict[str, Any],
+    samples: list[dict[str, Any]],
+    *,
+    start_text: str | None,
+    end_text: str | None,
+    definition: str,
+    interval: float | None,
+    require_all_rows_valid: bool,
+    error_factory: Callable[[str, Exception | None], Any] | None,
+    row_label: str,
+    initial_errors: list[Any],
+    append_run_errors: bool,
+) -> dict[str, Any]:
+    trace["readable"] = True
+    trace["csv_row_count"] = len(samples)
+    usable_rows, row_errors, timestamp_error = _usable_trace_rows(
+        samples, error_factory=error_factory, row_label=row_label
+    )
+    errors = [*initial_errors, *row_errors]
+    parsed_timestamps = [timestamp for _sample, timestamp, _aiclk in usable_rows]
+    all_rows_valid = _set_trace_row_facts(
+        trace,
+        samples,
+        usable_rows,
+        errors,
+        require_all_rows_valid=require_all_rows_valid,
+    )
+    if not usable_rows:
+        trace["error"] = timestamp_error or _error_value(
+            error_factory, "power_trace_no_usable_rows"
+        )
+    elif timestamp_error is not None:
+        trace["error"] = timestamp_error
+    elif require_all_rows_valid and not all_rows_valid:
+        pass
+    else:
+        _set_trace_timestamp_facts(trace, parsed_timestamps)
+        _set_trace_run_facts(
+            trace,
+            usable_rows,
+            parsed_timestamps,
+            start_text=start_text,
+            end_text=end_text,
+            definition=definition,
+            interval=interval,
+            require_all_rows_valid=require_all_rows_valid,
+            all_rows_valid=all_rows_valid,
+            error_factory=error_factory,
+            append_run_errors=append_run_errors,
+        )
+    return _set_trace_coverage(trace, definition)
+
+
+def read_power_trace_csv(
+    path: Path,
+    *,
+    run_id: str | None = None,
+    run_start: datetime.datetime | str | None,
+    run_end: datetime.datetime | str | None,
+    source_file: str | None = None,
+    sampler_interval_seconds: float | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    require_all_rows_valid: bool = False,
+    read_text_fn: Callable[[Path], str] | None = None,
+    error_factory: Callable[[str, Exception | None], Any] | None = None,
+    immutable_snapshot: bool = False,
+    reject_incomplete_rows: bool = True,
+    row_label: str = "power sample",
+    tolerate_invalid_run_bounds: bool = False,
+) -> dict[str, Any]:
+    """Read power CSV bytes and evaluate one named run-coverage contract."""
+    definition = canonical_coverage_definition(coverage_definition)
+    path = Path(path)
+    start_text, start_error = _run_timestamp_text(
+        run_start, field="run_start", tolerate_invalid=tolerate_invalid_run_bounds
+    )
+    end_text, end_error = _run_timestamp_text(
+        run_end, field="run_end", tolerate_invalid=tolerate_invalid_run_bounds
+    )
+    initial_errors = [
+        _error_value(error_factory, "power_timestamp_invalid", error)
+        for error in (start_error, end_error)
+        if error is not None
+    ]
+    trace = _trace_base(
+        path,
+        run_id=run_id,
+        run_start=start_text,
+        run_end=end_text,
+        coverage_definition=definition,
+        source_file=source_file,
+        immutable_snapshot=immutable_snapshot,
+    )
+    trace["errors"] = initial_errors
+    interval = (
+        _valid_interval_seconds(sampler_interval_seconds)
+        if definition == ONE_INTERVAL_BOUND
+        else None
+    )
+    if definition == ONE_INTERVAL_BOUND:
+        trace["sampler_interval_seconds"] = interval
+    try:
+        raw_bytes = (
+            path.read_bytes() if read_text_fn is None else read_text_fn(path).encode()
+        )
+        trace["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
+        trace["byte_count"] = len(raw_bytes)
+        samples = _read_trace_samples(
+            raw_bytes, reject_incomplete_rows=reject_incomplete_rows
+        )
+    except Exception as exc:  # noqa: BLE001 - return a diagnostic trace
+        kind = "power_trace_unreadable" if isinstance(exc, OSError) else "power_trace_invalid"
+        trace["error"] = _error_value(error_factory, kind, exc)
+        return trace
+    return _evaluate_trace_rows(
+        trace,
+        samples,
+        start_text=start_text,
+        end_text=end_text,
+        definition=definition,
+        interval=interval,
+        require_all_rows_valid=require_all_rows_valid,
+        error_factory=error_factory,
+        row_label=row_label,
+        initial_errors=initial_errors,
+        append_run_errors=tolerate_invalid_run_bounds,
+    )
+
+
+def empty_power_trace_metadata(
+    path: Path | None = None,
+    *,
+    run_id: str | None = None,
+    run_start: datetime.datetime | str | None = None,
+    run_end: datetime.datetime | str | None = None,
+    source_file: str | None = None,
+    sampler_interval_seconds: float | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    immutable_snapshot: bool = False,
+    aiclk_source: str = "no_valid_in_run_samples",
+    errors: list[Any] | None = None,
+    tolerate_invalid_run_bounds: bool = False,
+) -> dict[str, Any]:
+    """Return shared diagnostic metadata when no CSV bytes can be read."""
+    definition = canonical_coverage_definition(coverage_definition)
+    start_text, _start_error = _run_timestamp_text(
+        run_start, field="run_start", tolerate_invalid=tolerate_invalid_run_bounds
+    )
+    end_text, _end_error = _run_timestamp_text(
+        run_end, field="run_end", tolerate_invalid=tolerate_invalid_run_bounds
+    )
+    trace = _trace_base(
+        Path(path) if path is not None else None,
+        run_id=run_id,
+        run_start=start_text,
+        run_end=end_text,
+        coverage_definition=definition,
+        source_file=source_file,
+        immutable_snapshot=immutable_snapshot,
+    )
+    if definition == ONE_INTERVAL_BOUND:
+        trace["sampler_interval_seconds"] = _valid_interval_seconds(
+            sampler_interval_seconds
+        )
+    if tolerate_invalid_run_bounds:
+        trace["run_start"] = run_start
+        trace["run_end"] = run_end
+    trace["aiclk_source"] = aiclk_source
+    trace["errors"] = list(errors or [])
+    return trace
+
+
 def read_power_trace_snapshot(
     path: Path,
     *,
@@ -276,16 +652,14 @@ def read_power_trace_snapshot(
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
 ) -> dict[str, Any]:
-    """Read one immutable snapshot and evaluate its named coverage contract.
+    """Read one immutable snapshot through the shared CSV lifecycle.
 
     ``explicit_final_sample`` requires a usable sample at or after ``run_end``.
     ``one_interval_bound`` accepts a final usable sample in the inclusive
     interval ``run_end - sampler_interval_seconds <= sample_timestamp <=
     run_end``.  The interval is an explicit caller/record setting and is never
-    inferred from CSV timestamps.  When ``require_all_rows_valid`` is true,
-    invalid rows do not contribute timestamp, coverage, or in-run AICLK facts;
-    this is the resident-run contract.  The default retains the Issue #88
-    usable-row compatibility behavior.
+    inferred from CSV timestamps.  The default retains the Issue #88 usable-row
+    compatibility behavior; resident callers opt into all-row validity.
     """
     definition = canonical_coverage_definition(coverage_definition)
     path = validate_power_trace_snapshot_path(
@@ -302,170 +676,56 @@ def read_power_trace_snapshot(
             kind="power trace source",
         )
         source_file = source_path.name
-    start_text = _timestamp_text(run_start, field="run_start")
-    end_text = _timestamp_text(run_end, field="run_end")
-    trace = _trace_base(
+    return read_power_trace_csv(
         path,
         run_id=run_id,
-        run_start=start_text,
-        run_end=end_text,
-        coverage_definition=definition,
+        run_start=run_start,
+        run_end=run_end,
         source_file=source_file,
+        sampler_interval_seconds=sampler_interval_seconds,
+        coverage_definition=definition,
+        require_all_rows_valid=require_all_rows_valid,
+        read_text_fn=read_text_fn,
+        error_factory=error_factory,
+        immutable_snapshot=True,
     )
-    if definition == ONE_INTERVAL_BOUND:
-        try:
-            interval = float(sampler_interval_seconds)
-        except (TypeError, ValueError, OverflowError):
-            interval = float("nan")
-        trace["sampler_interval_seconds"] = (
-            interval if math.isfinite(interval) and interval > 0.0 else None
-        )
-    try:
-        raw_bytes = (
-            path.read_bytes() if read_text_fn is None else read_text_fn(path).encode()
-        )
-        trace["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
-        trace["byte_count"] = len(raw_bytes)
-        text = raw_bytes.decode()
-        reader = csv.DictReader(io.StringIO(text))
-        fieldnames = tuple(reader.fieldnames or ())
-        if fieldnames != POWER_TRACE_COLUMNS:
-            raise ValueError(f"power trace has unexpected columns {fieldnames!r}")
-        samples = []
-        for index, row in enumerate(reader):
-            if set(row) != set(POWER_TRACE_COLUMNS) or any(
-                row.get(column) is None for column in POWER_TRACE_COLUMNS
-            ):
-                raise ValueError(f"power trace sample {index} is an incomplete CSV row")
-            samples.append(dict(row))
-    except Exception as exc:  # noqa: BLE001 - return a diagnostic trace
-        kind = "power_trace_unreadable" if isinstance(exc, OSError) else "power_trace_invalid"
-        trace["error"] = _error_value(error_factory, kind, exc)
-        return trace
 
-    trace["readable"] = True
-    trace["csv_row_count"] = len(samples)
-    errors: list[Any] = []
-    timestamp_error: Any | None = None
-    usable_rows: list[tuple[dict[str, str], datetime.datetime, float]] = []
-    for index, sample in enumerate(samples):
-        try:
-            timestamp = _parse_trace_timestamp(
-                sample.get("timestamp_utc"),
-                field=f"power sample {index} timestamp_utc",
-            )
-        except ValueError as exc:
-            timestamp_error = timestamp_error or _error_value(
-                error_factory, "power_timestamp_invalid", exc
-            )
-            errors.append(_error_value(error_factory, "power_timestamp_invalid", exc))
-            continue
-        try:
-            _trace_number(sample.get("power_w"), field=f"power sample {index} power_w")
-            aiclk = _trace_number(
-                sample.get("aiclk_mhz"),
-                field=f"power sample {index} aiclk_mhz",
-                positive=True,
-            )
-            _trace_number(
-                sample.get("asic_temp_c"), field=f"power sample {index} asic_temp_c"
-            )
-        except ValueError as exc:
-            errors.append(_error_value(error_factory, "power_sample_invalid", exc))
-        else:
-            usable_rows.append((sample, timestamp, aiclk))
 
-    usable_samples = [sample for sample, _timestamp, _aiclk in usable_rows]
-    parsed_timestamps = [timestamp for _sample, timestamp, _aiclk in usable_rows]
-    trace["samples"] = usable_samples
-    trace["sample_count"] = len(samples) if require_all_rows_valid else len(usable_samples)
-    trace["valid_row_count"] = len(usable_samples)
-    trace["invalid_row_count"] = len(samples) - len(usable_samples)
-    trace["nonempty"] = bool(samples) if require_all_rows_valid else bool(usable_samples)
-    trace["errors"] = errors
-    all_rows_valid = trace["valid_row_count"] == trace["csv_row_count"]
-    if not usable_samples:
-        trace["error"] = timestamp_error or _error_value(
-            error_factory, "power_trace_no_usable_rows"
-        )
-    elif timestamp_error is not None:
-        trace["error"] = timestamp_error
-    elif require_all_rows_valid and not all_rows_valid:
-        # Resident timing metadata must have the same all-row validity gate as
-        # telemetry.parse_power_trace.  Leave all facts at their diagnostic
-        # defaults instead of deriving them from only the usable rows.
-        pass
-    else:
-        trace["timestamps_parse"] = True
-        trace["first_timestamp"] = parsed_timestamps[0].isoformat()
-        trace["last_timestamp"] = parsed_timestamps[-1].isoformat()
-        trace["timestamps_ordered"] = all(
-            left <= right for left, right in itertools.pairwise(parsed_timestamps)
-        )
-        trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
-        try:
-            start = _parse_trace_timestamp(start_text, field="run_start")
-            end = _parse_trace_timestamp(end_text, field="run_end")
-        except ValueError as exc:
-            trace["error"] = _error_value(error_factory, "power_timestamp_invalid", exc)
-        else:
-            trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
-            trace["covers_run_end"] = parsed_timestamps[-1] >= end
-            in_run = [
-                aiclk
-                for _sample, timestamp, aiclk in usable_rows
-                if start <= timestamp <= end
-            ]
-            trace["in_run_valid_row_count"] = len(in_run)
-            trace["aiclk_mhz_in_run"] = in_run
-            if in_run:
-                trace["aiclk_source"] = "run_trace_samples"
-                trace["aiclk_mhz"] = max(in_run)
-            interval_bound = False
-            if definition == ONE_INTERVAL_BOUND:
-                try:
-                    interval = float(sampler_interval_seconds)
-                except (TypeError, ValueError, OverflowError):
-                    interval = float("nan")
-                if math.isfinite(interval) and interval > 0.0:
-                    interval_start = end - datetime.timedelta(seconds=interval)
-                    interval_bound = interval_start <= parsed_timestamps[-1] <= end
-                trace["sampler_interval_seconds"] = (
-                    interval if math.isfinite(interval) and interval > 0.0 else None
-                )
-            trace["coverage_complete"] = all(
-                (
-                    trace["readable"],
-                    trace["nonempty"],
-                    trace["valid_row_count"] > 0,
-                    not require_all_rows_valid or all_rows_valid,
-                    trace["timestamps_parse"],
-                    trace["timestamps_ordered"],
-                    parsed_timestamps[0] <= start,
-                    start <= end,
-                    (
-                        end <= parsed_timestamps[-1]
-                        if definition == EXPLICIT_FINAL_SAMPLE
-                        else interval_bound
-                    ),
-                )
-            )
-            trace["coverage"]["last_within_interval_bound"] = interval_bound
+_POWER_TRACE_METADATA_FIELDS = (
+    "file",
+    "columns",
+    "sha256",
+    "readable",
+    "nonempty",
+    "csv_row_count",
+    "sample_count",
+    "valid_row_count",
+    "in_run_valid_row_count",
+    "timestamps_parse",
+    "timestamps_ordered",
+    "first_timestamp",
+    "last_timestamp",
+    "run_start",
+    "run_end",
+    "covers_run_start",
+    "covers_run_end",
+    "coverage_complete",
+    "coverage_definition",
+    "sampler_interval_seconds",
+    "coverage",
+    "source_file",
+    "immutable_snapshot",
+    "byte_count",
+    "sha256_definition",
+    "aiclk_source",
+    "aiclk_mhz",
+    "errors",
+)
 
-    trace["coverage"] = {
-        **trace["coverage"],
-        "definition": definition,
-        "nonempty": trace["nonempty"],
-        "timestamps_parse": trace["timestamps_parse"],
-        "timestamps_ordered": trace["timestamps_ordered"],
-        "first_at_or_before_run_start": trace["covers_run_start"],
-        "last_at_or_after_run_end": trace["covers_run_end"],
-        "readable": trace["readable"],
-        "usable_row_count": trace["valid_row_count"],
-        "invalid_row_count": trace["invalid_row_count"],
-        "complete": trace["coverage_complete"],
-    }
-    return trace
+
+def public_power_trace_metadata(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep shared trace facts while excluding parser-only row arrays."""
+    return {key: trace.get(key) for key in _POWER_TRACE_METADATA_FIELDS}
 
 
 def public_power_trace_snapshot(trace: Mapping[str, Any]) -> dict[str, Any]:
@@ -484,8 +744,11 @@ __all__ = [
     "POWER_TRACE_SHA256_DEFINITION",
     "atomic_power_trace_snapshot",
     "canonical_coverage_definition",
+    "empty_power_trace_metadata",
     "is_coverage_definition",
+    "public_power_trace_metadata",
     "public_power_trace_snapshot",
+    "read_power_trace_csv",
     "read_power_trace_snapshot",
     "validate_power_trace_snapshot_path",
 ]

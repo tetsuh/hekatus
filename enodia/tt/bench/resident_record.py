@@ -149,6 +149,8 @@ TIMING_EVIDENCE_ERROR_RECORD_REASON = "run_error_not_timing_evidence"
 TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
 
 _MISSING = object()
+_POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
+_POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definition"
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
 RESIDENT_RECORD_SCHEMA_MARKER = 1
@@ -524,7 +526,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_trace_coverage.run_end",
         "power_trace_coverage.coverage",
         "power_trace_coverage.coverage_complete",
-        "power_trace_coverage.coverage_definition",
+        _POWER_TRACE_COVERAGE_DEFINITION_PATH,
         "power_trace_coverage.valid_row_count",
         "power_trace_coverage.in_run_valid_row_count",
         "power_clock_provenance.trace",
@@ -536,7 +538,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_clock_provenance.run_start",
         "power_clock_provenance.run_end",
         "power_clock_provenance.coverage",
-        "power_clock_provenance.coverage_definition",
+        _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
         "power_clock_provenance.readable",
         "power_clock_provenance.nonempty",
         "power_clock_provenance.timestamps_parse",
@@ -641,7 +643,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path in {"telemetry_sampler.mode", "environment.telemetry_sampler.mode", "outlier_analysis.sampler_interval_comparison.mode"}:
         type_rule, range_rule, expected = string, _enum(*SAMPLER_CONTRACT), "the sampler mode enum"
         invalid_range = "unknown-mode"
-    elif path in {"power_trace_coverage.coverage_definition", "power_clock_provenance.coverage_definition"}:
+    elif path in {_POWER_TRACE_COVERAGE_DEFINITION_PATH, _POWER_CLOCK_COVERAGE_DEFINITION_PATH}:
         type_rule, range_rule, expected = string, _enum(
             EXPLICIT_FINAL_SAMPLE, ONE_INTERVAL_BOUND
         ), "the power-trace coverage-definition enum"
@@ -825,8 +827,8 @@ RESIDENT_RECORD_FIELD_MATRIX: Mapping[str, tuple[ResidentRecordField, ...]] = Ma
 _OPTIONAL_COVERAGE_FIELDS = tuple(
     _field(path, RECORD_KIND_SAMPLED_TIMING)
     for path in (
-        "power_trace_coverage.coverage_definition",
-        "power_clock_provenance.coverage_definition",
+        _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+        _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
     )
 )
 REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
@@ -954,7 +956,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_trace_coverage.coverage.readable",
     "power_trace_coverage.coverage.complete",
     "power_trace_coverage.coverage.definition",
-    "power_trace_coverage.coverage_definition",
+    _POWER_TRACE_COVERAGE_DEFINITION_PATH,
     "power_trace_coverage.coverage.last_within_interval_bound",
     "power_clock_provenance.coverage.nonempty",
     "power_clock_provenance.coverage.timestamps_parse",
@@ -965,7 +967,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.coverage.complete",
     "power_clock_provenance.coverage.last_within_interval_bound",
     "power_clock_provenance.coverage.definition",
-    "power_clock_provenance.coverage_definition",
+    _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
     "power_clock_provenance.columns",
     "power_clock_provenance.errors",
     "power_clock_provenance.source_file",
@@ -2671,27 +2673,27 @@ def _check_sampler_contract(record: Mapping[str, Any], ctx: ValidationContext) -
     return mismatches
 
 
-def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
-    provenance = record.get("power_clock_provenance")
-    nested = dict(provenance) if isinstance(provenance, Mapping) else {}
-    aliases = {
-        "file": ("file", "trace"),
-        "sample_count": ("sample_count",),
-        "csv_row_count": ("csv_row_count",),
-        "valid_row_count": ("valid_row_count",),
-        "in_run_valid_row_count": ("in_run_valid_row_count",),
-        "sha256": ("sha256",),
-        "columns": ("columns",),
-        "first_timestamp": ("first_timestamp",),
-        "last_timestamp": ("last_timestamp",),
-        "run_start": ("run_start",),
-        "run_end": ("run_end",),
-        "coverage_complete": ("coverage_complete",),
-        "coverage_definition": ("coverage_definition",),
-        "aiclk_source": ("aiclk_source",),
-        "aiclk_mhz": ("aiclk_mhz",),
-        "timing_evidence_reason": ("timing_evidence_reason",),
-    }
+_POWER_METADATA_ALIASES = {
+    "file": ("file", "trace"),
+    "sample_count": ("sample_count",),
+    "csv_row_count": ("csv_row_count",),
+    "valid_row_count": ("valid_row_count",),
+    "in_run_valid_row_count": ("in_run_valid_row_count",),
+    "sha256": ("sha256",),
+    "columns": ("columns",),
+    "first_timestamp": ("first_timestamp",),
+    "last_timestamp": ("last_timestamp",),
+    "run_start": ("run_start",),
+    "run_end": ("run_end",),
+    "coverage_complete": ("coverage_complete",),
+    "coverage_definition": ("coverage_definition",),
+    "aiclk_source": ("aiclk_source",),
+    "aiclk_mhz": ("aiclk_mhz",),
+    "timing_evidence_reason": ("timing_evidence_reason",),
+}
+
+
+def _top_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
     top = {
         "file": record.get("power_trace"),
         "sample_count": record.get("power_trace_sample_count", _MISSING),
@@ -2712,7 +2714,9 @@ def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
     }
     coverage = record.get("power_trace_coverage")
     if isinstance(coverage, Mapping):
-        top["coverage_complete"] = coverage.get("coverage_complete", coverage.get("complete", _MISSING))
+        top["coverage_complete"] = coverage.get(
+            "coverage_complete", coverage.get("complete", _MISSING)
+        )
         top["coverage_definition"] = coverage.get(
             "coverage_definition", EXPLICIT_FINAL_SAMPLE
         )
@@ -2720,24 +2724,46 @@ def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         top["last_timestamp"] = coverage.get("last_timestamp", _MISSING)
         top["run_start"] = coverage.get("run_start", top["run_start"])
         top["run_end"] = coverage.get("run_end", top["run_end"])
-    result: dict[str, Any] = {}
-    for name, keys in aliases.items():
-        value = _MISSING
-        for key in keys:
-            if key in nested:
-                value = nested[key]
-                break
-        if value is _MISSING:
-            value = top[name]
-        if name == "coverage_definition":
-            if value is _MISSING:
-                value = EXPLICIT_FINAL_SAMPLE
-            else:
-                try:
-                    value = canonical_coverage_definition(value)
-                except (TypeError, ValueError):
-                    pass
-        result[name] = value
+    return top
+
+
+def _canonical_declared_coverage(value: Any) -> Any:
+    if value is _MISSING:
+        return EXPLICIT_FINAL_SAMPLE
+    try:
+        return canonical_coverage_definition(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _declared_power_value(
+    name: str,
+    keys: tuple[str, ...],
+    nested: Mapping[str, Any],
+    top: Mapping[str, Any],
+) -> Any:
+    value = _MISSING
+    for key in keys:
+        if key in nested:
+            value = nested[key]
+            break
+    if value is _MISSING:
+        value = top[name]
+    return (
+        _canonical_declared_coverage(value)
+        if name == "coverage_definition"
+        else value
+    )
+
+
+def _declared_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
+    provenance = record.get("power_clock_provenance")
+    nested = dict(provenance) if isinstance(provenance, Mapping) else {}
+    top = _top_power_metadata(record)
+    result = {
+        name: _declared_power_value(name, keys, nested, top)
+        for name, keys in _POWER_METADATA_ALIASES.items()
+    }
     result["nested"] = nested
     result["top"] = top
     return result
@@ -2864,8 +2890,8 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
             _mismatch(
                 invariant,
                 (
-                    "power_trace_coverage.coverage_definition",
-                    "power_clock_provenance.coverage_definition",
+                    _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+                    _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
                 ),
                 "power trace coverage_definition is not a supported named definition",
             )
@@ -3212,7 +3238,7 @@ def _check_trace_metadata_duplicates(record: Mapping[str, Any], ctx: ValidationC
         "valid_row_count": "power_trace_valid_row_count",
         "in_run_valid_row_count": "power_trace_in_run_valid_row_count",
         "sha256": "power_trace_sha256",
-        "coverage_definition": "power_trace_coverage.coverage_definition",
+        "coverage_definition": _POWER_TRACE_COVERAGE_DEFINITION_PATH,
     }.items():
         left = nested.get(nested_name, _MISSING)
         right = top.get(nested_name, _MISSING)
