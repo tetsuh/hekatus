@@ -93,6 +93,7 @@ from enodia.tt.bench.clock_source_audit import (
 )
 from enodia.tt.bench.power_trace_snapshot import (
     EXPLICIT_FINAL_SAMPLE,
+    ISSUE118_LOAD_INTERVAL_SOURCE,
     ONE_INTERVAL_BOUND,
     canonical_coverage_definition,
     is_coverage_definition,
@@ -1459,10 +1460,41 @@ def _check_elapsed_aiclk_binding(
     record: Mapping[str, Any], condition: str | None
 ) -> list[dict[str, Any]]:
     """Bind elapsed conversion and derived timing to immutable clock provenance."""
+    mismatches: list[dict[str, Any]] = []
+    expected_provenance = _mapping(record, "power_clock_provenance")
+    if condition in {"newton_schulz", "dram"}:
+        missing_endpoints = [
+            field
+            for field in ("load_interval_start", "load_interval_end")
+            if expected_provenance is None
+            or not isinstance(expected_provenance.get(field), str)
+            or not expected_provenance.get(field, "").strip()
+        ]
+        if missing_endpoints:
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    tuple(
+                        f"power_clock_provenance.{field}" for field in missing_endpoints
+                    ),
+                    "Issue #118 loaded records require explicit load interval endpoints",
+                )
+            )
+        if (
+            expected_provenance is None
+            or expected_provenance.get("load_interval_source")
+            != ISSUE118_LOAD_INTERVAL_SOURCE
+        ):
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    ("power_clock_provenance.load_interval_source",),
+                    "Issue #118 loaded records require recognized load interval provenance",
+                )
+            )
     expected_mhz, expected_source = _expected_elapsed_aiclk(record, condition)
     clock = _mapping(record, "clock")
     outlier = _mapping(record, "outlier_analysis")
-    mismatches: list[dict[str, Any]] = []
     if condition in {"newton_schulz", "dram"}:
         weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
         weighted_source = (
@@ -3519,6 +3551,7 @@ def _trace_report_from_path(
     load_interval_start: Any,
     load_interval_end: Any,
     load_interval_source: Any,
+    require_explicit_load_interval: bool,
     coverage_definition: str,
     sampler_interval: Any,
 ) -> dict[str, Any]:
@@ -3538,6 +3571,7 @@ def _trace_report_from_path(
             load_interval_source=(
                 None if load_interval_source is _MISSING else load_interval_source
             ),
+            require_explicit_load_interval=require_explicit_load_interval,
             require_all_rows_valid=True,
             reject_incomplete_rows=False,
         )
@@ -3564,6 +3598,7 @@ def _trace_report_from_context(
     load_interval_start: Any,
     load_interval_end: Any,
     load_interval_source: Any,
+    require_explicit_load_interval: bool,
 ) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
         return _trace_report_from_path(
@@ -3574,6 +3609,7 @@ def _trace_report_from_context(
             load_interval_start=load_interval_start,
             load_interval_end=load_interval_end,
             load_interval_source=load_interval_source,
+            require_explicit_load_interval=require_explicit_load_interval,
             coverage_definition=coverage_definition,
             sampler_interval=sampler_interval,
         )
@@ -3603,6 +3639,11 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
     if mode not in {"default", "explicit"} or not trace_name:
         return None
     declared = _declared_power_metadata(record)
+    load = record.get("load")
+    require_explicit_load_interval = (
+        isinstance(load, Mapping)
+        and load.get("condition") in {"newton_schulz", "dram"}
+    )
     sampler_interval = (
         sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
     )
@@ -3621,6 +3662,7 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
         load_interval_start=declared.get("load_interval_start", _MISSING),
         load_interval_end=declared.get("load_interval_end", _MISSING),
         load_interval_source=declared.get("load_interval_source", _MISSING),
+        require_explicit_load_interval=require_explicit_load_interval,
     )
 
 

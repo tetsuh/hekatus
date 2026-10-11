@@ -33,6 +33,7 @@ from enodia.tt.bench.load_harness import (
     RESIDENT_PRODUCER_CORE,
 )
 from enodia.tt.bench.power_trace_snapshot import (
+    ISSUE118_LOAD_INTERVAL_SOURCE,
     empty_power_trace_metadata,
     public_power_trace_metadata,
     read_power_trace_csv,
@@ -1027,6 +1028,25 @@ def _trace_failure_reason(trace: Mapping[str, Any] | None) -> str:
 _public_power_trace_metadata = public_power_trace_metadata
 
 
+def _require_issue118_load_interval(trace_metadata: Mapping[str, Any]) -> None:
+    """Require the explicit interval provenance used by loaded card timing."""
+    missing = [
+        field
+        for field in ("load_interval_start", "load_interval_end")
+        if not isinstance(trace_metadata.get(field), str)
+        or not trace_metadata.get(field, "").strip()
+    ]
+    if missing:
+        raise ValueError(
+            "Issue #118 loaded records require explicit load interval endpoints: "
+            + ", ".join(missing)
+        )
+    if trace_metadata.get("load_interval_source") != ISSUE118_LOAD_INTERVAL_SOURCE:
+        raise ValueError(
+            "Issue #118 loaded records require recognized load interval provenance"
+        )
+
+
 def _trace_metadata_from_path(
     *,
     power_trace: str,
@@ -1037,6 +1057,7 @@ def _trace_metadata_from_path(
     load_interval_start: Any = None,
     load_interval_end: Any = None,
     load_interval_source: str | None = None,
+    require_explicit_load_interval: bool = False,
 ) -> dict[str, Any]:
     supplied_definition = (
         power_trace_metadata.get("coverage_definition", EXPLICIT_FINAL_SAMPLE)
@@ -1071,6 +1092,7 @@ def _trace_metadata_from_path(
         load_interval_start=load_interval_start,
         load_interval_end=load_interval_end,
         load_interval_source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         require_all_rows_valid=True,
         error_factory=lambda kind, _error: kind,
         reject_incomplete_rows=False,
@@ -1149,6 +1171,7 @@ def _power_trace_metadata(
     load_interval_start: Any = None,
     load_interval_end: Any = None,
     load_interval_source: str | None = None,
+    require_explicit_load_interval: bool = False,
 ) -> dict[str, Any]:
     """Read one run-bound trace or normalize supplied board-free metadata."""
     if power_trace_path is not None:
@@ -1161,6 +1184,7 @@ def _power_trace_metadata(
             load_interval_start=load_interval_start,
             load_interval_end=load_interval_end,
             load_interval_source=load_interval_source,
+            require_explicit_load_interval=require_explicit_load_interval,
         )
     if power_trace_metadata is None:
         return _missing_power_trace_metadata(
@@ -1295,6 +1319,12 @@ def build_measurement_record(
                 else None
             ),
         )
+    load_condition = (
+        load_record.get("condition")
+        if isinstance(load_record, Mapping)
+        else None
+    )
+    require_explicit_load_interval = load_condition in {"newton_schulz", "dram"}
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
@@ -1346,6 +1376,7 @@ def build_measurement_record(
             load_interval_start=load_interval_start,
             load_interval_end=load_interval_end,
             load_interval_source=load_interval_source,
+            require_explicit_load_interval=require_explicit_load_interval,
         )
         trace_reason = _trace_failure_reason(trace_metadata)
         trace_aiclk = _safe_aiclk_integer(trace_metadata.get("aiclk_mhz"))
@@ -1424,16 +1455,12 @@ def build_measurement_record(
     aiclk_source = selection["aiclk_source"]
     elapsed_aiclk_mhz: float = float(aiclk_mhz)
     elapsed_aiclk_source = aiclk_source
-    load_condition = (
-        load_record.get("condition")
-        if isinstance(load_record, Mapping)
-        else None
-    )
-    if load_condition in {"newton_schulz", "dram"}:
+    if require_explicit_load_interval:
         if not isinstance(trace_metadata, Mapping):
             raise ValueError(
                 "Issue #118 loaded conversion requires immutable power-trace metadata"
             )
+        _require_issue118_load_interval(trace_metadata)
         weighted_selection = select_load_interval_aiclk(
             weighted_aiclk_mhz=trace_metadata.get(
                 "aiclk_mhz_load_interval_weighted"

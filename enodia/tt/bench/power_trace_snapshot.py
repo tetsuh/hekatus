@@ -41,6 +41,7 @@ from enodia.tt.bench.telemetry import (
 )
 
 DEFAULT_SNAPSHOT_PREFIX = "power-trace-snapshot"
+ISSUE118_LOAD_INTERVAL_SOURCE = "issue118_program_host_interval"
 POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
@@ -492,6 +493,7 @@ def _set_load_interval_trace_facts(
     start_text: str | None,
     end_text: str | None,
     source: str | None,
+    require_explicit_load_interval: bool,
     error_factory: Callable[[str, Exception | None], Any] | None,
 ) -> None:
     load_start_text = start_text
@@ -499,8 +501,23 @@ def _set_load_interval_trace_facts(
     trace["load_interval_start"] = load_start_text
     trace["load_interval_end"] = load_end_text
     trace["load_interval_source"] = source or (
-        "run_bounds" if load_start_text is not None and load_end_text is not None else None
+        None
+        if require_explicit_load_interval
+        else (
+            "run_bounds"
+            if load_start_text is not None and load_end_text is not None
+            else None
+        )
     )
+    if require_explicit_load_interval and trace["load_interval_source"] != ISSUE118_LOAD_INTERVAL_SOURCE:
+        trace["aiclk_mhz_load_interval_weighted_source"] = (
+            "load_interval_provenance_invalid"
+        )
+        trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
+        trace["errors"].append(
+            _error_value(error_factory, "load_interval_provenance_invalid")
+        )
+        return
     try:
         load_start = _parse_trace_timestamp(load_start_text, field="load_interval_start")
         load_end = _parse_trace_timestamp(load_end_text, field="load_interval_end")
@@ -530,6 +547,7 @@ def _set_trace_run_facts(
     load_interval_start_text: str | None,
     load_interval_end_text: str | None,
     load_interval_source: str | None,
+    require_explicit_load_interval: bool,
     definition: str,
     interval: float | None,
     require_all_rows_valid: bool,
@@ -553,9 +571,18 @@ def _set_trace_run_facts(
     _set_load_interval_trace_facts(
         trace,
         usable_rows,
-        start_text=load_interval_start_text or start_text,
-        end_text=load_interval_end_text or end_text,
+        start_text=(
+            load_interval_start_text
+            if require_explicit_load_interval
+            else load_interval_start_text or start_text
+        ),
+        end_text=(
+            load_interval_end_text
+            if require_explicit_load_interval
+            else load_interval_end_text or end_text
+        ),
         source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         error_factory=error_factory,
     )
     interval_bound = interval is not None and timestamp_within_interval_bound(
@@ -607,6 +634,7 @@ def _evaluate_trace_rows(
     load_interval_start_text: str | None,
     load_interval_end_text: str | None,
     load_interval_source: str | None,
+    require_explicit_load_interval: bool,
     definition: str,
     interval: float | None,
     require_all_rows_valid: bool,
@@ -650,6 +678,7 @@ def _evaluate_trace_rows(
             load_interval_start_text=load_interval_start_text,
             load_interval_end_text=load_interval_end_text,
             load_interval_source=load_interval_source,
+            require_explicit_load_interval=require_explicit_load_interval,
             require_all_rows_valid=require_all_rows_valid,
             all_rows_valid=all_rows_valid,
             error_factory=error_factory,
@@ -670,6 +699,7 @@ def read_power_trace_csv(
     load_interval_start: datetime.datetime | str | None = None,
     load_interval_end: datetime.datetime | str | None = None,
     load_interval_source: str | None = None,
+    require_explicit_load_interval: bool = False,
     require_all_rows_valid: bool = False,
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
@@ -688,12 +718,16 @@ def read_power_trace_csv(
         run_end, field="run_end", tolerate_invalid=options.tolerate_invalid_run_bounds
     )
     load_start_text, load_start_error = _run_timestamp_text(
-        load_interval_start if load_interval_start is not None else run_start,
+        load_interval_start
+        if require_explicit_load_interval or load_interval_start is not None
+        else run_start,
         field="load_interval_start",
         tolerate_invalid=options.tolerate_invalid_run_bounds,
     )
     load_end_text, load_end_error = _run_timestamp_text(
-        load_interval_end if load_interval_end is not None else run_end,
+        load_interval_end
+        if require_explicit_load_interval or load_interval_end is not None
+        else run_end,
         field="load_interval_end",
         tolerate_invalid=options.tolerate_invalid_run_bounds,
     )
@@ -720,9 +754,13 @@ def read_power_trace_csv(
     trace["load_interval_start"] = load_start_text
     trace["load_interval_end"] = load_end_text
     trace["load_interval_source"] = load_interval_source or (
-        "run_bounds"
-        if load_start_text is not None and load_end_text is not None
-        else None
+        None
+        if require_explicit_load_interval
+        else (
+            "run_bounds"
+            if load_start_text is not None and load_end_text is not None
+            else None
+        )
     )
     interval = (
         _valid_interval_seconds(sampler_interval_seconds)
@@ -752,6 +790,7 @@ def read_power_trace_csv(
         load_interval_start_text=load_start_text,
         load_interval_end_text=load_end_text,
         load_interval_source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         definition=definition,
         interval=interval,
         require_all_rows_valid=require_all_rows_valid,
@@ -834,6 +873,7 @@ def read_power_trace_snapshot(
     load_interval_end: datetime.datetime | str | None = None,
     load_interval_source: str | None = None,
     include_issue118_metadata: bool = False,
+    require_explicit_load_interval: bool = False,
     require_all_rows_valid: bool = False,
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
@@ -875,6 +915,7 @@ def read_power_trace_snapshot(
         load_interval_start=load_interval_start,
         load_interval_end=load_interval_end,
         load_interval_source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         require_all_rows_valid=require_all_rows_valid,
         read_text_fn=read_text_fn,
         error_factory=error_factory,
@@ -956,6 +997,7 @@ __all__ = [
     "COVERAGE_DEFINITIONS",
     "DEFAULT_SNAPSHOT_PREFIX",
     "EXPLICIT_FINAL_SAMPLE",
+    "ISSUE118_LOAD_INTERVAL_SOURCE",
     "ONE_INTERVAL_BOUND",
     "POWER_TRACE_COLUMNS",
     "POWER_TRACE_SHA256_DEFINITION",

@@ -48,7 +48,10 @@ from enodia.tt.bench.load_harness import (
     validate_mode_records,
     validate_worker_model,
 )
-from enodia.tt.bench.power_trace_snapshot import read_power_trace_csv
+from enodia.tt.bench.power_trace_snapshot import (
+    ISSUE118_LOAD_INTERVAL_SOURCE,
+    read_power_trace_csv,
+)
 from enodia.tt.bench.resident_harness import (
     AUDITED_CLOCK_SOURCE_IMAGE,
     ResidentConfig,
@@ -1385,6 +1388,74 @@ def test_committed_issue118_records_validate_against_companion_traces():
             strict_trace=True,
         )
         assert report["valid"] is True, report["mismatches"]
+
+
+@pytest.mark.parametrize("condition", ("dram", "newton-schulz"))
+@pytest.mark.parametrize(
+    "missing_endpoints",
+    (
+        ("load_interval_start",),
+        ("load_interval_end",),
+        ("load_interval_start", "load_interval_end"),
+    ),
+)
+def test_loaded_records_reject_missing_explicit_load_interval_endpoints(
+    condition, missing_endpoints
+):
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+    candidate = copy.deepcopy(record)
+    provenance = candidate["power_clock_provenance"]
+    for field in missing_endpoints:
+        provenance.pop(field)
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=ROOT / f"docs/measurements/{stem}-power.csv",
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "load.evidence"
+        and "explicit load interval endpoints" in mismatch["message"]
+        for mismatch in report["mismatches"]
+    )
+
+
+@pytest.mark.parametrize("condition", ("dram", "newton-schulz"))
+@pytest.mark.parametrize("source_case", ("missing", "empty", "wrong", "run_bounds"))
+def test_loaded_records_reject_unrecognized_load_interval_provenance(
+    condition, source_case
+):
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+    candidate = copy.deepcopy(record)
+    provenance = candidate["power_clock_provenance"]
+    if source_case == "missing":
+        provenance.pop("load_interval_source")
+    else:
+        provenance["load_interval_source"] = (
+            "" if source_case == "empty" else source_case
+        )
+    if source_case == "wrong":
+        provenance["load_interval_source"] = "untrusted_interval"
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=ROOT / f"docs/measurements/{stem}-power.csv",
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "load.evidence"
+        and "recognized load interval provenance" in mismatch["message"]
+        for mismatch in report["mismatches"]
+    )
+    assert record["power_clock_provenance"]["load_interval_source"] == (
+        ISSUE118_LOAD_INTERVAL_SOURCE
+    )
 
 
 def test_wait_for_power_trace_sample_accepts_completion_edge(tmp_path):
