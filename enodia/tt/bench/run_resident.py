@@ -491,24 +491,16 @@ def _host_load_clock(
     start_holder: dict[str, int],
     monotonic_ns: Any = time.monotonic_ns,
 ) -> Any:
-    """Return a two-edge clock: launch boundary first, fresh endpoint second."""
+    """Return a real host interval clock with a fresh end edge."""
     calls = 0
 
     def read() -> int:
         nonlocal calls
         if stop_event is not None and stop_event.is_set():
-            raise RuntimeError("host load stopped before launch boundary")
-        if calls == 0 and resident_launched is not None:
-            while not resident_launched.wait(timeout=0.1):
-                if stop_event is not None and stop_event.is_set():
-                    raise RuntimeError("host load stopped before launch boundary")
+            raise RuntimeError("host load stopped before transfer")
+        value = monotonic_ns()
         if calls == 0:
-            if "launch_ns" not in start_holder:
-                raise RuntimeError("host launch boundary was not recorded")
-            value = start_holder["launch_ns"]
             start_holder["start_ns"] = value
-        else:
-            value = monotonic_ns()
         calls += 1
         return value
 
@@ -535,8 +527,8 @@ def _run_host_transfers(
     host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
     device_tensors: list[Any] = []
 
-    # Signal readiness before the first timing clock. The launch boundary is
-    # supplied by the main thread after GenericOp submission returns.
+    # Signal readiness before the first timing clock. The host work starts
+    # before GenericOp so fixed CQ1 transfers can overlap the resident launch.
     if started_event is not None:
         started_event.set()
 
@@ -551,10 +543,6 @@ def _run_host_transfers(
             raise RuntimeError("host condition transfer was not assigned to CQ1")
         if stop_event is not None and stop_event.is_set():
             raise RuntimeError("host load stopped before CQ1 transfer")
-        if resident_launched is not None:
-            while not resident_launched.wait(timeout=0.1):
-                if stop_event is not None and stop_event.is_set():
-                    raise RuntimeError("host load stopped before CQ1 transfer")
         device_tensor = ttnn.to_device(
             host,
             device,
@@ -664,22 +652,15 @@ def _run_loaded_device(
             host_thread.start()
             if not host_started.wait(timeout=60.0):
                 raise RuntimeError("host load did not start")
-        measurement_start_ns: int | None = None
+        measurement_start_ns = time.monotonic_ns()
         try:
             ttnn.generic_op(_merged_program_io_tensors(resident_tensors), program)
         except BaseException:
             host_stop.set()
             resident_launched.set()
             raise
-        else:
-            launch_ns = time.monotonic_ns()
-            if host_thread is not None:
-                host_start_holder["launch_ns"] = launch_ns
-                measurement_start_ns = launch_ns
         finally:
             resident_launched.set()
-        if measurement_start_ns is None:
-            measurement_start_ns = time.monotonic_ns()
         ttnn.synchronize_device(device, cq_id=0)
         # Capture the CQ0 resident endpoint before waiting for any host-load
         # tail. This lets coverage accept a host load that extends beyond the

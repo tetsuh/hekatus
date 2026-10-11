@@ -263,18 +263,17 @@ def test_host_load_clock_uses_launch_once_and_fresh_endpoint():
     import threading
 
     launched = threading.Event()
-    launched.set()
-    start_holder = {"launch_ns": 100}
+    start_holder = {}
     clock = _host_load_clock(
         resident_launched=launched,
         stop_event=threading.Event(),
         start_holder=start_holder,
         monotonic_ns=iter((250, 400)).__next__,
     )
-    assert clock() == 100
-    assert start_holder["start_ns"] == 100
     assert clock() == 250
-    assert start_holder["start_ns"] == 100
+    assert start_holder["start_ns"] == 250
+    assert clock() == 400
+    assert start_holder["start_ns"] == 250
 
 
 def test_host_join_timeout_never_exceeds_resident_outer_cap():
@@ -302,10 +301,10 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
         "if calibration_output is not None:"
     )
     assert 'record["status"] = "calibration"' in resident_source
-    assert resident_source.rindex('host_start_holder["launch_ns"] = launch_ns') < resident_source.rindex("resident_launched.set()")
-    assert resident_source.rindex('host_start_holder["launch_ns"] = launch_ns') < resident_source.rindex("ttnn.synchronize_device(device, cq_id=0)")
+    assert resident_source.index("started_event.set()") < resident_source.rindex("run_host_cpu_transfer_work")
+    assert resident_source.index("measurement_start_ns = time.monotonic_ns()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
+    assert resident_source.index("ttnn.generic_op(_merged_program_io_tensors") < resident_source.rindex("resident_launched.set()")
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
-    assert resident_source.index('"launch_ns" not in start_holder') < resident_source.rindex("run_host_cpu_transfer_work")
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
