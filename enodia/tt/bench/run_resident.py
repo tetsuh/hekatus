@@ -17,6 +17,7 @@ import struct
 import sys
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,7 @@ from enodia.tt.bench.power_trace_snapshot import (
 from enodia.tt.bench.resident_clock import (
     safe_aiclk_integer,
     select_elapsed_aiclk,
+    select_load_interval_aiclk,
 )
 from enodia.tt.bench.resident_harness import (
     PAGE_BYTES,
@@ -512,9 +514,22 @@ def _run_device(
     tensors = _allocate_resident_tensors(ttnn, device, config)
     try:
         program = _program(ttnn, config, tensors, watcher=watcher)
+        program_launch_ns = time.monotonic_ns()
+        program_launch_utc = datetime.datetime.now(datetime.UTC).isoformat()
         ttnn.generic_op(list(tensors.values()), program)
         ttnn.synchronize_device(device, cq_id=0)
-        return _decode_resident_result(ttnn, config, tensors)
+        program_completion_ns = time.monotonic_ns()
+        program_completion_utc = datetime.datetime.now(datetime.UTC).isoformat()
+        result = _decode_resident_result(ttnn, config, tensors)
+        result.update(
+            {
+                "program_launch_ns": program_launch_ns,
+                "program_completion_ns": program_completion_ns,
+                "program_launch_utc": program_launch_utc,
+                "program_completion_utc": program_completion_utc,
+            }
+        )
+        return result
     finally:
         _deallocate_resident_tensors(ttnn, tensors)
 
@@ -829,6 +844,7 @@ def _run_loaded_device(
             if host_error:
                 raise RuntimeError("host transfer queueing failed") from host_error[0]
         measurement_start_ns = time.monotonic_ns()
+        measurement_start_utc = datetime.datetime.now(datetime.UTC).isoformat()
         try:
             ttnn.generic_op(_merged_program_io_tensors(resident_tensors), program)
         except BaseException:
@@ -850,6 +866,7 @@ def _run_loaded_device(
         # tail. This lets coverage accept a host load that extends beyond the
         # resident interval without making the endpoint host-load-dependent.
         measurement_end_ns = time.monotonic_ns()
+        measurement_end_utc = datetime.datetime.now(datetime.UTC).isoformat()
         if host_thread is not None:
             join_timeout = _host_join_timeout_seconds(
                 repeat_count=repeat_count,
@@ -871,11 +888,42 @@ def _run_loaded_device(
         result = _decode_resident_result(ttnn, config, resident_tensors)
         result["measurement_start_ns"] = measurement_start_ns
         result["measurement_end_ns"] = measurement_end_ns
+        result["program_launch_ns"] = measurement_start_ns
+        result["program_completion_ns"] = measurement_end_ns
+        result["program_launch_utc"] = measurement_start_utc
+        result["program_completion_utc"] = measurement_end_utc
         result["host_work"] = host_work
         if condition == "newton_schulz":
+            profile_records = load_kernel.profile_records()
             result["card_load_interval"] = card_interval_from_profile_records(
-                load_kernel.profile_records()
+                profile_records
             )
+            profile_worker = next(
+                (
+                    row
+                    for row in profile_records
+                    if row.get("risc") == "TRISC0"
+                    and row.get("load_end_ticks", 0) != row.get("load_start_ticks", 0)
+                ),
+                None,
+            )
+            if profile_worker is None:
+                raise RuntimeError("NS profile has no profile worker interval")
+            result["card_load_worker_intervals"] = [
+                {
+                    "worker_index": profile_worker.get(
+                        "core_index", profile_worker.get("measurement_core", 0)
+                    ),
+                    "core_index": profile_worker.get("core_index"),
+                    "risc": "TRISC0",
+                    "profile_worker": True,
+                    "start_ticks": profile_worker["load_start_ticks"],
+                    "end_ticks": profile_worker["load_end_ticks"],
+                    "statistics": {
+                        "profile_records": profile_records,
+                    },
+                }
+            ]
         elif condition == "dram":
             words = load_kernel.interval_words()
             rows = [
@@ -895,6 +943,21 @@ def _run_loaded_device(
                 min(interval.start_ticks for interval in intervals),
                 max(interval.end_ticks for interval in intervals),
             )
+            result["card_load_worker_intervals"] = [
+                {
+                    "worker_index": index,
+                    "core": list(load_kernel.worker_coordinates[index]),
+                    "start_ticks": interval.start_ticks,
+                    "end_ticks": interval.end_ticks,
+                    "statistics": {
+                        "read_pages": rows[index][4],
+                        "write_pages": rows[index][5],
+                        "repeat_count": rows[index][6],
+                        "checksum": rows[index][7],
+                    },
+                }
+                for index, interval in enumerate(intervals)
+            ]
             result["dram_stats"] = rows
         else:
             result["host_load_interval"] = HostLoadInterval(
@@ -1069,6 +1132,16 @@ def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
         fixed_work_ticks_per_frame=args.fixed_work_ticks_per_frame,
         budget_aiclk_mhz=args.budget_aiclk_mhz,
         histogram_bin_ticks=args.histogram_bin_ticks,
+        outer_timeout_cap_seconds=(
+            800
+            if args.condition == "newton_schulz" and args.outer_timeout_seconds == 800
+            else 600
+        ),
+        outer_timeout_cap_source=(
+            "issue118_compute_load_800s"
+            if args.condition == "newton_schulz" and args.outer_timeout_seconds == 800
+            else "issue12_timing_600s"
+        ),
     )
 
 
@@ -1128,9 +1201,9 @@ def _bound_calibration_config(config: ResidentConfig, duration_seconds: float) -
 
 
 def _load_achieved_throughput(
-    result: dict[str, Any], *, condition: str, repeat_count: int, aiclk_mhz: int
+    result: dict[str, Any], *, condition: str, repeat_count: int, aiclk_mhz: float
 ) -> tuple[float, str]:
-    """Convert actual load interval work into calibration throughput."""
+    """Convert actual load work using the slowest worker's own interval."""
     if condition == "host_cpu_transfer":
         interval = result.get("host_load_interval")
         elapsed_seconds = (interval.end_ns - interval.start_ns) / 1_000_000_000.0
@@ -1142,7 +1215,29 @@ def _load_achieved_throughput(
         }
         return transfer_count / HOST_TRANSFER_COUNT / max(elapsed_seconds, 1e-12), "repeats_per_host_second"
     interval = result.get("card_load_interval")
-    elapsed_seconds = (interval.end_ticks - interval.start_ticks) / (aiclk_mhz * 1_000_000.0)
+    worker_rows = result.get("card_load_worker_intervals")
+    worker_elapsed_ticks = []
+    if isinstance(worker_rows, list):
+        for row in worker_rows:
+            if isinstance(row, Mapping):
+                start = row.get("start_ticks")
+                end = row.get("end_ticks")
+                if isinstance(start, int) and isinstance(end, int) and end >= start:
+                    worker_elapsed_ticks.append(end - start)
+    if worker_elapsed_ticks:
+        elapsed_ticks = max(worker_elapsed_ticks)
+        result["throughput_interval"] = {
+            "source": "slowest_worker_own_elapsed_interval",
+            "elapsed_ticks": elapsed_ticks,
+            "aggregate_span_elapsed_ticks": interval.elapsed_ticks,
+        }
+    else:
+        elapsed_ticks = interval.end_ticks - interval.start_ticks
+        result["throughput_interval"] = {
+            "source": "aggregate_card_interval_legacy_compatibility",
+            "elapsed_ticks": elapsed_ticks,
+        }
+    elapsed_seconds = elapsed_ticks / (aiclk_mhz * 1_000_000.0)
     if condition == "dram":
         work_rate = (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12)
         result["load_work_rate"] = {
@@ -1181,6 +1276,8 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
             "source",
             "target_seconds",
             "safety_factor",
+            "throughput_reference_aiclk_mhz",
+            "throughput_unit_definition",
         }
         return CalibrationMetadata(**{key: calibration[key] for key in fields if key in calibration})
     except (TypeError, ValueError) as exc:
@@ -1342,6 +1439,16 @@ def main(argv: list[str] | None = None) -> int:
                 source_path=live_power_trace_path,
                 sampler_interval_seconds=sampler_interval,
                 coverage_definition=ONE_INTERVAL_BOUND,
+                load_interval_start=(
+                    result.get("program_launch_utc") if condition != "unloaded" else None
+                ),
+                load_interval_end=(
+                    result.get("program_completion_utc") if condition != "unloaded" else None
+                ),
+                load_interval_source=(
+                    "issue118_program_host_interval" if condition != "unloaded" else None
+                ),
+                include_issue118_metadata=True,
                 require_all_rows_valid=True,
                 error_factory=lambda kind, error: kind,
             )
@@ -1419,13 +1526,40 @@ def main(argv: list[str] | None = None) -> int:
     calibration_achieved: float | None = None
     calibration_unit: str | None = None
     resident_load_record: dict[str, Any] | None = None
+    load_record: dict[str, Any] | None = None
+    throughput_aiclk_mhz = aiclk_mhz
+    if condition in {"newton_schulz", "dram"}:
+        try:
+            weighted_selection = select_load_interval_aiclk(
+                weighted_aiclk_mhz=trace_metadata.get(
+                    "aiclk_mhz_load_interval_weighted"
+                )
+                if trace_metadata is not None
+                else None,
+                provenance=trace_metadata.get(
+                    "aiclk_mhz_load_interval_weighted_source"
+                )
+                if trace_metadata is not None
+                else None,
+            )
+        except ValueError as exc:
+            reason = f"load interval AICLK provenance rejected: {exc}"
+            _write(
+                args.out,
+                build_rejection_record(
+                    config=config, reason=reason, environment=environment
+                ),
+            )
+            print(f"resident record rejected: {reason}", file=sys.stderr)
+            return 2
+        throughput_aiclk_mhz = weighted_selection["aiclk_mhz_exact"]
     try:
         if args.calibrate:
             calibration_achieved, calibration_unit = _load_achieved_throughput(
                 result,
                 condition=condition,
                 repeat_count=repeat_count,
-                aiclk_mhz=aiclk_mhz,
+                aiclk_mhz=throughput_aiclk_mhz,
             )
             calibration_output = calibration_metadata(
                 condition=condition,
@@ -1452,6 +1586,7 @@ def main(argv: list[str] | None = None) -> int:
                     repeat_count=repeat_count,
                     resident_timestamps=result["timestamps"],
                     card_interval=result["card_load_interval"],
+                    worker_intervals=result.get("card_load_worker_intervals"),
                     calibration=calibration_output,
                     achieved_throughput=calibration_achieved,
                     throughput_unit=calibration_unit,
@@ -1478,6 +1613,7 @@ def main(argv: list[str] | None = None) -> int:
                 repeat_count=repeat_count,
                 resident_timestamps=result["timestamps"],
                 card_interval=result["card_load_interval"],
+                worker_intervals=result.get("card_load_worker_intervals"),
                 calibration=calibration,
             )
     except (LoadConfigurationError, ValueError, TypeError) as exc:
@@ -1491,6 +1627,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(f"load interval evidence rejected: {exc}", file=sys.stderr)
         return 2
+    if load_record is not None:
+        resident_load_record = load_record
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
@@ -1516,6 +1654,17 @@ def main(argv: list[str] | None = None) -> int:
         outlier_analysis=outlier_analysis,
         run_start=run_start.isoformat(),
         run_end=run_end.isoformat(),
+        load_interval_start=(
+            result.get("program_launch_utc") if condition != "unloaded" else None
+        ),
+        load_interval_end=(
+            result.get("program_completion_utc") if condition != "unloaded" else None
+        ),
+        load_interval_source=(
+            "issue118_program_host_interval" if condition != "unloaded" else None
+        ),
+        program_launch_ns=result.get("program_launch_ns"),
+        program_completion_ns=result.get("program_completion_ns"),
         watcher=watcher,
         timing_evidence=(
             trace_timing_ok

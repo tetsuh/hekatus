@@ -11,6 +11,7 @@ import pytest
 from enodia.tt.bench import load_generators, newton_schulz_kernel
 from enodia.tt.bench import run_resident as resident_runner
 from enodia.tt.bench.load_harness import (
+    CARD_THROUGHPUT_UNIT_DEFINITION,
     DEVICE_OPEN_SETTINGS,
     HOST_RESIDENT_SUB_DEVICE_ID,
     HOST_TRANSFER_CORE,
@@ -25,6 +26,7 @@ from enodia.tt.bench.load_harness import (
     RESIDENT_CORES,
     CalibrationMetadata,
     CardLoadInterval,
+    CardWorkerInterval,
     HostLoadInterval,
     LoadEvidenceError,
     build_calibration_load_record,
@@ -34,17 +36,26 @@ from enodia.tt.bench.load_harness import (
     load_evidence_valid,
     newton_schulz_l1_ledger,
     ns_work_distribution,
+    validate_calibration_load_record,
     validate_load_record,
     validate_mode_records,
     validate_worker_model,
 )
-from enodia.tt.bench.resident_harness import ResidentConfig, run_budget_breakdown
+from enodia.tt.bench.power_trace_snapshot import read_power_trace_csv
+from enodia.tt.bench.resident_harness import (
+    AUDITED_CLOCK_SOURCE_IMAGE,
+    ResidentConfig,
+    build_measurement_record,
+    run_budget_breakdown,
+    validate_resident_record,
+)
 from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import _read_calibration as read_load_calibration
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
 from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
     _complete_host_transfers,
+    _config_from_args,
     _host_join_timeout_seconds,
     _host_load_clock,
     _load_achieved_throughput,
@@ -891,3 +902,180 @@ def test_calibration_is_capped_at_sixty_seconds():
             achieved_throughput=1,
             target_seconds=500.001,
         )
+
+
+def test_power_trace_keeps_varying_in_run_clock_and_uses_time_weighted_interval(tmp_path):
+    trace = tmp_path / "power.csv"
+    trace.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00Z,75,1000,60\n"
+        "2026-01-01T00:00:01Z,75,800,60\n"
+        "2026-01-01T00:00:03Z,75,1200,60\n"
+    )
+    parsed = read_power_trace_csv(
+        trace,
+        run_start="2026-01-01T00:00:00Z",
+        run_end="2026-01-01T00:00:03Z",
+    )
+    assert parsed["aiclk_mhz"] == 1200
+    assert parsed["aiclk_mhz_in_run_min"] == 800
+    assert parsed["aiclk_mhz_in_run_max"] == 1200
+    assert parsed["aiclk_mhz_load_interval_weighted"] == pytest.approx(866.6666667)
+    assert parsed["aiclk_mhz_load_interval_weighted_source"] == "load_interval_trace_samples"
+    assert len(parsed["in_run_samples"]) == 3
+
+
+def test_delayed_worker_uses_slowest_worker_interval_not_aggregate_span():
+    result = {
+        "card_load_interval": CardLoadInterval(0, 10_000),
+        "card_load_worker_intervals": [
+            {"worker_index": 0, "start_ticks": 0, "end_ticks": 1_000},
+            {"worker_index": 1, "start_ticks": 9_000, "end_ticks": 11_000},
+        ],
+    }
+    throughput, unit = _load_achieved_throughput(
+        result, condition="dram", repeat_count=1, aiclk_mhz=1_000
+    )
+    assert throughput == pytest.approx(500_000.0)
+    assert unit == "repeats_per_card_second"
+    assert result["throughput_interval"]["source"] == (
+        "slowest_worker_own_elapsed_interval"
+    )
+
+
+def test_dram_record_retains_all_worker_rows_and_aggregate_coverage_span():
+    workers = [
+        CardWorkerInterval(index, index * 10, 300 + index * 10)
+        for index in range(8)
+    ]
+    record = build_load_record(
+        condition="dram",
+        repeat_count=1,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(0, 370),
+        worker_intervals=workers,
+    )
+    assert len(record["card_load_worker_intervals"]) == 8
+    assert record["card_load_interval_statistics"]["aggregate_span_role"] == "coverage_only"
+    assert record["card_load_interval_statistics"]["slowest_worker_elapsed_ticks"] == 300
+    validate_load_record(record)
+
+
+def test_calibration_record_is_schema_valid_and_annotates_card_tick_unit():
+    calibration = CalibrationMetadata(
+        condition="dram",
+        duration_seconds=5,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=12,
+        target_seconds=500,
+    )
+    record = build_calibration_load_record(
+        condition="dram",
+        repeat_count=1,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(0, 300),
+        calibration=calibration,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+    )
+    validate_calibration_load_record(record)
+    assert record["calibration"]["throughput_unit_definition"] == CARD_THROUGHPUT_UNIT_DEFINITION
+
+
+def test_resident_record_persists_ordered_host_monotonic_program_edges():
+    config = ResidentConfig(
+        frame_count=3,
+        frame_interval_ticks=1_000,
+        producer_core=(0, 0),
+        consumer_core=(1, 0),
+        ring_pages=4,
+        work_per_frame=64,
+        designated_timestamp_core=(1, 0),
+        cycle_budget=10_000,
+        outer_timeout_seconds=60,
+        fixed_work_ticks_per_frame=100,
+        budget_aiclk_mhz=1_350,
+    )
+    sampler = {
+        "mode": "off",
+        "interval_seconds": None,
+        "power_trace": "absent_by_design",
+        "timing_evidence": "diagnostic_only",
+    }
+    environment = {
+        "board": {"serial": "board", "board_type": "p150a"},
+        "firmware": {"fw_bundle_version": "19.6.0.0"},
+        "kmd_version": "2.11.0",
+        "image": AUDITED_CLOCK_SOURCE_IMAGE,
+        "image_pinned": True,
+        "harness_commit": "a" * 40,
+        "tt_env_active_release": "0.75.0",
+        "telemetry_sampler": sampler,
+    }
+    record = build_measurement_record(
+        config=config,
+        aiclk_mhz=1_350,
+        timestamps=[100, 1_100, 2_100],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="a" * 40,
+        environment=environment,
+        power_trace=None,
+        program_launch_ns=10_000,
+        program_completion_ns=20_000,
+    )
+    assert record["program_host_interval"] == {
+        "clock": "host_monotonic_ns",
+        "start_ns": 10_000,
+        "end_ns": 20_000,
+        "launch_ns": 10_000,
+        "completion_ns": 20_000,
+        "elapsed_ns": 10_000,
+    }
+    assert record["resident_tick_interval"]["elapsed_ticks"] == 2_000
+    with pytest.raises(ValueError, match="ordered non-negative monotonic"):
+        build_measurement_record(
+            config=config,
+            aiclk_mhz=1_350,
+            timestamps=[100, 1_100, 2_100],
+            producer_full_count=0,
+            consumer_empty_count=0,
+            kernel_error_flag=0,
+            harness_commit="a" * 40,
+            environment=environment,
+            power_trace=None,
+            program_launch_ns=20_000,
+            program_completion_ns=10_000,
+        )
+
+
+def test_compute_timeout_cap_is_selectable_at_600_or_800_and_watcher_stays_60():
+    args = resident_parser().parse_args(
+        [
+            "--out",
+            "/out/result.json",
+            "--condition",
+            "newton_schulz",
+            "--outer-timeout-seconds",
+            "800",
+        ]
+    )
+    config = _config_from_args(args)
+    assert config.outer_timeout_cap_seconds == 800
+    assert config.outer_timeout_cap_source == "issue118_compute_load_800s"
+    assert resident_runner.validate_configuration(config).outer_timeout_cap_seconds == 800
+    with pytest.raises(ValueError, match="60"):
+        resident_runner.validate_configuration(config, watcher=True)
+    args.outer_timeout_seconds = 600
+    config = _config_from_args(args)
+    assert config.outer_timeout_cap_seconds == 600
+    assert config.outer_timeout_cap_source == "issue12_timing_600s"
+
+
+def test_old_committed_record_remains_out_of_scope_valid():
+    path = ROOT / "docs/measurements/2026-10-06-p150a-issue104-sampler-default.json"
+    report = validate_resident_record(json.loads(path.read_text()))
+    assert report["out_of_scope"] is True
+    assert report["valid"] is None

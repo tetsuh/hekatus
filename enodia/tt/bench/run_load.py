@@ -118,6 +118,8 @@ _CALIBRATION_FIELDS = frozenset(
         "source",
         "target_seconds",
         "safety_factor",
+        "throughput_reference_aiclk_mhz",
+        "throughput_unit_definition",
     }
 )
 
@@ -206,6 +208,7 @@ def build_condition_record(
     resident_timestamps: list[int] | tuple[int, ...] | None,
     card_start_ticks: int | None = None,
     card_end_ticks: int | None = None,
+    worker_intervals: list[dict[str, Any]] | None = None,
     host_start_ns: int | None = None,
     host_end_ns: int | None = None,
     measurement_start_ns: int | None = None,
@@ -234,6 +237,7 @@ def build_condition_record(
         resident_timestamps=resident_timestamps,
         card_interval=card_interval,
         host_interval=host_interval,
+        worker_intervals=worker_intervals,
         measurement_start_ns=measurement_start_ns,
         measurement_end_ns=measurement_end_ns,
         calibration=calibration,

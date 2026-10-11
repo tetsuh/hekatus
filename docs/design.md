@@ -1950,6 +1950,31 @@ card (host-side timestamps would mix in host jitter).
 **Build the timestamp mechanism in from the start. Retrofitting it is
 painful.**
 
+### Issue #118 load-interval record contract
+
+The Issue #118 runner keeps the existing public `clock.aiclk_mhz` meaning: it
+is the integer maximum of valid in-run power-trace samples. The immutable
+snapshot additionally retains the full in-run rows, their minimum and
+maximum, and a time-weighted AICLK over an explicit load interval. The
+weighted value is the only AICLK used to convert loaded frame ticks to real
+time or to calculate card-load calibration throughput; absent interval bounds
+or trace provenance are rejected rather than replaced by the maximum or an
+environment snapshot.
+
+Every completed resident record pairs its card-side resident/load tick spans
+with host `CLOCK_MONOTONIC` launch and completion nanoseconds. Device-load
+records retain each worker interval: all eight DRAM workers remain separate,
+while their aggregate min-start/max-end span is coverage-only and calibration
+uses the slowest worker's own elapsed interval. The Newton-Schulz profile
+worker facts are retained under the same interval contract. Timing invocations
+select a 600-second cap, or the explicitly recorded 800-second compute-load
+cap; Watcher remains at 60 seconds. New calibration metadata explains that the
+backward-compatible `repeats_per_card_second` value is reconstructed from
+card ticks using the load-interval AICLK with the 1.35e9-Hz reference.
+
+This section records the board-free measurement contract and implementation
+provenance only. It does not add predictions or measurement results.
+
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
 The pinned resident harness was run for 400,000 frames at the Issue #12 final

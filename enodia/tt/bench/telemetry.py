@@ -176,6 +176,9 @@ def parse_power_trace(
     run_end: datetime.datetime | str | None = None,
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
     sampler_interval_seconds: float | None = None,
+    load_interval_start: datetime.datetime | str | None = None,
+    load_interval_end: datetime.datetime | str | None = None,
+    load_interval_source: str | None = None,
 ) -> dict[str, Any]:
     """Parse a power CSV through the shared snapshot/read lifecycle."""
     if not isinstance(path, Path):
@@ -202,6 +205,9 @@ def parse_power_trace(
         run_end=run_end,
         sampler_interval_seconds=sampler_interval_seconds,
         coverage_definition=coverage_definition,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
         require_all_rows_valid=True,
         error_factory=_legacy_power_trace_error,
         reject_incomplete_rows=False,
@@ -220,6 +226,9 @@ def validate_power_trace_coverage(
     run_end: datetime.datetime | str | None = None,
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
     sampler_interval_seconds: float | None = None,
+    load_interval_start: datetime.datetime | str | None = None,
+    load_interval_end: datetime.datetime | str | None = None,
+    load_interval_source: str | None = None,
 ) -> dict[str, Any]:
     """Board-free alias for :func:`parse_power_trace` used by record builders."""
     return parse_power_trace(
@@ -228,6 +237,9 @@ def validate_power_trace_coverage(
         run_end=run_end,
         coverage_definition=coverage_definition,
         sampler_interval_seconds=sampler_interval_seconds,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
     )
 
 

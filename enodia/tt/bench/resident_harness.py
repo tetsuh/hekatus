@@ -30,6 +30,7 @@ from enodia.tt.bench.clock_source_audit import (
 from enodia.tt.bench.power_trace_snapshot import (
     empty_power_trace_metadata,
     public_power_trace_metadata,
+    read_power_trace_csv,
 )
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_CONFIGURED,
@@ -37,6 +38,7 @@ from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_RUN_TRACE_SAMPLES,
     safe_aiclk_integer,
     select_elapsed_aiclk,
+    select_load_interval_aiclk,
     ticks_to_seconds,
 )
 from enodia.tt.bench.resident_record import (
@@ -65,6 +67,7 @@ from enodia.tt.bench.sampler_contract import (
 PAGE_WORDS = 32 * 32
 PAGE_BYTES = PAGE_WORDS * 4
 MAX_TIMING_TIMEOUT_SECONDS = 600
+MAX_COMPUTE_LOAD_TIMEOUT_SECONDS = 800
 MAX_WATCHER_TIMEOUT_SECONDS = 60
 # Retain the old symbol for callers that imported it; timing runs now use the
 # approved 600-second ceiling.
@@ -113,6 +116,8 @@ class ResidentConfig:
     histogram_bin_ticks: int = 1
     fixed_work_ticks_per_frame: int = 100_000
     budget_aiclk_mhz: int = 1_350
+    outer_timeout_cap_seconds: int = MAX_TIMING_TIMEOUT_SECONDS
+    outer_timeout_cap_source: str = "issue12_timing_600s"
 
     def as_record(self) -> dict[str, Any]:
         values = asdict(self)
@@ -335,7 +340,20 @@ def validate_configuration(
     bin_width = _positive_int(config.histogram_bin_ticks, "histogram_bin_ticks")
     if ring_pages < MIN_RING_PAGES:
         raise ResidentPreflightError(f"ring_pages must be >= {MIN_RING_PAGES}")
-    timeout_cap = MAX_WATCHER_TIMEOUT_SECONDS if watcher else MAX_TIMING_TIMEOUT_SECONDS
+    if watcher:
+        timeout_cap = MAX_WATCHER_TIMEOUT_SECONDS
+        cap_source = "watcher_60s"
+    else:
+        timeout_cap = config.outer_timeout_cap_seconds
+        if timeout_cap not in {MAX_TIMING_TIMEOUT_SECONDS, MAX_COMPUTE_LOAD_TIMEOUT_SECONDS}:
+            raise ResidentPreflightError(
+                "outer_timeout_cap_seconds must be 600 or 800 for timing runs"
+            )
+        if timeout_cap == MAX_COMPUTE_LOAD_TIMEOUT_SECONDS and config.outer_timeout_cap_source != "issue118_compute_load_800s":
+            raise ResidentPreflightError(
+                "800-second timing cap requires issue118_compute_load_800s provenance"
+            )
+        cap_source = config.outer_timeout_cap_source
     if timeout > timeout_cap:
         mode = "Watcher" if watcher else "timing"
         raise ResidentPreflightError(
@@ -373,6 +391,8 @@ def validate_configuration(
         histogram_bin_ticks=bin_width,
         fixed_work_ticks_per_frame=fixed_work_ticks,
         budget_aiclk_mhz=budget_aiclk_mhz,
+        outer_timeout_cap_seconds=timeout_cap,
+        outer_timeout_cap_source=cap_source,
     )
 
 
@@ -956,9 +976,10 @@ def _trace_metadata_from_path(
     power_trace_metadata: Mapping[str, Any] | None,
     run_start: Any,
     run_end: Any,
+    load_interval_start: Any = None,
+    load_interval_end: Any = None,
+    load_interval_source: str | None = None,
 ) -> dict[str, Any]:
-    from enodia.tt.bench.telemetry import parse_power_trace
-
     supplied_definition = (
         power_trace_metadata.get("coverage_definition", EXPLICIT_FINAL_SAMPLE)
         if isinstance(power_trace_metadata, Mapping)
@@ -969,13 +990,34 @@ def _trace_metadata_from_path(
         if isinstance(power_trace_metadata, Mapping)
         else None
     )
-    parsed = parse_power_trace(
+    # Keep the historical parser seam observable for #111 callers; the
+    # immutable snapshot reader below owns the facts used by this record.
+    from enodia.tt.bench.telemetry import parse_power_trace
+
+    parse_power_trace(
         power_trace_path,
         run_start=run_start,
         run_end=run_end,
         coverage_definition=supplied_definition,
         sampler_interval_seconds=supplied_interval,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
     )
+    parsed = read_power_trace_csv(
+        power_trace_path,
+        run_start=run_start,
+        run_end=run_end,
+        coverage_definition=supplied_definition,
+        sampler_interval_seconds=supplied_interval,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
+        require_all_rows_valid=True,
+        error_factory=lambda kind, _error: kind,
+        reject_incomplete_rows=False,
+    )
+    parsed = public_power_trace_metadata(parsed)
     if parsed.get("file") != power_trace:
         raise ValueError("power_trace_path basename must match power_trace")
     if isinstance(power_trace_metadata, Mapping):
@@ -1018,6 +1060,9 @@ def _trace_metadata_from_supplied(
     power_trace_metadata: Mapping[str, Any],
     run_start: Any,
     run_end: Any,
+    load_interval_start: Any = None,
+    load_interval_end: Any = None,
+    load_interval_source: str | None = None,
 ) -> dict[str, Any]:
     metadata = dict(power_trace_metadata)
     metadata.setdefault("file", power_trace)
@@ -1027,6 +1072,12 @@ def _trace_metadata_from_supplied(
         metadata["run_start"] = run_start
     if run_end is not None:
         metadata["run_end"] = run_end
+    if load_interval_start is not None:
+        metadata["load_interval_start"] = load_interval_start
+    if load_interval_end is not None:
+        metadata["load_interval_end"] = load_interval_end
+    if load_interval_source is not None:
+        metadata["load_interval_source"] = load_interval_source
     return _public_power_trace_metadata(metadata)
 
 
@@ -1037,6 +1088,9 @@ def _power_trace_metadata(
     power_trace_metadata: Mapping[str, Any] | None,
     run_start: Any,
     run_end: Any,
+    load_interval_start: Any = None,
+    load_interval_end: Any = None,
+    load_interval_source: str | None = None,
 ) -> dict[str, Any]:
     """Read one run-bound trace or normalize supplied board-free metadata."""
     if power_trace_path is not None:
@@ -1046,6 +1100,9 @@ def _power_trace_metadata(
             power_trace_metadata=power_trace_metadata,
             run_start=run_start,
             run_end=run_end,
+            load_interval_start=load_interval_start,
+            load_interval_end=load_interval_end,
+            load_interval_source=load_interval_source,
         )
     if power_trace_metadata is None:
         return _missing_power_trace_metadata(
@@ -1056,6 +1113,9 @@ def _power_trace_metadata(
         power_trace_metadata=power_trace_metadata,
         run_start=run_start,
         run_end=run_end,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
     )
 
 
@@ -1108,6 +1168,11 @@ def build_measurement_record(
     power_trace_metadata: Mapping[str, Any] | None = None,
     run_start: Any = None,
     run_end: Any = None,
+    load_interval_start: Any = None,
+    load_interval_end: Any = None,
+    load_interval_source: str | None = None,
+    program_launch_ns: int | None = None,
+    program_completion_ns: int | None = None,
     outlier_analysis: Mapping[str, Any] | None = None,
     attempted_frame_count: int | None = None,
     produced_frame_count: int | None = None,
@@ -1166,6 +1231,21 @@ def build_measurement_record(
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )
+    if (program_launch_ns is None) != (program_completion_ns is None):
+        raise ValueError(
+            "program_launch_ns and program_completion_ns must be supplied together"
+        )
+    if program_launch_ns is not None and (
+        isinstance(program_launch_ns, bool)
+        or isinstance(program_completion_ns, bool)
+        or not isinstance(program_launch_ns, int)
+        or not isinstance(program_completion_ns, int)
+        or program_launch_ns < 0
+        or program_completion_ns < program_launch_ns
+    ):
+        raise ValueError(
+            "program host interval must be ordered non-negative monotonic nanoseconds"
+        )
     sampler_metadata_supplied = "telemetry_sampler" in normalized_environment
     sampler = _validate_sampler_trace(normalized_environment, power_trace)
     normalized_environment["telemetry_sampler"] = dict(sampler)
@@ -1196,6 +1276,9 @@ def build_measurement_record(
             power_trace_metadata=power_trace_metadata,
             run_start=run_start,
             run_end=run_end,
+            load_interval_start=load_interval_start,
+            load_interval_end=load_interval_end,
+            load_interval_source=load_interval_source,
         )
         trace_reason = _trace_failure_reason(trace_metadata)
         trace_aiclk = _safe_aiclk_integer(trace_metadata.get("aiclk_mhz"))
@@ -1272,6 +1355,28 @@ def build_measurement_record(
     )
     aiclk_mhz = selection["aiclk_mhz"]
     aiclk_source = selection["aiclk_source"]
+    elapsed_aiclk_mhz: float = float(aiclk_mhz)
+    elapsed_aiclk_source = aiclk_source
+    load_condition = (
+        load_record.get("condition")
+        if isinstance(load_record, Mapping)
+        else None
+    )
+    if load_condition in {"newton_schulz", "dram"}:
+        if not isinstance(trace_metadata, Mapping):
+            raise ValueError(
+                "Issue #118 loaded conversion requires immutable power-trace metadata"
+            )
+        weighted_selection = select_load_interval_aiclk(
+            weighted_aiclk_mhz=trace_metadata.get(
+                "aiclk_mhz_load_interval_weighted"
+            ),
+            provenance=trace_metadata.get(
+                "aiclk_mhz_load_interval_weighted_source"
+            ),
+        )
+        elapsed_aiclk_mhz = weighted_selection["aiclk_mhz_exact"]
+        elapsed_aiclk_source = weighted_selection["aiclk_source"]
     selected_image = normalized_environment["image"]
     source_evidence = _source_evidence(selected_image)
     validate_post_run_aiclk(aiclk_mhz)
@@ -1295,11 +1400,13 @@ def build_measurement_record(
         raise ValueError("kernel_error_flag must agree with failure_check")
     timestamp_values = list(timestamps)
     digest = timestamp_digest(timestamp_values)
-    if outlier_analysis is None:
+    if outlier_analysis is None or load_condition in {"newton_schulz", "dram"}:
         outlier_analysis = build_outlier_analysis(
             timestamp_values,
             aiclk_mhz=aiclk_mhz,
             aiclk_source=aiclk_source,
+            elapsed_aiclk_mhz=elapsed_aiclk_mhz,
+            elapsed_aiclk_source=elapsed_aiclk_source,
             sampler_metadata=sampler,
         )
     else:
@@ -1393,6 +1500,8 @@ def build_measurement_record(
         "stage": 1,
         "status": status,
         "num_command_queues": num_command_queues,
+        "outer_timeout_cap_seconds": config.outer_timeout_cap_seconds,
+        "outer_timeout_cap_source": config.outer_timeout_cap_source,
         "device_open": {
             "num_command_queues": num_command_queues,
             "resident_command_queue": 0,
@@ -1423,6 +1532,28 @@ def build_measurement_record(
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
             "aiclk_source": aiclk_source,
+            "aiclk_mhz_in_run_min": (
+                trace_metadata.get("aiclk_mhz_in_run_min")
+                if trace_metadata is not None
+                else None
+            ),
+            "aiclk_mhz_in_run_max": (
+                trace_metadata.get("aiclk_mhz_in_run_max")
+                if trace_metadata is not None
+                else None
+            ),
+            "aiclk_mhz_load_interval_weighted": (
+                trace_metadata.get("aiclk_mhz_load_interval_weighted")
+                if trace_metadata is not None
+                else None
+            ),
+            "aiclk_mhz_load_interval_weighted_source": (
+                trace_metadata.get("aiclk_mhz_load_interval_weighted_source")
+                if trace_metadata is not None
+                else "unavailable"
+            ),
+            "aiclk_mhz_for_elapsed_seconds": elapsed_aiclk_mhz,
+            "aiclk_source_for_elapsed_seconds": elapsed_aiclk_source,
             "aiclk_observation": (
                 "configured run AICLK; sampler off provides no loaded-clock trace"
                 if aiclk_source == AICLK_SOURCE_CONFIGURED
@@ -1492,6 +1623,17 @@ def build_measurement_record(
             "error_flag": int(classification.error_flag),
         },
         "raw_timestamps": digest,
+        "resident_tick_interval": (
+            {
+                "clock": "card_riscv_wall_clock",
+                "start_ticks": timestamp_values[0],
+                "end_ticks": timestamp_values[-1],
+                "elapsed_ticks": timestamp_values[-1] - timestamp_values[0],
+                "timestamp_semantics": "wrap-tracked_extended",
+            }
+            if timestamp_values
+            else None
+        ),
         "power_trace": _safe_trace_name(power_trace),
         "power_trace_sample_count": (
             trace_metadata.get("sample_count") if trace_metadata is not None else None
@@ -1507,6 +1649,29 @@ def build_measurement_record(
         ),
         "power_trace_sha256": (
             trace_metadata.get("sha256") if trace_metadata is not None else None
+        ),
+        "aiclk_mhz_in_run_min": (
+            trace_metadata.get("aiclk_mhz_in_run_min")
+            if trace_metadata is not None
+            else None
+        ),
+        "aiclk_mhz_in_run_max": (
+            trace_metadata.get("aiclk_mhz_in_run_max")
+            if trace_metadata is not None
+            else None
+        ),
+        "aiclk_mhz_load_interval_weighted": (
+            trace_metadata.get("aiclk_mhz_load_interval_weighted")
+            if trace_metadata is not None
+            else None
+        ),
+        "aiclk_mhz_load_interval_weighted_source": (
+            trace_metadata.get("aiclk_mhz_load_interval_weighted_source")
+            if trace_metadata is not None
+            else "unavailable"
+        ),
+        "power_trace_in_run_samples": (
+            trace_metadata.get("in_run_samples") if trace_metadata is not None else []
         ),
         "power_trace_absent_reason": "sampler_off_by_design" if sampler_off else None,
         "power_trace_coverage": (
@@ -1558,8 +1723,30 @@ def build_measurement_record(
         "timing_evidence_reason": final_timing_reason,
         "outlier_analysis": dict(outlier_analysis),
     }
+    if program_launch_ns is not None:
+        program_interval = {
+            "clock": "host_monotonic_ns",
+            "start_ns": program_launch_ns,
+            "end_ns": program_completion_ns,
+            "launch_ns": program_launch_ns,
+            "completion_ns": program_completion_ns,
+            "elapsed_ns": program_completion_ns - program_launch_ns,
+        }
+        record["program_host_interval"] = program_interval
+        record["host_program_interval"] = dict(program_interval)
+        record["program_launch_ns"] = program_launch_ns
+        record["program_completion_ns"] = program_completion_ns
+        record["program_launch_monotonic_ns"] = program_launch_ns
+        record["program_completion_monotonic_ns"] = program_completion_ns
+
     if load_record is not None:
         record["card_load_interval"] = load_record.get("card_load_interval")
+        record["card_load_worker_intervals"] = load_record.get(
+            "card_load_worker_intervals"
+        )
+        record["card_load_interval_statistics"] = load_record.get(
+            "card_load_interval_statistics"
+        )
         record["host_load_interval"] = load_record.get("host_load_interval")
         record["load_coverage"] = load_record.get("coverage")
         record["load_repeat_count"] = load_record.get("load", {}).get("repeat_count")
@@ -1702,6 +1889,7 @@ __all__ = [
     "CURRENT_WRAP_WORK_PER_FRAME",
     "FAILURE_CODES",
     "FAILURE_CODE_TABLE",
+    "MAX_COMPUTE_LOAD_TIMEOUT_SECONDS",
     "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MAX_OUTER_TIMEOUT_SECONDS",
     "MAX_TIMING_TIMEOUT_SECONDS",

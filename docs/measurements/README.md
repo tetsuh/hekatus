@@ -48,12 +48,26 @@ board-free configuration path; it does not claim board evidence. The parent
 runs the bounded board calibration once per device load with no Watcher and a
 60-second cap using the resident runner. The emitted calibration record
 retains the measured throughput and the calibration-selected repeat count for
-the later run. Any later loaded resident invocation must explicitly pass
-`--outer-timeout-seconds 600`; the runner rejects a shorter cap for a
-500-second target with the 10% safety factor. A later device record is
-not evidence until it adds a wrap-tracked card-clock load interval for
+the later run. A later loaded resident invocation selects an explicit 600-second cap, or
+800 seconds for the compute-loaded Newton-Schulz condition when the measured
+AICLK requires the amended allowance. Watcher remains capped at 60 seconds.
+The selected cap and its provenance are persisted in the resident record; the
+wrapper rejects a value above the selected cap. A later device record is not
+evidence until it adds a wrap-tracked card-clock load interval for
 `newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
 and the corresponding coverage verdict is `covered`.
+
+The immutable power snapshot retains every usable in-run sample, the in-run
+minimum and maximum, and a left-held time-weighted AICLK over the explicit
+load interval. Issue #118 frame-interval seconds and card-load throughput are
+converted from that weighted value, never from the existing public maximum
+`aiclk_mhz`; missing load-interval bounds or provenance fail closed. The
+record also retains host `CLOCK_MONOTONIC` program launch/completion beside
+the card tick spans. DRAM records retain all eight worker rows and use the
+slowest worker's own elapsed interval for calibration; the aggregate worker
+span is coverage metadata only. The historical
+`repeats_per_card_second` spelling remains accepted for old records, while
+new calibration metadata annotates its card-tick/1.35e9-reference basis.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. A fixed four-slot
 reusable host/device pool and per-repeat CQ1 completion keep transfer buffering

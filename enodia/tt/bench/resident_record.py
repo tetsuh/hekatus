@@ -96,6 +96,8 @@ from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
     canonical_coverage_definition,
     is_coverage_definition,
+    public_power_trace_metadata,
+    read_power_trace_csv,
 )
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_CONFIGURED,
@@ -107,7 +109,7 @@ from enodia.tt.bench.sampler_contract import (
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
 )
-from enodia.tt.bench.telemetry import POWER_TRACE_COLUMNS, parse_power_trace
+from enodia.tt.bench.telemetry import POWER_TRACE_COLUMNS
 
 CLOCK_MODULUS_TICKS = 1 << 32
 DEFAULT_AICLK_MHZ = 1_350
@@ -618,7 +620,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path == "num_command_queues":
         type_rule, range_rule, expected = _is_int, _enum(2), "the integer 2"
         invalid_range = 1
-    elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", "outlier_analysis.aiclk_mhz_for_elapsed_seconds", "outlier_analysis.run_elapsed_ticks", "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
+    elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", "outlier_analysis.run_elapsed_ticks", "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
         type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
         invalid_range = -1
     elif path == "clock.aiclk_mhz":
@@ -735,9 +737,12 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path in {"outlier_analysis.pair_sum_min_ticks", "outlier_analysis.pair_sum_max_ticks", "outlier_analysis.sum_delta_min_ticks", "outlier_analysis.sum_delta_max_ticks"}:
         type_rule, range_rule, expected = _is_number, _is_number, "a finite number"
         invalid_range = float("nan")
-    elif path in {"outlier_analysis.pair_sum_mean_ticks", "outlier_analysis.run_elapsed_seconds", "outlier_analysis.aiclk_mhz_for_elapsed_seconds"}:
+    elif path in {"outlier_analysis.pair_sum_mean_ticks", "outlier_analysis.run_elapsed_seconds"}:
         type_rule, range_rule, expected = _is_number, lambda value: _is_number(value) and value >= 0, "a non-negative finite number"
         invalid_range = -1.0
+    elif path == "outlier_analysis.aiclk_mhz_for_elapsed_seconds":
+        type_rule, range_rule, expected = _is_number, lambda value: _is_number(value) and value > 0, "a positive finite AICLK value"
+        invalid_range = 0.0
     elif path == "outlier_analysis.gcd_frame_gap":
         type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
         invalid_range = -1
@@ -870,11 +875,44 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "load_coverage",
     "load_repeat_count",
     "calibration",
+    "card_load_worker_intervals",
+    "card_load_worker_intervals[]",
+    "card_load_worker_intervals[].worker_index",
+    "card_load_worker_intervals[].clock",
+    "card_load_worker_intervals[].width_bits",
+    "card_load_worker_intervals[].timestamp_semantics",
+    "card_load_worker_intervals[].start_ticks",
+    "card_load_worker_intervals[].end_ticks",
+    "card_load_worker_intervals[].elapsed_ticks",
+    "card_load_worker_intervals[].wrap_tracked",
+    "card_load_worker_intervals[].core",
+    "card_load_worker_intervals[].core_index",
+    "card_load_worker_intervals[].risc",
+    "card_load_worker_intervals[].profile_worker",
+    "card_load_worker_intervals[].statistics",
+    "card_load_interval_statistics",
+    "card_load_interval_statistics.*",
+    "throughput_interval",
+    "throughput_interval.*",
+    "program_host_interval",
+    "program_host_interval.*",
+    "host_program_interval",
+    "host_program_interval.*",
+    "program_launch_ns",
+    "program_completion_ns",
+    "program_launch_monotonic_ns",
+    "program_completion_monotonic_ns",
+    "resident_tick_interval",
+    "resident_tick_interval.*",
+    "outer_timeout_cap_seconds",
+    "outer_timeout_cap_source",
     "parameters.producer_core",
     "parameters.consumer_core",
     "parameters.work_per_frame",
     "parameters.designated_timestamp_core",
     "parameters.outer_timeout_seconds",
+    "parameters.outer_timeout_cap_seconds",
+    "parameters.outer_timeout_cap_source",
     "parameters.histogram_bin_ticks",
     "parameters.fixed_work_ticks_per_frame",
     "parameters.budget_aiclk_mhz",
@@ -908,6 +946,12 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "clock.interval_unit",
     "clock.frequency_source",
     "clock.aiclk_observation",
+    "clock.aiclk_mhz_in_run_min",
+    "clock.aiclk_mhz_in_run_max",
+    "clock.aiclk_mhz_load_interval_weighted",
+    "clock.aiclk_mhz_load_interval_weighted_source",
+    "clock.aiclk_mhz_for_elapsed_seconds",
+    "clock.aiclk_source_for_elapsed_seconds",
     "clock.designated_core",
     "clock.cross_core_correlation",
     "timestamp_attribution",
@@ -990,6 +1034,17 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.byte_count",
     "power_clock_provenance.sha256_definition",
     "power_clock_provenance.sampler_interval_seconds",
+    "power_clock_provenance.aiclk_mhz_in_run",
+    "power_clock_provenance.aiclk_mhz_in_run_min",
+    "power_clock_provenance.aiclk_mhz_in_run_max",
+    "power_clock_provenance.aiclk_mhz_load_interval_weighted",
+    "power_clock_provenance.aiclk_mhz_load_interval_weighted_source",
+    "power_clock_provenance.aiclk_mhz_load_interval_weighted_seconds",
+    "power_clock_provenance.load_interval_start",
+    "power_clock_provenance.load_interval_end",
+    "power_clock_provenance.load_interval_source",
+    "power_clock_provenance.in_run_samples",
+    "power_clock_provenance.aiclk_trace_in_run",
     "clock_source_evidence.diagnostic",
     "environment.board",
     "environment.board.serial",
@@ -1003,6 +1058,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "environment.tt_env_active_release",
     "environment.aiclk_mhz_observed",
     "outlier_analysis.aiclk_source",
+    "outlier_analysis.aiclk_source_for_elapsed_seconds",
     "outlier_analysis.sampler_interval_comparison.status",
     "outlier_analysis.sampler_interval_comparison.reason",
     "outlier_analysis.pairs[].interval_end_frame_indices",
@@ -1248,6 +1304,110 @@ def _check_unknown_fields(record: Mapping[str, Any], ctx: ValidationContext) -> 
     return mismatches
 
 
+def _check_resident_tick_interval(
+    record: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Validate the card-side span paired with the host monotonic interval."""
+    del ctx
+    interval = record.get("resident_tick_interval")
+    if interval is None:
+        return []
+    if not isinstance(interval, Mapping):
+        return [_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick interval must be an object")]
+    start = interval.get("start_ticks")
+    end = interval.get("end_ticks")
+    mismatches: list[dict[str, Any]] = []
+    if not _is_int(start, nonnegative=True) or not _is_int(end, nonnegative=True):
+        mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick endpoints must be non-negative integers"))
+        return mismatches
+    if end < start or interval.get("elapsed_ticks") != end - start:
+        mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick elapsed_ticks is inconsistent"))
+    if interval.get("clock") != "card_riscv_wall_clock" or interval.get("timestamp_semantics") != "wrap-tracked_extended":
+        mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick interval clock metadata is invalid"))
+    return mismatches
+
+
+def _check_program_host_interval(
+    record: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Validate persisted program launch/completion on host CLOCK_MONOTONIC."""
+    del ctx
+    present = any(
+        key in record
+        for key in ("program_launch_ns", "program_completion_ns", "program_host_interval")
+    )
+    if not present:
+        return []
+    invariant = "program_host_interval"
+    mismatches: list[dict[str, Any]] = []
+    launch = record.get("program_launch_ns", _MISSING)
+    completion = record.get("program_completion_ns", _MISSING)
+    interval = record.get("program_host_interval")
+    if not isinstance(interval, Mapping):
+        mismatches.append(
+            _mismatch(invariant, ("program_host_interval",), "program_host_interval must be an object")
+        )
+        return mismatches
+    if launch is _MISSING:
+        launch = interval.get("launch_ns", interval.get("start_ns"))
+    if completion is _MISSING:
+        completion = interval.get("completion_ns", interval.get("end_ns"))
+    if not _is_int(launch, nonnegative=True) or not _is_int(completion, nonnegative=True):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("program_launch_ns", "program_completion_ns"),
+                "program host timestamps must be non-negative integers",
+            )
+        )
+        return mismatches
+    if completion < launch:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("program_launch_ns", "program_completion_ns"),
+                "program completion must not precede monotonic launch",
+            )
+        )
+    if interval.get("clock") != "host_monotonic_ns":
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("program_host_interval.clock",),
+                "program host timestamps must use host_monotonic_ns",
+            )
+        )
+    if interval.get("start_ns") != launch or interval.get("end_ns") != completion:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("program_host_interval", "program_launch_ns", "program_completion_ns"),
+                "program host interval endpoints must match top-level monotonic timestamps",
+            )
+        )
+    if interval.get("elapsed_ns") != completion - launch:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("program_host_interval.elapsed_ns",),
+                "program host interval elapsed_ns is inconsistent",
+            )
+        )
+    for alias, expected in (
+        ("program_launch_monotonic_ns", launch),
+        ("program_completion_monotonic_ns", completion),
+    ):
+        if alias in record and record.get(alias) != expected:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (alias, "program_host_interval"),
+                    "program monotonic timestamp alias disagrees with interval",
+                )
+            )
+    return mismatches
+
+
 def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     """Validate Issue #118 load metadata when a resident record carries it."""
     del ctx
@@ -1270,6 +1430,24 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
         validate_load_record(load)
     except (TypeError, ValueError, KeyError) as exc:
         return [_mismatch("load.evidence", ("load",), str(exc))]
+    condition = load.get("condition")
+    if condition in {"newton_schulz", "dram"}:
+        clock = _mapping(record, "clock")
+        weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
+        source = (
+            clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
+        )
+        if not _is_number(weighted) or weighted <= 0 or source != "load_interval_trace_samples":
+            return [
+                _mismatch(
+                    "load.evidence",
+                    (
+                        "clock.aiclk_mhz_load_interval_weighted",
+                        "clock.aiclk_mhz_load_interval_weighted_source",
+                    ),
+                    "Issue #118 loaded records require weighted load-interval AICLK provenance",
+                )
+            ]
     return []
 
 
@@ -1657,6 +1835,8 @@ def build_outlier_analysis(
     *,
     aiclk_mhz: int = DEFAULT_AICLK_MHZ,
     aiclk_source: str | None = None,
+    elapsed_aiclk_mhz: float | None = None,
+    elapsed_aiclk_source: str | None = None,
     sampler_mode: str | None = None,
     sampler_interval_seconds: float | None = None,
     sampler_metadata: Mapping[str, Any] | None = None,
@@ -1716,6 +1896,17 @@ def build_outlier_analysis(
     )
     aiclk_mhz = aiclk_selection["aiclk_mhz"]
     selected_source = aiclk_selection["aiclk_source"]
+    elapsed_selection = aiclk_selection
+    if elapsed_aiclk_mhz is not None:
+        if not isinstance(elapsed_aiclk_mhz, (int, float)) or isinstance(
+            elapsed_aiclk_mhz, bool
+        ) or not math.isfinite(float(elapsed_aiclk_mhz)) or elapsed_aiclk_mhz <= 0:
+            raise ValueError("elapsed_aiclk_mhz must be a finite positive number")
+        elapsed_selection = {
+            "aiclk_mhz": float(elapsed_aiclk_mhz),
+            "aiclk_mhz_exact": float(elapsed_aiclk_mhz),
+            "aiclk_source": elapsed_aiclk_source or "explicit_elapsed_aiclk",
+        }
     values = list(timestamps)
     if any(not _is_int(value, nonnegative=True) for value in values):
         raise ValueError("timestamps must contain unsigned integer values")
@@ -1727,12 +1918,12 @@ def build_outlier_analysis(
     elapsed_ticks = [values[index] - values[0] for index in endpoints]
     elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in elapsed_ticks]
     elapsed_seconds = [
-        ticks_to_seconds(ticks=elapsed, selection=aiclk_selection)
+        ticks_to_seconds(ticks=elapsed, selection=elapsed_selection)
         for elapsed in elapsed_ticks
     ]
     pair_start_elapsed_seconds = [
         ticks_to_seconds(
-            ticks=values[index] - values[0], selection=aiclk_selection
+            ticks=values[index] - values[0], selection=elapsed_selection
         )
         for index in starts
     ]
@@ -1741,7 +1932,7 @@ def build_outlier_analysis(
         first_elapsed = values[first_endpoint] - values[0]
         pair["first_interval_end_elapsed_seconds"] = ticks_to_seconds(
             ticks=first_elapsed,
-            selection=aiclk_selection,
+            selection=elapsed_selection,
         )
     pair_sums = [pair["pair_sum_ticks"] for pair in pairs]
     gaps = [right - left for left, right in itertools.pairwise(starts)]
@@ -1783,12 +1974,13 @@ def build_outlier_analysis(
         "pairs": pairs,
         "elapsed_time_unit": "seconds",
         "device_tick_unit": "device_clock_ticks",
-        "aiclk_mhz_for_elapsed_seconds": aiclk_mhz,
+        "aiclk_mhz_for_elapsed_seconds": elapsed_selection["aiclk_mhz"],
         "aiclk_source": selected_source,
+        "aiclk_source_for_elapsed_seconds": elapsed_selection["aiclk_source"],
         "run_elapsed_ticks": values[-1] - values[0] if values else 0,
         "run_elapsed_seconds": (
             ticks_to_seconds(
-                ticks=values[-1] - values[0], selection=aiclk_selection
+                ticks=values[-1] - values[0], selection=elapsed_selection
             )
             if values
             else 0.0
@@ -1799,7 +1991,7 @@ def build_outlier_analysis(
             sampler_interval_seconds=sampler_interval_seconds,
             timestamps=values,
             pair_starts=starts,
-            aiclk_selection=aiclk_selection,
+            aiclk_selection=elapsed_selection,
         ),
     }
 
@@ -2285,7 +2477,17 @@ def validate_pair_analysis(
             if correspondence["pair_sum_mismatches"]:
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.pairs", "timestamps"), "derived pair sums do not match record"))
             actual_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
-            expected_pairs = build_outlier_analysis(values, aiclk_mhz=actual_aiclk).get("pairs", [])
+            elapsed_aiclk = outlier_analysis.get(
+                "aiclk_mhz_for_elapsed_seconds", actual_aiclk
+            )
+            expected_pairs = build_outlier_analysis(
+                values,
+                aiclk_mhz=actual_aiclk,
+                elapsed_aiclk_mhz=elapsed_aiclk,
+                elapsed_aiclk_source=outlier_analysis.get(
+                    "aiclk_source_for_elapsed_seconds"
+                ),
+            ).get("pairs", [])
             expected_interval_count = max(0, len(values) - 1)
             if (strict_fields or "interval_count" in outlier_analysis) and outlier_analysis.get("interval_count") != expected_interval_count:
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.interval_count", "timestamps"), "outlier_analysis interval_count does not match timestamps"))
@@ -2313,11 +2515,16 @@ def validate_pair_analysis(
             expected_endpoints = [endpoint for pair in expected_pairs for endpoint in pair["interval_end_frame_indices"]]
             expected_elapsed_ticks = [values[index] - values[0] for index in expected_endpoints]
             expected_elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in expected_elapsed_ticks]
-            actual_seconds_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
-            expected_aiclk_selection = select_elapsed_aiclk(
-                budget_aiclk_mhz=actual_seconds_aiclk,
-                sampler_mode="off",
+            actual_seconds_aiclk = outlier_analysis.get(
+                "aiclk_mhz_for_elapsed_seconds",
+                aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ,
             )
+            if not _is_number(actual_seconds_aiclk) or actual_seconds_aiclk <= 0:
+                actual_seconds_aiclk = DEFAULT_AICLK_MHZ
+            expected_aiclk_selection = {
+                "aiclk_mhz": actual_seconds_aiclk,
+                "aiclk_mhz_exact": actual_seconds_aiclk,
+            }
             expected_elapsed_seconds = [
                 ticks_to_seconds(ticks=elapsed, selection=expected_aiclk_selection)
                 for elapsed in expected_elapsed_ticks
@@ -2729,6 +2936,20 @@ _POWER_METADATA_ALIASES = {
     "coverage_definition": ("coverage_definition",),
     "aiclk_source": ("aiclk_source",),
     "aiclk_mhz": ("aiclk_mhz",),
+    "aiclk_mhz_in_run_min": ("aiclk_mhz_in_run_min",),
+    "aiclk_mhz_in_run_max": ("aiclk_mhz_in_run_max",),
+    "aiclk_mhz_load_interval_weighted": ("aiclk_mhz_load_interval_weighted",),
+    "aiclk_mhz_load_interval_weighted_source": (
+        "aiclk_mhz_load_interval_weighted_source",
+    ),
+    "aiclk_mhz_load_interval_weighted_seconds": (
+        "aiclk_mhz_load_interval_weighted_seconds",
+    ),
+    "load_interval_start": ("load_interval_start",),
+    "load_interval_end": ("load_interval_end",),
+    "load_interval_source": ("load_interval_source",),
+    "in_run_samples": ("in_run_samples",),
+    "aiclk_trace_in_run": ("aiclk_trace_in_run",),
     "timing_evidence_reason": ("timing_evidence_reason",),
 }
 
@@ -2750,6 +2971,20 @@ def _top_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         "coverage_definition": _MISSING,
         "aiclk_source": _MISSING,
         "aiclk_mhz": _MISSING,
+        "aiclk_mhz_in_run_min": record.get("aiclk_mhz_in_run_min", _MISSING),
+        "aiclk_mhz_in_run_max": record.get("aiclk_mhz_in_run_max", _MISSING),
+        "aiclk_mhz_load_interval_weighted": record.get(
+            "aiclk_mhz_load_interval_weighted", _MISSING
+        ),
+        "aiclk_mhz_load_interval_weighted_source": record.get(
+            "aiclk_mhz_load_interval_weighted_source", _MISSING
+        ),
+        "aiclk_mhz_load_interval_weighted_seconds": _MISSING,
+        "load_interval_start": _MISSING,
+        "load_interval_end": _MISSING,
+        "load_interval_source": _MISSING,
+        "in_run_samples": _MISSING,
+        "aiclk_trace_in_run": _MISSING,
         "timing_evidence_reason": _MISSING,
     }
     coverage = record.get("power_trace_coverage")
@@ -2897,17 +3132,32 @@ def _trace_report_from_path(
     trace_name: str,
     run_start: Any,
     run_end: Any,
+    load_interval_start: Any,
+    load_interval_end: Any,
+    load_interval_source: Any,
     coverage_definition: str,
     sampler_interval: Any,
 ) -> dict[str, Any]:
     try:
-        report = parse_power_trace(
+        report = read_power_trace_csv(
             ctx.power_trace_path,
             run_start=None if run_start is _MISSING else run_start,
             run_end=None if run_end is _MISSING else run_end,
             coverage_definition=coverage_definition,
             sampler_interval_seconds=sampler_interval,
+            load_interval_start=(
+                None if load_interval_start is _MISSING else load_interval_start
+            ),
+            load_interval_end=(
+                None if load_interval_end is _MISSING else load_interval_end
+            ),
+            load_interval_source=(
+                None if load_interval_source is _MISSING else load_interval_source
+            ),
+            require_all_rows_valid=True,
+            reject_incomplete_rows=False,
         )
+        report = public_power_trace_metadata(report)
     except (TypeError, ValueError, OverflowError) as exc:
         return _invalid_trace_report(
             trace_name=trace_name,
@@ -2927,6 +3177,9 @@ def _trace_report_from_context(
     sampler_interval: Any,
     run_start: Any,
     run_end: Any,
+    load_interval_start: Any,
+    load_interval_end: Any,
+    load_interval_source: Any,
 ) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
         return _trace_report_from_path(
@@ -2934,6 +3187,9 @@ def _trace_report_from_context(
             trace_name=trace_name,
             run_start=run_start,
             run_end=run_end,
+            load_interval_start=load_interval_start,
+            load_interval_end=load_interval_end,
+            load_interval_source=load_interval_source,
             coverage_definition=coverage_definition,
             sampler_interval=sampler_interval,
         )
@@ -2978,6 +3234,9 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
         sampler_interval=sampler_interval,
         run_start=declared.get("run_start"),
         run_end=declared.get("run_end"),
+        load_interval_start=declared.get("load_interval_start", _MISSING),
+        load_interval_end=declared.get("load_interval_end", _MISSING),
+        load_interval_source=declared.get("load_interval_source", _MISSING),
     )
 
 
@@ -3125,6 +3384,29 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
             mismatches.append(_mismatch(invariant, (f"power_clock_provenance.{field}",), f"power trace {field} is not declared"))
         elif declared_value != report.get(field):
             mismatches.append(_mismatch(invariant, (f"power_clock_provenance.{field}",), f"power trace {field} does not match actual trace"))
+    for field in (
+        "aiclk_mhz_in_run_min",
+        "aiclk_mhz_in_run_max",
+        "aiclk_mhz_load_interval_weighted",
+        "aiclk_mhz_load_interval_weighted_source",
+        "aiclk_mhz_load_interval_weighted_seconds",
+        "load_interval_start",
+        "load_interval_end",
+        "load_interval_source",
+    ):
+        declared_value = declared.get(field, _MISSING)
+        if (
+            declared_value is not _MISSING
+            and declared_value is not None
+            and declared_value != report.get(field)
+        ):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (f"power_clock_provenance.{field}",),
+                    f"power trace {field} does not match actual trace",
+                )
+            )
     if report.get("coverage_complete") is not True:
         mismatches.append(_mismatch(invariant, ("power_trace.coverage_complete",), "power trace coverage_complete is not true"))
     # Both nested and top-level fields are part of the record schema when
@@ -3438,6 +3720,18 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
         ("num_command_queues", "load", "load.coverage"),
         "Issue #118 load intervals, repeat metadata, and coverage are fail-closed",
         _check_load_evidence,
+    ),
+    ResidentInvariant(
+        "program_host_interval",
+        ("program_host_interval", "program_launch_ns", "program_completion_ns"),
+        "program launch and completion use ordered host monotonic nanoseconds",
+        _check_program_host_interval,
+    ),
+    ResidentInvariant(
+        "resident_tick_interval",
+        ("resident_tick_interval",),
+        "card-side resident tick span remains explicitly wrap-tracked",
+        _check_resident_tick_interval,
     ),
     ResidentInvariant(
         "clock_source_evidence",

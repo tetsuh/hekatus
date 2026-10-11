@@ -188,8 +188,29 @@ validate_decimal_timeout() {
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 RESIDENT_TIMEOUT_CAP_S="600"
+RESIDENT_CONDITION="unloaded"
+RESIDENT_REQUESTED_TIMEOUT=""
 if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PATH}" ]]; then
   RESIDENT_RUNNER=1
+  EXPECT_CONDITION=0
+  EXPECT_TIMEOUT=0
+  for argument in "${RUNNER_ARGS[@]}"; do
+    if [[ "${EXPECT_CONDITION}" == "1" ]]; then
+      RESIDENT_CONDITION="${argument}"
+      EXPECT_CONDITION=0
+    elif [[ "${EXPECT_TIMEOUT}" == "1" ]]; then
+      RESIDENT_REQUESTED_TIMEOUT="${argument}"
+      EXPECT_TIMEOUT=0
+    elif [[ "${argument}" == "--condition" ]]; then
+      EXPECT_CONDITION=1
+    elif [[ "${argument}" == --condition=* ]]; then
+      RESIDENT_CONDITION="${argument#--condition=}"
+    elif [[ "${argument}" == "--outer-timeout-seconds" ]]; then
+      EXPECT_TIMEOUT=1
+    elif [[ "${argument}" == --outer-timeout-seconds=* ]]; then
+      RESIDENT_REQUESTED_TIMEOUT="${argument#--outer-timeout-seconds=}"
+    fi
+  done
   CLI_WATCHER_MODE=0
   for argument in "${RUNNER_ARGS[@]}"; do
     if [[ "${argument}" == "--watcher" ]]; then
@@ -212,6 +233,11 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PA
   RESIDENT_WATCHER_MODE="${CLI_WATCHER_MODE}"
   if [[ "${RESIDENT_WATCHER_MODE}" == "1" ]]; then
     RESIDENT_TIMEOUT_CAP_S="60"
+  elif [[ "${RESIDENT_CONDITION}" == "newton_schulz" \
+          && "${RESIDENT_REQUESTED_TIMEOUT}" == "800" ]]; then
+    # Compute-loaded Issue #118 runs may opt into the separately recorded
+    # 800-second ceiling; all other resident invocations retain 600 seconds.
+    RESIDENT_TIMEOUT_CAP_S="800"
   fi
   if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
     CONTAINER_TIMEOUT_S="${RESIDENT_TIMEOUT_CAP_S}"
