@@ -42,6 +42,7 @@ from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
     _host_join_timeout_seconds,
     _load_achieved_throughput,
+    _load_execution_selection,
     _read_load_calibration,
 )
 from enodia.tt.bench.run_resident import _parser as resident_parser
@@ -227,6 +228,31 @@ def test_host_cleanup_stop_and_join_are_in_outer_finally():
     assert "host_stop.set()" in source
     assert source.rfind("host_stop.set()") < source.rfind("host_thread.join")
     assert "HostCleanupUnsafe" in source
+
+
+def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path):
+    calibration = CalibrationMetadata(
+        condition="dram",
+        duration_seconds=60,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=1100,
+        target_seconds=500,
+        safety_factor=1.10,
+    )
+    path = tmp_path / "calibration.json"
+    path.write_text(json.dumps({"calibration": calibration.as_record()}))
+    args = SimpleNamespace(
+        condition="dram",
+        calibrate=False,
+        calibration_json=path,
+        repeat_count=None,
+        outer_timeout_seconds=60,
+    )
+    with pytest.raises(ValueError, match="outer-timeout-seconds"):
+        _load_execution_selection(args)
+    args.outer_timeout_seconds = 600
+    assert _load_execution_selection(args)[1] == 1100
 
 
 def test_host_join_timeout_never_exceeds_resident_outer_cap():

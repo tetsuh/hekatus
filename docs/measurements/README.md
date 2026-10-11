@@ -48,7 +48,9 @@ board-free configuration path; it does not claim board evidence. The parent
 runs the bounded board calibration once per device load with no Watcher and a
 60-second cap using the resident runner. The emitted calibration record
 retains the measured throughput and the calibration-selected repeat count for
-the later run. A later device record is
+the later run. Any later loaded resident invocation must explicitly pass
+`--outer-timeout-seconds 600`; the runner rejects a shorter cap for a
+500-second target with the 10% safety factor. A later device record is
 not evidence until it adds a wrap-tracked card-clock load interval for
 `newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
 and the corresponding coverage verdict is `covered`.

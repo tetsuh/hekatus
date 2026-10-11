@@ -967,6 +967,13 @@ def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, Calib
     calibration = _read_load_calibration(args.calibration_json)
     if calibration.condition != condition:
         raise LoadConfigurationError("calibration condition does not match --condition")
+    if calibration.target_seconds is None:
+        raise LoadConfigurationError("calibration metadata lacks a bounded target_seconds")
+    required_timeout = calibration.target_seconds * calibration.safety_factor
+    if args.outer_timeout_seconds < required_timeout:
+        raise LoadConfigurationError(
+            "outer-timeout-seconds is shorter than the calibrated load target"
+        )
     repeat_count = calibration.repeat_count
     if args.repeat_count is not None and args.repeat_count != repeat_count:
         raise LoadConfigurationError("repeat-count does not match calibration metadata")
