@@ -35,7 +35,10 @@ if __package__ in (None, ""):
 
 from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench.sampler_contract import (
+    COVERAGE_DEFINITIONS,
     DEFAULT_SAMPLER_INTERVAL_SECONDS,
+    EXPLICIT_FINAL_SAMPLE,
+    ONE_INTERVAL_BOUND,
     SAMPLER_MODES,
     normalize_sampler_metadata,
 )
@@ -121,7 +124,14 @@ def _trace_number(value: Any, *, field: str, positive: bool = False) -> float:
     return parsed
 
 
-def _power_trace_base(path: Path, *, run_start: Any, run_end: Any) -> dict[str, Any]:
+def _power_trace_base(
+    path: Path,
+    *,
+    run_start: Any,
+    run_end: Any,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    sampler_interval_seconds: float | None = None,
+) -> dict[str, Any]:
     errors: list[str] = []
     try:
         start_text = _trace_timestamp_text(run_start, field="run_start") if run_start is not None else None
@@ -152,12 +162,16 @@ def _power_trace_base(path: Path, *, run_start: Any, run_end: Any) -> dict[str, 
         "covers_run_start": False,
         "covers_run_end": False,
         "coverage_complete": False,
+        "coverage_definition": coverage_definition,
+        "sampler_interval_seconds": sampler_interval_seconds,
         "coverage": {
+            "definition": coverage_definition,
             "nonempty": False,
             "timestamps_parse": False,
             "timestamps_ordered": False,
             "first_at_or_before_run_start": False,
             "last_at_or_after_run_end": False,
+            "last_within_interval_bound": False,
             "readable": False,
             "complete": False,
         },
@@ -173,20 +187,39 @@ def parse_power_trace(
     *,
     run_start: datetime.datetime | str | None = None,
     run_end: datetime.datetime | str | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    sampler_interval_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Parse a power CSV and validate PR #109 complete run coverage.
+    """Parse a power CSV and validate the selected run-coverage definition.
 
-    The returned metadata is board-free and deliberately separates physical
-    file facts (byte hash and row counts), timestamp facts, run coverage, and
-    AICLK provenance.  A usable trace is nonempty, readable, fully parseable,
-    ordered, and satisfies ``first_timestamp <= run_start <= run_end <=
-    last_timestamp``.  ``aiclk_mhz_in_run`` contains only valid rows whose
-    timestamps fall inside the explicit run interval; it never falls back to a
-    pre-run environment snapshot.
+    ``explicit_final_sample`` requires a usable sample at or after
+    ``run_end``.  ``one_interval_bound`` accepts a final usable sample only in
+    the inclusive interval ``run_end - sampler_interval_seconds <=
+    sample_timestamp <= run_end``.  The interval is never inferred from CSV
+    timestamps.  The returned metadata is board-free and deliberately
+    separates physical file facts, timestamp facts, run coverage, and AICLK
+    provenance.
     """
     if not isinstance(path, Path):
         path = Path(path)
-    trace = _power_trace_base(path, run_start=run_start, run_end=run_end)
+    if coverage_definition not in COVERAGE_DEFINITIONS:
+        raise ValueError("coverage_definition is not supported")
+    if coverage_definition == ONE_INTERVAL_BOUND:
+        try:
+            sampler_interval_seconds = float(sampler_interval_seconds)
+        except (TypeError, ValueError, OverflowError):
+            sampler_interval_seconds = float("nan")
+        if not math.isfinite(sampler_interval_seconds) or sampler_interval_seconds <= 0.0:
+            raise ValueError(
+                "one_interval_bound requires a finite positive sampler interval"
+            )
+    trace = _power_trace_base(
+        path,
+        run_start=run_start,
+        run_end=run_end,
+        coverage_definition=coverage_definition,
+        sampler_interval_seconds=sampler_interval_seconds,
+    )
     try:
         raw = path.read_bytes()
     except OSError as exc:
@@ -249,6 +282,13 @@ def parse_power_trace(
                 errors.append("run_start must be at or before run_end")
             trace["covers_run_start"] = timestamps[0] <= start <= end
             trace["covers_run_end"] = timestamps[-1] >= end
+            interval_bound = False
+            if coverage_definition == ONE_INTERVAL_BOUND:
+                interval_start = end - datetime.timedelta(
+                    seconds=float(sampler_interval_seconds)
+                )
+                interval_bound = interval_start <= timestamps[-1] <= end
+            trace["coverage"]["last_within_interval_bound"] = interval_bound
             in_run = [
                 aiclk
                 for timestamp, aiclk in parsed_rows
@@ -268,18 +308,26 @@ def parse_power_trace(
                     trace["timestamps_ordered"],
                     timestamps[0] <= start,
                     start <= end,
-                    end <= timestamps[-1],
+                    (
+                        end <= timestamps[-1]
+                        if coverage_definition == EXPLICIT_FINAL_SAMPLE
+                        else interval_bound
+                    ),
                 )
             )
     if not trace["timestamps_parse"] and rows:
         trace["aiclk_source"] = "no_valid_in_run_samples"
     trace["errors"] = errors
     trace["coverage"] = {
+        "definition": coverage_definition,
         "nonempty": trace["nonempty"],
         "timestamps_parse": trace["timestamps_parse"],
         "timestamps_ordered": trace["timestamps_ordered"],
         "first_at_or_before_run_start": trace["covers_run_start"],
         "last_at_or_after_run_end": trace["covers_run_end"],
+        "last_within_interval_bound": trace["coverage"].get(
+            "last_within_interval_bound", False
+        ),
         "readable": trace["readable"],
         "complete": trace["coverage_complete"],
     }
@@ -291,9 +339,17 @@ def validate_power_trace_coverage(
     *,
     run_start: datetime.datetime | str | None = None,
     run_end: datetime.datetime | str | None = None,
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    sampler_interval_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Board-free alias for :func:`parse_power_trace` used by record builders."""
-    return parse_power_trace(path, run_start=run_start, run_end=run_end)
+    return parse_power_trace(
+        path,
+        run_start=run_start,
+        run_end=run_end,
+        coverage_definition=coverage_definition,
+        sampler_interval_seconds=sampler_interval_seconds,
+    )
 
 
 # Keep both names discoverable for callers that describe the seam as parsing

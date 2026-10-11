@@ -760,6 +760,8 @@ ISSUE88_FIXED_PUBLIC_STRINGS = frozenset((
     'CB_X0_REAL',
     'CB_ZERO',
     'Coverage is complete when the immutable per-run snapshot has at least one usable finite telemetry row, usable timestamps parse in order, its first usable sample is at or before the recorded run start, and its last usable sample timestamp is at or after the recorded run end; the run interval is covered through its end. Rows with unusable power, AICLK, or temperature values are excluded from these checks.',
+    'explicit_final_sample',
+    'one_interval_bound',
     'Coverage is complete when the immutable per-run snapshot is readable and nonempty, timestamps parse in order, its first sample is at or before the recorded run start, and its last sample timestamp is at or after the recorded run end; the run interval is covered through its end.',
     'DRAM',
     'Each conclusion uses one declared metric_reference; metrics with different references are reported in separate conclusions.',
