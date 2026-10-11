@@ -293,8 +293,8 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "return [consumer_stats, consumer_stats]" in resident_source
     assert "load_tensors.append(load_kernel.profile_output)" in resident_source
     assert "io_tensors.append(self.profile_output)" in (ROOT / "enodia/tt/bench/newton_schulz_kernel.py").read_text()
-    assert "queue_id=queue_id" in resident_source
-    assert "blocking=False, queue_id=queue_id" in resident_source
+    assert "queue_id=1" in resident_source
+    assert "blocking=False, queue_id=1" in resident_source
     assert resident_source.rindex("host_thread.join") < resident_source.rindex("_complete_host_transfers")
     assert 'record["timing_evidence"] = False' in resident_source
     assert "load_record=resident_load_record" in resident_source
@@ -303,7 +303,8 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
         "if calibration_output is not None:"
     )
     assert 'record["status"] = "calibration"' in resident_source
-    assert resident_source.index("started_event.set()") < resident_source.rindex("run_host_cpu_transfer_work")
+    assert resident_source.index("started_event.set()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
+    assert resident_source.index("ttnn.to_device(") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
     assert resident_source.index("measurement_start_ns = time.monotonic_ns()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
     assert resident_source.index("ttnn.generic_op(_merged_program_io_tensors") < resident_source.rindex("resident_launched.set()")
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")

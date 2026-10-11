@@ -31,10 +31,11 @@ from enodia.tt.bench.load_generators import (
     merge_program_parts,
     prepare_dram_load,
     prepare_newton_schulz_load,
-    run_host_cpu_transfer_work,
 )
 from enodia.tt.bench.load_harness import (
     DRAM_STREAM_TOTAL_BYTES,
+    HOST_ARITHMETIC_ROUNDS,
+    HOST_ARITHMETIC_WORDS,
     HOST_TRANSFER_BYTES,
     HOST_TRANSFER_COUNT,
     LOAD_CONDITIONS,
@@ -519,7 +520,7 @@ def _run_host_transfers(
     device_tensors_holder: list[Any] | None = None,
     host_tensors_holder: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Perform fixed arithmetic and explicit CQ1 host/device transfers."""
+    """Queue all fixed CQ1 transfers, then run fixed CPU work after launch."""
     import numpy as np
 
     host = ttnn.Tensor(
@@ -529,39 +530,50 @@ def _run_host_transfers(
     host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
     device_tensors = device_tensors_holder if device_tensors_holder is not None else []
     host_tensors = host_tensors_holder if host_tensors_holder is not None else []
+    if start_holder is None:
+        start_holder = {}
+    start_holder["start_ns"] = time.monotonic_ns()
 
-    # Signal readiness before the first timing clock. The host work starts
-    # before GenericOp so fixed CQ1 transfers can overlap the resident launch.
+    for _ in range(repetitions):
+        for _ in range(HOST_TRANSFER_COUNT):
+            if stop_event is not None and stop_event.is_set():
+                raise RuntimeError("host load stopped while queuing CQ1 transfers")
+            device_tensor = ttnn.to_device(
+                host,
+                device,
+                memory_config=ttnn.DRAM_MEMORY_CONFIG,
+                queue_id=1,
+            )
+            device_tensors.append(device_tensor)
+            host_tensors.append(ttnn.from_device(device_tensor, blocking=False, queue_id=1))
     if started_event is not None:
         started_event.set()
+    if resident_launched is not None:
+        while not resident_launched.wait(timeout=0.1):
+            if stop_event is not None and stop_event.is_set():
+                raise RuntimeError("host load stopped before CPU work")
 
-    clock_ns = _host_load_clock(
-        resident_launched=resident_launched,
-        stop_event=stop_event,
-        start_holder=start_holder if start_holder is not None else {},
-    )
-
-    def transfer(_payload: bytes, queue_id: int) -> None:
-        if queue_id != 1:
-            raise RuntimeError("host condition transfer was not assigned to CQ1")
-        if stop_event is not None and stop_event.is_set():
-            raise RuntimeError("host load stopped before CQ1 transfer")
-        device_tensor = ttnn.to_device(
-            host,
-            device,
-            memory_config=ttnn.DRAM_MEMORY_CONFIG,
-            queue_id=queue_id,
-        )
-        device_tensors.append(device_tensor)
-        host_tensor = ttnn.from_device(device_tensor, blocking=False, queue_id=queue_id)
-        host_tensors.append(host_tensor)
-
-    work = run_host_cpu_transfer_work(
-        repetitions=repetitions,
-        clock_ns=clock_ns,
-        transfer=transfer,
-    )
-    return work
+    accumulator = 0
+    for _ in range(repetitions):
+        for _ in range(HOST_ARITHMETIC_ROUNDS):
+            if stop_event is not None and stop_event.is_set():
+                raise RuntimeError("host load stopped during CPU work")
+            for word in range(HOST_ARITHMETIC_WORDS):
+                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
+    end_ns = time.monotonic_ns()
+    return {
+        "arithmetic_rounds": HOST_ARITHMETIC_ROUNDS,
+        "arithmetic_words": HOST_ARITHMETIC_WORDS,
+        "transfer_bytes": HOST_TRANSFER_BYTES,
+        "transfer_count": HOST_TRANSFER_COUNT * repetitions,
+        "command_queue": 1,
+        "outer_repetitions": repetitions,
+        "start_ns": start_holder["start_ns"],
+        "end_ns": end_ns,
+        "elapsed_ns": end_ns - start_holder["start_ns"],
+        "arithmetic_checksum": accumulator,
+        "transfer_completion": "deferred_cq1",
+    }
 
 
 def _host_join_timeout_seconds(*, repeat_count: int, outer_timeout_seconds: int) -> float:
@@ -673,11 +685,15 @@ def _run_loaded_device(
                     )
                 except BaseException as exc:  # noqa: BLE001 - transfer failure crosses thread boundary
                     host_error.append(exc)
+                finally:
+                    host_started.set()
 
             host_thread = threading.Thread(target=run_host, name="issue118-cq1-host-load")
             host_thread.start()
             if not host_started.wait(timeout=60.0):
-                raise RuntimeError("host load did not start")
+                raise RuntimeError("host transfers did not queue")
+            if host_error:
+                raise RuntimeError("host transfer queueing failed") from host_error[0]
         measurement_start_ns = time.monotonic_ns()
         try:
             ttnn.generic_op(_merged_program_io_tensors(resident_tensors), program)
