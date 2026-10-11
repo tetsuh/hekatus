@@ -1971,7 +1971,15 @@ select a 600-second cap, or the explicitly recorded 800-second compute-load
 cap; Watcher remains at 60 seconds. New calibration metadata explains that the backward-compatible
 `repeats_per_card_second` value means repeats per 1.35e9 card-clock ticks;
 those ticks are converted to real seconds with the observed load-interval
-AICLK.
+AICLK. Persisted coverage is recomputed from resident and load endpoints, and
+its declared facts must agree with that recomputation; a worker row from
+another run cannot be made valid by changing a `covered` flag. Elapsed-time
+AICLK and provenance are likewise bound to the weighted load-interval fields,
+while unloaded records retain their configured or legacy selection. The
+Newton-Schulz record documents a selected TRISC0 profile interval rather than
+claiming all-worker interval coverage. Its profile accumulated warmup events
+across repeated fixed work; correcting that kernel-side counter scope is a
+follow-up candidate, not a reason to invalidate the fixed-work evidence.
 
 This section records the board-free measurement contract and implementation
 provenance. The accepted 2026-10-11 Issue #118 sequence is summarized below;

@@ -1422,6 +1422,115 @@ def _check_program_host_interval(
     return mismatches
 
 
+def _expected_elapsed_aiclk(
+    record: Mapping[str, Any], condition: str | None = None
+) -> tuple[float | None, str | None]:
+    """Return the immutable elapsed-time AICLK selection for one record."""
+    clock = _mapping(record, "clock")
+    if clock is None:
+        return None, None
+    if condition in {"newton_schulz", "dram"}:
+        weighted = clock.get("aiclk_mhz_load_interval_weighted")
+        source = clock.get("aiclk_mhz_load_interval_weighted_source")
+        if _is_number(weighted) and weighted > 0 and isinstance(source, str):
+            return float(weighted), source
+        return None, source if isinstance(source, str) else None
+    elapsed = clock.get("aiclk_mhz_for_elapsed_seconds")
+    source = clock.get("aiclk_source_for_elapsed_seconds")
+    if _is_number(elapsed) and elapsed > 0 and isinstance(source, str):
+        return float(elapsed), source
+    return None, source if isinstance(source, str) else None
+
+
+def _check_elapsed_aiclk_binding(
+    record: Mapping[str, Any], condition: str | None
+) -> list[dict[str, Any]]:
+    """Bind elapsed conversion and derived timing to immutable clock provenance."""
+    expected_mhz, expected_source = _expected_elapsed_aiclk(record, condition)
+    clock = _mapping(record, "clock")
+    outlier = _mapping(record, "outlier_analysis")
+    mismatches: list[dict[str, Any]] = []
+    if condition in {"newton_schulz", "dram"}:
+        weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
+        weighted_source = (
+            clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
+        )
+        if not _is_number(weighted) or weighted <= 0 or weighted_source != "load_interval_trace_samples":
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    (
+                        "clock.aiclk_mhz_load_interval_weighted",
+                        "clock.aiclk_mhz_load_interval_weighted_source",
+                    ),
+                    "Issue #118 loaded records require weighted load-interval AICLK provenance",
+                )
+            )
+        expected_provenance = _mapping(record, "power_clock_provenance")
+        for path, value in (
+            ("aiclk_mhz_load_interval_weighted", weighted),
+            ("aiclk_mhz_load_interval_weighted_source", weighted_source),
+        ):
+            if expected_provenance is not None and expected_provenance.get(path) != value:
+                mismatches.append(
+                    _mismatch(
+                        LOAD_EVIDENCE_INVARIANT,
+                        (f"power_clock_provenance.{path}", f"clock.{path}"),
+                        "loaded elapsed-time provenance disagrees with the immutable trace metadata",
+                    )
+                )
+            if path == "aiclk_mhz_load_interval_weighted" and record.get(path) != value:
+                mismatches.append(
+                    _mismatch(
+                        LOAD_EVIDENCE_INVARIANT,
+                        (path, "clock." + path),
+                        "top-level weighted load AICLK disagrees with clock provenance",
+                    )
+                )
+            if path == "aiclk_mhz_load_interval_weighted_source" and record.get(path) != value:
+                mismatches.append(
+                    _mismatch(
+                        LOAD_EVIDENCE_INVARIANT,
+                        (path, "clock." + path),
+                        "top-level weighted AICLK source disagrees with clock provenance",
+                    )
+                )
+    if expected_mhz is None or expected_source is None:
+        return mismatches
+    for path, actual in (
+        (
+            "clock.aiclk_mhz_for_elapsed_seconds",
+            clock.get("aiclk_mhz_for_elapsed_seconds") if clock else None,
+        ),
+        (
+            "clock.aiclk_source_for_elapsed_seconds",
+            clock.get("aiclk_source_for_elapsed_seconds") if clock else None,
+        ),
+        (
+            "outlier_analysis.aiclk_mhz_for_elapsed_seconds",
+            outlier.get("aiclk_mhz_for_elapsed_seconds") if outlier else None,
+        ),
+        (
+            "outlier_analysis.aiclk_source_for_elapsed_seconds",
+            outlier.get("aiclk_source_for_elapsed_seconds") if outlier else None,
+        ),
+    ):
+        expected = (
+            expected_mhz
+            if ".aiclk_mhz_for_elapsed_seconds" in path
+            else expected_source
+        )
+        if actual != expected:
+            mismatches.append(
+                _mismatch(
+                    "clock.elapsed_aiclk_binding",
+                    (path, "clock.aiclk_mhz_load_interval_weighted"),
+                    "elapsed-time AICLK or provenance does not match the record's immutable selection",
+                )
+            )
+    return mismatches
+
+
 def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     """Validate Issue #118 load metadata when a resident record carries it."""
     del ctx
@@ -1444,25 +1553,40 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
         validate_load_record(load)
     except (TypeError, ValueError, KeyError) as exc:
         return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), str(exc))]
-    condition = load.get("condition")
-    if condition in {"newton_schulz", "dram"}:
-        clock = _mapping(record, "clock")
-        weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
-        source = (
-            clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
-        )
-        if not _is_number(weighted) or weighted <= 0 or source != "load_interval_trace_samples":
-            return [
+    mismatches: list[dict[str, Any]] = []
+    mirrored_fields = (
+        ("card_load_interval", "card_load_interval"),
+        ("card_load_worker_intervals", "card_load_worker_intervals"),
+        ("host_load_interval", "host_load_interval"),
+        ("load_coverage", "coverage"),
+        ("calibration", "calibration"),
+    )
+    for resident_field, load_field in mirrored_fields:
+        if resident_field in record and record.get(resident_field) != load.get(load_field):
+            mismatches.append(
                 _mismatch(
                     LOAD_EVIDENCE_INVARIANT,
-                    (
-                        "clock.aiclk_mhz_load_interval_weighted",
-                        "clock.aiclk_mhz_load_interval_weighted_source",
-                    ),
-                    "Issue #118 loaded records require weighted load-interval AICLK provenance",
+                    (resident_field, f"load.{load_field}"),
+                    "resident load metadata disagrees with its persisted load record",
                 )
-            ]
-    return []
+            )
+    load_metadata = load.get("load")
+    expected_repeat = (
+        load_metadata.get("repeat_count")
+        if isinstance(load_metadata, Mapping)
+        else None
+    )
+    if "load_repeat_count" in record and record.get("load_repeat_count") != expected_repeat:
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                ("load_repeat_count", "load.load.repeat_count"),
+                "resident load repeat metadata disagrees with its persisted load record",
+            )
+        )
+    condition = load.get("condition")
+    mismatches.extend(_check_elapsed_aiclk_binding(record, condition))
+    return mismatches
 
 
 def _validate_field_value(
@@ -2308,6 +2432,8 @@ def validate_pair_analysis(
     *,
     timestamps: Iterable[int] | None = None,
     aiclk_mhz: int | None = None,
+    elapsed_aiclk_mhz: float | None = None,
+    elapsed_aiclk_source: str | None = None,
     sampler_mode: str | None = None,
     sampler_interval_seconds: float | None = None,
     strict_fields: bool = False,
@@ -2318,6 +2444,36 @@ def validate_pair_analysis(
         return [_mismatch(invariant, ("outlier_analysis",), "outlier_analysis must be an object")]
     mismatches: list[dict[str, Any]] = []
     timestamp_values = list(timestamps) if timestamps is not None else None
+    selected_elapsed_aiclk = (
+        elapsed_aiclk_mhz
+        if _is_number(elapsed_aiclk_mhz) and elapsed_aiclk_mhz > 0
+        else outlier_analysis.get("aiclk_mhz_for_elapsed_seconds")
+    )
+    selected_elapsed_source = (
+        elapsed_aiclk_source
+        if isinstance(elapsed_aiclk_source, str)
+        else outlier_analysis.get("aiclk_source_for_elapsed_seconds")
+    )
+    if elapsed_aiclk_mhz is not None and outlier_analysis.get(
+        "aiclk_mhz_for_elapsed_seconds"
+    ) != elapsed_aiclk_mhz:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("outlier_analysis.aiclk_mhz_for_elapsed_seconds",),
+                "outlier elapsed-time AICLK does not match the immutable record selection",
+            )
+        )
+    if elapsed_aiclk_source is not None and outlier_analysis.get(
+        "aiclk_source_for_elapsed_seconds"
+    ) != elapsed_aiclk_source:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("outlier_analysis.aiclk_source_for_elapsed_seconds",),
+                "outlier elapsed-time AICLK provenance does not match the immutable record selection",
+            )
+        )
     pair_count = outlier_analysis.get("pair_count")
     if not _is_int(pair_count, nonnegative=True):
         return [_mismatch(invariant, ("outlier_analysis.pair_count",), "outlier_analysis.pair_count must be a non-negative integer")]
@@ -2490,15 +2646,19 @@ def validate_pair_analysis(
             if correspondence["pair_sum_mismatches"]:
                 mismatches.append(_mismatch(invariant, ("outlier_analysis.pairs", "timestamps"), "derived pair sums do not match record"))
             actual_aiclk = aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ
-            elapsed_aiclk = outlier_analysis.get(
-                "aiclk_mhz_for_elapsed_seconds", actual_aiclk
+            elapsed_aiclk = (
+                selected_elapsed_aiclk
+                if _is_number(selected_elapsed_aiclk) and selected_elapsed_aiclk > 0
+                else actual_aiclk
             )
             expected_pairs = build_outlier_analysis(
                 values,
                 aiclk_mhz=actual_aiclk,
                 elapsed_aiclk_mhz=elapsed_aiclk,
-                elapsed_aiclk_source=outlier_analysis.get(
-                    "aiclk_source_for_elapsed_seconds"
+                elapsed_aiclk_source=(
+                    selected_elapsed_source
+                    if isinstance(selected_elapsed_source, str)
+                    else None
                 ),
             ).get("pairs", [])
             expected_interval_count = max(0, len(values) - 1)
@@ -2528,12 +2688,11 @@ def validate_pair_analysis(
             expected_endpoints = [endpoint for pair in expected_pairs for endpoint in pair["interval_end_frame_indices"]]
             expected_elapsed_ticks = [values[index] - values[0] for index in expected_endpoints]
             expected_elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in expected_elapsed_ticks]
-            actual_seconds_aiclk = outlier_analysis.get(
-                "aiclk_mhz_for_elapsed_seconds",
-                aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ,
+            actual_seconds_aiclk = (
+                selected_elapsed_aiclk
+                if _is_number(selected_elapsed_aiclk) and selected_elapsed_aiclk > 0
+                else (aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ)
             )
-            if not _is_number(actual_seconds_aiclk) or actual_seconds_aiclk <= 0:
-                actual_seconds_aiclk = DEFAULT_AICLK_MHZ
             expected_aiclk_selection = {
                 "aiclk_mhz": actual_seconds_aiclk,
                 "aiclk_mhz_exact": actual_seconds_aiclk,
@@ -2640,18 +2799,16 @@ def validate_pair_analysis(
 
     if timestamp_values is not None and sampler_mode in {"off", "default", "explicit"}:
         actual_timestamps = timestamp_values
-        elapsed_aiclk_mhz = outlier_analysis.get("aiclk_mhz_for_elapsed_seconds")
-        elapsed_aiclk_source = outlier_analysis.get("aiclk_source_for_elapsed_seconds")
         expected = build_outlier_analysis(
             actual_timestamps,
             aiclk_mhz=(aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ),
             elapsed_aiclk_mhz=(
-                elapsed_aiclk_mhz
-                if _is_number(elapsed_aiclk_mhz) and elapsed_aiclk_mhz > 0
+                selected_elapsed_aiclk
+                if _is_number(selected_elapsed_aiclk) and selected_elapsed_aiclk > 0
                 else None
             ),
             elapsed_aiclk_source=(
-                elapsed_aiclk_source if isinstance(elapsed_aiclk_source, str) else None
+                selected_elapsed_source if isinstance(selected_elapsed_source, str) else None
             ),
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
@@ -2795,11 +2952,18 @@ def _check_pairs(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict
     sampler_interval_seconds = (
         sampler.get("interval_seconds") if isinstance(sampler, Mapping) else None
     )
+    condition = None
+    load = record.get("load")
+    if isinstance(load, Mapping):
+        condition = load.get("condition")
+    elapsed_aiclk, elapsed_source = _expected_elapsed_aiclk(record, condition)
     mismatches.extend(
         validate_pair_analysis(
             outlier,
             timestamps=ctx.timestamps,
             aiclk_mhz=aiclk,
+            elapsed_aiclk_mhz=elapsed_aiclk,
+            elapsed_aiclk_source=elapsed_source,
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
             strict_fields=True,

@@ -1681,7 +1681,12 @@ def main(argv: list[str] | None = None) -> int:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
         if args.calibrate:
             config = _bound_calibration_config(config, args.calibration_duration_seconds)
-        config = validate_configuration(config, watcher=watcher)
+        if condition in {"newton_schulz", "dram"}:
+            config = validate_configuration(
+                config, watcher=watcher, load_condition=condition
+            )
+        else:
+            config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (TypeError, ValueError) as exc:
         _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))

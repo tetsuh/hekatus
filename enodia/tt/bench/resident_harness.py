@@ -27,6 +27,11 @@ from enodia.tt.bench.clock_source_audit import (
     clock_source_audit_for_image,
     source_evidence_for_image,
 )
+from enodia.tt.bench.load_harness import (
+    P150_RESIDUAL_WORKER_COORDINATES,
+    RESIDENT_CONSUMER_CORE,
+    RESIDENT_PRODUCER_CORE,
+)
 from enodia.tt.bench.power_trace_snapshot import (
     empty_power_trace_metadata,
     public_power_trace_metadata,
@@ -358,8 +363,38 @@ def _validate_l1_capacity(ring_pages: int, watcher: bool) -> None:
         )
 
 
+def _validate_load_core_partition(
+    producer: tuple[int, int],
+    consumer: tuple[int, int],
+    load_condition: str | None,
+) -> None:
+    """Keep device-load workers disjoint from the reserved resident pair."""
+    if load_condition not in {"newton_schulz", "dram"}:
+        return
+    worker_cores = set(P150_RESIDUAL_WORKER_COORDINATES)
+    if producer in worker_cores:
+        raise ResidentPreflightError(
+            f"producer_core {producer} overlaps the {load_condition} load worker cores"
+        )
+    if consumer in worker_cores:
+        raise ResidentPreflightError(
+            f"consumer_core {consumer} overlaps the {load_condition} load worker cores"
+        )
+    if producer == RESIDENT_CONSUMER_CORE and consumer == RESIDENT_PRODUCER_CORE:
+        raise ResidentPreflightError(
+            "device-load resident pair cannot swap producer and consumer cores"
+        )
+    if producer != RESIDENT_PRODUCER_CORE or consumer != RESIDENT_CONSUMER_CORE:
+        raise ResidentPreflightError(
+            "device-load resident pair must use the reserved producer/consumer cores"
+        )
+
+
 def validate_configuration(
-    config: ResidentConfig, *, watcher: bool = False
+    config: ResidentConfig,
+    *,
+    watcher: bool = False,
+    load_condition: str | None = None,
 ) -> ResidentConfig:
     """Reject unsafe or unbounded configurations before device work.
 
@@ -399,6 +434,7 @@ def validate_configuration(
     producer, consumer, designated = _validate_core_configuration(
         config, interval, fixed_work_ticks
     )
+    _validate_load_core_partition(producer, consumer, load_condition)
     _validate_l1_capacity(ring_pages, watcher)
     return ResidentConfig(
         frame_count=frame_count,
@@ -1250,6 +1286,15 @@ def build_measurement_record(
         from enodia.tt.bench.load_harness import validate_load_record
 
         validate_load_record(load_record)
+        config = validate_configuration(
+            config,
+            watcher=watcher,
+            load_condition=(
+                load_record.get("condition")
+                if isinstance(load_record, Mapping)
+                else None
+            ),
+        )
     normalized_environment = validate_preflight_provenance(
         harness_commit=harness_commit, environment=environment
     )

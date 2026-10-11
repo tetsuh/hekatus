@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +17,7 @@ from enodia.tt.bench.load_harness import (
     CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS,
     CARD_THROUGHPUT_UNIT_DEFINITION,
     DEVICE_OPEN_SETTINGS,
+    DRAM_BANK_COUNT,
     HOST_RESIDENT_SUB_DEVICE_ID,
     HOST_TRANSFER_CORE,
     HOST_TRANSFER_SUB_DEVICE_ID,
@@ -48,8 +51,10 @@ from enodia.tt.bench.power_trace_snapshot import read_power_trace_csv
 from enodia.tt.bench.resident_harness import (
     AUDITED_CLOCK_SOURCE_IMAGE,
     ResidentConfig,
+    ResidentPreflightError,
     build_measurement_record,
     run_budget_breakdown,
+    validate_configuration,
     validate_resident_record,
 )
 from enodia.tt.bench.resident_record import build_outlier_analysis, validate_pair_analysis
@@ -183,6 +188,47 @@ def test_calibration_duration_bounds_actual_resident_frame_count():
     assert bounded.frame_count > config.frame_count
     assert bounded.outer_timeout_seconds == 60
     assert run_budget_breakdown(bounded)["run_budget_ticks"] <= 54 * 1_350 * 1_000_000
+
+
+def test_device_load_preflight_reserves_resident_pair_and_rejects_worker_overlap():
+    config = ResidentConfig(
+        frame_count=100,
+        frame_interval_ticks=1_350_000,
+        producer_core=(0, 0),
+        consumer_core=(1, 0),
+        ring_pages=4,
+        work_per_frame=64,
+        designated_timestamp_core=(1, 0),
+        cycle_budget=10_000_000,
+        outer_timeout_seconds=60,
+        fixed_work_ticks_per_frame=100_000,
+        budget_aiclk_mhz=1_350,
+    )
+    for condition in ("newton_schulz", "dram"):
+        assert validate_configuration(config, load_condition=condition)
+        producer_overlap = replace(config, producer_core=(2, 0))
+        consumer_overlap = replace(
+            config, consumer_core=(2, 0), designated_timestamp_core=(2, 0)
+        )
+        swapped = replace(
+            config,
+            producer_core=(1, 0),
+            consumer_core=(0, 0),
+            designated_timestamp_core=(0, 0),
+        )
+        with pytest.raises(ResidentPreflightError, match="producer_core.*overlaps"):
+            validate_configuration(producer_overlap, load_condition=condition)
+        with pytest.raises(ResidentPreflightError, match="consumer_core.*overlaps"):
+            validate_configuration(consumer_overlap, load_condition=condition)
+        with pytest.raises(ResidentPreflightError, match="swap"):
+            validate_configuration(swapped, load_condition=condition)
+    configurable = replace(
+        config,
+        producer_core=(2, 0),
+        consumer_core=(3, 0),
+        designated_timestamp_core=(3, 0),
+    )
+    assert validate_configuration(configurable, load_condition="unloaded")
 
 
 def test_runner_parsers_expose_loaded_conditions_and_calibration_controls():
@@ -882,6 +928,58 @@ def test_device_coverage_rejects_host_timestamp_substitution():
     assert not load_evidence_valid(record)
 
 
+def test_persisted_coverage_recomputes_resident_and_load_endpoints():
+    record = build_load_record(
+        condition="newton_schulz",
+        repeat_count=1,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+    )
+    tampered_flags = copy.deepcopy(record)
+    tampered_flags["coverage"]["covered"] = False
+    tampered_flags["coverage"]["verdict"] = "uncovered"
+    with pytest.raises(LoadEvidenceError, match="coverage field"):
+        validate_load_record(tampered_flags)
+
+    late_start = copy.deepcopy(record)
+    late_start["card_load_interval"].update(start_ticks=101, elapsed_ticks=109)
+    with pytest.raises(LoadEvidenceError, match="coverage"):
+        validate_load_record(late_start)
+
+    early_end = copy.deepcopy(record)
+    early_end["card_load_interval"].update(end_ticks=199, elapsed_ticks=109)
+    with pytest.raises(LoadEvidenceError, match="coverage"):
+        validate_load_record(early_end)
+
+    missing_resident_endpoint = copy.deepcopy(record)
+    missing_resident_endpoint["resident_frame_interval"]["last_ticks"] = None
+    with pytest.raises(LoadEvidenceError, match="endpoint"):
+        validate_load_record(missing_resident_endpoint)
+
+    worker_rows = [
+        CardWorkerInterval(
+            index,
+            90,
+            210,
+            core=P150_RESIDUAL_WORKER_COORDINATES[index],
+        )
+        for index in range(DRAM_BANK_COUNT)
+    ]
+    dram = build_load_record(
+        condition="dram",
+        repeat_count=1,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+        worker_intervals=worker_rows,
+    )
+    other_run_worker = copy.deepcopy(dram)
+    other_run_worker["card_load_worker_intervals"][0].update(
+        end_ticks=220, elapsed_ticks=130
+    )
+    with pytest.raises(LoadEvidenceError, match="aggregate|belong"):
+        validate_load_record(other_run_worker)
+
+
 def test_two_cq_setting_is_present_on_all_four_mode_records():
     records = {
         "unloaded": build_load_record(condition="unloaded", repeat_count=0, resident_timestamps=None),
@@ -1038,6 +1136,62 @@ def test_loaded_pair_validation_reuses_weighted_elapsed_aiclk():
         sampler_mode="default",
         sampler_interval_seconds=2.0,
     ) == []
+
+
+def test_loaded_pair_validation_rejects_tampered_elapsed_clock_and_timing():
+    timestamps = [0, 1_000_000, 2_700_000]
+    outlier = build_outlier_analysis(
+        timestamps,
+        aiclk_mhz=1_350,
+        elapsed_aiclk_mhz=1_100.5,
+        elapsed_aiclk_source="load_interval_trace_samples",
+        sampler_metadata={"mode": "default", "interval_seconds": 2.0},
+    )
+    tampered_frequency = copy.deepcopy(outlier)
+    tampered_frequency["aiclk_mhz_for_elapsed_seconds"] = 1_101.5
+    assert validate_pair_analysis(
+        tampered_frequency,
+        timestamps=timestamps,
+        aiclk_mhz=1_350,
+        elapsed_aiclk_mhz=1_100.5,
+        elapsed_aiclk_source="load_interval_trace_samples",
+        sampler_mode="default",
+        sampler_interval_seconds=2.0,
+    )
+    tampered_source = copy.deepcopy(outlier)
+    tampered_source["aiclk_source_for_elapsed_seconds"] = "configured"
+    assert validate_pair_analysis(
+        tampered_source,
+        timestamps=timestamps,
+        aiclk_mhz=1_350,
+        elapsed_aiclk_mhz=1_100.5,
+        elapsed_aiclk_source="load_interval_trace_samples",
+        sampler_mode="default",
+        sampler_interval_seconds=2.0,
+    )
+    tampered_timing = copy.deepcopy(outlier)
+    tampered_timing["event_elapsed_seconds"][0] += 1.0
+    assert validate_pair_analysis(
+        tampered_timing,
+        timestamps=timestamps,
+        aiclk_mhz=1_350,
+        elapsed_aiclk_mhz=1_100.5,
+        elapsed_aiclk_source="load_interval_trace_samples",
+        sampler_mode="default",
+        sampler_interval_seconds=2.0,
+    )
+
+
+def test_committed_loaded_records_bind_elapsed_clock_to_weighted_trace():
+    for name in ("dram", "newton-schulz"):
+        path = ROOT / f"docs/measurements/2026-10-11-p150a-issue118-{name}-500000-adr0005.json"
+        record = json.loads(path.read_text())
+        record["clock"]["aiclk_mhz_for_elapsed_seconds"] += 1.0
+        report = validate_resident_record(record, strict_trace=False)
+        assert any(
+            mismatch["invariant"] == "clock.elapsed_aiclk_binding"
+            for mismatch in report["mismatches"]
+        )
 
 
 def test_wait_for_power_trace_sample_accepts_completion_edge(tmp_path):
@@ -1201,6 +1355,40 @@ def test_compute_timeout_cap_is_selectable_at_600_or_800_and_watcher_stays_60():
     config = _config_from_args(args)
     assert config.outer_timeout_cap_seconds == 600
     assert config.outer_timeout_cap_source == "issue12_timing_600s"
+
+
+def test_issue118_committed_records_match_fixed_work_and_profile_accounting():
+    control = json.loads(
+        (ROOT / "docs/measurements/2026-10-11-p150a-issue118-control-500000-adr0005.json").read_text()
+    )
+    dram = json.loads(
+        (ROOT / "docs/measurements/2026-10-11-p150a-issue118-dram-500000-adr0005.json").read_text()
+    )
+    ns = json.loads(
+        (ROOT / "docs/measurements/2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json").read_text()
+    )
+    control_load = control["load"]["load"]
+    dram_load = dram["load"]["load"]
+    ns_load = ns["load"]["load"]
+    assert control_load["fixed_work"] is False
+    assert control_load["repeat_count"] == 0
+    dram_repeat = dram_load["repeat_count"]
+    assert dram_load["fixed_work"] is True
+    assert dram_load["data_dependent_exit"] is False
+    assert len(dram["card_load_worker_intervals"]) == DRAM_BANK_COUNT
+    for worker in dram["card_load_worker_intervals"]:
+        assert worker["statistics"]["read_pages"] == 256 * dram_repeat
+        assert worker["statistics"]["write_pages"] == 256 * dram_repeat
+    ns_repeat = ns_load["repeat_count"]
+    ns_work = ns["load"]["newton_schulz"]
+    effective_outer = ns_work["outer_repetitions"] * ns_repeat
+    assert ns_work["iterations"] == 12
+    assert ns_work["effective_outer_repetitions"] == effective_outer
+    assert len(ns["load"]["core_partition"]["worker_cores"]) == 108
+    profile_records = ns["load"]["card_load_worker_intervals"][0]["statistics"]["profile_records"]
+    trisc0 = next(row for row in profile_records if row["risc"] == "TRISC0")
+    assert trisc0["warmup_event_count"] == effective_outer
+    assert ns_load["data_dependent_exit"] is False
 
 
 def test_old_committed_record_remains_out_of_scope_valid():

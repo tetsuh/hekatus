@@ -119,6 +119,7 @@ _CONDITION_ALIASES = {
     "c": "host_cpu_transfer",
 }
 _DEVICE_LOAD_CONDITIONS = frozenset({"newton_schulz", "dram"})
+_MISSING = object()
 _REPEAT_THROUGHPUT_UNITS = {
     # Retained for schema-v1 compatibility. New records carry the explicit
     # CARD_THROUGHPUT_UNIT_DEFINITION alongside this historical unit.
@@ -783,6 +784,104 @@ def validate_device_open_settings(settings: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
+def _persisted_card_coverage(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Recompute card coverage from the persisted resident/load endpoints."""
+    raw_interval = record.get("card_load_interval")
+    if raw_interval is None:
+        return _card_coverage(None, None)
+    if not isinstance(raw_interval, Mapping):
+        return {
+            "clock": "card_riscv_wall_clock",
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": "card_load_interval_must_be_an_object",
+        }
+    try:
+        interval = CardLoadInterval(
+            _uint64(raw_interval.get("start_ticks"), _CARD_LOAD_START_FIELD),
+            _uint64(raw_interval.get("end_ticks"), _CARD_LOAD_END_FIELD),
+        )
+    except (LoadEvidenceError, TypeError) as exc:
+        return {
+            "clock": "card_riscv_wall_clock",
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": str(exc),
+        }
+    raw_resident = record.get("resident_frame_interval")
+    if not isinstance(raw_resident, Mapping):
+        return _card_coverage(interval, None)
+    if raw_resident.get("clock") != "card_riscv_wall_clock":
+        return {
+            "clock": "card_riscv_wall_clock",
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": "resident_frame_interval_must_use_card_clock",
+        }
+    if "first_ticks" not in raw_resident or "last_ticks" not in raw_resident:
+        return {
+            "clock": interval.clock,
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": "missing_resident_frame_interval_endpoint",
+        }
+    try:
+        first = _uint64(raw_resident.get("first_ticks"), "resident first timestamp")
+        last = _uint64(raw_resident.get("last_ticks"), "resident last timestamp")
+    except LoadEvidenceError as exc:
+        return {
+            "clock": interval.clock,
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": str(exc),
+        }
+    return _card_coverage(interval, (first, last))
+
+
+def _persisted_host_coverage(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Recompute host coverage from the persisted interval and coverage bounds."""
+    raw_interval = record.get("host_load_interval")
+    declared = record.get("coverage")
+    if not isinstance(declared, Mapping):
+        return _host_coverage(None, None, None)
+    measurement_start = declared.get("measurement_start_ns")
+    measurement_end = declared.get("measurement_end_ns")
+    if not isinstance(raw_interval, Mapping):
+        return _host_coverage(None, measurement_start, measurement_end)
+    try:
+        interval = HostLoadInterval(
+            _nonnegative_int(raw_interval.get("start_ns"), _HOST_LOAD_START_FIELD),
+            _nonnegative_int(raw_interval.get("end_ns"), _HOST_LOAD_END_FIELD),
+        )
+    except (LoadEvidenceError, LoadConfigurationError, TypeError) as exc:
+        return {
+            "clock": "host_monotonic_ns",
+            "valid": False,
+            "covered": False,
+            "verdict": "invalid",
+            "reason": str(exc),
+        }
+    return _host_coverage(interval, measurement_start, measurement_end)
+
+
+def _require_declared_coverage_matches(
+    declared: Any, recomputed: Mapping[str, Any]
+) -> None:
+    """Reject persisted coverage flags or facts that disagree with endpoints."""
+    if not isinstance(declared, Mapping):
+        raise LoadEvidenceError("load coverage metadata is missing or invalid")
+    for field, expected in recomputed.items():
+        if declared.get(field, _MISSING) != expected:
+            raise LoadEvidenceError(
+                f"declared load coverage field {field!r} disagrees with persisted endpoints"
+            )
+
+
 def _worker_interval_row(item: Any) -> dict[str, Any]:
     if isinstance(item, CardWorkerInterval):
         return item.as_record()
@@ -795,12 +894,21 @@ def _normalize_worker_interval(item: Any) -> dict[str, Any]:
     row = _worker_interval_row(item)
     index = _nonnegative_int(row.get("worker_index"), "worker_index")
     try:
-        interval = CardLoadInterval(
-            _uint64(row.get("start_ticks"), _CARD_LOAD_START_FIELD),
-            _uint64(row.get("end_ticks"), _CARD_LOAD_END_FIELD),
-        )
+        start_ticks = _uint64(row.get("start_ticks"), _CARD_LOAD_START_FIELD)
+        end_ticks = _uint64(row.get("end_ticks"), _CARD_LOAD_END_FIELD)
+        interval = CardLoadInterval(start_ticks, end_ticks)
     except (LoadEvidenceError, TypeError) as exc:
         raise LoadEvidenceError(str(exc)) from exc
+    if "elapsed_ticks" in row and row.get("elapsed_ticks") != interval.elapsed_ticks:
+        raise LoadEvidenceError("worker interval elapsed_ticks is inconsistent")
+    for field, expected in (
+        ("clock", interval.clock),
+        ("width_bits", interval.width_bits),
+        ("timestamp_semantics", "wrap-tracked_extended"),
+        ("wrap_tracked", True),
+    ):
+        if field in row and row.get(field) != expected:
+            raise LoadEvidenceError(f"worker interval {field} is inconsistent")
     canonical = interval.as_record()
     canonical["worker_index"] = index
     for field in ("core", "label", "statistics", "risc", "profile_worker"):
@@ -1213,23 +1321,74 @@ def _validate_worker_interval_records(
     if rows is None:
         return
     normalized = _normalize_worker_intervals(rows)
-    if condition == "dram" and len(normalized) != DRAM_BANK_COUNT:
-        raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+    if condition == "dram":
+        if len(normalized) != DRAM_BANK_COUNT:
+            raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+        if {row["worker_index"] for row in normalized} != set(range(DRAM_BANK_COUNT)):
+            raise LoadEvidenceError("DRAM worker indexes must cover all eight banks")
     aggregate = record.get("card_load_interval")
     if not isinstance(aggregate, Mapping):
         raise LoadEvidenceError("worker intervals require aggregate card interval metadata")
+    try:
+        aggregate_interval = CardLoadInterval(
+            _uint64(aggregate.get("start_ticks"), _CARD_LOAD_START_FIELD),
+            _uint64(aggregate.get("end_ticks"), _CARD_LOAD_END_FIELD),
+        )
+    except (LoadEvidenceError, TypeError) as exc:
+        raise LoadEvidenceError(str(exc)) from exc
     starts = [row["start_ticks"] for row in normalized]
     ends = [row["end_ticks"] for row in normalized]
-    if aggregate.get("start_ticks") != min(starts) or aggregate.get("end_ticks") != max(ends):
+    if aggregate_interval.start_ticks != min(starts) or aggregate_interval.end_ticks != max(ends):
         raise LoadEvidenceError("aggregate card interval must remain separate and cover workers")
+    if any(
+        row["start_ticks"] < aggregate_interval.start_ticks
+        or row["end_ticks"] > aggregate_interval.end_ticks
+        for row in normalized
+    ):
+        raise LoadEvidenceError("worker interval endpoints do not belong to the aggregate load run")
+    if condition == "dram":
+        expected_cores = P150_RESIDUAL_WORKER_COORDINATES[:DRAM_BANK_COUNT]
+        for row in normalized:
+            core = row.get("core")
+            if core is not None and core != list(expected_cores[row["worker_index"]]):
+                raise LoadEvidenceError("DRAM worker core does not match its bank worker")
+            statistics = row.get("statistics")
+            load_metadata = record.get("load")
+            repeat_count = (
+                load_metadata.get("repeat_count")
+                if isinstance(load_metadata, Mapping)
+                else None
+            )
+            if (
+                isinstance(statistics, Mapping)
+                and "repeat_count" in statistics
+                and statistics.get("repeat_count") != repeat_count
+            ):
+                raise LoadEvidenceError("DRAM worker statistics belong to another load repeat")
     statistics = record.get("card_load_interval_statistics")
     if not isinstance(statistics, Mapping):
         raise LoadEvidenceError("worker interval statistics are required with worker rows")
     slowest = max(row["elapsed_ticks"] for row in normalized)
+    if statistics.get("worker_count") != len(normalized):
+        raise LoadEvidenceError("worker statistics count does not match worker rows")
     if statistics.get("slowest_worker_elapsed_ticks") != slowest:
         raise LoadEvidenceError("worker statistics must use the slowest worker own interval")
+    if (
+        statistics.get("aggregate_start_ticks") != aggregate_interval.start_ticks
+        or statistics.get("aggregate_end_ticks") != aggregate_interval.end_ticks
+        or statistics.get("aggregate_elapsed_ticks") != aggregate_interval.elapsed_ticks
+    ):
+        raise LoadEvidenceError("worker statistics aggregate span is inconsistent")
     if statistics.get("aggregate_span_role") != "coverage_only":
         raise LoadEvidenceError("aggregate worker span is coverage-only")
+    throughput = record.get("throughput_interval")
+    if isinstance(throughput, Mapping):
+        if throughput.get("source") != "slowest_worker_own_elapsed_interval":
+            raise LoadEvidenceError("throughput interval must use the slowest worker own interval")
+        if throughput.get("elapsed_ticks") != slowest:
+            raise LoadEvidenceError("throughput interval does not match the slowest worker")
+        if throughput.get("aggregate_span_elapsed_ticks") != aggregate_interval.elapsed_ticks:
+            raise LoadEvidenceError("throughput interval aggregate span is inconsistent")
 
 
 def _calibration_record_header(record: Mapping[str, Any]) -> tuple[str, int]:
@@ -1293,6 +1452,12 @@ def validate_calibration_load_record(record: Mapping[str, Any]) -> None:
     condition, _repeat_count = _calibration_record_header(record)
     _validate_calibration_metadata(record)
     _validate_calibration_intervals(record, condition)
+    recomputed = (
+        _persisted_card_coverage(record)
+        if condition in _DEVICE_LOAD_CONDITIONS
+        else _persisted_host_coverage(record)
+    )
+    _require_declared_coverage_matches(record.get("coverage"), recomputed)
     if record.get("valid_evidence") is not False or record.get("status") != "calibration":
         raise LoadEvidenceError("calibration record must remain non-evidence")
 
@@ -1321,18 +1486,28 @@ def _load_record_header(record: Mapping[str, Any]) -> tuple[str, Mapping[str, An
 
 def _validate_load_coverage(record: Mapping[str, Any], canonical: str) -> None:
     coverage = record.get("coverage")
-    if not isinstance(coverage, Mapping) or coverage.get("valid") is not True:
-        raise LoadEvidenceError("load coverage metadata is missing or invalid")
     if canonical == "unloaded":
+        _require_declared_coverage_matches(
+            coverage,
+            {"verdict": "not_applicable", "valid": True, "covered": True},
+        )
         return
-    if coverage.get("covered") is not True or coverage.get("verdict") != "covered":
+    recomputed = (
+        _persisted_card_coverage(record)
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else _persisted_host_coverage(record)
+    )
+    _require_declared_coverage_matches(coverage, recomputed)
+    if recomputed.get("valid") is not True:
+        raise LoadEvidenceError(recomputed.get("reason", "load coverage is invalid"))
+    if recomputed.get("covered") is not True or recomputed.get("verdict") != "covered":
         raise LoadEvidenceError("uncovered load interval is invalid evidence")
     expected_clock = (
         "card_riscv_wall_clock"
         if canonical in _DEVICE_LOAD_CONDITIONS
         else "host_monotonic_ns"
     )
-    if coverage.get("clock") != expected_clock:
+    if recomputed.get("clock") != expected_clock:
         raise LoadEvidenceError("load coverage clock does not match the condition")
 
 

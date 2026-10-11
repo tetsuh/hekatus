@@ -148,7 +148,16 @@ repeat 2,552,005. Both calibration records were `status=calibration`,
 |---|---|---|---|---|---|---|
 | unloaded control | 1,349,988 / 1,350,061 / 1,350,065 / 1,350,065 / 1,350,091 | 0.999991 / 1.000045 / 1.000048 / 1.000048 / 1.000067 | — | not applicable | no load | 1,350 / 1,350 / 1,350 reference |
 | DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 1,350 / 1,350 / 1,349.842 |
-| Newton-Schulz | 1,350,002 / 1,350,076 / 1,350,120 / 1,350,166 / 1,350,259 | 1.284598 / 1.284669 / 1.284710 / 1.284754 / 1.284843 | +14 / +15 / +55 / +101 / +168 | covered | 108 non-overlapping worker cores; 1,001,064 effective outer repetitions; fixed 12-iteration profile | 1,018 / 1,350 / 1,050.914 |
+| Newton-Schulz | 1,350,002 / 1,350,076 / 1,350,120 / 1,350,166 / 1,350,259 | 1.284598 / 1.284669 / 1.284710 / 1.284754 / 1.284843 | +14 / +15 / +55 / +101 / +168 | covered | fixed 108-core non-overlapping partition; selected TRISC0 profile interval; 1,001,064 effective outer repetitions; fixed 12-iteration profile | 1,018 / 1,350 / 1,050.914 |
+
+The Newton-Schulz record's selected TRISC0 profile reports 1,001,064
+warmup events, the same count as `3 × 333,688` executed outer repetitions.
+The profile therefore accumulates its warmup counters across the repeated fixed
+work; it is not evidence of a single one-time warmup. The fixed-work evidence
+remains valid because the runtime loop still executes exactly three outer
+repetitions per selected repeat and twelve iterations per outer repetition. A
+kernel-side correction to warmup counter scope is a follow-up candidate and is
+not applied to this measured record.
 
 The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
 legacy maximum-only `clock.aiclk_mhz`. The P50 converted difference from the
