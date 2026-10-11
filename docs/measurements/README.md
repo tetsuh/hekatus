@@ -81,8 +81,11 @@ calibrated run must still provide covered interval metadata.
 ## Issue #118 pre-measurement prediction
 
 This prediction is committed before the same-commit device calibrations and
-measurements. The three in-scope runs use device 0, 500,000 frames, a 1 ms
-period, no Watcher, a 600-second outer cap, and two command queues: CQ0 for
+measurements. The board-free regression command for this contract is
+`uv run pytest -q -m "not slow"`; it performs no device, board, Docker-device,
+Watcher, or reset operation. The three in-scope runs use device 0, 500,000
+frames, a 1 ms period, no Watcher, a 600-second outer cap, and two command
+queues: CQ0 for
 the resident program and CQ1 for transfer-only work. No sub-device manager is
 used. The host CPU plus PCIe condition (c) is moved to a separate follow-up
 Issue and is not part of this three-run session.
