@@ -206,6 +206,12 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "merge_program_parts" in resident_source
     assert "queue_id=queue_id" in resident_source
     assert 'record["timing_evidence"] = False' in resident_source
+    assert "load_record=resident_load_record" in resident_source
+    assert "if calibration_output is None:" in resident_source
+    assert resident_source.index("record = build_measurement_record") < resident_source.index(
+        "if calibration_output is not None:"
+    )
+    assert 'record["status"] = "calibration"' in resident_source
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
