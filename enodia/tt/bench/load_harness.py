@@ -1422,6 +1422,78 @@ def _validate_worker_interval_records(
             raise LoadEvidenceError("throughput interval aggregate span is inconsistent")
 
 
+def _validate_calibration_repeat_binding(
+    record: Mapping[str, Any],
+    *,
+    condition: str,
+    measurement_repeat_count: int,
+    require_calibration: bool,
+) -> None:
+    """Bind a selected run repeat to its calibration without conflating counts."""
+    calibration = record.get("calibration")
+    if calibration is None:
+        if require_calibration:
+            raise LoadEvidenceError("calibration metadata is missing")
+        return
+    if not isinstance(calibration, Mapping):
+        raise LoadEvidenceError("calibration metadata is invalid")
+    try:
+        metadata = CalibrationMetadata(**dict(calibration))
+    except (TypeError, ValueError) as exc:
+        raise LoadEvidenceError("calibration metadata is invalid") from exc
+    if metadata.condition != condition:
+        raise LoadEvidenceError("calibration condition does not match the load condition")
+    selected_repeat_count = record.get("selected_repeat_count")
+    if selected_repeat_count != metadata.repeat_count:
+        raise LoadEvidenceError(
+            "selected_repeat_count must match calibration-selected repeat_count"
+        )
+    if require_calibration and (
+        isinstance(selected_repeat_count, bool)
+        or not isinstance(selected_repeat_count, int)
+        or selected_repeat_count <= 0
+    ):
+        raise LoadEvidenceError("calibration selected_repeat_count must be positive")
+    # This field describes the calibration run itself.  It is distinct from
+    # metadata.repeat_count, which is the selected repeat count for a future
+    # loaded run.  Only a calibration record binds it to its own measurement.
+    calibration_measurement_repeat_count = metadata.load_measurement_repeat_count
+    if require_calibration and (
+        calibration_measurement_repeat_count is not None
+        and calibration_measurement_repeat_count != measurement_repeat_count
+    ):
+        raise LoadEvidenceError(
+            "calibration measurement repeat_count does not match the persisted measurement"
+        )
+
+
+def _validate_device_fixed_work(load: Mapping[str, Any], condition: str) -> None:
+    """Require the fixed-work contract for persisted card-loaded evidence."""
+    if condition not in _DEVICE_LOAD_CONDITIONS:
+        return
+    if load.get("fixed_work") is not True:
+        raise LoadEvidenceError("loaded device evidence requires fixed_work=true")
+    if load.get("data_dependent_exit") is not False:
+        raise LoadEvidenceError(
+            "loaded device evidence requires data_dependent_exit=false"
+        )
+
+
+def _validate_unloaded_intervals(record: Mapping[str, Any]) -> None:
+    """Keep an unloaded control from carrying any load interval evidence."""
+    for field in (
+        "card_load_interval",
+        "card_load_worker_intervals",
+        "card_load_interval_statistics",
+        "throughput_interval",
+        "host_load_interval",
+    ):
+        if record.get(field) is not None:
+            raise LoadEvidenceError(
+                f"unloaded control cannot claim {field.replace('_', ' ')}"
+            )
+
+
 def _calibration_record_header(record: Mapping[str, Any]) -> tuple[str, int]:
     if record.get("schema") != "issue-118-load-calibration-v1" or record.get("issue") != 118:
         raise LoadEvidenceError("record is not an Issue #118 calibration record")
@@ -1439,6 +1511,13 @@ def _calibration_record_header(record: Mapping[str, Any]) -> tuple[str, int]:
         raise LoadEvidenceError("calibration repeat_count must be positive")
     if load.get("repeat_count") != repeat_count:
         raise LoadEvidenceError("calibration load repeat metadata is inconsistent")
+    _validate_device_fixed_work(load, condition)
+    _validate_calibration_repeat_binding(
+        record,
+        condition=condition,
+        measurement_repeat_count=repeat_count,
+        require_calibration=True,
+    )
     return condition, repeat_count
 
 
@@ -1510,8 +1589,16 @@ def _load_record_header(record: Mapping[str, Any]) -> tuple[str, Mapping[str, An
     if canonical == "unloaded":
         if repeat_count != 0:
             raise LoadEvidenceError("unloaded control must record repeat_count=0")
+        _validate_unloaded_intervals(record)
     elif isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadEvidenceError("loaded conditions must retain a positive fixed repeat_count")
+    _validate_device_fixed_work(load, canonical)
+    _validate_calibration_repeat_binding(
+        record,
+        condition=canonical,
+        measurement_repeat_count=repeat_count,
+        require_calibration=False,
+    )
     return canonical, load, repeat_count
 
 
@@ -1542,6 +1629,52 @@ def _validate_load_coverage(record: Mapping[str, Any], canonical: str) -> None:
         raise LoadEvidenceError("load coverage clock does not match the condition")
 
 
+def _validate_newton_schulz_work(
+    record: Mapping[str, Any], load: Mapping[str, Any], repeat_count: int
+) -> None:
+    """Validate persisted NS loop counts against the fixed profile and repeats."""
+    work = record.get("newton_schulz")
+    if not isinstance(work, Mapping):
+        raise LoadEvidenceError("Newton-Schulz evidence requires load profile metadata")
+    for field, expected in (
+        ("iterations", NS_LOAD_ITERATIONS),
+        ("outer_repetitions", NS_LOAD_OUTER_REPETITIONS),
+    ):
+        if work.get(field) != expected:
+            raise LoadEvidenceError(
+                f"Newton-Schulz {field} must match the fixed load profile"
+            )
+    expected_effective = NS_LOAD_OUTER_REPETITIONS * repeat_count
+    if work.get("effective_outer_repetitions") != expected_effective:
+        raise LoadEvidenceError(
+            "Newton-Schulz effective_outer_repetitions must match repeat_count"
+        )
+    if load.get("outer_repetitions") != NS_LOAD_OUTER_REPETITIONS:
+        raise LoadEvidenceError(
+            "Newton-Schulz load outer_repetitions must match the fixed load profile"
+        )
+
+    worker_rows = record.get("card_load_worker_intervals")
+    if not isinstance(worker_rows, list):
+        return
+    for row in worker_rows:
+        statistics = row.get("statistics") if isinstance(row, Mapping) else None
+        if not isinstance(statistics, Mapping) or "profile_records" not in statistics:
+            continue
+        profile_records = statistics.get("profile_records")
+        if not isinstance(profile_records, list):
+            raise LoadEvidenceError("Newton-Schulz profile_records must be a list")
+        for profile in profile_records:
+            if not isinstance(profile, Mapping):
+                raise LoadEvidenceError("Newton-Schulz profile records must be objects")
+            if profile.get("risc") in {"TRISC0", "TRISC1", "TRISC2"} and profile.get(
+                "warmup_event_count"
+            ) != expected_effective:
+                raise LoadEvidenceError(
+                    "Newton-Schulz profile warmup_event_count must match effective_outer_repetitions"
+                )
+
+
 def _validate_device_load_record(record: Mapping[str, Any], canonical: str) -> None:
     interval = record.get("card_load_interval")
     if not isinstance(interval, Mapping) or interval.get("clock") != "card_riscv_wall_clock":
@@ -1560,6 +1693,12 @@ def _validate_device_load_record(record: Mapping[str, Any], canonical: str) -> N
     if record.get("host_load_interval") is not None:
         raise LoadEvidenceError("device-load coverage cannot substitute host interval metadata")
     _validate_worker_interval_records(record, condition=canonical)
+    if canonical == "newton_schulz":
+        _validate_newton_schulz_work(
+            record,
+            record["load"],
+            record["load"]["repeat_count"],
+        )
     if "throughput_reference_aiclk_mhz" in record and record.get(
         "throughput_reference_aiclk_mhz"
     ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:

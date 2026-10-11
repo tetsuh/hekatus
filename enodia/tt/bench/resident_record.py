@@ -1810,6 +1810,29 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
                 "resident load repeat metadata disagrees with its persisted load record",
             )
         )
+    if "selected_repeat_count" in record and record.get("selected_repeat_count") != load.get(
+        "selected_repeat_count"
+    ):
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                ("selected_repeat_count", "load.selected_repeat_count"),
+                "resident selected repeat metadata disagrees with its persisted load record",
+            )
+        )
+    if "calibration_measurement_repeat_count" in record and record.get(
+        "calibration_measurement_repeat_count"
+    ) != load.get("repeat_count"):
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                (
+                    "calibration_measurement_repeat_count",
+                    "load.repeat_count",
+                ),
+                "resident calibration measurement repeat metadata disagrees with its persisted load record",
+            )
+        )
     condition = load.get("condition")
     mismatches.extend(_check_load_resident_bindings(record, load, ctx))
     mismatches.extend(_check_elapsed_aiclk_binding(record, condition))

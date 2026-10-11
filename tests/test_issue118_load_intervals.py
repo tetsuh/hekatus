@@ -24,8 +24,10 @@ from enodia.tt.bench.load_harness import (
     HOST_TRANSFER_SUB_DEVICE_ID,
     LOAD_CONDITIONS,
     NS_LOAD_BATCH,
+    NS_LOAD_ITERATIONS,
     NS_LOAD_L1_TOTAL_BYTES,
     NS_LOAD_MAX_TILES_PER_CORE,
+    NS_LOAD_OUTER_REPETITIONS,
     NUM_COMMAND_QUEUES,
     P150_RESIDUAL_WORKER_COORDINATES,
     P150_RESIDUAL_WORKER_COUNT,
@@ -1045,6 +1047,124 @@ def test_dram_calibration_rejects_missing_worker_rows_and_page_counters():
     missing_counter["card_load_worker_intervals"][0]["statistics"].pop("write_pages")
     with pytest.raises(LoadEvidenceError, match="write_pages"):
         validate_calibration_load_record(missing_counter)
+
+
+def test_persisted_repeat_copies_keep_calibration_measurement_distinct():
+    calibration = CalibrationMetadata(
+        condition="dram",
+        duration_seconds=5,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=12,
+        target_seconds=500,
+        load_card_ticks=300,
+        load_measurement_repeat_count=3,
+        load_interval_aiclk_mhz=1_350,
+        load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    )
+    calibration_record = build_calibration_load_record(
+        condition="dram",
+        repeat_count=3,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+        worker_intervals=_dram_worker_intervals(repeat_count=3),
+        calibration=calibration,
+    )
+    assert calibration_record["repeat_count"] == 3
+    assert calibration_record["selected_repeat_count"] == 12
+    validate_calibration_load_record(calibration_record)
+
+    for field, value in (
+        ("selected_repeat_count", 13),
+        ("repeat_count", 4),
+    ):
+        candidate = copy.deepcopy(calibration_record)
+        candidate[field] = value
+        with pytest.raises(LoadEvidenceError, match="repeat"):
+            validate_calibration_load_record(candidate)
+    candidate = copy.deepcopy(calibration_record)
+    candidate["calibration"]["load_measurement_repeat_count"] = 4
+    with pytest.raises(LoadEvidenceError, match="measurement repeat"):
+        validate_calibration_load_record(candidate)
+
+    loaded = build_load_record(
+        condition="dram",
+        repeat_count=12,
+        resident_timestamps=[100, 200],
+        card_interval=CardLoadInterval(90, 210),
+        worker_intervals=_dram_worker_intervals(repeat_count=12),
+        calibration=calibration,
+    )
+    for mutate in (
+        lambda record: record.update(selected_repeat_count=4),
+        lambda record: record["calibration"].update(repeat_count=4),
+        lambda record: record["load"].update(repeat_count=4),
+    ):
+        candidate = copy.deepcopy(loaded)
+        mutate(candidate)
+        with pytest.raises(LoadEvidenceError, match="repeat"):
+            validate_load_record(candidate)
+
+
+def test_persisted_loaded_device_records_require_fixed_work_flags():
+    for condition in ("dram", "newton-schulz"):
+        stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+        record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+        for field, value in (("fixed_work", False), ("data_dependent_exit", True)):
+            candidate = copy.deepcopy(record["load"])
+            candidate["load"][field] = value
+            with pytest.raises(LoadEvidenceError, match=field):
+                validate_load_record(candidate)
+
+
+def test_persisted_unloaded_relabel_cannot_keep_load_intervals():
+    record = json.loads(
+        (
+            ROOT
+            / "docs/measurements/2026-10-11-p150a-issue118-dram-500000-adr0005.json"
+        ).read_text()
+    )
+    candidate = copy.deepcopy(record["load"])
+    candidate["condition"] = "unloaded"
+    candidate["repeat_count"] = 0
+    candidate["selected_repeat_count"] = 0
+    candidate["load"].update(condition="unloaded", repeat_count=0)
+    candidate["coverage"] = {"verdict": "not_applicable", "valid": True, "covered": True}
+    with pytest.raises(LoadEvidenceError, match="unloaded control cannot claim"):
+        validate_load_record(candidate)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("iterations", NS_LOAD_ITERATIONS - 1),
+        ("outer_repetitions", NS_LOAD_OUTER_REPETITIONS + 1),
+        ("effective_outer_repetitions", 1),
+    ),
+)
+def test_persisted_newton_schulz_counts_bind_to_profile_and_repeats(field, value):
+    record = json.loads(
+        (
+            ROOT
+            / "docs/measurements/2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
+        ).read_text()
+    )
+    candidate = copy.deepcopy(record["load"])
+    candidate["newton_schulz"][field] = value
+    with pytest.raises(LoadEvidenceError, match="Newton-Schulz"):
+        validate_load_record(candidate)
+
+    profile_tampered = copy.deepcopy(record["load"])
+    profile = next(
+        item
+        for item in profile_tampered["card_load_worker_intervals"][0]["statistics"][
+            "profile_records"
+        ]
+        if item["risc"] == "TRISC0"
+    )
+    profile["warmup_event_count"] += 1
+    with pytest.raises(LoadEvidenceError, match="profile warmup_event_count"):
+        validate_load_record(profile_tampered)
 
 
 def test_two_cq_setting_is_present_on_all_four_mode_records():
