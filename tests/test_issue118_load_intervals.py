@@ -376,7 +376,7 @@ def test_fixed_dram_and_host_work_metadata():
     )
     assert host_run["start_ns"] == 100
     assert host_run["end_ns"] == 250
-    assert transfers == [(64 * 1024, 1)]
+    assert transfers == [(64 * 1024, 1)] * 256
     dram = load_generators.dram_load_work()
     assert dram["bank_count"] == 8
     assert dram["read_pages"] == dram["write_pages"] == 8 * 256
@@ -386,7 +386,7 @@ def test_fixed_dram_and_host_work_metadata():
     assert host["arithmetic_rounds"] == 16
     assert host["arithmetic_words"] == 4_096
     assert host["transfer_bytes"] == 64 * 1024
-    assert host["transfer_count"] == 1
+    assert host["transfer_count"] == 256
     assert host["transfers"] == "fixed_size_host_device_transfers"
 
 
@@ -525,7 +525,7 @@ def test_actual_runner_reports_repeat_rate_not_work_rate():
     dram_result = {"card_load_interval": CardLoadInterval(0, 1_000_000)}
     host_result = {
         "host_load_interval": HostLoadInterval(0, 1_000_000),
-        "host_work": {"transfer_count": 1},
+        "host_work": {"transfer_count": 256},
     }
     assert _load_achieved_throughput(
         ns_result, condition="newton_schulz", repeat_count=1, aiclk_mhz=1000
