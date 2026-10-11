@@ -307,6 +307,23 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
 
+def test_profile_cleanup_uses_identity_not_tensor_equality():
+    class Tensor:
+        def __eq__(self, _other):
+            raise AssertionError("tensor equality must not be used for cleanup")
+
+    class Ttnn:
+        def deallocate(self, _tensor):
+            return None
+
+    kernel = object.__new__(newton_schulz_kernel.NewtonSchulzKernel)
+    kernel.ttnn = Ttnn()
+    kernel.inputs = [Tensor()]
+    kernel.outputs = [Tensor()]
+    kernel.profile_output = Tensor()
+    kernel.close()
+
+
 def test_merged_generic_io_pair_is_homogeneous():
     from enodia.tt.bench.run_resident import _merged_program_io_tensors
 

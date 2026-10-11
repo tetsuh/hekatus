@@ -1643,7 +1643,9 @@ class NewtonSchulzKernel:
 
     def close(self) -> None:
         tensors = [*self.inputs, *self.outputs]
-        if self.profile_output is not None and self.profile_output not in tensors:
+        if self.profile_output is not None and not any(
+            self.profile_output is tensor for tensor in tensors
+        ):
             tensors.append(self.profile_output)
         _deallocate_tensors(self.ttnn, tensors)
 
