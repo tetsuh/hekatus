@@ -80,31 +80,41 @@ calibrated run must still provide covered interval metadata.
 
 ## Issue #118 pre-measurement prediction
 
-This prediction is committed before the same-commit device calibrations and
-measurements. The board-free regression command for this contract is
+This prediction is committed before the same-commit device measurements. The
+board-free regression command for this contract is
 `uv run pytest -q -m "not slow"`; it performs no device, board, Docker-device,
 Watcher, or reset operation. The three in-scope runs use device 0, 500,000
-frames, a 1 ms period, no Watcher, a 600-second outer cap, and two command
-queues: CQ0 for
-the resident program and CQ1 for transfer-only work. No sub-device manager is
-used. The host CPU plus PCIe condition (c) is moved to a separate follow-up
-Issue and is not part of this three-run session.
+frames, a 1 ms period, no Watcher, two command queues, and no sub-device
+manager: CQ0 carries the resident program and CQ1 is reserved for transfer-only
+work. The control and DRAM runs use a 600-second wrapper cap; the
+AICLK-reducing Newton-Schulz run uses the approved 800-second cap. The host
+CPU plus PCIe condition (c) is moved to a separate follow-up Issue.
 
-The prediction uses the preceding watcher-off calibrations because the NS and
-DRAM calibrations will be repeated on the committed prediction revision before
-measurement. The resident schedule is 500.1 seconds; the planning allowance
-for device open, JIT, cleanup, and close is 4 seconds. Loaded work overlaps
-the resident program, so the load and resident times are not added.
+The prediction revision is harness commit
+`2734d88a4aefd4ab56c6447d3f7f360408abbd42`. Both calibrations were rerun on
+that commit with sampler on, Watcher off, and a 60-second cap. The historical
+`repeats_per_card_second` value is repeats per 1.35e9 card ticks. Therefore the
+reference prediction is 550 seconds (500-second target × 1.10), and real time
+is obtained by converting the card ticks using the observed load-interval
+weighted AICLK. NS is conservatively projected at sustained 1025 MHz, based on
+the observed AICLK decline; DRAM uses its calibration weighted AICLK. The
+resident schedule is 500.1 seconds and the planning allowance for device open,
+JIT, cleanup, and close is 4 seconds. Loaded work overlaps the resident
+program, so load and resident times are not added.
 
-| condition | predicted load time (s) | predicted whole-run time (s) | predicted margin to 600 s (s) |
-|---|---:|---:|---:|
-| unloaded control | — | 504.1 | 95.9 |
-| Newton-Schulz | 550.000 | 554.0 | 46.0 |
-| DRAM | 550.430 | 554.4 | 45.6 |
+| condition | calibration repeat | weighted load AICLK (MHz) | reference throughput (repeats / 1.35e9 ticks) | predicted load time (s) | cap (s) | predicted whole-run time (s) | margin (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| unloaded control | — | — | — | — | 600 | 504.1 | 95.9 |
+| Newton-Schulz | 333,688 | 1,191.259 | 606.704754 | 724.391 (1025 MHz projection) | 800 | 728.391 | 71.609 |
+| DRAM | 2,552,005 | 1,346.531 | 4,640.008824 | 551.417 | 600 | 555.417 | 44.583 |
 
-These are pre-measurement predictions, not evidence. The recalibrated repeat
-counts and measured whole-run timings are reported separately; if either
-loaded prediction exceeds 560 seconds, that run is not started.
+Calibration provenance: the NS run used 18,000 repeats and 40,052,430,488
+card ticks; the DRAM run used 138,076 repeats and its slowest worker interval
+was 40,172,897,738 card ticks (aggregate span 42,081,820,472 ticks). Both
+records are `status=calibration`, `valid_evidence=false`, and uncovered by
+design. These are pre-measurement predictions, not evidence. Both loaded
+predictions are below the required 40-second cap margin and the 560-second
+loaded-run gate; the three runs may proceed only on this pushed commit.
 
 ## Issue #104 paired-outlier records
 
