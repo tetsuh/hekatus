@@ -36,6 +36,11 @@ P150_RESIDUAL_WORKER_COUNT = len(P150_RESIDUAL_WORKER_COORDINATES)
 NUM_COMMAND_QUEUES = 2
 RESIDENT_COMMAND_QUEUE = 0
 TRANSFER_COMMAND_QUEUE = 1
+# v0.75.0 Fast Dispatch synchronizes the configured sub-device stall group;
+# reserve one residual core so CQ1 can complete without waiting for resident CQ0.
+HOST_RESIDENT_SUB_DEVICE_ID = 0
+HOST_TRANSFER_SUB_DEVICE_ID = 1
+HOST_TRANSFER_CORE = P150_RESIDUAL_WORKER_COORDINATES[0]
 DEVICE_OPEN_SETTINGS = {
     "num_command_queues": NUM_COMMAND_QUEUES,
 }
@@ -332,6 +337,10 @@ def host_transfer_work() -> dict[str, Any]:
         "transfer_bytes": HOST_TRANSFER_BYTES,
         "transfer_count": HOST_TRANSFER_COUNT,
         "command_queue": TRANSFER_COMMAND_QUEUE,
+        "resident_sub_device_id": HOST_RESIDENT_SUB_DEVICE_ID,
+        "transfer_sub_device_id": HOST_TRANSFER_SUB_DEVICE_ID,
+        "transfer_core": list(HOST_TRANSFER_CORE),
+        "completion_scope": "transfer_sub_device_only",
         "control_flow": "fixed_arithmetic_and_fixed_size_transfers",
     }
 

@@ -36,11 +36,16 @@ from enodia.tt.bench.load_harness import (
     DRAM_STREAM_TOTAL_BYTES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
+    HOST_RESIDENT_SUB_DEVICE_ID,
     HOST_TRANSFER_BUFFER_POOL_SIZE,
     HOST_TRANSFER_BYTES,
+    HOST_TRANSFER_CORE,
     HOST_TRANSFER_COUNT,
+    HOST_TRANSFER_SUB_DEVICE_ID,
     LOAD_CONDITIONS,
     NS_LOAD_OUTER_REPETITIONS,
+    RESIDENT_COMMAND_QUEUE,
+    RESIDENT_CORES,
     TRANSFER_COMMAND_QUEUE,
     CalibrationMetadata,
     CardLoadInterval,
@@ -132,6 +137,33 @@ def _core(value: str) -> tuple[int, int]:
 def _core_range(ttnn: Any, core: tuple[int, int]):
     coord = ttnn.CoreCoord(core[0], core[1])
     return ttnn.CoreRangeSet([ttnn.CoreRange(coord, coord)])
+
+
+def _core_ranges(ttnn: Any, cores: tuple[tuple[int, int], ...]):
+    return ttnn.CoreRangeSet(
+        [
+            ttnn.CoreRange(ttnn.CoreCoord(x, y), ttnn.CoreCoord(x, y))
+            for x, y in cores
+        ]
+    )
+
+
+def _configure_host_transfer_subdevices(ttnn: Any, device: Any):
+    """Partition resident and transfer dispatch so CQ1 does not stall on CQ0."""
+    # Pinned v0.75.0 source maps an omitted sub-device list to the configured
+    # stall group, whose default is every sub-device.  Queue IDs alone therefore
+    # do not make CQ1 completion independent of a resident CQ0 program.  A
+    # one-core transfer sub-device is enough because host copies do not launch a
+    # worker program; the resident descriptor remains wholly on sub-device 0.
+    resident_sub_device = ttnn.SubDevice([_core_ranges(ttnn, RESIDENT_CORES)])
+    transfer_sub_device = ttnn.SubDevice([_core_range(ttnn, HOST_TRANSFER_CORE)])
+    manager_id = device.create_sub_device_manager(
+        [resident_sub_device, transfer_sub_device], 0
+    )
+    device.load_sub_device_manager(manager_id)
+    transfer_sub_device_id = ttnn.SubDeviceId(HOST_TRANSFER_SUB_DEVICE_ID)
+    device.set_sub_device_stall_group([transfer_sub_device_id])
+    return manager_id, [transfer_sub_device_id]
 
 
 def _allocate(ttnn: Any, shape, dtype, layout, device, memory_config):
@@ -584,6 +616,7 @@ def _run_host_transfers(
     start_holder: dict[str, int] | None = None,
     device_tensors_holder: list[Any] | None = None,
     host_tensors_holder: list[Any] | None = None,
+    transfer_sub_device_ids: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Run fixed arithmetic, one CQ1 batch, and one CQ1 completion per repeat."""
     if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
@@ -627,7 +660,14 @@ def _run_host_transfers(
         )
         # Same-CQ FIFO protects the four reusable slots. This is the only
         # synchronization in a repeat and establishes its completion boundary.
-        ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+        if transfer_sub_device_ids is None:
+            ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+        else:
+            ttnn.synchronize_device(
+                device,
+                cq_id=TRANSFER_COMMAND_QUEUE,
+                sub_device_ids=transfer_sub_device_ids,
+            )
     end_ns = time.monotonic_ns()
     return {
         "arithmetic_rounds": HOST_ARITHMETIC_ROUNDS,
@@ -673,12 +713,20 @@ def _complete_host_transfers(
     host_tensors: list[Any],
     *,
     raise_sync_error: bool = True,
+    transfer_sub_device_ids: list[Any] | None = None,
 ) -> None:
     """Complete CQ1 work and release every fixed pool buffer."""
     sync_error: Exception | None = None
     if device_tensors:
         try:
-            ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+            if transfer_sub_device_ids is None:
+                ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+            else:
+                ttnn.synchronize_device(
+                    device,
+                    cq_id=TRANSFER_COMMAND_QUEUE,
+                    sub_device_ids=transfer_sub_device_ids,
+                )
         except Exception as exc:  # noqa: BLE001 - cleanup still releases both pools
             sync_error = exc
     for tensor in [*device_tensors, *host_tensors]:
@@ -704,7 +752,10 @@ def _run_loaded_device(
     """Launch resident and one selected load group in one ProgramDescriptor."""
     if condition not in {"newton_schulz", "dram", "host_cpu_transfer"}:
         raise LoadConfigurationError(f"unsupported loaded condition: {condition}")
-    resident_tensors = _allocate_resident_tensors(ttnn, device, config)
+    host_sub_device_manager: Any | None = None
+    host_transfer_sub_device_ids: list[Any] | None = None
+    resident_tensors: dict[str, Any] = {}
+    resident_completed = False
     load_kernel: Any | None = None
     load_tensors: list[Any] = []
     host_work: dict[str, Any] | None = None
@@ -718,6 +769,12 @@ def _run_loaded_device(
     host_device_tensors: list[Any] = []
     host_result_tensors: list[Any] = []
     try:
+        if condition == "host_cpu_transfer":
+            (
+                host_sub_device_manager,
+                host_transfer_sub_device_ids,
+            ) = _configure_host_transfer_subdevices(ttnn, device)
+        resident_tensors = _allocate_resident_tensors(ttnn, device, config)
         resident_parts = _program(
             ttnn, config, resident_tensors, watcher=watcher, return_parts=True
         )
@@ -757,6 +814,7 @@ def _run_loaded_device(
                             device_tensors_holder=host_device_tensors,
                             host_tensors_holder=host_result_tensors,
                             repetitions=repeat_count,
+                            transfer_sub_device_ids=host_transfer_sub_device_ids,
                         )
                     )
                 except BaseException as exc:  # noqa: BLE001 - transfer failure crosses thread boundary
@@ -779,7 +837,15 @@ def _run_loaded_device(
             raise
         finally:
             resident_launched.set()
-        ttnn.synchronize_device(device, cq_id=0)
+        if host_transfer_sub_device_ids is None:
+            ttnn.synchronize_device(device, cq_id=RESIDENT_COMMAND_QUEUE)
+        else:
+            ttnn.synchronize_device(
+                device,
+                cq_id=RESIDENT_COMMAND_QUEUE,
+                sub_device_ids=[ttnn.SubDeviceId(HOST_RESIDENT_SUB_DEVICE_ID)],
+            )
+        resident_completed = True
         # Capture the CQ0 resident endpoint before waiting for any host-load
         # tail. This lets coverage accept a host load that extends beyond the
         # resident interval without making the endpoint host-load-dependent.
@@ -795,7 +861,11 @@ def _run_loaded_device(
             if host_error:
                 raise RuntimeError("host load transfer failed") from host_error[0]
             _complete_host_transfers(
-                ttnn, device, host_device_tensors, host_result_tensors
+                ttnn,
+                device,
+                host_device_tensors,
+                host_result_tensors,
+                transfer_sub_device_ids=host_transfer_sub_device_ids,
             )
             host_work = host_result
         result = _decode_resident_result(ttnn, config, resident_tensors)
@@ -850,10 +920,26 @@ def _run_loaded_device(
                 host_device_tensors,
                 host_result_tensors,
                 raise_sync_error=False,
+                transfer_sub_device_ids=host_transfer_sub_device_ids,
             )
         if load_kernel is not None:
             load_kernel.close()
-        _deallocate_resident_tensors(ttnn, resident_tensors)
+        if host_sub_device_manager is not None:
+            try:
+                if not resident_completed:
+                    ttnn.synchronize_device(
+                        device,
+                        cq_id=RESIDENT_COMMAND_QUEUE,
+                        sub_device_ids=[ttnn.SubDeviceId(HOST_RESIDENT_SUB_DEVICE_ID)],
+                    )
+            finally:
+                _deallocate_resident_tensors(ttnn, resident_tensors)
+                device.clear_loaded_sub_device_manager()
+                device.remove_sub_device_manager(host_sub_device_manager)
+        else:
+            _deallocate_resident_tensors(ttnn, resident_tensors)
+
+
 def _runner_output_dir() -> Path:
     """Return the wrapper output directory; tests may redirect this seam."""
     return Path("/out")

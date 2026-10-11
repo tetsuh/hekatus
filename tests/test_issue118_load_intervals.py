@@ -12,6 +12,9 @@ from enodia.tt.bench import load_generators, newton_schulz_kernel
 from enodia.tt.bench import run_resident as resident_runner
 from enodia.tt.bench.load_harness import (
     DEVICE_OPEN_SETTINGS,
+    HOST_RESIDENT_SUB_DEVICE_ID,
+    HOST_TRANSFER_CORE,
+    HOST_TRANSFER_SUB_DEVICE_ID,
     LOAD_CONDITIONS,
     NS_LOAD_BATCH,
     NS_LOAD_L1_TOTAL_BYTES,
@@ -97,6 +100,18 @@ def test_newton_schulz_distribution_and_l1_ledger_are_fixed():
         double_buffer=True,
         variant="bf16",
     ) == 1_295_104
+
+
+def test_host_transfer_subdevice_partition_is_disjoint_and_source_backed():
+    assert HOST_RESIDENT_SUB_DEVICE_ID == 0
+    assert HOST_TRANSFER_SUB_DEVICE_ID == 1
+    assert HOST_TRANSFER_CORE in P150_RESIDUAL_WORKER_COORDINATES
+    assert HOST_TRANSFER_CORE not in RESIDENT_CORES
+    source = (ROOT / "enodia/tt/bench/run_resident.py").read_text()
+    assert "create_sub_device_manager" in source
+    assert "set_sub_device_stall_group" in source
+    assert "sub_device_ids=transfer_sub_device_ids" in source
+    assert "sub_device_ids=[ttnn.SubDeviceId(HOST_RESIDENT_SUB_DEVICE_ID)]" in source
 
 
 def test_fixed_load_sources_have_no_convergence_or_data_dependent_exit():
@@ -255,6 +270,7 @@ class _FakeHostTransferTtnn:
         self.deallocated = []
         self.copy_count = 0
         self.fail_on_copy = fail_on_copy
+        self.synchronize_sub_device_ids = []
 
     def Tensor(self, _array, _dtype):
         tensor = _FakeHostTransferTensor("host", len(self.host_allocations))
@@ -281,14 +297,22 @@ class _FakeHostTransferTtnn:
     def copy_device_to_host_tensor(self, device, host, *, blocking, cq_id):
         self.events.append(("device_to_host", device.slot, host.slot, blocking, cq_id))
 
-    def synchronize_device(self, _device, *, cq_id):
+    def synchronize_device(self, _device, *, cq_id, sub_device_ids=None):
+        self.synchronize_sub_device_ids.append(sub_device_ids)
         self.events.append(("synchronize", cq_id))
 
     def deallocate(self, tensor):
         self.deallocated.append(tensor)
 
 
-def _run_fake_host_transfer(monkeypatch, repetitions, *, transfer_count=5, fail_on_copy=None):
+def _run_fake_host_transfer(
+    monkeypatch,
+    repetitions,
+    *,
+    transfer_count=5,
+    fail_on_copy=None,
+    transfer_sub_device_ids=None,
+):
     import threading
 
     monkeypatch.setattr(resident_runner, "HOST_TRANSFER_COUNT", transfer_count)
@@ -309,6 +333,7 @@ def _run_fake_host_transfer(monkeypatch, repetitions, *, transfer_count=5, fail_
         start_holder={},
         device_tensors_holder=device_tensors,
         host_tensors_holder=host_tensors,
+        transfer_sub_device_ids=transfer_sub_device_ids,
     )
     return ttnn, device_tensors, host_tensors, started, result
 
@@ -355,6 +380,16 @@ def test_host_transfer_ring_keeps_allocations_fixed_and_synchronizes_repeats(mon
         assert not host_tensors
         assert len(ttnn.deallocated) == 2 * resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
     assert allocation_counts[0] == allocation_counts[1]
+
+
+def test_host_transfer_sync_targets_only_the_transfer_subdevice(monkeypatch):
+    transfer_sub_device_ids = [object()]
+    ttnn, _device_tensors, _host_tensors, _started, _result = _run_fake_host_transfer(
+        monkeypatch,
+        repetitions=3,
+        transfer_sub_device_ids=transfer_sub_device_ids,
+    )
+    assert ttnn.synchronize_sub_device_ids == [transfer_sub_device_ids] * 3
 
 
 def test_host_transfer_waits_for_resident_submission_before_first_cq1_batch(monkeypatch):
@@ -608,6 +643,10 @@ def test_fixed_dram_and_host_work_metadata():
     assert host["transfers"] == "fixed_size_host_device_transfers"
     assert host["buffer_pool_size"] == 4
     assert host["buffer_pool"] == "reusable_host_and_device_buffers"
+    assert host["resident_sub_device_id"] == HOST_RESIDENT_SUB_DEVICE_ID
+    assert host["transfer_sub_device_id"] == HOST_TRANSFER_SUB_DEVICE_ID
+    assert host["transfer_core"] == list(HOST_TRANSFER_CORE)
+    assert host["completion_scope"] == "transfer_sub_device_only"
 
 
 def test_card_profile_interval_requires_wrap_tracked_endpoints():
