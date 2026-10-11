@@ -64,6 +64,31 @@ interval; it remains `status=calibration` and `valid_evidence=false`. The
 calibration interval is not promoted to timing evidence, while the later
 calibrated run must still provide covered interval metadata.
 
+## Issue #118 pre-measurement prediction
+
+This prediction is committed before the same-commit device calibrations and
+measurements. The three in-scope runs use device 0, 500,000 frames, a 1 ms
+period, no Watcher, a 600-second outer cap, and two command queues: CQ0 for
+the resident program and CQ1 for transfer-only work. No sub-device manager is
+used. The host CPU plus PCIe condition (c) is moved to a separate follow-up
+Issue and is not part of this three-run session.
+
+The prediction uses the preceding watcher-off calibrations because the NS and
+DRAM calibrations will be repeated on the committed prediction revision before
+measurement. The resident schedule is 500.1 seconds; the planning allowance
+for device open, JIT, cleanup, and close is 4 seconds. Loaded work overlaps
+the resident program, so the load and resident times are not added.
+
+| condition | predicted load time (s) | predicted whole-run time (s) | predicted margin to 600 s (s) |
+|---|---:|---:|---:|
+| unloaded control | — | 504.1 | 95.9 |
+| Newton-Schulz | 550.000 | 554.0 | 46.0 |
+| DRAM | 550.430 | 554.4 | 45.6 |
+
+These are pre-measurement predictions, not evidence. The recalibrated repeat
+counts and measured whole-run timings are reported separately; if either
+loaded prediction exceeds 560 seconds, that run is not started.
+
 ## Issue #104 paired-outlier records
 
 The wrapper supports the existing telemetry sampler as `default` (2 seconds),
