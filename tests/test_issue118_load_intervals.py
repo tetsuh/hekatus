@@ -49,6 +49,7 @@ from enodia.tt.bench.resident_harness import (
     run_budget_breakdown,
     validate_resident_record,
 )
+from enodia.tt.bench.resident_record import build_outlier_analysis, validate_pair_analysis
 from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import _read_calibration as read_load_calibration
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
@@ -62,6 +63,7 @@ from enodia.tt.bench.run_resident import (
     _load_execution_selection,
     _read_load_calibration,
     _run_host_transfers,
+    _wait_for_power_trace_sample,
 )
 from enodia.tt.bench.run_resident import _parser as resident_parser
 
@@ -923,6 +925,41 @@ def test_power_trace_keeps_varying_in_run_clock_and_uses_time_weighted_interval(
     assert parsed["aiclk_mhz_load_interval_weighted"] == pytest.approx(866.6666667)
     assert parsed["aiclk_mhz_load_interval_weighted_source"] == "load_interval_trace_samples"
     assert len(parsed["in_run_samples"]) == 3
+
+
+def test_loaded_pair_validation_reuses_weighted_elapsed_aiclk():
+    intervals = [1_000_000, 1_700_000] + [1_350_000] * 2_698 + [1_000_000, 1_700_000]
+    timestamps = [0]
+    for interval in intervals:
+        timestamps.append(timestamps[-1] + interval)
+    outlier = build_outlier_analysis(
+        timestamps,
+        aiclk_mhz=1_350,
+        elapsed_aiclk_mhz=1_100.5,
+        elapsed_aiclk_source="load_interval_trace_samples",
+        sampler_metadata={"mode": "default", "interval_seconds": 2.0},
+    )
+    assert validate_pair_analysis(
+        outlier,
+        timestamps=timestamps,
+        aiclk_mhz=1_350,
+        sampler_mode="default",
+        sampler_interval_seconds=2.0,
+    ) == []
+
+
+def test_wait_for_power_trace_sample_accepts_completion_edge(tmp_path):
+    trace = tmp_path / "power.csv"
+    trace.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00Z,75,1350,60\n"
+        "2026-01-01T00:00:02Z,75,1100,70\n"
+    )
+    _wait_for_power_trace_sample(
+        trace,
+        "2026-01-01T00:00:02+00:00",
+        sampler_interval_seconds=2.0,
+    )
 
 
 def test_delayed_worker_uses_slowest_worker_interval_not_aggregate_span():

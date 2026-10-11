@@ -871,10 +871,14 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "load",
     "load.*",
     "card_load_interval",
+    "card_load_interval.*",
     "host_load_interval",
+    "host_load_interval.*",
     "load_coverage",
+    "load_coverage.*",
     "load_repeat_count",
     "calibration",
+    "calibration.*",
     "card_load_worker_intervals",
     "card_load_worker_intervals[]",
     "card_load_worker_intervals[].worker_index",
@@ -890,6 +894,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "card_load_worker_intervals[].risc",
     "card_load_worker_intervals[].profile_worker",
     "card_load_worker_intervals[].statistics",
+    "card_load_worker_intervals[].statistics.*",
     "card_load_interval_statistics",
     "card_load_interval_statistics.*",
     "throughput_interval",
@@ -1044,7 +1049,9 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.load_interval_end",
     "power_clock_provenance.load_interval_source",
     "power_clock_provenance.in_run_samples",
+    "power_clock_provenance.in_run_samples[].*",
     "power_clock_provenance.aiclk_trace_in_run",
+    "power_clock_provenance.aiclk_trace_in_run[].*",
     "clock_source_evidence.diagnostic",
     "environment.board",
     "environment.board.serial",
@@ -1057,6 +1064,12 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "environment.harness_commit",
     "environment.tt_env_active_release",
     "environment.aiclk_mhz_observed",
+    "aiclk_mhz_in_run_min",
+    "aiclk_mhz_in_run_max",
+    "aiclk_mhz_load_interval_weighted",
+    "aiclk_mhz_load_interval_weighted_source",
+    "power_trace_in_run_samples",
+    "power_trace_in_run_samples[].*",
     "outlier_analysis.aiclk_source",
     "outlier_analysis.aiclk_source_for_elapsed_seconds",
     "outlier_analysis.sampler_interval_comparison.status",
@@ -2627,9 +2640,19 @@ def validate_pair_analysis(
 
     if timestamp_values is not None and sampler_mode in {"off", "default", "explicit"}:
         actual_timestamps = timestamp_values
+        elapsed_aiclk_mhz = outlier_analysis.get("aiclk_mhz_for_elapsed_seconds")
+        elapsed_aiclk_source = outlier_analysis.get("aiclk_source_for_elapsed_seconds")
         expected = build_outlier_analysis(
             actual_timestamps,
             aiclk_mhz=(aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ),
+            elapsed_aiclk_mhz=(
+                elapsed_aiclk_mhz
+                if _is_number(elapsed_aiclk_mhz) and elapsed_aiclk_mhz > 0
+                else None
+            ),
+            elapsed_aiclk_source=(
+                elapsed_aiclk_source if isinstance(elapsed_aiclk_source, str) else None
+            ),
             sampler_mode=sampler_mode,
             sampler_interval_seconds=sampler_interval_seconds,
         )["sampler_interval_comparison"]

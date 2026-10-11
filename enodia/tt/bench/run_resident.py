@@ -1079,6 +1079,42 @@ def _environment_aiclk_values(environment: dict[str, Any]) -> list[int]:
     return result
 
 
+def _wait_for_power_trace_sample(
+    path: Path,
+    edge_iso: str,
+    *,
+    sampler_interval_seconds: float | None,
+) -> None:
+    """Wait for a live sampler row at or after a host UTC edge."""
+    try:
+        edge = datetime.datetime.fromisoformat(edge_iso)
+    except ValueError as exc:
+        raise RunBindingError("program completion UTC timestamp is invalid") from exc
+    try:
+        interval = float(sampler_interval_seconds or 2.0)
+    except (TypeError, ValueError):
+        interval = 2.0
+    if not math.isfinite(interval) or interval <= 0.0:
+        interval = 2.0
+    deadline = time.monotonic() + interval * 1.5 + 1.0
+    while time.monotonic() < deadline:
+        try:
+            with path.open(newline="") as handle:
+                for row in csv.DictReader(handle):
+                    timestamp_text = row.get("timestamp_utc")
+                    if not timestamp_text:
+                        continue
+                    timestamp = datetime.datetime.fromisoformat(timestamp_text)
+                    if timestamp >= edge:
+                        return
+        except (OSError, csv.Error, TypeError, ValueError):
+            pass
+        time.sleep(0.1)
+    raise RunBindingError(
+        "power trace has no usable sample at or after program completion UTC"
+    )
+
+
 def _power_aiclk(
     power_trace: str | None,
     environment: dict[str, Any],
@@ -1423,6 +1459,14 @@ def main(argv: list[str] | None = None) -> int:
                         "power trace artifact exists without a wrapper run identity"
                     )
                 raise FileNotFoundError("wrapper run identity is absent")
+            if condition in {"newton_schulz", "dram"}:
+                _wait_for_power_trace_sample(
+                    live_power_trace_path,
+                    result["program_completion_utc"],
+                    sampler_interval_seconds=sampler_interval,
+                )
+                # Include the observer row in the run-bound coverage interval.
+                run_end = datetime.datetime.now(datetime.UTC)
             snapshot_path = atomic_power_trace_snapshot(
                 live_power_trace_path,
                 runner_output_dir,
