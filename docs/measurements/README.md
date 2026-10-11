@@ -117,8 +117,8 @@ card ticks; the DRAM run used 138,076 repeats and its slowest worker interval
 was 40,172,897,738 card ticks (aggregate span 42,081,820,472 ticks). Both
 records are `status=calibration`, `valid_evidence=false`, and uncovered by
 design. These are pre-measurement predictions, not evidence. The control and
-DRAM predictions are below the required 40-second margin and the <=560-second
-prediction gate for their 600-second caps. Newton-Schulz uses the amended
+DRAM predictions exceed the required 40-second margin and are below the
+<=560-second prediction gate for their 600-second caps. Newton-Schulz uses the amended
 800-second cap and a <=760-second prediction gate; its predicted whole-run time
 is 728.391 seconds. The three runs may proceed only on this pushed commit.
 
