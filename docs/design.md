@@ -1974,7 +1974,29 @@ those ticks are converted to real seconds with the observed load-interval
 AICLK.
 
 This section records the board-free measurement contract and implementation
-provenance only. It does not add predictions or measurement results.
+provenance. The accepted 2026-10-11 Issue #118 sequence is summarized below;
+the complete records and frozen power snapshots are in
+`docs/measurements/README.md`.
+
+### Issue #118 measured outcome (2026-10-11)
+
+In the card-tick domain, deliberate DRAM and Newton-Schulz loading changed the
+frame-interval distribution only slightly: relative to the same-session
+unloaded control, the largest percentile/max increase was +170 ticks. No
+pass/fail threshold is imposed here; these are observations, not a new
+acceptance limit.
+
+Newton-Schulz lowered AICLK to about 1,025 MHz for most of the loaded interval
+(with observed in-run values from 1,018 to 1,350 MHz). Consequently, the
+1,350,000-tick frame period was about 1.28 ms in the weighted real-time
+conversion, rather than 1.00 ms at a fixed 1,350 MHz. The resulting effect on
+run budgets and the validity of a single-clock projection is tracked in
+[Issue #121](https://github.com/tetsuh/hekatus/issues/121). The AICLK metadata
+and conversion audit are tracked separately in
+[Issue #122](https://github.com/tetsuh/hekatus/issues/122).
+
+The host-load condition (c) is outside this result and is tracked in
+[Issue #120](https://github.com/tetsuh/hekatus/issues/120).
 
 ### Issue #104 paired-outlier measurement (2026-10-06)
 

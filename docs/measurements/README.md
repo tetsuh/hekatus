@@ -116,6 +116,90 @@ design. These are pre-measurement predictions, not evidence. Both loaded
 predictions are below the required 40-second cap margin and the 560-second
 loaded-run gate; the three runs may proceed only on this pushed commit.
 
+## Issue #118 measured results (2026-10-11)
+
+The accepted three-run sequence used the same harness commit
+`2e143f872e5439eef223d62d43acfc0b2aa68dec` for the unloaded control, DRAM,
+and Newton-Schulz runs. All runs used device 0, 500,000 frames, a
+1,350,000-tick period, two command queues (CQ0 resident and CQ1 transfer), no
+sub-device manager, sampler-on at the default 2-second interval, and Watcher
+off. The control and DRAM runs used a 600-second cap; Newton-Schulz used the
+approved 800-second cap. All three runs terminated by frame count with
+500,000 produced and consumed frames, zero overflow/dropped/aborted attempts,
+and zero paired outliers.
+
+The calibration records retain the parent executable commit
+`2734d88a4aefd4ab56c6447d3f7f360408abbd42`; the later prediction commit changed
+documentation only. The NS calibration used 18,000 repeats and 40,052,430,488
+card ticks, weighted AICLK 1,191.259 MHz, throughput 606.704754 repeats per
+1.35e9 ticks, and selected repeat 333,688. The DRAM calibration used 138,076
+repeats, a slowest-worker interval of 40,172,897,738 ticks, weighted AICLK
+1,346.531 MHz, throughput 4,640.008824 repeats per 1.35e9 ticks, and selected
+repeat 2,552,005. Both calibration records were `status=calibration`,
+`valid_evidence=false`, and intentionally uncovered.
+
+| condition | frame percentiles (ticks: P50 / P99 / P99.9 / P99.99 / max) | same percentiles converted to ms | control delta (ticks; P50 / P99 / P99.9 / P99.99 / max) | load coverage | load evidence | AICLK min / max / weighted (MHz) |
+|---|---|---|---|---|---|---|
+| unloaded control | 1,349,988 / 1,350,061 / 1,350,065 / 1,350,065 / 1,350,091 | 0.999991 / 1.000045 / 1.000048 / 1.000048 / 1.000067 | — | not applicable | no load | 1,350 / 1,350 / 1,350 reference |
+| DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 1,350 / 1,350 / 1,349.842 |
+| Newton-Schulz | 1,350,002 / 1,350,076 / 1,350,120 / 1,350,166 / 1,350,259 | 1.284598 / 1.284669 / 1.284710 / 1.284754 / 1.284843 | +14 / +15 / +55 / +101 / +168 | covered | 108 non-overlapping worker cores; 1,001,064 effective outer repetitions; fixed 12-iteration profile | 1,018 / 1,350 / 1,050.914 |
+
+The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
+legacy maximum-only `clock.aiclk_mhz`. The P50 converted difference from the
+control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
+
+### Prediction comparison
+
+| condition | predicted load / whole-run (s) | observed host program / wrapper (s) | whole-run difference (s) |
+|---|---:|---:|---:|
+| unloaded control | — / 504.100 | 500.320 / 503.753 | -0.347 |
+| DRAM | 551.417 / 555.417 | 550.333 / 553.924 | -1.493 |
+| Newton-Schulz | 724.391 / 728.391 (1025 MHz projection) | 707.446 / 711.979 | -16.412 |
+
+### Tick-to-host-time cross-check
+
+The host interval is the recorded `CLOCK_MONOTONIC` program interval. The card
+interval is the resident interval for control and the aggregate load interval
+for loaded runs; the DRAM throughput calibration separately uses its slowest
+worker interval.
+
+| condition | card interval (ticks) | weighted AICLK (MHz) | ticks converted to seconds | host program interval (s) |
+|---|---:|---:|---:|---:|
+| unloaded control resident | 674,998,649,982 | 1,350.000 | 499.999 | 500.320 |
+| DRAM load aggregate | 742,787,678,116 | 1,349.842 | 550.278 | 550.333 |
+| Newton-Schulz load | 742,492,282,048 | 1,050.914 | 706.521 | 707.446 |
+
+This conversion is an approximation: one time-weighted AICLK is used to
+convert an entire interval and every frame percentile, although the clock is
+not constant. In particular, Newton-Schulz moved between 1,018 and 1,350 MHz
+and spent most of its loaded interval near 1,025 MHz. The interval and host
+cross-check supports the changing-clock interpretation but does not establish
+an instantaneous per-frame tick-to-wall-time mapping.
+
+The frozen ADR-0005 records and their #111 power-trace snapshots are:
+
+- `2026-10-11-p150a-issue118-control-500000-adr0005.json` and its companion
+  `2026-10-11-p150a-issue118-control-500000-adr0005-power.csv`
+- `2026-10-11-p150a-issue118-dram-500000-adr0005.json` and its companion
+  `2026-10-11-p150a-issue118-dram-500000-adr0005-power.csv`
+- `2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json` and its
+  companion `2026-10-11-p150a-issue118-newton-schulz-500000-adr0005-power.csv`
+
+Each companion is the immutable snapshot referenced by its record; the record
+contains its SHA-256, sampler coverage, host monotonic interval, and in-run
+AICLK trace. The host-load condition (c) was moved to
+[Issue #120](https://github.com/tetsuh/hekatus/issues/120). Broader AICLK
+transition and conversion audits belong to
+[Issue #121](https://github.com/tetsuh/hekatus/issues/121) and
+[Issue #122](https://github.com/tetsuh/hekatus/issues/122).
+
+Two earlier artifacts are excluded from this evidence set: the Newton-Schulz
+run at `ece5d09a34304b1182ab3a74cdc7a8055bf36631` was killed by the 600-second
+outer timeout (exit 137), and the unloaded control at that commit is excluded
+because its harness commit differs from the accepted three-run sequence.
+No pass/fail threshold is imposed on these measurements; the results are
+observations for the latency and budget discussion.
+
 ## Issue #104 paired-outlier records
 
 The wrapper supports the existing telemetry sampler as `default` (2 seconds),

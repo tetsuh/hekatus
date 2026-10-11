@@ -1,0 +1,5742 @@
+{
+  "adr": "ADR-0005",
+  "summary": "Issue #118 control-revised resident measurement.",
+  "resident_record_schema": 1,
+  "schema": "issue-12-stage-1-resident-v1",
+  "issue": 12,
+  "stage": 1,
+  "status": "ok",
+  "num_command_queues": 2,
+  "outer_timeout_cap_seconds": 600,
+  "outer_timeout_cap_source": "issue12_timing_600s",
+  "device_open": {
+    "num_command_queues": 2,
+    "resident_command_queue": 0,
+    "transfer_command_queue": 1
+  },
+  "load": {
+    "schema": "issue-118-load-v1",
+    "issue": 118,
+    "condition": "unloaded",
+    "status": "valid",
+    "valid_evidence": true,
+    "device_open": {
+      "num_command_queues": 2,
+      "resident_command_queue": 0,
+      "transfer_command_queue": 1
+    },
+    "num_command_queues": 2,
+    "command_queue_roles": {
+      "cq0": "resident_program",
+      "cq1": "transfer_only_for_host_condition"
+    },
+    "core_partition": {
+      "grid": [
+        11,
+        10
+      ],
+      "resident_cores": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "worker_cores": [
+        [
+          2,
+          0
+        ],
+        [
+          3,
+          0
+        ],
+        [
+          4,
+          0
+        ],
+        [
+          5,
+          0
+        ],
+        [
+          6,
+          0
+        ],
+        [
+          7,
+          0
+        ],
+        [
+          8,
+          0
+        ],
+        [
+          9,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          2,
+          1
+        ],
+        [
+          3,
+          1
+        ],
+        [
+          4,
+          1
+        ],
+        [
+          5,
+          1
+        ],
+        [
+          6,
+          1
+        ],
+        [
+          7,
+          1
+        ],
+        [
+          8,
+          1
+        ],
+        [
+          9,
+          1
+        ],
+        [
+          10,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          4,
+          2
+        ],
+        [
+          5,
+          2
+        ],
+        [
+          6,
+          2
+        ],
+        [
+          7,
+          2
+        ],
+        [
+          8,
+          2
+        ],
+        [
+          9,
+          2
+        ],
+        [
+          10,
+          2
+        ],
+        [
+          0,
+          3
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          3
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          5,
+          3
+        ],
+        [
+          6,
+          3
+        ],
+        [
+          7,
+          3
+        ],
+        [
+          8,
+          3
+        ],
+        [
+          9,
+          3
+        ],
+        [
+          10,
+          3
+        ],
+        [
+          0,
+          4
+        ],
+        [
+          1,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          4,
+          4
+        ],
+        [
+          5,
+          4
+        ],
+        [
+          6,
+          4
+        ],
+        [
+          7,
+          4
+        ],
+        [
+          8,
+          4
+        ],
+        [
+          9,
+          4
+        ],
+        [
+          10,
+          4
+        ],
+        [
+          0,
+          5
+        ],
+        [
+          1,
+          5
+        ],
+        [
+          2,
+          5
+        ],
+        [
+          3,
+          5
+        ],
+        [
+          4,
+          5
+        ],
+        [
+          5,
+          5
+        ],
+        [
+          6,
+          5
+        ],
+        [
+          7,
+          5
+        ],
+        [
+          8,
+          5
+        ],
+        [
+          9,
+          5
+        ],
+        [
+          10,
+          5
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          1,
+          6
+        ],
+        [
+          2,
+          6
+        ],
+        [
+          3,
+          6
+        ],
+        [
+          4,
+          6
+        ],
+        [
+          5,
+          6
+        ],
+        [
+          6,
+          6
+        ],
+        [
+          7,
+          6
+        ],
+        [
+          8,
+          6
+        ],
+        [
+          9,
+          6
+        ],
+        [
+          10,
+          6
+        ],
+        [
+          0,
+          7
+        ],
+        [
+          1,
+          7
+        ],
+        [
+          2,
+          7
+        ],
+        [
+          3,
+          7
+        ],
+        [
+          4,
+          7
+        ],
+        [
+          5,
+          7
+        ],
+        [
+          6,
+          7
+        ],
+        [
+          7,
+          7
+        ],
+        [
+          8,
+          7
+        ],
+        [
+          9,
+          7
+        ],
+        [
+          10,
+          7
+        ],
+        [
+          0,
+          8
+        ],
+        [
+          1,
+          8
+        ],
+        [
+          2,
+          8
+        ],
+        [
+          3,
+          8
+        ],
+        [
+          4,
+          8
+        ],
+        [
+          5,
+          8
+        ],
+        [
+          6,
+          8
+        ],
+        [
+          7,
+          8
+        ],
+        [
+          8,
+          8
+        ],
+        [
+          9,
+          8
+        ],
+        [
+          10,
+          8
+        ],
+        [
+          0,
+          9
+        ],
+        [
+          1,
+          9
+        ],
+        [
+          2,
+          9
+        ],
+        [
+          3,
+          9
+        ],
+        [
+          4,
+          9
+        ],
+        [
+          5,
+          9
+        ],
+        [
+          6,
+          9
+        ],
+        [
+          7,
+          9
+        ],
+        [
+          8,
+          9
+        ],
+        [
+          9,
+          9
+        ],
+        [
+          10,
+          9
+        ]
+      ],
+      "worker_count": 108,
+      "non_overlap": true
+    },
+    "repeat_count": 0,
+    "selected_repeat_count": 0,
+    "load": {
+      "condition": "unloaded",
+      "repeat_count": 0,
+      "outer_repetitions": null,
+      "fixed_work": false,
+      "data_dependent_exit": false
+    },
+    "coverage": {
+      "verdict": "not_applicable",
+      "valid": true,
+      "covered": true
+    },
+    "card_load_interval": null,
+    "card_load_worker_intervals": null,
+    "card_load_interval_statistics": null,
+    "throughput_interval": null,
+    "host_load_interval": null,
+    "resident_frame_interval": {
+      "first_ticks": 412334945,
+      "last_ticks": 675410984927,
+      "clock": "card_riscv_wall_clock"
+    }
+  },
+  "termination_reason": "frame_count",
+  "parameters": {
+    "frame_count": 500000,
+    "frame_interval_ticks": 1350000,
+    "producer_core": [
+      0,
+      0
+    ],
+    "consumer_core": [
+      1,
+      0
+    ],
+    "ring_pages": 4,
+    "work_per_frame": 64,
+    "designated_timestamp_core": [
+      1,
+      0
+    ],
+    "cycle_budget": 10000000,
+    "outer_timeout_seconds": 600,
+    "histogram_bin_ticks": 1,
+    "fixed_work_ticks_per_frame": 100000,
+    "budget_aiclk_mhz": 1350,
+    "outer_timeout_cap_seconds": 600,
+    "outer_timeout_cap_source": "issue12_timing_600s",
+    "run_budget": {
+      "frame_count": 500000,
+      "frame_interval_ticks": 1350000,
+      "pacing_ticks": 675000000000,
+      "per_frame_work_budget_ticks": 100000,
+      "cycle_budget_ticks_per_frame": 10000000,
+      "fixed_work_ticks": 50000000000,
+      "critical_path_ticks": 675000000000,
+      "schedule_ticks": 675135000000,
+      "overlap_model": "producer pacing and consumer fixed work overlap; critical path is max",
+      "startup_allowance_ms": 100,
+      "budget_aiclk_mhz": 1350,
+      "startup_allowance_ticks": 135000000,
+      "safety_margin_percent": 10,
+      "watcher_overhead_margin_percent": 0,
+      "total_margin_percent": 10,
+      "safety_margin_ticks": 67513500000,
+      "run_budget_ticks": 742648500000
+    },
+    "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "aborted_attempts": 0,
+    "frame_interval_is_not_acquisition_rate_claim": true,
+    "frame_interval_note": "The device-clock frame interval is a harness parameter; Stage 1 does not claim the real acquisition rate."
+  },
+  "clock": {
+    "name": "RISCV_DEBUG_REG_WALL_CLOCK_L",
+    "timestamp_api": "get_timestamp_32b",
+    "timestamp_semantics": "32-bit low word, software-extended (wrap-tracked)",
+    "width_bits": 64,
+    "interval_unit": "device_clock_ticks",
+    "frequency_source": "AICLK",
+    "aiclk_mhz": 1350,
+    "aiclk_source": "run_trace_samples",
+    "aiclk_mhz_in_run_min": 1350.0,
+    "aiclk_mhz_in_run_max": 1350.0,
+    "aiclk_mhz_load_interval_weighted": null,
+    "aiclk_mhz_load_interval_weighted_source": "load_interval_not_bounded_by_trace",
+    "aiclk_mhz_for_elapsed_seconds": 1350.0,
+    "aiclk_source_for_elapsed_seconds": "run_trace_samples",
+    "aiclk_observation": "valid in-run power trace samples",
+    "designated_core": [
+      1,
+      0
+    ],
+    "cross_core_correlation": "out_of_scope"
+  },
+  "timestamp_attribution": {
+    "status": "open",
+    "consumer_completion": {
+      "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        1,
+        0
+      ]
+    },
+    "producer_write": {
+      "available": false,
+      "clock": "producer-local RISCV_DEBUG_REG_WALL_CLOCK",
+      "core": [
+        0,
+        0
+      ],
+      "reason": "The producer and consumer call get_timestamp_32b() on different cores. The source has no same-designated-core producer stamp without changing the pacing kernel, so producer-versus-consumer attribution remains open."
+    }
+  },
+  "clock_source_evidence": {
+    "toolchain": "tt-metal v0.75.0",
+    "tt_metal_revision": "d9a68815f5fcf08a5bfbffb6f1f811823fba8edd",
+    "clock_api": "tt_metal/hw/inc/internal/tt-1xx/risc_common.h:254-255",
+    "blackhole_read_api": "tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-510",
+    "dataflow_ring_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:404-485",
+    "semaphore_api": "tt_metal/hw/inc/api/dataflow/dataflow_api.h:1514-1525,1934-1992",
+    "frequency_api": "tt_metal/api/tt-metalium/device.hpp:86-89",
+    "profiler_conversion": "tt_metal/impl/profiler/profiler_analysis.cpp:300-303",
+    "cross_core_note": "intervals use only the designated consumer core; cross-core correlation is out of scope",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "audit_status": "audited"
+  },
+  "work_ticks": {
+    "minimum": 1064,
+    "maximum": 1087,
+    "valid": true,
+    "unit": "device_clock_ticks"
+  },
+  "startup": {
+    "configured_allowance_ms": 100,
+    "configured_allowance_ticks": 135000000,
+    "budget_aiclk_mhz": 1350,
+    "observed_ticks": 11954,
+    "observed_valid": true,
+    "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK_L; 32-bit low word, software-extended (wrap-tracked)"
+  },
+  "histogram": {
+    "N": 499999,
+    "min_ticks": 1349888,
+    "max_ticks": 1350091,
+    "percentiles": {
+      "p50": {
+        "status": "ok",
+        "minimum_samples": 40,
+        "value_ticks": 1349988.0
+      },
+      "p99": {
+        "status": "ok",
+        "minimum_samples": 2000,
+        "value_ticks": 1350061.0
+      },
+      "p99_9": {
+        "status": "ok",
+        "minimum_samples": 20000,
+        "value_ticks": 1350065.0
+      },
+      "p99_99": {
+        "status": "ok",
+        "minimum_samples": 200000,
+        "value_ticks": 1350065.0
+      }
+    },
+    "histogram": {
+      "bin_width_ticks": 1,
+      "bins": [
+        {
+          "start_ticks": 1349888,
+          "end_ticks": 1349889,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349938,
+          "end_ticks": 1349939,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349939,
+          "end_ticks": 1349940,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349944,
+          "end_ticks": 1349945,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349945,
+          "end_ticks": 1349946,
+          "count": 1
+        },
+        {
+          "start_ticks": 1349946,
+          "end_ticks": 1349947,
+          "count": 174
+        },
+        {
+          "start_ticks": 1349948,
+          "end_ticks": 1349949,
+          "count": 172
+        },
+        {
+          "start_ticks": 1349949,
+          "end_ticks": 1349950,
+          "count": 379
+        },
+        {
+          "start_ticks": 1349950,
+          "end_ticks": 1349951,
+          "count": 1544
+        },
+        {
+          "start_ticks": 1349951,
+          "end_ticks": 1349952,
+          "count": 1646
+        },
+        {
+          "start_ticks": 1349952,
+          "end_ticks": 1349953,
+          "count": 140
+        },
+        {
+          "start_ticks": 1349953,
+          "end_ticks": 1349954,
+          "count": 3536
+        },
+        {
+          "start_ticks": 1349954,
+          "end_ticks": 1349955,
+          "count": 1787
+        },
+        {
+          "start_ticks": 1349955,
+          "end_ticks": 1349956,
+          "count": 13
+        },
+        {
+          "start_ticks": 1349956,
+          "end_ticks": 1349957,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349957,
+          "end_ticks": 1349958,
+          "count": 11
+        },
+        {
+          "start_ticks": 1349958,
+          "end_ticks": 1349959,
+          "count": 1616
+        },
+        {
+          "start_ticks": 1349970,
+          "end_ticks": 1349971,
+          "count": 2
+        },
+        {
+          "start_ticks": 1349971,
+          "end_ticks": 1349972,
+          "count": 16
+        },
+        {
+          "start_ticks": 1349972,
+          "end_ticks": 1349973,
+          "count": 9
+        },
+        {
+          "start_ticks": 1349973,
+          "end_ticks": 1349974,
+          "count": 3
+        },
+        {
+          "start_ticks": 1349974,
+          "end_ticks": 1349975,
+          "count": 22
+        },
+        {
+          "start_ticks": 1349975,
+          "end_ticks": 1349976,
+          "count": 734
+        },
+        {
+          "start_ticks": 1349976,
+          "end_ticks": 1349977,
+          "count": 207
+        },
+        {
+          "start_ticks": 1349977,
+          "end_ticks": 1349978,
+          "count": 314
+        },
+        {
+          "start_ticks": 1349978,
+          "end_ticks": 1349979,
+          "count": 2323
+        },
+        {
+          "start_ticks": 1349979,
+          "end_ticks": 1349980,
+          "count": 3211
+        },
+        {
+          "start_ticks": 1349980,
+          "end_ticks": 1349981,
+          "count": 4013
+        },
+        {
+          "start_ticks": 1349981,
+          "end_ticks": 1349982,
+          "count": 19068
+        },
+        {
+          "start_ticks": 1349982,
+          "end_ticks": 1349983,
+          "count": 2491
+        },
+        {
+          "start_ticks": 1349983,
+          "end_ticks": 1349984,
+          "count": 17118
+        },
+        {
+          "start_ticks": 1349984,
+          "end_ticks": 1349985,
+          "count": 31846
+        },
+        {
+          "start_ticks": 1349985,
+          "end_ticks": 1349986,
+          "count": 37388
+        },
+        {
+          "start_ticks": 1349986,
+          "end_ticks": 1349987,
+          "count": 39114
+        },
+        {
+          "start_ticks": 1349987,
+          "end_ticks": 1349988,
+          "count": 47411
+        },
+        {
+          "start_ticks": 1349988,
+          "end_ticks": 1349989,
+          "count": 55739
+        },
+        {
+          "start_ticks": 1349989,
+          "end_ticks": 1349990,
+          "count": 30199
+        },
+        {
+          "start_ticks": 1349990,
+          "end_ticks": 1349991,
+          "count": 11630
+        },
+        {
+          "start_ticks": 1349991,
+          "end_ticks": 1349992,
+          "count": 8708
+        },
+        {
+          "start_ticks": 1349992,
+          "end_ticks": 1349993,
+          "count": 111
+        },
+        {
+          "start_ticks": 1349993,
+          "end_ticks": 1349994,
+          "count": 17
+        },
+        {
+          "start_ticks": 1349994,
+          "end_ticks": 1349995,
+          "count": 9
+        },
+        {
+          "start_ticks": 1349995,
+          "end_ticks": 1349996,
+          "count": 1442
+        },
+        {
+          "start_ticks": 1349996,
+          "end_ticks": 1349997,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350004,
+          "end_ticks": 1350005,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350008,
+          "end_ticks": 1350009,
+          "count": 5
+        },
+        {
+          "start_ticks": 1350009,
+          "end_ticks": 1350010,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350010,
+          "end_ticks": 1350011,
+          "count": 16
+        },
+        {
+          "start_ticks": 1350011,
+          "end_ticks": 1350012,
+          "count": 5
+        },
+        {
+          "start_ticks": 1350012,
+          "end_ticks": 1350013,
+          "count": 12
+        },
+        {
+          "start_ticks": 1350013,
+          "end_ticks": 1350014,
+          "count": 66
+        },
+        {
+          "start_ticks": 1350014,
+          "end_ticks": 1350015,
+          "count": 30
+        },
+        {
+          "start_ticks": 1350015,
+          "end_ticks": 1350016,
+          "count": 313
+        },
+        {
+          "start_ticks": 1350016,
+          "end_ticks": 1350017,
+          "count": 94
+        },
+        {
+          "start_ticks": 1350017,
+          "end_ticks": 1350018,
+          "count": 1999
+        },
+        {
+          "start_ticks": 1350018,
+          "end_ticks": 1350019,
+          "count": 5029
+        },
+        {
+          "start_ticks": 1350019,
+          "end_ticks": 1350020,
+          "count": 3942
+        },
+        {
+          "start_ticks": 1350020,
+          "end_ticks": 1350021,
+          "count": 2594
+        },
+        {
+          "start_ticks": 1350021,
+          "end_ticks": 1350022,
+          "count": 872
+        },
+        {
+          "start_ticks": 1350022,
+          "end_ticks": 1350023,
+          "count": 7216
+        },
+        {
+          "start_ticks": 1350023,
+          "end_ticks": 1350024,
+          "count": 10964
+        },
+        {
+          "start_ticks": 1350024,
+          "end_ticks": 1350025,
+          "count": 62427
+        },
+        {
+          "start_ticks": 1350025,
+          "end_ticks": 1350026,
+          "count": 13273
+        },
+        {
+          "start_ticks": 1350026,
+          "end_ticks": 1350027,
+          "count": 14118
+        },
+        {
+          "start_ticks": 1350027,
+          "end_ticks": 1350028,
+          "count": 18843
+        },
+        {
+          "start_ticks": 1350028,
+          "end_ticks": 1350029,
+          "count": 9105
+        },
+        {
+          "start_ticks": 1350029,
+          "end_ticks": 1350030,
+          "count": 6577
+        },
+        {
+          "start_ticks": 1350030,
+          "end_ticks": 1350031,
+          "count": 1642
+        },
+        {
+          "start_ticks": 1350031,
+          "end_ticks": 1350032,
+          "count": 35
+        },
+        {
+          "start_ticks": 1350032,
+          "end_ticks": 1350033,
+          "count": 7
+        },
+        {
+          "start_ticks": 1350033,
+          "end_ticks": 1350034,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350044,
+          "end_ticks": 1350045,
+          "count": 1
+        },
+        {
+          "start_ticks": 1350046,
+          "end_ticks": 1350047,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350047,
+          "end_ticks": 1350048,
+          "count": 2
+        },
+        {
+          "start_ticks": 1350048,
+          "end_ticks": 1350049,
+          "count": 5
+        },
+        {
+          "start_ticks": 1350050,
+          "end_ticks": 1350051,
+          "count": 10
+        },
+        {
+          "start_ticks": 1350051,
+          "end_ticks": 1350052,
+          "count": 3
+        },
+        {
+          "start_ticks": 1350052,
+          "end_ticks": 1350053,
+          "count": 231
+        },
+        {
+          "start_ticks": 1350053,
+          "end_ticks": 1350054,
+          "count": 12
+        },
+        {
+          "start_ticks": 1350054,
+          "end_ticks": 1350055,
+          "count": 81
+        },
+        {
+          "start_ticks": 1350055,
+          "end_ticks": 1350056,
+          "count": 646
+        },
+        {
+          "start_ticks": 1350056,
+          "end_ticks": 1350057,
+          "count": 493
+        },
+        {
+          "start_ticks": 1350057,
+          "end_ticks": 1350058,
+          "count": 3152
+        },
+        {
+          "start_ticks": 1350058,
+          "end_ticks": 1350059,
+          "count": 335
+        },
+        {
+          "start_ticks": 1350060,
+          "end_ticks": 1350061,
+          "count": 1659
+        },
+        {
+          "start_ticks": 1350061,
+          "end_ticks": 1350062,
+          "count": 8329
+        },
+        {
+          "start_ticks": 1350062,
+          "end_ticks": 1350063,
+          "count": 65
+        },
+        {
+          "start_ticks": 1350063,
+          "end_ticks": 1350064,
+          "count": 50
+        },
+        {
+          "start_ticks": 1350065,
+          "end_ticks": 1350066,
+          "count": 1560
+        },
+        {
+          "start_ticks": 1350091,
+          "end_ticks": 1350092,
+          "count": 1
+        }
+      ]
+    },
+    "sample_definition": "Intervals between consumer completion timestamps; the first frame is excluded and dropped producer attempts are excluded."
+  },
+  "ring": {
+    "producer_full_count": 0,
+    "consumer_empty_count": 500000,
+    "attempted_frame_count": 500000,
+    "produced_frame_count": 500000,
+    "consumed_frame_count": 500000,
+    "dropped_frame_count": 0,
+    "aborted_attempts": 0,
+    "overflow_count": 0,
+    "synchronization": "ring pointers and control metadata only",
+    "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting"
+  },
+  "failure_check": {
+    "code": 0,
+    "name": "none",
+    "source": "none"
+  },
+  "cycle_budget": {
+    "budget_ticks": 10000000,
+    "unit": "device_clock_ticks",
+    "scope": "per_frame_fixed_work",
+    "run_budget_ticks": 742648500000,
+    "exceeded": false,
+    "error_flag": 0
+  },
+  "raw_timestamps": {
+    "count": 500000,
+    "sha256": "24f5febf2d18a8f09ab5e9c6bd5eb2c2fd2daf355471f7c7510df6e2b4ade15f"
+  },
+  "resident_tick_interval": {
+    "clock": "card_riscv_wall_clock",
+    "start_ticks": 412334945,
+    "end_ticks": 675410984927,
+    "elapsed_ticks": 674998649982,
+    "timestamp_semantics": "wrap-tracked_extended"
+  },
+  "power_trace": "2026-10-11-p150a-issue118-control-500000-adr0005-power.csv",
+  "power_trace_sample_count": 226,
+  "power_trace_csv_row_count": 226,
+  "power_trace_valid_row_count": 226,
+  "power_trace_in_run_valid_row_count": 225,
+  "power_trace_sha256": "c31fafc3cfdc621dad39741456745fc8844f2e4016f46f50046a783a7754ba17",
+  "aiclk_mhz_in_run_min": 1350.0,
+  "aiclk_mhz_in_run_max": 1350.0,
+  "aiclk_mhz_load_interval_weighted": null,
+  "aiclk_mhz_load_interval_weighted_source": "load_interval_not_bounded_by_trace",
+  "power_trace_in_run_samples": [
+    {
+      "timestamp_utc": "2026-10-11T16:42:07.817974+00:00",
+      "power_w": "71.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "55.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:10.059163+00:00",
+      "power_w": "71.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "56.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:12.299032+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "56.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:14.533060+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "57.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:16.771038+00:00",
+      "power_w": "73.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "57.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:19.004099+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "58.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:21.238916+00:00",
+      "power_w": "73.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "58.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:23.477580+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "59.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:25.717367+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "59.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:27.957917+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "60.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:30.199091+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "60.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:32.440130+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:34.679527+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:36.919506+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "61.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:39.155381+00:00",
+      "power_w": "74.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "62.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:41.390437+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "62.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:43.625488+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "63.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:45.864606+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "63.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:48.102912+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "64.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:50.341121+00:00",
+      "power_w": "77.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:52.577605+00:00",
+      "power_w": "75.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:54.817808+00:00",
+      "power_w": "77.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:57.051537+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:42:59.286416+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "65.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:01.526728+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:03.762619+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "66.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:06.003553+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:08.248000+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:10.487871+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:12.723466+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:14.965860+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "67.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:17.204609+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:19.443800+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:21.684933+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:23.925955+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:26.166727+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:28.405695+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:30.644885+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "68.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:32.886126+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:35.126202+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:37.359093+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:39.600549+00:00",
+      "power_w": "78.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:41.840576+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:44.080917+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:46.335121+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:48.572242+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:50.811161+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:53.049107+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:55.289836+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:57.525320+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:43:59.772230+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:02.010397+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:04.251352+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "69.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:06.491302+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:08.733377+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:10.971917+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:13.208070+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:15.447267+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:17.688391+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:19.925302+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:22.158943+00:00",
+      "power_w": "79.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:24.395123+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:26.634286+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:28.869205+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:31.111615+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:33.351152+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:35.594227+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:37.835789+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:40.076568+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:42.314621+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:44.549573+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:46.786683+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:49.021555+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:51.254957+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:53.490806+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:55.726573+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:44:57.961380+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.5"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:00.198934+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:02.437026+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:04.672185+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:06.913074+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:09.150244+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:11.388642+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:13.630580+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:15.866675+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:18.101045+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:20.342624+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:22.578609+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:24.813647+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:27.049268+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:29.285435+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:31.518665+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:33.750691+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:35.986122+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:38.228906+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:40.465375+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:42.707495+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:44.942007+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:47.178789+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:49.414025+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:51.653846+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:53.893615+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:56.135338+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:45:58.374313+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:00.616085+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:02.856309+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:05.097050+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:07.333250+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:09.569216+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:11.801968+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:14.037703+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "70.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:16.277082+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:18.513157+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:20.748717+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:22.985889+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:25.220748+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:27.460830+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:29.702111+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:31.937170+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.0"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:34.176482+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.2"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:36.417636+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:38.662030+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:40.902287+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:43.142955+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:45.384057+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:47.624835+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.3"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:49.866418+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:52.109754+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:54.348785+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:56.589035+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:46:58.828591+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:01.071325+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:03.312871+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:05.547988+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:07.781073+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:10.015579+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:12.253531+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:14.488092+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:16.722819+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:18.964043+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:21.205383+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:23.446572+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:25.687344+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:27.928293+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:30.165582+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:32.406311+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:34.645789+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:36.882524+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:39.117473+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:41.358285+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:43.601277+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:45.839575+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:48.078525+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:50.318555+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:52.559301+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:54.800588+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:57.042308+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:47:59.283003+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:01.524500+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:03.765726+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:06.000222+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:08.240901+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:10.481634+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:12.719857+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:14.959513+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:17.194384+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "72.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:19.431140+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:21.676629+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:23.918352+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "72.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:26.155773+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:28.396243+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:30.635455+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:32.875072+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:35.114332+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:37.353743+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:39.589091+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:41.824610+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:44.062897+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:46.297299+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:48.531232+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:50.765863+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:53.005105+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:55.245245+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:57.478878+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:48:59.712325+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:01.945822+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:04.182057+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:06.421347+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:08.662555+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:10.900343+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:13.141933+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:15.383084+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:17.623908+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:19.862285+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:22.099385+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:24.333812+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:26.573367+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:28.806718+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:31.040691+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:33.276325+00:00",
+      "power_w": "81.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:35.514274+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.6"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:37.755322+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:39.989253+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:42.230515+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:44.470986+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:46.710912+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:48.950913+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:51.184307+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:53.424773+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:55.666967+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:49:57.905212+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:00.141403+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:02.374567+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:04.615777+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:06.854910+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.9"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:09.093520+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:11.327142+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:13.564390+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:15.800063+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:18.038018+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.4"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:20.276480+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:22.513951+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:24.754839+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "72.1"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:26.994778+00:00",
+      "power_w": "82.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.7"
+    },
+    {
+      "timestamp_utc": "2026-10-11T16:50:29.248987+00:00",
+      "power_w": "80.0",
+      "aiclk_mhz": "1350",
+      "asic_temp_c": "71.8"
+    }
+  ],
+  "power_trace_absent_reason": null,
+  "power_trace_coverage": {
+    "coverage": {
+      "definition": "one_interval_bound",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": false,
+      "last_within_interval_bound": true,
+      "readable": true,
+      "complete": true,
+      "usable_row_count": 226,
+      "invalid_row_count": 0
+    },
+    "coverage_complete": true,
+    "coverage_definition": "one_interval_bound",
+    "first_timestamp": "2026-10-11T16:42:05.571220+00:00",
+    "last_timestamp": "2026-10-11T16:50:29.248987+00:00",
+    "run_start": "2026-10-11T16:42:05.748739+00:00",
+    "run_end": "2026-10-11T16:50:29.502044+00:00",
+    "valid_row_count": 226,
+    "in_run_valid_row_count": 225
+  },
+  "power_clock_provenance": {
+    "trace": "2026-10-11-p150a-issue118-control-500000-adr0005-power.csv",
+    "file": "2026-10-11-p150a-issue118-control-500000-adr0005-power.csv",
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "sha256": "c31fafc3cfdc621dad39741456745fc8844f2e4016f46f50046a783a7754ba17",
+    "readable": true,
+    "nonempty": true,
+    "csv_row_count": 226,
+    "sample_count": 226,
+    "valid_row_count": 226,
+    "in_run_valid_row_count": 225,
+    "timestamps_parse": true,
+    "timestamps_ordered": true,
+    "first_timestamp": "2026-10-11T16:42:05.571220+00:00",
+    "last_timestamp": "2026-10-11T16:50:29.248987+00:00",
+    "run_start": "2026-10-11T16:42:05.748739+00:00",
+    "run_end": "2026-10-11T16:50:29.502044+00:00",
+    "covers_run_start": true,
+    "covers_run_end": false,
+    "coverage_complete": true,
+    "coverage_definition": "one_interval_bound",
+    "sampler_interval_seconds": 2.0,
+    "coverage": {
+      "definition": "one_interval_bound",
+      "nonempty": true,
+      "timestamps_parse": true,
+      "timestamps_ordered": true,
+      "first_at_or_before_run_start": true,
+      "last_at_or_after_run_end": false,
+      "last_within_interval_bound": true,
+      "readable": true,
+      "complete": true,
+      "usable_row_count": 226,
+      "invalid_row_count": 0
+    },
+    "source_file": "power-20261011T1642048838088964817326132Z.csv",
+    "immutable_snapshot": true,
+    "byte_count": 10891,
+    "sha256_definition": "SHA-256 of the complete immutable per-run power CSV snapshot bytes",
+    "aiclk_source": "run_trace_samples",
+    "aiclk_mhz": 1350.0,
+    "aiclk_mhz_in_run": [
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0,
+      1350.0
+    ],
+    "aiclk_mhz_in_run_min": 1350.0,
+    "aiclk_mhz_in_run_max": 1350.0,
+    "aiclk_mhz_load_interval_weighted": null,
+    "aiclk_mhz_load_interval_weighted_source": "load_interval_not_bounded_by_trace",
+    "aiclk_mhz_load_interval_weighted_seconds": 0.0,
+    "load_interval_start": "2026-10-11T16:42:05.748739+00:00",
+    "load_interval_end": "2026-10-11T16:50:29.502044+00:00",
+    "load_interval_source": "run_bounds",
+    "in_run_samples": [
+      {
+        "timestamp_utc": "2026-10-11T16:42:07.817974+00:00",
+        "power_w": "71.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "55.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:10.059163+00:00",
+        "power_w": "71.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "56.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:12.299032+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "56.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:14.533060+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "57.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:16.771038+00:00",
+        "power_w": "73.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "57.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:19.004099+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "58.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:21.238916+00:00",
+        "power_w": "73.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "58.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:23.477580+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "59.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:25.717367+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "59.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:27.957917+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:30.199091+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:32.440130+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:34.679527+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:36.919506+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:39.155381+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:41.390437+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:43.625488+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:45.864606+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:48.102912+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:50.341121+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:52.577605+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:54.817808+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:57.051537+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:59.286416+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:01.526728+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:03.762619+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:06.003553+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:08.248000+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:10.487871+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:12.723466+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:14.965860+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:17.204609+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:19.443800+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:21.684933+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:23.925955+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:26.166727+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:28.405695+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:30.644885+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:32.886126+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:35.126202+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:37.359093+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:39.600549+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:41.840576+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:44.080917+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:46.335121+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:48.572242+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:50.811161+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:53.049107+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:55.289836+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:57.525320+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:59.772230+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:02.010397+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:04.251352+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:06.491302+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:08.733377+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:10.971917+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:13.208070+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:15.447267+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:17.688391+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:19.925302+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:22.158943+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:24.395123+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:26.634286+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:28.869205+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:31.111615+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:33.351152+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:35.594227+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:37.835789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:40.076568+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:42.314621+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:44.549573+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:46.786683+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:49.021555+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:51.254957+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:53.490806+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:55.726573+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:57.961380+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:00.198934+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:02.437026+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:04.672185+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:06.913074+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:09.150244+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:11.388642+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:13.630580+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:15.866675+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:18.101045+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:20.342624+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:22.578609+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:24.813647+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:27.049268+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:29.285435+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:31.518665+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:33.750691+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:35.986122+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:38.228906+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:40.465375+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:42.707495+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:44.942007+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:47.178789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:49.414025+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:51.653846+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:53.893615+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:56.135338+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:58.374313+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:00.616085+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:02.856309+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:05.097050+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:07.333250+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:09.569216+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:11.801968+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:14.037703+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:16.277082+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:18.513157+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:20.748717+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:22.985889+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:25.220748+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:27.460830+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:29.702111+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:31.937170+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:34.176482+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:36.417636+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:38.662030+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:40.902287+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:43.142955+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:45.384057+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:47.624835+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:49.866418+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:52.109754+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:54.348785+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:56.589035+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:58.828591+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:01.071325+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:03.312871+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:05.547988+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:07.781073+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:10.015579+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:12.253531+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:14.488092+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:16.722819+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:18.964043+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:21.205383+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:23.446572+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:25.687344+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:27.928293+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:30.165582+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:32.406311+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:34.645789+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:36.882524+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:39.117473+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:41.358285+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:43.601277+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:45.839575+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:48.078525+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:50.318555+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:52.559301+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:54.800588+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:57.042308+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:59.283003+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:01.524500+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:03.765726+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:06.000222+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:08.240901+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:10.481634+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:12.719857+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:14.959513+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:17.194384+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:19.431140+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:21.676629+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:23.918352+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:26.155773+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:28.396243+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:30.635455+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:32.875072+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:35.114332+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:37.353743+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:39.589091+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:41.824610+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:44.062897+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:46.297299+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:48.531232+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:50.765863+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:53.005105+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:55.245245+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:57.478878+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:59.712325+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:01.945822+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:04.182057+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:06.421347+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:08.662555+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:10.900343+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:13.141933+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:15.383084+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:17.623908+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:19.862285+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:22.099385+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:24.333812+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:26.573367+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:28.806718+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:31.040691+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:33.276325+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:35.514274+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:37.755322+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:39.989253+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:42.230515+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:44.470986+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:46.710912+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:48.950913+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:51.184307+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:53.424773+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:55.666967+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:57.905212+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:00.141403+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:02.374567+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:04.615777+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:06.854910+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:09.093520+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:11.327142+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:13.564390+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:15.800063+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:18.038018+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:20.276480+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:22.513951+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:24.754839+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:26.994778+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:29.248987+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      }
+    ],
+    "aiclk_trace_in_run": [
+      {
+        "timestamp_utc": "2026-10-11T16:42:07.817974+00:00",
+        "power_w": "71.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "55.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:10.059163+00:00",
+        "power_w": "71.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "56.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:12.299032+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "56.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:14.533060+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "57.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:16.771038+00:00",
+        "power_w": "73.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "57.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:19.004099+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "58.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:21.238916+00:00",
+        "power_w": "73.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "58.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:23.477580+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "59.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:25.717367+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "59.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:27.957917+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:30.199091+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "60.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:32.440130+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:34.679527+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:36.919506+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "61.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:39.155381+00:00",
+        "power_w": "74.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:41.390437+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "62.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:43.625488+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:45.864606+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "63.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:48.102912+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "64.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:50.341121+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:52.577605+00:00",
+        "power_w": "75.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:54.817808+00:00",
+        "power_w": "77.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:57.051537+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:42:59.286416+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "65.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:01.526728+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:03.762619+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "66.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:06.003553+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:08.248000+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:10.487871+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:12.723466+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:14.965860+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "67.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:17.204609+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:19.443800+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:21.684933+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:23.925955+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:26.166727+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:28.405695+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:30.644885+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "68.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:32.886126+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:35.126202+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:37.359093+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:39.600549+00:00",
+        "power_w": "78.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:41.840576+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:44.080917+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:46.335121+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:48.572242+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:50.811161+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:53.049107+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:55.289836+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:57.525320+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:43:59.772230+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:02.010397+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:04.251352+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "69.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:06.491302+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:08.733377+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:10.971917+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:13.208070+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:15.447267+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:17.688391+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:19.925302+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:22.158943+00:00",
+        "power_w": "79.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:24.395123+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:26.634286+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:28.869205+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:31.111615+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:33.351152+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:35.594227+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:37.835789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:40.076568+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:42.314621+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:44.549573+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:46.786683+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:49.021555+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:51.254957+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:53.490806+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:55.726573+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:44:57.961380+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.5"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:00.198934+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:02.437026+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:04.672185+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:06.913074+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:09.150244+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:11.388642+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:13.630580+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:15.866675+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:18.101045+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:20.342624+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:22.578609+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:24.813647+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:27.049268+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:29.285435+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:31.518665+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:33.750691+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:35.986122+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:38.228906+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:40.465375+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:42.707495+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:44.942007+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:47.178789+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:49.414025+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:51.653846+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:53.893615+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:56.135338+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:45:58.374313+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:00.616085+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:02.856309+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:05.097050+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:07.333250+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:09.569216+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:11.801968+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:14.037703+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "70.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:16.277082+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:18.513157+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:20.748717+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:22.985889+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:25.220748+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:27.460830+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:29.702111+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:31.937170+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.0"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:34.176482+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.2"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:36.417636+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:38.662030+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:40.902287+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:43.142955+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:45.384057+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:47.624835+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.3"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:49.866418+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:52.109754+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:54.348785+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:56.589035+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:46:58.828591+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:01.071325+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:03.312871+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:05.547988+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:07.781073+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:10.015579+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:12.253531+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:14.488092+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:16.722819+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:18.964043+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:21.205383+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:23.446572+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:25.687344+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:27.928293+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:30.165582+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:32.406311+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:34.645789+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:36.882524+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:39.117473+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:41.358285+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:43.601277+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:45.839575+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:48.078525+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:50.318555+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:52.559301+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:54.800588+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:57.042308+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:47:59.283003+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:01.524500+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:03.765726+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:06.000222+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:08.240901+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:10.481634+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:12.719857+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:14.959513+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:17.194384+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:19.431140+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:21.676629+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:23.918352+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:26.155773+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:28.396243+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:30.635455+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:32.875072+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:35.114332+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:37.353743+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:39.589091+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:41.824610+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:44.062897+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:46.297299+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:48.531232+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:50.765863+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:53.005105+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:55.245245+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:57.478878+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:48:59.712325+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:01.945822+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:04.182057+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:06.421347+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:08.662555+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:10.900343+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:13.141933+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:15.383084+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:17.623908+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:19.862285+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:22.099385+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:24.333812+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:26.573367+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:28.806718+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:31.040691+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:33.276325+00:00",
+        "power_w": "81.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:35.514274+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.6"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:37.755322+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:39.989253+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:42.230515+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:44.470986+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:46.710912+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:48.950913+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:51.184307+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:53.424773+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:55.666967+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:49:57.905212+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:00.141403+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:02.374567+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:04.615777+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:06.854910+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.9"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:09.093520+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:11.327142+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:13.564390+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:15.800063+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:18.038018+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.4"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:20.276480+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:22.513951+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:24.754839+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "72.1"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:26.994778+00:00",
+        "power_w": "82.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.7"
+      },
+      {
+        "timestamp_utc": "2026-10-11T16:50:29.248987+00:00",
+        "power_w": "80.0",
+        "aiclk_mhz": "1350",
+        "asic_temp_c": "71.8"
+      }
+    ],
+    "errors": [],
+    "timing_evidence": true,
+    "timing_evidence_reason": "power_trace_run_samples"
+  },
+  "run_start": "2026-10-11T16:42:05.748739+00:00",
+  "run_end": "2026-10-11T16:50:29.502044+00:00",
+  "telemetry_sampler": {
+    "mode": "default",
+    "interval_seconds": 2.0,
+    "power_trace": "required",
+    "timing_evidence": "available"
+  },
+  "environment": {
+    "captured_at": "2026-10-11T16:42:04.913052+00:00",
+    "image": "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "image_pinned": true,
+    "telemetry_sampler": {
+      "mode": "default",
+      "interval_seconds": 2.0,
+      "power_trace": "required",
+      "timing_evidence": "available"
+    },
+    "kernel": "Linux 6.8.0-138-generic",
+    "kmd_version": "2.11.0",
+    "tt_env_active_release": "0.75.0",
+    "harness_commit": "2e143f872e5439eef223d62d43acfc0b2aa68dec",
+    "harness_dirty": false,
+    "board_info": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16"
+    },
+    "firmwares": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "limits": {
+      "vdd_min": "0.70",
+      "vdd_max": "0.90",
+      "tdp_limit": "150",
+      "tdc_limit": "200",
+      "asic_fmax": "1350",
+      "therm_trip_l1_limit": "90",
+      "thm_limit": "110",
+      "bus_peak_limit": 0,
+      "fan_rpm_limit": 0,
+      "board_power_limit": "300"
+    },
+    "board": {
+      "bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "board_id": "000004033191411c",
+      "coords": "N/A",
+      "dram_status": true,
+      "dram_speed": "16G",
+      "pcie_speed": 4,
+      "pcie_width": "16",
+      "serial": "000004033191411c"
+    },
+    "firmware": {
+      "fw_bundle_version": "19.6.0.0",
+      "tt_flash_version": "N/A",
+      "cm_fw": "0.28.0.0",
+      "cm_fw_date": "2020-00-28",
+      "eth_fw": "0.0.0",
+      "dm_bl_fw": "0.0.0.0",
+      "dm_app_fw": "0.22.0.0",
+      "gddr_fw": "2.12"
+    },
+    "device_node": "/dev/tenstorrent/0",
+    "aiclk_mhz_observed": [
+      800
+    ],
+    "run_id": "20261011T1642048838088964817326132Z"
+  },
+  "harness_commit": "2e143f872e5439eef223d62d43acfc0b2aa68dec",
+  "watcher": false,
+  "timing_evidence": true,
+  "timing_evidence_reason": "power_trace_run_samples",
+  "outlier_analysis": {
+    "method": "short < 1250000 ticks, long > 1450000 ticks, adjacent pair sum within 1000 ticks of 2700000",
+    "pair_count": 0,
+    "pair_sum_target_ticks": 2700000,
+    "pair_sums": [],
+    "pair_sum_min_ticks": null,
+    "pair_sum_max_ticks": null,
+    "pair_sum_mean_ticks": null,
+    "sum_delta_min_ticks": null,
+    "sum_delta_max_ticks": null,
+    "pair_order_counts": {
+      "short-first": 0,
+      "long-first": 0,
+      "other": 0
+    },
+    "frame_start_indices": [],
+    "event_frame_positions": [],
+    "event_elapsed_seconds": [],
+    "event_elapsed_ticks": [],
+    "event_elapsed_ticks_mod_period": [],
+    "pair_start_elapsed_seconds": [],
+    "frame_gaps": [],
+    "gap_counts": {},
+    "gap_histogram": [],
+    "gcd_frame_gap": null,
+    "pairs": [],
+    "elapsed_time_unit": "seconds",
+    "device_tick_unit": "device_clock_ticks",
+    "aiclk_mhz_for_elapsed_seconds": 1350,
+    "aiclk_source": "run_trace_samples",
+    "aiclk_source_for_elapsed_seconds": "run_trace_samples",
+    "run_elapsed_ticks": 674998649982,
+    "run_elapsed_seconds": 499.99899998666666,
+    "interval_count": 499999,
+    "sampler_interval_comparison": {
+      "mode": "default",
+      "interval_seconds": 2.0,
+      "sampler_interval_seconds": 2.0,
+      "pair_count": 0,
+      "timestamp_count": 500000,
+      "adjacent_gaps": []
+    }
+  },
+  "program_host_interval": {
+    "clock": "host_monotonic_ns",
+    "start_ns": 57557469279949,
+    "end_ns": 58057789396906,
+    "launch_ns": 57557469279949,
+    "completion_ns": 58057789396906,
+    "elapsed_ns": 500320116957
+  },
+  "host_program_interval": {
+    "clock": "host_monotonic_ns",
+    "start_ns": 57557469279949,
+    "end_ns": 58057789396906,
+    "launch_ns": 57557469279949,
+    "completion_ns": 58057789396906,
+    "elapsed_ns": 500320116957
+  },
+  "program_launch_ns": 57557469279949,
+  "program_completion_ns": 58057789396906,
+  "program_launch_monotonic_ns": 57557469279949,
+  "program_completion_monotonic_ns": 58057789396906,
+  "card_load_interval": null,
+  "card_load_worker_intervals": null,
+  "card_load_interval_statistics": null,
+  "host_load_interval": null,
+  "load_coverage": {
+    "verdict": "not_applicable",
+    "valid": true,
+    "covered": true
+  },
+  "load_repeat_count": 0,
+  "calibration": null,
+  "validation_warnings": [
+    "environment.board.bus_id",
+    "environment.board.coords",
+    "environment.board.dram_speed",
+    "environment.board.dram_status",
+    "environment.board.pcie_speed",
+    "environment.board.pcie_width",
+    "environment.board_info",
+    "environment.board_info.board_id",
+    "environment.board_info.board_type",
+    "environment.board_info.bus_id",
+    "environment.board_info.coords",
+    "environment.board_info.dram_speed",
+    "environment.board_info.dram_status",
+    "environment.board_info.pcie_speed",
+    "environment.board_info.pcie_width",
+    "environment.captured_at",
+    "environment.device_node",
+    "environment.firmware.cm_fw",
+    "environment.firmware.cm_fw_date",
+    "environment.firmware.dm_app_fw",
+    "environment.firmware.dm_bl_fw",
+    "environment.firmware.eth_fw",
+    "environment.firmware.gddr_fw",
+    "environment.firmware.tt_flash_version",
+    "environment.firmwares",
+    "environment.firmwares.cm_fw",
+    "environment.firmwares.cm_fw_date",
+    "environment.firmwares.dm_app_fw",
+    "environment.firmwares.dm_bl_fw",
+    "environment.firmwares.eth_fw",
+    "environment.firmwares.fw_bundle_version",
+    "environment.firmwares.gddr_fw",
+    "environment.firmwares.tt_flash_version",
+    "environment.harness_dirty",
+    "environment.kernel",
+    "environment.limits",
+    "environment.limits.asic_fmax",
+    "environment.limits.board_power_limit",
+    "environment.limits.bus_peak_limit",
+    "environment.limits.fan_rpm_limit",
+    "environment.limits.tdc_limit",
+    "environment.limits.tdp_limit",
+    "environment.limits.therm_trip_l1_limit",
+    "environment.limits.thm_limit",
+    "environment.limits.vdd_max",
+    "environment.limits.vdd_min",
+    "environment.run_id",
+    "frames_consumed",
+    "frames_produced",
+    "power_clock_provenance.coverage.invalid_row_count",
+    "power_clock_provenance.coverage.usable_row_count",
+    "power_trace_coverage.coverage.invalid_row_count",
+    "power_trace_coverage.coverage.usable_row_count"
+  ],
+  "frames_produced": 500000,
+  "frames_consumed": 500000
+}
