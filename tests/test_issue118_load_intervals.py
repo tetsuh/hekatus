@@ -257,7 +257,7 @@ class _FakeHostTransferTtnn:
         self.fail_on_copy = fail_on_copy
 
     def Tensor(self, _array, _dtype):
-        tensor = _FakeHostTransferTensor("host")
+        tensor = _FakeHostTransferTensor("host", len(self.host_allocations))
         self.host_allocations.append(tensor)
         return tensor
 
@@ -319,29 +319,25 @@ def test_host_transfer_ring_keeps_allocations_fixed_and_synchronizes_repeats(mon
         ttnn, device_tensors, host_tensors, started, result = _run_fake_host_transfer(
             monkeypatch, repetitions
         )
-        copy_events = [event for event in ttnn.events if event[0] in {"host_to_device", "device_to_host"}]
-        assert len([event for event in copy_events if event[0] == "host_to_device"]) == 5 * repetitions
-        assert len([event for event in copy_events if event[0] == "device_to_host"]) == 5 * repetitions
-        assert [event[0] for event in copy_events] == ["host_to_device", "device_to_host"] * (
-            5 * repetitions
-        )
-        for repeat in range(repetitions - 1):
-            previous_pair_end = 2 * (5 * (repeat + 1)) - 1
-            next_pair_start = previous_pair_end + 1
-            assert copy_events[next_pair_start - 1][0] == "device_to_host"
-            copy_event_positions = [
-                index
-                for index, event in enumerate(ttnn.events)
-                if event[0] in {"host_to_device", "device_to_host"}
-            ]
-            previous_end_position = copy_event_positions[previous_pair_end]
-            next_start_position = copy_event_positions[next_pair_start]
-            assert any(
-                event[0] == "synchronize"
-                for event in ttnn.events[previous_end_position + 1 : next_start_position]
-            )
+        expected_pairs = 5 * repetitions
+        expected_events = []
+        for _ in range(repetitions):
+            for transfer_index in range(5):
+                slot = transfer_index % resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
+                expected_events.extend(
+                    [
+                        ("host_to_device", slot, slot, 1),
+                        ("device_to_host", slot, slot, False, 1),
+                    ]
+                )
+            expected_events.append(("synchronize", 1))
+        assert ttnn.events == expected_events
+        assert len([event for event in ttnn.events if event[0] == "host_to_device"]) == expected_pairs
+        assert len([event for event in ttnn.events if event[0] == "device_to_host"]) == expected_pairs
+        assert len([event for event in ttnn.events if event[0] == "synchronize"]) == repetitions
         assert started.is_set()
-        assert result["transfer_count"] == 5 * repetitions
+        assert result["transfer_count"] == expected_pairs
+        assert result["transfer_completion"] == "per_repeat_cq1"
         expected_checksum = 0
         for _ in range(repetitions):
             for _ in range(2):
@@ -371,6 +367,7 @@ def test_host_transfer_runner_queues_256_pairs_per_repeat(monkeypatch):
     assert len([event for event in copy_events if event[0] == "host_to_device"]) == 512
     assert len([event for event in copy_events if event[0] == "device_to_host"]) == 512
     assert result["transfer_count"] == 512
+    assert ttnn.events.count(("synchronize", 1)) == 2
     _complete_host_transfers(ttnn, object(), device_tensors, host_tensors)
 
 
@@ -464,10 +461,20 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
         "if calibration_output is not None:"
     )
     assert 'record["status"] = "calibration"' in resident_source
-    assert resident_source.index("started_event.set()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
-    assert resident_source.index("ttnn.copy_host_to_device_tensor(") < resident_source.index(
-        "ttnn.generic_op(_merged_program_io_tensors"
+    host_runner_start = resident_source.index("def _run_host_transfers(")
+    host_runner_end = resident_source.index("def _host_join_timeout_seconds(")
+    host_runner_source = resident_source[host_runner_start:host_runner_end]
+    assert host_runner_source.index("started_event.set()") < host_runner_source.index(
+        "for _ in range(HOST_ARITHMETIC_ROUNDS)"
     )
+    assert host_runner_source.index("for _ in range(HOST_ARITHMETIC_ROUNDS)") < host_runner_source.index(
+        "_queue_host_transfer_batch("
+    )
+    assert host_runner_source.index("_queue_host_transfer_batch(") < host_runner_source.index(
+        "ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)"
+    )
+    assert "if transfer_index and slot == 0" not in resident_source
+    assert resident_source.index("started_event.set()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
     assert resident_source.index("measurement_start_ns = time.monotonic_ns()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
     assert resident_source.index("ttnn.generic_op(_merged_program_io_tensors") < resident_source.rindex("resident_launched.set()")
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
@@ -595,6 +602,33 @@ def test_uncovered_calibration_is_not_main_timing_evidence():
     assert record["valid_evidence"] is False
     assert record["coverage"]["verdict"] == "uncovered"
     assert record["calibration"]["repeat_count"] == 5500
+
+
+def test_host_calibration_may_be_uncovered_without_becoming_timing_evidence():
+    calibration = CalibrationMetadata(
+        condition="host_cpu_transfer",
+        duration_seconds=60,
+        achieved_throughput=1,
+        throughput_unit="repeats_per_host_second",
+        repeat_count=2,
+        target_seconds=500,
+    )
+    record = build_calibration_load_record(
+        condition="host_cpu_transfer",
+        repeat_count=1,
+        resident_timestamps=None,
+        host_interval=HostLoadInterval(90, 110),
+        measurement_start_ns=100,
+        measurement_end_ns=300,
+        calibration=calibration,
+        achieved_throughput=1,
+        throughput_unit="repeats_per_host_second",
+    )
+    assert record["status"] == "calibration"
+    assert record["valid_evidence"] is False
+    assert record["coverage"]["valid"] is True
+    assert record["coverage"]["covered"] is False
+    assert record["coverage"]["verdict"] == "uncovered"
 
 
 def test_card_interval_wrap_extension_and_coverage_are_card_only():

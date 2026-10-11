@@ -545,7 +545,13 @@ def _queue_host_transfer_batch(
     host_tensors: list[Any],
     stop_event: threading.Event | None,
 ) -> None:
-    """Queue one fixed transfer batch, synchronizing before each ring reuse."""
+    """Queue one fixed CQ1 transfer batch on the reusable ring.
+
+    The pinned v0.75.0 copy APIs enqueue nonblocking work on the selected CQ.
+    CQ1 FIFO ordering keeps each slot's D2H complete before its next H2D reuse,
+    so an intermediate host synchronization is neither required nor allowed.
+    The caller synchronizes once after the complete batch at the repeat boundary.
+    """
     if len(device_tensors) != HOST_TRANSFER_BUFFER_POOL_SIZE:
         raise RuntimeError("CQ1 device transfer pool has an unexpected size")
     if len(host_tensors) != HOST_TRANSFER_BUFFER_POOL_SIZE:
@@ -554,8 +560,6 @@ def _queue_host_transfer_batch(
         if stop_event is not None and stop_event.is_set():
             raise RuntimeError("host load stopped while queuing CQ1 transfers")
         slot = transfer_index % HOST_TRANSFER_BUFFER_POOL_SIZE
-        if transfer_index and slot == 0:
-            ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
         ttnn.copy_host_to_device_tensor(
             host_tensors[slot],
             device_tensors[slot],
@@ -581,7 +585,8 @@ def _run_host_transfers(
     device_tensors_holder: list[Any] | None = None,
     host_tensors_holder: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Run fixed host arithmetic and one synchronized CQ1 batch per repeat."""
+    """Run fixed arithmetic, one CQ1 batch, and one CQ1 completion per repeat."""
+    del resident_launched  # Host work deliberately starts before resident launch.
     if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
         raise LoadConfigurationError("host repetitions must be a positive integer")
     device_tensors = device_tensors_holder if device_tensors_holder is not None else []
@@ -595,9 +600,19 @@ def _run_host_transfers(
         host_tensors=host_tensors,
     )
     start_holder["start_ns"] = time.monotonic_ns()
+    if started_event is not None:
+        # The main thread submits CQ0 after this edge. The first fixed CPU
+        # arithmetic section therefore overlaps resident GenericOp launch;
+        # CQ1 is not populated before the launch boundary.
+        started_event.set()
 
     accumulator = 0
-    for repetition in range(repetitions):
+    for _ in range(repetitions):
+        for _ in range(HOST_ARITHMETIC_ROUNDS):
+            if stop_event is not None and stop_event.is_set():
+                raise RuntimeError("host load stopped during CPU work")
+            for word in range(HOST_ARITHMETIC_WORDS):
+                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
         _queue_host_transfer_batch(
             ttnn,
             device,
@@ -605,21 +620,9 @@ def _run_host_transfers(
             host_tensors=host_tensors,
             stop_event=stop_event,
         )
-        if repetition == 0:
-            if started_event is not None:
-                started_event.set()
-            if resident_launched is not None:
-                while not resident_launched.wait(timeout=0.1):
-                    if stop_event is not None and stop_event.is_set():
-                        raise RuntimeError("host load stopped before CPU work")
-        # The host/device ring may only be reused after every CQ1 operation in
-        # this repeat has completed. This also makes the repeat boundary explicit.
+        # Same-CQ FIFO protects the four reusable slots. This is the only
+        # synchronization in a repeat and establishes its completion boundary.
         ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
-        for _ in range(HOST_ARITHMETIC_ROUNDS):
-            if stop_event is not None and stop_event.is_set():
-                raise RuntimeError("host load stopped during CPU work")
-            for word in range(HOST_ARITHMETIC_WORDS):
-                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
     end_ns = time.monotonic_ns()
     return {
         "arithmetic_rounds": HOST_ARITHMETIC_ROUNDS,

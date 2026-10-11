@@ -58,7 +58,11 @@ Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. A fixed four-slot
 reusable host/device pool and per-repeat CQ1 completion keep transfer buffering
 bounded while targeting approximately one-second calibration granularity; the
-work remains data-independent.
+work remains data-independent. A calibration record may therefore be
+`uncovered` when its single measurement repeat finishes before the full resident
+interval; it remains `status=calibration` and `valid_evidence=false`. The
+calibration interval is not promoted to timing evidence, while the later
+calibrated run must still provide covered interval metadata.
 
 ## Issue #104 paired-outlier records
 
