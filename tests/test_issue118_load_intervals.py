@@ -33,7 +33,9 @@ from enodia.tt.bench.load_harness import (
     validate_mode_records,
     validate_worker_model,
 )
+from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
+from enodia.tt.bench.run_resident import _parser as resident_parser
 
 ROOT = Path(__file__).parents[1]
 KERNEL_DIR = ROOT / "enodia/tt/bench/kernels"
@@ -88,9 +90,13 @@ def test_fixed_load_sources_have_no_convergence_or_data_dependent_exit():
     dram_source = (KERNEL_DIR / "issue118_dram_load.cpp").read_text()
     assert "static_assert(iterations == 12" in ns_source
     assert "for (std::uint32_t iteration = 0; iteration < iterations; ++iteration)" in ns_source
+    assert "const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(2)" in ns_source
+    assert "for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer)" in ns_source
     assert "if (conver" not in ns_source.lower()
-    assert "for (std::uint32_t bank = 0; bank < dram_banks; ++bank)" in dram_source
+    assert "static_assert(dram_banks == 8" in dram_source
+    assert "const std::uint32_t bank_index" in dram_source
     assert "for (std::uint32_t page = 0; page < pages_per_bank; ++page)" in dram_source
+    assert "clock.read();" in dram_source
     assert "break;" not in ns_source
     assert "break;" not in dram_source
 
@@ -100,6 +106,65 @@ def test_resident_cb_indices_are_disjoint_from_newton_schulz_abi():
     assert "RESIDENT_PRODUCER_CB_INDEX = 20" in source
     assert "RESIDENT_CONSUMER_CB_INDEX = 21" in source
     assert "return_parts" in source
+
+
+def test_runner_parsers_expose_loaded_conditions_and_calibration_controls():
+    resident = resident_parser().parse_args(
+        [
+            "--out",
+            "/out/result.json",
+            "--condition",
+            "newton_schulz",
+            "--calibrate",
+            "--repeat-count",
+            "1",
+            "--calibration-duration-seconds",
+            "60",
+        ]
+    )
+    assert resident.condition == "newton_schulz"
+    assert resident.calibrate is True
+    assert resident.repeat_count == 1
+    loaded = load_parser().parse_args(
+        ["--out", "/out/config.json", "--load-condition", "dram", "--run-config"]
+    )
+    assert loaded.condition == "dram"
+    assert loaded.run_config is True
+
+
+def test_fixed_repeat_reaches_reader_and_compute_runtime_args():
+    class RuntimeArgs:
+        def __init__(self):
+            self.values = {}
+
+        def __getitem__(self, x):
+            return _GridRow(self.values, x)
+
+    class _GridRow:
+        def __init__(self, values, x):
+            self.values = values
+            self.x = x
+
+        def __setitem__(self, y, value):
+            self.values[(self.x, y)] = value
+
+    ttnn = SimpleNamespace(RuntimeArgs=RuntimeArgs)
+    args = newton_schulz_kernel._runtime_args(
+        ttnn, [(2, 0)], [123], [(0, 8)], [3]
+    )
+    assert args.values[(2, 0)] == [123, 0, 8, 3]
+
+
+def test_actual_program_plumbing_names_repeat_and_interval_outputs():
+    resident_source = (ROOT / "enodia/tt/bench/run_resident.py").read_text()
+    generators_source = (ROOT / "enodia/tt/bench/load_generators.py").read_text()
+    assert "_run_loaded_device" in resident_source
+    assert "prepare_newton_schulz_load" in resident_source
+    assert "prepare_dram_load" in resident_source
+    assert "merge_program_parts" in resident_source
+    assert "queue_id=queue_id" in resident_source
+    assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
+    assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
 
 def test_program_plans_use_one_program_and_disjoint_core_ranges():

@@ -1361,6 +1361,7 @@ void kernel_main_impl() {
     constexpr bool reload_r = get_compile_time_arg_val(5) != 0;
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(0);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(1);
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(2);
     static_assert(iterations == 12, "the throughput kernel has a fixed twelve-iteration count");
     using CounterState = std::conditional_t<profile_sample, ProfileCounters, EmptyProfileCounters>;
     CounterState counters{};
@@ -1385,6 +1386,7 @@ void kernel_main_impl() {
         }
     }
 
+    for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
     if constexpr (matrix_block == 1) {
     for (std::uint32_t tile = 0; tile < tile_count; ++tile) {
         if constexpr (profile_sample) {
@@ -1617,6 +1619,7 @@ void kernel_main_impl() {
                 }
             }
         }
+    }
     }
     // Only the core whose range starts at tile 0 publishes the compute page;
     // all other cores retain the normal math/output path without profile CB IO.

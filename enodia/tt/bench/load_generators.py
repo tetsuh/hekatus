@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from enodia.tt.bench.load_harness import (
@@ -17,6 +18,7 @@ from enodia.tt.bench.load_harness import (
     DRAM_BANK_COUNT,
     DRAM_PAGE_BYTES,
     DRAM_PAGES_PER_BANK,
+    DRAM_TOTAL_PAGES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
     HOST_TRANSFER_BYTES,
@@ -47,8 +49,12 @@ from enodia.tt.bench.load_harness import (
     validate_device_open_settings,
 )
 
+_KERNEL_DIR = Path(__file__).with_name("kernels")
+PAGE_WORDS = 32 * 32
+PAGE_BYTES = PAGE_WORDS * 4
 LOAD_CB_INDEX = 22
 LOAD_INTERVAL_CB_INDEX = 23
+DRAM_WORKER_COORDINATES = P150_RESIDUAL_WORKER_COORDINATES[:DRAM_BANK_COUNT]
 
 
 @dataclass(frozen=True)
@@ -142,8 +148,16 @@ def newton_schulz_load_work() -> dict[str, Any]:
     }
 
 
-def prepare_newton_schulz_load(ttnn: Any, device: Any, *, profile: bool = True) -> Any:
-    """Prepare the existing ADR-0013 kernel on the 108 residual workers."""
+def prepare_newton_schulz_load(
+    ttnn: Any,
+    device: Any,
+    *,
+    repeat_count: int = 1,
+    profile: bool = True,
+) -> Any:
+    """Prepare ADR-0013 work on residual workers for a fixed repeat count."""
+    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+        raise LoadConfigurationError("repeat_count must be a positive integer")
     from enodia.tt.bench.newton_schulz_kernel import (
         NewtonSchulzKernel,
         benchmark_matrices,
@@ -166,7 +180,133 @@ def prepare_newton_schulz_load(ttnn: Any, device: Any, *, profile: bool = True) 
         fp32_dest_acc_en=True,
         dst_full_sync_en=True,
         iterations=NS_LOAD_ITERATIONS,
+        outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count,
         core_coordinates=P150_RESIDUAL_WORKER_COORDINATES,
+    )
+
+
+@dataclass
+class PreparedDramLoad:
+    """Prepared fixed DRAM stream resources for one merged program."""
+
+    ttnn: Any
+    device: Any
+    read_buffer: Any
+    write_buffer: Any
+    stats_buffer: Any
+    program: Any
+    repeat_count: int
+    worker_coordinates: tuple[tuple[int, int], ...]
+
+    def program_parts(self) -> tuple[tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]:
+        return tuple(self.program.kernels), tuple(self.program.semaphores), tuple(self.program.cbs)
+
+    def interval_words(self) -> list[int]:
+        host = self.ttnn.from_device(self.stats_buffer, blocking=True, queue_id=0)
+        row_major = self.ttnn.to_layout(host, self.ttnn.ROW_MAJOR_LAYOUT)
+        values = row_major.to_numpy().reshape(-1)
+        # One four-word interval and two counters per bank; retain all rows so
+        # the host can audit that every planned bank worker completed.
+        return [int(value) for value in values]
+
+    def close(self) -> None:
+        for tensor in (self.read_buffer, self.write_buffer, self.stats_buffer):
+            try:
+                self.ttnn.deallocate(tensor)
+            except Exception:  # noqa: BLE001, S110 - cleanup must not mask run errors
+                pass
+
+
+def prepare_dram_load(ttnn: Any, device: Any, *, repeat_count: int = 1) -> PreparedDramLoad:
+    """Prepare the fixed eight-bank stream and host-downloadable stats buffer."""
+    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+        raise LoadConfigurationError("repeat_count must be a positive integer")
+    coordinates = DRAM_WORKER_COORDINATES
+    core_ranges = ttnn.CoreRangeSet(
+        [
+            ttnn.CoreRange(ttnn.CoreCoord(x, y), ttnn.CoreCoord(x, y))
+            for x, y in coordinates
+        ]
+    )
+    shape = ttnn.Shape((1, DRAM_TOTAL_PAGES, PAGE_WORDS))
+    stats_shape = ttnn.Shape((1, DRAM_BANK_COUNT, PAGE_WORDS))
+    read_buffer = ttnn.zeros(
+        shape,
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        device=device,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    write_buffer = ttnn.zeros(
+        shape,
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        device=device,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    stats_buffer = ttnn.zeros(
+        stats_shape,
+        dtype=ttnn.uint32,
+        layout=ttnn.ROW_MAJOR_LAYOUT,
+        device=device,
+        memory_config=ttnn.DRAM_MEMORY_CONFIG,
+    )
+    read_compile = ttnn.TensorAccessorArgs(read_buffer).get_compile_time_args()
+    write_compile = ttnn.TensorAccessorArgs(write_buffer).get_compile_time_args()
+    stats_compile = ttnn.TensorAccessorArgs(stats_buffer).get_compile_time_args()
+    runtime_args = ttnn.RuntimeArgs()
+    for bank, (x, y) in enumerate(coordinates):
+        runtime_args[x][y] = [
+            read_buffer.buffer_address(),
+            write_buffer.buffer_address(),
+            DRAM_PAGES_PER_BANK,
+            stats_buffer.buffer_address(),
+            repeat_count,
+            bank,
+            bank,
+        ]
+    kernel = ttnn.KernelDescriptor(
+        kernel_source=str((_KERNEL_DIR / "issue118_dram_load.cpp").resolve()),
+        source_type=ttnn.KernelDescriptor.SourceType.FILE_PATH,
+        core_ranges=core_ranges,
+        compile_time_args=[*read_compile, *write_compile, *stats_compile],
+        runtime_args=runtime_args,
+        config=ttnn.ReaderConfigDescriptor(),
+    )
+    cb_format = ttnn.CBFormatDescriptor(
+        buffer_index=LOAD_CB_INDEX,
+        data_format=ttnn.uint32,
+        page_size=PAGE_BYTES,
+        tile=ttnn.TileDescriptor(32, 32, False),
+    )
+    interval_format = ttnn.CBFormatDescriptor(
+        buffer_index=LOAD_INTERVAL_CB_INDEX,
+        data_format=ttnn.uint32,
+        page_size=PAGE_BYTES,
+        tile=ttnn.TileDescriptor(32, 32, False),
+    )
+    cbs = [
+        ttnn.CBDescriptor(
+            total_size=PAGE_BYTES,
+            core_ranges=core_ranges,
+            format_descriptors=[cb_format],
+        ),
+        ttnn.CBDescriptor(
+            total_size=PAGE_BYTES,
+            core_ranges=core_ranges,
+            format_descriptors=[interval_format],
+        ),
+    ]
+    program = ttnn.ProgramDescriptor(kernels=[kernel], semaphores=[], cbs=cbs)
+    return PreparedDramLoad(
+        ttnn=ttnn,
+        device=device,
+        read_buffer=read_buffer,
+        write_buffer=write_buffer,
+        stats_buffer=stats_buffer,
+        program=program,
+        repeat_count=repeat_count,
+        worker_coordinates=coordinates,
     )
 
 
@@ -236,6 +376,7 @@ def host_cpu_transfer_work() -> dict[str, Any]:
 
 def run_host_cpu_transfer_work(
     *,
+    repetitions: int = 1,
     clock_ns: Callable[[], int] = time.monotonic_ns,
     transfer: Callable[[bytes, int], None] | None = None,
 ) -> dict[str, Any]:
@@ -245,23 +386,28 @@ def run_host_cpu_transfer_work(
     device runner supplies a CQ1 transfer callback; this function never opens
     a device by itself.
     """
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
+        raise LoadConfigurationError("host repetitions must be a positive integer")
     payload = bytes(HOST_TRANSFER_BYTES)
     started = clock_ns()
     accumulator = 0
-    for _ in range(HOST_ARITHMETIC_ROUNDS):
-        for word in range(HOST_ARITHMETIC_WORDS):
-            accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
-    if transfer is None:
-        for _ in range(HOST_TRANSFER_COUNT):
-            bytes(payload)
-    else:
-        for _ in range(HOST_TRANSFER_COUNT):
-            transfer(payload, TRANSFER_COMMAND_QUEUE)
+    for _ in range(repetitions):
+        for _ in range(HOST_ARITHMETIC_ROUNDS):
+            for word in range(HOST_ARITHMETIC_WORDS):
+                accumulator = ((accumulator * 33) ^ word) & 0xFFFFFFFF
+        if transfer is None:
+            for _ in range(HOST_TRANSFER_COUNT):
+                bytes(payload)
+        else:
+            for _ in range(HOST_TRANSFER_COUNT):
+                transfer(payload, TRANSFER_COMMAND_QUEUE)
     ended = clock_ns()
     if not isinstance(started, int) or not isinstance(ended, int) or ended < started:
         raise LoadConfigurationError("host clock interval is invalid")
     return {
         **host_cpu_transfer_work(),
+        "outer_repetitions": repetitions,
+        "transfer_count": HOST_TRANSFER_COUNT * repetitions,
         "start_ns": started,
         "end_ns": ended,
         "elapsed_ns": ended - started,
@@ -346,9 +492,11 @@ def validate_plan_catalogue() -> tuple[LoadProgramPlan, ...]:
 
 
 __all__ = [
+    "DRAM_WORKER_COORDINATES",
     "LOAD_CB_INDEX",
     "LOAD_INTERVAL_CB_INDEX",
     "LoadProgramPlan",
+    "PreparedDramLoad",
     "build_load_plan",
     "card_interval_from_profile_records",
     "card_interval_from_words",
@@ -360,6 +508,7 @@ __all__ = [
     "newton_schulz_load_work",
     "open_device",
     "open_device_settings",
+    "prepare_dram_load",
     "prepare_newton_schulz_load",
     "validate_plan_catalogue",
 ]

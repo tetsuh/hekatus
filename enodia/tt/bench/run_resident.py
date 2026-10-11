@@ -15,6 +15,8 @@ import math
 import os
 import struct
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +24,27 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
-from enodia.tt.bench.load_harness import build_load_record
+from enodia.tt.bench.load_generators import (
+    card_interval_from_profile_records,
+    card_interval_from_words,
+    merge_program_parts,
+    prepare_dram_load,
+    prepare_newton_schulz_load,
+    run_host_cpu_transfer_work,
+)
+from enodia.tt.bench.load_harness import (
+    DRAM_STREAM_TOTAL_BYTES,
+    HOST_TRANSFER_BYTES,
+    HOST_TRANSFER_COUNT,
+    LOAD_CONDITIONS,
+    NS_LOAD_OUTER_REPETITIONS,
+    CalibrationMetadata,
+    CardLoadInterval,
+    HostLoadInterval,
+    LoadConfigurationError,
+    build_load_record,
+    calibration_metadata,
+)
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
     atomic_power_trace_snapshot,
@@ -374,6 +396,75 @@ def _allocate_resident_tensors(ttnn: Any, device: Any, config: ResidentConfig) -
     }
 
 
+def _decode_resident_result(ttnn: Any, config: ResidentConfig, tensors: dict[str, Any]) -> dict[str, Any]:
+    """Download and classify resident outputs after any merged program run."""
+    timestamp_values = _download(ttnn, tensors["timestamps"])
+    producer_values = _download(ttnn, tensors["producer_stats"]).reshape(-1)
+    consumer_values = _download(ttnn, tensors["consumer_stats"]).reshape(-1)
+    producer_failure = _decode_failure(producer_values, base=6, source="producer")
+    consumer_failure = _decode_failure(consumer_values, base=7, source="consumer")
+    producer_full_count = _device_word(producer_values[0], "producer full count")
+    consumer_empty_count = _device_word(consumer_values[0], "consumer empty count")
+    frames_attempted = _device_word(producer_values[3], "frames attempted")
+    frames_produced = _device_word(producer_values[1], "frames produced")
+    frames_dropped = _device_word(producer_values[4], "frames dropped")
+    frames_consumed = min(
+        _device_word(consumer_values[1], "frames consumed"), config.frame_count
+    )
+    raw_timestamps = [
+        _device_word(timestamp_values[index, 0, 0, 0], f"timestamp {index} low word")
+        | (_device_word(timestamp_values[index, 0, 0, 1], f"timestamp {index} high word") << 32)
+        for index in range(frames_consumed)
+    ]
+    failure_check = select_failure_check(producer_failure, consumer_failure)
+    try:
+        failure_classification = validate_failure_check(failure_check)
+        producer_error = _device_word(producer_values[2], "producer error flag")
+        consumer_error = _device_word(consumer_values[2], "consumer error flag")
+        startup_low = _device_word(consumer_values[4], "startup low word")
+        startup_high = _device_word(consumer_values[5], "startup high word")
+        startup_valid = _device_word(consumer_values[6], "startup validity")
+        work_min_low = _device_word(consumer_values[13], "work minimum low word")
+        work_min_high = _device_word(consumer_values[14], "work minimum high word")
+        work_max_low = _device_word(consumer_values[15], "work maximum low word")
+        work_max_high = _device_word(consumer_values[16], "work maximum high word")
+        work_valid = _device_word(consumer_values[17], "work validity")
+    except (IndexError, TypeError, ValueError) as exc:
+        if isinstance(exc, ResidentResultUnavailable):
+            raise
+        raise ResidentResultUnavailable("resident device result is unavailable") from exc
+    kernel_error_flag = int(bool(producer_error or consumer_error))
+    if kernel_error_flag != int(failure_classification.error_flag):
+        raise ResidentResultUnavailable("kernel summary error flags are unavailable")
+    return {
+        "timestamps": raw_timestamps,
+        "producer_full_count": producer_full_count,
+        "consumer_empty_count": consumer_empty_count,
+        "kernel_error_flag": kernel_error_flag,
+        "frames_attempted": frames_attempted,
+        "frames_produced": frames_produced,
+        "frames_dropped": frames_dropped,
+        "frames_aborted": frames_attempted - frames_produced - frames_dropped,
+        "frames_consumed": frames_consumed,
+        "startup_ticks": startup_low | (startup_high << 32),
+        "startup_ticks_valid": bool(startup_valid),
+        "work_min_ticks": work_min_low | (work_min_high << 32),
+        "work_max_ticks": work_max_low | (work_max_high << 32),
+        "work_ticks_valid": bool(work_valid),
+        "producer_failure": producer_failure,
+        "consumer_failure": consumer_failure,
+        "failure_check": failure_check,
+    }
+
+
+def _deallocate_resident_tensors(ttnn: Any, tensors: dict[str, Any]) -> None:
+    for tensor in tensors.values():
+        try:
+            ttnn.deallocate(tensor)
+        except Exception:  # noqa: BLE001, S110 - cleanup must not mask device errors
+            pass
+
+
 def _run_device(
     ttnn: Any, device, config: ResidentConfig, *, watcher: bool
 ) -> dict[str, Any]:
@@ -382,74 +473,178 @@ def _run_device(
         program = _program(ttnn, config, tensors, watcher=watcher)
         ttnn.generic_op(list(tensors.values()), program)
         ttnn.synchronize_device(device)
-        timestamp_values = _download(ttnn, tensors["timestamps"])
-        producer_values = _download(ttnn, tensors["producer_stats"]).reshape(-1)
-        consumer_values = _download(ttnn, tensors["consumer_stats"]).reshape(-1)
-        producer_failure = _decode_failure(producer_values, base=6, source="producer")
-        consumer_failure = _decode_failure(consumer_values, base=7, source="consumer")
-        producer_full_count = _device_word(producer_values[0], "producer full count")
-        consumer_empty_count = _device_word(consumer_values[0], "consumer empty count")
-        frames_attempted = _device_word(producer_values[3], "frames attempted")
-        frames_produced = _device_word(producer_values[1], "frames produced")
-        frames_dropped = _device_word(producer_values[4], "frames dropped")
-        frames_consumed = min(
-            _device_word(consumer_values[1], "frames consumed"), config.frame_count
-        )
-        raw_timestamps = [
-            _device_word(timestamp_values[index, 0, 0, 0], f"timestamp {index} low word")
-            | (
-                _device_word(timestamp_values[index, 0, 0, 1], f"timestamp {index} high word")
-                << 32
-            )
-            for index in range(frames_consumed)
-        ]
-        failure_check = select_failure_check(producer_failure, consumer_failure)
-        try:
-            failure_classification = validate_failure_check(failure_check)
-            producer_error = _device_word(producer_values[2], "producer error flag")
-            consumer_error = _device_word(consumer_values[2], "consumer error flag")
-            startup_low = _device_word(consumer_values[4], "startup low word")
-            startup_high = _device_word(consumer_values[5], "startup high word")
-            startup_valid = _device_word(consumer_values[6], "startup validity")
-            work_min_low = _device_word(consumer_values[13], "work minimum low word")
-            work_min_high = _device_word(consumer_values[14], "work minimum high word")
-            work_max_low = _device_word(consumer_values[15], "work maximum low word")
-            work_max_high = _device_word(consumer_values[16], "work maximum high word")
-            work_valid = _device_word(consumer_values[17], "work validity")
-        except (IndexError, TypeError, ValueError) as exc:
-            if isinstance(exc, ResidentResultUnavailable):
-                raise
-            raise ResidentResultUnavailable("resident device result is unavailable") from exc
-        kernel_error_flag = int(bool(producer_error or consumer_error))
-        if kernel_error_flag != int(failure_classification.error_flag):
-            raise ResidentResultUnavailable("kernel summary error flags are unavailable")
-        return {
-            "timestamps": raw_timestamps,
-            "producer_full_count": producer_full_count,
-            "consumer_empty_count": consumer_empty_count,
-            "kernel_error_flag": kernel_error_flag,
-            "frames_attempted": frames_attempted,
-            "frames_produced": frames_produced,
-            "frames_dropped": frames_dropped,
-            "frames_aborted": frames_attempted - frames_produced - frames_dropped,
-            "frames_consumed": frames_consumed,
-            "startup_ticks": startup_low | (startup_high << 32),
-            "startup_ticks_valid": bool(startup_valid),
-            "work_min_ticks": work_min_low | (work_min_high << 32),
-            "work_max_ticks": work_max_low | (work_max_high << 32),
-            "work_ticks_valid": bool(work_valid),
-            "producer_failure": producer_failure,
-            "consumer_failure": consumer_failure,
-            "failure_check": failure_check,
-        }
+        return _decode_resident_result(ttnn, config, tensors)
     finally:
-        for tensor in tensors.values():
-            try:
-                ttnn.deallocate(tensor)
-            except Exception:  # noqa: BLE001, S110 - cleanup must not mask device errors
-                pass
+        _deallocate_resident_tensors(ttnn, tensors)
 
 
+def _run_host_transfers(
+    ttnn: Any,
+    device: Any,
+    *,
+    repetitions: int = 1,
+    started_event: threading.Event | None = None,
+    resident_launched: threading.Event | None = None,
+    start_holder: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Perform fixed arithmetic and explicit CQ1 host/device transfers."""
+    import numpy as np
+
+    host = ttnn.Tensor(
+        np.zeros((1, 1, 1, HOST_TRANSFER_BYTES // 4), dtype=np.uint32),
+        ttnn.uint32,
+    )
+    host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
+    device_tensors: list[Any] = []
+
+    def clock_ns() -> int:
+        value = time.monotonic_ns()
+        if start_holder is not None:
+            start_holder["start_ns"] = value
+        if started_event is not None:
+            started_event.set()
+        return value
+
+    def transfer(_payload: bytes, queue_id: int) -> None:
+        if queue_id != 1:
+            raise RuntimeError("host condition transfer was not assigned to CQ1")
+        if resident_launched is not None and not resident_launched.wait(timeout=60.0):
+            raise RuntimeError("resident program was not launched before CQ1 transfer")
+        device_tensor = ttnn.to_device(
+            host,
+            device,
+            memory_config=ttnn.DRAM_MEMORY_CONFIG,
+            queue_id=queue_id,
+        )
+        device_tensors.append(device_tensor)
+        ttnn.from_device(device_tensor, blocking=True, queue_id=queue_id)
+        ttnn.deallocate(device_tensor)
+
+    work = run_host_cpu_transfer_work(
+        repetitions=repetitions,
+        clock_ns=clock_ns,
+        transfer=transfer,
+    )
+    return work
+
+
+def _run_loaded_device(
+    ttnn: Any,
+    device: Any,
+    config: ResidentConfig,
+    *,
+    condition: str,
+    repeat_count: int,
+    watcher: bool,
+) -> dict[str, Any]:
+    """Launch resident and one selected load group in one ProgramDescriptor."""
+    if condition not in {"newton_schulz", "dram", "host_cpu_transfer"}:
+        raise LoadConfigurationError(f"unsupported loaded condition: {condition}")
+    resident_tensors = _allocate_resident_tensors(ttnn, device, config)
+    load_kernel: Any | None = None
+    load_tensors: list[Any] = []
+    host_work: dict[str, Any] | None = None
+    host_thread: threading.Thread | None = None
+    host_started = threading.Event()
+    resident_launched = threading.Event()
+    host_result: dict[str, Any] = {}
+    host_error: list[BaseException] = []
+    host_start_holder: dict[str, int] = {}
+    try:
+        resident_parts = _program(
+            ttnn, config, resident_tensors, watcher=watcher, return_parts=True
+        )
+        if condition == "newton_schulz":
+            load_kernel = prepare_newton_schulz_load(
+                ttnn, device, repeat_count=repeat_count, profile=True
+            )
+            load_parts = load_kernel.program_parts()
+            load_tensors = [*load_kernel.inputs, *load_kernel.outputs]
+        elif condition == "dram":
+            load_kernel = prepare_dram_load(ttnn, device, repeat_count=repeat_count)
+            load_parts = load_kernel.program_parts()
+            load_tensors = [
+                load_kernel.read_buffer,
+                load_kernel.write_buffer,
+                load_kernel.stats_buffer,
+            ]
+        else:
+            load_parts = ([], [], [])
+        program = merge_program_parts(ttnn, resident_parts, load_parts)
+        if condition == "host_cpu_transfer":
+            def run_host() -> None:
+                try:
+                    host_result.update(
+                        _run_host_transfers(
+                            ttnn,
+                            device,
+                            started_event=host_started,
+                            resident_launched=resident_launched,
+                            start_holder=host_start_holder,
+                            repetitions=repeat_count,
+                        )
+                    )
+                except BaseException as exc:  # noqa: BLE001 - transfer failure crosses thread boundary
+                    host_error.append(exc)
+
+            host_thread = threading.Thread(target=run_host, name="issue118-cq1-host-load")
+            host_thread.start()
+            if not host_started.wait(timeout=60.0):
+                raise RuntimeError("host load did not start")
+        measurement_start_ns = host_start_holder.get("start_ns", time.monotonic_ns())
+        try:
+            ttnn.generic_op([*resident_tensors.values(), *load_tensors], program)
+        finally:
+            resident_launched.set()
+        ttnn.synchronize_device(device)
+        if host_thread is not None:
+            host_thread.join(timeout=60.0)
+            if host_thread.is_alive():
+                raise RuntimeError("host load transfer thread did not finish")
+            if host_error:
+                raise RuntimeError("host load transfer failed") from host_error[0]
+            host_work = host_result
+        measurement_end_ns = time.monotonic_ns()
+        result = _decode_resident_result(ttnn, config, resident_tensors)
+        result["measurement_start_ns"] = measurement_start_ns
+        result["measurement_end_ns"] = measurement_end_ns
+        result["host_work"] = host_work
+        if condition == "newton_schulz":
+            result["card_load_interval"] = card_interval_from_profile_records(
+                load_kernel.profile_records()
+            )
+        elif condition == "dram":
+            words = load_kernel.interval_words()
+            rows = [
+                words[index * PAGE_WORDS : (index + 1) * PAGE_WORDS]
+                for index in range(len(load_kernel.worker_coordinates))
+            ]
+            if any(
+                len(row) < 8
+                or row[4] != 256 * repeat_count
+                or row[5] != 256 * repeat_count
+                or row[6] != repeat_count
+                for row in rows
+            ):
+                raise RuntimeError("DRAM load stats did not cover fixed repetitions")
+            intervals = [card_interval_from_words(row[:4]) for row in rows]
+            result["card_load_interval"] = CardLoadInterval(
+                min(interval.start_ticks for interval in intervals),
+                max(interval.end_ticks for interval in intervals),
+            )
+            result["dram_stats"] = rows
+        else:
+            result["host_load_interval"] = HostLoadInterval(
+                host_work["start_ns"], host_work["end_ns"]
+            )
+        return result
+    finally:
+        if load_kernel is not None:
+            if condition == "newton_schulz":
+                load_kernel.close()
+            else:
+                load_kernel.close()
+        _deallocate_resident_tensors(ttnn, resident_tensors)
 def _runner_output_dir() -> Path:
     """Return the wrapper output directory; tests may redirect this seam."""
     return Path("/out")
@@ -601,8 +796,70 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--outer-timeout-seconds", type=int, default=60)
     parser.add_argument("--histogram-bin-ticks", type=int, default=1)
     parser.add_argument("--device-id", type=int, default=0)
+    parser.add_argument("--condition", choices=LOAD_CONDITIONS, default="unloaded")
+    parser.add_argument("--calibration-json", type=Path, default=None)
+    parser.add_argument("--repeat-count", type=int, default=None)
+    parser.add_argument("--calibrate", action="store_true")
+    parser.add_argument("--calibration-duration-seconds", type=float, default=60.0)
+    parser.add_argument("--target-seconds", type=float, default=600.0)
     parser.add_argument("--watcher", action="store_true")
     return parser
+
+
+def _load_achieved_throughput(
+    result: dict[str, Any], *, condition: str, repeat_count: int, aiclk_mhz: int
+) -> tuple[float, str]:
+    """Convert actual load interval work into calibration throughput."""
+    if condition == "host_cpu_transfer":
+        interval = result.get("host_load_interval")
+        elapsed_seconds = (interval.end_ns - interval.start_ns) / 1_000_000_000.0
+        transfer_count = result.get("host_work", {}).get("transfer_count", HOST_TRANSFER_COUNT)
+        return transfer_count / max(elapsed_seconds, 1e-12), "transfers_per_host_second"
+    interval = result.get("card_load_interval")
+    elapsed_seconds = (interval.end_ticks - interval.start_ticks) / (aiclk_mhz * 1_000_000.0)
+    if condition == "dram":
+        return (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12), "bytes_per_card_second"
+    return (NS_LOAD_OUTER_REPETITIONS * repeat_count) / max(elapsed_seconds, 1e-12), "outer_repetitions_per_card_second"
+
+
+def _read_load_calibration(path: Path) -> CalibrationMetadata:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LoadConfigurationError(f"cannot read load calibration metadata: {path.name}") from exc
+    calibration = payload.get("calibration") if isinstance(payload, dict) else None
+    if not isinstance(calibration, dict):
+        raise LoadConfigurationError("load calibration metadata has no calibration object")
+    try:
+        return CalibrationMetadata(**calibration)
+    except (TypeError, ValueError) as exc:
+        raise LoadConfigurationError("load calibration metadata is invalid") from exc
+
+
+def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, CalibrationMetadata | None]:
+    condition = args.condition
+    if condition == "unloaded":
+        if args.calibrate or args.calibration_json is not None or args.repeat_count is not None:
+            raise LoadConfigurationError("unloaded control does not accept load calibration options")
+        return condition, 0, None
+    if args.calibrate:
+        if args.calibration_json is not None:
+            raise LoadConfigurationError("calibration run cannot consume calibration-json")
+        repeat_count = 1 if args.repeat_count is None else args.repeat_count
+        if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+            raise LoadConfigurationError("calibration repeat-count must be a positive integer")
+        if args.calibration_duration_seconds <= 0 or args.calibration_duration_seconds > 60:
+            raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
+        return condition, repeat_count, None
+    if args.calibration_json is None:
+        raise LoadConfigurationError("loaded runs require calibration-json")
+    calibration = _read_load_calibration(args.calibration_json)
+    if calibration.condition != condition:
+        raise LoadConfigurationError("calibration condition does not match --condition")
+    repeat_count = calibration.repeat_count
+    if args.repeat_count is not None and args.repeat_count != repeat_count:
+        raise LoadConfigurationError("repeat-count does not match calibration metadata")
+    return condition, repeat_count, calibration
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -613,7 +870,11 @@ def main(argv: list[str] | None = None) -> int:
     # sampler-off mode has no trace; it does not infer one from output files.
     power_trace = args.power_trace
     config = _config_from_args(args)
+    condition = "unloaded"
+    repeat_count = 0
+    calibration: CalibrationMetadata | None = None
     try:
+        condition, repeat_count, calibration = _load_execution_selection(args)
         environment = validate_record_inputs(
             harness_commit=environment.get("harness_commit"),
             environment=environment,
@@ -621,6 +882,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         sampler = environment["telemetry_sampler"]
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
+        if args.calibrate and watcher:
+            raise LoadConfigurationError("load calibration must run with Watcher disabled")
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (TypeError, ValueError) as exc:
@@ -639,8 +902,19 @@ def main(argv: list[str] | None = None) -> int:
     device = ttnn.open_device(device_id=args.device_id, num_command_queues=2)
     try:
         try:
-            result = _run_device(ttnn, device, config, watcher=watcher)
-        except (IndexError, OverflowError, TypeError, ValueError) as exc:
+            result = (
+                _run_device(ttnn, device, config, watcher=watcher)
+                if condition == "unloaded"
+                else _run_loaded_device(
+                    ttnn,
+                    device,
+                    config,
+                    condition=condition,
+                    repeat_count=repeat_count,
+                    watcher=watcher,
+                )
+            )
+        except (IndexError, OverflowError, RuntimeError, TypeError, ValueError) as exc:
             _write(
                 args.out,
                 build_rejection_record(
@@ -767,11 +1041,64 @@ def main(argv: list[str] | None = None) -> int:
         aiclk_source=aiclk_source,
         sampler_metadata=sampler,
     )
-    unloaded_load_record = build_load_record(
-        condition="unloaded",
-        repeat_count=0,
-        resident_timestamps=result["timestamps"],
-    )
+    calibration_output: CalibrationMetadata | None = None
+    calibration_achieved: float | None = None
+    calibration_unit: str | None = None
+    if args.calibrate:
+        calibration_achieved, calibration_unit = _load_achieved_throughput(
+            result,
+            condition=condition,
+            repeat_count=repeat_count,
+            aiclk_mhz=aiclk_mhz,
+        )
+    try:
+        if condition == "unloaded":
+            load_record = build_load_record(
+                condition="unloaded",
+                repeat_count=0,
+                resident_timestamps=result["timestamps"],
+            )
+        elif condition == "host_cpu_transfer":
+            load_record = build_load_record(
+                condition=condition,
+                repeat_count=repeat_count,
+                resident_timestamps=None,
+                host_interval=result["host_load_interval"],
+                measurement_start_ns=result["measurement_start_ns"],
+                measurement_end_ns=result["measurement_end_ns"],
+                calibration=calibration,
+                achieved_throughput=calibration_achieved,
+                throughput_unit=calibration_unit,
+            )
+        else:
+            load_record = build_load_record(
+                condition=condition,
+                repeat_count=repeat_count,
+                resident_timestamps=result["timestamps"],
+                card_interval=result["card_load_interval"],
+                calibration=calibration,
+                achieved_throughput=calibration_achieved,
+                throughput_unit=calibration_unit,
+            )
+        if args.calibrate:
+            calibration_output = calibration_metadata(
+                condition=condition,
+                duration_seconds=args.calibration_duration_seconds,
+                achieved_throughput=calibration_achieved,
+                throughput_unit=calibration_unit,
+                target_seconds=args.target_seconds,
+            )
+    except (LoadConfigurationError, ValueError, TypeError) as exc:
+        _write(
+            args.out,
+            build_rejection_record(
+                config=config,
+                reason=f"load interval evidence rejected: {exc}",
+                environment=environment,
+            ),
+        )
+        print(f"load interval evidence rejected: {exc}", file=sys.stderr)
+        return 2
     record = build_measurement_record(
         config=config,
         aiclk_mhz=aiclk_mhz,
@@ -807,10 +1134,16 @@ def main(argv: list[str] | None = None) -> int:
             and not validate_failure_check(result["failure_check"]).error_flag
         ),
         timing_evidence_reason=trace_timing_reason,
-        load_record=unloaded_load_record,
+        load_record=load_record,
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
+    if calibration_output is not None:
+        record["calibration_schema"] = "issue-118-load-calibration-v1"
+        record["calibration_measurement_mode"] = "device_merged_resident_load"
+        record["calibration"] = calibration_output.as_record()
+        record["selected_repeat_count"] = calibration_output.repeat_count
+        record["calibration_measurement_repeat_count"] = repeat_count
     validate_resident_record(
         record,
         timestamps=result["timestamps"],

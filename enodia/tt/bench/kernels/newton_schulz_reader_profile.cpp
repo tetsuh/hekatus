@@ -525,6 +525,7 @@ void kernel_main() {
     std::uint32_t zero_address;
     std::uint32_t start_tile;
     std::uint32_t tile_count;
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(9);
     if constexpr (fuse_s) {
         // Fused S has no positive R-real runtime argument.
         r_negative_imag_address = get_arg_val<std::uint32_t>(0);
@@ -580,6 +581,7 @@ void kernel_main() {
     if (!measure_core) {
         read_tile(cb_identity, 0, identity);
         read_tile(cb_zero, 0, zero);
+        for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
         if constexpr (fuse_s) {
             const auto r_negative_real =
                 TensorAccessor(r_negative_real_args, r_negative_real_address);
@@ -696,6 +698,7 @@ void kernel_main() {
                 }
             }
         }
+        }
         return;
     }
 
@@ -704,6 +707,7 @@ void kernel_main() {
     counters.warmup_start = counters.total_start;
     read_tile_profiled(cb_identity, 0, identity, counters, true);
     read_tile_profiled(cb_zero, 0, zero, counters, true);
+    for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
     if constexpr (fuse_s) {
         const auto r_negative_real =
             TensorAccessor(r_negative_real_args, r_negative_real_address);
@@ -855,6 +859,7 @@ void kernel_main() {
                 }
             }
         }
+    }
     }
     counters.total_end = get_timestamp_32b();
     write_profile(counters);

@@ -581,10 +581,16 @@ def _validate_core_group_capacities(
                     )
 
 
-def _runtime_args(ttnn, coordinates, values: list[int], ranges):
+def _runtime_args(
+    ttnn,
+    coordinates,
+    values: list[int],
+    ranges,
+    trailing_values: list[int] | tuple[int, ...] = (),
+):
     args = ttnn.RuntimeArgs()
     for (x, y), (start, count) in zip(coordinates, ranges, strict=True):
-        args[x][y] = [*values, start, count]
+        args[x][y] = [*values, start, count, *trailing_values]
     return args
 
 
@@ -1209,6 +1215,7 @@ class NewtonSchulzKernel:
     reload_r: bool
     matrix_block: int
     double_buffer: bool
+    outer_repetitions: int
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -1242,12 +1249,17 @@ class NewtonSchulzKernel:
         fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
         dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
+        outer_repetitions: int = 1,
         core_coordinates: list[tuple[int, int]] | tuple[tuple[int, int], ...] | None = None,
     ) -> NewtonSchulzKernel:
         input_memory, r_memory, x0_memory = _resolve_input_memories(
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
         iterations = _validate_iterations(iterations, fixed=True)
+        if isinstance(outer_repetitions, bool) or not isinstance(outer_repetitions, int):
+            raise TypeError("outer_repetitions must be a positive integer")
+        if outer_repetitions < 1:
+            raise ValueError("outer_repetitions must be a positive integer")
         _validate_variant_configuration(variant, fuse_s=fuse_s)
         if output_memory is None:
             output_memory = _output_memory_name()
@@ -1409,11 +1421,13 @@ class NewtonSchulzKernel:
         for tensor in outputs:
             writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
 
+        reader_values = [tensor.buffer_address() for tensor in inputs]
         reader_args = _runtime_args(
             ttnn,
             coordinates,
-            [tensor.buffer_address() for tensor in inputs],
+            reader_values,
             work_ranges,
+            [outer_repetitions],
         )
         if profile:
             writer_args = ttnn.RuntimeArgs()
@@ -1434,7 +1448,13 @@ class NewtonSchulzKernel:
                 [tensor.buffer_address() for tensor in outputs],
                 work_ranges,
             )
-        compute_args = _runtime_args(ttnn, coordinates, [], work_ranges)
+        compute_args = _runtime_args(
+            ttnn,
+            coordinates,
+            [],
+            work_ranges,
+            [outer_repetitions],
+        )
         reader_source = (
             _KERNEL_DIR / "newton_schulz_reader_profile.cpp"
             if profile
@@ -1503,6 +1523,7 @@ class NewtonSchulzKernel:
             reload_r=reload_r,
             matrix_block=matrix_block,
             double_buffer=double_buffer,
+            outer_repetitions=outer_repetitions,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -1608,7 +1629,10 @@ class NewtonSchulzKernel:
         return records
 
     def close(self) -> None:
-        _deallocate_tensors(self.ttnn, [*self.inputs, *self.outputs])
+        tensors = [*self.inputs, *self.outputs]
+        if self.profile_output is not None and self.profile_output not in tensors:
+            tensors.append(self.profile_output)
+        _deallocate_tensors(self.ttnn, tensors)
 
 
 def run_newton_schulz_kernel(

@@ -697,6 +697,7 @@ def build_load_record(
             "batch": NS_LOAD_BATCH,
             "iterations": NS_LOAD_ITERATIONS,
             "outer_repetitions": NS_LOAD_OUTER_REPETITIONS,
+            "effective_outer_repetitions": NS_LOAD_OUTER_REPETITIONS * repeat_count,
             "variant": NS_LOAD_VARIANT,
             "math_fidelity": NS_LOAD_MATH_FIDELITY,
             "fuse_s": NS_LOAD_FUSE_S,
@@ -713,7 +714,11 @@ def build_load_record(
     elif canonical == "dram":
         record["dram_stream"] = dram_stream_work()
     elif canonical == "host_cpu_transfer":
-        record["host_work"] = host_transfer_work()
+        record["host_work"] = {
+            **host_transfer_work(),
+            "outer_repetitions": repeat_count,
+            "effective_transfer_count": HOST_TRANSFER_COUNT * repeat_count,
+        }
     if calibration is not None:
         record["calibration"] = calibration.as_record()
     if achieved_throughput is not None:

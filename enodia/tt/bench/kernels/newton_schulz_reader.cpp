@@ -34,6 +34,7 @@ void kernel_main() {
     const std::uint32_t zero_address = get_arg_val<std::uint32_t>(6);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(7);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(8);
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(9);
 
     constexpr std::uint32_t iterations = get_compile_time_arg_val(0);
     constexpr auto r_real_args = TensorAccessorArgs<1>();
@@ -68,6 +69,7 @@ void kernel_main() {
 
     {
         DeviceZoneScopedN("NS-READER-READ-AND-WAIT");
+        for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
         for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
             const std::uint32_t tile = start_tile + offset;
             read_tile(cb_r_real, tile, r_real);
@@ -79,6 +81,7 @@ void kernel_main() {
             // The compute kernel holds the three R pages until all fixed
             // iterations for this matrix are complete.  The reader only
             // streams external inputs; it never routes products or state.
+        }
         }
     }
     (void)iterations;

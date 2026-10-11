@@ -44,11 +44,14 @@ uv run python -m enodia.tt.bench.run_load \
 ```
 
 The throughput argument is the Watcher-off measurement reported by the
-calibration runner. The emitted metadata retains that value, the condition,
-the two-CQ device setting, and the chosen repeat count. A later device record
-is not evidence until it adds a wrap-tracked card-clock load interval for
-`newton_schulz`/`dram`, or a host monotonic interval for
-`host_cpu_transfer`, and the corresponding coverage verdict is `covered`.
+board-free configuration path; it does not claim board evidence. The parent
+runs the bounded board calibration once per device load with no Watcher and a
+60-second cap using the resident runner. The emitted calibration record
+retains the measured throughput and the calibration-selected repeat count for
+the later run. A later device record is
+not evidence until it adds a wrap-tracked card-clock load interval for
+`newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
+and the corresponding coverage verdict is `covered`.
 
 ## Issue #104 paired-outlier records
 
