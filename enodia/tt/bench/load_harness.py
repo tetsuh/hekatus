@@ -728,6 +728,71 @@ def build_load_record(
     return record
 
 
+def build_calibration_load_record(
+    *,
+    condition: str,
+    repeat_count: int,
+    resident_timestamps: list[int] | tuple[int, ...] | None,
+    calibration: CalibrationMetadata,
+    card_interval: CardLoadInterval | None = None,
+    host_interval: HostLoadInterval | None = None,
+    measurement_start_ns: int | None = None,
+    measurement_end_ns: int | None = None,
+    achieved_throughput: float | None = None,
+    throughput_unit: str | None = None,
+) -> dict[str, Any]:
+    """Build a calibration result without promoting coverage to timing evidence."""
+    canonical = normalize_condition(condition)
+    if canonical == "unloaded":
+        raise LoadConfigurationError("unloaded control does not need calibration")
+    if calibration.condition != canonical:
+        raise LoadConfigurationError("calibration condition does not match the load condition")
+    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+        raise LoadConfigurationError("calibration measurement repeat_count must be positive")
+    coverage = (
+        _card_coverage(card_interval, resident_timestamps)
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
+    )
+    record: dict[str, Any] = {
+        "schema": "issue-118-load-calibration-v1",
+        "issue": 118,
+        "status": "calibration",
+        "valid_evidence": False,
+        "condition": canonical,
+        "device_open": validate_device_open_settings(DEVICE_OPEN_SETTINGS),
+        "num_command_queues": NUM_COMMAND_QUEUES,
+        "repeat_count": repeat_count,
+        "selected_repeat_count": calibration.repeat_count,
+        "calibration": calibration.as_record(),
+        "coverage": coverage,
+        "card_load_interval": card_interval.as_record() if card_interval is not None else None,
+        "host_load_interval": host_interval.as_record() if host_interval is not None else None,
+        "resident_frame_interval": (
+            {
+                "first_ticks": resident_timestamps[0],
+                "last_ticks": resident_timestamps[-1],
+                "clock": "card_riscv_wall_clock",
+            }
+            if resident_timestamps
+            else None
+        ),
+        "load": {
+            "condition": canonical,
+            "repeat_count": repeat_count,
+            "fixed_work": True,
+            "data_dependent_exit": False,
+        },
+    }
+    if achieved_throughput is not None:
+        _finite_positive(achieved_throughput, "achieved_throughput")
+        if not isinstance(throughput_unit, str) or not throughput_unit.strip():
+            raise LoadConfigurationError("throughput_unit is required with achieved_throughput")
+        record["achieved_throughput"] = achieved_throughput
+        record["throughput_unit"] = throughput_unit
+    return record
+
+
 def validate_load_record(record: Mapping[str, Any]) -> None:
     """Reject malformed, uncovered, or one-CQ records as condition evidence."""
     if not isinstance(record, Mapping):
@@ -863,6 +928,7 @@ __all__ = [
     "LoadConfigurationError",
     "LoadEvidenceError",
     "balanced_work_ranges",
+    "build_calibration_load_record",
     "build_load_record",
     "calibration_metadata",
     "choose_repeat_count",

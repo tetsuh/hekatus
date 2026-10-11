@@ -23,6 +23,7 @@ from enodia.tt.bench.load_harness import (
     CardLoadInterval,
     HostLoadInterval,
     LoadEvidenceError,
+    build_calibration_load_record,
     build_load_record,
     choose_repeat_count,
     extend_card_clock_timestamps,
@@ -33,8 +34,10 @@ from enodia.tt.bench.load_harness import (
     validate_mode_records,
     validate_worker_model,
 )
+from enodia.tt.bench.resident_harness import ResidentConfig, run_budget_breakdown
 from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
+from enodia.tt.bench.run_resident import _bound_calibration_config
 from enodia.tt.bench.run_resident import _parser as resident_parser
 
 ROOT = Path(__file__).parents[1]
@@ -92,6 +95,12 @@ def test_fixed_load_sources_have_no_convergence_or_data_dependent_exit():
     assert "for (std::uint32_t iteration = 0; iteration < iterations; ++iteration)" in ns_source
     assert "const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(2)" in ns_source
     assert "for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer)" in ns_source
+    writer_source = (KERNEL_DIR / "newton_schulz_writer.cpp").read_text()
+    profile_writer_source = (KERNEL_DIR / "newton_schulz_writer_profile.cpp").read_text()
+    assert "get_arg_val<std::uint32_t>(4)" in writer_source
+    assert "get_arg_val<std::uint32_t>(6)" in profile_writer_source
+    assert writer_source.count("outer_repetitions") >= 2
+    assert profile_writer_source.count("outer_repetitions") >= 2
     assert "if (conver" not in ns_source.lower()
     assert "static_assert(dram_banks == 8" in dram_source
     assert "const std::uint32_t bank_index" in dram_source
@@ -106,6 +115,26 @@ def test_resident_cb_indices_are_disjoint_from_newton_schulz_abi():
     assert "RESIDENT_PRODUCER_CB_INDEX = 20" in source
     assert "RESIDENT_CONSUMER_CB_INDEX = 21" in source
     assert "return_parts" in source
+
+
+def test_calibration_duration_bounds_actual_resident_frame_count():
+    config = ResidentConfig(
+        frame_count=100,
+        frame_interval_ticks=1_350_000,
+        producer_core=(0, 0),
+        consumer_core=(1, 0),
+        ring_pages=4,
+        work_per_frame=64,
+        designated_timestamp_core=(1, 0),
+        cycle_budget=10_000_000,
+        outer_timeout_seconds=60,
+        fixed_work_ticks_per_frame=100_000,
+        budget_aiclk_mhz=1_350,
+    )
+    bounded = _bound_calibration_config(config, 60.0)
+    assert bounded.frame_count > config.frame_count
+    assert bounded.outer_timeout_seconds == 60
+    assert run_budget_breakdown(bounded)["run_budget_ticks"] <= 54 * 1_350 * 1_000_000
 
 
 def test_runner_parsers_expose_loaded_conditions_and_calibration_controls():
@@ -163,6 +192,7 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "prepare_dram_load" in resident_source
     assert "merge_program_parts" in resident_source
     assert "queue_id=queue_id" in resident_source
+    assert 'record["timing_evidence"] = False' in resident_source
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
@@ -232,6 +262,30 @@ def test_card_profile_interval_requires_wrap_tracked_endpoints():
     assert interval.start_ticks == 0x1_0000_0000
     with pytest.raises(ValueError, match="no wrap-tracked"):
         load_generators.card_interval_from_profile_records([{"risc": "TRISC0"}])
+
+
+def test_uncovered_calibration_is_not_main_timing_evidence():
+    calibration = CalibrationMetadata(
+        condition="dram",
+        duration_seconds=60,
+        achieved_throughput=10,
+        throughput_unit="bytes_per_card_second",
+        repeat_count=6600,
+        target_seconds=600,
+    )
+    record = build_calibration_load_record(
+        condition="dram",
+        repeat_count=1,
+        resident_timestamps=[100, 200, 300],
+        card_interval=CardLoadInterval(150, 250),
+        calibration=calibration,
+        achieved_throughput=10,
+        throughput_unit="bytes_per_card_second",
+    )
+    assert record["status"] == "calibration"
+    assert record["valid_evidence"] is False
+    assert record["coverage"]["verdict"] == "uncovered"
+    assert record["calibration"]["repeat_count"] == 6600
 
 
 def test_card_interval_wrap_extension_and_coverage_are_card_only():

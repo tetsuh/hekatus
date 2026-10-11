@@ -17,6 +17,7 @@ import struct
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ from enodia.tt.bench.load_harness import (
     CardLoadInterval,
     HostLoadInterval,
     LoadConfigurationError,
+    build_calibration_load_record,
     build_load_record,
     calibration_metadata,
 )
@@ -806,6 +808,32 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _bound_calibration_config(config: ResidentConfig, duration_seconds: float) -> ResidentConfig:
+    """Bound calibration frames to a conservative sub-60-second run budget."""
+    if duration_seconds <= 0.0 or duration_seconds > 60.0:
+        raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
+    # Reserve 10% for scheduling variance and keep the effective schedule at
+    # or below 54 seconds even when the caller requests the full 60-second cap.
+    target_seconds = min(duration_seconds * 0.90, 54.0)
+    target_ticks = int(target_seconds * config.budget_aiclk_mhz * 1_000_000)
+    startup_ticks = 100_000 * config.budget_aiclk_mhz
+    usable_ticks = (target_ticks * 100) // 110
+    candidate = max(
+        1,
+        (usable_ticks - startup_ticks) // config.frame_interval_ticks,
+    )
+    bounded = replace(config, frame_count=candidate, outer_timeout_seconds=60)
+    while candidate > 1:
+        budget = run_budget_breakdown(bounded, watcher=False)["run_budget_ticks"]
+        if budget <= target_ticks:
+            break
+        candidate -= 1
+        bounded = replace(bounded, frame_count=candidate)
+    if run_budget_breakdown(bounded, watcher=False)["run_budget_ticks"] > target_ticks:
+        raise LoadConfigurationError("calibration duration is shorter than one safe resident frame")
+    return bounded
+
+
 def _load_achieved_throughput(
     result: dict[str, Any], *, condition: str, repeat_count: int, aiclk_mhz: int
 ) -> tuple[float, str]:
@@ -831,7 +859,18 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
     if not isinstance(calibration, dict):
         raise LoadConfigurationError("load calibration metadata has no calibration object")
     try:
-        return CalibrationMetadata(**calibration)
+        fields = {
+            "condition",
+            "duration_seconds",
+            "achieved_throughput",
+            "throughput_unit",
+            "repeat_count",
+            "watcher_enabled",
+            "source",
+            "target_seconds",
+            "safety_factor",
+        }
+        return CalibrationMetadata(**{key: calibration[key] for key in fields if key in calibration})
     except (TypeError, ValueError) as exc:
         raise LoadConfigurationError("load calibration metadata is invalid") from exc
 
@@ -884,6 +923,8 @@ def main(argv: list[str] | None = None) -> int:
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
+        if args.calibrate:
+            config = _bound_calibration_config(config, args.calibration_duration_seconds)
         config = validate_configuration(config, watcher=watcher)
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (TypeError, ValueError) as exc:
@@ -1044,22 +1085,52 @@ def main(argv: list[str] | None = None) -> int:
     calibration_output: CalibrationMetadata | None = None
     calibration_achieved: float | None = None
     calibration_unit: str | None = None
-    if args.calibrate:
-        calibration_achieved, calibration_unit = _load_achieved_throughput(
-            result,
-            condition=condition,
-            repeat_count=repeat_count,
-            aiclk_mhz=aiclk_mhz,
-        )
+    resident_load_record: dict[str, Any] | None = None
     try:
-        if condition == "unloaded":
-            load_record = build_load_record(
+        if args.calibrate:
+            calibration_achieved, calibration_unit = _load_achieved_throughput(
+                result,
+                condition=condition,
+                repeat_count=repeat_count,
+                aiclk_mhz=aiclk_mhz,
+            )
+            calibration_output = calibration_metadata(
+                condition=condition,
+                duration_seconds=args.calibration_duration_seconds,
+                achieved_throughput=calibration_achieved,
+                throughput_unit=calibration_unit,
+                target_seconds=args.target_seconds,
+            )
+            if condition == "host_cpu_transfer":
+                load_record = build_calibration_load_record(
+                    condition=condition,
+                    repeat_count=repeat_count,
+                    resident_timestamps=None,
+                    host_interval=result["host_load_interval"],
+                    measurement_start_ns=result["measurement_start_ns"],
+                    measurement_end_ns=result["measurement_end_ns"],
+                    calibration=calibration_output,
+                    achieved_throughput=calibration_achieved,
+                    throughput_unit=calibration_unit,
+                )
+            else:
+                load_record = build_calibration_load_record(
+                    condition=condition,
+                    repeat_count=repeat_count,
+                    resident_timestamps=result["timestamps"],
+                    card_interval=result["card_load_interval"],
+                    calibration=calibration_output,
+                    achieved_throughput=calibration_achieved,
+                    throughput_unit=calibration_unit,
+                )
+        elif condition == "unloaded":
+            resident_load_record = build_load_record(
                 condition="unloaded",
                 repeat_count=0,
                 resident_timestamps=result["timestamps"],
             )
         elif condition == "host_cpu_transfer":
-            load_record = build_load_record(
+            resident_load_record = build_load_record(
                 condition=condition,
                 repeat_count=repeat_count,
                 resident_timestamps=None,
@@ -1067,26 +1138,14 @@ def main(argv: list[str] | None = None) -> int:
                 measurement_start_ns=result["measurement_start_ns"],
                 measurement_end_ns=result["measurement_end_ns"],
                 calibration=calibration,
-                achieved_throughput=calibration_achieved,
-                throughput_unit=calibration_unit,
             )
         else:
-            load_record = build_load_record(
+            resident_load_record = build_load_record(
                 condition=condition,
                 repeat_count=repeat_count,
                 resident_timestamps=result["timestamps"],
                 card_interval=result["card_load_interval"],
                 calibration=calibration,
-                achieved_throughput=calibration_achieved,
-                throughput_unit=calibration_unit,
-            )
-        if args.calibrate:
-            calibration_output = calibration_metadata(
-                condition=condition,
-                duration_seconds=args.calibration_duration_seconds,
-                achieved_throughput=calibration_achieved,
-                throughput_unit=calibration_unit,
-                target_seconds=args.target_seconds,
             )
     except (LoadConfigurationError, ValueError, TypeError) as exc:
         _write(
@@ -1134,25 +1193,49 @@ def main(argv: list[str] | None = None) -> int:
             and not validate_failure_check(result["failure_check"]).error_flag
         ),
         timing_evidence_reason=trace_timing_reason,
-        load_record=load_record,
+        load_record=resident_load_record,
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
     if calibration_output is not None:
+        calibration_record = calibration_output.as_record()
+        record["status"] = "calibration"
+        record["timing_evidence"] = False
+        record["timing_evidence_reason"] = "calibration_only"
+        if isinstance(record.get("power_clock_provenance"), dict):
+            record["power_clock_provenance"]["timing_evidence"] = False
+            record["power_clock_provenance"]["timing_evidence_reason"] = "calibration_only"
+        record["load"] = load_record
+        record["load_coverage"] = load_record["coverage"]
+        record["card_load_interval"] = load_record["card_load_interval"]
+        record["host_load_interval"] = load_record["host_load_interval"]
+        record["valid_evidence"] = False
+        calibration_record.update(
+            {
+                "requested_duration_seconds": args.calibration_duration_seconds,
+                "actual_frame_count": config.frame_count,
+                "actual_duration_seconds": (
+                    config.frame_count * config.frame_interval_ticks
+                    / (aiclk_mhz * 1_000_000.0)
+                ),
+                "measurement_repeat_count": repeat_count,
+            }
+        )
         record["calibration_schema"] = "issue-118-load-calibration-v1"
         record["calibration_measurement_mode"] = "device_merged_resident_load"
-        record["calibration"] = calibration_output.as_record()
+        record["calibration"] = calibration_record
         record["selected_repeat_count"] = calibration_output.repeat_count
         record["calibration_measurement_repeat_count"] = repeat_count
-    validate_resident_record(
-        record,
-        timestamps=result["timestamps"],
-        power_trace_path=power_trace_path,
-        power_trace_metadata=trace_metadata,
-        builder=True,
-        strict_trace=power_trace is not None,
-        raise_on_error=False,
-    )
+    if calibration_output is None:
+        validate_resident_record(
+            record,
+            timestamps=result["timestamps"],
+            power_trace_path=power_trace_path,
+            power_trace_metadata=trace_metadata,
+            builder=True,
+            strict_trace=power_trace is not None,
+            raise_on_error=False,
+        )
     _write(args.out, record)
     print(f"resident record -> {args.out.name}")
     return 0

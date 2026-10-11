@@ -1440,6 +1440,7 @@ class NewtonSchulzKernel:
                     PROFILE_MEASUREMENT_CORE,
                     start,
                     count,
+                    outer_repetitions,
                 ]
         else:
             writer_args = _runtime_args(
@@ -1447,6 +1448,7 @@ class NewtonSchulzKernel:
                 coordinates,
                 [tensor.buffer_address() for tensor in outputs],
                 work_ranges,
+                [outer_repetitions],
             )
         compute_args = _runtime_args(
             ttnn,

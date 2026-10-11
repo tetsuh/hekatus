@@ -78,6 +78,7 @@ void kernel_main() {
     const std::uint32_t profile_index = get_arg_val<std::uint32_t>(3);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(4);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(5);
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(6);
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(0);
 
     // The unblocked writer historically used TensorAccessorArgs<0>(); the
@@ -95,6 +96,7 @@ void kernel_main() {
         counters.total_start = get_timestamp_32b();
         counters.warmup_start = counters.total_start;
     }
+    for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
     for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
         const std::uint32_t block_count =
             (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
@@ -137,6 +139,7 @@ void kernel_main() {
         if (measure_core && warmup) {
             counters.warmup_end = get_timestamp_32b();
         }
+    }
     }
     if (!measure_core) {
         return;
