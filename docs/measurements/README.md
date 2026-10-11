@@ -54,6 +54,9 @@ the later run. Any later loaded resident invocation must explicitly pass
 not evidence until it adds a wrap-tracked card-clock load interval for
 `newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
 and the corresponding coverage verdict is `covered`.
+Condition (c)'s fixed host repeat is 16 rounds of 4,096-word arithmetic plus
+one fixed 64 KiB host/device transfer pair on CQ1; this is the approximately
+one-second calibration granularity and is not a data-dependent workload.
 
 ## Issue #104 paired-outlier records
 

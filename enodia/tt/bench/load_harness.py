@@ -71,11 +71,13 @@ DRAM_TOTAL_PAGES = DRAM_BANK_COUNT * DRAM_PAGES_PER_BANK
 DRAM_STREAM_BYTES_PER_DIRECTION = DRAM_TOTAL_PAGES * DRAM_PAGE_BYTES
 DRAM_STREAM_TOTAL_BYTES = 2 * DRAM_STREAM_BYTES_PER_DIRECTION
 
-# Condition (c) uses fixed host arithmetic and fixed-size CQ1 transfers.
-HOST_ARITHMETIC_ROUNDS = 256
+# Condition (c) uses one fixed 64 KiB CQ1 round and 16 fixed arithmetic
+# rounds of 4,096 words. This is the calibrated approximately-one-second
+# host repeat; it remains fixed-count, fixed-size, and data-independent.
+HOST_ARITHMETIC_ROUNDS = 16
 HOST_ARITHMETIC_WORDS = 4_096
-HOST_TRANSFER_BYTES = 1 << 20
-HOST_TRANSFER_COUNT = 8
+HOST_TRANSFER_BYTES = 64 * 1024
+HOST_TRANSFER_COUNT = 1
 MAX_CALIBRATION_SECONDS = 60.0
 MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 
