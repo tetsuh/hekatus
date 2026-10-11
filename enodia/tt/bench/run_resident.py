@@ -484,6 +484,37 @@ def _run_device(
         _deallocate_resident_tensors(ttnn, tensors)
 
 
+def _host_load_clock(
+    *,
+    resident_launched: threading.Event | None,
+    stop_event: threading.Event | None,
+    start_holder: dict[str, int],
+    monotonic_ns: Any = time.monotonic_ns,
+) -> Any:
+    """Return a two-edge clock: launch boundary first, fresh endpoint second."""
+    calls = 0
+
+    def read() -> int:
+        nonlocal calls
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("host load stopped before launch boundary")
+        if calls == 0 and resident_launched is not None:
+            while not resident_launched.wait(timeout=0.1):
+                if stop_event is not None and stop_event.is_set():
+                    raise RuntimeError("host load stopped before launch boundary")
+        if calls == 0:
+            if "launch_ns" not in start_holder:
+                raise RuntimeError("host launch boundary was not recorded")
+            value = start_holder["launch_ns"]
+            start_holder["start_ns"] = value
+        else:
+            value = monotonic_ns()
+        calls += 1
+        return value
+
+    return read
+
+
 def _run_host_transfers(
     ttnn: Any,
     device: Any,
@@ -509,18 +540,11 @@ def _run_host_transfers(
     if started_event is not None:
         started_event.set()
 
-    def clock_ns() -> int:
-        if stop_event is not None and stop_event.is_set():
-            raise RuntimeError("host load stopped before launch boundary")
-        if resident_launched is not None:
-            while not resident_launched.wait(timeout=0.1):
-                if stop_event is not None and stop_event.is_set():
-                    raise RuntimeError("host load stopped before launch boundary")
-        if start_holder is None or "launch_ns" not in start_holder:
-            raise RuntimeError("host launch boundary was not recorded")
-        value = start_holder["launch_ns"]
-        start_holder["start_ns"] = value
-        return value
+    clock_ns = _host_load_clock(
+        resident_launched=resident_launched,
+        stop_event=stop_event,
+        start_holder=start_holder if start_holder is not None else {},
+    )
 
     def transfer(_payload: bytes, queue_id: int) -> None:
         if queue_id != 1:

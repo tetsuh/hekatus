@@ -41,6 +41,7 @@ from enodia.tt.bench.run_load import build_calibration, build_run_configuration
 from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
     _host_join_timeout_seconds,
+    _host_load_clock,
     _load_achieved_throughput,
     _load_execution_selection,
     _read_load_calibration,
@@ -253,6 +254,24 @@ def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path
         _load_execution_selection(args)
     args.outer_timeout_seconds = 600
     assert _load_execution_selection(args)[1] == 1100
+
+
+def test_host_load_clock_uses_launch_once_and_fresh_endpoint():
+    import threading
+
+    launched = threading.Event()
+    launched.set()
+    start_holder = {"launch_ns": 100}
+    clock = _host_load_clock(
+        resident_launched=launched,
+        stop_event=threading.Event(),
+        start_holder=start_holder,
+        monotonic_ns=iter((250, 400)).__next__,
+    )
+    assert clock() == 100
+    assert start_holder["start_ns"] == 100
+    assert clock() == 250
+    assert start_holder["start_ns"] == 100
 
 
 def test_host_join_timeout_never_exceeds_resident_outer_cap():
