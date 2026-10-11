@@ -112,6 +112,7 @@ from enodia.tt.bench.sampler_contract import (
 from enodia.tt.bench.telemetry import POWER_TRACE_COLUMNS
 
 CLOCK_MODULUS_TICKS = 1 << 32
+UINT64_MAX = (1 << 64) - 1
 DEFAULT_AICLK_MHZ = 1_350
 DEFAULT_PHASE_WINDOW_MS = 0.1
 PAIR_TARGET_TICKS = 2 * DEFAULT_AICLK_MHZ * 1_000
@@ -400,6 +401,11 @@ def _is_int(value: Any, *, nonnegative: bool = False, positive: bool = False) ->
     if nonnegative and value < 0:
         return False
     return not (positive and value <= 0)
+
+
+def _is_uint64(value: Any) -> bool:
+    """Return whether a value is an unsigned 64-bit integer endpoint."""
+    return _is_int(value, nonnegative=True) and value <= UINT64_MAX
 
 
 def _is_number(value: Any) -> bool:
@@ -1331,10 +1337,17 @@ def _check_resident_tick_interval(
     start = interval.get("start_ticks")
     end = interval.get("end_ticks")
     mismatches: list[dict[str, Any]] = []
-    if not _is_int(start, nonnegative=True) or not _is_int(end, nonnegative=True):
-        mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick endpoints must be non-negative integers"))
+    if not _is_uint64(start) or not _is_uint64(end):
+        mismatches.append(
+            _mismatch(
+                "resident_tick_interval",
+                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                "resident tick endpoints must be unsigned 64-bit integers",
+            )
+        )
         return mismatches
-    if end < start or interval.get("elapsed_ticks") != end - start:
+    elapsed = interval.get("elapsed_ticks")
+    if not _is_uint64(elapsed) or elapsed != end - start:
         mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick elapsed_ticks is inconsistent"))
     if interval.get("clock") != "card_riscv_wall_clock" or interval.get("timestamp_semantics") != "wrap-tracked_extended":
         mismatches.append(_mismatch("resident_tick_interval", ("resident_tick_interval",), "resident tick interval clock metadata is invalid"))
@@ -1531,9 +1544,190 @@ def _check_elapsed_aiclk_binding(
     return mismatches
 
 
+def _check_load_resident_bindings(
+    record: Mapping[str, Any], load: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Bind Issue #118 resident endpoints to their containing run span."""
+    invariant = LOAD_EVIDENCE_INVARIANT
+    mismatches: list[dict[str, Any]] = []
+    condition = load.get("condition")
+    if condition not in {"unloaded", "newton_schulz", "dram", "host_cpu_transfer"}:
+        return mismatches
+    nested = load.get("resident_frame_interval")
+    requires_resident_binding = condition in {"newton_schulz", "dram"} or nested is not None
+
+    resident_interval = record.get("resident_tick_interval")
+    resident_start = resident_interval.get("start_ticks") if isinstance(resident_interval, Mapping) else _MISSING
+    resident_end = resident_interval.get("end_ticks") if isinstance(resident_interval, Mapping) else _MISSING
+    resident_endpoints_valid = _is_uint64(resident_start) and _is_uint64(resident_end)
+    if not isinstance(resident_interval, Mapping) and requires_resident_binding:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("resident_tick_interval", "load.resident_frame_interval"),
+                "Issue #118 load evidence requires a containing resident tick interval",
+            )
+        )
+    elif resident_endpoints_valid is False and requires_resident_binding:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                "resident tick endpoints must be unsigned 64-bit integers before load binding",
+            )
+        )
+    elif resident_end < resident_start:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                "resident tick interval end must not precede start",
+            )
+        )
+
+    outlier = record.get("outlier_analysis")
+    if resident_endpoints_valid and isinstance(outlier, Mapping):
+        run_elapsed = outlier.get("run_elapsed_ticks")
+        if not _is_uint64(run_elapsed) or run_elapsed != resident_end - resident_start:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("resident_tick_interval", "outlier_analysis.run_elapsed_ticks"),
+                    "resident tick span elapsed_ticks must equal outlier_analysis.run_elapsed_ticks",
+                )
+            )
+
+    if nested is None:
+        return mismatches
+    if not isinstance(nested, Mapping):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("load.resident_frame_interval",),
+                "load resident frame interval must be an object",
+            )
+        )
+        return mismatches
+    nested_start = nested.get("first_ticks")
+    nested_end = nested.get("last_ticks")
+    nested_endpoints_valid = _is_uint64(nested_start) and _is_uint64(nested_end)
+    if not _is_uint64(nested_start) or not _is_uint64(nested_end):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("load.resident_frame_interval.first_ticks", "load.resident_frame_interval.last_ticks"),
+                "load resident frame endpoints must be unsigned 64-bit integers",
+            )
+        )
+    elif nested_end < nested_start:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("load.resident_frame_interval.first_ticks", "load.resident_frame_interval.last_ticks"),
+                "load resident frame interval end must not precede start",
+            )
+        )
+    if nested.get("clock") != "card_riscv_wall_clock":
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("load.resident_frame_interval.clock",),
+                "load resident frame interval must use the card clock",
+            )
+        )
+
+    if resident_endpoints_valid and nested_endpoints_valid:
+        if (nested_start, nested_end) != (resident_start, resident_end):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("load.resident_frame_interval", "resident_tick_interval"),
+                    "load resident frame endpoints must match the containing resident tick interval",
+                )
+            )
+        supplied = ctx.timestamps
+        if supplied and all(_is_uint64(value) for value in supplied) and (
+            nested_start,
+            nested_end,
+        ) != (supplied[0], supplied[-1]):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("load.resident_frame_interval", "timestamps"),
+                    "load resident frame endpoints must match the supplied resident timestamp stream",
+                )
+            )
+
+    if condition not in {"newton_schulz", "dram"}:
+        return mismatches
+    coverage = load.get("coverage")
+    if not isinstance(coverage, Mapping):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("load.coverage",),
+                "device load evidence requires coverage metadata",
+            )
+        )
+        return mismatches
+    for field, expected in (
+        ("first_resident_frame_ticks", nested_start),
+        ("last_resident_frame_ticks", nested_end),
+    ):
+        value = coverage.get(field, _MISSING)
+        path = f"load.coverage.{field}"
+        if not _is_uint64(value):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (path,),
+                    f"{path} must be an unsigned 64-bit integer",
+                )
+            )
+        elif nested_endpoints_valid and value != expected:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (path, "load.resident_frame_interval"),
+                    f"{path} must match load resident frame endpoints",
+                )
+            )
+        if resident_endpoints_valid and _is_uint64(value):
+            resident_expected = resident_start if field.startswith("first_") else resident_end
+            if value != resident_expected:
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (path, "resident_tick_interval"),
+                        f"{path} must match the containing resident tick interval",
+                    )
+                )
+        supplied = ctx.timestamps
+        if supplied and all(_is_uint64(item) for item in supplied) and _is_uint64(value):
+            supplied_expected = supplied[0] if field.startswith("first_") else supplied[-1]
+            if value != supplied_expected:
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (path, "timestamps"),
+                        f"{path} must match the supplied resident timestamp stream",
+                    )
+                )
+    for field in ("load_start_ticks", "load_end_ticks"):
+        value = coverage.get(field, _MISSING)
+        if not _is_uint64(value):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (f"load.coverage.{field}",),
+                    f"load.coverage.{field} must be an unsigned 64-bit integer",
+                )
+            )
+    return mismatches
+
+
 def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     """Validate Issue #118 load metadata when a resident record carries it."""
-    del ctx
     if "load" not in record or record.get("load") is None:
         return []
     load = record.get("load")
@@ -1585,6 +1779,7 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
             )
         )
     condition = load.get("condition")
+    mismatches.extend(_check_load_resident_bindings(record, load, ctx))
     mismatches.extend(_check_elapsed_aiclk_binding(record, condition))
     return mismatches
 
@@ -2309,9 +2504,11 @@ def _check_raw_timestamps(record: Mapping[str, Any], ctx: ValidationContext) -> 
     if not isinstance(digest, str) or len(digest) != 64 or any(char not in "0123456789abcdefABCDEF" for char in digest):
         mismatches.append(_mismatch(invariant, ("raw_timestamps.sha256",), "raw_timestamps.sha256 must be a 64-character hexadecimal digest"))
     if ctx.timestamps is not None:
-        if any(not _is_int(value, nonnegative=True) for value in ctx.timestamps):
-            mismatches.append(_mismatch(invariant, ("timestamps",), "supplied timestamps must be unsigned integers"))
-        if any(current <= previous for previous, current in itertools.pairwise(ctx.timestamps)):
+        if any(not _is_uint64(value) for value in ctx.timestamps):
+            mismatches.append(_mismatch(invariant, ("timestamps",), "supplied timestamps must be unsigned 64-bit integers"))
+        if all(_is_uint64(value) for value in ctx.timestamps) and any(
+            current <= previous for previous, current in itertools.pairwise(ctx.timestamps)
+        ):
             mismatches.append(_mismatch(invariant, ("timestamps",), "supplied timestamps must be strictly increasing"))
         if _is_int(count, nonnegative=True) and count != len(ctx.timestamps):
             mismatches.append(_mismatch(invariant, ("raw_timestamps.count", "timestamps"), "raw_timestamps.count does not equal timestamp rows"))
@@ -4269,6 +4466,7 @@ __all__ = [
     "TIMING_EVIDENCE_REJECTED_RECORD_REASON",
     "TIMING_EVIDENCE_RUN_TRACE_REASON",
     "TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES",
+    "UINT64_MAX",
     "ResidentFailureClassification",
     "ResidentInvariant",
     "ResidentRecordField",

@@ -58,7 +58,11 @@ from enodia.tt.bench.resident_harness import (
     validate_configuration,
     validate_resident_record,
 )
-from enodia.tt.bench.resident_record import build_outlier_analysis, validate_pair_analysis
+from enodia.tt.bench.resident_record import (
+    UINT64_MAX,
+    build_outlier_analysis,
+    validate_pair_analysis,
+)
 from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import _read_calibration as read_load_calibration
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
@@ -1253,6 +1257,134 @@ def test_committed_loaded_records_bind_elapsed_clock_to_weighted_trace():
             mismatch["invariant"] == "clock.elapsed_aiclk_binding"
             for mismatch in report["mismatches"]
         )
+
+
+@pytest.mark.parametrize("condition", ("dram", "newton-schulz"))
+def test_shared_validator_rejects_stale_disjoint_device_resident_span(condition):
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+    candidate = copy.deepcopy(record)
+    load = candidate["load"]
+    stale_start = load["card_load_interval"]["start_ticks"]
+    stale_end = stale_start + 1
+    load["resident_frame_interval"].update(
+        first_ticks=stale_start,
+        last_ticks=stale_end,
+    )
+    load["coverage"].update(
+        first_resident_frame_ticks=stale_start,
+        last_resident_frame_ticks=stale_end,
+    )
+    candidate["load_coverage"] = copy.deepcopy(load["coverage"])
+
+    validate_load_record(load)
+    report = validate_resident_record(candidate, strict_trace=False)
+
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "load.evidence"
+        and "containing resident tick interval" in mismatch["message"]
+        for mismatch in report["mismatches"]
+    )
+
+
+@pytest.mark.parametrize("condition", ("dram", "newton-schulz"))
+def test_shared_validator_rejects_shifted_resident_span_and_timestamp_stream(condition):
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+    interval = record["resident_tick_interval"]
+    shifted = copy.deepcopy(record)
+    shifted["resident_tick_interval"].update(
+        start_ticks=interval["start_ticks"] + 1,
+        end_ticks=interval["end_ticks"] + 1,
+    )
+    shifted["resident_tick_interval"]["elapsed_ticks"] = interval["elapsed_ticks"]
+    report = validate_resident_record(
+        shifted,
+        timestamps=[interval["start_ticks"], interval["end_ticks"]],
+        strict_trace=False,
+    )
+
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "load.evidence"
+        and (
+            "containing resident tick interval" in mismatch["message"]
+            or "supplied resident timestamp stream" in mismatch["message"]
+        )
+        for mismatch in report["mismatches"]
+    )
+
+
+@pytest.mark.parametrize("condition", ("dram", "newton-schulz"))
+def test_shared_validator_checks_device_resident_uint64_bounds(condition):
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+
+    parent_overflow = copy.deepcopy(record)
+    parent_overflow["resident_tick_interval"]["end_ticks"] = UINT64_MAX + 1
+    report = validate_resident_record(parent_overflow, strict_trace=False)
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "resident_tick_interval"
+        for mismatch in report["mismatches"]
+    )
+
+    load_overflow = copy.deepcopy(record)
+    load_overflow["load"]["resident_frame_interval"]["last_ticks"] = UINT64_MAX + 1
+    load_overflow["load"]["coverage"]["last_resident_frame_ticks"] = UINT64_MAX + 1
+    load_overflow["load_coverage"] = copy.deepcopy(load_overflow["load"]["coverage"])
+    report = validate_resident_record(load_overflow, strict_trace=False)
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "load.evidence"
+        for mismatch in report["mismatches"]
+    )
+
+    timestamp_overflow = validate_resident_record(
+        record,
+        timestamps=[record["resident_tick_interval"]["start_ticks"], UINT64_MAX + 1],
+        strict_trace=False,
+    )
+    assert any(
+        mismatch["invariant"] == "raw_timestamps"
+        and "unsigned 64-bit" in mismatch["message"]
+        for mismatch in timestamp_overflow["mismatches"]
+    )
+
+
+def test_device_load_accepts_uint64_max_resident_and_worker_endpoints():
+    resident = [UINT64_MAX - 2, UINT64_MAX - 1]
+    card_interval = CardLoadInterval(UINT64_MAX - 3, UINT64_MAX)
+    for condition in ("newton_schulz", "dram"):
+        workers = (
+            _dram_worker_intervals(
+                start_ticks=UINT64_MAX - 3,
+                end_ticks=UINT64_MAX,
+            )
+            if condition == "dram"
+            else None
+        )
+        record = build_load_record(
+            condition=condition,
+            repeat_count=1,
+            resident_timestamps=resident,
+            card_interval=card_interval,
+            worker_intervals=workers,
+        )
+        validate_load_record(record)
+
+
+def test_committed_issue118_records_validate_against_companion_traces():
+    for condition in ("control", "dram", "newton-schulz"):
+        stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+        record = json.loads((ROOT / f"docs/measurements/{stem}.json").read_text())
+        report = validate_resident_record(
+            record,
+            power_trace_path=ROOT / f"docs/measurements/{stem}-power.csv",
+            strict_trace=True,
+        )
+        assert report["valid"] is True, report["mismatches"]
 
 
 def test_wait_for_power_trace_sample_accepts_completion_edge(tmp_path):
