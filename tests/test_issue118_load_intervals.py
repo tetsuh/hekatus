@@ -294,6 +294,8 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "load_tensors.append(load_kernel.profile_output)" in resident_source
     assert "io_tensors.append(self.profile_output)" in (ROOT / "enodia/tt/bench/newton_schulz_kernel.py").read_text()
     assert "queue_id=queue_id" in resident_source
+    assert "blocking=False, queue_id=queue_id" in resident_source
+    assert resident_source.rindex("host_thread.join") < resident_source.rindex("_complete_host_transfers")
     assert 'record["timing_evidence"] = False' in resident_source
     assert "load_record=resident_load_record" in resident_source
     assert "if calibration_output is None:" in resident_source
@@ -383,7 +385,7 @@ def test_fixed_dram_and_host_work_metadata():
     assert dram["data_dependent_exit"] is False
     host = load_generators.host_cpu_transfer_work()
     assert host["command_queue"] == 1
-    assert host["arithmetic_rounds"] == 96
+    assert host["arithmetic_rounds"] == 4_096
     assert host["arithmetic_words"] == 4_096
     assert host["transfer_bytes"] == 64 * 1024
     assert host["transfer_count"] == 256

@@ -516,6 +516,8 @@ def _run_host_transfers(
     resident_launched: threading.Event | None = None,
     stop_event: threading.Event | None = None,
     start_holder: dict[str, int] | None = None,
+    device_tensors_holder: list[Any] | None = None,
+    host_tensors_holder: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Perform fixed arithmetic and explicit CQ1 host/device transfers."""
     import numpy as np
@@ -525,7 +527,8 @@ def _run_host_transfers(
         ttnn.uint32,
     )
     host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
-    device_tensors: list[Any] = []
+    device_tensors = device_tensors_holder if device_tensors_holder is not None else []
+    host_tensors = host_tensors_holder if host_tensors_holder is not None else []
 
     # Signal readiness before the first timing clock. The host work starts
     # before GenericOp so fixed CQ1 transfers can overlap the resident launch.
@@ -550,8 +553,8 @@ def _run_host_transfers(
             queue_id=queue_id,
         )
         device_tensors.append(device_tensor)
-        ttnn.from_device(device_tensor, blocking=True, queue_id=queue_id)
-        ttnn.deallocate(device_tensor)
+        host_tensor = ttnn.from_device(device_tensor, blocking=False, queue_id=queue_id)
+        host_tensors.append(host_tensor)
 
     work = run_host_cpu_transfer_work(
         repetitions=repetitions,
@@ -582,6 +585,25 @@ def _merged_program_io_tensors(resident_tensors: dict[str, Any]) -> list[Any]:
     return [consumer_stats, consumer_stats]
 
 
+def _complete_host_transfers(
+    ttnn: Any,
+    device: Any,
+    device_tensors: list[Any],
+    host_tensors: list[Any],
+) -> None:
+    """Complete CQ1 work and release its fixed transfer buffers."""
+    if not device_tensors:
+        return
+    ttnn.synchronize_device(device, cq_id=1)
+    for tensor in device_tensors:
+        try:
+            ttnn.deallocate(tensor)
+        except Exception:  # noqa: BLE001, S110 - cleanup must not mask run errors
+            pass
+    device_tensors.clear()
+    host_tensors.clear()
+
+
 def _run_loaded_device(
     ttnn: Any,
     device: Any,
@@ -605,6 +627,8 @@ def _run_loaded_device(
     host_result: dict[str, Any] = {}
     host_error: list[BaseException] = []
     host_start_holder: dict[str, int] = {}
+    host_device_tensors: list[Any] = []
+    host_result_tensors: list[Any] = []
     try:
         resident_parts = _program(
             ttnn, config, resident_tensors, watcher=watcher, return_parts=True
@@ -642,6 +666,8 @@ def _run_loaded_device(
                             resident_launched=resident_launched,
                             stop_event=host_stop,
                             start_holder=host_start_holder,
+                            device_tensors_holder=host_device_tensors,
+                            host_tensors_holder=host_result_tensors,
                             repetitions=repeat_count,
                         )
                     )
@@ -676,6 +702,9 @@ def _run_loaded_device(
                 raise RuntimeError("host load transfer thread did not finish")
             if host_error:
                 raise RuntimeError("host load transfer failed") from host_error[0]
+            _complete_host_transfers(
+                ttnn, device, host_device_tensors, host_result_tensors
+            )
             host_work = host_result
         result = _decode_resident_result(ttnn, config, resident_tensors)
         result["measurement_start_ns"] = measurement_start_ns
@@ -723,6 +752,9 @@ def _run_loaded_device(
                 raise HostCleanupUnsafe(
                     "CQ1 host thread remained active; device cleanup was not attempted"
                 )
+            _complete_host_transfers(
+                ttnn, device, host_device_tensors, host_result_tensors
+            )
         if load_kernel is not None:
             load_kernel.close()
         _deallocate_resident_tensors(ttnn, resident_tensors)
