@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from enodia.tt.bench import load_generators, newton_schulz_kernel
+from enodia.tt.bench import run_resident as resident_runner
 from enodia.tt.bench.load_harness import (
     DEVICE_OPEN_SETTINGS,
     LOAD_CONDITIONS,
@@ -40,11 +41,13 @@ from enodia.tt.bench.run_load import _read_calibration as read_load_calibration
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
 from enodia.tt.bench.run_resident import (
     _bound_calibration_config,
+    _complete_host_transfers,
     _host_join_timeout_seconds,
     _host_load_clock,
     _load_achieved_throughput,
     _load_execution_selection,
     _read_load_calibration,
+    _run_host_transfers,
 )
 from enodia.tt.bench.run_resident import _parser as resident_parser
 
@@ -234,6 +237,162 @@ def test_host_cleanup_stop_and_join_are_in_outer_finally():
     assert "HostCleanupUnsafe" in source
 
 
+class _FakeHostTransferTensor:
+    def __init__(self, kind: str, slot: int | None = None):
+        self.kind = kind
+        self.slot = slot
+
+
+class _FakeHostTransferTtnn:
+    DRAM_MEMORY_CONFIG = object()
+    ROW_MAJOR_LAYOUT = object()
+    uint32 = object()
+
+    def __init__(self, *, fail_on_copy: int | None = None):
+        self.events = []
+        self.host_allocations = []
+        self.device_allocations = []
+        self.deallocated = []
+        self.copy_count = 0
+        self.fail_on_copy = fail_on_copy
+
+    def Tensor(self, _array, _dtype):
+        tensor = _FakeHostTransferTensor("host")
+        self.host_allocations.append(tensor)
+        return tensor
+
+    def to_layout(self, tensor, _layout):
+        return tensor
+
+    def Shape(self, shape):
+        return shape
+
+    def allocate_tensor_on_device(self, _shape, _dtype, _layout, _device, _memory_config):
+        tensor = _FakeHostTransferTensor("device", len(self.device_allocations))
+        self.device_allocations.append(tensor)
+        return tensor
+
+    def copy_host_to_device_tensor(self, host, device, *, cq_id):
+        self.copy_count += 1
+        if self.fail_on_copy == self.copy_count:
+            raise RuntimeError("injected CQ1 copy failure")
+        self.events.append(("host_to_device", host.slot, device.slot, cq_id))
+
+    def copy_device_to_host_tensor(self, device, host, *, blocking, cq_id):
+        self.events.append(("device_to_host", device.slot, host.slot, blocking, cq_id))
+
+    def synchronize_device(self, _device, *, cq_id):
+        self.events.append(("synchronize", cq_id))
+
+    def deallocate(self, tensor):
+        self.deallocated.append(tensor)
+
+
+def _run_fake_host_transfer(monkeypatch, repetitions, *, transfer_count=5, fail_on_copy=None):
+    import threading
+
+    monkeypatch.setattr(resident_runner, "HOST_TRANSFER_COUNT", transfer_count)
+    monkeypatch.setattr(resident_runner, "HOST_ARITHMETIC_ROUNDS", 2)
+    monkeypatch.setattr(resident_runner, "HOST_ARITHMETIC_WORDS", 3)
+    ttnn = _FakeHostTransferTtnn(fail_on_copy=fail_on_copy)
+    device_tensors = []
+    host_tensors = []
+    started = threading.Event()
+    resident_launched = threading.Event()
+    resident_launched.set()
+    result = _run_host_transfers(
+        ttnn,
+        object(),
+        repetitions=repetitions,
+        started_event=started,
+        resident_launched=resident_launched,
+        start_holder={},
+        device_tensors_holder=device_tensors,
+        host_tensors_holder=host_tensors,
+    )
+    return ttnn, device_tensors, host_tensors, started, result
+
+
+def test_host_transfer_ring_keeps_allocations_fixed_and_synchronizes_repeats(monkeypatch):
+    allocation_counts = []
+    for repetitions in (1, 3):
+        ttnn, device_tensors, host_tensors, started, result = _run_fake_host_transfer(
+            monkeypatch, repetitions
+        )
+        copy_events = [event for event in ttnn.events if event[0] in {"host_to_device", "device_to_host"}]
+        assert len([event for event in copy_events if event[0] == "host_to_device"]) == 5 * repetitions
+        assert len([event for event in copy_events if event[0] == "device_to_host"]) == 5 * repetitions
+        assert [event[0] for event in copy_events] == ["host_to_device", "device_to_host"] * (
+            5 * repetitions
+        )
+        for repeat in range(repetitions - 1):
+            previous_pair_end = 2 * (5 * (repeat + 1)) - 1
+            next_pair_start = previous_pair_end + 1
+            assert copy_events[next_pair_start - 1][0] == "device_to_host"
+            copy_event_positions = [
+                index
+                for index, event in enumerate(ttnn.events)
+                if event[0] in {"host_to_device", "device_to_host"}
+            ]
+            previous_end_position = copy_event_positions[previous_pair_end]
+            next_start_position = copy_event_positions[next_pair_start]
+            assert any(
+                event[0] == "synchronize"
+                for event in ttnn.events[previous_end_position + 1 : next_start_position]
+            )
+        assert started.is_set()
+        assert result["transfer_count"] == 5 * repetitions
+        expected_checksum = 0
+        for _ in range(repetitions):
+            for _ in range(2):
+                for word in range(3):
+                    expected_checksum = ((expected_checksum * 33) ^ word) & 0xFFFFFFFF
+        assert result["arithmetic_checksum"] == expected_checksum
+        assert result["buffer_pool_size"] == resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
+        allocation_counts.append((len(ttnn.device_allocations), len(ttnn.host_allocations)))
+        assert allocation_counts[-1] == (
+            resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE,
+            resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE,
+        )
+        _complete_host_transfers(ttnn, object(), device_tensors, host_tensors)
+        assert not device_tensors
+        assert not host_tensors
+        assert len(ttnn.deallocated) == 2 * resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
+    assert allocation_counts[0] == allocation_counts[1]
+
+
+def test_host_transfer_runner_queues_256_pairs_per_repeat(monkeypatch):
+    ttnn, device_tensors, host_tensors, _started, result = _run_fake_host_transfer(
+        monkeypatch,
+        repetitions=2,
+        transfer_count=256,
+    )
+    copy_events = [event for event in ttnn.events if event[0] in {"host_to_device", "device_to_host"}]
+    assert len([event for event in copy_events if event[0] == "host_to_device"]) == 512
+    assert len([event for event in copy_events if event[0] == "device_to_host"]) == 512
+    assert result["transfer_count"] == 512
+    _complete_host_transfers(ttnn, object(), device_tensors, host_tensors)
+
+
+def test_host_transfer_cleanup_releases_a_partially_used_fixed_pool(monkeypatch):
+    ttnn = _FakeHostTransferTtnn(fail_on_copy=2)
+    device_tensors = []
+    host_tensors = []
+    monkeypatch.setattr(resident_runner, "HOST_TRANSFER_COUNT", 5)
+    with pytest.raises(RuntimeError, match="injected CQ1 copy failure"):
+        _run_host_transfers(
+            ttnn,
+            object(),
+            repetitions=10,
+            device_tensors_holder=device_tensors,
+            host_tensors_holder=host_tensors,
+        )
+    _complete_host_transfers(ttnn, object(), device_tensors, host_tensors)
+    assert not device_tensors
+    assert not host_tensors
+    assert len(ttnn.deallocated) == 2 * resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
+
+
 def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path):
     calibration = CalibrationMetadata(
         condition="dram",
@@ -293,8 +452,10 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "return [consumer_stats, consumer_stats]" in resident_source
     assert "load_tensors.append(load_kernel.profile_output)" in resident_source
     assert "io_tensors.append(self.profile_output)" in (ROOT / "enodia/tt/bench/newton_schulz_kernel.py").read_text()
-    assert "queue_id=1" in resident_source
-    assert "blocking=False, queue_id=1" in resident_source
+    assert "copy_host_to_device_tensor" in resident_source
+    assert "copy_device_to_host_tensor" in resident_source
+    assert "blocking=False" in resident_source
+    assert "cq_id=TRANSFER_COMMAND_QUEUE" in resident_source
     assert resident_source.rindex("host_thread.join") < resident_source.rindex("_complete_host_transfers")
     assert 'record["timing_evidence"] = False' in resident_source
     assert "load_record=resident_load_record" in resident_source
@@ -304,7 +465,9 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     )
     assert 'record["status"] = "calibration"' in resident_source
     assert resident_source.index("started_event.set()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
-    assert resident_source.index("ttnn.to_device(") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
+    assert resident_source.index("ttnn.copy_host_to_device_tensor(") < resident_source.index(
+        "ttnn.generic_op(_merged_program_io_tensors"
+    )
     assert resident_source.index("measurement_start_ns = time.monotonic_ns()") < resident_source.index("ttnn.generic_op(_merged_program_io_tensors")
     assert resident_source.index("ttnn.generic_op(_merged_program_io_tensors") < resident_source.rindex("resident_launched.set()")
     assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
@@ -391,6 +554,8 @@ def test_fixed_dram_and_host_work_metadata():
     assert host["transfer_bytes"] == 64 * 1024
     assert host["transfer_count"] == 256
     assert host["transfers"] == "fixed_size_host_device_transfers"
+    assert host["buffer_pool_size"] == 4
+    assert host["buffer_pool"] == "reusable_host_and_device_buffers"
 
 
 def test_card_profile_interval_requires_wrap_tracked_endpoints():

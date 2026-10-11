@@ -55,9 +55,10 @@ not evidence until it adds a wrap-tracked card-clock load interval for
 `newton_schulz`/`dram`, or a host monotonic interval for `host_cpu_transfer`,
 and the corresponding coverage verdict is `covered`.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
-plus 256 fixed 64 KiB host/device transfer pairs on CQ1; nonblocking CQ1
-completion targets approximately one-second calibration granularity without
-making the work data-dependent.
+plus 256 fixed 64 KiB host/device transfer pairs on CQ1. A fixed four-slot
+reusable host/device pool and per-repeat CQ1 completion keep transfer buffering
+bounded while targeting approximately one-second calibration granularity; the
+work remains data-independent.
 
 ## Issue #104 paired-outlier records
 

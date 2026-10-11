@@ -21,6 +21,7 @@ from enodia.tt.bench.load_harness import (
     DRAM_TOTAL_PAGES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
+    HOST_TRANSFER_BUFFER_POOL_SIZE,
     HOST_TRANSFER_BYTES,
     HOST_TRANSFER_COUNT,
     LOAD_CONDITIONS,
@@ -371,6 +372,8 @@ def host_cpu_transfer_work() -> dict[str, Any]:
         "transfer_bytes": HOST_TRANSFER_BYTES,
         "transfer_count": HOST_TRANSFER_COUNT,
         "command_queue": TRANSFER_COMMAND_QUEUE,
+        "buffer_pool_size": HOST_TRANSFER_BUFFER_POOL_SIZE,
+        "buffer_pool": "reusable_host_and_device_buffers",
     }
 
 

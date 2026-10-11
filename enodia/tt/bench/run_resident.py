@@ -36,10 +36,12 @@ from enodia.tt.bench.load_harness import (
     DRAM_STREAM_TOTAL_BYTES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
+    HOST_TRANSFER_BUFFER_POOL_SIZE,
     HOST_TRANSFER_BYTES,
     HOST_TRANSFER_COUNT,
     LOAD_CONDITIONS,
     NS_LOAD_OUTER_REPETITIONS,
+    TRANSFER_COMMAND_QUEUE,
     CalibrationMetadata,
     CardLoadInterval,
     HostLoadInterval,
@@ -508,6 +510,65 @@ def _host_load_clock(
     return read
 
 
+def _allocate_host_transfer_buffers(
+    ttnn: Any,
+    device: Any,
+    *,
+    device_tensors: list[Any],
+    host_tensors: list[Any],
+) -> None:
+    """Allocate one fixed reusable host/device ring for CQ1 transfers."""
+    import numpy as np
+
+    shape = (1, 1, 1, HOST_TRANSFER_BYTES // 4)
+    for _ in range(HOST_TRANSFER_BUFFER_POOL_SIZE):
+        host_tensor = ttnn.Tensor(np.zeros(shape, dtype=np.uint32), ttnn.uint32)
+        host_tensor = ttnn.to_layout(host_tensor, ttnn.ROW_MAJOR_LAYOUT)
+        host_tensors.append(host_tensor)
+        device_tensors.append(
+            _allocate(
+                ttnn,
+                shape,
+                ttnn.uint32,
+                ttnn.ROW_MAJOR_LAYOUT,
+                device,
+                ttnn.DRAM_MEMORY_CONFIG,
+            )
+        )
+
+
+def _queue_host_transfer_batch(
+    ttnn: Any,
+    device: Any,
+    *,
+    device_tensors: list[Any],
+    host_tensors: list[Any],
+    stop_event: threading.Event | None,
+) -> None:
+    """Queue one fixed transfer batch, synchronizing before each ring reuse."""
+    if len(device_tensors) != HOST_TRANSFER_BUFFER_POOL_SIZE:
+        raise RuntimeError("CQ1 device transfer pool has an unexpected size")
+    if len(host_tensors) != HOST_TRANSFER_BUFFER_POOL_SIZE:
+        raise RuntimeError("CQ1 host transfer pool has an unexpected size")
+    for transfer_index in range(HOST_TRANSFER_COUNT):
+        if stop_event is not None and stop_event.is_set():
+            raise RuntimeError("host load stopped while queuing CQ1 transfers")
+        slot = transfer_index % HOST_TRANSFER_BUFFER_POOL_SIZE
+        if transfer_index and slot == 0:
+            ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+        ttnn.copy_host_to_device_tensor(
+            host_tensors[slot],
+            device_tensors[slot],
+            cq_id=TRANSFER_COMMAND_QUEUE,
+        )
+        ttnn.copy_device_to_host_tensor(
+            device_tensors[slot],
+            host_tensors[slot],
+            blocking=False,
+            cq_id=TRANSFER_COMMAND_QUEUE,
+        )
+
+
 def _run_host_transfers(
     ttnn: Any,
     device: Any,
@@ -520,41 +581,40 @@ def _run_host_transfers(
     device_tensors_holder: list[Any] | None = None,
     host_tensors_holder: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """Queue all fixed CQ1 transfers, then run fixed CPU work after launch."""
-    import numpy as np
-
-    host = ttnn.Tensor(
-        np.zeros((1, 1, 1, HOST_TRANSFER_BYTES // 4), dtype=np.uint32),
-        ttnn.uint32,
-    )
-    host = ttnn.to_layout(host, ttnn.ROW_MAJOR_LAYOUT)
+    """Run fixed host arithmetic and one synchronized CQ1 batch per repeat."""
+    if isinstance(repetitions, bool) or not isinstance(repetitions, int) or repetitions <= 0:
+        raise LoadConfigurationError("host repetitions must be a positive integer")
     device_tensors = device_tensors_holder if device_tensors_holder is not None else []
     host_tensors = host_tensors_holder if host_tensors_holder is not None else []
     if start_holder is None:
         start_holder = {}
+    _allocate_host_transfer_buffers(
+        ttnn,
+        device,
+        device_tensors=device_tensors,
+        host_tensors=host_tensors,
+    )
     start_holder["start_ns"] = time.monotonic_ns()
 
-    for _ in range(repetitions):
-        for _ in range(HOST_TRANSFER_COUNT):
-            if stop_event is not None and stop_event.is_set():
-                raise RuntimeError("host load stopped while queuing CQ1 transfers")
-            device_tensor = ttnn.to_device(
-                host,
-                device,
-                memory_config=ttnn.DRAM_MEMORY_CONFIG,
-                queue_id=1,
-            )
-            device_tensors.append(device_tensor)
-            host_tensors.append(ttnn.from_device(device_tensor, blocking=False, queue_id=1))
-    if started_event is not None:
-        started_event.set()
-    if resident_launched is not None:
-        while not resident_launched.wait(timeout=0.1):
-            if stop_event is not None and stop_event.is_set():
-                raise RuntimeError("host load stopped before CPU work")
-
     accumulator = 0
-    for _ in range(repetitions):
+    for repetition in range(repetitions):
+        _queue_host_transfer_batch(
+            ttnn,
+            device,
+            device_tensors=device_tensors,
+            host_tensors=host_tensors,
+            stop_event=stop_event,
+        )
+        if repetition == 0:
+            if started_event is not None:
+                started_event.set()
+            if resident_launched is not None:
+                while not resident_launched.wait(timeout=0.1):
+                    if stop_event is not None and stop_event.is_set():
+                        raise RuntimeError("host load stopped before CPU work")
+        # The host/device ring may only be reused after every CQ1 operation in
+        # this repeat has completed. This also makes the repeat boundary explicit.
+        ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
         for _ in range(HOST_ARITHMETIC_ROUNDS):
             if stop_event is not None and stop_event.is_set():
                 raise RuntimeError("host load stopped during CPU work")
@@ -566,13 +626,14 @@ def _run_host_transfers(
         "arithmetic_words": HOST_ARITHMETIC_WORDS,
         "transfer_bytes": HOST_TRANSFER_BYTES,
         "transfer_count": HOST_TRANSFER_COUNT * repetitions,
-        "command_queue": 1,
+        "command_queue": TRANSFER_COMMAND_QUEUE,
         "outer_repetitions": repetitions,
         "start_ns": start_holder["start_ns"],
         "end_ns": end_ns,
         "elapsed_ns": end_ns - start_holder["start_ns"],
         "arithmetic_checksum": accumulator,
-        "transfer_completion": "deferred_cq1",
+        "transfer_completion": "per_repeat_cq1",
+        "buffer_pool_size": HOST_TRANSFER_BUFFER_POOL_SIZE,
     }
 
 
@@ -602,18 +663,25 @@ def _complete_host_transfers(
     device: Any,
     device_tensors: list[Any],
     host_tensors: list[Any],
+    *,
+    raise_sync_error: bool = True,
 ) -> None:
-    """Complete CQ1 work and release its fixed transfer buffers."""
-    if not device_tensors:
-        return
-    ttnn.synchronize_device(device, cq_id=1)
-    for tensor in device_tensors:
+    """Complete CQ1 work and release every fixed pool buffer."""
+    sync_error: Exception | None = None
+    if device_tensors:
+        try:
+            ttnn.synchronize_device(device, cq_id=TRANSFER_COMMAND_QUEUE)
+        except Exception as exc:  # noqa: BLE001 - cleanup still releases both pools
+            sync_error = exc
+    for tensor in [*device_tensors, *host_tensors]:
         try:
             ttnn.deallocate(tensor)
-        except Exception:  # noqa: BLE001, S110 - cleanup must not mask run errors
+        except Exception:  # noqa: BLE001, S110 - cleanup must not mask device errors
             pass
     device_tensors.clear()
     host_tensors.clear()
+    if sync_error is not None and raise_sync_error:
+        raise sync_error
 
 
 def _run_loaded_device(
@@ -769,7 +837,11 @@ def _run_loaded_device(
                     "CQ1 host thread remained active; device cleanup was not attempted"
                 )
             _complete_host_transfers(
-                ttnn, device, host_device_tensors, host_result_tensors
+                ttnn,
+                device,
+                host_device_tensors,
+                host_result_tensors,
+                raise_sync_error=False,
             )
         if load_kernel is not None:
             load_kernel.close()

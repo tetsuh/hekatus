@@ -72,12 +72,13 @@ DRAM_STREAM_BYTES_PER_DIRECTION = DRAM_TOTAL_PAGES * DRAM_PAGE_BYTES
 DRAM_STREAM_TOTAL_BYTES = 2 * DRAM_STREAM_BYTES_PER_DIRECTION
 
 # Condition (c) uses 4,096 fixed arithmetic rounds of 4,096 words and 256
-# fixed 64 KiB CQ1 transfer pairs. Nonblocking CQ1 completion keeps the
-# calibrated approximately-one-second host repeat independent of CQ0 timing.
+# fixed 64 KiB CQ1 transfer pairs. The runner reuses this small ring so
+# calibrated host repeats do not allocate buffers proportional to repeat_count.
 HOST_ARITHMETIC_ROUNDS = 4_096
 HOST_ARITHMETIC_WORDS = 4_096
 HOST_TRANSFER_BYTES = 64 * 1024
 HOST_TRANSFER_COUNT = 256
+HOST_TRANSFER_BUFFER_POOL_SIZE = 4
 MAX_CALIBRATION_SECONDS = 60.0
 MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 
