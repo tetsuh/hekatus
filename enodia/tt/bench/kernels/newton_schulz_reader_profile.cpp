@@ -713,7 +713,7 @@ void kernel_main() {
             TensorAccessor(r_negative_real_args, r_negative_real_address);
         if constexpr (matrix_block == 1) {
             for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -752,7 +752,7 @@ void kernel_main() {
             for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
                 const std::uint32_t block_count =
                     (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_block_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -788,7 +788,7 @@ void kernel_main() {
         const auto r_real = TensorAccessor(first_input_args, r_real_address);
         if constexpr (matrix_block == 1) {
             for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -827,7 +827,7 @@ void kernel_main() {
             for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
                 const std::uint32_t block_count =
                     (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_block_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,

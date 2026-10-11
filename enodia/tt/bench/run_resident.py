@@ -474,7 +474,7 @@ def _run_device(
     try:
         program = _program(ttnn, config, tensors, watcher=watcher)
         ttnn.generic_op(list(tensors.values()), program)
-        ttnn.synchronize_device(device)
+        ttnn.synchronize_device(device, cq_id=0)
         return _decode_resident_result(ttnn, config, tensors)
     finally:
         _deallocate_resident_tensors(ttnn, tensors)
@@ -598,15 +598,19 @@ def _run_loaded_device(
             ttnn.generic_op([*resident_tensors.values(), *load_tensors], program)
         finally:
             resident_launched.set()
-        ttnn.synchronize_device(device)
+        ttnn.synchronize_device(device, cq_id=0)
+        # Capture the CQ0 resident endpoint before waiting for any host-load
+        # tail. This lets coverage accept a host load that extends beyond the
+        # resident interval without making the endpoint host-load-dependent.
+        measurement_end_ns = time.monotonic_ns()
         if host_thread is not None:
-            host_thread.join(timeout=60.0)
+            join_timeout = min(600.0, max(60.0, repeat_count * 0.01))
+            host_thread.join(timeout=join_timeout)
             if host_thread.is_alive():
                 raise RuntimeError("host load transfer thread did not finish")
             if host_error:
                 raise RuntimeError("host load transfer failed") from host_error[0]
             host_work = host_result
-        measurement_end_ns = time.monotonic_ns()
         result = _decode_resident_result(ttnn, config, resident_tensors)
         result["measurement_start_ns"] = measurement_start_ns
         result["measurement_end_ns"] = measurement_end_ns
@@ -803,7 +807,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--repeat-count", type=int, default=None)
     parser.add_argument("--calibrate", action="store_true")
     parser.add_argument("--calibration-duration-seconds", type=float, default=60.0)
-    parser.add_argument("--target-seconds", type=float, default=600.0)
+    parser.add_argument("--target-seconds", type=float, default=500.0)
     parser.add_argument("--watcher", action="store_true")
     return parser
 
@@ -842,12 +846,27 @@ def _load_achieved_throughput(
         interval = result.get("host_load_interval")
         elapsed_seconds = (interval.end_ns - interval.start_ns) / 1_000_000_000.0
         transfer_count = result.get("host_work", {}).get("transfer_count", HOST_TRANSFER_COUNT)
-        return transfer_count / max(elapsed_seconds, 1e-12), "transfers_per_host_second"
+        work_rate = transfer_count / max(elapsed_seconds, 1e-12)
+        result["load_work_rate"] = {
+            "value": work_rate,
+            "unit": "transfers_per_host_second",
+        }
+        return transfer_count / HOST_TRANSFER_COUNT / max(elapsed_seconds, 1e-12), "repeats_per_host_second"
     interval = result.get("card_load_interval")
     elapsed_seconds = (interval.end_ticks - interval.start_ticks) / (aiclk_mhz * 1_000_000.0)
     if condition == "dram":
-        return (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12), "bytes_per_card_second"
-    return (NS_LOAD_OUTER_REPETITIONS * repeat_count) / max(elapsed_seconds, 1e-12), "outer_repetitions_per_card_second"
+        work_rate = (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12)
+        result["load_work_rate"] = {
+            "value": work_rate,
+            "unit": "bytes_per_card_second",
+        }
+        return repeat_count / max(elapsed_seconds, 1e-12), "repeats_per_card_second"
+    work_rate = (NS_LOAD_OUTER_REPETITIONS * repeat_count) / max(elapsed_seconds, 1e-12)
+    result["load_work_rate"] = {
+        "value": work_rate,
+        "unit": "outer_repetitions_per_card_second",
+    }
+    return repeat_count / max(elapsed_seconds, 1e-12), "repeats_per_card_second"
 
 
 def _read_load_calibration(path: Path) -> CalibrationMetadata:

@@ -100,7 +100,7 @@ void kernel_main() {
     for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
         const std::uint32_t block_count =
             (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-        const bool warmup = measure_core && offset == 0;
+        const bool warmup = measure_core && outer == 0 && offset == 0;
         const std::uint32_t wait_start = measure_core ? get_timestamp_32b() : 0;
         cb_wait_front(cb_output_real, block_count);
         cb_wait_front(cb_output_imag, block_count);

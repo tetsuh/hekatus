@@ -77,6 +77,7 @@ HOST_ARITHMETIC_WORDS = 4_096
 HOST_TRANSFER_BYTES = 1 << 20
 HOST_TRANSFER_COUNT = 8
 MAX_CALIBRATION_SECONDS = 60.0
+MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 
 LOAD_CONDITIONS = (
     "unloaded",
@@ -341,13 +342,22 @@ class CalibrationMetadata:
         if duration > MAX_CALIBRATION_SECONDS:
             raise LoadConfigurationError("calibration duration must be <= 60 seconds")
         _finite_positive(self.achieved_throughput, "achieved_throughput")
-        if not isinstance(self.throughput_unit, str) or not self.throughput_unit.strip():
-            raise LoadConfigurationError("throughput_unit must be a non-empty string")
+        if (
+            not isinstance(self.throughput_unit, str)
+            or not self.throughput_unit.startswith("repeats_per_")
+        ):
+            raise LoadConfigurationError(
+                "throughput_unit must report calibrated load repeats per second"
+            )
         _positive_int(self.repeat_count, "repeat_count")
         if not isinstance(self.source, str) or not self.source.strip():
             raise LoadConfigurationError("calibration source must be a non-empty string")
         if self.target_seconds is not None:
-            _finite_positive(self.target_seconds, "target_seconds")
+            target = _finite_positive(self.target_seconds, "target_seconds")
+            if target > MAX_MEASUREMENT_TARGET_SECONDS:
+                raise LoadConfigurationError(
+                    "target_seconds must be <= 500 seconds for the 600-second run cap"
+                )
         _finite_positive(self.safety_factor, "safety_factor")
 
     def as_record(self) -> dict[str, Any]:
@@ -367,6 +377,10 @@ def choose_repeat_count(
         raise LoadConfigurationError("unloaded control has no load repeat count")
     throughput = _finite_positive(calibration_throughput, "calibration_throughput")
     target = _finite_positive(target_seconds, "target_seconds")
+    if target > MAX_MEASUREMENT_TARGET_SECONDS:
+        raise LoadConfigurationError(
+            "target_seconds must be <= 500 seconds for the 600-second run cap"
+        )
     factor = _finite_positive(safety_factor, "safety_factor")
     # ``target_seconds`` may describe the later long measurement.  Only the
     # calibration observation itself is capped at 60 seconds.
@@ -894,6 +908,7 @@ __all__ = [
     "L1_TOTAL_BUDGET_BYTES",
     "LOAD_CONDITIONS",
     "MAX_CALIBRATION_SECONDS",
+    "MAX_MEASUREMENT_TARGET_SECONDS",
     "NS_LOAD_BATCH",
     "NS_LOAD_DOUBLE_BUFFER",
     "NS_LOAD_DST_FULL_SYNC_EN",

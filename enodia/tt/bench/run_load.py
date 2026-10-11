@@ -60,10 +60,10 @@ def _parser() -> argparse.ArgumentParser:
         "--target-duration-seconds",
         dest="target_seconds",
         type=float,
-        default=1.0,
+        default=500.0,
     )
     parser.add_argument("--achieved-throughput", type=float, default=None)
-    parser.add_argument("--throughput-unit", default="fixed_work_units_per_second")
+    parser.add_argument("--throughput-unit", default="repeats_per_host_second")
     parser.add_argument("--safety-factor", type=float, default=1.10)
     parser.add_argument("--repeat-count", type=int, default=None)
     parser.add_argument("--out", type=Path, required=True)
@@ -82,7 +82,7 @@ def _validate_duration(value: float) -> float:
 
 
 def _board_free_throughput(condition: str, duration_seconds: float) -> float:
-    """Measure a deterministic fixed-work model without claiming board speed."""
+    """Measure one fixed load repeat without claiming board speed."""
     duration = _validate_duration(duration_seconds)
     # The model intentionally executes a fixed number of host operations.  A
     # caller that has a Watcher-off board result supplies --achieved-throughput;
@@ -101,7 +101,9 @@ def _board_free_throughput(condition: str, duration_seconds: float) -> float:
     # Keep the nominal duration in the metadata while using a measured fixed
     # operation count.  The accumulator prevents the loop from being removed.
     del accumulator, duration
-    return float(work) / elapsed
+    # The fixed model above represents one complete load repeat.  Return
+    # repeats/second, never bytes/second or raw work units/second.
+    return 1.0 / elapsed
 
 
 def _read_calibration(path: Path) -> CalibrationMetadata:
@@ -128,8 +130,8 @@ def build_calibration(
     condition: str,
     duration_seconds: float,
     achieved_throughput: float | None = None,
-    throughput_unit: str = "fixed_work_units_per_second",
-    target_seconds: float = 1.0,
+    throughput_unit: str = "repeats_per_host_second",
+    target_seconds: float = 500.0,
     safety_factor: float = 1.10,
     watcher_enabled: bool = False,
 ) -> dict[str, Any]:

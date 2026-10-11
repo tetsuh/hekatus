@@ -37,7 +37,10 @@ from enodia.tt.bench.load_harness import (
 from enodia.tt.bench.resident_harness import ResidentConfig, run_budget_breakdown
 from enodia.tt.bench.run_load import _parser as load_parser
 from enodia.tt.bench.run_load import build_calibration, build_run_configuration
-from enodia.tt.bench.run_resident import _bound_calibration_config
+from enodia.tt.bench.run_resident import (
+    _bound_calibration_config,
+    _load_achieved_throughput,
+)
 from enodia.tt.bench.run_resident import _parser as resident_parser
 
 ROOT = Path(__file__).parents[1]
@@ -97,10 +100,13 @@ def test_fixed_load_sources_have_no_convergence_or_data_dependent_exit():
     assert "for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer)" in ns_source
     writer_source = (KERNEL_DIR / "newton_schulz_writer.cpp").read_text()
     profile_writer_source = (KERNEL_DIR / "newton_schulz_writer_profile.cpp").read_text()
+    reader_profile_source = (KERNEL_DIR / "newton_schulz_reader_profile.cpp").read_text()
     assert "get_arg_val<std::uint32_t>(4)" in writer_source
     assert "get_arg_val<std::uint32_t>(6)" in profile_writer_source
     assert writer_source.count("outer_repetitions") >= 2
     assert profile_writer_source.count("outer_repetitions") >= 2
+    assert reader_profile_source.count("outer == 0 && offset == 0") == 4
+    assert profile_writer_source.count("outer == 0 && offset == 0") == 1
     assert "if (conver" not in ns_source.lower()
     assert "static_assert(dram_banks == 8" in dram_source
     assert "const std::uint32_t bank_index" in dram_source
@@ -193,6 +199,7 @@ def test_actual_program_plumbing_names_repeat_and_interval_outputs():
     assert "merge_program_parts" in resident_source
     assert "queue_id=queue_id" in resident_source
     assert 'record["timing_evidence"] = False' in resident_source
+    assert resident_source.index("measurement_end_ns = time.monotonic_ns()") < resident_source.index("host_thread.join")
     assert "outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count" in generators_source
     assert "LOAD_INTERVAL_CB_INDEX" in generators_source
 
@@ -269,9 +276,9 @@ def test_uncovered_calibration_is_not_main_timing_evidence():
         condition="dram",
         duration_seconds=60,
         achieved_throughput=10,
-        throughput_unit="bytes_per_card_second",
-        repeat_count=6600,
-        target_seconds=600,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=5500,
+        target_seconds=500,
     )
     record = build_calibration_load_record(
         condition="dram",
@@ -280,12 +287,12 @@ def test_uncovered_calibration_is_not_main_timing_evidence():
         card_interval=CardLoadInterval(150, 250),
         calibration=calibration,
         achieved_throughput=10,
-        throughput_unit="bytes_per_card_second",
+        throughput_unit="repeats_per_card_second",
     )
     assert record["status"] == "calibration"
     assert record["valid_evidence"] is False
     assert record["coverage"]["verdict"] == "uncovered"
-    assert record["calibration"]["repeat_count"] == 6600
+    assert record["calibration"]["repeat_count"] == 5500
 
 
 def test_card_interval_wrap_extension_and_coverage_are_card_only():
@@ -379,18 +386,56 @@ def test_two_cq_setting_is_present_on_all_four_mode_records():
     assert all(record["num_command_queues"] == 2 for record in records.values())
 
 
+def test_actual_runner_reports_repeat_rate_not_work_rate():
+    ns_result = {"card_load_interval": CardLoadInterval(0, 1_000_000)}
+    dram_result = {"card_load_interval": CardLoadInterval(0, 1_000_000)}
+    host_result = {
+        "host_load_interval": HostLoadInterval(0, 1_000_000),
+        "host_work": {"transfer_count": 8},
+    }
+    assert _load_achieved_throughput(
+        ns_result, condition="newton_schulz", repeat_count=1, aiclk_mhz=1000
+    ) == (1000.0, "repeats_per_card_second")
+    assert _load_achieved_throughput(
+        dram_result, condition="dram", repeat_count=1, aiclk_mhz=1000
+    ) == (1000.0, "repeats_per_card_second")
+    assert _load_achieved_throughput(
+        host_result, condition="host_cpu_transfer", repeat_count=1, aiclk_mhz=1000
+    ) == (1000.0, "repeats_per_host_second")
+
+
+def test_calibration_repeat_rate_is_not_work_rate():
+    for condition in ("newton_schulz", "dram", "host_cpu_transfer"):
+        calibration = build_calibration(
+            condition=condition,
+            duration_seconds=5,
+            achieved_throughput=2,
+            target_seconds=10,
+        )
+        assert calibration["calibration"]["repeat_count"] == 22
+        assert calibration["calibration"]["throughput_unit"] == "repeats_per_host_second"
+    bounded = build_calibration(
+        condition="dram",
+        duration_seconds=5,
+        achieved_throughput=2,
+        target_seconds=500,
+    )
+    assert bounded["calibration"]["repeat_count"] / 2 == 550
+    assert bounded["calibration"]["repeat_count"] / 2 < 600
+
+
 def test_calibration_records_persist_watcher_off_throughput_and_repeat_count(tmp_path):
     payload = build_calibration(
         condition="dram",
         duration_seconds=5,
         achieved_throughput=10,
-        target_seconds=600,
+        target_seconds=500,
     )
     assert payload["watcher_enabled"] is False
     assert "/home/" not in json.dumps(payload)
     assert payload["calibration"]["duration_seconds"] == 5.0
     assert payload["calibration"]["repeat_count"] == choose_repeat_count(
-        condition="dram", calibration_throughput=10, target_seconds=600
+        condition="dram", calibration_throughput=10, target_seconds=500
     )
     path = tmp_path / "calibration.json"
     path.write_text(json.dumps(payload))
@@ -406,3 +451,10 @@ def test_calibration_records_persist_watcher_off_throughput_and_repeat_count(tmp
 def test_calibration_is_capped_at_sixty_seconds():
     with pytest.raises(ValueError, match="<= 60"):
         build_calibration(condition="dram", duration_seconds=60.001, achieved_throughput=1)
+    with pytest.raises(ValueError, match="<= 500"):
+        build_calibration(
+            condition="dram",
+            duration_seconds=5,
+            achieved_throughput=1,
+            target_seconds=500.001,
+        )

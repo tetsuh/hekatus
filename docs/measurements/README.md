@@ -35,7 +35,7 @@ calibration observation itself remains capped:
 ```bash
 uv run python -m enodia.tt.bench.run_load \
   --condition newton_schulz --calibrate --duration-seconds 60 \
-  --target-seconds 600 --achieved-throughput 100 \
+  --target-seconds 500 --achieved-throughput 100 \
   --out calibration-newton-schulz.json
 uv run python -m enodia.tt.bench.run_load \
   --condition newton_schulz --run-config \
