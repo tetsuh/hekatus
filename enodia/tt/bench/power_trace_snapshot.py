@@ -196,6 +196,11 @@ def _csv_options_from_legacy(
     unknown = set(values) - _CSV_OPTION_FIELDS
     if unknown:
         raise _legacy_option_error("read_power_trace_csv", unknown)
+    required = {"run_start", "run_end"}
+    missing = required - set(values)
+    if missing:
+        name = min(missing)
+        raise TypeError(f"read_power_trace_csv() missing required keyword argument {name!r}")
     return PowerTraceCsvOptions(
         run_id=values.get("run_id"),
         run_start=values.get("run_start"),
