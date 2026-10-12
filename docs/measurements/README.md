@@ -61,9 +61,12 @@ and the corresponding coverage verdict is `covered`.
 
 The immutable power snapshot retains every usable in-run sample, the in-run
 minimum and maximum, and a left-held time-weighted AICLK over the explicit
-load interval. Issue #118 frame-interval seconds use that weighted value,
-never the existing public maximum `aiclk_mhz`; missing load-interval bounds or
-provenance fail closed. Card-load calibration throughput keeps the historical
+load interval. `clock.aiclk_mhz` remains the in-run maximum for public
+compatibility and is not used for elapsed-time conversion. New resident
+records persist the separate `clock.aiclk_mhz_for_elapsed_seconds` value and
+`clock.aiclk_source_for_elapsed_seconds` (the loaded path is the weighted load
+interval; sampler-off uses the configured budget). Missing load-interval
+bounds or provenance fail closed. Card-load calibration throughput keeps the historical
 `repeats_per_card_second` spelling but means repeats per 1.35e9 card-clock
 ticks; its card ticks are converted to real seconds with the observed
 load-interval AICLK. The record also retains host `CLOCK_MONOTONIC`
@@ -162,7 +165,9 @@ kernel-side correction to warmup counter scope is a follow-up candidate and is
 not applied to this measured record.
 
 The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
-legacy maximum-only `clock.aiclk_mhz`. The P50 converted difference from the
+legacy maximum-only `clock.aiclk_mhz`; the paired
+`aiclk_source_for_elapsed_seconds` names whether that value is configured,
+in-run maximum, or time-weighted load interval. The P50 converted difference from the
 control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
 
 ### Prediction comparison
@@ -273,8 +278,10 @@ declared coverage flags and parsed trace facts remain deferred to Issue #110.
 
 The board-free analyzer still analyzes the two historical sampled records even
 though they have no explicit `run_start`/`run_end` bounds or persisted
-`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as
-`legacy_unverified` elapsed-time provenance. It never selects an environment
+`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as the
+historical maximum-based, `legacy_unverified` elapsed-time provenance. It
+never treats the public clock field as a new-record conversion policy and
+never selects an environment
 snapshot AICLK, and this historical path is not timing evidence. The historical
 sampler-off record uses its configured budget AICLK for elapsed-time display and
 remains diagnostic-only. The external raw-timestamp-byte limitation applies to

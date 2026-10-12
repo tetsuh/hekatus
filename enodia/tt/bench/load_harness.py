@@ -14,6 +14,15 @@ from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from enodia.tt.bench.resident_clock import (
+    AICLK_SELECTION_FIXED_REFERENCE_1350,
+    AICLK_SELECTION_IN_RUN_MINIMUM,
+    AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL,
+    AICLK_SOURCE_LOAD_INTERVAL_TRACE,
+    aiclk_selection_for_source,
+    ticks_to_seconds,
+)
+
 # The reproducible p150 worker model is deliberately a closed set.  A device
 # reporting another grid is rejected rather than silently filling in cores.
 P150_WORKER_GRID = (11, 10)
@@ -87,7 +96,7 @@ HOST_TRANSFER_BUFFER_POOL_SIZE = 4
 MAX_CALIBRATION_SECONDS = 60.0
 MAX_MEASUREMENT_TARGET_SECONDS = 500.0
 CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS = 40.0
-CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE = "load_interval_trace_samples"
+CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE = AICLK_SOURCE_LOAD_INTERVAL_TRACE
 _CARD_LOAD_START_FIELD = "card load start_ticks"
 _CARD_LOAD_END_FIELD = "card load end_ticks"
 _HOST_LOAD_START_FIELD = "host load start_ns"
@@ -98,6 +107,7 @@ CARD_THROUGHPUT_UNIT_DEFINITION = (
     "repeats_per_card_second); convert those ticks to real seconds with the "
     "observed load-interval AICLK"
 )
+CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE = AICLK_SELECTION_FIXED_REFERENCE_1350
 
 LOAD_CONDITIONS = (
     "unloaded",
@@ -381,12 +391,19 @@ class CalibrationMetadata:
     target_seconds: float | None = None
     safety_factor: float = 1.10
     throughput_reference_aiclk_mhz: int = CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
+    throughput_reference_aiclk_source: str = CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE
     throughput_unit_definition: str = CARD_THROUGHPUT_UNIT_DEFINITION
     load_card_ticks: int | None = None
     load_measurement_repeat_count: int | None = None
     load_interval_aiclk_mhz: float | None = None
     load_interval_aiclk_min_mhz: float | None = None
     load_interval_aiclk_source: str | None = None
+    load_interval_aiclk_selection: str | None = None
+    predicted_load_time_aiclk_mhz: float | None = None
+    predicted_load_time_aiclk_source: str | None = None
+    actual_duration_aiclk_mhz: float | None = None
+    actual_duration_aiclk_source: str | None = None
+    actual_duration_aiclk_selection: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "condition", normalize_condition(self.condition))
@@ -410,6 +427,10 @@ class CalibrationMetadata:
                     "target_seconds must be <= 500 seconds for the 600-second run cap"
                 )
         _finite_positive(self.safety_factor, "safety_factor")
+        if not isinstance(self.throughput_reference_aiclk_source, str) or not self.throughput_reference_aiclk_source.strip():
+            raise LoadConfigurationError(
+                "throughput reference AICLK source must be a non-empty string"
+            )
         timing_fields = (
             self.load_card_ticks,
             self.load_measurement_repeat_count,
@@ -437,6 +458,86 @@ class CalibrationMetadata:
                 raise LoadConfigurationError(
                     "calibration load-time AICLK requires sampler-on load-interval provenance"
                 )
+            expected_prediction_aiclk, expected_prediction_source, expected_selection = (
+                _prediction_aiclk_selection(
+                    self.load_interval_aiclk_mhz,
+                    self.load_interval_aiclk_min_mhz,
+                )
+            )
+            if self.load_interval_aiclk_selection not in {None, expected_selection}:
+                raise LoadConfigurationError(
+                    "load interval AICLK selection does not match weighted/minimum values"
+                )
+            if self.predicted_load_time_aiclk_mhz is None:
+                object.__setattr__(
+                    self, "predicted_load_time_aiclk_mhz", expected_prediction_aiclk
+                )
+            elif not math.isclose(
+                float(self.predicted_load_time_aiclk_mhz),
+                expected_prediction_aiclk,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
+                raise LoadConfigurationError(
+                    "predicted load-time AICLK does not match weighted/minimum values"
+                )
+            if self.predicted_load_time_aiclk_source is None:
+                object.__setattr__(
+                    self, "predicted_load_time_aiclk_source", expected_prediction_source
+                )
+            elif self.predicted_load_time_aiclk_source != expected_prediction_source:
+                raise LoadConfigurationError(
+                    "predicted load-time AICLK source does not match weighted/minimum values"
+                )
+            if self.load_interval_aiclk_selection is None:
+                object.__setattr__(
+                    self, "load_interval_aiclk_selection", expected_selection
+                )
+        if (self.actual_duration_aiclk_mhz is None) != (
+            self.actual_duration_aiclk_source is None
+        ):
+            raise LoadConfigurationError(
+                "actual-duration AICLK metadata must include value and provenance"
+            )
+        if self.actual_duration_aiclk_mhz is not None:
+            _finite_positive(
+                self.actual_duration_aiclk_mhz, "actual_duration_aiclk_mhz"
+            )
+            if not isinstance(self.actual_duration_aiclk_source, str) or not self.actual_duration_aiclk_source.strip():
+                raise LoadConfigurationError(
+                    "actual-duration AICLK source must be a non-empty string"
+                )
+            expected_selection = aiclk_selection_for_source(
+                self.actual_duration_aiclk_source
+            )
+            if self.actual_duration_aiclk_selection not in {
+                None,
+                expected_selection,
+            }:
+                raise LoadConfigurationError(
+                    "actual-duration AICLK selection does not match its source"
+                )
+            if self.actual_duration_aiclk_selection is None:
+                object.__setattr__(
+                    self, "actual_duration_aiclk_selection", expected_selection
+                )
+        if (
+            self.actual_duration_aiclk_mhz is not None
+            and self.load_interval_aiclk_mhz is not None
+            and (
+                not math.isclose(
+                    float(self.actual_duration_aiclk_mhz),
+                    float(self.load_interval_aiclk_mhz),
+                    rel_tol=0.0,
+                    abs_tol=1e-12,
+                )
+                or self.actual_duration_aiclk_source
+                != self.load_interval_aiclk_source
+            )
+        ):
+            raise LoadConfigurationError(
+                "loaded actual-duration AICLK must use the weighted load interval"
+            )
         if self.condition in _DEVICE_LOAD_CONDITIONS:
             if (
                 isinstance(self.throughput_reference_aiclk_mhz, bool)
@@ -451,9 +552,48 @@ class CalibrationMetadata:
                 raise LoadConfigurationError(
                     "device throughput unit definition is missing or inconsistent"
                 )
+            if self.throughput_reference_aiclk_source != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
+                raise LoadConfigurationError(
+                    "device throughput reference AICLK source is inconsistent"
+                )
 
     def as_record(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _prediction_aiclk_selection(
+    weighted_aiclk_mhz: float, minimum_aiclk_mhz: float | None
+) -> tuple[float, str, str]:
+    """Select the conservative prediction clock and persist its provenance."""
+    weighted = _finite_positive(weighted_aiclk_mhz, "load_interval_aiclk_mhz")
+    if minimum_aiclk_mhz is not None:
+        minimum = _finite_positive(minimum_aiclk_mhz, "load_interval_aiclk_min_mhz")
+        if minimum < weighted:
+            return minimum, AICLK_SELECTION_IN_RUN_MINIMUM, AICLK_SELECTION_IN_RUN_MINIMUM
+    return (
+        weighted,
+        AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL,
+        AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL,
+    )
+
+
+def predicted_load_time_selection(calibration: CalibrationMetadata) -> dict[str, Any]:
+    """Return the selected AICLK and source for a calibrated load prediction."""
+    if not isinstance(calibration, CalibrationMetadata):
+        raise LoadConfigurationError("calibration metadata is required for load-time prediction")
+    if calibration.load_interval_aiclk_mhz is None:
+        raise LoadConfigurationError(
+            "calibration metadata lacks sampler-on load-interval AICLK"
+        )
+    value, source, selection = _prediction_aiclk_selection(
+        calibration.load_interval_aiclk_mhz,
+        calibration.load_interval_aiclk_min_mhz,
+    )
+    return {
+        "aiclk_mhz": value,
+        "aiclk_source": source,
+        "aiclk_selection": selection,
+    }
 
 
 def predicted_load_time_seconds(calibration: CalibrationMetadata) -> float:
@@ -473,10 +613,15 @@ def predicted_load_time_seconds(calibration: CalibrationMetadata) -> float:
     scaled_ticks = calibration.load_card_ticks * (
         calibration.repeat_count / calibration.load_measurement_repeat_count
     )
-    prediction_aiclk_mhz = calibration.load_interval_aiclk_mhz
-    if calibration.load_interval_aiclk_min_mhz is not None:
-        prediction_aiclk_mhz = min(prediction_aiclk_mhz, calibration.load_interval_aiclk_min_mhz)
-    return scaled_ticks / (prediction_aiclk_mhz * 1_000_000.0)
+    prediction = predicted_load_time_selection(calibration)
+    return ticks_to_seconds(
+        ticks=scaled_ticks,
+        selection={
+            "aiclk_mhz": prediction["aiclk_mhz"],
+            "aiclk_mhz_exact": prediction["aiclk_mhz"],
+            "aiclk_source": prediction["aiclk_source"],
+        },
+    )
 
 
 def choose_repeat_count(
@@ -517,6 +662,8 @@ def calibration_metadata(
     load_interval_aiclk_mhz: float | None = None,
     load_interval_aiclk_min_mhz: float | None = None,
     load_interval_aiclk_source: str | None = None,
+    actual_duration_aiclk_mhz: float | None = None,
+    actual_duration_aiclk_source: str | None = None,
 ) -> CalibrationMetadata:
     """Construct the persisted calibration choice and repeat count."""
     canonical = normalize_condition(condition)
@@ -540,6 +687,13 @@ def calibration_metadata(
         load_interval_aiclk_mhz=load_interval_aiclk_mhz,
         load_interval_aiclk_min_mhz=load_interval_aiclk_min_mhz,
         load_interval_aiclk_source=load_interval_aiclk_source,
+        actual_duration_aiclk_mhz=actual_duration_aiclk_mhz,
+        actual_duration_aiclk_source=actual_duration_aiclk_source,
+        actual_duration_aiclk_selection=(
+            aiclk_selection_for_source(actual_duration_aiclk_source)
+            if actual_duration_aiclk_source is not None
+            else None
+        ),
     )
 
 
@@ -1094,6 +1248,11 @@ def _add_load_throughput_metadata(
         if canonical in _DEVICE_LOAD_CONDITIONS
         else None
     )
+    record["throughput_reference_aiclk_source"] = (
+        CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else None
+    )
     record["throughput_unit_definition"] = (
         CARD_THROUGHPUT_UNIT_DEFINITION
         if canonical in _DEVICE_LOAD_CONDITIONS
@@ -1146,6 +1305,16 @@ def _load_record_payload(
             {
                 "source": "slowest_worker_own_elapsed_interval",
                 "elapsed_ticks": max(row["elapsed_ticks"] for row in normalized_workers),
+                "elapsed_seconds_at_reference_aiclk": ticks_to_seconds(
+                    ticks=max(row["elapsed_ticks"] for row in normalized_workers),
+                    selection={
+                        "aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                        "aiclk_mhz_exact": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                        "aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
+                    },
+                ),
+                "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
                 "aggregate_span_elapsed_ticks": card_interval.elapsed_ticks,
             }
             if normalized_workers and card_interval is not None
@@ -1283,6 +1452,16 @@ def _calibration_load_payload(
             {
                 "source": "slowest_worker_own_elapsed_interval",
                 "elapsed_ticks": max(row["elapsed_ticks"] for row in normalized_workers),
+                "elapsed_seconds_at_reference_aiclk": ticks_to_seconds(
+                    ticks=max(row["elapsed_ticks"] for row in normalized_workers),
+                    selection={
+                        "aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                        "aiclk_mhz_exact": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                        "aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
+                    },
+                ),
+                "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+                "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
                 "aggregate_span_elapsed_ticks": card_interval.elapsed_ticks,
             }
             if normalized_workers and card_interval is not None
@@ -1436,6 +1615,14 @@ def _validate_worker_interval_records(
             raise LoadEvidenceError("throughput interval must use the slowest worker own interval")
         if throughput.get("elapsed_ticks") != slowest:
             raise LoadEvidenceError("throughput interval does not match the slowest worker")
+        if "reference_aiclk_mhz" in throughput and throughput.get(
+            "reference_aiclk_mhz"
+        ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
+            raise LoadEvidenceError("throughput interval reference AICLK must be 1350 MHz")
+        if "reference_aiclk_source" in throughput and throughput.get(
+            "reference_aiclk_source"
+        ) != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
+            raise LoadEvidenceError("throughput interval reference AICLK source is invalid")
         if throughput.get("aggregate_span_elapsed_ticks") != aggregate_interval.elapsed_ticks:
             raise LoadEvidenceError("throughput interval aggregate span is inconsistent")
 
@@ -1721,6 +1908,12 @@ def _validate_device_load_record(record: Mapping[str, Any], canonical: str) -> N
         "throughput_reference_aiclk_mhz"
     ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
         raise LoadEvidenceError("device throughput reference AICLK must be 1350 MHz")
+    if "throughput_reference_aiclk_source" in record and record.get(
+        "throughput_reference_aiclk_source"
+    ) != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
+        raise LoadEvidenceError(
+            "device throughput reference AICLK source must be fixed reference"
+        )
     if "throughput_unit_definition" in record and record.get(
         "throughput_unit_definition"
     ) != CARD_THROUGHPUT_UNIT_DEFINITION:
@@ -1786,6 +1979,7 @@ __all__ = [
     "CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE",
     "CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS",
     "CARD_THROUGHPUT_REFERENCE_AICLK_MHZ",
+    "CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE",
     "CARD_THROUGHPUT_UNIT_DEFINITION",
     "DEVICE_OPEN_SETTINGS",
     "DRAM_BANK_COUNT",
@@ -1846,6 +2040,7 @@ __all__ = [
     "ns_work_distribution",
     "p150_core_partition",
     "predicted_load_time_seconds",
+    "predicted_load_time_selection",
     "repeat_throughput_unit",
     "validate_calibration_load_record",
     "validate_device_open_settings",

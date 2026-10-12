@@ -39,9 +39,11 @@ from enodia.tt.bench.power_trace_snapshot import (
     read_power_trace_csv,
 )
 from enodia.tt.bench.resident_clock import (
+    AICLK_SELECTION_CONFIGURED_BUDGET,
     AICLK_SOURCE_CONFIGURED,
     AICLK_SOURCE_LEGACY_UNVERIFIED,
     AICLK_SOURCE_RUN_TRACE_SAMPLES,
+    aiclk_selection_for_source,
     safe_aiclk_integer,
     select_elapsed_aiclk,
     select_load_interval_aiclk,
@@ -1596,6 +1598,7 @@ def build_measurement_record(
         "num_command_queues": num_command_queues,
         "outer_timeout_cap_seconds": config.outer_timeout_cap_seconds,
         "outer_timeout_cap_source": config.outer_timeout_cap_source,
+        "outer_timeout_cap_aiclk_source": "configured_budget",
         "device_open": {
             "num_command_queues": num_command_queues,
             "resident_command_queue": 0,
@@ -1605,7 +1608,11 @@ def build_measurement_record(
         "termination_reason": reason,
         "parameters": {
             **config.as_record(),
-            "run_budget": run_budget_breakdown(config, watcher=watcher),
+            "outer_timeout_cap_aiclk_source": "configured_budget",
+            "run_budget": {
+                **run_budget_breakdown(config, watcher=watcher),
+                "budget_aiclk_source": AICLK_SELECTION_CONFIGURED_BUDGET,
+            },
             "cycle_budget_scope": "per_frame_fixed_work; run_budget.run_budget_ticks is run-wide",
             "full_ring_policy": "drop_new_frame_without_waiting_or_overwriting",
             "attempted_frame_count": attempted,
@@ -1626,6 +1633,7 @@ def build_measurement_record(
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
             "aiclk_source": aiclk_source,
+            "aiclk_selection": aiclk_selection_for_source(aiclk_source),
             "aiclk_mhz_in_run_min": (
                 trace_metadata.get("aiclk_mhz_in_run_min")
                 if trace_metadata is not None
@@ -1648,6 +1656,9 @@ def build_measurement_record(
             ),
             "aiclk_mhz_for_elapsed_seconds": elapsed_aiclk_mhz,
             "aiclk_source_for_elapsed_seconds": elapsed_aiclk_source,
+            "aiclk_selection_for_elapsed_seconds": aiclk_selection_for_source(
+                elapsed_aiclk_source
+            ),
             "aiclk_observation": (
                 "configured run AICLK; sampler off provides no loaded-clock trace"
                 if aiclk_source == AICLK_SOURCE_CONFIGURED
@@ -1690,6 +1701,7 @@ def build_measurement_record(
                 "startup_allowance_ticks"
             ],
             "budget_aiclk_mhz": config.budget_aiclk_mhz,
+            "budget_aiclk_source": "configured_budget",
             "observed_ticks": startup_ticks if startup_ticks_valid else None,
             "observed_valid": bool(startup_ticks_valid and startup_ticks is not None),
             "clock": "designated consumer RISCV_DEBUG_REG_WALL_CLOCK_L; 32-bit low word, software-extended (wrap-tracked)",

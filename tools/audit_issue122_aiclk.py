@@ -8,6 +8,7 @@ external command.  The pure helpers are also used by the board-free tests.
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import datetime as dt
 import hashlib
@@ -688,6 +689,202 @@ def _format_percentage(value: float | None, digits: int = 3) -> str:
     return f"{value * 100.0:.{digits}f}%"
 
 
+class _ConversionCallVisitor(ast.NodeVisitor):
+    """Collect production conversion calls with their enclosing function."""
+
+    def __init__(self) -> None:
+        self.function_stack: list[str] = []
+        self.calls: list[tuple[int, str]] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.function_stack.append(node.name)
+        self.generic_visit(node)
+        self.function_stack.pop()
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Call(self, node: ast.Call) -> None:
+        function = node.func
+        if isinstance(function, ast.Name) and function.id == "ticks_to_seconds":
+            self.calls.append((node.lineno, self.function_stack[-1] if self.function_stack else "module"))
+        self.generic_visit(node)
+
+
+def _conversion_calls(path: Path) -> tuple[tuple[int, str], ...]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    visitor = _ConversionCallVisitor()
+    visitor.visit(tree)
+    return tuple(sorted(visitor.calls))
+
+
+def _line_containing(path: Path, needle: str) -> int:
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if needle in line:
+            return line_number
+    raise ValueError(f"conversion inventory marker is missing: {path}:{needle}")
+
+
+def _conversion_inventory() -> list[tuple[str, int, str, str, str, str]]:
+    """Return the post-#124 production tick/time conversion inventory.
+
+    The line numbers come from the current AST/source text on every report
+    generation, so the committed Markdown cannot silently retain pre-#124
+    locations after a source edit.
+    """
+    repository_root = Path(__file__).resolve().parents[1]
+    source_root = repository_root / "enodia" / "tt" / "bench"
+    tools_root = repository_root / "tools"
+    entries: list[tuple[str, int, str, str, str, str]] = []
+
+    def add(path: Path, line: int, conversion: str, value: str, source: str, contract: str) -> None:
+        entries.append((path.relative_to(repository_root).as_posix(), line, conversion, value, source, contract))
+
+    resident_clock = source_root / "resident_clock.py"
+    add(
+        resident_clock,
+        _line_containing(resident_clock, "def ticks_to_seconds("),
+        "shared ticks → seconds helper",
+        "selected AICLK (exact when weighted)",
+        "selection['aiclk_source'] / semantic selection",
+        "all cycle→time callers must pass a selected value",
+    )
+
+    resident_record = source_root / "resident_record.py"
+    for line, function in _conversion_calls(resident_record):
+        if function == "_sampler_comparison":
+            value = "elapsed_aiclk_selection"
+            source = "resident elapsed-time source (configured, in-run maximum, or load weighted)"
+            contract = "sampler gap seconds"
+        elif function == "build_outlier_analysis":
+            value = "elapsed_selection['aiclk_mhz']"
+            source = "aiclk_source_for_elapsed_seconds"
+            contract = "resident event/pair/run elapsed seconds"
+        else:
+            value = "record elapsed selection"
+            source = "persisted aiclk_source_for_elapsed_seconds"
+            contract = "validator recomputation of resident elapsed seconds"
+        add(resident_record, line, f"{function} ticks → seconds", value, source, contract)
+
+    issue104 = tools_root / "analyze_issue104_wrap.py"
+    for line, function in _conversion_calls(issue104):
+        if function == "analyze_issue104":
+            value = "configured 1350 MHz default selection"
+            source = "configured budget"
+        else:
+            value = "aiclk_selection"
+            source = "legacy_unverified for historical sampled records; trace selection otherwise"
+        add(issue104, line, f"{function} ticks → seconds", value, source, "historical wrap analysis preserves numeric results")
+
+    run_resident = source_root / "run_resident.py"
+    for line, function in _conversion_calls(run_resident):
+        if function == "_load_achieved_throughput":
+            add(
+                run_resident,
+                line,
+                "throughput reference ticks → seconds",
+                "1350 MHz fixed reference",
+                "fixed_reference_1350_mhz",
+                "normalization denominator, not observed AICLK",
+            )
+        else:
+            add(
+                run_resident,
+                line,
+                "calibration actual duration ticks → seconds",
+                "throughput_aiclk_mhz",
+                "actual_duration_aiclk_source",
+                "weighted for loaded records; selected run clock otherwise",
+            )
+
+    load_harness = source_root / "load_harness.py"
+    for line, function in _conversion_calls(load_harness):
+        if function == "predicted_load_time_seconds":
+            add(
+                load_harness,
+                line,
+                "predicted load card ticks → seconds",
+                "min(weighted load interval, in-run minimum) when minimum is present",
+                "predicted_load_time_aiclk_source",
+                "time_weighted_load_interval or in_run_minimum",
+            )
+        else:
+            add(
+                load_harness,
+                line,
+                "persisted throughput reference ticks → seconds",
+                "1350 MHz fixed reference",
+                "fixed_reference_1350_mhz",
+                "historical repeats_per_card_second normalization",
+            )
+
+    # Inverse seconds-to-ticks calculations are listed separately so a budget
+    # clock cannot be mistaken for measured elapsed-time evidence.
+    resident_harness = source_root / "resident_harness.py"
+    add(
+        resident_harness,
+        _line_containing(resident_harness, "def interval_ticks_for_microseconds("),
+        "inverse wall time → ticks",
+        "configured budget AICLK",
+        "configured_budget",
+        "startup/budget policy, not measured elapsed time",
+    )
+    add(
+        resident_harness,
+        _line_containing(resident_harness, "cap_ticks = config.outer_timeout_seconds"),
+        "inverse outer timeout seconds → ticks",
+        "configured budget AICLK",
+        "configured_budget",
+        "outer-cap policy, not measured elapsed time",
+    )
+    add(
+        run_resident,
+        _line_containing(run_resident, "target_ticks = int(target_seconds"),
+        "inverse calibration target seconds → ticks",
+        "configured budget AICLK",
+        "configured_budget",
+        "calibration budget policy",
+    )
+    add(
+        run_resident,
+        _line_containing(run_resident, "startup_ticks = 100_000"),
+        "inverse startup allowance → ticks",
+        "configured budget AICLK",
+        "configured_budget",
+        "calibration budget policy",
+    )
+    add(
+        issue104,
+        _line_containing(issue104, "def _phase_window_ticks("),
+        "inverse phase-window milliseconds → ticks",
+        "selected analyzer AICLK",
+        "legacy_unverified for historical sampled records; configured off-mode default otherwise",
+        "analysis window policy, not elapsed-time evidence",
+    )
+    return entries
+
+
+def _conversion_inventory_section() -> list[str]:
+    lines = [
+        "## Post-#124 cycle-ticks-to-seconds conversion inventory",
+        "",
+        "Line numbers are generated from the current production source. The source column retains the machine-readable record tag where one exists and the semantic selection beside it.",
+        "",
+        "| path | line | conversion path | selected value | chosen source | interpretation |",
+        "|---|---:|---|---|---|---|",
+    ]
+    lines.extend(
+        "| " + " | ".join(_cell(value) for value in entry) + " |"
+        for entry in _conversion_inventory()
+    )
+    lines.extend(
+        [
+            "",
+            "`clock.aiclk_mhz` remains the in-run maximum and is not an elapsed-time denominator for new records. Resident elapsed fields use their persisted AICLK/source pair; loaded records use the time-weighted load interval, while conservative prediction may select the in-run minimum. The 1,350 MHz throughput reference is fixed normalization. Configured budget and outer-cap conversions are inverse policy calculations.",
+        ]
+    )
+    return lines
+
+
 def _final_p50_changes(record: Mapping[str, Any]) -> tuple[tuple[str, float], ...]:
     rows = record.get("rows")
     if not isinstance(rows, list):
@@ -984,11 +1181,17 @@ def render_report(root: Path) -> str:
             "its position uses the beginning/middle/end thirds of the CSV."
         ),
         "",
-        "## JSON record inventory",
-        "",
-        "| record | issue | status | trace reference/provenance | resolved CSV | pairing | rows valid/CSV | unique AICLK (MHz) | classification | min/max (MHz) | min intermediate (MHz) | position | interval evidence | weighted AICLK (MHz) |",
-        "|---|---|---|---|---|---|---:|---|---|---:|---:|---|---|---:|",
     ]
+    lines.extend(_conversion_inventory_section())
+    lines.extend(
+        [
+            "",
+            "## JSON record inventory",
+            "",
+            "| record | issue | status | trace reference/provenance | resolved CSV | pairing | rows valid/CSV | unique AICLK (MHz) | classification | min/max (MHz) | min intermediate (MHz) | position | interval evidence | weighted AICLK (MHz) |",
+            "|---|---|---|---|---|---|---:|---|---|---:|---:|---|---|---:|",
+        ]
+    )
     lines.extend(_analysis_row(analysis) for analysis in analyses)
     lines.extend(
         [

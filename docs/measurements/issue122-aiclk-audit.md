@@ -6,6 +6,39 @@
 - CSV files: 72
 - Interval policy: valid timestamped rows are left-held until the next row; an explicit interval is exact only when ordered trace rows cover both bounds. Missing bounds produce a `CSV capture span diagnostic`; they do not become in-run evidence. Intermediate means any valid AICLK outside `{800,1350}`; its position uses the beginning/middle/end thirds of the CSV.
 
+## Post-#124 cycle-ticks-to-seconds conversion inventory
+
+Line numbers are generated from the current production source. The source column retains the machine-readable record tag where one exists and the semantic selection beside it.
+
+| path | line | conversion path | selected value | chosen source | interpretation |
+|---|---:|---|---|---|---|
+| enodia/tt/bench/resident_clock.py | 156 | shared ticks → seconds helper | selected AICLK (exact when weighted) | selection['aiclk_source'] / semantic selection | all cycle→time callers must pass a selected value |
+| enodia/tt/bench/resident_record.py | 2223 | _sampler_comparison ticks → seconds | elapsed_aiclk_selection | resident elapsed-time source (configured, in-run maximum, or load weighted) | sampler gap seconds |
+| enodia/tt/bench/resident_record.py | 2353 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
+| enodia/tt/bench/resident_record.py | 2357 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
+| enodia/tt/bench/resident_record.py | 2365 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
+| enodia/tt/bench/resident_record.py | 2417 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
+| enodia/tt/bench/resident_record.py | 3042 | validate_pair_analysis ticks → seconds | record elapsed selection | persisted aiclk_source_for_elapsed_seconds | validator recomputation of resident elapsed seconds |
+| enodia/tt/bench/resident_record.py | 3051 | validate_pair_analysis ticks → seconds | record elapsed selection | persisted aiclk_source_for_elapsed_seconds | validator recomputation of resident elapsed seconds |
+| enodia/tt/bench/resident_record.py | 3078 | validate_pair_analysis ticks → seconds | record elapsed selection | persisted aiclk_source_for_elapsed_seconds | validator recomputation of resident elapsed seconds |
+| tools/analyze_issue104_wrap.py | 293 | analyze_run ticks → seconds | aiclk_selection | legacy_unverified for historical sampled records; trace selection otherwise | historical wrap analysis preserves numeric results |
+| tools/analyze_issue104_wrap.py | 375 | analyze_run ticks → seconds | aiclk_selection | legacy_unverified for historical sampled records; trace selection otherwise | historical wrap analysis preserves numeric results |
+| tools/analyze_issue104_wrap.py | 474 | analyze_issue104 ticks → seconds | configured 1350 MHz default selection | configured budget | historical wrap analysis preserves numeric results |
+| enodia/tt/bench/run_resident.py | 1451 | throughput reference ticks → seconds | 1350 MHz fixed reference | fixed_reference_1350_mhz | normalization denominator, not observed AICLK |
+| enodia/tt/bench/run_resident.py | 1465 | throughput reference ticks → seconds | 1350 MHz fixed reference | fixed_reference_1350_mhz | normalization denominator, not observed AICLK |
+| enodia/tt/bench/run_resident.py | 1473 | throughput reference ticks → seconds | 1350 MHz fixed reference | fixed_reference_1350_mhz | normalization denominator, not observed AICLK |
+| enodia/tt/bench/run_resident.py | 1511 | calibration actual duration ticks → seconds | throughput_aiclk_mhz | actual_duration_aiclk_source | weighted for loaded records; selected run clock otherwise |
+| enodia/tt/bench/load_harness.py | 617 | predicted load card ticks → seconds | min(weighted load interval, in-run minimum) when minimum is present | predicted_load_time_aiclk_source | time_weighted_load_interval or in_run_minimum |
+| enodia/tt/bench/load_harness.py | 1308 | persisted throughput reference ticks → seconds | 1350 MHz fixed reference | fixed_reference_1350_mhz | historical repeats_per_card_second normalization |
+| enodia/tt/bench/load_harness.py | 1455 | persisted throughput reference ticks → seconds | 1350 MHz fixed reference | fixed_reference_1350_mhz | historical repeats_per_card_second normalization |
+| enodia/tt/bench/resident_harness.py | 519 | inverse wall time → ticks | configured budget AICLK | configured_budget | startup/budget policy, not measured elapsed time |
+| enodia/tt/bench/resident_harness.py | 599 | inverse outer timeout seconds → ticks | configured budget AICLK | configured_budget | outer-cap policy, not measured elapsed time |
+| enodia/tt/bench/run_resident.py | 1403 | inverse calibration target seconds → ticks | configured budget AICLK | configured_budget | calibration budget policy |
+| enodia/tt/bench/run_resident.py | 1404 | inverse startup allowance → ticks | configured budget AICLK | configured_budget | calibration budget policy |
+| tools/analyze_issue104_wrap.py | 72 | inverse phase-window milliseconds → ticks | selected analyzer AICLK | legacy_unverified for historical sampled records; configured off-mode default otherwise | analysis window policy, not elapsed-time evidence |
+
+`clock.aiclk_mhz` remains the in-run maximum and is not an elapsed-time denominator for new records. Resident elapsed fields use their persisted AICLK/source pair; loaded records use the time-weighted load interval, while conservative prediction may select the in-run minimum. The 1,350 MHz throughput reference is fixed normalization. Configured budget and outer-cap conversions are inverse policy calculations.
+
 ## JSON record inventory
 
 | record | issue | status | trace reference/provenance | resolved CSV | pairing | rows valid/CSV | unique AICLK (MHz) | classification | min/max (MHz) | min intermediate (MHz) | position | interval evidence | weighted AICLK (MHz) |

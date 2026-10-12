@@ -103,7 +103,9 @@ from enodia.tt.bench.power_trace_snapshot import (
 )
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_CONFIGURED,
+    AICLK_SOURCE_LOAD_INTERVAL_TRACE,
     AICLK_SOURCE_RUN_TRACE_SAMPLES,
+    aiclk_selection_for_source,
     select_elapsed_aiclk,
     ticks_to_seconds,
 )
@@ -928,6 +930,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "resident_tick_interval.*",
     "outer_timeout_cap_seconds",
     "outer_timeout_cap_source",
+    "outer_timeout_cap_aiclk_source",
     "parameters.producer_core",
     "parameters.consumer_core",
     "parameters.work_per_frame",
@@ -935,6 +938,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "parameters.outer_timeout_seconds",
     "parameters.outer_timeout_cap_seconds",
     "parameters.outer_timeout_cap_source",
+    "parameters.outer_timeout_cap_aiclk_source",
     "parameters.histogram_bin_ticks",
     "parameters.fixed_work_ticks_per_frame",
     "parameters.budget_aiclk_mhz",
@@ -950,6 +954,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "parameters.run_budget.overlap_model",
     "parameters.run_budget.startup_allowance_ms",
     "parameters.run_budget.budget_aiclk_mhz",
+    "parameters.run_budget.budget_aiclk_source",
     "parameters.run_budget.startup_allowance_ticks",
     "parameters.run_budget.safety_margin_percent",
     "parameters.run_budget.watcher_overhead_margin_percent",
@@ -968,6 +973,8 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "clock.interval_unit",
     "clock.frequency_source",
     "clock.aiclk_observation",
+    "clock.aiclk_selection",
+    "clock.aiclk_selection_for_elapsed_seconds",
     "clock.aiclk_mhz_in_run_min",
     "clock.aiclk_mhz_in_run_max",
     _CLOCK_WEIGHTED_AICLK_PATH,
@@ -995,6 +1002,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "startup.configured_allowance_ms",
     "startup.configured_allowance_ticks",
     "startup.budget_aiclk_mhz",
+    "startup.budget_aiclk_source",
     "startup.observed_ticks",
     "startup.observed_valid",
     "startup.clock",
@@ -1056,6 +1064,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.byte_count",
     "power_clock_provenance.sha256_definition",
     "power_clock_provenance.sampler_interval_seconds",
+    "power_clock_provenance.aiclk_selection",
     "power_clock_provenance.aiclk_mhz_in_run",
     "power_clock_provenance.aiclk_mhz_in_run_min",
     "power_clock_provenance.aiclk_mhz_in_run_max",
@@ -1089,6 +1098,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_trace_in_run_samples[].*",
     "outlier_analysis.aiclk_source",
     _OUTLIER_ELAPSED_AICLK_SOURCE_PATH,
+    "outlier_analysis.aiclk_selection_for_elapsed_seconds",
     "outlier_analysis.sampler_interval_comparison.status",
     "outlier_analysis.sampler_interval_comparison.reason",
     "outlier_analysis.pairs[].interval_end_frame_indices",
@@ -1504,12 +1514,23 @@ def _check_elapsed_aiclk_binding(
     expected_mhz, expected_source = _expected_elapsed_aiclk(record, condition)
     clock = _mapping(record, "clock")
     outlier = _mapping(record, "outlier_analysis")
+    if clock is not None and "aiclk_selection" in clock:
+        declared_clock_source = clock.get("aiclk_source")
+        expected_clock_selection = aiclk_selection_for_source(declared_clock_source)
+        if clock.get("aiclk_selection") != expected_clock_selection:
+            mismatches.append(
+                _mismatch(
+                    "clock.aiclk_selection",
+                    ("clock.aiclk_selection", "clock.aiclk_source"),
+                    "clock AICLK selection does not match its source",
+                )
+            )
     if condition in {"newton_schulz", "dram"}:
         weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
         weighted_source = (
             clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
         )
-        if not _is_number(weighted) or weighted <= 0 or weighted_source != "load_interval_trace_samples":
+        if not _is_number(weighted) or weighted <= 0 or weighted_source != AICLK_SOURCE_LOAD_INTERVAL_TRACE:
             mismatches.append(
                 _mismatch(
                     LOAD_EVIDENCE_INVARIANT,
@@ -1568,11 +1589,25 @@ def _check_elapsed_aiclk_binding(
             _OUTLIER_ELAPSED_AICLK_SOURCE_PATH,
             outlier.get("aiclk_source_for_elapsed_seconds") if outlier else None,
         ),
+        (
+            "clock.aiclk_selection_for_elapsed_seconds",
+            clock.get("aiclk_selection_for_elapsed_seconds") if clock else None,
+        ),
+        (
+            "outlier_analysis.aiclk_selection_for_elapsed_seconds",
+            outlier.get("aiclk_selection_for_elapsed_seconds") if outlier else None,
+        ),
     ):
+        if "aiclk_selection_for_elapsed_seconds" in path and actual is None:
+            continue
         expected = (
             expected_mhz
             if ".aiclk_mhz_for_elapsed_seconds" in path
-            else expected_source
+            else (
+                aiclk_selection_for_source(expected_source)
+                if ".aiclk_selection_for_elapsed_seconds" in path
+                else expected_source
+            )
         )
         if actual != expected:
             mismatches.append(
@@ -2298,10 +2333,11 @@ def build_outlier_analysis(
             elapsed_aiclk_mhz, bool
         ) or not math.isfinite(float(elapsed_aiclk_mhz)) or elapsed_aiclk_mhz <= 0:
             raise ValueError("elapsed_aiclk_mhz must be a finite positive number")
+        elapsed_source = elapsed_aiclk_source or "explicit_elapsed_aiclk"
         elapsed_selection = {
             "aiclk_mhz": float(elapsed_aiclk_mhz),
             "aiclk_mhz_exact": float(elapsed_aiclk_mhz),
-            "aiclk_source": elapsed_aiclk_source or "explicit_elapsed_aiclk",
+            "aiclk_source": elapsed_source,
         }
     values = list(timestamps)
     if any(not _is_int(value, nonnegative=True) for value in values):
@@ -2373,6 +2409,9 @@ def build_outlier_analysis(
         "aiclk_mhz_for_elapsed_seconds": elapsed_selection["aiclk_mhz"],
         "aiclk_source": selected_source,
         "aiclk_source_for_elapsed_seconds": elapsed_selection["aiclk_source"],
+        "aiclk_selection_for_elapsed_seconds": aiclk_selection_for_source(
+            elapsed_selection["aiclk_source"]
+        ),
         "run_elapsed_ticks": values[-1] - values[0] if values else 0,
         "run_elapsed_seconds": (
             ticks_to_seconds(
@@ -2532,6 +2571,17 @@ def _check_parameter_counts(record: Mapping[str, Any], ctx: ValidationContext) -
         mismatches.append(_mismatch(invariant, ("frames_produced", "parameters.produced_frame_count"), "top-level frames_produced must equal parameters.produced_frame_count"))
     run_budget = params.get("run_budget")
     if isinstance(run_budget, Mapping):
+        if (
+            "budget_aiclk_source" in run_budget
+            and run_budget.get("budget_aiclk_source") != "configured_budget"
+        ):
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("parameters.run_budget.budget_aiclk_source",),
+                    "run-budget AICLK source must be configured_budget",
+                )
+            )
         for budget_name, parameter_name in (
             ("frame_count", "frame_count"),
             ("frame_interval_ticks", "frame_interval_ticks"),
@@ -2541,6 +2591,34 @@ def _check_parameter_counts(record: Mapping[str, Any], ctx: ValidationContext) -
         ):
             if budget_name in run_budget and parameter_name in params and run_budget.get(budget_name) != params.get(parameter_name):
                 mismatches.append(_mismatch(invariant, (f"parameters.run_budget.{budget_name}", f"parameters.{parameter_name}"), f"run_budget.{budget_name} must equal parameters.{parameter_name}"))
+    startup = record.get("startup")
+    if isinstance(startup, Mapping) and (
+        "budget_aiclk_source" in startup
+        and startup.get("budget_aiclk_source") != "configured_budget"
+    ):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("startup.budget_aiclk_source",),
+                "startup AICLK source must be configured_budget",
+            )
+        )
+    for path in ("outer_timeout_cap_aiclk_source", "parameters.outer_timeout_cap_aiclk_source"):
+        container: Mapping[str, Any] = record
+        if "." in path:
+            parent, field = path.split(".", 1)
+            candidate = record.get(parent)
+            container = candidate if isinstance(candidate, Mapping) else {}
+        else:
+            field = path
+        if field in container and container.get(field) != "configured_budget":
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (path,),
+                    "outer timeout cap AICLK source must be configured_budget",
+                )
+            )
     return mismatches
 
 
@@ -2958,6 +3036,7 @@ def validate_pair_analysis(
             expected_aiclk_selection = {
                 "aiclk_mhz": actual_seconds_aiclk,
                 "aiclk_mhz_exact": actual_seconds_aiclk,
+                "aiclk_source": selected_elapsed_source or "legacy_unverified",
             }
             expected_elapsed_seconds = [
                 ticks_to_seconds(ticks=elapsed, selection=expected_aiclk_selection)
@@ -3384,6 +3463,7 @@ _POWER_METADATA_ALIASES = {
     "coverage_complete": ("coverage_complete",),
     "coverage_definition": ("coverage_definition",),
     "aiclk_source": ("aiclk_source",),
+    "aiclk_selection": ("aiclk_selection",),
     "aiclk_mhz": ("aiclk_mhz",),
     "aiclk_mhz_in_run_min": ("aiclk_mhz_in_run_min",),
     "aiclk_mhz_in_run_max": ("aiclk_mhz_in_run_max",),
@@ -3419,6 +3499,7 @@ def _top_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         "coverage_complete": _MISSING,
         "coverage_definition": _MISSING,
         "aiclk_source": _MISSING,
+        "aiclk_selection": _MISSING,
         "aiclk_mhz": _MISSING,
         "aiclk_mhz_in_run_min": record.get("aiclk_mhz_in_run_min", _MISSING),
         "aiclk_mhz_in_run_max": record.get("aiclk_mhz_in_run_max", _MISSING),
@@ -3846,6 +3927,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         elif declared_value != report.get(field):
             mismatches.append(_mismatch(invariant, (f"power_clock_provenance.{field}",), f"power trace {field} does not match actual trace"))
     for field in (
+        "aiclk_selection",
         "aiclk_mhz_in_run_min",
         "aiclk_mhz_in_run_max",
         "aiclk_mhz_load_interval_weighted",
@@ -3885,6 +3967,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         "run_end": "run_end",
         "coverage_complete": "power_trace_coverage.coverage_complete",
         "aiclk_source": "clock.aiclk_source",
+        "aiclk_selection": "clock.aiclk_selection",
         "aiclk_mhz": "clock.aiclk_mhz",
     }
     nested = declared.get("nested", {})

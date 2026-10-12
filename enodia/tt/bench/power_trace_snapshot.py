@@ -5,6 +5,13 @@ runner must copy the bytes it judges into a never-overwritten, run-bound
 snapshot before constructing its record.  This module is the shared
 snapshot/read/hash lifecycle for board runners; callers select the coverage
 contract without reimplementing CSV parsing or artifact ownership.
+
+``aiclk_mhz`` in the emitted trace metadata is always the in-run maximum.  It
+is an observation and is not the denominator for elapsed-time conversion.  A
+loaded conversion uses the separately persisted
+``aiclk_mhz_load_interval_weighted`` value and its
+``aiclk_mhz_load_interval_weighted_source``; resident records add the semantic
+``in_run_maximum`` selection beside their public clock field.
 """
 
 from __future__ import annotations
@@ -23,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from enodia.tt.bench.resident_clock import AICLK_SOURCE_LOAD_INTERVAL_TRACE
 from enodia.tt.bench.run_binding import (
     RUN_ID_PATTERN,
     RunBindingError,
@@ -683,7 +691,7 @@ def _time_weighted_aiclk(
             covered += seconds
     if not math.isclose(covered, duration, rel_tol=0.0, abs_tol=1e-9):
         return None, covered, "load_interval_trace_coverage_incomplete"
-    return weighted / covered, covered, "load_interval_trace_samples"
+    return weighted / covered, covered, AICLK_SOURCE_LOAD_INTERVAL_TRACE
 
 
 def _set_in_run_trace_facts(
@@ -761,7 +769,7 @@ def _set_load_interval_trace_facts(
     trace["aiclk_mhz_load_interval_weighted_seconds"] = covered
     if weighted is not None:
         trace["aiclk_mhz_load_interval_weighted"] = weighted
-        trace["aiclk_mhz_load_interval_weighted_source"] = "load_interval_trace_samples"
+        trace["aiclk_mhz_load_interval_weighted_source"] = AICLK_SOURCE_LOAD_INTERVAL_TRACE
     else:
         trace["aiclk_mhz_load_interval_weighted_source"] = reason
 
