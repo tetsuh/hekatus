@@ -127,6 +127,13 @@ _REPEAT_THROUGHPUT_UNITS = {
     "dram": "repeats_per_card_second",
     "host_cpu_transfer": "repeats_per_host_second",
 }
+_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR = (
+    "DRAM load evidence must retain all eight worker intervals"
+)
+_CALIBRATION_CONDITION_MISMATCH_ERROR = (
+    "calibration condition does not match the load condition"
+)
+_CALIBRATION_METADATA_INVALID_ERROR = "calibration metadata is invalid"
 
 
 class LoadConfigurationError(ValueError):
@@ -1013,7 +1020,7 @@ def _load_record_coverage(
         if card_interval is None:
             raise LoadEvidenceError("worker intervals require an aggregate card interval")
         if canonical == "dram" and len(normalized_workers) != DRAM_BANK_COUNT:
-            raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+            raise LoadEvidenceError(_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR)
     return coverage
 
 
@@ -1023,7 +1030,7 @@ def _validate_load_calibration(
     if calibration is None:
         return
     if calibration.condition != canonical:
-        raise LoadConfigurationError("calibration condition does not match the load condition")
+        raise LoadConfigurationError(_CALIBRATION_CONDITION_MISMATCH_ERROR)
     if canonical != "unloaded" and repeat_count != calibration.repeat_count:
         raise LoadConfigurationError("repeat_count must match calibration-selected repeat_count")
 
@@ -1221,7 +1228,7 @@ def _validate_calibration_load_inputs(
     if canonical == "unloaded":
         raise LoadConfigurationError("unloaded control does not need calibration")
     if calibration.condition != canonical:
-        raise LoadConfigurationError("calibration condition does not match the load condition")
+        raise LoadConfigurationError(_CALIBRATION_CONDITION_MISMATCH_ERROR)
     if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadConfigurationError("calibration measurement repeat_count must be positive")
 
@@ -1331,12 +1338,12 @@ def _validate_worker_interval_records(
     rows = record.get("card_load_worker_intervals")
     if rows is None:
         if condition == "dram":
-            raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+            raise LoadEvidenceError(_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR)
         return
     normalized = _normalize_worker_intervals(rows)
     if condition == "dram":
         if len(normalized) != DRAM_BANK_COUNT:
-            raise LoadEvidenceError("DRAM load evidence must retain all eight worker intervals")
+            raise LoadEvidenceError(_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR)
         if {row["worker_index"] for row in normalized} != set(range(DRAM_BANK_COUNT)):
             raise LoadEvidenceError("DRAM worker indexes must cover all eight banks")
         load_metadata = record.get("load")
@@ -1447,13 +1454,13 @@ def _validate_calibration_repeat_binding(
             raise LoadEvidenceError("calibration metadata is missing")
         return
     if not isinstance(calibration, Mapping):
-        raise LoadEvidenceError("calibration metadata is invalid")
+        raise LoadEvidenceError(_CALIBRATION_METADATA_INVALID_ERROR)
     try:
         metadata = CalibrationMetadata(**dict(calibration))
     except (TypeError, ValueError) as exc:
-        raise LoadEvidenceError("calibration metadata is invalid") from exc
+        raise LoadEvidenceError(_CALIBRATION_METADATA_INVALID_ERROR) from exc
     if metadata.condition != condition:
-        raise LoadEvidenceError("calibration condition does not match the load condition")
+        raise LoadEvidenceError(_CALIBRATION_CONDITION_MISMATCH_ERROR)
     selected_repeat_count = record.get("selected_repeat_count")
     if selected_repeat_count != metadata.repeat_count:
         raise LoadEvidenceError(
@@ -1539,7 +1546,7 @@ def _validate_calibration_metadata(record: Mapping[str, Any]) -> None:
     try:
         CalibrationMetadata(**dict(calibration))
     except (TypeError, ValueError) as exc:
-        raise LoadEvidenceError("calibration metadata is invalid") from exc
+        raise LoadEvidenceError(_CALIBRATION_METADATA_INVALID_ERROR) from exc
     if not isinstance(record.get("coverage"), Mapping):
         raise LoadEvidenceError("calibration coverage metadata is missing or invalid")
 

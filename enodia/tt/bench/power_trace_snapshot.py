@@ -19,7 +19,7 @@ import os
 import re
 import tempfile
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -47,12 +47,241 @@ POWER_TRACE_SHA256_DEFINITION = (
 )
 
 
+class _UnsetRunBound:
+    """Sentinel for a required CSV run bound omitted by the caller."""
+
+
+_UNSET_RUN_BOUND = _UnsetRunBound()
+
+
 @dataclass(frozen=True)
 class PowerTraceReadOptions:
     """Parser settings that apply to the CSV rows rather than run identity."""
 
     row_label: str = "power sample"
     tolerate_invalid_run_bounds: bool = False
+
+
+@dataclass(frozen=True)
+class PowerTraceCsvOptions:
+    """Run and parser settings for one power-trace CSV read."""
+
+    run_id: str | None = None
+    run_start: datetime.datetime | str | None | _UnsetRunBound = _UNSET_RUN_BOUND
+    run_end: datetime.datetime | str | None | _UnsetRunBound = _UNSET_RUN_BOUND
+    source_file: str | None = None
+    sampler_interval_seconds: float | None = None
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE
+    load_interval_start: datetime.datetime | str | None = None
+    load_interval_end: datetime.datetime | str | None = None
+    load_interval_source: str | None = None
+    require_explicit_load_interval: bool = False
+    require_all_rows_valid: bool = False
+    read_text_fn: Callable[[Path], str] | None = None
+    error_factory: Callable[[str, Exception | None], Any] | None = None
+    immutable_snapshot: bool = False
+    reject_incomplete_rows: bool = True
+    read_options: PowerTraceReadOptions = field(default_factory=PowerTraceReadOptions)
+
+
+@dataclass(frozen=True)
+class PowerTraceSnapshotOptions:
+    """Run-bound settings for one immutable power-trace snapshot read."""
+
+    run_id: str
+    run_start: datetime.datetime | str | None
+    run_end: datetime.datetime | str | None
+    snapshot_prefix: str = DEFAULT_SNAPSHOT_PREFIX
+    source_path: Path | None = None
+    sampler_interval_seconds: float | None = None
+    coverage_definition: str = EXPLICIT_FINAL_SAMPLE
+    load_interval_start: datetime.datetime | str | None = None
+    load_interval_end: datetime.datetime | str | None = None
+    load_interval_source: str | None = None
+    include_issue118_metadata: bool = False
+    require_explicit_load_interval: bool = False
+    require_all_rows_valid: bool = False
+    read_text_fn: Callable[[Path], str] | None = None
+    error_factory: Callable[[str, Exception | None], Any] | None = None
+
+
+@dataclass(frozen=True)
+class _TraceRunFactsOptions:
+    """Normalized values needed to calculate run and interval coverage facts."""
+
+    start_text: str | None
+    end_text: str | None
+    load_interval_start_text: str | None
+    load_interval_end_text: str | None
+    load_interval_source: str | None
+    require_explicit_load_interval: bool
+    definition: str
+    interval: float | None
+    require_all_rows_valid: bool
+    all_rows_valid: bool
+    error_factory: Callable[[str, Exception | None], Any] | None
+    append_run_errors: bool
+
+
+@dataclass(frozen=True)
+class _TraceEvaluationOptions:
+    """Normalized values needed to evaluate parsed power-trace rows."""
+
+    start_text: str | None
+    end_text: str | None
+    load_interval_start_text: str | None
+    load_interval_end_text: str | None
+    load_interval_source: str | None
+    require_explicit_load_interval: bool
+    definition: str
+    interval: float | None
+    require_all_rows_valid: bool
+    error_factory: Callable[[str, Exception | None], Any] | None
+    row_label: str
+    initial_errors: list[Any]
+    append_run_errors: bool
+
+
+_CSV_OPTION_FIELDS = frozenset(
+    {
+        "run_id",
+        "run_start",
+        "run_end",
+        "source_file",
+        "sampler_interval_seconds",
+        "coverage_definition",
+        "load_interval_start",
+        "load_interval_end",
+        "load_interval_source",
+        "require_explicit_load_interval",
+        "require_all_rows_valid",
+        "read_text_fn",
+        "error_factory",
+        "immutable_snapshot",
+        "reject_incomplete_rows",
+    }
+)
+_SNAPSHOT_OPTION_FIELDS = frozenset(
+    {
+        "run_id",
+        "run_start",
+        "run_end",
+        "snapshot_prefix",
+        "source_path",
+        "sampler_interval_seconds",
+        "coverage_definition",
+        "load_interval_start",
+        "load_interval_end",
+        "load_interval_source",
+        "include_issue118_metadata",
+        "require_explicit_load_interval",
+        "require_all_rows_valid",
+        "read_text_fn",
+        "error_factory",
+    }
+)
+
+
+def _legacy_option_error(function_name: str, unknown: set[str]) -> TypeError:
+    name = min(unknown)
+    return TypeError(f"{function_name}() got an unexpected keyword argument {name!r}")
+
+
+def _csv_options_from_legacy(
+    options: PowerTraceCsvOptions | None, legacy_options: dict[str, Any]
+) -> PowerTraceCsvOptions:
+    if options is not None:
+        if legacy_options:
+            raise _legacy_option_error("read_power_trace_csv", set(legacy_options))
+        if not isinstance(options, PowerTraceCsvOptions):
+            raise TypeError("options must be a PowerTraceCsvOptions instance")
+        missing = {
+            name
+            for name in ("run_start", "run_end")
+            if getattr(options, name) is _UNSET_RUN_BOUND
+        }
+        if missing:
+            name = min(missing)
+            raise TypeError(
+                f"read_power_trace_csv() missing required keyword argument {name!r}"
+            )
+        return options
+    values = dict(legacy_options)
+    read_options = values.pop("read_options", None) or PowerTraceReadOptions()
+    if not isinstance(read_options, PowerTraceReadOptions):
+        raise TypeError("read_options must be a PowerTraceReadOptions instance")
+    unknown = set(values) - _CSV_OPTION_FIELDS
+    if unknown:
+        raise _legacy_option_error("read_power_trace_csv", unknown)
+    required = {"run_start", "run_end"}
+    missing = required - set(values)
+    if missing:
+        name = min(missing)
+        raise TypeError(f"read_power_trace_csv() missing required keyword argument {name!r}")
+    return PowerTraceCsvOptions(
+        run_id=values.get("run_id"),
+        run_start=values.get("run_start"),
+        run_end=values.get("run_end"),
+        source_file=values.get("source_file"),
+        sampler_interval_seconds=values.get("sampler_interval_seconds"),
+        coverage_definition=values.get(
+            "coverage_definition", EXPLICIT_FINAL_SAMPLE
+        ),
+        load_interval_start=values.get("load_interval_start"),
+        load_interval_end=values.get("load_interval_end"),
+        load_interval_source=values.get("load_interval_source"),
+        require_explicit_load_interval=values.get(
+            "require_explicit_load_interval", False
+        ),
+        require_all_rows_valid=values.get("require_all_rows_valid", False),
+        read_text_fn=values.get("read_text_fn"),
+        error_factory=values.get("error_factory"),
+        immutable_snapshot=values.get("immutable_snapshot", False),
+        reject_incomplete_rows=values.get("reject_incomplete_rows", True),
+        read_options=read_options,
+    )
+
+
+def _snapshot_options_from_legacy(
+    options: PowerTraceSnapshotOptions | None, legacy_options: dict[str, Any]
+) -> PowerTraceSnapshotOptions:
+    if options is not None:
+        if legacy_options:
+            raise _legacy_option_error("read_power_trace_snapshot", set(legacy_options))
+        if not isinstance(options, PowerTraceSnapshotOptions):
+            raise TypeError("options must be a PowerTraceSnapshotOptions instance")
+        return options
+    values = dict(legacy_options)
+    unknown = set(values) - _SNAPSHOT_OPTION_FIELDS
+    if unknown:
+        raise _legacy_option_error("read_power_trace_snapshot", unknown)
+    required = {"run_id", "run_start", "run_end"}
+    missing = required - set(values)
+    if missing:
+        name = min(missing)
+        raise TypeError(f"read_power_trace_snapshot() missing required keyword argument {name!r}")
+    return PowerTraceSnapshotOptions(
+        run_id=values["run_id"],
+        run_start=values["run_start"],
+        run_end=values["run_end"],
+        snapshot_prefix=values.get("snapshot_prefix", DEFAULT_SNAPSHOT_PREFIX),
+        source_path=values.get("source_path"),
+        sampler_interval_seconds=values.get("sampler_interval_seconds"),
+        coverage_definition=values.get(
+            "coverage_definition", EXPLICIT_FINAL_SAMPLE
+        ),
+        load_interval_start=values.get("load_interval_start"),
+        load_interval_end=values.get("load_interval_end"),
+        load_interval_source=values.get("load_interval_source"),
+        include_issue118_metadata=values.get("include_issue118_metadata", False),
+        require_explicit_load_interval=values.get(
+            "require_explicit_load_interval", False
+        ),
+        require_all_rows_valid=values.get("require_all_rows_valid", False),
+        read_text_fn=values.get("read_text_fn"),
+        error_factory=values.get("error_factory"),
+    )
+
 
 # These descriptions were emitted by Issue #88 before coverage definitions
 # became named contract values.  They remain readable as explicit-final-
@@ -500,15 +729,15 @@ def _set_load_interval_trace_facts(
     load_end_text = end_text
     trace["load_interval_start"] = load_start_text
     trace["load_interval_end"] = load_end_text
-    trace["load_interval_source"] = source or (
-        None
-        if require_explicit_load_interval
-        else (
-            "run_bounds"
-            if load_start_text is not None and load_end_text is not None
-            else None
-        )
-    )
+    if source:
+        resolved_source = source
+    elif require_explicit_load_interval:
+        resolved_source = None
+    elif load_start_text is not None and load_end_text is not None:
+        resolved_source = "run_bounds"
+    else:
+        resolved_source = None
+    trace["load_interval_source"] = resolved_source
     if require_explicit_load_interval and trace["load_interval_source"] != ISSUE118_LOAD_INTERVAL_SOURCE:
         trace["aiclk_mhz_load_interval_weighted_source"] = (
             "load_interval_provenance_invalid"
@@ -541,67 +770,55 @@ def _set_trace_run_facts(
     trace: dict[str, Any],
     usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
     parsed_timestamps: list[datetime.datetime],
-    *,
-    start_text: str | None,
-    end_text: str | None,
-    load_interval_start_text: str | None,
-    load_interval_end_text: str | None,
-    load_interval_source: str | None,
-    require_explicit_load_interval: bool,
-    definition: str,
-    interval: float | None,
-    require_all_rows_valid: bool,
-    all_rows_valid: bool,
-    error_factory: Callable[[str, Exception | None], Any] | None,
-    append_run_errors: bool,
+    options: _TraceRunFactsOptions,
 ) -> None:
     try:
-        start = _parse_trace_timestamp(start_text, field="run_start")
-        end = _parse_trace_timestamp(end_text, field="run_end")
+        start = _parse_trace_timestamp(options.start_text, field="run_start")
+        end = _parse_trace_timestamp(options.end_text, field="run_end")
     except ValueError as exc:
-        error = _error_value(error_factory, "power_timestamp_invalid", exc)
+        error = _error_value(options.error_factory, "power_timestamp_invalid", exc)
         trace["error"] = error
-        if append_run_errors:
+        if options.append_run_errors:
             trace["errors"].append(error)
         return
 
-    if start > end and append_run_errors:
+    if start > end and options.append_run_errors:
         trace["errors"].append("run_start must be at or before run_end")
     _set_in_run_trace_facts(trace, usable_rows, parsed_timestamps, start, end)
     _set_load_interval_trace_facts(
         trace,
         usable_rows,
         start_text=(
-            load_interval_start_text
-            if require_explicit_load_interval
-            else load_interval_start_text or start_text
+            options.load_interval_start_text
+            if options.require_explicit_load_interval
+            else options.load_interval_start_text or options.start_text
         ),
         end_text=(
-            load_interval_end_text
-            if require_explicit_load_interval
-            else load_interval_end_text or end_text
+            options.load_interval_end_text
+            if options.require_explicit_load_interval
+            else options.load_interval_end_text or options.end_text
         ),
-        source=load_interval_source,
-        require_explicit_load_interval=require_explicit_load_interval,
-        error_factory=error_factory,
+        source=options.load_interval_source,
+        require_explicit_load_interval=options.require_explicit_load_interval,
+        error_factory=options.error_factory,
     )
-    interval_bound = interval is not None and timestamp_within_interval_bound(
-        parsed_timestamps[-1], end, interval
+    interval_bound = options.interval is not None and timestamp_within_interval_bound(
+        parsed_timestamps[-1], end, options.interval
     )
-    if interval is not None:
-        trace["sampler_interval_seconds"] = interval
+    if options.interval is not None:
+        trace["sampler_interval_seconds"] = options.interval
     trace["coverage_complete"] = all(
         (
             trace["readable"],
             trace["nonempty"],
             trace["valid_row_count"] > 0,
-            not require_all_rows_valid or all_rows_valid,
+            not options.require_all_rows_valid or options.all_rows_valid,
             trace["timestamps_parse"],
             trace["timestamps_ordered"],
             parsed_timestamps[0] <= start,
             start <= end,
             end <= parsed_timestamps[-1]
-            if definition == EXPLICIT_FINAL_SAMPLE
+            if options.definition == EXPLICIT_FINAL_SAMPLE
             else interval_bound,
         )
     )
@@ -628,42 +845,29 @@ def _set_trace_coverage(trace: dict[str, Any], definition: str) -> dict[str, Any
 def _evaluate_trace_rows(
     trace: dict[str, Any],
     samples: list[dict[str, Any]],
-    *,
-    start_text: str | None,
-    end_text: str | None,
-    load_interval_start_text: str | None,
-    load_interval_end_text: str | None,
-    load_interval_source: str | None,
-    require_explicit_load_interval: bool,
-    definition: str,
-    interval: float | None,
-    require_all_rows_valid: bool,
-    error_factory: Callable[[str, Exception | None], Any] | None,
-    row_label: str,
-    initial_errors: list[Any],
-    append_run_errors: bool,
+    options: _TraceEvaluationOptions,
 ) -> dict[str, Any]:
     trace["readable"] = True
     trace["csv_row_count"] = len(samples)
     usable_rows, row_errors, timestamp_error = _usable_trace_rows(
-        samples, error_factory=error_factory, row_label=row_label
+        samples, error_factory=options.error_factory, row_label=options.row_label
     )
-    errors = [*initial_errors, *row_errors]
+    errors = [*options.initial_errors, *row_errors]
     parsed_timestamps = [timestamp for _sample, timestamp, _aiclk in usable_rows]
     all_rows_valid = _set_trace_row_facts(
         trace,
         samples,
         usable_rows,
         errors,
-        require_all_rows_valid=require_all_rows_valid,
+        require_all_rows_valid=options.require_all_rows_valid,
     )
     if not usable_rows:
         trace["error"] = timestamp_error or _error_value(
-            error_factory, "power_trace_no_usable_rows"
+            options.error_factory, "power_trace_no_usable_rows"
         )
     elif timestamp_error is not None:
         trace["error"] = timestamp_error
-    elif require_all_rows_valid and not all_rows_valid:
+    elif options.require_all_rows_valid and not all_rows_valid:
         trace["error"] = errors[0]
     else:
         _set_trace_timestamp_facts(trace, parsed_timestamps)
@@ -671,68 +875,69 @@ def _evaluate_trace_rows(
             trace,
             usable_rows,
             parsed_timestamps,
-            start_text=start_text,
-            end_text=end_text,
-            definition=definition,
-            interval=interval,
-            load_interval_start_text=load_interval_start_text,
-            load_interval_end_text=load_interval_end_text,
-            load_interval_source=load_interval_source,
-            require_explicit_load_interval=require_explicit_load_interval,
-            require_all_rows_valid=require_all_rows_valid,
-            all_rows_valid=all_rows_valid,
-            error_factory=error_factory,
-            append_run_errors=append_run_errors,
+            _TraceRunFactsOptions(
+                start_text=options.start_text,
+                end_text=options.end_text,
+                load_interval_start_text=options.load_interval_start_text,
+                load_interval_end_text=options.load_interval_end_text,
+                load_interval_source=options.load_interval_source,
+                require_explicit_load_interval=options.require_explicit_load_interval,
+                definition=options.definition,
+                interval=options.interval,
+                require_all_rows_valid=options.require_all_rows_valid,
+                all_rows_valid=all_rows_valid,
+                error_factory=options.error_factory,
+                append_run_errors=options.append_run_errors,
+            ),
         )
-    return _set_trace_coverage(trace, definition)
+    return _set_trace_coverage(trace, options.definition)
 
 
 def read_power_trace_csv(
     path: Path,
     *,
-    run_id: str | None = None,
-    run_start: datetime.datetime | str | None,
-    run_end: datetime.datetime | str | None,
-    source_file: str | None = None,
-    sampler_interval_seconds: float | None = None,
-    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
-    load_interval_start: datetime.datetime | str | None = None,
-    load_interval_end: datetime.datetime | str | None = None,
-    load_interval_source: str | None = None,
-    require_explicit_load_interval: bool = False,
-    require_all_rows_valid: bool = False,
-    read_text_fn: Callable[[Path], str] | None = None,
-    error_factory: Callable[[str, Exception | None], Any] | None = None,
-    immutable_snapshot: bool = False,
-    reject_incomplete_rows: bool = True,
-    read_options: PowerTraceReadOptions | None = None,
+    options: PowerTraceCsvOptions | None = None,
+    **legacy_options: Any,
 ) -> dict[str, Any]:
     """Read power CSV bytes and evaluate one named run-coverage contract."""
-    options = read_options or PowerTraceReadOptions()
-    definition = canonical_coverage_definition(coverage_definition)
+    options = _csv_options_from_legacy(options, legacy_options)
+    read_options = options.read_options
+    definition = canonical_coverage_definition(options.coverage_definition)
     path = Path(path)
     start_text, start_error = _run_timestamp_text(
-        run_start, field="run_start", tolerate_invalid=options.tolerate_invalid_run_bounds
+        options.run_start,
+        field="run_start",
+        tolerate_invalid=read_options.tolerate_invalid_run_bounds,
     )
     end_text, end_error = _run_timestamp_text(
-        run_end, field="run_end", tolerate_invalid=options.tolerate_invalid_run_bounds
+        options.run_end,
+        field="run_end",
+        tolerate_invalid=read_options.tolerate_invalid_run_bounds,
+    )
+    load_start_value = (
+        options.load_interval_start
+        if options.require_explicit_load_interval
+        or options.load_interval_start is not None
+        else options.run_start
+    )
+    load_end_value = (
+        options.load_interval_end
+        if options.require_explicit_load_interval
+        or options.load_interval_end is not None
+        else options.run_end
     )
     load_start_text, load_start_error = _run_timestamp_text(
-        load_interval_start
-        if require_explicit_load_interval or load_interval_start is not None
-        else run_start,
+        load_start_value,
         field="load_interval_start",
-        tolerate_invalid=options.tolerate_invalid_run_bounds,
+        tolerate_invalid=read_options.tolerate_invalid_run_bounds,
     )
     load_end_text, load_end_error = _run_timestamp_text(
-        load_interval_end
-        if require_explicit_load_interval or load_interval_end is not None
-        else run_end,
+        load_end_value,
         field="load_interval_end",
-        tolerate_invalid=options.tolerate_invalid_run_bounds,
+        tolerate_invalid=read_options.tolerate_invalid_run_bounds,
     )
     initial_errors = [
-        _error_value(error_factory, "power_timestamp_invalid", error)
+        _error_value(options.error_factory, "power_timestamp_invalid", error)
         for error in (
             start_error,
             end_error,
@@ -743,27 +948,27 @@ def read_power_trace_csv(
     ]
     trace = _trace_base(
         path,
-        run_id=run_id,
+        run_id=options.run_id,
         run_start=start_text,
         run_end=end_text,
         coverage_definition=definition,
-        source_file=source_file,
-        immutable_snapshot=immutable_snapshot,
+        source_file=options.source_file,
+        immutable_snapshot=options.immutable_snapshot,
     )
     trace["errors"] = initial_errors
     trace["load_interval_start"] = load_start_text
     trace["load_interval_end"] = load_end_text
-    trace["load_interval_source"] = load_interval_source or (
-        None
-        if require_explicit_load_interval
-        else (
-            "run_bounds"
-            if load_start_text is not None and load_end_text is not None
-            else None
-        )
-    )
+    if options.load_interval_source:
+        load_interval_source = options.load_interval_source
+    elif options.require_explicit_load_interval:
+        load_interval_source = None
+    elif load_start_text is not None and load_end_text is not None:
+        load_interval_source = "run_bounds"
+    else:
+        load_interval_source = None
+    trace["load_interval_source"] = load_interval_source
     interval = (
-        _valid_interval_seconds(sampler_interval_seconds)
+        _valid_interval_seconds(options.sampler_interval_seconds)
         if definition == ONE_INTERVAL_BOUND
         else None
     )
@@ -771,33 +976,37 @@ def read_power_trace_csv(
         trace["sampler_interval_seconds"] = interval
     try:
         raw_bytes = (
-            path.read_bytes() if read_text_fn is None else read_text_fn(path).encode()
+            path.read_bytes()
+            if options.read_text_fn is None
+            else options.read_text_fn(path).encode()
         )
         trace["sha256"] = hashlib.sha256(raw_bytes).hexdigest()
         trace["byte_count"] = len(raw_bytes)
         samples = _read_trace_samples(
-            raw_bytes, reject_incomplete_rows=reject_incomplete_rows
+            raw_bytes, reject_incomplete_rows=options.reject_incomplete_rows
         )
     except Exception as exc:  # noqa: BLE001 - return a diagnostic trace
         kind = "power_trace_unreadable" if isinstance(exc, OSError) else "power_trace_invalid"
-        trace["error"] = _error_value(error_factory, kind, exc)
+        trace["error"] = _error_value(options.error_factory, kind, exc)
         return trace
     return _evaluate_trace_rows(
         trace,
         samples,
-        start_text=start_text,
-        end_text=end_text,
-        load_interval_start_text=load_start_text,
-        load_interval_end_text=load_end_text,
-        load_interval_source=load_interval_source,
-        require_explicit_load_interval=require_explicit_load_interval,
-        definition=definition,
-        interval=interval,
-        require_all_rows_valid=require_all_rows_valid,
-        error_factory=error_factory,
-        row_label=options.row_label,
-        initial_errors=initial_errors,
-        append_run_errors=options.tolerate_invalid_run_bounds,
+        _TraceEvaluationOptions(
+            start_text=start_text,
+            end_text=end_text,
+            load_interval_start_text=load_start_text,
+            load_interval_end_text=load_end_text,
+            load_interval_source=load_interval_source,
+            require_explicit_load_interval=options.require_explicit_load_interval,
+            definition=definition,
+            interval=interval,
+            require_all_rows_valid=options.require_all_rows_valid,
+            error_factory=options.error_factory,
+            row_label=read_options.row_label,
+            initial_errors=initial_errors,
+            append_run_errors=read_options.tolerate_invalid_run_bounds,
+        ),
     )
 
 
@@ -862,21 +1071,8 @@ def empty_power_trace_metadata(
 def read_power_trace_snapshot(
     path: Path,
     *,
-    run_id: str,
-    run_start: datetime.datetime | str | None,
-    run_end: datetime.datetime | str | None,
-    snapshot_prefix: str = DEFAULT_SNAPSHOT_PREFIX,
-    source_path: Path | None = None,
-    sampler_interval_seconds: float | None = None,
-    coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
-    load_interval_start: datetime.datetime | str | None = None,
-    load_interval_end: datetime.datetime | str | None = None,
-    load_interval_source: str | None = None,
-    include_issue118_metadata: bool = False,
-    require_explicit_load_interval: bool = False,
-    require_all_rows_valid: bool = False,
-    read_text_fn: Callable[[Path], str] | None = None,
-    error_factory: Callable[[str, Exception | None], Any] | None = None,
+    options: PowerTraceSnapshotOptions | None = None,
+    **legacy_options: Any,
 ) -> dict[str, Any]:
     """Read one immutable snapshot through the shared CSV lifecycle.
 
@@ -889,39 +1085,43 @@ def read_power_trace_snapshot(
     ``include_issue118_metadata`` switch preserves the historical #111/#12
     public snapshot shape unless the Issue #118 fields are explicitly requested.
     """
-    definition = canonical_coverage_definition(coverage_definition)
+    options = _snapshot_options_from_legacy(options, legacy_options)
+    definition = canonical_coverage_definition(options.coverage_definition)
     path = validate_power_trace_snapshot_path(
-        path, run_id=run_id, snapshot_prefix=snapshot_prefix
+        path, run_id=options.run_id, snapshot_prefix=options.snapshot_prefix
     )
     source_file = None
+    source_path = options.source_path
     if source_path is not None:
         source_path = require_run_artifact(
             path.parent,
             prefix="power-",
             suffix=".csv",
-            run_id=run_id,
+            run_id=options.run_id,
             explicit=Path(source_path),
             kind="power trace source",
         )
         source_file = source_path.name
     trace = read_power_trace_csv(
         path,
-        run_id=run_id,
-        run_start=run_start,
-        run_end=run_end,
-        source_file=source_file,
-        sampler_interval_seconds=sampler_interval_seconds,
-        coverage_definition=definition,
-        load_interval_start=load_interval_start,
-        load_interval_end=load_interval_end,
-        load_interval_source=load_interval_source,
-        require_explicit_load_interval=require_explicit_load_interval,
-        require_all_rows_valid=require_all_rows_valid,
-        read_text_fn=read_text_fn,
-        error_factory=error_factory,
-        immutable_snapshot=True,
+        options=PowerTraceCsvOptions(
+            run_id=options.run_id,
+            run_start=options.run_start,
+            run_end=options.run_end,
+            source_file=source_file,
+            sampler_interval_seconds=options.sampler_interval_seconds,
+            coverage_definition=definition,
+            load_interval_start=options.load_interval_start,
+            load_interval_end=options.load_interval_end,
+            load_interval_source=options.load_interval_source,
+            require_explicit_load_interval=options.require_explicit_load_interval,
+            require_all_rows_valid=options.require_all_rows_valid,
+            read_text_fn=options.read_text_fn,
+            error_factory=options.error_factory,
+            immutable_snapshot=True,
+        ),
     )
-    if not include_issue118_metadata:
+    if not options.include_issue118_metadata:
         for field in (
             "aiclk_mhz_in_run_min",
             "aiclk_mhz_in_run_max",
@@ -1001,7 +1201,9 @@ __all__ = [
     "ONE_INTERVAL_BOUND",
     "POWER_TRACE_COLUMNS",
     "POWER_TRACE_SHA256_DEFINITION",
+    "PowerTraceCsvOptions",
     "PowerTraceReadOptions",
+    "PowerTraceSnapshotOptions",
     "atomic_power_trace_snapshot",
     "canonical_coverage_definition",
     "empty_power_trace_metadata",
