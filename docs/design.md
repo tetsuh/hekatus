@@ -1950,6 +1950,62 @@ card (host-side timestamps would mix in host jitter).
 **Build the timestamp mechanism in from the start. Retrofitting it is
 painful.**
 
+### Issue #118 load-interval record contract
+
+The Issue #118 runner keeps the existing public `clock.aiclk_mhz` meaning: it
+is the integer maximum of valid in-run power-trace samples. The immutable
+snapshot additionally retains the full in-run rows, their minimum and
+maximum, and a time-weighted AICLK over an explicit load interval. The
+weighted value is the only AICLK used to convert loaded frame ticks to real
+time or to calculate card-load calibration throughput; absent interval bounds
+or trace provenance are rejected rather than replaced by the maximum or an
+environment snapshot.
+
+Every completed resident record pairs its card-side resident/load tick spans
+with host `CLOCK_MONOTONIC` launch and completion nanoseconds. Device-load
+records retain each worker interval: all eight DRAM workers remain separate,
+while their aggregate min-start/max-end span is coverage-only and calibration
+uses the slowest worker's own elapsed interval. The Newton-Schulz profile
+worker facts are retained under the same interval contract. Timing invocations
+select a 600-second cap, or the explicitly recorded 800-second compute-load
+cap; Watcher remains at 60 seconds. New calibration metadata explains that the backward-compatible
+`repeats_per_card_second` value means repeats per 1.35e9 card-clock ticks;
+those ticks are converted to real seconds with the observed load-interval
+AICLK. Persisted coverage is recomputed from resident and load endpoints, and
+its declared facts must agree with that recomputation; a worker row from
+another run cannot be made valid by changing a `covered` flag. Elapsed-time
+AICLK and provenance are likewise bound to the weighted load-interval fields,
+while unloaded records retain their configured or legacy selection. The
+Newton-Schulz record documents a selected TRISC0 profile interval rather than
+claiming all-worker interval coverage. Its profile accumulated warmup events
+across repeated fixed work; correcting that kernel-side counter scope is a
+follow-up candidate, not a reason to invalidate the fixed-work evidence.
+
+This section records the board-free measurement contract and implementation
+provenance. The accepted 2026-10-11 Issue #118 sequence is summarized below;
+the complete records and frozen power snapshots are in
+`docs/measurements/README.md`.
+
+### Issue #118 measured outcome (2026-10-11)
+
+In the card-tick domain, deliberate DRAM and Newton-Schulz loading changed the
+frame-interval distribution only slightly: relative to the same-session
+unloaded control, the largest percentile/max increase was +170 ticks. No
+pass/fail threshold is imposed here; these are observations, not a new
+acceptance limit.
+
+Newton-Schulz lowered AICLK to about 1,025 MHz for most of the loaded interval
+(with observed in-run values from 1,018 to 1,350 MHz). Consequently, the
+1,350,000-tick frame period was about 1.28 ms in the weighted real-time
+conversion, rather than 1.00 ms at a fixed 1,350 MHz. The resulting effect on
+run budgets and the validity of a single-clock projection is tracked in
+[Issue #121](https://github.com/tetsuh/hekatus/issues/121). The AICLK metadata
+and conversion audit are tracked separately in
+[Issue #122](https://github.com/tetsuh/hekatus/issues/122).
+
+The host-load condition (c) is outside this result and is tracked in
+[Issue #120](https://github.com/tetsuh/hekatus/issues/120).
+
 ### Issue #104 paired-outlier measurement (2026-10-06)
 
 The pinned resident harness was run for 400,000 frames at the Issue #12 final

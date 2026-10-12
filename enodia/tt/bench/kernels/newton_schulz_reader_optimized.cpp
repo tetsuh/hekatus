@@ -354,6 +354,7 @@ void kernel_main() {
   std::uint32_t zero_address;
   std::uint32_t start_tile;
   std::uint32_t tile_count;
+  const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(9);
   if constexpr (fuse_s) {
     // Fused S has no positive R-real runtime argument.  Keep the signed
     // inputs contiguous so their accessor offsets match the host tensor list.
@@ -410,6 +411,7 @@ void kernel_main() {
   // matrix then publishes external inputs in compute consumption order.
   read_one(cb_identity, 0, identity);
   read_one(cb_zero, 0, zero);
+  for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
   if constexpr (fuse_s) {
     const auto r_negative_real =
         TensorAccessor(r_negative_real_args, r_negative_real_address);
@@ -497,5 +499,6 @@ void kernel_main() {
         }
       }
     }
+  }
   }
 }

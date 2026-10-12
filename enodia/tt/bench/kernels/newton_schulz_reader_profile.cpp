@@ -525,6 +525,7 @@ void kernel_main() {
     std::uint32_t zero_address;
     std::uint32_t start_tile;
     std::uint32_t tile_count;
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(9);
     if constexpr (fuse_s) {
         // Fused S has no positive R-real runtime argument.
         r_negative_imag_address = get_arg_val<std::uint32_t>(0);
@@ -580,6 +581,7 @@ void kernel_main() {
     if (!measure_core) {
         read_tile(cb_identity, 0, identity);
         read_tile(cb_zero, 0, zero);
+        for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
         if constexpr (fuse_s) {
             const auto r_negative_real =
                 TensorAccessor(r_negative_real_args, r_negative_real_address);
@@ -696,6 +698,7 @@ void kernel_main() {
                 }
             }
         }
+        }
         return;
     }
 
@@ -704,12 +707,13 @@ void kernel_main() {
     counters.warmup_start = counters.total_start;
     read_tile_profiled(cb_identity, 0, identity, counters, true);
     read_tile_profiled(cb_zero, 0, zero, counters, true);
+    for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
     if constexpr (fuse_s) {
         const auto r_negative_real =
             TensorAccessor(r_negative_real_args, r_negative_real_address);
         if constexpr (matrix_block == 1) {
             for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -748,7 +752,7 @@ void kernel_main() {
             for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
                 const std::uint32_t block_count =
                     (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_block_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -784,7 +788,7 @@ void kernel_main() {
         const auto r_real = TensorAccessor(first_input_args, r_real_address);
         if constexpr (matrix_block == 1) {
             for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -823,7 +827,7 @@ void kernel_main() {
             for (std::uint32_t offset = 0; offset < tile_count; offset += matrix_block) {
                 const std::uint32_t block_count =
                     (tile_count - offset < matrix_block) ? (tile_count - offset) : matrix_block;
-                const bool warmup = offset == 0;
+                const bool warmup = outer == 0 && offset == 0;
                 if constexpr (reload_r) {
                     read_matrix_block_reload_profiled<fuse_s, batch_reads>(
                         start_tile + offset,
@@ -855,6 +859,7 @@ void kernel_main() {
                 }
             }
         }
+    }
     }
     counters.total_end = get_timestamp_32b();
     write_profile(counters);

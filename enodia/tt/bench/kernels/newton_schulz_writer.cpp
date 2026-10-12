@@ -13,6 +13,7 @@ void kernel_main() {
     const std::uint32_t imag_address = get_arg_val<std::uint32_t>(1);
     const std::uint32_t start_tile = get_arg_val<std::uint32_t>(2);
     const std::uint32_t tile_count = get_arg_val<std::uint32_t>(3);
+    const std::uint32_t outer_repetitions = get_arg_val<std::uint32_t>(4);
     constexpr std::uint32_t matrix_block = get_compile_time_arg_val(0);
 
     constexpr auto real_args = TensorAccessorArgs<1>();
@@ -22,6 +23,7 @@ void kernel_main() {
 
     {
         DeviceZoneScopedN("NS-WRITER-WRITES");
+        for (std::uint32_t outer = 0; outer < outer_repetitions; ++outer) {
         if constexpr (matrix_block == 1) {
             for (std::uint32_t offset = 0; offset < tile_count; ++offset) {
                 const std::uint32_t tile = start_tile + offset;
@@ -53,6 +55,7 @@ void kernel_main() {
                 cb_pop_front(cb_output_real, block_count);
                 cb_pop_front(cb_output_imag, block_count);
             }
+        }
         }
     }
 }

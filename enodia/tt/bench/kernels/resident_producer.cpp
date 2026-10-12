@@ -5,7 +5,8 @@
 #include "api/dataflow/dataflow_api.h"
 
 namespace {
-constexpr std::uint32_t cb_scratch = 0;
+// Keep resident CBs above the Newton-Schulz 0--19 ABI in a merged program.
+constexpr std::uint32_t cb_scratch = 20;
 constexpr std::uint32_t page_words = 32 * 32;
 constexpr std::uint32_t page_bytes = page_words * sizeof(std::uint32_t);
 constexpr std::uint32_t control_error_word = 0;

@@ -12,6 +12,43 @@ AICLK_SOURCE_LEGACY_UNVERIFIED = "legacy_unverified"
 _MAX_AICLK_MHZ = (1 << 63) - 1
 
 
+def safe_aiclk_value(value: Any) -> float | None:
+    """Return a finite positive AICLK value, retaining weighted fractions."""
+    try:
+        parsed = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed) or parsed <= 0.0 or parsed > _MAX_AICLK_MHZ:
+        return None
+    return parsed
+
+
+def select_load_interval_aiclk(
+    *,
+    weighted_aiclk_mhz: Any,
+    provenance: Any,
+    required_provenance: str = "load_interval_trace_samples",
+) -> dict[str, Any]:
+    """Select the weighted AICLK for Issue #118 card-tick conversion.
+
+    The ordinary ``clock.aiclk_mhz`` remains the existing integer maximum.  A
+    loaded run gets a separate elapsed-time selection and is rejected unless
+    its weighted value names the expected load-interval trace provenance.
+    """
+    weighted = safe_aiclk_value(weighted_aiclk_mhz)
+    if weighted is None:
+        raise ValueError("load-interval weighted AICLK is unavailable")
+    if provenance != required_provenance:
+        raise ValueError(
+            "load-interval weighted AICLK lacks required trace provenance"
+        )
+    return {
+        "aiclk_mhz": weighted,
+        "aiclk_mhz_exact": weighted,
+        "aiclk_source": provenance,
+    }
+
+
 def safe_aiclk_integer(value: Any) -> int | None:
     """Return a finite positive integer AICLK value, or ``None``."""
     try:
@@ -91,11 +128,13 @@ def ticks_to_seconds(
     if selection is None:
         if aiclk_mhz is None:
             raise ValueError("an AICLK selection is required")
-        selected = safe_aiclk_integer(aiclk_mhz)
+        selected = safe_aiclk_value(aiclk_mhz)
     else:
-        selected = safe_aiclk_integer(selection.get("aiclk_mhz"))
+        selected = safe_aiclk_value(
+            selection.get("aiclk_mhz_exact", selection.get("aiclk_mhz"))
+        )
     if selected is None:
-        raise ValueError("selected AICLK must be a finite positive integer")
+        raise ValueError("selected AICLK must be a finite positive number")
     return ticks / (selected * 1_000_000)
 
 
@@ -104,6 +143,8 @@ __all__ = [
     "AICLK_SOURCE_LEGACY_UNVERIFIED",
     "AICLK_SOURCE_RUN_TRACE_SAMPLES",
     "safe_aiclk_integer",
+    "safe_aiclk_value",
     "select_elapsed_aiclk",
+    "select_load_interval_aiclk",
     "ticks_to_seconds",
 ]

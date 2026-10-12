@@ -41,6 +41,7 @@ from enodia.tt.bench.telemetry import (
 )
 
 DEFAULT_SNAPSHOT_PREFIX = "power-trace-snapshot"
+ISSUE118_LOAD_INTERVAL_SOURCE = "issue118_program_host_interval"
 POWER_TRACE_SHA256_DEFINITION = (
     "SHA-256 of the complete immutable per-run power CSV snapshot bytes"
 )
@@ -258,6 +259,16 @@ def _trace_base(
         "aiclk_source": "no_valid_in_run_samples",
         "aiclk_mhz": None,
         "aiclk_mhz_in_run": [],
+        "aiclk_mhz_in_run_min": None,
+        "aiclk_mhz_in_run_max": None,
+        "aiclk_mhz_load_interval_weighted": None,
+        "aiclk_mhz_load_interval_weighted_source": "unavailable",
+        "aiclk_mhz_load_interval_weighted_seconds": 0.0,
+        "load_interval_start": None,
+        "load_interval_end": None,
+        "load_interval_source": None,
+        "in_run_samples": [],
+        "aiclk_trace_in_run": [],
         "coverage": {
             "definition": coverage_definition,
             "nonempty": False,
@@ -406,6 +417,126 @@ def _set_trace_timestamp_facts(
     trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
 
 
+def _time_weighted_aiclk(
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> tuple[float | None, float, str]:
+    """Return a left-held AICLK average over one explicit trace interval.
+
+    A sample owns the time from its timestamp through the next sample.  The
+    final sample owns the remainder through the requested endpoint.  The
+    interval must be bounded by usable samples; extrapolating a clock outside
+    the immutable trace would turn a diagnostic snapshot into timing evidence.
+    """
+    if start > end:
+        return None, 0.0, "load_interval_end_precedes_start"
+    duration = (end - start).total_seconds()
+    if duration <= 0.0:
+        return None, 0.0, "load_interval_is_empty"
+    if not usable_rows:
+        return None, 0.0, "load_interval_has_no_valid_samples"
+    if usable_rows[0][1] > start or usable_rows[-1][1] < end:
+        return None, 0.0, "load_interval_not_bounded_by_trace"
+
+    weighted = 0.0
+    covered = 0.0
+    for index, (_sample, timestamp, aiclk) in enumerate(usable_rows):
+        segment_start = max(timestamp, start)
+        next_timestamp = (
+            usable_rows[index + 1][1] if index + 1 < len(usable_rows) else end
+        )
+        segment_end = min(next_timestamp, end)
+        seconds = max(0.0, (segment_end - segment_start).total_seconds())
+        if seconds:
+            weighted += aiclk * seconds
+            covered += seconds
+    if not math.isclose(covered, duration, rel_tol=0.0, abs_tol=1e-9):
+        return None, covered, "load_interval_trace_coverage_incomplete"
+    return weighted / covered, covered, "load_interval_trace_samples"
+
+
+def _set_in_run_trace_facts(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    parsed_timestamps: list[datetime.datetime],
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> None:
+    trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
+    trace["covers_run_end"] = parsed_timestamps[-1] >= end
+    in_run = [
+        aiclk
+        for _sample, timestamp, aiclk in usable_rows
+        if start <= timestamp <= end
+    ]
+    trace["in_run_valid_row_count"] = len(in_run)
+    trace["aiclk_mhz_in_run"] = in_run
+    trace["in_run_samples"] = [
+        dict(sample)
+        for sample, timestamp, _aiclk in usable_rows
+        if start <= timestamp <= end
+    ]
+    trace["aiclk_trace_in_run"] = list(trace["in_run_samples"])
+    if in_run:
+        trace["aiclk_source"] = "run_trace_samples"
+        trace["aiclk_mhz"] = max(in_run)
+        trace["aiclk_mhz_in_run_min"] = min(in_run)
+        trace["aiclk_mhz_in_run_max"] = max(in_run)
+
+
+def _set_load_interval_trace_facts(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    *,
+    start_text: str | None,
+    end_text: str | None,
+    source: str | None,
+    require_explicit_load_interval: bool,
+    error_factory: Callable[[str, Exception | None], Any] | None,
+) -> None:
+    load_start_text = start_text
+    load_end_text = end_text
+    trace["load_interval_start"] = load_start_text
+    trace["load_interval_end"] = load_end_text
+    trace["load_interval_source"] = source or (
+        None
+        if require_explicit_load_interval
+        else (
+            "run_bounds"
+            if load_start_text is not None and load_end_text is not None
+            else None
+        )
+    )
+    if require_explicit_load_interval and trace["load_interval_source"] != ISSUE118_LOAD_INTERVAL_SOURCE:
+        trace["aiclk_mhz_load_interval_weighted_source"] = (
+            "load_interval_provenance_invalid"
+        )
+        trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
+        trace["errors"].append(
+            _error_value(error_factory, "load_interval_provenance_invalid")
+        )
+        return
+    try:
+        load_start = _parse_trace_timestamp(load_start_text, field="load_interval_start")
+        load_end = _parse_trace_timestamp(load_end_text, field="load_interval_end")
+    except ValueError as exc:
+        trace["aiclk_mhz_load_interval_weighted_source"] = "unavailable"
+        trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
+        trace["errors"].append(_error_value(error_factory, "load_interval_invalid", exc))
+        return
+    weighted, covered, reason = _time_weighted_aiclk(
+        usable_rows, start=load_start, end=load_end
+    )
+    trace["aiclk_mhz_load_interval_weighted_seconds"] = covered
+    if weighted is not None:
+        trace["aiclk_mhz_load_interval_weighted"] = weighted
+        trace["aiclk_mhz_load_interval_weighted_source"] = "load_interval_trace_samples"
+    else:
+        trace["aiclk_mhz_load_interval_weighted_source"] = reason
+
+
 def _set_trace_run_facts(
     trace: dict[str, Any],
     usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
@@ -413,6 +544,10 @@ def _set_trace_run_facts(
     *,
     start_text: str | None,
     end_text: str | None,
+    load_interval_start_text: str | None,
+    load_interval_end_text: str | None,
+    load_interval_source: str | None,
+    require_explicit_load_interval: bool,
     definition: str,
     interval: float | None,
     require_all_rows_valid: bool,
@@ -432,24 +567,28 @@ def _set_trace_run_facts(
 
     if start > end and append_run_errors:
         trace["errors"].append("run_start must be at or before run_end")
-    trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
-    trace["covers_run_end"] = parsed_timestamps[-1] >= end
-    in_run = [
-        aiclk
-        for _sample, timestamp, aiclk in usable_rows
-        if start <= timestamp <= end
-    ]
-    trace["in_run_valid_row_count"] = len(in_run)
-    trace["aiclk_mhz_in_run"] = in_run
-    if in_run:
-        trace["aiclk_source"] = "run_trace_samples"
-        trace["aiclk_mhz"] = max(in_run)
-
-    interval_bound = False
+    _set_in_run_trace_facts(trace, usable_rows, parsed_timestamps, start, end)
+    _set_load_interval_trace_facts(
+        trace,
+        usable_rows,
+        start_text=(
+            load_interval_start_text
+            if require_explicit_load_interval
+            else load_interval_start_text or start_text
+        ),
+        end_text=(
+            load_interval_end_text
+            if require_explicit_load_interval
+            else load_interval_end_text or end_text
+        ),
+        source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
+        error_factory=error_factory,
+    )
+    interval_bound = interval is not None and timestamp_within_interval_bound(
+        parsed_timestamps[-1], end, interval
+    )
     if interval is not None:
-        interval_bound = timestamp_within_interval_bound(
-            parsed_timestamps[-1], end, interval
-        )
         trace["sampler_interval_seconds"] = interval
     trace["coverage_complete"] = all(
         (
@@ -461,11 +600,9 @@ def _set_trace_run_facts(
             trace["timestamps_ordered"],
             parsed_timestamps[0] <= start,
             start <= end,
-            (
-                end <= parsed_timestamps[-1]
-                if definition == EXPLICIT_FINAL_SAMPLE
-                else interval_bound
-            ),
+            end <= parsed_timestamps[-1]
+            if definition == EXPLICIT_FINAL_SAMPLE
+            else interval_bound,
         )
     )
     trace["coverage"]["last_within_interval_bound"] = interval_bound
@@ -494,6 +631,10 @@ def _evaluate_trace_rows(
     *,
     start_text: str | None,
     end_text: str | None,
+    load_interval_start_text: str | None,
+    load_interval_end_text: str | None,
+    load_interval_source: str | None,
+    require_explicit_load_interval: bool,
     definition: str,
     interval: float | None,
     require_all_rows_valid: bool,
@@ -534,6 +675,10 @@ def _evaluate_trace_rows(
             end_text=end_text,
             definition=definition,
             interval=interval,
+            load_interval_start_text=load_interval_start_text,
+            load_interval_end_text=load_interval_end_text,
+            load_interval_source=load_interval_source,
+            require_explicit_load_interval=require_explicit_load_interval,
             require_all_rows_valid=require_all_rows_valid,
             all_rows_valid=all_rows_valid,
             error_factory=error_factory,
@@ -551,6 +696,10 @@ def read_power_trace_csv(
     source_file: str | None = None,
     sampler_interval_seconds: float | None = None,
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    load_interval_start: datetime.datetime | str | None = None,
+    load_interval_end: datetime.datetime | str | None = None,
+    load_interval_source: str | None = None,
+    require_explicit_load_interval: bool = False,
     require_all_rows_valid: bool = False,
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
@@ -568,9 +717,28 @@ def read_power_trace_csv(
     end_text, end_error = _run_timestamp_text(
         run_end, field="run_end", tolerate_invalid=options.tolerate_invalid_run_bounds
     )
+    load_start_text, load_start_error = _run_timestamp_text(
+        load_interval_start
+        if require_explicit_load_interval or load_interval_start is not None
+        else run_start,
+        field="load_interval_start",
+        tolerate_invalid=options.tolerate_invalid_run_bounds,
+    )
+    load_end_text, load_end_error = _run_timestamp_text(
+        load_interval_end
+        if require_explicit_load_interval or load_interval_end is not None
+        else run_end,
+        field="load_interval_end",
+        tolerate_invalid=options.tolerate_invalid_run_bounds,
+    )
     initial_errors = [
         _error_value(error_factory, "power_timestamp_invalid", error)
-        for error in (start_error, end_error)
+        for error in (
+            start_error,
+            end_error,
+            load_start_error,
+            load_end_error,
+        )
         if error is not None
     ]
     trace = _trace_base(
@@ -583,6 +751,17 @@ def read_power_trace_csv(
         immutable_snapshot=immutable_snapshot,
     )
     trace["errors"] = initial_errors
+    trace["load_interval_start"] = load_start_text
+    trace["load_interval_end"] = load_end_text
+    trace["load_interval_source"] = load_interval_source or (
+        None
+        if require_explicit_load_interval
+        else (
+            "run_bounds"
+            if load_start_text is not None and load_end_text is not None
+            else None
+        )
+    )
     interval = (
         _valid_interval_seconds(sampler_interval_seconds)
         if definition == ONE_INTERVAL_BOUND
@@ -608,6 +787,10 @@ def read_power_trace_csv(
         samples,
         start_text=start_text,
         end_text=end_text,
+        load_interval_start_text=load_start_text,
+        load_interval_end_text=load_end_text,
+        load_interval_source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         definition=definition,
         interval=interval,
         require_all_rows_valid=require_all_rows_valid,
@@ -631,6 +814,7 @@ def empty_power_trace_metadata(
     aiclk_source: str = "no_valid_in_run_samples",
     errors: list[Any] | None = None,
     tolerate_invalid_run_bounds: bool = False,
+    include_issue118_metadata: bool = False,
 ) -> dict[str, Any]:
     """Return shared diagnostic metadata when no CSV bytes can be read."""
     definition = canonical_coverage_definition(coverage_definition)
@@ -658,6 +842,20 @@ def empty_power_trace_metadata(
         trace["run_end"] = run_end
     trace["aiclk_source"] = aiclk_source
     trace["errors"] = list(errors or [])
+    if not include_issue118_metadata:
+        for field in (
+            "aiclk_mhz_in_run_min",
+            "aiclk_mhz_in_run_max",
+            "aiclk_mhz_load_interval_weighted",
+            "aiclk_mhz_load_interval_weighted_source",
+            "aiclk_mhz_load_interval_weighted_seconds",
+            "load_interval_start",
+            "load_interval_end",
+            "load_interval_source",
+            "in_run_samples",
+            "aiclk_trace_in_run",
+        ):
+            trace.pop(field, None)
     return trace
 
 
@@ -671,6 +869,11 @@ def read_power_trace_snapshot(
     source_path: Path | None = None,
     sampler_interval_seconds: float | None = None,
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE,
+    load_interval_start: datetime.datetime | str | None = None,
+    load_interval_end: datetime.datetime | str | None = None,
+    load_interval_source: str | None = None,
+    include_issue118_metadata: bool = False,
+    require_explicit_load_interval: bool = False,
     require_all_rows_valid: bool = False,
     read_text_fn: Callable[[Path], str] | None = None,
     error_factory: Callable[[str, Exception | None], Any] | None = None,
@@ -682,7 +885,9 @@ def read_power_trace_snapshot(
     interval ``run_end - sampler_interval_seconds <= sample_timestamp <=
     run_end``.  The interval is an explicit caller/record setting and is never
     inferred from CSV timestamps.  The default retains the Issue #88 usable-row
-    compatibility behavior; resident callers opt into all-row validity.
+    compatibility behavior; resident callers opt into all-row validity. The
+    ``include_issue118_metadata`` switch preserves the historical #111/#12
+    public snapshot shape unless the Issue #118 fields are explicitly requested.
     """
     definition = canonical_coverage_definition(coverage_definition)
     path = validate_power_trace_snapshot_path(
@@ -699,7 +904,7 @@ def read_power_trace_snapshot(
             kind="power trace source",
         )
         source_file = source_path.name
-    return read_power_trace_csv(
+    trace = read_power_trace_csv(
         path,
         run_id=run_id,
         run_start=run_start,
@@ -707,11 +912,30 @@ def read_power_trace_snapshot(
         source_file=source_file,
         sampler_interval_seconds=sampler_interval_seconds,
         coverage_definition=definition,
+        load_interval_start=load_interval_start,
+        load_interval_end=load_interval_end,
+        load_interval_source=load_interval_source,
+        require_explicit_load_interval=require_explicit_load_interval,
         require_all_rows_valid=require_all_rows_valid,
         read_text_fn=read_text_fn,
         error_factory=error_factory,
         immutable_snapshot=True,
     )
+    if not include_issue118_metadata:
+        for field in (
+            "aiclk_mhz_in_run_min",
+            "aiclk_mhz_in_run_max",
+            "aiclk_mhz_load_interval_weighted",
+            "aiclk_mhz_load_interval_weighted_source",
+            "aiclk_mhz_load_interval_weighted_seconds",
+            "load_interval_start",
+            "load_interval_end",
+            "load_interval_source",
+            "in_run_samples",
+            "aiclk_trace_in_run",
+        ):
+            trace.pop(field, None)
+    return trace
 
 
 _POWER_TRACE_METADATA_FIELDS = (
@@ -742,6 +966,17 @@ _POWER_TRACE_METADATA_FIELDS = (
     "sha256_definition",
     "aiclk_source",
     "aiclk_mhz",
+    "aiclk_mhz_in_run",
+    "aiclk_mhz_in_run_min",
+    "aiclk_mhz_in_run_max",
+    "aiclk_mhz_load_interval_weighted",
+    "aiclk_mhz_load_interval_weighted_source",
+    "aiclk_mhz_load_interval_weighted_seconds",
+    "load_interval_start",
+    "load_interval_end",
+    "load_interval_source",
+    "in_run_samples",
+    "aiclk_trace_in_run",
     "errors",
 )
 
@@ -762,6 +997,7 @@ __all__ = [
     "COVERAGE_DEFINITIONS",
     "DEFAULT_SNAPSHOT_PREFIX",
     "EXPLICIT_FINAL_SAMPLE",
+    "ISSUE118_LOAD_INTERVAL_SOURCE",
     "ONE_INTERVAL_BOUND",
     "POWER_TRACE_COLUMNS",
     "POWER_TRACE_SHA256_DEFINITION",

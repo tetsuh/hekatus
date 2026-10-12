@@ -134,6 +134,10 @@ PROFILE_BLOCK_INPUT_CB_RESERVE_OFFSET = 14
 PROFILE_BLOCK_OUTPUT_CB_RESERVE_OFFSET = 15
 PROFILE_BLOCK_DEST_ACQUIRE_WAIT_OFFSET = 16
 PROFILE_BLOCK_DEST_PACK_WAIT_OFFSET = 17
+PROFILE_LOAD_START_LOW_OFFSET = 20
+PROFILE_LOAD_START_HIGH_OFFSET = 21
+PROFILE_LOAD_END_LOW_OFFSET = 22
+PROFILE_LOAD_END_HIGH_OFFSET = 23
 
 
 def _canonicalize_matrices(
@@ -514,14 +518,41 @@ def _download_uint32(ttnn, tensor) -> np.ndarray:
     return row_major.to_numpy()
 
 
-def _core_grid(ttnn, device, batch: int, matrix_block: int = 1):
+def _core_grid(
+    ttnn,
+    device,
+    batch: int,
+    matrix_block: int = 1,
+    *,
+    core_coordinates: list[tuple[int, int]] | tuple[tuple[int, int], ...] | None = None,
+):
     grid = device.compute_with_storage_grid_size()
-    total_cores = grid.x * grid.y
-    ranges = _balanced_ranges(batch, total_cores, matrix_block)
-    coordinates = [
-        (index % grid.x, index // grid.x)
-        for index in range(len(ranges))
-    ]
+    if core_coordinates is None:
+        total_cores = grid.x * grid.y
+        ranges = _balanced_ranges(batch, total_cores, matrix_block)
+        coordinates = [(index % grid.x, index // grid.x) for index in range(len(ranges))]
+    else:
+        coordinates = [tuple(coordinate) for coordinate in core_coordinates]
+        if (grid.x, grid.y) != (11, 10):
+            raise ValueError(
+                "explicit load core coordinates require the pinned p150 worker grid (11, 10)"
+            )
+        if not coordinates:
+            raise ValueError("core_coordinates must contain at least one worker")
+        if any(
+            len(coordinate) != 2
+            or any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in coordinate)
+            for coordinate in coordinates
+        ):
+            raise ValueError("core_coordinates must contain non-negative (x, y) pairs")
+        if len(set(coordinates)) != len(coordinates):
+            raise ValueError("core_coordinates must not contain duplicates")
+        if any(x >= grid.x or y >= grid.y for x, y in coordinates):
+            raise ValueError("core_coordinates contain a core outside the device grid")
+        from enodia.tt.bench.load_harness import validate_worker_model
+
+        validate_worker_model(grid=(grid.x, grid.y), coordinates=coordinates)
+        ranges = _balanced_ranges(batch, len(coordinates), matrix_block)
     core_ranges = ttnn.CoreRangeSet(
         [
             ttnn.CoreRange(ttnn.CoreCoord(x, y), ttnn.CoreCoord(x, y))
@@ -550,10 +581,16 @@ def _validate_core_group_capacities(
                     )
 
 
-def _runtime_args(ttnn, coordinates, values: list[int], ranges):
+def _runtime_args(
+    ttnn,
+    coordinates,
+    values: list[int],
+    ranges,
+    trailing_values: list[int] | tuple[int, ...] = (),
+):
     args = ttnn.RuntimeArgs()
     for (x, y), (start, count) in zip(coordinates, ranges, strict=True):
-        args[x][y] = [*values, start, count]
+        args[x][y] = [*values, start, count, *trailing_values]
     return args
 
 
@@ -1129,6 +1166,10 @@ def _decode_counter_page(
         "warmup_consistency_record_valid": warmup_record_valid,
         "consistency_pass": all_exact and all_record_valid,
         "warmup_consistency_pass": warmup_exact and warmup_record_valid,
+        "load_start_ticks": int(page[PROFILE_LOAD_START_LOW_OFFSET])
+        | (int(page[PROFILE_LOAD_START_HIGH_OFFSET]) << 32),
+        "load_end_ticks": int(page[PROFILE_LOAD_END_LOW_OFFSET])
+        | (int(page[PROFILE_LOAD_END_HIGH_OFFSET]) << 32),
     }
 
 
@@ -1174,6 +1215,7 @@ class NewtonSchulzKernel:
     reload_r: bool
     matrix_block: int
     double_buffer: bool
+    outer_repetitions: int
     profile_output: Any | None
     tile_count: int
     inputs: list[Any]
@@ -1181,6 +1223,9 @@ class NewtonSchulzKernel:
     program: Any
     core_ranges: Any
     work_ranges: tuple[tuple[int, int], ...]
+    program_kernels: tuple[Any, ...]
+    program_semaphores: tuple[Any, ...]
+    program_cbs: tuple[Any, ...]
 
     @classmethod
     def prepare(
@@ -1204,11 +1249,17 @@ class NewtonSchulzKernel:
         fp32_dest_acc_en: bool = DEFAULT_FP32_DEST_ACC_EN,
         dst_full_sync_en: bool = DEFAULT_DST_FULL_SYNC_EN,
         iterations: int = NEWTON_SCHULZ_ITERATIONS,
+        outer_repetitions: int = 1,
+        core_coordinates: list[tuple[int, int]] | tuple[tuple[int, int], ...] | None = None,
     ) -> NewtonSchulzKernel:
         input_memory, r_memory, x0_memory = _resolve_input_memories(
             input_memory, r_memory=r_memory, x0_memory=x0_memory
         )
         iterations = _validate_iterations(iterations, fixed=True)
+        if isinstance(outer_repetitions, bool) or not isinstance(outer_repetitions, int):
+            raise TypeError("outer_repetitions must be a positive integer")
+        if outer_repetitions < 1:
+            raise ValueError("outer_repetitions must be a positive integer")
         _validate_variant_configuration(variant, fuse_s=fuse_s)
         if output_memory is None:
             output_memory = _output_memory_name()
@@ -1237,7 +1288,11 @@ class NewtonSchulzKernel:
         math_fidelity_value = _math_fidelity_value(ttnn, math_fidelity)
 
         coordinates, core_ranges, work_ranges = _core_grid(
-            ttnn, device, tile_count, matrix_block
+            ttnn,
+            device,
+            tile_count,
+            matrix_block,
+            core_coordinates=core_coordinates,
         )
         _validate_core_group_capacities(work_ranges, matrix_block)
         # Normalize each logical matrix before pair packing; a packed norm would
@@ -1366,11 +1421,13 @@ class NewtonSchulzKernel:
         for tensor in outputs:
             writer_compile_args.extend(ttnn.TensorAccessorArgs(tensor).get_compile_time_args())
 
+        reader_values = [tensor.buffer_address() for tensor in inputs]
         reader_args = _runtime_args(
             ttnn,
             coordinates,
-            [tensor.buffer_address() for tensor in inputs],
+            reader_values,
             work_ranges,
+            [outer_repetitions],
         )
         if profile:
             writer_args = ttnn.RuntimeArgs()
@@ -1383,6 +1440,7 @@ class NewtonSchulzKernel:
                     PROFILE_MEASUREMENT_CORE,
                     start,
                     count,
+                    outer_repetitions,
                 ]
         else:
             writer_args = _runtime_args(
@@ -1390,8 +1448,15 @@ class NewtonSchulzKernel:
                 coordinates,
                 [tensor.buffer_address() for tensor in outputs],
                 work_ranges,
+                [outer_repetitions],
             )
-        compute_args = _runtime_args(ttnn, coordinates, [], work_ranges)
+        compute_args = _runtime_args(
+            ttnn,
+            coordinates,
+            [],
+            work_ranges,
+            [outer_repetitions],
+        )
         reader_source = (
             _KERNEL_DIR / "newton_schulz_reader_profile.cpp"
             if profile
@@ -1460,6 +1525,7 @@ class NewtonSchulzKernel:
             reload_r=reload_r,
             matrix_block=matrix_block,
             double_buffer=double_buffer,
+            outer_repetitions=outer_repetitions,
             profile_output=profile_output,
             tile_count=tile_count,
             inputs=inputs,
@@ -1467,11 +1533,29 @@ class NewtonSchulzKernel:
             program=program,
             core_ranges=core_ranges,
             work_ranges=tuple(work_ranges),
+            program_kernels=tuple(kernels),
+            program_semaphores=(),
+            program_cbs=tuple(cbs),
         )
 
     def launch(self) -> None:
-        """Launch once for the complete batch."""
-        self.ttnn.generic_op([*self.inputs, *self.outputs], self.program)
+        """Launch once for the complete batch.
+
+        GenericOp treats the final tensor as its output. Keep the optional raw
+        uint32 profile tensor before the two state outputs so the operation's
+        output dtype remains the selected state dtype.
+        """
+        io_tensors = [*self.inputs]
+        if self.profile_output is not None:
+            io_tensors.append(self.profile_output)
+            io_tensors.extend(self.outputs[:2])
+        else:
+            io_tensors.extend(self.outputs)
+        self.ttnn.generic_op(io_tensors, self.program)
+
+    def program_parts(self) -> tuple[tuple[Any, ...], tuple[Any, ...], tuple[Any, ...]]:
+        """Return descriptor parts for one merged resident/load program."""
+        return self.program_kernels, self.program_semaphores, self.program_cbs
 
     def result(self) -> np.ndarray:
         real = _unpack_matrices(
@@ -1558,7 +1642,12 @@ class NewtonSchulzKernel:
         return records
 
     def close(self) -> None:
-        _deallocate_tensors(self.ttnn, [*self.inputs, *self.outputs])
+        tensors = [*self.inputs, *self.outputs]
+        if self.profile_output is not None and not any(
+            self.profile_output is tensor for tensor in tensors
+        ):
+            tensors.append(self.profile_output)
+        _deallocate_tensors(self.ttnn, tensors)
 
 
 def run_newton_schulz_kernel(
