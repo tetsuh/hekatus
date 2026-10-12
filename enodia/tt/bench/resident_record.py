@@ -95,6 +95,7 @@ from enodia.tt.bench.power_trace_snapshot import (
     EXPLICIT_FINAL_SAMPLE,
     ISSUE118_LOAD_INTERVAL_SOURCE,
     ONE_INTERVAL_BOUND,
+    PowerTraceCsvOptions,
     canonical_coverage_definition,
     is_coverage_definition,
     public_power_trace_metadata,
@@ -152,6 +153,14 @@ TIMING_EVIDENCE_RUN_TRACE_REASON = "power_trace_run_samples"
 TIMING_EVIDENCE_ERROR_RECORD_REASON = "run_error_not_timing_evidence"
 TIMING_EVIDENCE_REJECTED_RECORD_REASON = "rejected_preflight"
 LOAD_EVIDENCE_INVARIANT = "load.evidence"
+_OUTLIER_RUN_ELAPSED_TICKS_PATH = "outlier_analysis.run_elapsed_ticks"
+_CLOCK_WEIGHTED_AICLK_PATH = "clock.aiclk_mhz_load_interval_weighted"
+_OUTLIER_ELAPSED_AICLK_SOURCE_PATH = (
+    "outlier_analysis.aiclk_source_for_elapsed_seconds"
+)
+_RESIDENT_TICK_INTERVAL_START_PATH = "resident_tick_interval.start_ticks"
+_RESIDENT_TICK_INTERVAL_END_PATH = "resident_tick_interval.end_ticks"
+_LOAD_RESIDENT_FRAME_INTERVAL_PATH = "load.resident_frame_interval"
 
 _MISSING = object()
 _POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
@@ -353,7 +362,7 @@ _COMMON_REQUIRED_RECORD_FIELDS = (
     "outlier_analysis.elapsed_time_unit",
     "outlier_analysis.device_tick_unit",
     "outlier_analysis.aiclk_mhz_for_elapsed_seconds",
-    "outlier_analysis.run_elapsed_ticks",
+    _OUTLIER_RUN_ELAPSED_TICKS_PATH,
     "outlier_analysis.run_elapsed_seconds",
     "outlier_analysis.interval_count",
     "outlier_analysis.sampler_interval_comparison",
@@ -628,7 +637,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path == "num_command_queues":
         type_rule, range_rule, expected = _is_int, _enum(2), "the integer 2"
         invalid_range = 1
-    elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", "outlier_analysis.run_elapsed_ticks", "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
+    elif path in {"parameters.frame_count", "parameters.frame_interval_ticks", "parameters.ring_pages", "parameters.cycle_budget", "parameters.attempted_frame_count", "parameters.produced_frame_count", "parameters.dropped_frame_count", "parameters.aborted_attempts", "parameters.work_per_frame", "parameters.outer_timeout_seconds", "parameters.histogram_bin_ticks", "parameters.fixed_work_ticks_per_frame", "parameters.budget_aiclk_mhz", "parameters.run_budget.frame_count", "parameters.run_budget.frame_interval_ticks", "parameters.run_budget.pacing_ticks", "parameters.run_budget.per_frame_work_budget_ticks", "parameters.run_budget.cycle_budget_ticks_per_frame", "parameters.run_budget.fixed_work_ticks", "parameters.run_budget.critical_path_ticks", "parameters.run_budget.schedule_ticks", "parameters.run_budget.startup_allowance_ms", "parameters.run_budget.budget_aiclk_mhz", "parameters.run_budget.startup_allowance_ticks", "parameters.run_budget.safety_margin_percent", "parameters.run_budget.watcher_overhead_margin_percent", "parameters.run_budget.total_margin_percent", "parameters.run_budget.safety_margin_ticks", "parameters.run_budget.run_budget_ticks", "histogram.N", "histogram.histogram.bin_width_ticks", "ring.producer_full_count", "ring.consumer_empty_count", "ring.attempted_frame_count", "ring.produced_frame_count", "ring.consumed_frame_count", "ring.dropped_frame_count", "ring.aborted_attempts", "ring.overflow_count", "cycle_budget.budget_ticks", "cycle_budget.run_budget_ticks", "raw_timestamps.count", "power_trace_sample_count", "power_trace_csv_row_count", "power_trace_valid_row_count", "power_trace_in_run_valid_row_count", "power_trace_coverage.valid_row_count", "power_trace_coverage.in_run_valid_row_count", "power_clock_provenance.csv_row_count", "power_clock_provenance.sample_count", "power_clock_provenance.valid_row_count", "power_clock_provenance.in_run_valid_row_count", "outlier_analysis.pair_count", "outlier_analysis.pair_sum_target_ticks", "outlier_analysis.interval_count", _OUTLIER_RUN_ELAPSED_TICKS_PATH, "outlier_analysis.pair_order_counts.short-first", "outlier_analysis.pair_order_counts.long-first", "outlier_analysis.pair_order_counts.other", "outlier_analysis.sampler_interval_comparison.pair_count", "outlier_analysis.sampler_interval_comparison.timestamp_count"}:
         type_rule, range_rule, expected = _is_int, lambda value: _is_int(value, nonnegative=True), "a non-negative integer"
         invalid_range = -1
     elif path == "clock.aiclk_mhz":
@@ -961,7 +970,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "clock.aiclk_observation",
     "clock.aiclk_mhz_in_run_min",
     "clock.aiclk_mhz_in_run_max",
-    "clock.aiclk_mhz_load_interval_weighted",
+    _CLOCK_WEIGHTED_AICLK_PATH,
     "clock.aiclk_mhz_load_interval_weighted_source",
     "clock.aiclk_mhz_for_elapsed_seconds",
     "clock.aiclk_source_for_elapsed_seconds",
@@ -1079,7 +1088,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_trace_in_run_samples",
     "power_trace_in_run_samples[].*",
     "outlier_analysis.aiclk_source",
-    "outlier_analysis.aiclk_source_for_elapsed_seconds",
+    _OUTLIER_ELAPSED_AICLK_SOURCE_PATH,
     "outlier_analysis.sampler_interval_comparison.status",
     "outlier_analysis.sampler_interval_comparison.reason",
     "outlier_analysis.pairs[].interval_end_frame_indices",
@@ -1342,7 +1351,7 @@ def _check_resident_tick_interval(
         mismatches.append(
             _mismatch(
                 "resident_tick_interval",
-                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                (_RESIDENT_TICK_INTERVAL_START_PATH, _RESIDENT_TICK_INTERVAL_END_PATH),
                 "resident tick endpoints must be unsigned 64-bit integers",
             )
         )
@@ -1505,7 +1514,7 @@ def _check_elapsed_aiclk_binding(
                 _mismatch(
                     LOAD_EVIDENCE_INVARIANT,
                     (
-                        "clock.aiclk_mhz_load_interval_weighted",
+                        _CLOCK_WEIGHTED_AICLK_PATH,
                         "clock.aiclk_mhz_load_interval_weighted_source",
                     ),
                     "Issue #118 loaded records require weighted load-interval AICLK provenance",
@@ -1556,7 +1565,7 @@ def _check_elapsed_aiclk_binding(
             outlier.get("aiclk_mhz_for_elapsed_seconds") if outlier else None,
         ),
         (
-            "outlier_analysis.aiclk_source_for_elapsed_seconds",
+            _OUTLIER_ELAPSED_AICLK_SOURCE_PATH,
             outlier.get("aiclk_source_for_elapsed_seconds") if outlier else None,
         ),
     ):
@@ -1569,7 +1578,7 @@ def _check_elapsed_aiclk_binding(
             mismatches.append(
                 _mismatch(
                     "clock.elapsed_aiclk_binding",
-                    (path, "clock.aiclk_mhz_load_interval_weighted"),
+                    (path, _CLOCK_WEIGHTED_AICLK_PATH),
                     "elapsed-time AICLK or provenance does not match the record's immutable selection",
                 )
             )
@@ -1596,7 +1605,7 @@ def _check_load_resident_bindings(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("resident_tick_interval", "load.resident_frame_interval"),
+                ("resident_tick_interval", _LOAD_RESIDENT_FRAME_INTERVAL_PATH),
                 "Issue #118 load evidence requires a containing resident tick interval",
             )
         )
@@ -1604,7 +1613,7 @@ def _check_load_resident_bindings(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                (_RESIDENT_TICK_INTERVAL_START_PATH, _RESIDENT_TICK_INTERVAL_END_PATH),
                 "resident tick endpoints must be unsigned 64-bit integers before load binding",
             )
         )
@@ -1612,7 +1621,7 @@ def _check_load_resident_bindings(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("resident_tick_interval.start_ticks", "resident_tick_interval.end_ticks"),
+                (_RESIDENT_TICK_INTERVAL_START_PATH, _RESIDENT_TICK_INTERVAL_END_PATH),
                 "resident tick interval end must not precede start",
             )
         )
@@ -1624,7 +1633,7 @@ def _check_load_resident_bindings(
             mismatches.append(
                 _mismatch(
                     invariant,
-                    ("resident_tick_interval", "outlier_analysis.run_elapsed_ticks"),
+                    ("resident_tick_interval", _OUTLIER_RUN_ELAPSED_TICKS_PATH),
                     "resident tick span elapsed_ticks must equal outlier_analysis.run_elapsed_ticks",
                 )
             )
@@ -1635,7 +1644,7 @@ def _check_load_resident_bindings(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("load.resident_frame_interval",),
+                (_LOAD_RESIDENT_FRAME_INTERVAL_PATH,),
                 "load resident frame interval must be an object",
             )
         )
@@ -1673,7 +1682,7 @@ def _check_load_resident_bindings(
             mismatches.append(
                 _mismatch(
                     invariant,
-                    ("load.resident_frame_interval", "resident_tick_interval"),
+                    (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "resident_tick_interval"),
                     "load resident frame endpoints must match the containing resident tick interval",
                 )
             )
@@ -1685,7 +1694,7 @@ def _check_load_resident_bindings(
             mismatches.append(
                 _mismatch(
                     invariant,
-                    ("load.resident_frame_interval", "timestamps"),
+                    (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "timestamps"),
                     "load resident frame endpoints must match the supplied resident timestamp stream",
                 )
             )
@@ -1720,7 +1729,7 @@ def _check_load_resident_bindings(
             mismatches.append(
                 _mismatch(
                     invariant,
-                    (path, "load.resident_frame_interval"),
+                    (path, _LOAD_RESIDENT_FRAME_INTERVAL_PATH),
                     f"{path} must match load resident frame endpoints",
                 )
             )
@@ -2722,7 +2731,7 @@ def validate_pair_analysis(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("outlier_analysis.aiclk_source_for_elapsed_seconds",),
+                (_OUTLIER_ELAPSED_AICLK_SOURCE_PATH,),
                 "outlier elapsed-time AICLK provenance does not match the immutable record selection",
             )
         )
@@ -2940,11 +2949,12 @@ def validate_pair_analysis(
             expected_endpoints = [endpoint for pair in expected_pairs for endpoint in pair["interval_end_frame_indices"]]
             expected_elapsed_ticks = [values[index] - values[0] for index in expected_endpoints]
             expected_elapsed_mod = [elapsed % CLOCK_MODULUS_TICKS for elapsed in expected_elapsed_ticks]
-            actual_seconds_aiclk = (
-                selected_elapsed_aiclk
-                if _is_number(selected_elapsed_aiclk) and selected_elapsed_aiclk > 0
-                else (aiclk_mhz if _is_int(aiclk_mhz, positive=True) else DEFAULT_AICLK_MHZ)
-            )
+            if _is_number(selected_elapsed_aiclk) and selected_elapsed_aiclk > 0:
+                actual_seconds_aiclk = selected_elapsed_aiclk
+            elif _is_int(aiclk_mhz, positive=True):
+                actual_seconds_aiclk = aiclk_mhz
+            else:
+                actual_seconds_aiclk = DEFAULT_AICLK_MHZ
             expected_aiclk_selection = {
                 "aiclk_mhz": actual_seconds_aiclk,
                 "aiclk_mhz_exact": actual_seconds_aiclk,
@@ -3581,22 +3591,24 @@ def _trace_report_from_path(
     try:
         report = read_power_trace_csv(
             ctx.power_trace_path,
-            run_start=None if run_start is _MISSING else run_start,
-            run_end=None if run_end is _MISSING else run_end,
-            coverage_definition=coverage_definition,
-            sampler_interval_seconds=sampler_interval,
-            load_interval_start=(
-                None if load_interval_start is _MISSING else load_interval_start
+            options=PowerTraceCsvOptions(
+                run_start=None if run_start is _MISSING else run_start,
+                run_end=None if run_end is _MISSING else run_end,
+                coverage_definition=coverage_definition,
+                sampler_interval_seconds=sampler_interval,
+                load_interval_start=(
+                    None if load_interval_start is _MISSING else load_interval_start
+                ),
+                load_interval_end=(
+                    None if load_interval_end is _MISSING else load_interval_end
+                ),
+                load_interval_source=(
+                    None if load_interval_source is _MISSING else load_interval_source
+                ),
+                require_explicit_load_interval=require_explicit_load_interval,
+                require_all_rows_valid=True,
+                reject_incomplete_rows=False,
             ),
-            load_interval_end=(
-                None if load_interval_end is _MISSING else load_interval_end
-            ),
-            load_interval_source=(
-                None if load_interval_source is _MISSING else load_interval_source
-            ),
-            require_explicit_load_interval=require_explicit_load_interval,
-            require_all_rows_valid=True,
-            reject_incomplete_rows=False,
         )
         report = public_power_trace_metadata(report)
     except (TypeError, ValueError, OverflowError) as exc:

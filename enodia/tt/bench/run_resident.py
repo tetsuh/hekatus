@@ -62,6 +62,7 @@ from enodia.tt.bench.load_harness import (
 )
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
+    PowerTraceSnapshotOptions,
     atomic_power_trace_snapshot,
     empty_power_trace_metadata,
     public_power_trace_metadata,
@@ -885,7 +886,7 @@ def _run_loaded_host_thread(
                 transfer_sub_device_ids=resources.host_transfer_sub_device_ids,
             )
         )
-    except (LoadConfigurationError, OSError, RuntimeError, TypeError, ValueError) as exc:
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
         resources.host_error.append(exc)
     finally:
         resources.host_started.set()
@@ -922,7 +923,6 @@ def _synchronize_loaded_resident(
 def _execute_loaded_program(
     ttnn: Any,
     device: Any,
-    config: ResidentConfig,
     resources: _LoadedDeviceResources,
 ) -> dict[str, Any]:
     measurement_start_ns = time.monotonic_ns()
@@ -1142,7 +1142,7 @@ def _run_loaded_device(
         )
         if condition == "host_cpu_transfer":
             _start_loaded_host_thread(ttnn, device, resources, repeat_count)
-        timing = _execute_loaded_program(ttnn, device, config, resources)
+        timing = _execute_loaded_program(ttnn, device, resources)
         _finish_loaded_host(ttnn, device, config, resources, repeat_count)
         result = {
             **_decode_resident_result(ttnn, config, resources.resident_tensors),
@@ -1528,12 +1528,15 @@ def _calibration_timing_metadata(
     if card_ticks is None or measurement_repeat_count is None or aiclk is None or source is None:
         return calibration
     try:
-        return replace(
-            calibration,
-            load_card_ticks=card_ticks,
-            load_measurement_repeat_count=measurement_repeat_count,
-            load_interval_aiclk_mhz=aiclk,
-            load_interval_aiclk_source=source,
+        return cast(
+            CalibrationMetadata,
+            replace(
+                calibration,
+                load_card_ticks=card_ticks,
+                load_measurement_repeat_count=measurement_repeat_count,
+                load_interval_aiclk_mhz=aiclk,
+                load_interval_aiclk_source=source,
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise LoadConfigurationError(
@@ -1801,25 +1804,33 @@ def main(argv: list[str] | None = None) -> int:
             )
             trace_metadata = read_power_trace_snapshot(
                 snapshot_path,
-                run_id=run_id,
-                run_start=run_start,
-                run_end=run_end,
-                snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
-                source_path=live_power_trace_path,
-                sampler_interval_seconds=sampler_interval,
-                coverage_definition=ONE_INTERVAL_BOUND,
-                load_interval_start=(
-                    result.get("program_launch_utc") if condition != "unloaded" else None
+                options=PowerTraceSnapshotOptions(
+                    run_id=run_id,
+                    run_start=run_start,
+                    run_end=run_end,
+                    snapshot_prefix=RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+                    source_path=live_power_trace_path,
+                    sampler_interval_seconds=sampler_interval,
+                    coverage_definition=ONE_INTERVAL_BOUND,
+                    load_interval_start=(
+                        result.get("program_launch_utc")
+                        if condition != "unloaded"
+                        else None
+                    ),
+                    load_interval_end=(
+                        result.get("program_completion_utc")
+                        if condition != "unloaded"
+                        else None
+                    ),
+                    load_interval_source=(
+                        "issue118_program_host_interval"
+                        if condition != "unloaded"
+                        else None
+                    ),
+                    include_issue118_metadata=True,
+                    require_all_rows_valid=True,
+                    error_factory=lambda kind, error: kind,
                 ),
-                load_interval_end=(
-                    result.get("program_completion_utc") if condition != "unloaded" else None
-                ),
-                load_interval_source=(
-                    "issue118_program_host_interval" if condition != "unloaded" else None
-                ),
-                include_issue118_metadata=True,
-                require_all_rows_valid=True,
-                error_factory=lambda kind, error: kind,
             )
             power_trace_path = snapshot_path
             power_trace = snapshot_path.name
