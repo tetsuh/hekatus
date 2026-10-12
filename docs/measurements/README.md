@@ -689,3 +689,9 @@ record does not violate ADR-0005's prohibition on rewriting because the
 measurement values and reproducibility provenance are unchanged. The string
 remains in git history; removing it from history would rewrite `main`, which
 is not done.
+
+## Issue #122 AICLK audit
+
+The reproducible board-free corpus audit classifies endpoint-only and
+intermediate AICLK traces, and separates exact covered intervals from CSV-span
+diagnostics. See [the generated Issue #122 audit](issue122-aiclk-audit.md).
