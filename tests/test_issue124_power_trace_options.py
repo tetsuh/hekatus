@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench.power_trace_snapshot import (
+    PowerTraceCsvOptions,
     read_power_trace_csv,
     read_power_trace_snapshot,
 )
@@ -41,6 +42,33 @@ def test_csv_reader_accepts_explicit_none_run_bounds(tmp_path: Path) -> None:
         run_end=None,
         read_text_fn=_empty_trace,
     )
+
+    assert trace["readable"] is True
+    assert trace["run_start"] is None
+    assert trace["run_end"] is None
+    assert trace["error"] == {"code": "power_trace_no_usable_rows"}
+
+
+@pytest.mark.parametrize("missing", ("run_start", "run_end"))
+def test_csv_reader_rejects_missing_typed_option_run_bound(
+    tmp_path: Path, missing: str
+) -> None:
+    options = {"run_start": RUN_START, "run_end": RUN_END}
+    options.pop(missing)
+    typed_options = PowerTraceCsvOptions(**options, read_text_fn=_empty_trace)
+
+    with pytest.raises(
+        TypeError,
+        match=rf"read_power_trace_csv\(\) missing required keyword argument '{missing}'",
+    ):
+        read_power_trace_csv(tmp_path / "power.csv", options=typed_options)
+
+
+def test_csv_reader_accepts_explicit_none_typed_option_run_bounds(tmp_path: Path) -> None:
+    options = PowerTraceCsvOptions(
+        run_start=None, run_end=None, read_text_fn=_empty_trace
+    )
+    trace = read_power_trace_csv(tmp_path / "power.csv", options=options)
 
     assert trace["readable"] is True
     assert trace["run_start"] is None

@@ -47,6 +47,13 @@ POWER_TRACE_SHA256_DEFINITION = (
 )
 
 
+class _UnsetRunBound:
+    """Sentinel for a required CSV run bound omitted by the caller."""
+
+
+_UNSET_RUN_BOUND = _UnsetRunBound()
+
+
 @dataclass(frozen=True)
 class PowerTraceReadOptions:
     """Parser settings that apply to the CSV rows rather than run identity."""
@@ -60,8 +67,8 @@ class PowerTraceCsvOptions:
     """Run and parser settings for one power-trace CSV read."""
 
     run_id: str | None = None
-    run_start: datetime.datetime | str | None = None
-    run_end: datetime.datetime | str | None = None
+    run_start: datetime.datetime | str | None | _UnsetRunBound = _UNSET_RUN_BOUND
+    run_end: datetime.datetime | str | None | _UnsetRunBound = _UNSET_RUN_BOUND
     source_file: str | None = None
     sampler_interval_seconds: float | None = None
     coverage_definition: str = EXPLICIT_FINAL_SAMPLE
@@ -188,6 +195,16 @@ def _csv_options_from_legacy(
             raise _legacy_option_error("read_power_trace_csv", set(legacy_options))
         if not isinstance(options, PowerTraceCsvOptions):
             raise TypeError("options must be a PowerTraceCsvOptions instance")
+        missing = {
+            name
+            for name in ("run_start", "run_end")
+            if getattr(options, name) is _UNSET_RUN_BOUND
+        }
+        if missing:
+            name = min(missing)
+            raise TypeError(
+                f"read_power_trace_csv() missing required keyword argument {name!r}"
+            )
         return options
     values = dict(legacy_options)
     read_options = values.pop("read_options", None) or PowerTraceReadOptions()
