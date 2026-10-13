@@ -62,20 +62,22 @@ and the corresponding coverage verdict is `covered`.
 The immutable power snapshot retains every usable in-run sample, the in-run
 minimum and maximum, and a left-held time-weighted AICLK over the explicit
 load interval. `clock.aiclk_mhz` remains the in-run maximum for public
-compatibility and is not used for elapsed-time conversion. New resident
-records persist the separate `clock.aiclk_mhz_for_elapsed_seconds` value and
-`clock.aiclk_source_for_elapsed_seconds` (the loaded path is the observed
-weighted load-interval AICLK; sampler-off uses the configured budget). Missing
-load-interval bounds or provenance fail closed. Card-load calibration throughput
-keeps the historical `repeats_per_card_second` spelling but is a separate
-fixed-reference field: repeats per 1.35e9 card-clock ticks at 1350 MHz, not
-repeats per weighted real-time second. Later conversion of those card ticks to
-loaded elapsed wall time uses the observed weighted load-interval AICLK, or the
-recorded conservative in-run minimum when prediction policy selects it. The
-record also retains host `CLOCK_MONOTONIC` program launch/completion beside the
-card tick spans. DRAM records retain all eight worker rows and use the slowest
-worker's own elapsed interval for calibration; the aggregate worker span is
-coverage metadata only.
+compatibility. For loaded DRAM/Newton-Schulz records, the separate
+`clock.aiclk_mhz_for_elapsed_seconds` value is the observed weighted
+load-interval AICLK; conservative prediction may instead select the recorded
+in-run minimum. Sampled or unloaded resident records may intentionally retain
+`in_run_maximum` or `configured_budget` as their elapsed-time selection, with
+that provenance persisted in `clock.aiclk_source_for_elapsed_seconds` and its
+semantic selection. Missing load-interval bounds or provenance fail closed.
+Card-load calibration throughput keeps the historical `repeats_per_card_second`
+spelling but is a separate fixed-reference field: repeats per 1.35e9 card-clock
+ticks at 1350 MHz, not repeats per weighted real-time second. Later conversion
+of those card ticks to loaded elapsed wall time uses the observed weighted
+load-interval AICLK, or the recorded conservative in-run minimum when prediction
+policy selects it. The record also retains host `CLOCK_MONOTONIC` program
+launch/completion beside the card tick spans. DRAM records retain all eight
+worker rows and use the slowest worker's own elapsed interval for calibration;
+the aggregate worker span is coverage metadata only.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. The retained host-load
 implementation is a #120 starting point only: non-calibration host runs are
@@ -169,12 +171,13 @@ repetitions per selected repeat and twelve iterations per outer repetition. A
 kernel-side correction to warmup counter scope is a follow-up candidate and is
 not applied to this measured record.
 
-The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
-legacy maximum-only `clock.aiclk_mhz`; the paired
-`aiclk_source_for_elapsed_seconds` names whether that value is configured,
-in-run maximum, time-weighted load interval, or the conservative in-run
-minimum. The P50 converted difference from the control is +0.000123 ms for
-DRAM and +0.284607 ms for Newton-Schulz.
+The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, with
+the paired `aiclk_source_for_elapsed_seconds` naming whether the selection is
+configured, in-run maximum, time-weighted load interval, or the conservative
+in-run minimum. Loaded DRAM/Newton-Schulz records use the time-weighted load
+interval for elapsed conversion; sampled or unloaded resident records may
+retain `in_run_maximum` or `configured_budget`. The P50 converted difference
+from the control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
 
 ### Prediction comparison
 

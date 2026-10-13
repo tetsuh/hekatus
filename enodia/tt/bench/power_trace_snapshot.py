@@ -7,11 +7,13 @@ snapshot/read/hash lifecycle for board runners; callers select the coverage
 contract without reimplementing CSV parsing or artifact ownership.
 
 ``aiclk_mhz`` in the emitted trace metadata is always the in-run maximum.  It
-is an observation and is not the denominator for elapsed-time conversion.  A
-loaded conversion uses the separately persisted
+is the public clock observation.  For loaded DRAM/Newton-Schulz records,
+elapsed-time conversion uses the separately persisted
 ``aiclk_mhz_load_interval_weighted`` value and its
-``aiclk_mhz_load_interval_weighted_source``; resident records add the semantic
-``in_run_maximum`` selection beside their public clock field.
+``aiclk_mhz_load_interval_weighted_source``; conservative prediction may use the
+recorded in-run minimum.  Sampled or unloaded resident records may intentionally
+retain ``in_run_maximum`` or ``configured_budget`` as their elapsed-time
+selection beside the public clock field.
 """
 
 from __future__ import annotations

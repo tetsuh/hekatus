@@ -1243,16 +1243,24 @@ summary `docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-r
 compares matched placements against the common original-FP32-R true inverse:
 FP32-R lowers inverse error by about 4×, brings MV direction about 8–15× closer,
 and reduces the three relative-Frobenius beam-response errors by about 3–3.5×. Its P50
-throughput cost is about **−2% at L=16/L1** and **−4.7% at L=32 with R in
-DRAM**. The FP32-R/L=32/R-in-L1 placement is rejected before allocation at
-**1,884,928 B** against the **1,572,864 B** L1 budget. These are solver and
-corrected beam diagnostics, not an image-quality or gCNR result.
+deltas are descriptive matched-placement observations of about **−2% at
+L=16/L1** and **−4.7% at L=32 with R in DRAM**, not an established FP32-R
+throughput cost. The 800 MHz hold and missing per-row timestamps mean that the
+clock and R-format contributions cannot be separated, so attribution remains
+unresolved. The [Issue #122 AICLK audit](measurements/issue122-aiclk-audit.md)
+records this limitation; the [#127 ABBA follow-up](https://github.com/tetsuh/hekatus/issues/127)
+is the follow-up for separating them. The FP32-R/L=32/R-in-L1 placement is
+rejected before allocation at **1,884,928 B** against the **1,572,864 B** L1
+budget. These are solver and corrected beam diagnostics, not an image-quality
+or gCNR result.
 
 The current kernel's math↔pack handoff/queue interpretation is the leading,
 cautious explanation of its limiting stage; the steady Issue #63 record does
-not establish a unique bottleneck. While that stage remains limiting, FP32-R's
-doubled R read volume (R is read on every iteration) and its L=32 move to DRAM
-are hidden behind it. Reopen this decision only if (a) a kernel whose
+not establish a unique bottleneck. Conditional on that stage remaining
+limiting, FP32-R's doubled R read volume (R is read on every iteration) and its
+L=32 move to DRAM may be hidden behind it. This is a conditional interpretation,
+not causal proof, and does not resolve the clock/R-format attribution. Reopen
+this decision only if (a) a kernel whose
 limiting stage is no longer the math↔pack handoff makes FP32-R's read and
 placement cost measurable, or (b) an image-quality comparison against the
 golden path using gCNR shows BF16-R error is visible.

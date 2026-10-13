@@ -1420,7 +1420,10 @@ def _append_resident_record_inventory(
     for line, function in _conversion_calls(path):
         if function == "_sampler_comparison":
             value = "elapsed_aiclk_selection"
-            source = "resident elapsed-time source (configured, in-run maximum, or load weighted)"
+            source = (
+                "resident elapsed-time source (loaded DRAM/Newton-Schulz: weighted; "
+                "sampled/unloaded: in-run maximum or configured)"
+            )
             contract = "sampler gap seconds"
         elif function == "build_outlier_analysis":
             value = "elapsed_selection['aiclk_mhz']"
@@ -1615,7 +1618,17 @@ def _conversion_inventory_section() -> list[str]:
     lines.extend(
         [
             "",
-            "`clock.aiclk_mhz` remains the in-run maximum and is not an elapsed-time denominator for new records. Resident elapsed fields use their persisted AICLK/source pair; loaded records use the time-weighted load interval, while conservative prediction may select the in-run minimum. The 1,350 MHz throughput reference is fixed normalization. Configured budget and outer-cap conversions are inverse policy calculations.",
+            (
+                "`clock.aiclk_mhz` remains the in-run maximum public observation. "
+                "For loaded DRAM/Newton-Schulz records, elapsed conversion uses the "
+                "persisted time-weighted load-interval AICLK, while conservative "
+                "prediction may select the in-run minimum. Sampled or unloaded "
+                "resident records may retain `in_run_maximum` or `configured_budget` "
+                "as their elapsed-time selection; the persisted source/selection "
+                "pair identifies that choice. The 1,350 MHz throughput reference is "
+                "fixed normalization. Configured budget and outer-cap conversions "
+                "are inverse policy calculations."
+            ),
         ]
     )
     return lines

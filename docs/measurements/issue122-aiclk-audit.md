@@ -14,7 +14,7 @@ Line numbers are generated from the current production source. The source column
 | path | line | conversion path | selected value | chosen source | interpretation |
 |---|---:|---|---|---|---|
 | enodia/tt/bench/resident_clock.py | 156 | shared ticks → seconds helper | selected AICLK (exact when weighted) | selection['aiclk_source'] / semantic selection | all cycle→time callers must pass a selected value |
-| enodia/tt/bench/resident_record.py | 2243 | _sampler_comparison ticks → seconds | elapsed_aiclk_selection | resident elapsed-time source (configured, in-run maximum, or load weighted) | sampler gap seconds |
+| enodia/tt/bench/resident_record.py | 2243 | _sampler_comparison ticks → seconds | elapsed_aiclk_selection | resident elapsed-time source (loaded DRAM/Newton-Schulz: weighted; sampled/unloaded: in-run maximum or configured) | sampler gap seconds |
 | enodia/tt/bench/resident_record.py | 2373 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
 | enodia/tt/bench/resident_record.py | 2377 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
 | enodia/tt/bench/resident_record.py | 2385 | build_outlier_analysis ticks → seconds | elapsed_selection['aiclk_mhz'] | aiclk_source_for_elapsed_seconds | resident event/pair/run elapsed seconds |
@@ -38,7 +38,7 @@ Line numbers are generated from the current production source. The source column
 | enodia/tt/bench/run_resident.py | 1405 | inverse startup allowance → ticks | configured budget AICLK | configured_budget | calibration budget policy |
 | tools/analyze_issue104_wrap.py | 72 | inverse phase-window milliseconds → ticks | selected analyzer AICLK | legacy_unverified for historical sampled records; configured off-mode default otherwise | analysis window policy, not elapsed-time evidence |
 
-`clock.aiclk_mhz` remains the in-run maximum and is not an elapsed-time denominator for new records. Resident elapsed fields use their persisted AICLK/source pair; loaded records use the time-weighted load interval, while conservative prediction may select the in-run minimum. The 1,350 MHz throughput reference is fixed normalization. Configured budget and outer-cap conversions are inverse policy calculations.
+`clock.aiclk_mhz` remains the in-run maximum public observation. For loaded DRAM/Newton-Schulz records, elapsed conversion uses the persisted time-weighted load-interval AICLK, while conservative prediction may select the in-run minimum. Sampled or unloaded resident records may retain `in_run_maximum` or `configured_budget` as their elapsed-time selection; the persisted source/selection pair identifies that choice. The 1,350 MHz throughput reference is fixed normalization. Configured budget and outer-cap conversions are inverse policy calculations.
 
 ## Per-record conversion impact for varying AICLK traces
 
