@@ -40,7 +40,7 @@ def test_snapshot_extrema_use_positive_left_held_segments(tmp_path: Path):
         ),
     )
 
-    assert trace["aiclk_mhz_in_run_min"] == 800.0
+    assert trace["aiclk_mhz_in_run_min"] == 700.0
     assert trace["aiclk_mhz_in_run_max"] == 1350.0
     assert trace["aiclk_mhz"] == 1350.0
     assert trace["aiclk_mhz_load_interval_weighted"] == pytest.approx(1075.0)

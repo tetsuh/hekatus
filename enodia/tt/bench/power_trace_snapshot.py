@@ -739,8 +739,8 @@ def _set_in_run_trace_facts(
     trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
     trace["covers_run_end"] = parsed_timestamps[-1] >= end
     # Keep row-count and row-list fields timestamp-based for compatibility with
-    # committed records.  Snapshot-generated extrema are aligned to the load
-    # interval after its explicit bounds are parsed below.
+    # committed records. Snapshot-generated extrema use the full run interval;
+    # the separate load interval below contributes only its weighted value.
     in_run = [
         aiclk
         for _sample, timestamp, aiclk in usable_rows
@@ -808,10 +808,6 @@ def _set_load_interval_trace_facts(
         trace["aiclk_mhz_load_interval_weighted_seconds"] = 0.0
         trace["errors"].append(_error_value(error_factory, "load_interval_invalid", exc))
         return
-    if trace.get("immutable_snapshot"):
-        _set_positive_duration_extrema(
-            trace, usable_rows, start=load_start, end=load_end
-        )
     weighted, covered, reason = _time_weighted_aiclk(
         usable_rows, start=load_start, end=load_end
     )
