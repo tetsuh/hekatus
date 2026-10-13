@@ -27,6 +27,16 @@ def _timestamp(seconds: float) -> dt.datetime:
     return dt.datetime(2026, 1, 1, tzinfo=UTC) + dt.timedelta(seconds=seconds)
 
 
+def _write_trace(path: Path, values: tuple[int, ...] = (800, 1350)) -> str:
+    rows = ["timestamp_utc,power_w,aiclk_mhz,asic_temp_c"]
+    rows.extend(
+        f"2026-01-01T00:00:0{index}+00:00,40,{value},50"
+        for index, value in enumerate(values)
+    )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def test_aiclk_classification_recognizes_endpoint_only_trace():
     classification = classify_aiclk_values([800.0, 1350.0, 800.0])
 
@@ -88,13 +98,7 @@ def test_read_trace_classifies_endpoint_csv_and_weights_explicit_interval(tmp_pa
 
 def test_trace_pairing_prefers_sha256_provenance_over_stem(tmp_path: Path):
     csv_path = tmp_path / "committed-power.csv"
-    csv_path.write_text(
-        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
-        "2026-01-01T00:00:00+00:00,40,800,50\n"
-        "2026-01-01T00:00:01+00:00,70,1350,51\n",
-        encoding="utf-8",
-    )
-    digest = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    digest = _write_trace(csv_path)
     record = {
         "power_trace": "external/power-snapshot.csv",
         "power_trace_sha256": digest,
@@ -105,6 +109,42 @@ def test_trace_pairing_prefers_sha256_provenance_over_stem(tmp_path: Path):
     assert resolution.path == csv_path
     assert resolution.method == "SHA-256 provenance"
     assert read_trace(csv_path).csv_row_count == 2
+
+
+def test_trace_stem_fallback_rejects_hash_mismatch(tmp_path: Path):
+    candidate = tmp_path / "record-summary-power.csv"
+    _write_trace(candidate)
+    expected_hash = hashlib.sha256(b"different committed trace").hexdigest()
+
+    resolution = resolve_trace(
+        tmp_path,
+        tmp_path / "record-summary.json",
+        {
+            "power_trace": "external/record-power.csv",
+            "power_trace_sha256": expected_hash,
+        },
+        {},
+    )
+
+    assert resolution.path is None
+    assert resolution.method == "unresolved"
+    assert resolution.sha256 == expected_hash
+
+
+def test_trace_stem_fallback_checks_each_candidate_hash(tmp_path: Path):
+    _write_trace(tmp_path / "record-summary-power.csv", (800,))
+    expected_hash = _write_trace(tmp_path / "record-power.csv")
+
+    resolution = resolve_trace(
+        tmp_path,
+        tmp_path / "record-summary.json",
+        {"power_trace_sha256": expected_hash},
+        {},
+    )
+
+    assert resolution.path == tmp_path / "record-power.csv"
+    assert resolution.method == "record-stem fallback"
+    assert resolution.sha256 == expected_hash
 
 
 def test_explicit_interval_extrema_use_positive_left_held_segments(tmp_path: Path):

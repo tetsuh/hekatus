@@ -152,7 +152,7 @@ repeat 2,552,005. Both calibration records were `status=calibration`,
 | condition | frame percentiles (ticks: P50 / P99 / P99.9 / P99.99 / max) | same percentiles converted to ms | control delta (ticks; P50 / P99 / P99.9 / P99.99 / max) | load coverage | load evidence | AICLK min / max / weighted (MHz) |
 |---|---|---|---|---|---|---|
 | unloaded control | 1,349,988 / 1,350,061 / 1,350,065 / 1,350,065 / 1,350,091 | 0.999991 / 1.000045 / 1.000048 / 1.000048 / 1.000067 | — | not applicable | no load | 1,350 / 1,350 / 1,350 reference |
-| DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 1,350 / 1,350 / 1,349.842 |
+| DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 800 / 1,350 / 1,349.842 |
 | Newton-Schulz | 1,350,002 / 1,350,076 / 1,350,120 / 1,350,166 / 1,350,259 | 1.284598 / 1.284669 / 1.284710 / 1.284754 / 1.284843 | +14 / +15 / +55 / +101 / +168 | covered | fixed 108-core non-overlapping partition; selected TRISC0 profile interval; 1,001,064 effective outer repetitions; fixed 12-iteration profile | 1,018 / 1,350 / 1,050.914 |
 
 The Newton-Schulz record's selected TRISC0 profile reports 1,001,064

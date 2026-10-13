@@ -452,13 +452,18 @@ def _resolve_stem_trace(
 ) -> TraceResolution | None:
     for stem in _record_trace_stems(record_path):
         candidate = root / f"{stem}-power.csv"
-        if candidate.is_file():
-            return TraceResolution(
-                candidate,
-                "record-stem fallback",
-                references[0] if references else None,
-                expected_hash,
-            )
+        if not candidate.is_file():
+            continue
+        if expected_hash is not None:
+            actual_hash = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                continue
+        return TraceResolution(
+            candidate,
+            "record-stem fallback",
+            references[0] if references else None,
+            expected_hash,
+        )
     return None
 
 
