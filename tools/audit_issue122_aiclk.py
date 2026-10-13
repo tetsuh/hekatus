@@ -1412,32 +1412,31 @@ def _find_row_bound(
     return next((bound for bound in bounds if bound.name == name), None)
 
 
-def _append_issue88_order_conclusions(
-    lines: list[str], analysis: RecordAnalysis, record: Mapping[str, Any]
-) -> None:
-    bounds = _row_timing_bounds(
-        record, analysis.interval.start if analysis.interval is not None else None
+def _issue88_bound_overlaps_hold(
+    bound: RowTimingBound | None, hold_end: float
+) -> bool:
+    return (
+        bound is not None
+        and bound.start_offset_seconds is not None
+        and bound.start_offset_seconds <= hold_end
     )
-    holds = _hold_segments(analysis)
-    if not holds:
-        lines.append("No condition-specific clock-bound conclusion is available because no low-clock hold segment was measured.")
-        return
-    first_hold_end = holds[0].end_offset_seconds
-    bf16_l16 = _find_row_bound(bounds, "bf16-r-L16")
-    fp32_l16 = _find_row_bound(bounds, "fp32-r-L16")
-    bf16_l32_dram = _find_row_bound(bounds, "bf16-r-L32-r-dram")
-    fp32_l32_dram = _find_row_bound(bounds, "fp32-r-L32-r-dram")
 
-    def may_overlap(bound: RowTimingBound | None) -> bool:
-        return bound is not None and bound.start_offset_seconds is not None and bound.start_offset_seconds <= first_hold_end
 
-    if may_overlap(bf16_l16) and not may_overlap(fp32_l16):
+def _append_issue88_l16_conclusion(
+    lines: list[str],
+    bf16_l16: RowTimingBound | None,
+    fp32_l16: RowTimingBound | None,
+    hold_end: float,
+) -> None:
+    bf16_overlaps = _issue88_bound_overlaps_hold(bf16_l16, hold_end)
+    fp32_overlaps = _issue88_bound_overlaps_hold(fp32_l16, hold_end)
+    if bf16_overlaps and not fp32_overlaps:
         lines.append(
             "For L16, only BF16-R can overlap the initial low-clock hold under these "
             "lower bounds; that would make BF16-R look slower and make the FP32-R "
             "difference look smaller."
         )
-    elif may_overlap(bf16_l16) and may_overlap(fp32_l16):
+    elif bf16_overlaps and fp32_overlaps:
         lines.append(
             "For L16, both BF16-R and FP32-R can overlap the initial low-clock hold "
             "under these lower bounds, so the direction of the clock confounding cannot "
@@ -1449,13 +1448,25 @@ def _append_issue88_order_conclusions(
             "this audit makes no additional directional claim."
         )
 
-    l32_both_after = all(
+
+def _issue88_l32_rows_after_hold(
+    bounds: tuple[RowTimingBound | None, RowTimingBound | None], hold_end: float
+) -> bool:
+    return all(
         bound is not None
         and bound.start_offset_seconds is not None
-        and bound.start_offset_seconds > first_hold_end
-        for bound in (bf16_l32_dram, fp32_l32_dram)
+        and bound.start_offset_seconds > hold_end
+        for bound in bounds
     )
-    if l32_both_after:
+
+
+def _append_issue88_l32_conclusion(
+    lines: list[str],
+    bf16_l32_dram: RowTimingBound | None,
+    fp32_l32_dram: RowTimingBound | None,
+    hold_end: float,
+) -> None:
+    if _issue88_l32_rows_after_hold((bf16_l32_dram, fp32_l32_dram), hold_end):
         lines.append(
             "Both L32/DRAM rows have start lower bounds after the low-clock hold; a "
             "condition-specific AICLK upper-bound claim is therefore supported by this "
@@ -1467,6 +1478,31 @@ def _append_issue88_order_conclusions(
             "under their start lower bounds; this audit cannot claim a condition-specific "
             "AICLK upper bound."
         )
+
+
+def _append_issue88_order_conclusions(
+    lines: list[str], analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> None:
+    bounds = _row_timing_bounds(
+        record, analysis.interval.start if analysis.interval is not None else None
+    )
+    holds = _hold_segments(analysis)
+    if not holds:
+        lines.append("No condition-specific clock-bound conclusion is available because no low-clock hold segment was measured.")
+        return
+    first_hold_end = holds[0].end_offset_seconds
+    _append_issue88_l16_conclusion(
+        lines,
+        _find_row_bound(bounds, "bf16-r-L16"),
+        _find_row_bound(bounds, "fp32-r-L16"),
+        first_hold_end,
+    )
+    _append_issue88_l32_conclusion(
+        lines,
+        _find_row_bound(bounds, "bf16-r-L32-r-dram"),
+        _find_row_bound(bounds, "fp32-r-L32-r-dram"),
+        first_hold_end,
+    )
 
 
 def _follow_up_section(
