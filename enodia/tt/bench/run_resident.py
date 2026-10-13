@@ -1632,15 +1632,19 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
             "load_interval_aiclk_selection",
             "predicted_load_time_aiclk_mhz",
             "predicted_load_time_aiclk_source",
+            "predicted_load_time_aiclk_selection",
             "actual_duration_aiclk_mhz",
             "actual_duration_aiclk_source",
+            "actual_duration_aiclk_selection",
         }
         parsed = CalibrationMetadata(
             **{key: calibration[key] for key in fields if key in calibration}
         )
         return _calibration_timing_metadata(payload, parsed)
     except (TypeError, ValueError) as exc:
-        raise LoadConfigurationError("load calibration metadata is invalid") from exc
+        raise LoadConfigurationError(
+            f"load calibration metadata is invalid: {exc}"
+        ) from exc
 
 
 def _select_unloaded_execution(args: argparse.Namespace) -> tuple[str, int, None]:

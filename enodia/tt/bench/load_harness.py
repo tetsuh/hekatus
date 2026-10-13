@@ -401,6 +401,7 @@ class CalibrationMetadata:
     load_interval_aiclk_selection: str | None = None
     predicted_load_time_aiclk_mhz: float | None = None
     predicted_load_time_aiclk_source: str | None = None
+    predicted_load_time_aiclk_selection: str | None = None
     actual_duration_aiclk_mhz: float | None = None
     actual_duration_aiclk_source: str | None = None
     actual_duration_aiclk_selection: str | None = None
@@ -431,68 +432,7 @@ class CalibrationMetadata:
             raise LoadConfigurationError(
                 "throughput reference AICLK source must be a non-empty string"
             )
-        timing_fields = (
-            self.load_card_ticks,
-            self.load_measurement_repeat_count,
-            self.load_interval_aiclk_mhz,
-            self.load_interval_aiclk_source,
-        )
-        if any(value is not None for value in timing_fields):
-            if any(value is None for value in timing_fields):
-                raise LoadConfigurationError(
-                    "calibration load-time metadata must include ticks, repeat count, "
-                    "AICLK, and provenance"
-                )
-            _positive_int(self.load_card_ticks, "load_card_ticks")
-            _positive_int(
-                self.load_measurement_repeat_count,
-                "load_measurement_repeat_count",
-            )
-            _finite_positive(self.load_interval_aiclk_mhz, "load_interval_aiclk_mhz")
-            if self.load_interval_aiclk_min_mhz is not None:
-                _finite_positive(
-                    self.load_interval_aiclk_min_mhz,
-                    "load_interval_aiclk_min_mhz",
-                )
-            if self.load_interval_aiclk_source != CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE:
-                raise LoadConfigurationError(
-                    "calibration load-time AICLK requires sampler-on load-interval provenance"
-                )
-            expected_prediction_aiclk, expected_prediction_source, expected_selection = (
-                _prediction_aiclk_selection(
-                    self.load_interval_aiclk_mhz,
-                    self.load_interval_aiclk_min_mhz,
-                )
-            )
-            if self.load_interval_aiclk_selection not in {None, expected_selection}:
-                raise LoadConfigurationError(
-                    "load interval AICLK selection does not match weighted/minimum values"
-                )
-            if self.predicted_load_time_aiclk_mhz is None:
-                object.__setattr__(
-                    self, "predicted_load_time_aiclk_mhz", expected_prediction_aiclk
-                )
-            elif not math.isclose(
-                float(self.predicted_load_time_aiclk_mhz),
-                expected_prediction_aiclk,
-                rel_tol=0.0,
-                abs_tol=1e-12,
-            ):
-                raise LoadConfigurationError(
-                    "predicted load-time AICLK does not match weighted/minimum values"
-                )
-            if self.predicted_load_time_aiclk_source is None:
-                object.__setattr__(
-                    self, "predicted_load_time_aiclk_source", expected_prediction_source
-                )
-            elif self.predicted_load_time_aiclk_source != expected_prediction_source:
-                raise LoadConfigurationError(
-                    "predicted load-time AICLK source does not match weighted/minimum values"
-                )
-            if self.load_interval_aiclk_selection is None:
-                object.__setattr__(
-                    self, "load_interval_aiclk_selection", expected_selection
-                )
+        _validate_calibration_aiclk_metadata(self)
         if (self.actual_duration_aiclk_mhz is None) != (
             self.actual_duration_aiclk_source is None
         ):
@@ -561,6 +501,61 @@ class CalibrationMetadata:
         return asdict(self)
 
 
+def _validate_calibration_aiclk_metadata(calibration: CalibrationMetadata) -> None:
+    """Validate and derive distinct interval and prediction AICLK metadata."""
+    interval_fields = (
+        calibration.load_card_ticks,
+        calibration.load_measurement_repeat_count,
+        calibration.load_interval_aiclk_mhz,
+        calibration.load_interval_aiclk_source,
+    )
+    if any(value is not None for value in (calibration.predicted_load_time_aiclk_mhz, calibration.predicted_load_time_aiclk_source, calibration.predicted_load_time_aiclk_selection)) and any(value is None for value in interval_fields):
+        raise LoadConfigurationError("prediction AICLK metadata requires complete load-interval metadata")
+    if not any(value is not None for value in interval_fields + (calibration.load_interval_aiclk_min_mhz, calibration.load_interval_aiclk_selection)):
+        return
+    if any(value is None for value in interval_fields):
+        raise LoadConfigurationError("load-interval AICLK metadata must include ticks, repeat count, AICLK, and provenance")
+    _positive_int(calibration.load_card_ticks, "load_card_ticks")
+    _positive_int(
+        calibration.load_measurement_repeat_count, "load_measurement_repeat_count"
+    )
+    _finite_positive(calibration.load_interval_aiclk_mhz, "load_interval_aiclk_mhz")
+    if calibration.load_interval_aiclk_min_mhz is not None:
+        _finite_positive(
+            calibration.load_interval_aiclk_min_mhz, "load_interval_aiclk_min_mhz"
+        )
+    if calibration.load_interval_aiclk_source != CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE:
+        raise LoadConfigurationError("calibration load-interval AICLK requires sampler-on load-interval trace provenance")
+    expected_interval_selection = aiclk_selection_for_source(calibration.load_interval_aiclk_source)
+    if calibration.load_interval_aiclk_selection not in {None, expected_interval_selection}:
+        raise LoadConfigurationError("load interval AICLK selection does not match load-interval trace provenance")
+    if calibration.load_interval_aiclk_selection is None:
+        object.__setattr__(calibration, "load_interval_aiclk_selection", expected_interval_selection)
+    expected_prediction_aiclk, expected_prediction_source, expected_prediction_selection = _prediction_aiclk_selection(
+        calibration.load_interval_aiclk_mhz, calibration.load_interval_aiclk_min_mhz
+    )
+    if calibration.predicted_load_time_aiclk_mhz is None:
+        object.__setattr__(calibration, "predicted_load_time_aiclk_mhz", expected_prediction_aiclk)
+    else:
+        _finite_positive(calibration.predicted_load_time_aiclk_mhz, "predicted_load_time_aiclk_mhz")
+        if not math.isclose(float(calibration.predicted_load_time_aiclk_mhz), expected_prediction_aiclk, rel_tol=0.0, abs_tol=1e-12):
+            raise LoadConfigurationError(
+                "prediction AICLK value does not match the weighted/minimum choice"
+            )
+    if calibration.predicted_load_time_aiclk_source is None:
+        object.__setattr__(calibration, "predicted_load_time_aiclk_source", expected_prediction_source)
+    elif calibration.predicted_load_time_aiclk_source != expected_prediction_source:
+        raise LoadConfigurationError(
+            "prediction AICLK source does not match the weighted/minimum choice"
+        )
+    if calibration.predicted_load_time_aiclk_selection is None:
+        object.__setattr__(calibration, "predicted_load_time_aiclk_selection", expected_prediction_selection)
+    elif calibration.predicted_load_time_aiclk_selection != expected_prediction_selection:
+        raise LoadConfigurationError(
+            "prediction AICLK selection does not match the weighted/minimum choice"
+        )
+
+
 def _prediction_aiclk_selection(
     weighted_aiclk_mhz: float, minimum_aiclk_mhz: float | None
 ) -> tuple[float, str, str]:
@@ -578,21 +573,25 @@ def _prediction_aiclk_selection(
 
 
 def predicted_load_time_selection(calibration: CalibrationMetadata) -> dict[str, Any]:
-    """Return the selected AICLK and source for a calibrated load prediction."""
+    """Return the persisted AICLK choice for a calibrated load prediction."""
     if not isinstance(calibration, CalibrationMetadata):
         raise LoadConfigurationError("calibration metadata is required for load-time prediction")
     if calibration.load_interval_aiclk_mhz is None:
         raise LoadConfigurationError(
             "calibration metadata lacks sampler-on load-interval AICLK"
         )
-    value, source, selection = _prediction_aiclk_selection(
-        calibration.load_interval_aiclk_mhz,
-        calibration.load_interval_aiclk_min_mhz,
-    )
+    if (
+        calibration.predicted_load_time_aiclk_mhz is None
+        or calibration.predicted_load_time_aiclk_source is None
+        or calibration.predicted_load_time_aiclk_selection is None
+    ):
+        raise LoadConfigurationError(
+            "calibration metadata lacks prediction AICLK selection metadata"
+        )
     return {
-        "aiclk_mhz": value,
-        "aiclk_source": source,
-        "aiclk_selection": selection,
+        "aiclk_mhz": calibration.predicted_load_time_aiclk_mhz,
+        "aiclk_source": calibration.predicted_load_time_aiclk_source,
+        "aiclk_selection": calibration.predicted_load_time_aiclk_selection,
     }
 
 
@@ -614,6 +613,7 @@ def predicted_load_time_seconds(calibration: CalibrationMetadata) -> float:
         calibration.repeat_count / calibration.load_measurement_repeat_count
     )
     prediction = predicted_load_time_selection(calibration)
+    # Use the persisted prediction choice, not the load-interval selection.
     return ticks_to_seconds(
         ticks=scaled_ticks,
         selection={
@@ -642,8 +642,7 @@ def choose_repeat_count(
             "target_seconds must be <= 500 seconds for the 600-second run cap"
         )
     factor = _finite_positive(safety_factor, "safety_factor")
-    # ``target_seconds`` may describe the later long measurement.  Only the
-    # calibration observation itself is capped at 60 seconds.
+    # The calibration observation itself is capped at 60 seconds.
     repeats = max(1, math.ceil(throughput * target * factor))
     return repeats
 
@@ -664,6 +663,10 @@ class CalibrationMetadataOptions:
     load_interval_aiclk_mhz: float | None = None
     load_interval_aiclk_min_mhz: float | None = None
     load_interval_aiclk_source: str | None = None
+    load_interval_aiclk_selection: str | None = None
+    predicted_load_time_aiclk_mhz: float | None = None
+    predicted_load_time_aiclk_source: str | None = None
+    predicted_load_time_aiclk_selection: str | None = None
     actual_duration_aiclk_mhz: float | None = None
     actual_duration_aiclk_source: str | None = None
 
@@ -671,10 +674,7 @@ class CalibrationMetadataOptions:
 def calibration_metadata(*, options: CalibrationMetadataOptions) -> CalibrationMetadata:
     """Construct the persisted calibration choice and repeat count."""
     canonical = normalize_condition(options.condition)
-    repeats = choose_repeat_count(
-        condition=canonical, calibration_throughput=options.achieved_throughput,
-        target_seconds=options.target_seconds, safety_factor=options.safety_factor,
-    )
+    repeats = choose_repeat_count(condition=canonical, calibration_throughput=options.achieved_throughput, target_seconds=options.target_seconds, safety_factor=options.safety_factor)
     return CalibrationMetadata(
         condition=canonical, duration_seconds=options.duration_seconds,
         achieved_throughput=options.achieved_throughput, throughput_unit=options.throughput_unit,
@@ -687,13 +687,13 @@ def calibration_metadata(*, options: CalibrationMetadataOptions) -> CalibrationM
         load_interval_aiclk_mhz=options.load_interval_aiclk_mhz,
         load_interval_aiclk_min_mhz=options.load_interval_aiclk_min_mhz,
         load_interval_aiclk_source=options.load_interval_aiclk_source,
+        load_interval_aiclk_selection=options.load_interval_aiclk_selection,
+        predicted_load_time_aiclk_mhz=options.predicted_load_time_aiclk_mhz,
+        predicted_load_time_aiclk_source=options.predicted_load_time_aiclk_source,
+        predicted_load_time_aiclk_selection=options.predicted_load_time_aiclk_selection,
         actual_duration_aiclk_mhz=options.actual_duration_aiclk_mhz,
         actual_duration_aiclk_source=options.actual_duration_aiclk_source,
-        actual_duration_aiclk_selection=(
-            aiclk_selection_for_source(options.actual_duration_aiclk_source)
-            if options.actual_duration_aiclk_source is not None
-            else None
-        ),
+        actual_duration_aiclk_selection=aiclk_selection_for_source(options.actual_duration_aiclk_source) if options.actual_duration_aiclk_source is not None else None,
     )
 
 
@@ -1645,7 +1645,9 @@ def _validate_calibration_repeat_binding(
     try:
         metadata = CalibrationMetadata(**dict(calibration))
     except (TypeError, ValueError) as exc:
-        raise LoadEvidenceError(_CALIBRATION_METADATA_INVALID_ERROR) from exc
+        raise LoadEvidenceError(
+            f"{_CALIBRATION_METADATA_INVALID_ERROR}: {exc}"
+        ) from exc
     if metadata.condition != condition:
         raise LoadEvidenceError(_CALIBRATION_CONDITION_MISMATCH_ERROR)
     selected_repeat_count = record.get("selected_repeat_count")
@@ -1733,7 +1735,9 @@ def _validate_calibration_metadata(record: Mapping[str, Any]) -> None:
     try:
         CalibrationMetadata(**dict(calibration))
     except (TypeError, ValueError) as exc:
-        raise LoadEvidenceError(_CALIBRATION_METADATA_INVALID_ERROR) from exc
+        raise LoadEvidenceError(
+            f"{_CALIBRATION_METADATA_INVALID_ERROR}: {exc}"
+        ) from exc
     if not isinstance(record.get("coverage"), Mapping):
         raise LoadEvidenceError("calibration coverage metadata is missing or invalid")
 

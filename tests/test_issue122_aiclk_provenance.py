@@ -75,7 +75,7 @@ def test_varying_trace_keeps_maximum_separate_from_weighted_elapsed_selection():
     assert outlier["run_elapsed_seconds"] == pytest.approx(2_700_000 / (1_150.0 * 1_000_000))
 
 
-def test_prediction_persists_conservative_in_run_minimum_source():
+def test_prediction_persists_distinct_load_interval_and_prediction_selections():
     calibration = CalibrationMetadata(
         condition="newton_schulz",
         duration_seconds=60.0,
@@ -95,10 +95,43 @@ def test_prediction_persists_conservative_in_run_minimum_source():
         "aiclk_source": AICLK_SELECTION_IN_RUN_MINIMUM,
         "aiclk_selection": AICLK_SELECTION_IN_RUN_MINIMUM,
     }
+    persisted = calibration.as_record()
+    assert persisted["load_interval_aiclk_mhz"] == 1_200.0
+    assert persisted["load_interval_aiclk_source"] == AICLK_SOURCE_LOAD_INTERVAL_TRACE
+    assert persisted["load_interval_aiclk_selection"] == AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL
+    assert persisted["predicted_load_time_aiclk_mhz"] == 800.0
+    assert persisted["predicted_load_time_aiclk_source"] == AICLK_SELECTION_IN_RUN_MINIMUM
+    assert persisted["predicted_load_time_aiclk_selection"] == AICLK_SELECTION_IN_RUN_MINIMUM
+    assert calibration.load_interval_aiclk_selection == AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL
     assert calibration.predicted_load_time_aiclk_mhz == 800.0
     assert calibration.predicted_load_time_aiclk_source == AICLK_SELECTION_IN_RUN_MINIMUM
-    assert calibration.load_interval_aiclk_selection == AICLK_SELECTION_IN_RUN_MINIMUM
+    assert calibration.predicted_load_time_aiclk_selection == AICLK_SELECTION_IN_RUN_MINIMUM
     assert predicted_load_time_seconds(calibration) == pytest.approx(0.6875)
+
+
+def test_calibration_validation_distinguishes_interval_and_prediction_metadata():
+    common = {
+        "condition": "newton_schulz",
+        "duration_seconds": 60.0,
+        "achieved_throughput": 2.0,
+        "throughput_unit": "repeats_per_card_second",
+        "repeat_count": 1100,
+        "load_card_ticks": 1_000_000,
+        "load_measurement_repeat_count": 2,
+        "load_interval_aiclk_mhz": 1_200.0,
+        "load_interval_aiclk_min_mhz": 800.0,
+        "load_interval_aiclk_source": CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    }
+    with pytest.raises(ValueError, match="load interval AICLK selection"):
+        CalibrationMetadata(
+            **common,
+            load_interval_aiclk_selection=AICLK_SELECTION_IN_RUN_MINIMUM,
+        )
+    with pytest.raises(ValueError, match="prediction AICLK selection"):
+        CalibrationMetadata(
+            **common,
+            predicted_load_time_aiclk_selection=AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL,
+        )
 
 
 def test_fixed_reference_throughput_and_actual_duration_keep_distinct_sources():

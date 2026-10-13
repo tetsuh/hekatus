@@ -121,12 +121,20 @@ _CALIBRATION_FIELDS = frozenset(
         "target_seconds",
         "safety_factor",
         "throughput_reference_aiclk_mhz",
+        "throughput_reference_aiclk_source",
         "throughput_unit_definition",
         "load_card_ticks",
         "load_measurement_repeat_count",
         "load_interval_aiclk_mhz",
         "load_interval_aiclk_min_mhz",
         "load_interval_aiclk_source",
+        "load_interval_aiclk_selection",
+        "predicted_load_time_aiclk_mhz",
+        "predicted_load_time_aiclk_source",
+        "predicted_load_time_aiclk_selection",
+        "actual_duration_aiclk_mhz",
+        "actual_duration_aiclk_source",
+        "actual_duration_aiclk_selection",
     }
 )
 
@@ -157,7 +165,9 @@ def _read_calibration(path: Path) -> CalibrationMetadata:
         filtered = {key: calibration[key] for key in _CALIBRATION_FIELDS if key in calibration}
         return CalibrationMetadata(**filtered)
     except (TypeError, ValueError) as exc:
-        raise LoadConfigurationError("calibration metadata is invalid") from exc
+        raise LoadConfigurationError(
+            f"calibration metadata is invalid: {exc}"
+        ) from exc
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
