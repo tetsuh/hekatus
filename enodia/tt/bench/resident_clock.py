@@ -9,7 +9,44 @@ from typing import Any
 AICLK_SOURCE_CONFIGURED = "configured"
 AICLK_SOURCE_RUN_TRACE_SAMPLES = "run_trace_samples"
 AICLK_SOURCE_LEGACY_UNVERIFIED = "legacy_unverified"
+AICLK_SOURCE_LOAD_INTERVAL_TRACE = "load_interval_trace_samples"
+AICLK_SELECTION_CONFIGURED_BUDGET = "configured_budget"
+AICLK_SELECTION_IN_RUN_MAXIMUM = "in_run_maximum"
+AICLK_SELECTION_IN_RUN_MINIMUM = "in_run_minimum"
+AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL = "time_weighted_load_interval"
+AICLK_SELECTION_FIXED_REFERENCE_1350 = "fixed_reference_1350_mhz"
+AICLK_SELECTION_LEGACY_UNVERIFIED = "legacy_unverified"
 _MAX_AICLK_MHZ = (1 << 63) - 1
+
+
+def aiclk_selection_for_source(source: Any) -> str:
+    """Return the semantic selection represented by a persisted source tag.
+
+    The original source tags are retained for record compatibility.  New
+    records also persist this semantic label so a value such as
+    ``run_trace_samples`` cannot be mistaken for a weighted or minimum clock.
+    """
+    if source == AICLK_SOURCE_CONFIGURED:
+        return AICLK_SELECTION_CONFIGURED_BUDGET
+    if source == AICLK_SOURCE_RUN_TRACE_SAMPLES:
+        return AICLK_SELECTION_IN_RUN_MAXIMUM
+    if source == AICLK_SOURCE_LOAD_INTERVAL_TRACE:
+        return AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL
+    if source == AICLK_SELECTION_IN_RUN_MINIMUM:
+        return AICLK_SELECTION_IN_RUN_MINIMUM
+    if source == AICLK_SELECTION_FIXED_REFERENCE_1350:
+        return AICLK_SELECTION_FIXED_REFERENCE_1350
+    return AICLK_SELECTION_LEGACY_UNVERIFIED
+
+
+def fixed_reference_aiclk_selection() -> dict[str, Any]:
+    """Return the immutable 1350 MHz throughput-normalization selection."""
+    return {
+        "aiclk_mhz": 1_350,
+        "aiclk_mhz_exact": 1_350,
+        "aiclk_source": AICLK_SELECTION_FIXED_REFERENCE_1350,
+        "aiclk_selection": AICLK_SELECTION_FIXED_REFERENCE_1350,
+    }
 
 
 def safe_aiclk_value(value: Any) -> float | None:
@@ -27,7 +64,7 @@ def select_load_interval_aiclk(
     *,
     weighted_aiclk_mhz: Any,
     provenance: Any,
-    required_provenance: str = "load_interval_trace_samples",
+    required_provenance: str = AICLK_SOURCE_LOAD_INTERVAL_TRACE,
 ) -> dict[str, Any]:
     """Select the weighted AICLK for Issue #118 card-tick conversion.
 
@@ -118,13 +155,19 @@ def select_elapsed_aiclk(
 
 def ticks_to_seconds(
     *,
-    ticks: int,
+    ticks: float,
     selection: Mapping[str, Any] | None = None,
-    aiclk_mhz: int | None = None,
+    aiclk_mhz: float | None = None,
 ) -> float:
     """Convert device-clock ticks using one selected AICLK provenance."""
-    if isinstance(ticks, bool) or not isinstance(ticks, int) or ticks < 0:
-        raise ValueError("ticks must be a non-negative integer")
+    if isinstance(ticks, bool) or not isinstance(ticks, (int, float)):
+        raise TypeError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR)
+    try:
+        parsed_ticks = float(ticks)
+    except (OverflowError, TypeError, ValueError):
+        raise ValueError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR) from None
+    if not math.isfinite(parsed_ticks) or parsed_ticks < 0.0:
+        raise ValueError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR)
     if selection is None:
         if aiclk_mhz is None:
             raise ValueError("an AICLK selection is required")
@@ -135,13 +178,25 @@ def ticks_to_seconds(
         )
     if selected is None:
         raise ValueError("selected AICLK must be a finite positive number")
-    return ticks / (selected * 1_000_000)
+    return parsed_ticks / (selected * 1_000_000)
+
+
+_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR = "ticks must be a non-negative finite number"
 
 
 __all__ = [
+    "AICLK_SELECTION_CONFIGURED_BUDGET",
+    "AICLK_SELECTION_FIXED_REFERENCE_1350",
+    "AICLK_SELECTION_IN_RUN_MAXIMUM",
+    "AICLK_SELECTION_IN_RUN_MINIMUM",
+    "AICLK_SELECTION_LEGACY_UNVERIFIED",
+    "AICLK_SELECTION_TIME_WEIGHTED_LOAD_INTERVAL",
     "AICLK_SOURCE_CONFIGURED",
     "AICLK_SOURCE_LEGACY_UNVERIFIED",
+    "AICLK_SOURCE_LOAD_INTERVAL_TRACE",
     "AICLK_SOURCE_RUN_TRACE_SAMPLES",
+    "aiclk_selection_for_source",
+    "fixed_reference_aiclk_selection",
     "safe_aiclk_integer",
     "safe_aiclk_value",
     "select_elapsed_aiclk",

@@ -37,6 +37,7 @@ from enodia.tt.bench.load_generators import (
 from enodia.tt.bench.load_harness import (
     CALIBRATION_LOAD_TIMEOUT_MARGIN_SECONDS,
     CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+    CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
     DRAM_STREAM_TOTAL_BYTES,
     HOST_ARITHMETIC_ROUNDS,
     HOST_ARITHMETIC_WORDS,
@@ -52,6 +53,7 @@ from enodia.tt.bench.load_harness import (
     RESIDENT_CORES,
     TRANSFER_COMMAND_QUEUE,
     CalibrationMetadata,
+    CalibrationMetadataOptions,
     CardLoadInterval,
     HostLoadInterval,
     LoadConfigurationError,
@@ -69,11 +71,15 @@ from enodia.tt.bench.power_trace_snapshot import (
     read_power_trace_snapshot,
 )
 from enodia.tt.bench.resident_clock import (
+    aiclk_selection_for_source,
+    fixed_reference_aiclk_selection,
     safe_aiclk_integer,
     select_elapsed_aiclk,
     select_load_interval_aiclk,
+    ticks_to_seconds,
 )
 from enodia.tt.bench.resident_harness import (
+    INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
     PAGE_BYTES,
     PAGE_WORDS,
     ResidentConfig,
@@ -1384,7 +1390,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--watcher", action="store_true")
     return parser
 
-
 def _replace_resident_config(config: ResidentConfig, **changes: Any) -> ResidentConfig:
     return cast(ResidentConfig, replace(config, **changes))
 
@@ -1444,10 +1449,13 @@ def _load_achieved_throughput(
         result["throughput_interval"] = {
             "source": "slowest_worker_own_elapsed_interval",
             "elapsed_ticks": elapsed_ticks,
-            "elapsed_seconds_at_reference_aiclk": elapsed_ticks
-            / (CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0),
+            "elapsed_seconds_at_reference_aiclk": ticks_to_seconds(
+                ticks=elapsed_ticks, selection=fixed_reference_aiclk_selection()
+            ),
             "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+            "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
             "load_interval_aiclk_mhz": aiclk_mhz,
+            "load_interval_aiclk_source": "load_interval_trace_samples",
             "aggregate_span_elapsed_ticks": interval.elapsed_ticks,
         }
     else:
@@ -1455,13 +1463,16 @@ def _load_achieved_throughput(
         result["throughput_interval"] = {
             "source": "aggregate_card_interval_legacy_compatibility",
             "elapsed_ticks": elapsed_ticks,
-            "elapsed_seconds_at_reference_aiclk": elapsed_ticks
-            / (CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0),
+            "elapsed_seconds_at_reference_aiclk": ticks_to_seconds(
+                ticks=elapsed_ticks, selection=fixed_reference_aiclk_selection()
+            ),
             "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
+            "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
             "load_interval_aiclk_mhz": aiclk_mhz,
+            "load_interval_aiclk_source": "load_interval_trace_samples",
         }
-    elapsed_seconds = elapsed_ticks / (
-        CARD_THROUGHPUT_REFERENCE_AICLK_MHZ * 1_000_000.0
+    elapsed_seconds = ticks_to_seconds(
+        ticks=elapsed_ticks, selection=fixed_reference_aiclk_selection()
     )
     if condition == "dram":
         work_rate = (DRAM_STREAM_TOTAL_BYTES * repeat_count) / max(elapsed_seconds, 1e-12)
@@ -1476,6 +1487,36 @@ def _load_achieved_throughput(
         "unit": "outer_repetitions_per_card_second",
     }
     return repeat_count / max(elapsed_seconds, 1e-12), "repeats_per_card_second"
+
+
+def _calibration_actual_duration(
+    *,
+    frame_count: int,
+    frame_interval_ticks: int,
+    aiclk_mhz: float,
+    aiclk_source: str,
+) -> dict[str, Any]:
+    """Convert the configured calibration schedule with its selected clock."""
+    if isinstance(frame_count, bool) or not isinstance(frame_count, int) or frame_count < 0:
+        raise ValueError("frame_count must be a non-negative integer")
+    if isinstance(frame_interval_ticks, bool) or not isinstance(frame_interval_ticks, int) or frame_interval_ticks < 0:
+        raise ValueError("frame_interval_ticks must be a non-negative integer")
+    if not isinstance(aiclk_source, str) or not aiclk_source.strip():
+        raise ValueError("aiclk_source must be a non-empty string")
+    selection = {
+        "aiclk_mhz": aiclk_mhz,
+        "aiclk_mhz_exact": aiclk_mhz,
+        "aiclk_source": aiclk_source,
+    }
+    return {
+        "actual_duration_seconds": ticks_to_seconds(
+            ticks=frame_count * frame_interval_ticks,
+            selection=selection,
+        ),
+        "actual_duration_aiclk_mhz": aiclk_mhz,
+        "actual_duration_aiclk_source": aiclk_source,
+        "actual_duration_aiclk_selection": aiclk_selection_for_source(aiclk_source),
+    }
 
 
 def _calibration_timing_metadata(
@@ -1582,19 +1623,29 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
             "target_seconds",
             "safety_factor",
             "throughput_reference_aiclk_mhz",
+            "throughput_reference_aiclk_source",
             "throughput_unit_definition",
             "load_card_ticks",
             "load_measurement_repeat_count",
             "load_interval_aiclk_mhz",
             "load_interval_aiclk_min_mhz",
             "load_interval_aiclk_source",
+            "load_interval_aiclk_selection",
+            "predicted_load_time_aiclk_mhz",
+            "predicted_load_time_aiclk_source",
+            "predicted_load_time_aiclk_selection",
+            "actual_duration_aiclk_mhz",
+            "actual_duration_aiclk_source",
+            "actual_duration_aiclk_selection",
         }
         parsed = CalibrationMetadata(
             **{key: calibration[key] for key in fields if key in calibration}
         )
         return _calibration_timing_metadata(payload, parsed)
     except (TypeError, ValueError) as exc:
-        raise LoadConfigurationError("load calibration metadata is invalid") from exc
+        raise LoadConfigurationError(
+            f"load calibration metadata is invalid: {exc}"
+        ) from exc
 
 
 def _select_unloaded_execution(args: argparse.Namespace) -> tuple[str, int, None]:
@@ -1910,7 +1961,7 @@ def main(argv: list[str] | None = None) -> int:
     resident_load_record: dict[str, Any] | None = None
     load_record: dict[str, Any] | None = None
     throughput_aiclk_mhz = aiclk_mhz
-    throughput_aiclk_source: str | None = None
+    throughput_aiclk_source: str | None = aiclk_source
     if condition in {"newton_schulz", "dram"}:
         try:
             weighted_selection = select_load_interval_aiclk(
@@ -1947,35 +1998,39 @@ def main(argv: list[str] | None = None) -> int:
             )
             throughput_interval = result.get("throughput_interval", {})
             calibration_output = calibration_metadata(
-                condition=condition,
-                duration_seconds=args.calibration_duration_seconds,
-                achieved_throughput=calibration_achieved,
-                throughput_unit=calibration_unit,
-                target_seconds=args.target_seconds,
-                load_card_ticks=(
-                    throughput_interval.get("elapsed_ticks")
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_measurement_repeat_count=(
-                    repeat_count if condition in {"newton_schulz", "dram"} else None
-                ),
-                load_interval_aiclk_mhz=(
-                    throughput_aiclk_mhz
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_interval_aiclk_min_mhz=(
-                    trace_metadata.get("aiclk_mhz_in_run_min")
-                    if trace_metadata is not None
-                    and condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_interval_aiclk_source=(
-                    throughput_aiclk_source
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
+                options=CalibrationMetadataOptions(
+                    condition=condition,
+                    duration_seconds=args.calibration_duration_seconds,
+                    achieved_throughput=calibration_achieved,
+                    throughput_unit=calibration_unit,
+                    target_seconds=args.target_seconds,
+                    load_card_ticks=(
+                        throughput_interval.get("elapsed_ticks")
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_measurement_repeat_count=(
+                        repeat_count if condition in {"newton_schulz", "dram"} else None
+                    ),
+                    load_interval_aiclk_mhz=(
+                        throughput_aiclk_mhz
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_interval_aiclk_min_mhz=(
+                        trace_metadata.get("aiclk_mhz_in_run_min")
+                        if trace_metadata is not None
+                        and condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_interval_aiclk_source=(
+                        throughput_aiclk_source
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    actual_duration_aiclk_mhz=throughput_aiclk_mhz,
+                    actual_duration_aiclk_source=throughput_aiclk_source,
+                )
             )
             if condition == "host_cpu_transfer":
                 load_record = build_calibration_load_record(
@@ -2060,6 +2115,11 @@ def main(argv: list[str] | None = None) -> int:
         power_trace=power_trace,
         power_trace_path=power_trace_path,
         power_trace_metadata=trace_metadata,
+        interval_extrema_policy=(
+            INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+            if power_trace_path is not None
+            else None
+        ),
         outlier_analysis=outlier_analysis,
         run_start=run_start.isoformat(),
         run_end=run_end.isoformat(),
@@ -2105,9 +2165,11 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "requested_duration_seconds": args.calibration_duration_seconds,
                 "actual_frame_count": config.frame_count,
-                "actual_duration_seconds": (
-                    config.frame_count * config.frame_interval_ticks
-                    / (aiclk_mhz * 1_000_000.0)
+                **_calibration_actual_duration(
+                    frame_count=config.frame_count,
+                    frame_interval_ticks=config.frame_interval_ticks,
+                    aiclk_mhz=throughput_aiclk_mhz,
+                    aiclk_source=throughput_aiclk_source,
                 ),
                 "measurement_repeat_count": repeat_count,
             }

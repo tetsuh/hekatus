@@ -22,6 +22,7 @@ from typing import Any
 
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_LEGACY_UNVERIFIED,
+    aiclk_selection_for_source,
     select_elapsed_aiclk,
     ticks_to_seconds,
 )
@@ -304,6 +305,11 @@ def analyze_run(
         "invariant_validation": invariant_validation,
         "aiclk_mhz": aiclk_mhz,
         "aiclk_source": aiclk_source,
+        "aiclk_selection": aiclk_selection_for_source(aiclk_source),
+        "aiclk_source_for_elapsed_seconds": aiclk_source,
+        "aiclk_selection_for_elapsed_seconds": aiclk_selection_for_source(
+            aiclk_source
+        ),
         "wall_clock_period_ticks": CLOCK_MODULUS_TICKS,
         "wall_clock_period_seconds": period_seconds,
         "interval_count": len(intervals),
@@ -458,6 +464,13 @@ def analyze_issue104(
             "modulus_ticks": CLOCK_MODULUS_TICKS,
             "aiclk_mhz": default_selection["aiclk_mhz"],
             "aiclk_source": default_selection["aiclk_source"],
+            "aiclk_selection": aiclk_selection_for_source(
+                default_selection["aiclk_source"]
+            ),
+            "aiclk_source_for_elapsed_seconds": default_selection["aiclk_source"],
+            "aiclk_selection_for_elapsed_seconds": aiclk_selection_for_source(
+                default_selection["aiclk_source"]
+            ),
             "period_seconds": ticks_to_seconds(
                 ticks=CLOCK_MODULUS_TICKS,
                 selection=default_selection,

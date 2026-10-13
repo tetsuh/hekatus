@@ -5,6 +5,15 @@ runner must copy the bytes it judges into a never-overwritten, run-bound
 snapshot before constructing its record.  This module is the shared
 snapshot/read/hash lifecycle for board runners; callers select the coverage
 contract without reimplementing CSV parsing or artifact ownership.
+
+``aiclk_mhz`` in the emitted trace metadata is always the in-run maximum.  It
+is the public clock observation.  For loaded DRAM/Newton-Schulz records,
+elapsed-time conversion uses the separately persisted
+``aiclk_mhz_load_interval_weighted`` value and its
+``aiclk_mhz_load_interval_weighted_source``; conservative prediction may use the
+recorded in-run minimum.  Sampled or unloaded resident records may intentionally
+retain ``in_run_maximum`` or ``configured_budget`` as their elapsed-time
+selection beside the public clock field.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from enodia.tt.bench.resident_clock import AICLK_SOURCE_LOAD_INTERVAL_TRACE
 from enodia.tt.bench.run_binding import (
     RUN_ID_PATTERN,
     RunBindingError,
@@ -646,6 +656,28 @@ def _set_trace_timestamp_facts(
     trace["_last_timestamp_datetime"] = parsed_timestamps[-1]
 
 
+def _left_held_positive_segments(
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> list[tuple[dict[str, Any], datetime.datetime, float, float]]:
+    """Return rows with positive-duration left-held overlap in an interval."""
+    if start >= end:
+        return []
+    segments: list[tuple[dict[str, Any], datetime.datetime, float, float]] = []
+    for index, (sample, timestamp, aiclk) in enumerate(usable_rows):
+        segment_start = max(timestamp, start)
+        next_timestamp = (
+            usable_rows[index + 1][1] if index + 1 < len(usable_rows) else end
+        )
+        segment_end = min(next_timestamp, end)
+        seconds = (segment_end - segment_start).total_seconds()
+        if seconds > 0.0:
+            segments.append((sample, timestamp, aiclk, seconds))
+    return segments
+
+
 def _time_weighted_aiclk(
     usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
     *,
@@ -669,21 +701,34 @@ def _time_weighted_aiclk(
     if usable_rows[0][1] > start or usable_rows[-1][1] < end:
         return None, 0.0, "load_interval_not_bounded_by_trace"
 
+    segments = _left_held_positive_segments(
+        usable_rows, start=start, end=end
+    )
     weighted = 0.0
     covered = 0.0
-    for index, (_sample, timestamp, aiclk) in enumerate(usable_rows):
-        segment_start = max(timestamp, start)
-        next_timestamp = (
-            usable_rows[index + 1][1] if index + 1 < len(usable_rows) else end
-        )
-        segment_end = min(next_timestamp, end)
-        seconds = max(0.0, (segment_end - segment_start).total_seconds())
-        if seconds:
-            weighted += aiclk * seconds
-            covered += seconds
+    for _sample, _timestamp, aiclk, seconds in segments:
+        weighted += aiclk * seconds
+        covered += seconds
     if not math.isclose(covered, duration, rel_tol=0.0, abs_tol=1e-9):
         return None, covered, "load_interval_trace_coverage_incomplete"
-    return weighted / covered, covered, "load_interval_trace_samples"
+    return weighted / covered, covered, AICLK_SOURCE_LOAD_INTERVAL_TRACE
+
+
+def _set_positive_duration_extrema(
+    trace: dict[str, Any],
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> None:
+    """Set extrema from the positive-duration segments of one interval."""
+    segments = _left_held_positive_segments(usable_rows, start=start, end=end)
+    values = [aiclk for _sample, _timestamp, aiclk, _seconds in segments]
+    if values:
+        trace["aiclk_source"] = "run_trace_samples"
+        trace["aiclk_mhz"] = max(values)
+        trace["aiclk_mhz_in_run_min"] = min(values)
+        trace["aiclk_mhz_in_run_max"] = max(values)
 
 
 def _set_in_run_trace_facts(
@@ -695,6 +740,9 @@ def _set_in_run_trace_facts(
 ) -> None:
     trace["covers_run_start"] = parsed_timestamps[0] <= start <= end
     trace["covers_run_end"] = parsed_timestamps[-1] >= end
+    # Keep row-count and row-list fields timestamp-based for compatibility with
+    # committed records. Snapshot-generated extrema use the full run interval;
+    # the separate load interval below contributes only its weighted value.
     in_run = [
         aiclk
         for _sample, timestamp, aiclk in usable_rows
@@ -708,7 +756,14 @@ def _set_in_run_trace_facts(
         if start <= timestamp <= end
     ]
     trace["aiclk_trace_in_run"] = list(trace["in_run_samples"])
-    if in_run:
+    # Direct non-snapshot reads are also used to validate historical records
+    # whose extrema predate the interval-segment rule.  New immutable snapshots
+    # use the aligned facts; the legacy branch keeps those records acceptable.
+    if trace.get("immutable_snapshot"):
+        _set_positive_duration_extrema(
+            trace, usable_rows, start=start, end=end
+        )
+    elif in_run:
         trace["aiclk_source"] = "run_trace_samples"
         trace["aiclk_mhz"] = max(in_run)
         trace["aiclk_mhz_in_run_min"] = min(in_run)
@@ -761,7 +816,7 @@ def _set_load_interval_trace_facts(
     trace["aiclk_mhz_load_interval_weighted_seconds"] = covered
     if weighted is not None:
         trace["aiclk_mhz_load_interval_weighted"] = weighted
-        trace["aiclk_mhz_load_interval_weighted_source"] = "load_interval_trace_samples"
+        trace["aiclk_mhz_load_interval_weighted_source"] = AICLK_SOURCE_LOAD_INTERVAL_TRACE
     else:
         trace["aiclk_mhz_load_interval_weighted_source"] = reason
 

@@ -61,15 +61,23 @@ and the corresponding coverage verdict is `covered`.
 
 The immutable power snapshot retains every usable in-run sample, the in-run
 minimum and maximum, and a left-held time-weighted AICLK over the explicit
-load interval. Issue #118 frame-interval seconds use that weighted value,
-never the existing public maximum `aiclk_mhz`; missing load-interval bounds or
-provenance fail closed. Card-load calibration throughput keeps the historical
-`repeats_per_card_second` spelling but means repeats per 1.35e9 card-clock
-ticks; its card ticks are converted to real seconds with the observed
-load-interval AICLK. The record also retains host `CLOCK_MONOTONIC`
-program launch/completion beside the card tick spans. DRAM records retain all
-eight worker rows and use the slowest worker's own elapsed interval for
-calibration; the aggregate worker span is coverage metadata only.
+load interval. `clock.aiclk_mhz` remains the in-run maximum for public
+compatibility. For loaded DRAM/Newton-Schulz records, the separate
+`clock.aiclk_mhz_for_elapsed_seconds` value is the observed weighted
+load-interval AICLK; conservative prediction may instead select the recorded
+in-run minimum. Sampled or unloaded resident records may intentionally retain
+`in_run_maximum` or `configured_budget` as their elapsed-time selection, with
+that provenance persisted in `clock.aiclk_source_for_elapsed_seconds` and its
+semantic selection. Missing load-interval bounds or provenance fail closed.
+Card-load calibration throughput keeps the historical `repeats_per_card_second`
+spelling but is a separate fixed-reference field: repeats per 1.35e9 card-clock
+ticks at 1350 MHz, not repeats per weighted real-time second. Later conversion
+of those card ticks to loaded elapsed wall time uses the observed weighted
+load-interval AICLK, or the recorded conservative in-run minimum when prediction
+policy selects it. The record also retains host `CLOCK_MONOTONIC` program
+launch/completion beside the card tick spans. DRAM records retain all eight
+worker rows and use the slowest worker's own elapsed interval for calibration;
+the aggregate worker span is coverage metadata only.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. The retained host-load
 implementation is a #120 starting point only: non-calibration host runs are
@@ -97,14 +105,16 @@ CPU plus PCIe condition (c) is moved to a separate follow-up Issue.
 The prediction revision is harness commit
 `2734d88a4aefd4ab56c6447d3f7f360408abbd42`. Both calibrations were rerun on
 that commit with sampler on, Watcher off, and a 60-second cap. The historical
-`repeats_per_card_second` value is repeats per 1.35e9 card ticks. Therefore the
-reference prediction is 550 seconds (500-second target × 1.10), and real time
-is obtained by converting the card ticks using the observed load-interval
-weighted AICLK. NS is conservatively projected at sustained 1025 MHz, based on
-the observed AICLK decline; DRAM uses its calibration weighted AICLK. The
-measured NS gate used a manual 1025 MHz projection; this PR's code guard now
-uses the conservative minimum of weighted and in-run-minimum AICLK. The
-resident schedule is 500.1 seconds and the planning allowance for device open,
+`repeats_per_card_second` value is a fixed-reference throughput: repeats per
+1.35e9 card ticks at 1350 MHz, not repeats per weighted real-time second.
+Therefore the reference prediction is 550 seconds (500-second target × 1.10),
+and loaded elapsed time is obtained by converting the card ticks with the
+observed load-interval weighted AICLK, or the recorded conservative in-run
+minimum when prediction policy selects it. NS is conservatively projected at
+sustained 1025 MHz, based on the observed AICLK decline; DRAM uses its
+calibration weighted AICLK. The measured NS gate used a manual 1025 MHz
+projection; this PR's code guard now uses the conservative minimum of weighted
+and in-run-minimum AICLK. The resident schedule is 500.1 seconds and the planning allowance for device open,
 JIT, cleanup, and close is 4 seconds. Loaded work overlaps the resident
 program, so load and resident times are not added.
 
@@ -149,7 +159,7 @@ repeat 2,552,005. Both calibration records were `status=calibration`,
 | condition | frame percentiles (ticks: P50 / P99 / P99.9 / P99.99 / max) | same percentiles converted to ms | control delta (ticks; P50 / P99 / P99.9 / P99.99 / max) | load coverage | load evidence | AICLK min / max / weighted (MHz) |
 |---|---|---|---|---|---|---|
 | unloaded control | 1,349,988 / 1,350,061 / 1,350,065 / 1,350,065 / 1,350,091 | 0.999991 / 1.000045 / 1.000048 / 1.000048 / 1.000067 | — | not applicable | no load | 1,350 / 1,350 / 1,350 reference |
-| DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 1,350 / 1,350 / 1,349.842 |
+| DRAM | 1,349,996 / 1,350,102 / 1,350,139 / 1,350,177.0002 / 1,350,261 | 1.000114 / 1.000193 / 1.000220 / 1.000248 / 1.000311 | +8 / +41 / +74 / +112.0002 / +170 | covered | 8 workers; each read/write 653,313,280 pages; repeat 2,552,005 | 800 / 1,350 / 1,349.842 |
 | Newton-Schulz | 1,350,002 / 1,350,076 / 1,350,120 / 1,350,166 / 1,350,259 | 1.284598 / 1.284669 / 1.284710 / 1.284754 / 1.284843 | +14 / +15 / +55 / +101 / +168 | covered | fixed 108-core non-overlapping partition; selected TRISC0 profile interval; 1,001,064 effective outer repetitions; fixed 12-iteration profile | 1,018 / 1,350 / 1,050.914 |
 
 The Newton-Schulz record's selected TRISC0 profile reports 1,001,064
@@ -161,9 +171,13 @@ repetitions per selected repeat and twelve iterations per outer repetition. A
 kernel-side correction to warmup counter scope is a follow-up candidate and is
 not applied to this measured record.
 
-The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
-legacy maximum-only `clock.aiclk_mhz`. The P50 converted difference from the
-control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
+The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, with
+the paired `aiclk_source_for_elapsed_seconds` naming whether the selection is
+configured, in-run maximum, time-weighted load interval, or the conservative
+in-run minimum. Loaded DRAM/Newton-Schulz records use the time-weighted load
+interval for elapsed conversion; sampled or unloaded resident records may
+retain `in_run_maximum` or `configured_budget`. The P50 converted difference
+from the control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
 
 ### Prediction comparison
 
@@ -273,8 +287,10 @@ declared coverage flags and parsed trace facts remain deferred to Issue #110.
 
 The board-free analyzer still analyzes the two historical sampled records even
 though they have no explicit `run_start`/`run_end` bounds or persisted
-`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as
-`legacy_unverified` elapsed-time provenance. It never selects an environment
+`aiclk_source`: it uses each record's persisted `clock.aiclk_mhz` as the
+historical maximum-based, `legacy_unverified` elapsed-time provenance. It
+never treats the public clock field as a new-record conversion policy and
+never selects an environment
 snapshot AICLK, and this historical path is not timing evidence. The historical
 sampler-off record uses its configured budget AICLK for elapsed-time display and
 remains diagnostic-only. The external raw-timestamp-byte limitation applies to
@@ -689,3 +705,9 @@ record does not violate ADR-0005's prohibition on rewriting because the
 measurement values and reproducibility provenance are unchanged. The string
 remains in git history; removing it from history would rewrite `main`, which
 is not done.
+
+## Issue #122 AICLK audit
+
+The reproducible board-free corpus audit classifies endpoint-only and
+intermediate AICLK traces, and separates exact covered intervals from CSV-span
+diagnostics. See [the generated Issue #122 audit](issue122-aiclk-audit.md).
