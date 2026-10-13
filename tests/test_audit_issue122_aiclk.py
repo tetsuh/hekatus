@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ from tools.audit_issue122_aiclk import (
     TraceSample,
     _coverage_rows,
     _left_held_positive_segments,
+    _record_conversion_impact,
     _record_trace_facts,
     _report_input_data,
     classify_aiclk_values,
@@ -223,3 +225,32 @@ def test_report_lists_per_record_conversion_impact_for_every_varying_trace():
     assert "not verifiable from retained interval evidence" in section
     assert "Selected 1050.914 MHz" in section
     assert "No; the existing #88" in section
+
+
+def test_exact_interval_report_rejects_mismatched_persisted_aiclk_metadata():
+    root = Path("docs/measurements")
+    _, _, _, analyses, records = _report_input_data(root)
+    analysis = next(
+        analysis
+        for analysis in analyses
+        if analysis.path.name
+        == "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
+    )
+    record = deepcopy(records[analysis.path])
+    clock = record["clock"]
+    clock["aiclk_mhz_load_interval_weighted"] = 999.0
+    clock["aiclk_mhz_for_elapsed_seconds"] = 999.0
+    clock["aiclk_mhz_load_interval_weighted_source"] = "in_run_maximum"
+    clock["aiclk_source_for_elapsed_seconds"] = "run_trace_samples"
+    clock["aiclk_selection_for_elapsed_seconds"] = "in_run_maximum"
+
+    impact = _record_conversion_impact(analysis, record)
+
+    assert analysis.weighted_is_exact is True
+    assert "Computed 1050.913885665 MHz" in impact.selected_value
+    assert "clock.aiclk_mhz_load_interval_weighted=999 MHz" in impact.selected_value
+    assert "clock.aiclk_mhz_for_elapsed_seconds=999 MHz" in impact.selected_value
+    assert "discrepancy:" in impact.selected_value
+    assert "does not match the exact interval basis" in impact.selected_value
+    assert "not verifiable as corrected" in impact.selected_value
+    assert "same measured conversion basis" not in impact.selected_value

@@ -5,6 +5,7 @@
 - JSON records: 95
 - CSV files: 72
 - Interval policy: valid timestamped rows are left-held until the next row; an explicit interval is exact only when ordered trace rows cover both bounds. Missing bounds produce a `CSV capture span diagnostic`; they do not become in-run evidence. Intermediate means any valid AICLK outside `{800,1350}`; its position uses the beginning/middle/end thirds of the CSV.
+- Exact semantic AICLK checks compare persisted weighted/elapsed values with the recomputed interval value using an absolute 1e-9 MHz tolerance for representation-level differences only; persisted source/selection tags are compared when present.
 
 ## Post-#124 cycle-ticks-to-seconds conversion inventory
 

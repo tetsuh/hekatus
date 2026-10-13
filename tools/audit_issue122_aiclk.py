@@ -26,6 +26,32 @@ POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 AICLK_ENDPOINTS = frozenset((800.0, 1350.0))
 INTERMEDIATE_POSITION_ORDER = ("beginning", "middle", "end")
 _CONFIGURED_BUDGET_AICLK_LABEL = "configured budget AICLK"
+# This absolute tolerance covers only floating-point serialization differences
+# between the CSV recomputation and persisted JSON, not a changed clock basis.
+_EXACT_INTERVAL_AICLK_TOLERANCE_MHZ = 1e-9
+_EXACT_INTERVAL_AICLK_VALUE_FIELDS = frozenset(
+    {
+        "aiclk_mhz_for_elapsed_seconds",
+        "aiclk_mhz_load_interval_weighted",
+        "load_interval_aiclk_mhz",
+        "actual_duration_aiclk_mhz",
+    }
+)
+_EXACT_INTERVAL_AICLK_SOURCE_FIELDS = frozenset(
+    {
+        "aiclk_source_for_elapsed_seconds",
+        "aiclk_mhz_load_interval_weighted_source",
+        "load_interval_aiclk_source",
+        "actual_duration_aiclk_source",
+    }
+)
+_EXACT_INTERVAL_AICLK_SELECTION_FIELDS = frozenset(
+    {
+        "aiclk_selection_for_elapsed_seconds",
+        "load_interval_aiclk_selection",
+        "actual_duration_aiclk_selection",
+    }
+)
 _SEMANTIC_SOURCE_FIELDS = frozenset(
     {
         "aiclk_mhz_for_elapsed_seconds",
@@ -35,10 +61,13 @@ _SEMANTIC_SOURCE_FIELDS = frozenset(
         "aiclk_mhz_load_interval_weighted_source",
         "load_interval_aiclk_mhz",
         "load_interval_aiclk_source",
+        "load_interval_aiclk_selection",
         "actual_duration_aiclk_mhz",
         "actual_duration_aiclk_source",
+        "actual_duration_aiclk_selection",
         "predicted_load_time_aiclk_mhz",
         "predicted_load_time_aiclk_source",
+        "predicted_load_time_aiclk_selection",
     }
 )
 _SEMANTIC_DERIVED_FIELDS = frozenset(
@@ -752,6 +781,124 @@ def _field_inventory(
     return ", ".join(rendered) if rendered else "—"
 
 
+def _record_scalar_fields(
+    record: Mapping[str, Any], field_names: frozenset[str]
+) -> tuple[tuple[str, Any], ...]:
+    """Return scalar semantic fields with paths and unformatted values."""
+
+    values: list[tuple[str, Any]] = []
+
+    def visit(value: Any, path: tuple[str, ...] = ()) -> None:
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                child_path = (*path, str(key))
+                if (
+                    str(key).lower() in field_names
+                    and not isinstance(child, (Mapping, list))
+                ):
+                    values.append((".".join(child_path), child))
+                visit(child, child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, (*path, str(index)))
+
+    visit(record)
+    return tuple(sorted(values))
+
+
+def _format_aiclk_metadata_value(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not math.isfinite(parsed):
+        return str(value)
+    return _format_number(parsed, digits=9)
+
+
+def _exact_interval_aiclk_mismatch_details(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> tuple[tuple[tuple[str, Any], ...], tuple[str, ...]]:
+    """Compare exact trace weighting with persisted semantic AICLK metadata."""
+
+    assert analysis.weighted_mhz is not None
+    persisted_values = _record_scalar_fields(record, _EXACT_INTERVAL_AICLK_VALUE_FIELDS)
+    persisted_sources = _record_scalar_fields(record, _EXACT_INTERVAL_AICLK_SOURCE_FIELDS)
+    persisted_selections = _record_scalar_fields(
+        record, _EXACT_INTERVAL_AICLK_SELECTION_FIELDS
+    )
+    mismatches: list[str] = []
+    if not persisted_values:
+        mismatches.append("no persisted weighted/elapsed AICLK value is present")
+    for path, raw_value in persisted_values:
+        try:
+            persisted_value = float(raw_value)
+        except (TypeError, ValueError):
+            mismatches.append(
+                f"`{path}` is not a finite AICLK value ({_format_aiclk_metadata_value(raw_value)})"
+            )
+            continue
+        if not math.isfinite(persisted_value) or not math.isclose(
+            persisted_value,
+            analysis.weighted_mhz,
+            rel_tol=0.0,
+            abs_tol=_EXACT_INTERVAL_AICLK_TOLERANCE_MHZ,
+        ):
+            discrepancy = persisted_value - analysis.weighted_mhz
+            mismatches.append(
+                f"`{path}` persisted {_format_aiclk_metadata_value(raw_value)} MHz, "
+                f"a discrepancy of {discrepancy:+.9f} MHz"
+            )
+
+    expected_source = "load_interval_trace_samples"
+    for path, raw_source in persisted_sources:
+        if raw_source != expected_source:
+            mismatches.append(
+                f"`{path}` is {_format_aiclk_metadata_value(raw_source)!r}, "
+                f"not {expected_source!r}"
+            )
+    expected_selection = "time_weighted_load_interval"
+    for path, raw_selection in persisted_selections:
+        if raw_selection != expected_selection:
+            mismatches.append(
+                f"`{path}` is {_format_aiclk_metadata_value(raw_selection)!r}, "
+                f"not {expected_selection!r}"
+            )
+    return persisted_values, tuple(mismatches)
+
+
+def _exact_interval_selection_statement(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> str:
+    """Describe whether persisted exact-interval metadata matches the trace."""
+
+    assert analysis.weighted_mhz is not None
+    persisted_values, mismatches = _exact_interval_aiclk_mismatch_details(
+        analysis, record
+    )
+    if not mismatches:
+        return (
+            f"Selected {_format_number(analysis.weighted_mhz)} MHz from the exact "
+            f"{analysis.interval.kind} interval; the persisted semantic selection "
+            "is the same measured conversion basis."
+        )
+
+    persisted_text = "; ".join(
+        f"`{path}={_format_aiclk_metadata_value(value)} MHz`"
+        for path, value in persisted_values
+    ) or "—"
+    discrepancy_text = "; ".join(mismatches)
+    return (
+        f"Computed {_format_aiclk_metadata_value(analysis.weighted_mhz)} MHz from the "
+        f"exact {analysis.interval.kind} interval, but persisted weighted/elapsed "
+        f"AICLK value(s) are {persisted_text}; discrepancy: {discrepancy_text}. "
+        "The persisted selection does not match the exact interval basis and is not "
+        "verifiable as corrected."
+    )
+
+
 def _trace_weighted_statement(analysis: RecordAnalysis) -> str:
     if analysis.weighted_mhz is not None:
         evidence = "exact" if analysis.weighted_is_exact else "capture-span diagnostic only"
@@ -861,11 +1008,7 @@ def _record_conversion_impact(
                 "rewritten."
             )
         if analysis.weighted_is_exact:
-            selected = (
-                f"Selected {_format_number(analysis.weighted_mhz)} MHz from the exact "
-                f"{analysis.interval.kind} interval; the persisted semantic selection "
-                "is the same measured conversion basis."
-            )
+            selected = _exact_interval_selection_statement(analysis, record)
         else:
             selected = (
                 "The persisted semantic selection is retained, but a corrected value is "
@@ -2115,6 +2258,12 @@ def _report_header(root: Path, json_paths: Sequence[Path], csv_paths: Sequence[P
             "Missing bounds produce a `CSV capture span diagnostic`; they do not become "
             "in-run evidence. Intermediate means any valid AICLK outside `{800,1350}`; "
             "its position uses the beginning/middle/end thirds of the CSV."
+        ),
+        (
+            "- Exact semantic AICLK checks compare persisted weighted/elapsed values "
+            "with the recomputed interval value using an absolute 1e-9 MHz tolerance "
+            "for representation-level differences only; persisted source/selection "
+            "tags are compared when present."
         ),
         "",
     ]
