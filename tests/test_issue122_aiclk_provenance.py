@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,10 @@ from enodia.tt.bench.load_harness import (
 from enodia.tt.bench.power_trace_snapshot import (
     ISSUE118_LOAD_INTERVAL_SOURCE,
     PowerTraceCsvOptions,
+    PowerTraceSnapshotOptions,
+    atomic_power_trace_snapshot,
     read_power_trace_csv,
+    read_power_trace_snapshot,
 )
 from enodia.tt.bench.resident_clock import (
     AICLK_SELECTION_IN_RUN_MINIMUM,
@@ -29,7 +33,16 @@ from enodia.tt.bench.resident_clock import (
     select_elapsed_aiclk,
     select_load_interval_aiclk,
 )
-from enodia.tt.bench.resident_record import build_outlier_analysis
+from enodia.tt.bench.resident_harness import (
+    AUDITED_CLOCK_SOURCE_IMAGE,
+    ResidentConfig,
+    build_measurement_record,
+)
+from enodia.tt.bench.resident_record import (
+    INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+    build_outlier_analysis,
+    validate_resident_record,
+)
 from enodia.tt.bench.run_resident import (
     _calibration_actual_duration,
     _load_achieved_throughput,
@@ -263,3 +276,201 @@ def test_conversion_inventory_lines_track_current_source():
     assert "## Post-#124 cycle-ticks-to-seconds conversion inventory" in render_report(
         Path("docs/measurements")
     )
+
+
+def _interval_extrema_config() -> ResidentConfig:
+    return ResidentConfig(
+        frame_count=3,
+        frame_interval_ticks=1_000_000,
+        producer_core=(0, 0),
+        consumer_core=(1, 0),
+        ring_pages=4,
+        work_per_frame=64,
+        designated_timestamp_core=(1, 0),
+        cycle_budget=10_000,
+        outer_timeout_seconds=60,
+        fixed_work_ticks_per_frame=100,
+        budget_aiclk_mhz=1_350,
+    )
+
+
+def _interval_extrema_environment() -> dict:
+    return {
+        "board": {"serial": "board", "board_type": "p150a"},
+        "firmware": {"fw_bundle_version": "19.6.0.0"},
+        "kmd_version": "2.11.0",
+        "image": AUDITED_CLOCK_SOURCE_IMAGE,
+        "image_pinned": True,
+        "harness_commit": "a" * 40,
+        "tt_env_active_release": "0.75.0",
+        "telemetry_sampler": {
+            "mode": "explicit",
+            "interval_seconds": 1.0,
+            "power_trace": "required",
+            "timing_evidence": "available",
+        },
+        "aiclk_mhz_observed": [800],
+    }
+
+
+_INTERVAL_EXTREMA_CASES = (
+    {
+        "name": "pre-start-held",
+        "run_start": "2026-01-01T00:00:01+00:00",
+        "run_end": "2026-01-01T00:00:03+00:00",
+        "aiclk_mhz": 1_350,
+        "minimum": 800.0,
+        "maximum": 1_350.0,
+        "rows": (
+            "2026-01-01T00:00:00+00:00,40,800,50\n"
+            "2026-01-01T00:00:02+00:00,70,1350,51\n"
+            "2026-01-01T00:00:03+00:00,70,1350,51\n"
+            "2026-01-01T00:00:04+00:00,60,1200,50\n"
+        ),
+    },
+    {
+        "name": "endpoint",
+        "run_start": "2026-01-01T00:00:00+00:00",
+        "run_end": "2026-01-01T00:00:02+00:00",
+        "aiclk_mhz": 1_350,
+        "minimum": 800.0,
+        "maximum": 1_350.0,
+        "rows": (
+            "2026-01-01T00:00:00+00:00,40,800,50\n"
+            "2026-01-01T00:00:01+00:00,70,1350,51\n"
+            "2026-01-01T00:00:02+00:00,40,700,50\n"
+            "2026-01-01T00:00:03+00:00,60,1200,50\n"
+        ),
+    },
+    {
+        "name": "duplicate-start",
+        "run_start": "2026-01-01T00:00:00+00:00",
+        "run_end": "2026-01-01T00:00:03+00:00",
+        "aiclk_mhz": 1_200,
+        "minimum": 800.0,
+        "maximum": 1_200.0,
+        "rows": (
+            "2026-01-01T00:00:00+00:00,40,800,50\n"
+            "2026-01-01T00:00:01+00:00,70,1350,51\n"
+            "2026-01-01T00:00:01+00:00,60,1200,50\n"
+            "2026-01-01T00:00:03+00:00,40,900,50\n"
+        ),
+    },
+    {
+        "name": "no-interior-sample",
+        "run_start": "2026-01-01T00:00:01+00:00",
+        "run_end": "2026-01-01T00:00:03+00:00",
+        "aiclk_mhz": 800,
+        "minimum": 800.0,
+        "maximum": 800.0,
+        "rows": (
+            "2026-01-01T00:00:00+00:00,40,800,50\n"
+            "2026-01-01T00:00:03+00:00,70,1350,51\n"
+            "2026-01-01T00:00:04+00:00,60,1200,50\n"
+        ),
+    },
+)
+
+
+def _build_interval_extrema_record(tmp_path: Path, case: dict) -> tuple[dict, Path]:
+    run_id = f"run-122-{case['name']}"
+    source = tmp_path / f"power-{run_id}.csv"
+    source.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n" + "".join(case["rows"]),
+        encoding="utf-8",
+    )
+    trace = atomic_power_trace_snapshot(
+        source,
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+        snapshot_prefix="resident-power-snapshot",
+    )
+    trace_metadata = read_power_trace_snapshot(
+        trace,
+        options=PowerTraceSnapshotOptions(
+            run_id=run_id,
+            run_start=case["run_start"],
+            run_end=case["run_end"],
+            snapshot_prefix="resident-power-snapshot",
+            source_path=source,
+            require_all_rows_valid=True,
+            include_issue118_metadata=True,
+        ),
+    )
+    record = build_measurement_record(
+        config=_interval_extrema_config(),
+        aiclk_mhz=case["aiclk_mhz"],
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="a" * 40,
+        environment=_interval_extrema_environment(),
+        power_trace=trace.name,
+        power_trace_path=trace,
+        power_trace_metadata=trace_metadata,
+        interval_extrema_policy=INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+        run_start=case["run_start"],
+        run_end=case["run_end"],
+        timing_evidence=True,
+    )
+    return record, trace
+
+
+@pytest.mark.parametrize(
+    "case",
+    _INTERVAL_EXTREMA_CASES,
+    ids=[case["name"] for case in _INTERVAL_EXTREMA_CASES],
+)
+def test_new_resident_records_validate_positive_duration_interval_extrema(
+    tmp_path: Path, case: dict
+):
+    record, trace = _build_interval_extrema_record(tmp_path, case)
+
+    assert record["power_trace_interval_extrema_policy"] == (
+        INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+    )
+    assert record["power_clock_provenance"]["interval_extrema_policy"] == (
+        INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+    )
+    assert record["aiclk_mhz_in_run_min"] == case["minimum"]
+    assert record["aiclk_mhz_in_run_max"] == case["maximum"]
+    assert record["power_clock_provenance"]["aiclk_mhz_in_run_min"] == case[
+        "minimum"
+    ]
+    assert record["power_clock_provenance"]["aiclk_mhz_in_run_max"] == case[
+        "maximum"
+    ]
+
+    report = validate_resident_record(
+        record,
+        timestamps=[1_000, 2_000, 3_000],
+        power_trace_path=trace,
+    )
+    assert report["valid"] is True
+    assert report["power_trace"]["immutable_snapshot"] is True
+    assert report["power_trace"]["aiclk_mhz_in_run_min"] == case["minimum"]
+    assert report["power_trace"]["aiclk_mhz_in_run_max"] == case["maximum"]
+
+
+def test_historical_immutable_snapshot_keeps_timestamp_extrema_compatibility(
+    tmp_path: Path,
+):
+    record, trace = _build_interval_extrema_record(tmp_path, _INTERVAL_EXTREMA_CASES[0])
+    historical = deepcopy(record)
+    historical.pop("power_trace_interval_extrema_policy")
+    historical["power_clock_provenance"].pop("interval_extrema_policy")
+    historical["aiclk_mhz_in_run_min"] = 1_350.0
+    historical["power_clock_provenance"]["aiclk_mhz_in_run_min"] = 1_350.0
+
+    report = validate_resident_record(
+        historical,
+        timestamps=[1_000, 2_000, 3_000],
+        power_trace_path=trace,
+    )
+    assert report["valid"] is True
+    assert historical["power_clock_provenance"]["immutable_snapshot"] is True
+    assert report["power_trace"]["immutable_snapshot"] is False
+    assert report["power_trace"]["aiclk_mhz_in_run_min"] == 1_350.0
+    assert report["power_trace"]["aiclk_mhz_in_run_max"] == 1_350.0

@@ -171,6 +171,7 @@ _POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definit
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
 RESIDENT_RECORD_SCHEMA_MARKER = 1
+INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD = "positive_duration_left_held"
 RECORD_KIND_SAMPLED_TIMING = "sampled_timing"
 RECORD_KIND_SAMPLER_OFF = "sampler_off"
 RECORD_KIND_ERROR = "error"
@@ -563,6 +564,8 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_clock_provenance.run_end",
         "power_clock_provenance.coverage",
         _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
+        "power_clock_provenance.interval_extrema_policy",
+        "power_trace_interval_extrema_policy",
         "power_clock_provenance.readable",
         "power_clock_provenance.nonempty",
         "power_clock_provenance.timestamps_parse",
@@ -693,6 +696,14 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path in {"telemetry_sampler.timing_evidence", "environment.telemetry_sampler.timing_evidence"}:
         type_rule, range_rule, expected = string, _enum("available", "diagnostic_only"), "the sampler timing-evidence enum"
         invalid_range = "unknown-timing-policy"
+    elif path in {
+        "power_trace_interval_extrema_policy",
+        "power_clock_provenance.interval_extrema_policy",
+    }:
+        type_rule, range_rule, expected = string, _enum(
+            INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+        ), "the resident interval-extrema policy enum"
+        invalid_range = "timestamp_only"
     elif path == "clock.aiclk_source" or path == "power_clock_provenance.aiclk_source":
         type_rule, range_rule, expected = string, _enum(
             "run_trace_samples",
@@ -859,6 +870,13 @@ _OPTIONAL_COVERAGE_FIELDS = tuple(
     for path in (
         _POWER_TRACE_COVERAGE_DEFINITION_PATH,
         _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
+    )
+)
+_OPTIONAL_INTERVAL_EXTREMA_POLICY_FIELDS = tuple(
+    _field(path, RECORD_KIND_SAMPLED_TIMING)
+    for path in (
+        "power_trace_interval_extrema_policy",
+        "power_clock_provenance.interval_extrema_policy",
     )
 )
 REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
@@ -1048,6 +1066,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_trace_coverage.coverage.definition",
     _POWER_TRACE_COVERAGE_DEFINITION_PATH,
     "power_trace_coverage.coverage.last_within_interval_bound",
+    "power_trace_interval_extrema_policy",
     "power_clock_provenance.coverage.nonempty",
     "power_clock_provenance.coverage.timestamps_parse",
     "power_clock_provenance.coverage.timestamps_ordered",
@@ -1062,6 +1081,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.errors",
     "power_clock_provenance.source_file",
     "power_clock_provenance.immutable_snapshot",
+    "power_clock_provenance.interval_extrema_policy",
     "power_clock_provenance.byte_count",
     "power_clock_provenance.sha256_definition",
     "power_clock_provenance.sampler_interval_seconds",
@@ -1910,7 +1930,7 @@ def _check_field_values(record: Mapping[str, Any], ctx: ValidationContext) -> li
         value = _value(record, field.path)
         if value is not _MISSING:
             _validate_field_value(field, value, mismatches)
-    for field in _OPTIONAL_COVERAGE_FIELDS:
+    for field in (*_OPTIONAL_COVERAGE_FIELDS, *_OPTIONAL_INTERVAL_EXTREMA_POLICY_FIELDS):
         value = _value(record, field.path)
         if value is not _MISSING:
             _validate_field_value(field, value, mismatches)
@@ -3467,6 +3487,7 @@ _POWER_METADATA_ALIASES = {
     "aiclk_mhz": ("aiclk_mhz",),
     "aiclk_mhz_in_run_min": ("aiclk_mhz_in_run_min",),
     "aiclk_mhz_in_run_max": ("aiclk_mhz_in_run_max",),
+    "interval_extrema_policy": ("interval_extrema_policy",),
     "aiclk_mhz_load_interval_weighted": ("aiclk_mhz_load_interval_weighted",),
     "aiclk_mhz_load_interval_weighted_source": (
         "aiclk_mhz_load_interval_weighted_source",
@@ -3491,6 +3512,9 @@ def _top_power_metadata(record: Mapping[str, Any]) -> dict[str, Any]:
         "valid_row_count": record.get("power_trace_valid_row_count", _MISSING),
         "in_run_valid_row_count": record.get("power_trace_in_run_valid_row_count", _MISSING),
         "sha256": record.get("power_trace_sha256", _MISSING),
+        "interval_extrema_policy": record.get(
+            "power_trace_interval_extrema_policy", _MISSING
+        ),
         "columns": _MISSING,
         "first_timestamp": _MISSING,
         "last_timestamp": _MISSING,
@@ -3668,6 +3692,7 @@ def _trace_report_from_path(
     require_explicit_load_interval: bool,
     coverage_definition: str,
     sampler_interval: Any,
+    interval_extrema_policy: Any,
 ) -> dict[str, Any]:
     try:
         report = read_power_trace_csv(
@@ -3688,6 +3713,10 @@ def _trace_report_from_path(
                 ),
                 require_explicit_load_interval=require_explicit_load_interval,
                 require_all_rows_valid=True,
+                immutable_snapshot=(
+                    interval_extrema_policy
+                    == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+                ),
                 reject_incomplete_rows=False,
             ),
         )
@@ -3715,6 +3744,7 @@ def _trace_report_from_context(
     load_interval_end: Any,
     load_interval_source: Any,
     require_explicit_load_interval: bool,
+    interval_extrema_policy: Any,
 ) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
         return _trace_report_from_path(
@@ -3728,6 +3758,7 @@ def _trace_report_from_context(
             require_explicit_load_interval=require_explicit_load_interval,
             coverage_definition=coverage_definition,
             sampler_interval=sampler_interval,
+            interval_extrema_policy=interval_extrema_policy,
         )
     if ctx.power_trace_metadata is not None:
         report = dict(ctx.power_trace_metadata)
@@ -3779,6 +3810,7 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
         load_interval_end=declared.get("load_interval_end", _MISSING),
         load_interval_source=declared.get("load_interval_source", _MISSING),
         require_explicit_load_interval=require_explicit_load_interval,
+        interval_extrema_policy=declared.get("interval_extrema_policy", _MISSING),
     )
 
 
@@ -3892,6 +3924,24 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     # positive timing claim from this branch.
     legacy_unverified = declared.get("aiclk_source") == "legacy_unverified"
     actual_available = report.get("actual_bytes_available") is True
+    interval_extrema_policy = declared.get("interval_extrema_policy", _MISSING)
+    if interval_extrema_policy is not _MISSING:
+        if interval_extrema_policy != INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("power_clock_provenance.interval_extrema_policy",),
+                    "power trace interval-extrema policy is not supported",
+                )
+            )
+        elif actual_available and report.get("immutable_snapshot") is not True:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    ("power_clock_provenance.interval_extrema_policy",),
+                    "positive-duration interval-extrema policy was not applied to the trace",
+                )
+            )
     required_fields = (
         "columns",
         "sample_count",
@@ -3966,6 +4016,9 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         "run_start": "run_start",
         "run_end": "run_end",
         "coverage_complete": "power_trace_coverage.coverage_complete",
+        "interval_extrema_policy": "power_trace_interval_extrema_policy",
+        "aiclk_mhz_in_run_min": "aiclk_mhz_in_run_min",
+        "aiclk_mhz_in_run_max": "aiclk_mhz_in_run_max",
         "aiclk_source": "clock.aiclk_source",
         "aiclk_selection": _CLOCK_AICLK_SELECTION_PATH,
         "aiclk_mhz": "clock.aiclk_mhz",
@@ -4231,6 +4284,9 @@ def _check_trace_metadata_duplicates(record: Mapping[str, Any], ctx: ValidationC
         "in_run_valid_row_count": "power_trace_in_run_valid_row_count",
         "sha256": "power_trace_sha256",
         "coverage_definition": _POWER_TRACE_COVERAGE_DEFINITION_PATH,
+        "interval_extrema_policy": "power_trace_interval_extrema_policy",
+        "aiclk_mhz_in_run_min": "aiclk_mhz_in_run_min",
+        "aiclk_mhz_in_run_max": "aiclk_mhz_in_run_max",
     }.items():
         left = nested.get(nested_name, _MISSING)
         right = top.get(nested_name, _MISSING)
@@ -4600,6 +4656,7 @@ __all__ = [
     "DEFAULT_PHASE_WINDOW_MS",
     "FAILURE_CODES",
     "FAILURE_CODE_TABLE",
+    "INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD",
     "LONG_THRESHOLD_TICKS",
     "PAIR_FIELD_SPECS",
     "PAIR_ORDERS",

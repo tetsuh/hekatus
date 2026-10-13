@@ -79,6 +79,7 @@ from enodia.tt.bench.resident_clock import (
     ticks_to_seconds,
 )
 from enodia.tt.bench.resident_harness import (
+    INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
     PAGE_BYTES,
     PAGE_WORDS,
     ResidentConfig,
@@ -2114,6 +2115,11 @@ def main(argv: list[str] | None = None) -> int:
         power_trace=power_trace,
         power_trace_path=power_trace_path,
         power_trace_metadata=trace_metadata,
+        interval_extrema_policy=(
+            INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+            if power_trace_path is not None
+            else None
+        ),
         outlier_analysis=outlier_analysis,
         run_start=run_start.isoformat(),
         run_end=run_end.isoformat(),

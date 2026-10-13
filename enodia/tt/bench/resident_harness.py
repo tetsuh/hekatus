@@ -52,6 +52,7 @@ from enodia.tt.bench.resident_clock import (
 from enodia.tt.bench.resident_record import (
     FAILURE_CODE_TABLE,
     FAILURE_CODES,
+    INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
     RESIDENT_INVARIANT_CATALOG,
     RESIDENT_RECORD_SCHEMA,
     RESIDENT_RECORD_SCHEMA_MARKER,
@@ -1060,6 +1061,7 @@ def _trace_metadata_from_path(
     load_interval_end: Any = None,
     load_interval_source: str | None = None,
     require_explicit_load_interval: bool = False,
+    interval_extrema_policy: str | None = None,
 ) -> dict[str, Any]:
     supplied_definition = (
         power_trace_metadata.get("coverage_definition", EXPLICIT_FINAL_SAMPLE)
@@ -1096,10 +1098,16 @@ def _trace_metadata_from_path(
         load_interval_source=load_interval_source,
         require_explicit_load_interval=require_explicit_load_interval,
         require_all_rows_valid=True,
+        immutable_snapshot=(
+            interval_extrema_policy
+            == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+        ),
         error_factory=lambda kind, _error: kind,
         reject_incomplete_rows=False,
     )
     parsed = public_power_trace_metadata(parsed)
+    if interval_extrema_policy is not None:
+        parsed["interval_extrema_policy"] = interval_extrema_policy
     if parsed.get("file") != power_trace:
         raise ValueError("power_trace_path basename must match power_trace")
     if isinstance(power_trace_metadata, Mapping):
@@ -1111,7 +1119,12 @@ def _trace_metadata_from_path(
         ):
             if field in power_trace_metadata:
                 parsed[field] = power_trace_metadata[field]
-    return _public_power_trace_metadata(parsed)
+    if interval_extrema_policy == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD:
+        parsed["immutable_snapshot"] = True
+    public = _public_power_trace_metadata(parsed)
+    if interval_extrema_policy is not None:
+        public["interval_extrema_policy"] = interval_extrema_policy
+    return public
 
 
 def _missing_power_trace_metadata(
@@ -1145,6 +1158,7 @@ def _trace_metadata_from_supplied(
     load_interval_start: Any = None,
     load_interval_end: Any = None,
     load_interval_source: str | None = None,
+    interval_extrema_policy: str | None = None,
 ) -> dict[str, Any]:
     metadata = dict(power_trace_metadata)
     metadata.setdefault("file", power_trace)
@@ -1160,7 +1174,12 @@ def _trace_metadata_from_supplied(
         metadata["load_interval_end"] = load_interval_end
     if load_interval_source is not None:
         metadata["load_interval_source"] = load_interval_source
-    return _public_power_trace_metadata(metadata)
+    if interval_extrema_policy is not None:
+        metadata["interval_extrema_policy"] = interval_extrema_policy
+    public = _public_power_trace_metadata(metadata)
+    if "interval_extrema_policy" in metadata:
+        public["interval_extrema_policy"] = metadata["interval_extrema_policy"]
+    return public
 
 
 def _power_trace_metadata(
@@ -1174,6 +1193,7 @@ def _power_trace_metadata(
     load_interval_end: Any = None,
     load_interval_source: str | None = None,
     require_explicit_load_interval: bool = False,
+    interval_extrema_policy: str | None = None,
 ) -> dict[str, Any]:
     """Read one run-bound trace or normalize supplied board-free metadata."""
     if power_trace_path is not None:
@@ -1187,6 +1207,7 @@ def _power_trace_metadata(
             load_interval_end=load_interval_end,
             load_interval_source=load_interval_source,
             require_explicit_load_interval=require_explicit_load_interval,
+            interval_extrema_policy=interval_extrema_policy,
         )
     if power_trace_metadata is None:
         return _missing_power_trace_metadata(
@@ -1200,6 +1221,7 @@ def _power_trace_metadata(
         load_interval_start=load_interval_start,
         load_interval_end=load_interval_end,
         load_interval_source=load_interval_source,
+        interval_extrema_policy=interval_extrema_policy,
     )
 
 
@@ -1250,6 +1272,7 @@ def build_measurement_record(
     power_trace: str | None,
     power_trace_path: Path | None = None,
     power_trace_metadata: Mapping[str, Any] | None = None,
+    interval_extrema_policy: str | None = None,
     run_start: Any = None,
     run_end: Any = None,
     load_interval_start: Any = None,
@@ -1282,7 +1305,10 @@ def build_measurement_record(
     the historical basename and omit sampler metadata remain readable for
     older board-free callers, but are marked ``legacy_unverified`` in power
     provenance and can never claim timing evidence; the resident runner
-    always supplies the strict path and run bounds.  ``timing_evidence``
+    always supplies the strict path and run bounds.  New resident snapshots
+    pass ``interval_extrema_policy`` explicitly so their extrema use positive-
+    duration left-held segments; records without that marker retain the
+    historical timestamp-based compatibility path.  ``timing_evidence``
     defaults to false.  A true request is retained only after the shared
     validator proves the strict trace, coverage, AICLK, sampler, and run
     invariants.
@@ -1303,6 +1329,15 @@ def build_measurement_record(
     ``dropped`` and never overwrite ring data.
     """
     config = validate_configuration(config, watcher=watcher)
+    if interval_extrema_policy is None and isinstance(power_trace_metadata, Mapping):
+        metadata_policy = power_trace_metadata.get("interval_extrema_policy")
+        if metadata_policy == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD:
+            interval_extrema_policy = metadata_policy
+    if interval_extrema_policy not in {
+        None,
+        INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+    }:
+        raise ValueError("unsupported resident interval-extrema policy")
     if isinstance(num_command_queues, bool) or num_command_queues != 2:
         raise ValueError("Issue #118 resident records require num_command_queues=2")
     if load_record is not None and load_metadata is not None:
@@ -1379,6 +1414,7 @@ def build_measurement_record(
             load_interval_end=load_interval_end,
             load_interval_source=load_interval_source,
             require_explicit_load_interval=require_explicit_load_interval,
+            interval_extrema_policy=interval_extrema_policy,
         )
         trace_reason = _trace_failure_reason(trace_metadata)
         trace_aiclk = _safe_aiclk_integer(trace_metadata.get("aiclk_mhz"))
@@ -1829,6 +1865,10 @@ def build_measurement_record(
         "timing_evidence_reason": final_timing_reason,
         "outlier_analysis": dict(outlier_analysis),
     }
+    if trace_metadata is not None and trace_metadata.get("interval_extrema_policy") is not None:
+        record["power_trace_interval_extrema_policy"] = trace_metadata[
+            "interval_extrema_policy"
+        ]
     if program_launch_ns is not None:
         program_interval = {
             "clock": "host_monotonic_ns",
@@ -1995,6 +2035,7 @@ __all__ = [
     "CURRENT_WRAP_WORK_PER_FRAME",
     "FAILURE_CODES",
     "FAILURE_CODE_TABLE",
+    "INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD",
     "MAX_COMPUTE_LOAD_TIMEOUT_SECONDS",
     "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MAX_OUTER_TIMEOUT_SECONDS",
