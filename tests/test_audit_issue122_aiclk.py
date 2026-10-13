@@ -171,6 +171,22 @@ def test_trace_stem_fallback_checks_each_candidate_hash(tmp_path: Path):
     assert resolution.sha256 == expected_hash
 
 
+def test_trace_stem_fallback_records_actual_hash_without_expected_hash(tmp_path: Path):
+    candidate = tmp_path / "record-summary-power.csv"
+    actual_hash = _write_trace(candidate)
+
+    resolution = resolve_trace(
+        tmp_path,
+        tmp_path / "record-summary.json",
+        {"power_trace": "external/record-power.csv"},
+        {},
+    )
+
+    assert resolution.path == candidate
+    assert resolution.method == "record-stem fallback"
+    assert resolution.sha256 == actual_hash
+
+
 def test_explicit_interval_extrema_use_positive_left_held_segments(tmp_path: Path):
     csv_path = tmp_path / "boundary-power.csv"
     csv_path.write_text(
