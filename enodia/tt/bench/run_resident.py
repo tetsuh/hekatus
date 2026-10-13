@@ -1454,7 +1454,7 @@ def _load_achieved_throughput(
             "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
             "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
             "load_interval_aiclk_mhz": aiclk_mhz,
-            "load_interval_aiclk_source": "time_weighted_load_interval",
+            "load_interval_aiclk_source": "load_interval_trace_samples",
             "aggregate_span_elapsed_ticks": interval.elapsed_ticks,
         }
     else:
@@ -1468,7 +1468,7 @@ def _load_achieved_throughput(
             "reference_aiclk_mhz": CARD_THROUGHPUT_REFERENCE_AICLK_MHZ,
             "reference_aiclk_source": CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE,
             "load_interval_aiclk_mhz": aiclk_mhz,
-            "load_interval_aiclk_source": "time_weighted_load_interval",
+            "load_interval_aiclk_source": "load_interval_trace_samples",
         }
     elapsed_seconds = ticks_to_seconds(
         ticks=elapsed_ticks, selection=fixed_reference_aiclk_selection()

@@ -140,7 +140,23 @@ def test_load_calibration_throughput_records_fixed_reference_source():
     assert interval["reference_aiclk_mhz"] == CARD_THROUGHPUT_REFERENCE_AICLK_MHZ == DEFAULT_AICLK_MHZ
     assert interval["reference_aiclk_source"] == "fixed_reference_1350_mhz"
     assert interval["load_interval_aiclk_mhz"] == 1_100.0
-    assert interval["load_interval_aiclk_source"] == "time_weighted_load_interval"
+    assert interval["load_interval_aiclk_source"] == AICLK_SOURCE_LOAD_INTERVAL_TRACE
+
+
+def test_load_calibration_throughput_records_trace_source_for_aggregate_interval():
+    from enodia.tt.bench.load_harness import CardLoadInterval
+
+    result = {"card_load_interval": CardLoadInterval(100, 800)}
+    _load_achieved_throughput(
+        result,
+        condition="dram",
+        repeat_count=2,
+        aiclk_mhz=1_100.0,
+    )
+
+    assert result["throughput_interval"]["load_interval_aiclk_source"] == (
+        AICLK_SOURCE_LOAD_INTERVAL_TRACE
+    )
 
 
 def test_power_snapshot_names_in_run_maximum_for_varying_trace(tmp_path: Path):
