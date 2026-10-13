@@ -64,15 +64,18 @@ minimum and maximum, and a left-held time-weighted AICLK over the explicit
 load interval. `clock.aiclk_mhz` remains the in-run maximum for public
 compatibility and is not used for elapsed-time conversion. New resident
 records persist the separate `clock.aiclk_mhz_for_elapsed_seconds` value and
-`clock.aiclk_source_for_elapsed_seconds` (the loaded path is the weighted load
-interval; sampler-off uses the configured budget). Missing load-interval
-bounds or provenance fail closed. Card-load calibration throughput keeps the historical
-`repeats_per_card_second` spelling but means repeats per 1.35e9 card-clock
-ticks; its card ticks are converted to real seconds with the observed
-load-interval AICLK. The record also retains host `CLOCK_MONOTONIC`
-program launch/completion beside the card tick spans. DRAM records retain all
-eight worker rows and use the slowest worker's own elapsed interval for
-calibration; the aggregate worker span is coverage metadata only.
+`clock.aiclk_source_for_elapsed_seconds` (the loaded path is the observed
+weighted load-interval AICLK; sampler-off uses the configured budget). Missing
+load-interval bounds or provenance fail closed. Card-load calibration throughput
+keeps the historical `repeats_per_card_second` spelling but is a separate
+fixed-reference field: repeats per 1.35e9 card-clock ticks at 1350 MHz, not
+repeats per weighted real-time second. Later conversion of those card ticks to
+loaded elapsed wall time uses the observed weighted load-interval AICLK, or the
+recorded conservative in-run minimum when prediction policy selects it. The
+record also retains host `CLOCK_MONOTONIC` program launch/completion beside the
+card tick spans. DRAM records retain all eight worker rows and use the slowest
+worker's own elapsed interval for calibration; the aggregate worker span is
+coverage metadata only.
 Condition (c)'s fixed host repeat is 4,096 rounds of 4,096-word arithmetic
 plus 256 fixed 64 KiB host/device transfer pairs on CQ1. The retained host-load
 implementation is a #120 starting point only: non-calibration host runs are
@@ -100,14 +103,16 @@ CPU plus PCIe condition (c) is moved to a separate follow-up Issue.
 The prediction revision is harness commit
 `2734d88a4aefd4ab56c6447d3f7f360408abbd42`. Both calibrations were rerun on
 that commit with sampler on, Watcher off, and a 60-second cap. The historical
-`repeats_per_card_second` value is repeats per 1.35e9 card ticks. Therefore the
-reference prediction is 550 seconds (500-second target × 1.10), and real time
-is obtained by converting the card ticks using the observed load-interval
-weighted AICLK. NS is conservatively projected at sustained 1025 MHz, based on
-the observed AICLK decline; DRAM uses its calibration weighted AICLK. The
-measured NS gate used a manual 1025 MHz projection; this PR's code guard now
-uses the conservative minimum of weighted and in-run-minimum AICLK. The
-resident schedule is 500.1 seconds and the planning allowance for device open,
+`repeats_per_card_second` value is a fixed-reference throughput: repeats per
+1.35e9 card ticks at 1350 MHz, not repeats per weighted real-time second.
+Therefore the reference prediction is 550 seconds (500-second target × 1.10),
+and loaded elapsed time is obtained by converting the card ticks with the
+observed load-interval weighted AICLK, or the recorded conservative in-run
+minimum when prediction policy selects it. NS is conservatively projected at
+sustained 1025 MHz, based on the observed AICLK decline; DRAM uses its
+calibration weighted AICLK. The measured NS gate used a manual 1025 MHz
+projection; this PR's code guard now uses the conservative minimum of weighted
+and in-run-minimum AICLK. The resident schedule is 500.1 seconds and the planning allowance for device open,
 JIT, cleanup, and close is 4 seconds. Loaded work overlaps the resident
 program, so load and resident times are not added.
 
@@ -167,8 +172,9 @@ not applied to this measured record.
 The converted values use each record's `aiclk_mhz_for_elapsed_seconds`, not the
 legacy maximum-only `clock.aiclk_mhz`; the paired
 `aiclk_source_for_elapsed_seconds` names whether that value is configured,
-in-run maximum, or time-weighted load interval. The P50 converted difference from the
-control is +0.000123 ms for DRAM and +0.284607 ms for Newton-Schulz.
+in-run maximum, time-weighted load interval, or the conservative in-run
+minimum. The P50 converted difference from the control is +0.000123 ms for
+DRAM and +0.284607 ms for Newton-Schulz.
 
 ### Prediction comparison
 

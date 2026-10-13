@@ -1955,11 +1955,14 @@ painful.**
 The Issue #118 runner keeps the existing public `clock.aiclk_mhz` meaning: it
 is the integer maximum of valid in-run power-trace samples. The immutable
 snapshot additionally retains the full in-run rows, their minimum and
-maximum, and a time-weighted AICLK over an explicit load interval. The
-weighted value is the only AICLK used to convert loaded frame ticks to real
-time or to calculate card-load calibration throughput; absent interval bounds
-or trace provenance are rejected rather than replaced by the maximum or an
-environment snapshot.
+maximum, and a time-weighted AICLK over an explicit load interval. Loaded
+elapsed-time conversion uses the observed time-weighted load-interval AICLK;
+prediction uses that weighted value unless its conservative policy selects the
+recorded in-run minimum. Card-load calibration throughput is separate: the
+historical `repeats_per_card_second` field is a fixed-reference normalization
+of repeats per 1.35e9 card-clock ticks at 1350 MHz, not repeats per weighted
+real-time second. Absent interval bounds or trace provenance are rejected
+rather than replaced by the maximum or an environment snapshot.
 
 Every completed resident record pairs its card-side resident/load tick spans
 with host `CLOCK_MONOTONIC` launch and completion nanoseconds. Device-load
@@ -1969,13 +1972,16 @@ uses the slowest worker's own elapsed interval. The Newton-Schulz profile
 worker facts are retained under the same interval contract. Timing invocations
 select a 600-second cap, or the explicitly recorded 800-second compute-load
 cap; Watcher remains at 60 seconds. New calibration metadata explains that the backward-compatible
-`repeats_per_card_second` value means repeats per 1.35e9 card-clock ticks;
-those ticks are converted to real seconds with the observed load-interval
-AICLK. Persisted coverage is recomputed from resident and load endpoints, and
-its declared facts must agree with that recomputation; a worker row from
-another run cannot be made valid by changing a `covered` flag. Elapsed-time
-AICLK and provenance are likewise bound to the weighted load-interval fields,
-while unloaded records retain their configured or legacy selection. The
+`repeats_per_card_second` value is the separate fixed-reference normalization
+of repeats per 1.35e9 card-clock ticks at 1350 MHz, not repeats per weighted
+real-time second. When those reference ticks are converted to loaded elapsed
+time, the observed load-interval weighted AICLK is used, with the recorded
+in-run minimum only when prediction policy selects it. Persisted coverage is
+recomputed from resident and load endpoints, and its declared facts must agree
+with that recomputation; a worker row from another run cannot be made valid by
+changing a `covered` flag. Elapsed-time AICLK and provenance are bound to the
+weighted load-interval fields; prediction AICLK records the weighted/minimum
+choice, while unloaded records retain their configured or legacy selection. The
 Newton-Schulz record documents a selected TRISC0 profile interval rather than
 claiming all-worker interval coverage. Its profile accumulated warmup events
 across repeated fixed work; correcting that kernel-side counter scope is a
