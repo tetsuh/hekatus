@@ -50,3 +50,36 @@ def test_snapshot_extrema_use_positive_left_held_segments(tmp_path: Path):
         "700",
         "1200",
     ]
+
+
+def test_snapshot_extrema_use_positive_left_held_segments_when_run_starts_between_samples(
+    tmp_path: Path,
+):
+    trace_path = tmp_path / "power.csv"
+    trace_path.write_text(
+        CSV_HEADER
+        + "2026-01-01T00:00:00+00:00,40,800,50\n"
+        + "2026-01-01T00:00:02+00:00,70,1350,51\n"
+        + "2026-01-01T00:00:03+00:00,40,700,50\n"
+        + "2026-01-01T00:00:04+00:00,60,1200,50\n",
+        encoding="utf-8",
+    )
+
+    trace = read_power_trace_csv(
+        trace_path,
+        options=PowerTraceCsvOptions(
+            run_start="2026-01-01T00:00:01+00:00",
+            run_end="2026-01-01T00:00:03+00:00",
+            load_interval_start="2026-01-01T00:00:01+00:00",
+            load_interval_end="2026-01-01T00:00:03+00:00",
+            immutable_snapshot=True,
+        ),
+    )
+
+    assert trace["aiclk_mhz_in_run_min"] == 800.0
+    assert trace["aiclk_mhz_in_run_max"] == 1350.0
+    weighted_aiclk = trace["aiclk_mhz_load_interval_weighted"]
+    assert weighted_aiclk == pytest.approx(1075.0)
+    assert trace["aiclk_mhz_in_run_min"] <= weighted_aiclk <= trace[
+        "aiclk_mhz_in_run_max"
+    ]
