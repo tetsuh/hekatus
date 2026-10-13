@@ -53,6 +53,7 @@ from enodia.tt.bench.load_harness import (
     RESIDENT_CORES,
     TRANSFER_COMMAND_QUEUE,
     CalibrationMetadata,
+    CalibrationMetadataOptions,
     CardLoadInterval,
     HostLoadInterval,
     LoadConfigurationError,
@@ -1388,7 +1389,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--watcher", action="store_true")
     return parser
 
-
 def _replace_resident_config(config: ResidentConfig, **changes: Any) -> ResidentConfig:
     return cast(ResidentConfig, replace(config, **changes))
 
@@ -1993,37 +1993,39 @@ def main(argv: list[str] | None = None) -> int:
             )
             throughput_interval = result.get("throughput_interval", {})
             calibration_output = calibration_metadata(
-                condition=condition,
-                duration_seconds=args.calibration_duration_seconds,
-                achieved_throughput=calibration_achieved,
-                throughput_unit=calibration_unit,
-                target_seconds=args.target_seconds,
-                load_card_ticks=(
-                    throughput_interval.get("elapsed_ticks")
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_measurement_repeat_count=(
-                    repeat_count if condition in {"newton_schulz", "dram"} else None
-                ),
-                load_interval_aiclk_mhz=(
-                    throughput_aiclk_mhz
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_interval_aiclk_min_mhz=(
-                    trace_metadata.get("aiclk_mhz_in_run_min")
-                    if trace_metadata is not None
-                    and condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                load_interval_aiclk_source=(
-                    throughput_aiclk_source
-                    if condition in {"newton_schulz", "dram"}
-                    else None
-                ),
-                actual_duration_aiclk_mhz=throughput_aiclk_mhz,
-                actual_duration_aiclk_source=throughput_aiclk_source,
+                options=CalibrationMetadataOptions(
+                    condition=condition,
+                    duration_seconds=args.calibration_duration_seconds,
+                    achieved_throughput=calibration_achieved,
+                    throughput_unit=calibration_unit,
+                    target_seconds=args.target_seconds,
+                    load_card_ticks=(
+                        throughput_interval.get("elapsed_ticks")
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_measurement_repeat_count=(
+                        repeat_count if condition in {"newton_schulz", "dram"} else None
+                    ),
+                    load_interval_aiclk_mhz=(
+                        throughput_aiclk_mhz
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_interval_aiclk_min_mhz=(
+                        trace_metadata.get("aiclk_mhz_in_run_min")
+                        if trace_metadata is not None
+                        and condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    load_interval_aiclk_source=(
+                        throughput_aiclk_source
+                        if condition in {"newton_schulz", "dram"}
+                        else None
+                    ),
+                    actual_duration_aiclk_mhz=throughput_aiclk_mhz,
+                    actual_duration_aiclk_source=throughput_aiclk_source,
+                )
             )
             if condition == "host_cpu_transfer":
                 load_record = build_calibration_load_record(

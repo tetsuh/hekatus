@@ -25,6 +25,7 @@ UTC = dt.UTC
 POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 AICLK_ENDPOINTS = frozenset((800.0, 1350.0))
 INTERMEDIATE_POSITION_ORDER = ("beginning", "middle", "end")
+_CONFIGURED_BUDGET_AICLK_LABEL = "configured budget AICLK"
 
 
 @dataclass(frozen=True)
@@ -341,6 +342,66 @@ def _path_from_reference(root: Path, reference: str) -> Path:
     return root / value.name
 
 
+def _resolve_explicit_trace(
+    root: Path,
+    references: Sequence[str],
+    expected_hash: str | None,
+) -> TraceResolution | None:
+    for reference in references:
+        candidate = _path_from_reference(root, reference)
+        if candidate.is_file():
+            actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
+            if expected_hash is None or actual == expected_hash:
+                return TraceResolution(
+                    candidate,
+                    "explicit reference",
+                    reference,
+                    expected_hash or actual,
+                )
+    return None
+
+
+def _resolve_hash_trace(
+    csv_by_hash: Mapping[str, tuple[Path, ...]],
+    references: Sequence[str],
+    expected_hash: str | None,
+) -> TraceResolution | None:
+    if expected_hash and expected_hash in csv_by_hash:
+        return TraceResolution(
+            min(csv_by_hash[expected_hash]),
+            "SHA-256 provenance",
+            references[0] if references else None,
+            expected_hash,
+        )
+    return None
+
+
+def _record_trace_stems(record_path: Path) -> list[str]:
+    stems = [record_path.stem]
+    for suffix in ("-summary", "-l1-accounting"):
+        if stems[0].endswith(suffix):
+            stems.append(stems[0][: -len(suffix)])
+    return stems
+
+
+def _resolve_stem_trace(
+    root: Path,
+    record_path: Path,
+    references: Sequence[str],
+    expected_hash: str | None,
+) -> TraceResolution | None:
+    for stem in _record_trace_stems(record_path):
+        candidate = root / f"{stem}-power.csv"
+        if candidate.is_file():
+            return TraceResolution(
+                candidate,
+                "record-stem fallback",
+                references[0] if references else None,
+                expected_hash,
+            )
+    return None
+
+
 def resolve_trace(
     root: Path,
     record_path: Path,
@@ -351,53 +412,62 @@ def resolve_trace(
 
     references = power_trace_references(record)
     expected_hash = _trace_sha256(record)
-    for reference in references:
-        candidate = _path_from_reference(root, reference)
-        if candidate.is_file():
-            actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
-            if expected_hash is None or actual == expected_hash:
-                return TraceResolution(candidate, "explicit reference", reference, expected_hash or actual)
-    if expected_hash and expected_hash in csv_by_hash:
-        return TraceResolution(
-            min(csv_by_hash[expected_hash]),
-            "SHA-256 provenance",
-            references[0] if references else None,
-            expected_hash,
-        )
+    resolution = _resolve_explicit_trace(root, references, expected_hash)
+    if resolution is not None:
+        return resolution
+    resolution = _resolve_hash_trace(csv_by_hash, references, expected_hash)
+    if resolution is not None:
+        return resolution
+    resolution = _resolve_stem_trace(root, record_path, references, expected_hash)
+    if resolution is not None:
+        return resolution
+    return TraceResolution(
+        None,
+        "unresolved" if references else "no reference",
+        references[0] if references else None,
+        expected_hash,
+    )
 
-    stems = [record_path.stem]
-    for suffix in ("-summary", "-l1-accounting"):
-        if stems[0].endswith(suffix):
-            stems.append(stems[0][: -len(suffix)])
-    for stem in stems:
-        candidate = root / f"{stem}-power.csv"
-        if candidate.is_file():
-            return TraceResolution(candidate, "record-stem fallback", references[0] if references else None, expected_hash)
-    return TraceResolution(None, "unresolved" if references else "no reference", references[0] if references else None, expected_hash)
+
+def _mapping_interval(
+    value: Mapping[str, Any],
+    lower_keys: Mapping[str, Any],
+    path: tuple[str, ...],
+    start_key: str,
+    end_key: str,
+    kind: str,
+    rank: int,
+) -> tuple[int, IntervalBounds] | None:
+    if start_key not in lower_keys or end_key not in lower_keys:
+        return None
+    try:
+        start = parse_timestamp(str(value[lower_keys[start_key]]))
+        end = parse_timestamp(str(value[lower_keys[end_key]]))
+    except (TypeError, ValueError):
+        return None
+    joined = ".".join(path).lower()
+    if "power_clock_provenance" in joined or "power_snapshot" in joined:
+        rank -= 1
+    return rank, IntervalBounds(start, end, kind, ".".join((*path, start_key, end_key)))
 
 
 def _mapping_intervals(value: Any, path: tuple[str, ...] = ()) -> Iterable[tuple[int, IntervalBounds]]:
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _mapping_intervals(child, (*path, str(index)))
+        return
     if not isinstance(value, Mapping):
-        if isinstance(value, list):
-            for index, child in enumerate(value):
-                yield from _mapping_intervals(child, (*path, str(index)))
         return
     lower_keys = {str(key).lower(): key for key in value}
     for start_key, end_key, kind, rank in (
         ("load_interval_start", "load_interval_end", "load", 0),
         ("run_start", "run_end", "run", 1),
     ):
-        if start_key not in lower_keys or end_key not in lower_keys:
-            continue
-        try:
-            start = parse_timestamp(str(value[lower_keys[start_key]]))
-            end = parse_timestamp(str(value[lower_keys[end_key]]))
-        except (TypeError, ValueError):
-            continue
-        joined = ".".join(path).lower()
-        if "power_clock_provenance" in joined or "power_snapshot" in joined:
-            rank -= 1
-        yield rank, IntervalBounds(start, end, kind, ".".join((*path, start_key, end_key)))
+        interval = _mapping_interval(
+            value, lower_keys, path, start_key, end_key, kind, rank
+        )
+        if interval is not None:
+            yield interval
     for key, child in value.items():
         yield from _mapping_intervals(child, (*path, str(key)))
 
@@ -496,46 +566,43 @@ def _cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def _record_analysis(
-    root: Path,
-    record_path: Path,
-    record: Mapping[str, Any],
-    csv_by_hash: Mapping[str, tuple[Path, ...]],
-    trace_cache: dict[Path, TraceData],
-) -> RecordAnalysis:
-    resolution = resolve_trace(root, record_path, record, csv_by_hash)
-    trace = None
-    if resolution.path is not None:
-        trace = trace_cache.setdefault(resolution.path, read_trace(resolution.path))
-    classification = classify_aiclk_values([sample.aiclk_mhz for sample in trace.samples]) if trace else None
-    interval = find_interval(record)
+def _record_trace_facts(
+    trace: TraceData | None,
+    interval: IntervalBounds | None,
+) -> tuple[str, float | None, float | None, float | None, bool]:
     evidence = "no CSV trace"
     minimum = maximum = weighted = None
     weighted_is_exact = False
-    if trace and trace.samples:
-        if interval is not None:
-            inside, complete = _coverage_rows(trace, interval)
-            values = [sample.aiclk_mhz for sample in inside]
-            if values:
-                minimum, maximum = min(values), max(values)
-            if complete:
-                weighted = left_held_time_weighted_aiclk(trace.samples, interval.start, interval.end)
-                weighted_is_exact = weighted is not None
-            evidence = (
-                f"exact {interval.kind} interval"
-                if weighted_is_exact
-                else f"bounds present; trace coverage incomplete ({interval.kind})"
-            )
-        else:
-            values = [sample.aiclk_mhz for sample in trace.samples]
+    if trace is None or not trace.samples:
+        return evidence, minimum, maximum, weighted, weighted_is_exact
+    if interval is not None:
+        inside, complete = _coverage_rows(trace, interval)
+        values = [sample.aiclk_mhz for sample in inside]
+        if values:
             minimum, maximum = min(values), max(values)
-            if trace.timestamps_ordered and len(trace.samples) > 1:
-                weighted = left_held_time_weighted_aiclk(
-                    trace.samples,
-                    trace.samples[0].timestamp,
-                    trace.samples[-1].timestamp,
-                )
-            evidence = "CSV capture span diagnostic"
+        if complete:
+            weighted = left_held_time_weighted_aiclk(
+                trace.samples, interval.start, interval.end
+            )
+            weighted_is_exact = weighted is not None
+        evidence = (
+            f"exact {interval.kind} interval"
+            if weighted_is_exact
+            else f"bounds present; trace coverage incomplete ({interval.kind})"
+        )
+        return evidence, minimum, maximum, weighted, weighted_is_exact
+    values = [sample.aiclk_mhz for sample in trace.samples]
+    minimum, maximum = min(values), max(values)
+    if trace.timestamps_ordered and len(trace.samples) > 1:
+        weighted = left_held_time_weighted_aiclk(
+            trace.samples,
+            trace.samples[0].timestamp,
+            trace.samples[-1].timestamp,
+        )
+    return "CSV capture span diagnostic", minimum, maximum, weighted, weighted_is_exact
+
+
+def _record_field_presence(record: Mapping[str, Any]) -> tuple[bool, bool]:
     timing_fields = _recursive_has_key(
         record,
         {
@@ -555,6 +622,32 @@ def _record_analysis(
             "ticks_to_seconds",
         },
     )
+    return timing_fields, conversion_fields
+
+
+def _record_analysis(
+    root: Path,
+    record_path: Path,
+    record: Mapping[str, Any],
+    csv_by_hash: Mapping[str, tuple[Path, ...]],
+    trace_cache: dict[Path, TraceData],
+) -> RecordAnalysis:
+    resolution = resolve_trace(root, record_path, record, csv_by_hash)
+    trace = (
+        trace_cache.setdefault(resolution.path, read_trace(resolution.path))
+        if resolution.path is not None
+        else None
+    )
+    classification = (
+        classify_aiclk_values([sample.aiclk_mhz for sample in trace.samples])
+        if trace
+        else None
+    )
+    interval = find_interval(record)
+    evidence, minimum, maximum, weighted, weighted_is_exact = _record_trace_facts(
+        trace, interval
+    )
+    timing_fields, conversion_fields = _record_field_presence(record)
     return RecordAnalysis(
         path=record_path,
         issue=_issue_label(record_path, record),
@@ -724,33 +817,28 @@ def _line_containing(path: Path, needle: str) -> int:
     raise ValueError(f"conversion inventory marker is missing: {path}:{needle}")
 
 
-def _conversion_inventory() -> list[tuple[str, int, str, str, str, str]]:
-    """Return the post-#124 production tick/time conversion inventory.
+_InventoryEntry = tuple[str, int, str, str, str, str]
 
-    The line numbers come from the current AST/source text on every report
-    generation, so the committed Markdown cannot silently retain pre-#124
-    locations after a source edit.
-    """
-    repository_root = Path(__file__).resolve().parents[1]
-    source_root = repository_root / "enodia" / "tt" / "bench"
-    tools_root = repository_root / "tools"
-    entries: list[tuple[str, int, str, str, str, str]] = []
 
-    def add(path: Path, line: int, conversion: str, value: str, source: str, contract: str) -> None:
-        entries.append((path.relative_to(repository_root).as_posix(), line, conversion, value, source, contract))
-
-    resident_clock = source_root / "resident_clock.py"
-    add(
-        resident_clock,
-        _line_containing(resident_clock, "def ticks_to_seconds("),
-        "shared ticks → seconds helper",
-        "selected AICLK (exact when weighted)",
-        "selection['aiclk_source'] / semantic selection",
-        "all cycle→time callers must pass a selected value",
+def _add_inventory_entry(
+    entries: list[_InventoryEntry],
+    repository_root: Path,
+    path: Path,
+    line: int,
+    conversion: str,
+    value: str,
+    source: str,
+    contract: str,
+) -> None:
+    entries.append(
+        (path.relative_to(repository_root).as_posix(), line, conversion, value, source, contract)
     )
 
-    resident_record = source_root / "resident_record.py"
-    for line, function in _conversion_calls(resident_record):
+
+def _append_resident_record_inventory(
+    entries: list[_InventoryEntry], repository_root: Path, path: Path
+) -> None:
+    for line, function in _conversion_calls(path):
         if function == "_sampler_comparison":
             value = "elapsed_aiclk_selection"
             source = "resident elapsed-time source (configured, in-run maximum, or load weighted)"
@@ -763,96 +851,129 @@ def _conversion_inventory() -> list[tuple[str, int, str, str, str, str]]:
             value = "record elapsed selection"
             source = "persisted aiclk_source_for_elapsed_seconds"
             contract = "validator recomputation of resident elapsed seconds"
-        add(resident_record, line, f"{function} ticks → seconds", value, source, contract)
+        _add_inventory_entry(
+            entries,
+            repository_root,
+            path,
+            line,
+            f"{function} ticks → seconds",
+            value,
+            source,
+            contract,
+        )
 
-    issue104 = tools_root / "analyze_issue104_wrap.py"
-    for line, function in _conversion_calls(issue104):
+
+def _append_issue104_inventory(
+    entries: list[_InventoryEntry], repository_root: Path, path: Path
+) -> None:
+    for line, function in _conversion_calls(path):
         if function == "analyze_issue104":
             value = "configured 1350 MHz default selection"
             source = "configured budget"
         else:
             value = "aiclk_selection"
             source = "legacy_unverified for historical sampled records; trace selection otherwise"
-        add(issue104, line, f"{function} ticks → seconds", value, source, "historical wrap analysis preserves numeric results")
+        _add_inventory_entry(
+            entries,
+            repository_root,
+            path,
+            line,
+            f"{function} ticks → seconds",
+            value,
+            source,
+            "historical wrap analysis preserves numeric results",
+        )
 
-    run_resident = source_root / "run_resident.py"
-    for line, function in _conversion_calls(run_resident):
+
+def _append_run_resident_inventory(
+    entries: list[_InventoryEntry], repository_root: Path, path: Path
+) -> None:
+    for line, function in _conversion_calls(path):
         if function == "_load_achieved_throughput":
-            add(
-                run_resident,
-                line,
-                "throughput reference ticks → seconds",
-                "1350 MHz fixed reference",
-                "fixed_reference_1350_mhz",
-                "normalization denominator, not observed AICLK",
-            )
+            conversion = "throughput reference ticks → seconds"
+            value = "1350 MHz fixed reference"
+            source = "fixed_reference_1350_mhz"
+            contract = "normalization denominator, not observed AICLK"
         else:
-            add(
-                run_resident,
-                line,
-                "calibration actual duration ticks → seconds",
-                "throughput_aiclk_mhz",
-                "actual_duration_aiclk_source",
-                "weighted for loaded records; selected run clock otherwise",
-            )
+            conversion = "calibration actual duration ticks → seconds"
+            value = "throughput_aiclk_mhz"
+            source = "actual_duration_aiclk_source"
+            contract = "weighted for loaded records; selected run clock otherwise"
+        _add_inventory_entry(
+            entries, repository_root, path, line, conversion, value, source, contract
+        )
 
-    load_harness = source_root / "load_harness.py"
-    for line, function in _conversion_calls(load_harness):
+
+def _append_load_harness_inventory(
+    entries: list[_InventoryEntry], repository_root: Path, path: Path
+) -> None:
+    for line, function in _conversion_calls(path):
         if function == "predicted_load_time_seconds":
-            add(
-                load_harness,
-                line,
-                "predicted load card ticks → seconds",
-                "min(weighted load interval, in-run minimum) when minimum is present",
-                "predicted_load_time_aiclk_source",
-                "time_weighted_load_interval or in_run_minimum",
-            )
+            conversion = "predicted load card ticks → seconds"
+            value = "min(weighted load interval, in-run minimum) when minimum is present"
+            source = "predicted_load_time_aiclk_source"
+            contract = "time_weighted_load_interval or in_run_minimum"
         else:
-            add(
-                load_harness,
-                line,
-                "persisted throughput reference ticks → seconds",
-                "1350 MHz fixed reference",
-                "fixed_reference_1350_mhz",
-                "historical repeats_per_card_second normalization",
-            )
+            conversion = "persisted throughput reference ticks → seconds"
+            value = "1350 MHz fixed reference"
+            source = "fixed_reference_1350_mhz"
+            contract = "historical repeats_per_card_second normalization"
+        _add_inventory_entry(
+            entries, repository_root, path, line, conversion, value, source, contract
+        )
 
+
+def _append_inverse_conversion_inventory(
+    entries: list[_InventoryEntry], repository_root: Path, source_root: Path, tools_root: Path
+) -> None:
     # Inverse seconds-to-ticks calculations are listed separately so a budget
     # clock cannot be mistaken for measured elapsed-time evidence.
     resident_harness = source_root / "resident_harness.py"
-    add(
+    _add_inventory_entry(
+        entries,
+        repository_root,
         resident_harness,
         _line_containing(resident_harness, "def interval_ticks_for_microseconds("),
         "inverse wall time → ticks",
-        "configured budget AICLK",
+        _CONFIGURED_BUDGET_AICLK_LABEL,
         "configured_budget",
         "startup/budget policy, not measured elapsed time",
     )
-    add(
+    _add_inventory_entry(
+        entries,
+        repository_root,
         resident_harness,
         _line_containing(resident_harness, "cap_ticks = config.outer_timeout_seconds"),
         "inverse outer timeout seconds → ticks",
-        "configured budget AICLK",
+        _CONFIGURED_BUDGET_AICLK_LABEL,
         "configured_budget",
         "outer-cap policy, not measured elapsed time",
     )
-    add(
+    run_resident = source_root / "run_resident.py"
+    _add_inventory_entry(
+        entries,
+        repository_root,
         run_resident,
         _line_containing(run_resident, "target_ticks = int(target_seconds"),
         "inverse calibration target seconds → ticks",
-        "configured budget AICLK",
+        _CONFIGURED_BUDGET_AICLK_LABEL,
         "configured_budget",
         "calibration budget policy",
     )
-    add(
+    _add_inventory_entry(
+        entries,
+        repository_root,
         run_resident,
         _line_containing(run_resident, "startup_ticks = 100_000"),
         "inverse startup allowance → ticks",
-        "configured budget AICLK",
+        _CONFIGURED_BUDGET_AICLK_LABEL,
         "configured_budget",
         "calibration budget policy",
     )
-    add(
+    issue104 = tools_root / "analyze_issue104_wrap.py"
+    _add_inventory_entry(
+        entries,
+        repository_root,
         issue104,
         _line_containing(issue104, "def _phase_window_ticks("),
         "inverse phase-window milliseconds → ticks",
@@ -860,6 +981,42 @@ def _conversion_inventory() -> list[tuple[str, int, str, str, str, str]]:
         "legacy_unverified for historical sampled records; configured off-mode default otherwise",
         "analysis window policy, not elapsed-time evidence",
     )
+
+
+def _conversion_inventory() -> list[_InventoryEntry]:
+    """Return the post-#124 production tick/time conversion inventory.
+
+    The line numbers come from the current AST/source text on every report
+    generation, so the committed Markdown cannot silently retain pre-#124
+    locations after a source edit.
+    """
+    repository_root = Path(__file__).resolve().parents[1]
+    source_root = repository_root / "enodia" / "tt" / "bench"
+    tools_root = repository_root / "tools"
+    entries: list[_InventoryEntry] = []
+
+    resident_clock = source_root / "resident_clock.py"
+    _add_inventory_entry(
+        entries,
+        repository_root,
+        resident_clock,
+        _line_containing(resident_clock, "def ticks_to_seconds("),
+        "shared ticks → seconds helper",
+        "selected AICLK (exact when weighted)",
+        "selection['aiclk_source'] / semantic selection",
+        "all cycle→time callers must pass a selected value",
+    )
+    _append_resident_record_inventory(
+        entries, repository_root, source_root / "resident_record.py"
+    )
+    _append_issue104_inventory(entries, repository_root, tools_root / "analyze_issue104_wrap.py")
+    _append_run_resident_inventory(
+        entries, repository_root, source_root / "run_resident.py"
+    )
+    _append_load_harness_inventory(
+        entries, repository_root, source_root / "load_harness.py"
+    )
+    _append_inverse_conversion_inventory(entries, repository_root, source_root, tools_root)
     return entries
 
 
@@ -885,10 +1042,10 @@ def _conversion_inventory_section() -> list[str]:
     return lines
 
 
-def _final_p50_changes(record: Mapping[str, Any]) -> tuple[tuple[str, float], ...]:
+def _final_p50_values(record: Mapping[str, Any]) -> dict[str, float]:
     rows = record.get("rows")
     if not isinstance(rows, list):
-        return ()
+        return {}
     p50_by_row: dict[str, float] = {}
     for row in rows:
         if not isinstance(row, Mapping):
@@ -902,28 +1059,41 @@ def _final_p50_changes(record: Mapping[str, Any]) -> tuple[tuple[str, float], ..
             parsed = float(value)
         except (TypeError, ValueError):
             continue
-        if math.isfinite(parsed) and parsed != 0.0:
+        if math.isfinite(parsed) and parsed > 0.0:
             p50_by_row[name] = parsed
+    return p50_by_row
 
-    changes: list[tuple[str, float]] = []
+
+def _final_p50_change(
+    comparison: Any, p50_by_row: Mapping[str, float]
+) -> tuple[str, float] | None:
+    if not isinstance(comparison, Mapping):
+        return None
+    row_names = comparison.get("rows")
+    if not isinstance(row_names, list) or len(row_names) != 2:
+        return None
+    left, right = row_names
+    if not isinstance(left, str) or not isinstance(right, str):
+        return None
+    if left not in p50_by_row or right not in p50_by_row:
+        return None
+    change = p50_by_row[right] / p50_by_row[left] - 1.0
+    if not math.isfinite(change):
+        return None
+    placement = str(comparison.get("placement") or f"{left} vs {right}")
+    return placement, change
+
+
+def _final_p50_changes(record: Mapping[str, Any]) -> tuple[tuple[str, float], ...]:
+    p50_by_row = _final_p50_values(record)
     comparisons = record.get("matched_placement_differences")
     if not isinstance(comparisons, list):
         return ()
+    changes = []
     for comparison in comparisons:
-        if not isinstance(comparison, Mapping):
-            continue
-        row_names = comparison.get("rows")
-        if not isinstance(row_names, list) or len(row_names) != 2:
-            continue
-        left, right = row_names
-        if not isinstance(left, str) or not isinstance(right, str):
-            continue
-        if left not in p50_by_row or right not in p50_by_row:
-            continue
-        change = p50_by_row[right] / p50_by_row[left] - 1.0
-        if math.isfinite(change):
-            placement = str(comparison.get("placement") or f"{left} vs {right}")
-            changes.append((placement, change))
+        change = _final_p50_change(comparison, p50_by_row)
+        if change is not None:
+            changes.append(change)
     return tuple(changes)
 
 
@@ -1141,9 +1311,15 @@ def _follow_up_section(
     return lines
 
 
-def render_report(root: Path) -> str:
-    """Render the deterministic Markdown report used by the committed audit."""
-
+def _report_input_data(
+    root: Path,
+) -> tuple[
+    list[Path],
+    list[Path],
+    dict[Path, TraceData],
+    list[RecordAnalysis],
+    dict[Path, Mapping[str, Any]],
+]:
     json_paths = sorted(root.glob("*.json"))
     csv_paths = sorted(root.glob("*.csv"))
     trace_cache: dict[Path, TraceData] = {}
@@ -1161,12 +1337,21 @@ def render_report(root: Path) -> str:
             record = {"status": f"unreadable: {type(exc).__name__}"}
         records[path] = record
         analyses.append(_record_analysis(root, path, record, hash_index, trace_cache))
+    return json_paths, csv_paths, trace_cache, analyses, records
+
+
+def _users_by_trace(
+    csv_paths: Sequence[Path], analyses: Sequence[RecordAnalysis]
+) -> dict[Path, list[RecordAnalysis]]:
     users_by_trace: dict[Path, list[RecordAnalysis]] = {path: [] for path in csv_paths}
     for analysis in analyses:
         if analysis.resolution.path in users_by_trace:
             users_by_trace[analysis.resolution.path].append(analysis)
+    return users_by_trace
 
-    lines = [
+
+def _report_header(root: Path, json_paths: Sequence[Path], csv_paths: Sequence[Path]) -> list[str]:
+    return [
         "# Issue #122 AICLK audit (generated)",
         "",
         f"- Input root: `{root.as_posix()}`",
@@ -1182,7 +1367,9 @@ def render_report(root: Path) -> str:
         ),
         "",
     ]
-    lines.extend(_conversion_inventory_section())
+
+
+def _append_json_inventory(lines: list[str], analyses: Sequence[RecordAnalysis]) -> None:
     lines.extend(
         [
             "",
@@ -1193,6 +1380,14 @@ def render_report(root: Path) -> str:
         ]
     )
     lines.extend(_analysis_row(analysis) for analysis in analyses)
+
+
+def _append_csv_inventory(
+    lines: list[str],
+    csv_paths: Sequence[Path],
+    trace_cache: dict[Path, TraceData],
+    users_by_trace: Mapping[Path, Sequence[RecordAnalysis]],
+) -> None:
     lines.extend(
         [
             "",
@@ -1206,6 +1401,10 @@ def render_report(root: Path) -> str:
         trace = trace_cache.setdefault(path, read_trace(path))
         lines.append(_csv_row(path, trace, users_by_trace[path]))
 
+
+def _append_explicit_interval_inventory(
+    lines: list[str], analyses: Sequence[RecordAnalysis]
+) -> None:
     exact_or_bounded = [analysis for analysis in analyses if analysis.interval is not None]
     lines.extend(
         [
@@ -1218,6 +1417,8 @@ def render_report(root: Path) -> str:
     )
     lines.extend(_focus_row(analysis) for analysis in exact_or_bounded)
 
+
+def _append_focused_inventory(lines: list[str], analyses: Sequence[RecordAnalysis]) -> None:
     focused = [
         analysis
         for analysis in analyses
@@ -1256,12 +1457,16 @@ def render_report(root: Path) -> str:
             + " |"
         )
 
-    intermediate_csvs = []
+
+def _append_intermediate_inventory(
+    lines: list[str], csv_paths: Sequence[Path], trace_cache: dict[Path, TraceData]
+) -> None:
+    intermediate_csvs: list[tuple[Path, AiclkClassification]] = []
     for path in csv_paths:
         trace = trace_cache.setdefault(path, read_trace(path))
         classification = classify_aiclk_values([sample.aiclk_mhz for sample in trace.samples])
         if classification.minimum_intermediate_mhz is not None:
-            intermediate_csvs.append((path, trace, classification))
+            intermediate_csvs.append((path, classification))
     lines.extend(
         [
             "",
@@ -1271,11 +1476,26 @@ def render_report(root: Path) -> str:
             "|---|---:|---|---|",
         ]
     )
-    for path, _trace, classification in intermediate_csvs:
+    for path, classification in intermediate_csvs:
         lines.append(
             f"| {path.name} | {_format_number(classification.minimum_intermediate_mhz)} | "
             f"{classification.intermediate_position} | {_format_values(classification.unique_mhz)} |"
         )
+
+
+def render_report(root: Path) -> str:
+    """Render the deterministic Markdown report used by the committed audit."""
+
+    json_paths, csv_paths, trace_cache, analyses, records = _report_input_data(root)
+    users_by_trace = _users_by_trace(csv_paths, analyses)
+    lines = _report_header(root, json_paths, csv_paths)
+    lines.extend(_conversion_inventory_section())
+    _append_json_inventory(lines, analyses)
+    _append_csv_inventory(lines, csv_paths, trace_cache, users_by_trace)
+    _append_explicit_interval_inventory(lines, analyses)
+
+    _append_focused_inventory(lines, analyses)
+    _append_intermediate_inventory(lines, csv_paths, trace_cache)
     lines.extend(_source_audit_section(analyses))
     lines.extend(_follow_up_section(analyses, records))
     return "\n".join(lines).rstrip() + "\n"

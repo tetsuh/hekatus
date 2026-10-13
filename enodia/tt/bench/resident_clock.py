@@ -161,13 +161,13 @@ def ticks_to_seconds(
 ) -> float:
     """Convert device-clock ticks using one selected AICLK provenance."""
     if isinstance(ticks, bool) or not isinstance(ticks, (int, float)):
-        raise TypeError("ticks must be a non-negative finite number")
+        raise TypeError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR)
     try:
         parsed_ticks = float(ticks)
     except (OverflowError, TypeError, ValueError):
-        raise ValueError("ticks must be a non-negative finite number") from None
+        raise ValueError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR) from None
     if not math.isfinite(parsed_ticks) or parsed_ticks < 0.0:
-        raise ValueError("ticks must be a non-negative finite number")
+        raise ValueError(_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR)
     if selection is None:
         if aiclk_mhz is None:
             raise ValueError("an AICLK selection is required")
@@ -179,6 +179,9 @@ def ticks_to_seconds(
     if selected is None:
         raise ValueError("selected AICLK must be a finite positive number")
     return parsed_ticks / (selected * 1_000_000)
+
+
+_TICKS_MUST_BE_NON_NEGATIVE_FINITE_ERROR = "ticks must be a non-negative finite number"
 
 
 __all__ = [

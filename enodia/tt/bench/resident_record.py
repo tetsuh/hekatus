@@ -124,6 +124,7 @@ SHORT_THRESHOLD_TICKS = 1_250_000
 LONG_THRESHOLD_TICKS = 1_450_000
 PAIR_TOLERANCE_TICKS = 1_000
 PAIR_ORDERS = ("short-first", "long-first", "other")
+_CLOCK_AICLK_SELECTION_PATH = "clock.aiclk_selection"
 
 # These are provenance values that describe a snapshot, a compatibility
 # caller, or the absence of usable in-run samples.  Only the exact
@@ -973,7 +974,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "clock.interval_unit",
     "clock.frequency_source",
     "clock.aiclk_observation",
-    "clock.aiclk_selection",
+    _CLOCK_AICLK_SELECTION_PATH,
     "clock.aiclk_selection_for_elapsed_seconds",
     "clock.aiclk_mhz_in_run_min",
     "clock.aiclk_mhz_in_run_max",
@@ -1520,8 +1521,8 @@ def _check_elapsed_aiclk_binding(
         if clock.get("aiclk_selection") != expected_clock_selection:
             mismatches.append(
                 _mismatch(
-                    "clock.aiclk_selection",
-                    ("clock.aiclk_selection", "clock.aiclk_source"),
+                    _CLOCK_AICLK_SELECTION_PATH,
+                    (_CLOCK_AICLK_SELECTION_PATH, "clock.aiclk_source"),
                     "clock AICLK selection does not match its source",
                 )
             )
@@ -1600,15 +1601,14 @@ def _check_elapsed_aiclk_binding(
     ):
         if "aiclk_selection_for_elapsed_seconds" in path and actual is None:
             continue
-        expected = (
-            expected_mhz
-            if ".aiclk_mhz_for_elapsed_seconds" in path
-            else (
-                aiclk_selection_for_source(expected_source)
-                if ".aiclk_selection_for_elapsed_seconds" in path
-                else expected_source
+        if ".aiclk_mhz_for_elapsed_seconds" in path:
+            expected = expected_mhz
+        elif ".aiclk_selection_for_elapsed_seconds" in path:
+            expected = aiclk_selection_for_source(
+                expected_source
             )
-        )
+        else:
+            expected = expected_source
         if actual != expected:
             mismatches.append(
                 _mismatch(
@@ -3967,7 +3967,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         "run_end": "run_end",
         "coverage_complete": "power_trace_coverage.coverage_complete",
         "aiclk_source": "clock.aiclk_source",
-        "aiclk_selection": "clock.aiclk_selection",
+        "aiclk_selection": _CLOCK_AICLK_SELECTION_PATH,
         "aiclk_mhz": "clock.aiclk_mhz",
     }
     nested = declared.get("nested", {})

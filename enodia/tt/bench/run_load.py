@@ -29,6 +29,7 @@ from enodia.tt.bench.load_harness import (
     LOAD_CONDITIONS,
     MAX_CALIBRATION_SECONDS,
     CalibrationMetadata,
+    CalibrationMetadataOptions,
     CardLoadInterval,
     HostLoadInterval,
     LoadConfigurationError,
@@ -207,13 +208,15 @@ def build_calibration(
             f"throughput-unit must be {expected_unit} for {canonical}"
         )
     calibration = calibration_metadata(
-        condition=canonical,
-        duration_seconds=duration,
-        achieved_throughput=throughput,
-        throughput_unit=selected_unit,
-        target_seconds=target_seconds,
-        safety_factor=safety_factor,
-        source="board_free_model" if board_free_fallback else "watcher_off_calibration",
+        options=CalibrationMetadataOptions(
+            condition=canonical,
+            duration_seconds=duration,
+            achieved_throughput=throughput,
+            throughput_unit=selected_unit,
+            target_seconds=target_seconds,
+            safety_factor=safety_factor,
+            source="board_free_model" if board_free_fallback else "watcher_off_calibration",
+        )
     )
     return {
         "schema": "issue-118-load-calibration-v1",

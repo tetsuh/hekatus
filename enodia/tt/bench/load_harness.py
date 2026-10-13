@@ -648,50 +648,50 @@ def choose_repeat_count(
     return repeats
 
 
-def calibration_metadata(
-    *,
-    condition: str,
-    duration_seconds: float,
-    achieved_throughput: float,
-    throughput_unit: str,
-    target_seconds: float,
-    safety_factor: float = 1.10,
-    source: str = "watcher_off_calibration",
-    load_card_ticks: int | None = None,
-    load_measurement_repeat_count: int | None = None,
-    load_interval_aiclk_mhz: float | None = None,
-    load_interval_aiclk_min_mhz: float | None = None,
-    load_interval_aiclk_source: str | None = None,
-    actual_duration_aiclk_mhz: float | None = None,
-    actual_duration_aiclk_source: str | None = None,
-) -> CalibrationMetadata:
+@dataclass(frozen=True)
+class CalibrationMetadataOptions:
+    """Inputs used to construct persisted calibration metadata."""
+
+    condition: str
+    duration_seconds: float
+    achieved_throughput: float
+    throughput_unit: str
+    target_seconds: float
+    safety_factor: float = 1.10
+    source: str = "watcher_off_calibration"
+    load_card_ticks: int | None = None
+    load_measurement_repeat_count: int | None = None
+    load_interval_aiclk_mhz: float | None = None
+    load_interval_aiclk_min_mhz: float | None = None
+    load_interval_aiclk_source: str | None = None
+    actual_duration_aiclk_mhz: float | None = None
+    actual_duration_aiclk_source: str | None = None
+
+
+def calibration_metadata(*, options: CalibrationMetadataOptions) -> CalibrationMetadata:
     """Construct the persisted calibration choice and repeat count."""
-    canonical = normalize_condition(condition)
+    canonical = normalize_condition(options.condition)
     repeats = choose_repeat_count(
-        condition=canonical,
-        calibration_throughput=achieved_throughput,
-        target_seconds=target_seconds,
-        safety_factor=safety_factor,
+        condition=canonical, calibration_throughput=options.achieved_throughput,
+        target_seconds=options.target_seconds, safety_factor=options.safety_factor,
     )
     return CalibrationMetadata(
-        condition=canonical,
-        duration_seconds=duration_seconds,
-        achieved_throughput=achieved_throughput,
-        throughput_unit=throughput_unit,
+        condition=canonical, duration_seconds=options.duration_seconds,
+        achieved_throughput=options.achieved_throughput, throughput_unit=options.throughput_unit,
         repeat_count=repeats,
-        target_seconds=target_seconds,
-        safety_factor=safety_factor,
-        source=source,
-        load_card_ticks=load_card_ticks,
-        load_measurement_repeat_count=load_measurement_repeat_count,
-        load_interval_aiclk_mhz=load_interval_aiclk_mhz,
-        load_interval_aiclk_min_mhz=load_interval_aiclk_min_mhz,
-        load_interval_aiclk_source=load_interval_aiclk_source,
-        actual_duration_aiclk_mhz=actual_duration_aiclk_mhz,
-        actual_duration_aiclk_source=actual_duration_aiclk_source,
+        target_seconds=options.target_seconds,
+        safety_factor=options.safety_factor,
+        source=options.source,
+        load_card_ticks=options.load_card_ticks,
+        load_measurement_repeat_count=options.load_measurement_repeat_count,
+        load_interval_aiclk_mhz=options.load_interval_aiclk_mhz,
+        load_interval_aiclk_min_mhz=options.load_interval_aiclk_min_mhz,
+        load_interval_aiclk_source=options.load_interval_aiclk_source,
+        actual_duration_aiclk_mhz=options.actual_duration_aiclk_mhz,
+        actual_duration_aiclk_source=options.actual_duration_aiclk_source,
         actual_duration_aiclk_selection=(
-            aiclk_selection_for_source(actual_duration_aiclk_source)
-            if actual_duration_aiclk_source is not None
+            aiclk_selection_for_source(options.actual_duration_aiclk_source)
+            if options.actual_duration_aiclk_source is not None
             else None
         ),
     )
@@ -2019,6 +2019,7 @@ __all__ = [
     "RESIDENT_PRODUCER_CORE",
     "TRANSFER_COMMAND_QUEUE",
     "CalibrationMetadata",
+    "CalibrationMetadataOptions",
     "CardLoadInterval",
     "CardWorkerInterval",
     "CorePartition",
