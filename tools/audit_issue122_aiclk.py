@@ -1231,6 +1231,96 @@ def _source_audit_section(analyses: Sequence[RecordAnalysis]) -> list[str]:
     return rows
 
 
+def _row_field(row: Any, field: str) -> Any:
+    return row.get(field) if isinstance(row, Mapping) else None
+
+
+def _row_name(row: Any, index: int) -> str:
+    value = _row_field(row, "row")
+    return value if isinstance(value, str) else f"row-{index}"
+
+
+def _row_status(row: Any) -> str:
+    value = _row_field(row, "status")
+    return value if isinstance(value, str) else "—"
+
+
+def _row_samples(row: Any) -> list[Any] | None:
+    value = _row_field(row, "seconds_per_launch_samples")
+    return value if isinstance(value, list) else None
+
+
+def _row_sample_count(raw_samples: list[Any] | None) -> int | None:
+    return len(raw_samples) if raw_samples is not None else None
+
+
+def _parse_sample_seconds(raw_samples: list[Any] | None) -> float | None:
+    if not raw_samples:
+        return None
+    parsed: list[float] = []
+    for value in raw_samples:
+        try:
+            parsed_value = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(parsed_value) or parsed_value < 0.0:
+            return None
+        parsed.append(parsed_value)
+    return sum(parsed)
+
+
+def _row_start_bounds(
+    prefix_seconds: float,
+    prefix_known: bool,
+    sample_seconds: float | None,
+    run_start: dt.datetime | None,
+) -> tuple[float | None, dt.datetime | None]:
+    if not prefix_known or sample_seconds is None:
+        return None, None
+    start_timestamp = (
+        run_start + dt.timedelta(seconds=prefix_seconds)
+        if run_start is not None
+        else None
+    )
+    return prefix_seconds, start_timestamp
+
+
+def _advance_timing_prefix(
+    prefix_seconds: float, prefix_known: bool, sample_seconds: float | None
+) -> tuple[float, bool]:
+    if sample_seconds is None:
+        return prefix_seconds, False
+    if prefix_known:
+        return prefix_seconds + sample_seconds, True
+    return prefix_seconds, False
+
+
+def _build_row_timing_bound(
+    row: Any,
+    index: int,
+    run_start: dt.datetime | None,
+    prefix_seconds: float,
+    prefix_known: bool,
+) -> tuple[RowTimingBound, float, bool]:
+    raw_samples = _row_samples(row)
+    sample_seconds = _parse_sample_seconds(raw_samples)
+    start_offset, start_timestamp = _row_start_bounds(
+        prefix_seconds, prefix_known, sample_seconds, run_start
+    )
+    bound = RowTimingBound(
+        _row_name(row, index),
+        _row_status(row),
+        _row_sample_count(raw_samples),
+        sample_seconds,
+        start_offset,
+        start_timestamp,
+    )
+    next_prefix_seconds, next_prefix_known = _advance_timing_prefix(
+        prefix_seconds, prefix_known, sample_seconds
+    )
+    return bound, next_prefix_seconds, next_prefix_known
+
+
 def _row_timing_bounds(
     record: Mapping[str, Any], run_start: dt.datetime | None
 ) -> tuple[RowTimingBound, ...]:
@@ -1243,49 +1333,10 @@ def _row_timing_bounds(
     prefix_seconds = 0.0
     prefix_known = True
     for index, row in enumerate(rows):
-        if not isinstance(row, Mapping):
-            row = {}
-        name = row.get("row")
-        if not isinstance(name, str):
-            name = f"row-{index}"
-        status = row.get("status")
-        if not isinstance(status, str):
-            status = "—"
-        raw_samples = row.get("seconds_per_launch_samples")
-        sample_count = len(raw_samples) if isinstance(raw_samples, list) else None
-        sample_seconds: float | None = None
-        if isinstance(raw_samples, list) and raw_samples:
-            parsed: list[float] = []
-            for value in raw_samples:
-                try:
-                    parsed_value = float(value)
-                except (TypeError, ValueError):
-                    break
-                if not math.isfinite(parsed_value) or parsed_value < 0.0:
-                    break
-                parsed.append(parsed_value)
-            if len(parsed) == len(raw_samples):
-                sample_seconds = sum(parsed)
-        start_offset = prefix_seconds if prefix_known and sample_seconds is not None else None
-        start_timestamp = (
-            run_start + dt.timedelta(seconds=start_offset)
-            if run_start is not None and start_offset is not None
-            else None
+        bound, prefix_seconds, prefix_known = _build_row_timing_bound(
+            row, index, run_start, prefix_seconds, prefix_known
         )
-        bounds.append(
-            RowTimingBound(
-                name,
-                status,
-                sample_count,
-                sample_seconds,
-                start_offset,
-                start_timestamp,
-            )
-        )
-        if sample_seconds is None:
-            prefix_known = False
-        elif prefix_known:
-            prefix_seconds += sample_seconds
+        bounds.append(bound)
     return tuple(bounds)
 
 
