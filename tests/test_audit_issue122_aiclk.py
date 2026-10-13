@@ -12,11 +12,14 @@ from tools.audit_issue122_aiclk import (
     IntervalBounds,
     TraceSample,
     _coverage_rows,
+    _left_held_positive_segments,
     _record_trace_facts,
+    _report_input_data,
     classify_aiclk_values,
     classify_intermediate_position,
     left_held_time_weighted_aiclk,
     read_trace,
+    render_report,
     resolve_trace,
 )
 
@@ -71,6 +74,25 @@ def test_left_held_weighted_aiclk_refuses_uncovered_interval():
 
     assert left_held_time_weighted_aiclk(rows, _timestamp(0), _timestamp(2)) is None
     assert left_held_time_weighted_aiclk(rows, _timestamp(1), _timestamp(3)) is None
+
+
+def test_left_held_interval_allows_duplicate_timestamp_with_decreasing_aiclk():
+    rows = (
+        TraceSample(_timestamp(0), 800.0, 2),
+        TraceSample(_timestamp(1), 1350.0, 3),
+        TraceSample(_timestamp(1), 1200.0, 4),
+        TraceSample(_timestamp(3), 900.0, 5),
+    )
+
+    segments = _left_held_positive_segments(rows, _timestamp(0), _timestamp(3))
+
+    assert [(segment.row_index, segment.aiclk_mhz, segment.seconds) for segment in segments] == [
+        (0, 800.0, 1.0),
+        (2, 1200.0, 2.0),
+    ]
+    assert left_held_time_weighted_aiclk(
+        rows, _timestamp(0), _timestamp(3)
+    ) == pytest.approx((800.0 + 2.0 * 1200.0) / 3.0)
 
 
 def test_read_trace_classifies_endpoint_csv_and_weights_explicit_interval(tmp_path: Path):
@@ -171,3 +193,33 @@ def test_explicit_interval_extrema_use_positive_left_held_segments(tmp_path: Pat
     assert maximum == 1200.0
     assert weighted == pytest.approx(1066.6666667)
     assert weighted_is_exact is True
+
+
+def test_report_lists_per_record_conversion_impact_for_every_varying_trace():
+    root = Path("docs/measurements")
+    report = render_report(root)
+    section_start = report.index("## Per-record conversion impact for varying AICLK traces")
+    section_end = report.index("## JSON record inventory", section_start)
+    section = report[section_start:section_end]
+    _, _, _, analyses, _ = _report_input_data(root)
+    varying = [
+        analysis
+        for analysis in analyses
+        if analysis.classification is not None
+        and len(analysis.classification.unique_mhz) > 1
+    ]
+
+    assert f"every one of the {len(varying)} committed JSON records" in section
+    assert sum(line.startswith("| 20") for line in section.splitlines()) == len(varying)
+    assert all(f"| {analysis.path.name} |" in section for analysis in varying)
+    assert "persisted semantic conversion; configured-budget policy" in section
+    assert (
+        "persisted semantic conversion; fixed 1350-MHz normalization; "
+        "configured-budget policy"
+    ) in section
+    assert "Fixed-reference derived metrics retained" in section
+    assert "no AICLK conversion (host perf_counter)" in section
+    assert "legacy/unverifiable" in section
+    assert "not verifiable from retained interval evidence" in section
+    assert "Selected 1050.914 MHz" in section
+    assert "No; the existing #88" in section

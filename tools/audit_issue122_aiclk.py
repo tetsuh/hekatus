@@ -26,6 +26,56 @@ POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 AICLK_ENDPOINTS = frozenset((800.0, 1350.0))
 INTERMEDIATE_POSITION_ORDER = ("beginning", "middle", "end")
 _CONFIGURED_BUDGET_AICLK_LABEL = "configured budget AICLK"
+_SEMANTIC_SOURCE_FIELDS = frozenset(
+    {
+        "aiclk_mhz_for_elapsed_seconds",
+        "aiclk_source_for_elapsed_seconds",
+        "aiclk_selection_for_elapsed_seconds",
+        "aiclk_mhz_load_interval_weighted",
+        "aiclk_mhz_load_interval_weighted_source",
+        "load_interval_aiclk_mhz",
+        "load_interval_aiclk_source",
+        "actual_duration_aiclk_mhz",
+        "actual_duration_aiclk_source",
+        "predicted_load_time_aiclk_mhz",
+        "predicted_load_time_aiclk_source",
+    }
+)
+_SEMANTIC_DERIVED_FIELDS = frozenset(
+    {
+        "run_elapsed_seconds",
+        "event_elapsed_seconds",
+        "pair_elapsed_seconds",
+        "sampler_gap_seconds",
+        "actual_duration_seconds",
+        "predicted_load_time_seconds",
+    }
+)
+_FIXED_REFERENCE_FIELDS = frozenset(
+    {"reference_aiclk_mhz", "throughput_reference_aiclk_mhz"}
+)
+_FIXED_REFERENCE_METRIC_FIELDS = frozenset(
+    {"achieved_throughput", "repeats_per_card_second"}
+)
+_CONFIGURED_AICLK_FIELDS = frozenset({"budget_aiclk_mhz"})
+_HOST_TIMING_FIELDS = frozenset(
+    {
+        "seconds_per_iteration",
+        "seconds_per_launch_min",
+        "seconds_per_launch_p50",
+        "seconds_per_launch_p99",
+        "seconds_per_launch_p99_9",
+        "tflops_min_derived",
+        "tflops_p50_derived",
+        "tflops_p99_derived",
+        "tflops_p99_9_derived",
+        "tflops_fastest_launch_derived",
+        "achieved_tflops",
+        "tflops_derivation",
+    }
+)
+
+
 
 
 @dataclass(frozen=True)
@@ -126,6 +176,16 @@ class RecordAnalysis:
 
 
 @dataclass(frozen=True)
+class ConversionImpact:
+    """Per-record AICLK conversion facts retained by the audit."""
+
+    category: str
+    metrics: str
+    selected_value: str
+    conclusion_change: str
+
+
+@dataclass(frozen=True)
 class RowTimingBound:
     """Measured row duration and its order-derived start lower bound."""
 
@@ -195,7 +255,9 @@ def left_held_time_weighted_aiclk(
     if start.tzinfo is None or end.tzinfo is None or start > end or start == end:
         return None
     samples = [_sample_parts(row) for row in rows]
-    if not samples or any(left > right for left, right in itertools.pairwise(samples)):
+    if not samples or any(
+        left[0] > right[0] for left, right in itertools.pairwise(samples)
+    ):
         return None
     if samples[0][0] > start or samples[-1][0] < end:
         return None
@@ -218,7 +280,9 @@ def _left_held_positive_segments(
     if start.tzinfo is None or end.tzinfo is None or start >= end:
         return ()
     samples = [_sample_parts(row) for row in rows]
-    if any(left > right for left, right in itertools.pairwise(samples)):
+    if any(
+        left[0] > right[0] for left, right in itertools.pairwise(samples)
+    ):
         return ()
     segments: list[_LeftHeldSegment] = []
     for index, (timestamp, aiclk) in enumerate(samples):
@@ -638,6 +702,310 @@ def _format_values(values: Sequence[float]) -> str:
 
 def _cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _record_field_values(
+    record: Mapping[str, Any], field_names: frozenset[str]
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Return deterministic scalar values for selected record field names."""
+
+    values: dict[str, set[str]] = {}
+
+    def visit(value: Any) -> None:
+        if isinstance(value, Mapping):
+            for key, child in value.items():
+                name = str(key).lower()
+                if name in field_names and not isinstance(child, (Mapping, list)):
+                    if child is None:
+                        rendered = "—"
+                    elif isinstance(child, bool):
+                        rendered = str(child).lower()
+                    elif isinstance(child, (int, float)):
+                        rendered = _format_number(float(child))
+                    else:
+                        rendered = str(child)
+                    values.setdefault(name, set()).add(rendered)
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(record)
+    return tuple(
+        (name, tuple(sorted(field_values)))
+        for name, field_values in sorted(values.items())
+    )
+
+
+def _field_inventory(
+    values: Sequence[tuple[str, Sequence[str]]], include_values: bool = True
+) -> str:
+    """Render selected record fields without exposing repeated nested paths."""
+
+    rendered: list[str] = []
+    for name, field_values in values:
+        if not include_values:
+            rendered.append(f"`{name}`")
+            continue
+        rendered_values = ", ".join(field_values)
+        rendered.append(f"`{name}={rendered_values}`")
+    return ", ".join(rendered) if rendered else "—"
+
+
+def _trace_weighted_statement(analysis: RecordAnalysis) -> str:
+    if analysis.weighted_mhz is not None:
+        evidence = "exact" if analysis.weighted_is_exact else "capture-span diagnostic only"
+        return f"{_format_number(analysis.weighted_mhz)} MHz ({evidence})"
+    if analysis.interval is not None:
+        return f"not verifiable from retained interval evidence ({analysis.evidence})"
+    return "not verifiable from retained interval evidence (no explicit interval bounds)"
+
+
+def _fixed_policy_statement(record: Mapping[str, Any]) -> str:
+    fixed = _record_field_values(record, _FIXED_REFERENCE_FIELDS)
+    configured = _record_field_values(record, _CONFIGURED_AICLK_FIELDS)
+    statements: list[str] = []
+    if fixed:
+        statements.append(
+            f"{_field_inventory(fixed)} is fixed 1350-MHz normalization, not observed AICLK"
+        )
+    if configured:
+        statements.append(
+            f"{_field_inventory(configured)} is configured budget policy, not measured elapsed time"
+        )
+    return "; ".join(statements)
+
+
+def _record_date(path: Path) -> str:
+    return path.name[:10]
+
+
+def _uses_host_perf_counter(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> bool:
+    if not analysis.timing_fields or analysis.conversion_fields:
+        return False
+    if analysis.issue == "#88":
+        return True
+    if _record_field_values(record, frozenset({"tflops_derivation"})):
+        return True
+    if analysis.source_tag in {
+        "run_matmul.py",
+        "newton_schulz_issue88.py",
+        "newton_schulz_issue101_combined.py",
+    }:
+        return True
+    return (
+        "2026-09-27" <= _record_date(analysis.path) <= "2026-10-06"
+        and "newton-schulz" in analysis.path.name
+        and "issue88" not in analysis.path.name
+    )
+
+
+def _conclusion_change_statement(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> str:
+    if analysis.issue == "#88":
+        return (
+            "No; the existing #88 quality/L1 and row-order clock-confounding "
+            "conclusions are unchanged."
+        )
+    if analysis.issue == "#118":
+        return (
+            "No; the existing #118 weighted comparisons and conclusion are "
+            "unchanged."
+        )
+    if analysis.issue == "#104":
+        return (
+            "No; the retained #104 conclusion (no causal sampler hypothesis) "
+            "is unchanged."
+        )
+    conclusion_fields = _record_field_values(
+        record, frozenset({"conclusion", "headline_conclusion"})
+    )
+    if conclusion_fields:
+        return "No; the retained conclusion is unchanged."
+    if analysis.status.startswith("blocked") or analysis.status == "fail":
+        return "No published conclusion is retained in this blocked/failed record."
+    return "No published conclusion is retained; no change is asserted."
+
+
+def _record_conversion_impact(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> ConversionImpact:
+    semantic_source = _record_field_values(record, _SEMANTIC_SOURCE_FIELDS)
+    semantic_derived = _record_field_values(record, _SEMANTIC_DERIVED_FIELDS)
+    semantic = tuple(sorted((*semantic_source, *semantic_derived)))
+    fixed_policy = _fixed_policy_statement(record)
+    configured = _record_field_values(record, _CONFIGURED_AICLK_FIELDS)
+    if semantic_source:
+        category_parts = ["persisted semantic conversion"]
+        if _record_field_values(record, _FIXED_REFERENCE_FIELDS):
+            category_parts.append("fixed 1350-MHz normalization")
+        if configured:
+            category_parts.append("configured-budget policy")
+        metric_parts = [
+            "Persisted semantic conversion fields: " + _field_inventory(semantic) + "."
+        ]
+        if fixed_policy:
+            metric_parts.append(f"{fixed_policy}.")
+        fixed_metrics = _record_field_values(record, _FIXED_REFERENCE_METRIC_FIELDS)
+        if fixed_metrics:
+            metric_parts.append(
+                "Fixed-reference derived metrics retained: "
+                f"{_field_inventory(fixed_metrics, include_values=False)}."
+            )
+        if configured and analysis.issue == "#104":
+            metric_parts.append(
+                "The legacy analyzer's 1350 MHz selection is retained rather than "
+                "rewritten."
+            )
+        if analysis.weighted_is_exact:
+            selected = (
+                f"Selected {_format_number(analysis.weighted_mhz)} MHz from the exact "
+                f"{analysis.interval.kind} interval; the persisted semantic selection "
+                "is the same measured conversion basis."
+            )
+        else:
+            selected = (
+                "The persisted semantic selection is retained, but a corrected value is "
+                "not verifiable from retained interval evidence; the trace weighted "
+                f"value is {_trace_weighted_statement(analysis)}."
+            )
+        return ConversionImpact(
+            "; ".join(category_parts),
+            " ".join(metric_parts),
+            selected,
+            _conclusion_change_statement(analysis, record),
+        )
+
+    host_metrics = _record_field_values(record, _HOST_TIMING_FIELDS)
+    if _uses_host_perf_counter(analysis, record):
+        category = "no AICLK conversion (host perf_counter)"
+        metric_text = (
+            "Host perf_counter-derived timing/TFLOPS metrics retained: "
+            f"{_field_inventory(host_metrics, include_values=False)}."
+            if host_metrics
+            else "Host perf_counter timing is the retained source; no AICLK conversion field is present."
+        )
+        if fixed_policy:
+            metric_text += f" {fixed_policy}."
+        selected = (
+            "Not applicable: the retained host metrics do not use trace AICLK; "
+            f"the trace weighted value {_trace_weighted_statement(analysis)} is context only."
+        )
+        return ConversionImpact(
+            category, metric_text, selected, _conclusion_change_statement(analysis, record)
+        )
+
+    if analysis.issue == "#88":
+        metric_text = (
+            "Retained #88 quality/L1 comparison fields; no cycle-to-time or "
+            "AICLK-derived metric is present."
+        )
+        if fixed_policy:
+            metric_text += f" {fixed_policy}."
+        return ConversionImpact(
+            "no AICLK conversion (quality/L1 record)",
+            metric_text,
+            (
+                "Not applicable: quality/L1 values do not use trace AICLK; the trace "
+                f"weighted value {_trace_weighted_statement(analysis)} is context only."
+            ),
+            _conclusion_change_statement(analysis, record),
+        )
+
+    category_parts = ["legacy/unverifiable"]
+    if _record_field_values(record, _FIXED_REFERENCE_FIELDS):
+        category_parts.append("fixed 1350-MHz normalization")
+    if configured:
+        category_parts.append("configured-budget policy")
+    if host_metrics:
+        metric_text = (
+            "Retained timing/throughput fields without a persisted AICLK source: "
+            f"{_field_inventory(host_metrics, include_values=False)}."
+        )
+    elif semantic_derived:
+        metric_text = (
+            "Retained derived timing fields without a persisted AICLK source: "
+            f"{_field_inventory(semantic_derived, include_values=False)}."
+        )
+    else:
+        metric_text = "No retained derived elapsed/throughput metric is tied to trace AICLK."
+    if fixed_policy:
+        metric_text += f" {fixed_policy}."
+    return ConversionImpact(
+        "; ".join(category_parts),
+        metric_text,
+        (
+            "No corrected conversion value is verifiable from retained interval evidence; "
+            f"the trace weighted value is {_trace_weighted_statement(analysis)}."
+        ),
+        _conclusion_change_statement(analysis, record),
+    )
+
+
+def _conversion_impact_row(
+    analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> str:
+    trace = analysis.trace
+    classification = analysis.classification
+    if trace is None or classification is None:
+        trace_text = "—"
+    else:
+        minmax = (
+            f"{_format_number(analysis.minimum_mhz)} / "
+            f"{_format_number(analysis.maximum_mhz)}"
+        )
+        trace_text = (
+            f"{_format_values(classification.unique_mhz)}; min/max {minmax}; "
+            f"weighted {_weighted_cell(analysis)}"
+        )
+    impact = _record_conversion_impact(analysis, record)
+    return "| " + " | ".join(
+        _cell(value)
+        for value in (
+            analysis.path.name,
+            trace_text,
+            impact.category,
+            impact.metrics,
+            impact.selected_value,
+            impact.conclusion_change,
+        )
+    ) + " |"
+
+
+def _append_conversion_impact_inventory(
+    lines: list[str],
+    analyses: Sequence[RecordAnalysis],
+    records: Mapping[Path, Mapping[str, Any]],
+) -> None:
+    varying = [
+        analysis
+        for analysis in analyses
+        if analysis.classification is not None
+        and len(analysis.classification.unique_mhz) > 1
+    ]
+    lines.extend(
+        [
+            "",
+            "## Per-record conversion impact for varying AICLK traces",
+            "",
+            (
+                f"This section covers every one of the {len(varying)} committed JSON "
+                "records whose resolved trace has more than one valid AICLK value. "
+                "The trace min/max and weighted value are audit facts; a weighted value "
+                "marked `capture-span diagnostic` is not a corrected conversion."
+            ),
+            "",
+            "| record | trace AICLK (MHz; unique/min-max/weighted) | evidence category | retained derived values/metrics | corrected/selected value | published conclusion change |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    for analysis in varying:
+        record = records.get(analysis.path, {})
+        lines.append(_conversion_impact_row(analysis, record))
+
 
 
 def _record_trace_facts(
@@ -1881,6 +2249,7 @@ def render_report(root: Path) -> str:
     users_by_trace = _users_by_trace(csv_paths, analyses)
     lines = _report_header(root, json_paths, csv_paths)
     lines.extend(_conversion_inventory_section())
+    _append_conversion_impact_inventory(lines, analyses, records)
     _append_json_inventory(lines, analyses)
     _append_csv_inventory(lines, csv_paths, trace_cache, users_by_trace)
     _append_explicit_interval_inventory(lines, analyses)
