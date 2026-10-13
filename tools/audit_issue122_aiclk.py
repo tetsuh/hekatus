@@ -38,6 +38,18 @@ class TraceSample:
 
 
 @dataclass(frozen=True)
+class _LeftHeldSegment:
+    """One positive-duration left-held segment clipped to an interval."""
+
+    row_index: int
+    timestamp: dt.datetime
+    aiclk_mhz: float
+    start: dt.datetime
+    end: dt.datetime
+    seconds: float
+
+
+@dataclass(frozen=True)
 class TraceData:
     """Parsed CSV facts retained for deterministic report generation."""
 
@@ -113,6 +125,29 @@ class RecordAnalysis:
     source_tag: str
 
 
+@dataclass(frozen=True)
+class RowTimingBound:
+    """Measured row duration and its order-derived start lower bound."""
+
+    name: str
+    status: str
+    sample_count: int | None
+    sample_seconds: float | None
+    start_offset_seconds: float | None
+    start_timestamp: dt.datetime | None
+
+
+@dataclass(frozen=True)
+class HoldSegment:
+    """A low-clock positive-duration segment inside an explicit run interval."""
+
+    aiclk_mhz: float
+    start_offset_seconds: float
+    end_offset_seconds: float
+    start: dt.datetime
+    end: dt.datetime
+
+
 def parse_timestamp(value: str) -> dt.datetime:
     """Parse an ISO-8601 timestamp and normalize it to UTC."""
 
@@ -165,19 +200,44 @@ def left_held_time_weighted_aiclk(
     if samples[0][0] > start or samples[-1][0] < end:
         return None
     duration = (end - start).total_seconds()
-    weighted = 0.0
-    covered = 0.0
+    segments = _left_held_positive_segments(rows, start, end)
+    weighted = sum(segment.aiclk_mhz * segment.seconds for segment in segments)
+    covered = sum(segment.seconds for segment in segments)
+    if not math.isclose(covered, duration, rel_tol=0.0, abs_tol=1e-9):
+        return None
+    return weighted / covered
+
+
+def _left_held_positive_segments(
+    rows: Sequence[TraceSample | Sequence[Any] | Mapping[str, Any]],
+    start: dt.datetime,
+    end: dt.datetime,
+) -> tuple[_LeftHeldSegment, ...]:
+    """Return the positive-duration left-held segments in ``[start, end]``."""
+
+    if start.tzinfo is None or end.tzinfo is None or start >= end:
+        return ()
+    samples = [_sample_parts(row) for row in rows]
+    if any(left > right for left, right in itertools.pairwise(samples)):
+        return ()
+    segments: list[_LeftHeldSegment] = []
     for index, (timestamp, aiclk) in enumerate(samples):
         segment_start = max(timestamp, start)
         next_timestamp = samples[index + 1][0] if index + 1 < len(samples) else end
         segment_end = min(next_timestamp, end)
-        seconds = max(0.0, (segment_end - segment_start).total_seconds())
-        if seconds:
-            weighted += aiclk * seconds
-            covered += seconds
-    if not math.isclose(covered, duration, rel_tol=0.0, abs_tol=1e-9):
-        return None
-    return weighted / covered
+        seconds = (segment_end - segment_start).total_seconds()
+        if seconds > 0.0:
+            segments.append(
+                _LeftHeldSegment(
+                    index,
+                    timestamp,
+                    aiclk,
+                    segment_start,
+                    segment_end,
+                    seconds,
+                )
+            )
+    return tuple(segments)
 
 
 # Short name for callers that prefer the terminology used by the report.
@@ -483,8 +543,17 @@ def find_interval(record: Mapping[str, Any]) -> IntervalBounds | None:
 
 
 def _coverage_rows(trace: TraceData, interval: IntervalBounds) -> tuple[list[TraceSample], bool]:
+    """Return samples owning positive-duration pieces of an explicit interval.
+
+    This deliberately follows :func:`left_held_time_weighted_aiclk`: a row
+    before the interval start is included when it holds through that start,
+    while a row timestamped exactly at the interval end owns no duration and
+    is excluded.  Capture-span diagnostics do not use this helper.
+    """
+
     samples = list(trace.samples)
-    inside = [sample for sample in samples if interval.start <= sample.timestamp <= interval.end]
+    segments = _left_held_positive_segments(samples, interval.start, interval.end)
+    inside = [samples[segment.row_index] for segment in segments]
     complete = (
         bool(samples)
         and trace.invalid_row_count == 0
@@ -768,12 +837,6 @@ def _find_record(analyses: Sequence[RecordAnalysis], needle: str) -> RecordAnaly
         if needle in analysis.path.name:
             return analysis
     return None
-
-
-def _multiplicative_aiclk_range(minimum: float | None, maximum: float | None) -> float | None:
-    if minimum is None or maximum is None or minimum <= 0.0 or maximum < minimum:
-        return None
-    return maximum / minimum - 1.0
 
 
 def _format_percentage(value: float | None, digits: int = 3) -> str:
@@ -1168,6 +1231,244 @@ def _source_audit_section(analyses: Sequence[RecordAnalysis]) -> list[str]:
     return rows
 
 
+def _row_timing_bounds(
+    record: Mapping[str, Any], run_start: dt.datetime | None
+) -> tuple[RowTimingBound, ...]:
+    """Sum measured per-launch samples in persisted block order."""
+
+    rows = record.get("rows")
+    if not isinstance(rows, list):
+        return ()
+    bounds: list[RowTimingBound] = []
+    prefix_seconds = 0.0
+    prefix_known = True
+    for index, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            row = {}
+        name = row.get("row")
+        if not isinstance(name, str):
+            name = f"row-{index}"
+        status = row.get("status")
+        if not isinstance(status, str):
+            status = "—"
+        raw_samples = row.get("seconds_per_launch_samples")
+        sample_count = len(raw_samples) if isinstance(raw_samples, list) else None
+        sample_seconds: float | None = None
+        if isinstance(raw_samples, list) and raw_samples:
+            parsed: list[float] = []
+            for value in raw_samples:
+                try:
+                    parsed_value = float(value)
+                except (TypeError, ValueError):
+                    break
+                if not math.isfinite(parsed_value) or parsed_value < 0.0:
+                    break
+                parsed.append(parsed_value)
+            if len(parsed) == len(raw_samples):
+                sample_seconds = sum(parsed)
+        start_offset = prefix_seconds if prefix_known and sample_seconds is not None else None
+        start_timestamp = (
+            run_start + dt.timedelta(seconds=start_offset)
+            if run_start is not None and start_offset is not None
+            else None
+        )
+        bounds.append(
+            RowTimingBound(
+                name,
+                status,
+                sample_count,
+                sample_seconds,
+                start_offset,
+                start_timestamp,
+            )
+        )
+        if sample_seconds is None:
+            prefix_known = False
+        elif prefix_known:
+            prefix_seconds += sample_seconds
+    return tuple(bounds)
+
+
+def _hold_segments(
+    analysis: RecordAnalysis, threshold_mhz: float = 1343.0
+) -> tuple[HoldSegment, ...]:
+    """Return merged positive-duration segments below the audit threshold."""
+
+    if analysis.trace is None or analysis.interval is None:
+        return ()
+    interval = analysis.interval
+    segments: list[HoldSegment] = []
+    for segment in _left_held_positive_segments(
+        analysis.trace.samples, interval.start, interval.end
+    ):
+        if segment.aiclk_mhz >= threshold_mhz:
+            continue
+        start_offset = (segment.start - interval.start).total_seconds()
+        end_offset = (segment.end - interval.start).total_seconds()
+        current = HoldSegment(
+            segment.aiclk_mhz,
+            start_offset,
+            end_offset,
+            segment.start,
+            segment.end,
+        )
+        if (
+            segments
+            and segments[-1].aiclk_mhz == current.aiclk_mhz
+            and segments[-1].end == current.start
+        ):
+            previous = segments[-1]
+            segments[-1] = HoldSegment(
+                previous.aiclk_mhz,
+                previous.start_offset_seconds,
+                current.end_offset_seconds,
+                previous.start,
+                current.end,
+            )
+        else:
+            segments.append(current)
+    return tuple(segments)
+
+
+def _format_timestamp(value: dt.datetime | None) -> str:
+    return value.isoformat(timespec="microseconds") if value is not None else "—"
+
+
+def _format_seconds(value: float | None) -> str:
+    return f"{value:.9f} s" if value is not None else "—"
+
+
+def _append_issue88_record_timing(
+    lines: list[str], analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> None:
+    run_start = analysis.interval.start if analysis.interval is not None else None
+    run_end = analysis.interval.end if analysis.interval is not None else None
+    bounds = _row_timing_bounds(record, run_start)
+    lines.extend(
+        [
+            f"#### `{analysis.path.name}`",
+            "",
+            (
+                f"`run_start` = `{_format_timestamp(run_start)}`, "
+                f"`run_end` = `{_format_timestamp(run_end)}`. "
+                "Rows are consumed in persisted block order. For row *i*, the start "
+                "lower bound is `run_start` plus the sum of measured "
+                "`seconds_per_launch_samples` from earlier rows; no p50 or synthetic "
+                "duration is used."
+            ),
+            "",
+            "| row order/name | status | sample count | sample length sum (s) | cumulative start lower bound (s) | lower-bound timestamp |",
+            "|---:|---|---:|---:|---:|---|",
+        ]
+    )
+    for index, bound in enumerate(bounds):
+        lines.append(
+            "| "
+            + " | ".join(
+                _cell(value)
+                for value in (
+                    f"{index}: {bound.name}",
+                    bound.status,
+                    bound.sample_count if bound.sample_count is not None else "—",
+                    _format_seconds(bound.sample_seconds),
+                    _format_seconds(bound.start_offset_seconds),
+                    _format_timestamp(bound.start_timestamp),
+                )
+            )
+            + " |"
+        )
+    if not bounds:
+        lines.append("| — | — | — | — | — | — |")
+
+    holds = _hold_segments(analysis)
+    lines.extend(
+        [
+            "",
+            (
+                "Positive-duration trace holds below 1343 MHz are listed below; this "
+                "includes the 800 MHz hold and excludes zero-duration rows at the interval "
+                "end. The end offset is measured from `run_start`."
+            ),
+            "",
+            "| AICLK (MHz) | hold start offset | hold end offset | hold end timestamp |",
+            "|---:|---:|---:|---|",
+        ]
+    )
+    if holds:
+        for hold in holds:
+            lines.append(
+                f"| {_format_number(hold.aiclk_mhz)} | "
+                f"{_format_seconds(hold.start_offset_seconds)} | "
+                f"{_format_seconds(hold.end_offset_seconds)} | "
+                f"{_format_timestamp(hold.end)} |"
+            )
+    else:
+        lines.append("| — | — | — | — |")
+
+
+def _find_row_bound(
+    bounds: Sequence[RowTimingBound], name: str
+) -> RowTimingBound | None:
+    return next((bound for bound in bounds if bound.name == name), None)
+
+
+def _append_issue88_order_conclusions(
+    lines: list[str], analysis: RecordAnalysis, record: Mapping[str, Any]
+) -> None:
+    bounds = _row_timing_bounds(
+        record, analysis.interval.start if analysis.interval is not None else None
+    )
+    holds = _hold_segments(analysis)
+    if not holds:
+        lines.append("No condition-specific clock-bound conclusion is available because no low-clock hold segment was measured.")
+        return
+    first_hold_end = holds[0].end_offset_seconds
+    bf16_l16 = _find_row_bound(bounds, "bf16-r-L16")
+    fp32_l16 = _find_row_bound(bounds, "fp32-r-L16")
+    bf16_l32_dram = _find_row_bound(bounds, "bf16-r-L32-r-dram")
+    fp32_l32_dram = _find_row_bound(bounds, "fp32-r-L32-r-dram")
+
+    def may_overlap(bound: RowTimingBound | None) -> bool:
+        return bound is not None and bound.start_offset_seconds is not None and bound.start_offset_seconds <= first_hold_end
+
+    if may_overlap(bf16_l16) and not may_overlap(fp32_l16):
+        lines.append(
+            "For L16, only BF16-R can overlap the initial low-clock hold under these "
+            "lower bounds; that would make BF16-R look slower and make the FP32-R "
+            "difference look smaller."
+        )
+    elif may_overlap(bf16_l16) and may_overlap(fp32_l16):
+        lines.append(
+            "For L16, both BF16-R and FP32-R can overlap the initial low-clock hold "
+            "under these lower bounds, so the direction of the clock confounding cannot "
+            "be determined."
+        )
+    else:
+        lines.append(
+            "For L16, neither row's lower bound overlaps the initial low-clock hold; "
+            "this audit makes no additional directional claim."
+        )
+
+    l32_both_after = all(
+        bound is not None
+        and bound.start_offset_seconds is not None
+        and bound.start_offset_seconds > first_hold_end
+        for bound in (bf16_l32_dram, fp32_l32_dram)
+    )
+    if l32_both_after:
+        lines.append(
+            "Both L32/DRAM rows have start lower bounds after the low-clock hold; a "
+            "condition-specific AICLK upper-bound claim is therefore supported by this "
+            "ordering evidence."
+        )
+    else:
+        lines.append(
+            "The BF16-R and FP32-R L32/DRAM rows are not both after the low-clock hold "
+            "under their start lower bounds; this audit cannot claim a condition-specific "
+            "AICLK upper bound."
+        )
+
+
 def _follow_up_section(
     analyses: Sequence[RecordAnalysis],
     records: Mapping[Path, Mapping[str, Any]],
@@ -1180,46 +1481,37 @@ def _follow_up_section(
         analyses,
         "2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake-summary.json",
     )
+    targets = tuple(analysis for analysis in (convergence, device1, final) if analysis is not None)
     lines.extend(
         [
             "### #88 R-format ordering and confounding",
             "",
             (
-                "The `comparison_rows` arrays in the convergence rerun, device-1 retake, "
-                "and final runner retake are block ordered, not alternating: "
-                "`bf16-r-L16`, `fp32-r-L16`, `bf16-r-L32`, "
-                "`bf16-r-L32-r-dram`, `fp32-r-L32-r-dram`, and the rejected "
-                "`fp32-r-L32` row. Each row retains host timing samples and derived "
-                "seconds/TFLOPS fields, but no row start or cumulative host timestamp that "
-                "can be aligned to a power-CSV timestamp. Therefore per-condition AICLK "
-                "min/max/weighted values cannot be calculated from the committed evidence. "
-                "The defensible bound for any row is the complete run-trace AICLK range, "
-                "not a condition-specific estimate:"
+                "The old `0.521%` complete-run-width claim is withdrawn. It treated the "
+                "whole run as available to every condition and did not use the host timing "
+                "row order. The corrected lower-bound audit below uses each target record's "
+                "persisted `rows` in block order and sums the measured "
+                "`seconds_per_launch_samples` for each row. It is an ordering lower bound, "
+                "not a reconstructed row-to-power timestamp alignment."
             ),
             "",
-            "| record | complete run-trace AICLK bound (MHz) | AICLK-only range (`max/min - 1`) | per-row alignment |",
-            "|---|---:|---:|---|",
+            (
+                "The explicit-interval inventory above reports extrema and weighted values "
+                "from the same positive-duration left-held trace segments. The three #88 "
+                "records below additionally report every measured row's sample-length sum, "
+                "cumulative start lower bound, and the 800 MHz / below-1343 MHz hold ends."
+            ),
         ]
     )
-    for analysis in (convergence, device1, final):
-        if analysis is None:
+    for analysis in targets:
+        record = records.get(analysis.path)
+        if record is None:
             continue
-        bound = (
-            f"{_format_number(analysis.minimum_mhz)}–{_format_number(analysis.maximum_mhz)}"
-            if analysis.minimum_mhz is not None
-            else "—"
-        )
-        aiclk_range = _multiplicative_aiclk_range(
-            analysis.minimum_mhz,
-            analysis.maximum_mhz,
-        )
-        lines.append(
-            f"| {analysis.path.name} | {bound} | {_format_percentage(aiclk_range)} | unavailable |"
-        )
-    final_range = _multiplicative_aiclk_range(
-        final.minimum_mhz if final else None,
-        final.maximum_mhz if final else None,
-    )
+        lines.append("")
+        _append_issue88_record_timing(lines, analysis, record)
+        lines.append("")
+        _append_issue88_order_conclusions(lines, analysis, record)
+
     final_changes = (
         _final_p50_changes(records[final_summary.path])
         if final_summary is not None and final_summary.path in records
@@ -1228,40 +1520,36 @@ def _follow_up_section(
     lines.extend(
         [
             "",
+            "### Corrected conclusion boundary",
+            "",
             (
-                "Each AICLK-only range is a model-dependent upper bound under linear "
-                "AICLK-to-throughput normalization: it assumes the condition could fall "
-                "at either complete-run endpoint. It is not a replacement for the "
-                "synchronized host timings retained by each row; row-to-power alignment "
-                "remains unavailable."
+                "The three records retain corrected quality metrics and measured "
+                "throughput/L1 cost context. Their host timings remain valid observations, "
+                "but the prior conclusion that a complete-run AICLK width could not explain "
+                "the throughput differences is withdrawn: the row-order lower bounds above "
+                "do not establish synchronized condition-specific clock values."
             ),
             "",
             (
-                "For the authoritative final trace, the complete-run bound gives a "
-                f"{_format_percentage(final_range)} maximum clock-rate spread. "
+                "The final summary's retained P50 TFLOPS comparisons are descriptive only "
+                "and were not used to construct the timing bounds. "
                 + (
-                    "The authoritative summary's retained P50 TFLOPS values give observed "
-                    "P50 throughput changes of "
+                    "Recorded comparisons: "
                     + "; ".join(
                         f"{placement}: {_format_percentage(change)}"
                         for placement, change in final_changes
                     )
-                    + f"; even under the linear normalization model, the "
-                    f"{_format_percentage(final_range)} clock-rate spread cannot by itself "
-                    "explain those observed throughput changes."
+                    + "."
                     if final_changes
-                    else "The authoritative summary has no usable matched P50 values for a derived throughput comparison."
+                    else "No usable matched P50 comparison is available."
                 )
             ),
             "",
             (
-                "Relative to `docs/design.md`, the current published #88 conclusion is "
-                "unchanged: FP32-R improves the corrected quality metrics but costs "
-                "throughput/L1; only the withdrawn defective `_weight` conclusion changed. "
-                "The withdrawn report's claim that FP32-R worsened beam-pattern error used "
-                "the defective `_weight` contraction. The corrected final evidence says "
-                "FP32-R lowers inverse error, MV cosine deficit, and all four beam indicators "
-                "at both matched placements; BF16-R remains the default cost choice."
+                "Accordingly, this audit supports reporting the corrected quality metrics "
+                "and the observed throughput/L1 trade-off only within the evidence retained "
+                "by the records. It does not make a stronger FP32-R/BF16-R causal or "
+                "clock-independent conclusion."
             ),
             "",
             "### No-bound old records",
@@ -1304,7 +1592,10 @@ def _follow_up_section(
             (
                 "These values reproduce the prior audit's exact #118 comparisons to three "
                 "decimal MHz without rewriting any measurement leaf. The control remains a "
-                "1,350 MHz reference rather than a computed weighted load interval."
+                "1,350 MHz reference rather than a computed weighted load interval. The "
+                "corrected extrema are not weighted averages: for example, the DRAM interval "
+                "now reports the positive-duration 800 MHz pre-start hold in its min/max while "
+                "its weighted value remains 1,349.842 MHz."
             ),
         ]
     )
@@ -1410,6 +1701,14 @@ def _append_explicit_interval_inventory(
         [
             "",
             "## Explicit interval records",
+            "",
+            (
+                f"The inventory contains {len(exact_or_bounded)} explicit-interval JSON rows. "
+                "The six logical target runs are the three #88 retakes and the three #118 "
+                "conditions; the count is eight because the device-1 and final-runner "
+                "retakes each have both a source and summary JSON row using the same trace. "
+                "All eight rows are retained below."
+            ),
             "",
             "| record | issue | interval kind | evidence | min/max (MHz) | classification | weighted AICLK (MHz) | resolved CSV |",
             "|---|---|---|---|---:|---|---:|---|",

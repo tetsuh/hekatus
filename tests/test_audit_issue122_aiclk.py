@@ -9,7 +9,10 @@ from pathlib import Path
 import pytest
 
 from tools.audit_issue122_aiclk import (
+    IntervalBounds,
     TraceSample,
+    _coverage_rows,
+    _record_trace_facts,
     classify_aiclk_values,
     classify_intermediate_position,
     left_held_time_weighted_aiclk,
@@ -102,3 +105,29 @@ def test_trace_pairing_prefers_sha256_provenance_over_stem(tmp_path: Path):
     assert resolution.path == csv_path
     assert resolution.method == "SHA-256 provenance"
     assert read_trace(csv_path).csv_row_count == 2
+
+
+def test_explicit_interval_extrema_use_positive_left_held_segments(tmp_path: Path):
+    csv_path = tmp_path / "boundary-power.csv"
+    csv_path.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2026-01-01T00:00:00+00:00,40,800,50\n"
+        "2026-01-01T00:00:02+00:00,70,1200,51\n"
+        "2026-01-01T00:00:04+00:00,40,1350,50\n",
+        encoding="utf-8",
+    )
+    trace = read_trace(csv_path)
+    interval = IntervalBounds(_timestamp(1), _timestamp(4), "run", "test")
+
+    inside, complete = _coverage_rows(trace, interval)
+    evidence, minimum, maximum, weighted, weighted_is_exact = _record_trace_facts(
+        trace, interval
+    )
+
+    assert complete is True
+    assert [sample.aiclk_mhz for sample in inside] == [800.0, 1200.0]
+    assert evidence == "exact run interval"
+    assert minimum == 800.0
+    assert maximum == 1200.0
+    assert weighted == pytest.approx(1066.6666667)
+    assert weighted_is_exact is True
