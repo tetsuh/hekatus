@@ -75,6 +75,7 @@ a diagnostic record, while numeric/schema contradictions remain strict.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import itertools
 import math
@@ -192,6 +193,16 @@ _TRACE_COVERAGE_FLAG_ALIASES = (
     ("covers_run_end", "covers_run_end"),
     ("complete", "coverage_complete"),
     ("coverage_complete", "coverage_complete"),
+)
+# Each endpoint is captured with CLOCK_MONOTONIC first and UTC second. UTC is
+# serialized to microseconds while CLOCK_MONOTONIC is retained in nanoseconds.
+# Reserve 1 ms per endpoint for a scheduling interruption; this is a declared
+# trust bound, not a value inferred from the committed records.
+UTC_TIMESTAMP_SERIALIZATION_RESOLUTION_NS = 1_000
+PROGRAM_INTERVAL_ENDPOINT_SCHEDULING_HEADROOM_NS = 1_000_000
+PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS = 2 * (
+    UTC_TIMESTAMP_SERIALIZATION_RESOLUTION_NS
+    + PROGRAM_INTERVAL_ENDPOINT_SCHEDULING_HEADROOM_NS
 )
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
@@ -1501,6 +1512,100 @@ def _check_program_host_interval(
                 )
             )
     return mismatches
+
+
+def _utc_interval_elapsed_ns(
+    start: Any, end: Any
+) -> tuple[int | None, str | None]:
+    """Return a timezone-aware UTC interval duration at serialized precision."""
+    if not isinstance(start, str) or not start.strip() or not isinstance(end, str) or not end.strip():
+        return None, "UTC load interval endpoints must be non-empty strings"
+    try:
+        start_text = start[:-1] + "+00:00" if start.endswith("Z") else start
+        end_text = end[:-1] + "+00:00" if end.endswith("Z") else end
+        start_value = datetime.datetime.fromisoformat(start_text)
+        end_value = datetime.datetime.fromisoformat(end_text)
+        if start_value.tzinfo is None or start_value.utcoffset() is None:
+            return None, "UTC load interval start must include a timezone"
+        if end_value.tzinfo is None or end_value.utcoffset() is None:
+            return None, "UTC load interval end must include a timezone"
+        start_utc = start_value.astimezone(datetime.UTC)
+        end_utc = end_value.astimezone(datetime.UTC)
+    except (OverflowError, TypeError, ValueError) as exc:
+        return None, f"UTC load interval endpoints are invalid: {exc}"
+    delta = end_utc - start_utc
+    if end_utc < start_utc:
+        return None, "UTC load interval end must not precede start"
+    return (
+        delta.days * 86_400 * 1_000_000_000
+        + delta.seconds * 1_000_000_000
+        + delta.microseconds * 1_000,
+        None,
+    )
+
+
+def _check_issue118_program_interval_binding(
+    record: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Bind loaded UTC power intervals to the host monotonic program span."""
+    del ctx
+    provenance = _mapping(record, "power_clock_provenance")
+    if (
+        provenance is None
+        or provenance.get("load_interval_source") != ISSUE118_LOAD_INTERVAL_SOURCE
+    ):
+        return []
+    invariant = "program_interval.utc_monotonic_binding"
+    program = record.get("program_host_interval")
+    if not isinstance(program, Mapping):
+        return [
+            _mismatch(
+                invariant,
+                ("program_host_interval",),
+                "Issue #118 loaded records require a host monotonic program interval",
+            )
+        ]
+    monotonic_elapsed = program.get("elapsed_ns")
+    if not _is_int(monotonic_elapsed, nonnegative=True):
+        return [
+            _mismatch(
+                invariant,
+                ("program_host_interval.elapsed_ns",),
+                "Issue #118 host monotonic program elapsed_ns must be a non-negative integer",
+            )
+        ]
+    utc_elapsed, error = _utc_interval_elapsed_ns(
+        provenance.get("load_interval_start"), provenance.get("load_interval_end")
+    )
+    if utc_elapsed is None:
+        return [
+            _mismatch(
+                invariant,
+                (
+                    "power_clock_provenance.load_interval_start",
+                    "power_clock_provenance.load_interval_end",
+                ),
+                error or "UTC load interval duration is unavailable",
+            )
+        ]
+    difference = abs(utc_elapsed - monotonic_elapsed)
+    if difference <= PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS:
+        return []
+    return [
+        _mismatch(
+            invariant,
+            (
+                "power_clock_provenance.load_interval_start",
+                "power_clock_provenance.load_interval_end",
+                "program_host_interval.elapsed_ns",
+            ),
+            (
+                "UTC and CLOCK_MONOTONIC program intervals differ by "
+                f"{difference} ns, beyond the trust bound "
+                f"{PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS} ns"
+            ),
+        )
+    ]
 
 
 def _expected_elapsed_aiclk(
@@ -4529,6 +4634,16 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
         _check_program_host_interval,
     ),
     ResidentInvariant(
+        "program_interval.utc_monotonic_binding",
+        (
+            "power_clock_provenance.load_interval_start",
+            "power_clock_provenance.load_interval_end",
+            "program_host_interval.elapsed_ns",
+        ),
+        "Issue #118 loaded UTC and host monotonic program intervals share a trust bound",
+        _check_issue118_program_interval_binding,
+    ),
+    ResidentInvariant(
         "resident_tick_interval",
         ("resident_tick_interval",),
         "card-side resident tick span remains explicitly wrap-tracked",
@@ -4863,6 +4978,8 @@ __all__ = [
     "PAIR_ORDERS",
     "PAIR_TARGET_TICKS",
     "PAIR_TOLERANCE_TICKS",
+    "PROGRAM_INTERVAL_ENDPOINT_SCHEDULING_HEADROOM_NS",
+    "PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS",
     "RECORD_KIND_ERROR",
     "RECORD_KIND_REJECTED",
     "RECORD_KIND_SAMPLED_TIMING",
@@ -4885,6 +5002,7 @@ __all__ = [
     "TIMING_EVIDENCE_RUN_TRACE_REASON",
     "TIMING_EVIDENCE_UNVERIFIED_AICLK_SOURCES",
     "UINT64_MAX",
+    "UTC_TIMESTAMP_SERIALIZATION_RESOLUTION_NS",
     "ResidentFailureClassification",
     "ResidentInvariant",
     "ResidentRecordField",

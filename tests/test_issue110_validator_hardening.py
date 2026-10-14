@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import datetime
 import itertools
+import json
 from pathlib import Path
 
 import pytest
@@ -13,7 +15,10 @@ from enodia.tt.bench.resident_harness import (
     build_measurement_record,
     build_rejection_record,
 )
-from enodia.tt.bench.resident_record import validate_resident_record
+from enodia.tt.bench.resident_record import (
+    PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS,
+    validate_resident_record,
+)
 from enodia.tt.bench.sampler_contract import SAMPLER_MODES
 
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
@@ -178,8 +183,6 @@ TRACE_FLAG_PATHS = (
 @pytest.mark.parametrize("path", TRACE_FLAG_PATHS, ids=lambda value: ".".join(value))
 def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(path):
     """Flipping any persisted coverage/provenance boolean invalidates the record."""
-    import json
-
     record = json.loads(TRACE_RECORD.read_text())
     candidate = copy.deepcopy(record)
     current = candidate
@@ -196,3 +199,85 @@ def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(pat
         mismatch["invariant"] == "power_trace.coverage_flags"
         for mismatch in report["mismatches"]
     )
+
+
+def _utc_elapsed_ns(record: dict[str, object]) -> int:
+    provenance = record["power_clock_provenance"]
+    start = datetime.datetime.fromisoformat(provenance["load_interval_start"])
+    end = datetime.datetime.fromisoformat(provenance["load_interval_end"])
+    delta = end - start
+    return (
+        delta.days * 86_400 * 1_000_000_000
+        + delta.seconds * 1_000_000_000
+        + delta.microseconds * 1_000
+    )
+
+
+def _set_program_elapsed(record: dict[str, object], elapsed_ns: int) -> None:
+    interval = record["program_host_interval"]
+    start = interval["start_ns"]
+    end = start + elapsed_ns
+    for name in ("program_host_interval", "host_program_interval"):
+        record[name].update(
+            end_ns=end,
+            completion_ns=end,
+            elapsed_ns=elapsed_ns,
+        )
+    record["program_completion_ns"] = end
+    record["program_completion_monotonic_ns"] = end
+
+
+@pytest.mark.parametrize("condition", ("newton-schulz", "dram"))
+def test_committed_loaded_program_intervals_pass_with_substantial_margin(condition):
+    record_path = TRACE_ROOT / f"2026-10-11-p150a-issue118-{condition}-500000-adr0005.json"
+    trace_path = TRACE_ROOT / f"2026-10-11-p150a-issue118-{condition}-500000-adr0005-power.csv"
+    record = json.loads(record_path.read_text())
+    report = validate_resident_record(record, power_trace_path=trace_path, strict_trace=True)
+    assert report["valid"] is True, report["mismatches"]
+    difference = abs(
+        _utc_elapsed_ns(record) - record["program_host_interval"]["elapsed_ns"]
+    )
+    assert difference * 100 < PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS
+
+
+@pytest.mark.parametrize("condition", ("newton-schulz", "dram"))
+@pytest.mark.parametrize("extra_ns", (0, 1))
+def test_loaded_program_interval_boundary_is_inclusive_and_outside_fails(
+    condition: str, extra_ns: int
+):
+    record_path = TRACE_ROOT / f"2026-10-11-p150a-issue118-{condition}-500000-adr0005.json"
+    trace_path = TRACE_ROOT / f"2026-10-11-p150a-issue118-{condition}-500000-adr0005-power.csv"
+    record = json.loads(record_path.read_text())
+    candidate = copy.deepcopy(record)
+    _set_program_elapsed(
+        candidate,
+        _utc_elapsed_ns(candidate)
+        + PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS
+        + extra_ns,
+    )
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=trace_path,
+        strict_trace=True,
+    )
+    expected_valid = extra_ns == 0
+    assert report["valid"] is expected_valid, report["mismatches"]
+    if not expected_valid:
+        assert any(
+            mismatch["invariant"] == "program_interval.utc_monotonic_binding"
+            for mismatch in report["mismatches"]
+        )
+
+
+def test_unloaded_run_bounds_interval_is_not_compared_to_monotonic_interval():
+    record = json.loads(
+        (TRACE_ROOT / "2026-10-11-p150a-issue118-control-500000-adr0005.json").read_text()
+    )
+    candidate = copy.deepcopy(record)
+    _set_program_elapsed(candidate, candidate["program_host_interval"]["elapsed_ns"] * 2)
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_ROOT / "2026-10-11-p150a-issue118-control-500000-adr0005-power.csv",
+        strict_trace=True,
+    )
+    assert report["valid"] is True, report["mismatches"]
