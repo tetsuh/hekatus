@@ -412,6 +412,20 @@ def test_issue127_serialization_redacts_paths_in_public_failure_text_only():
     assert "/dev/tenstorrent/1" in serialized
 
 
+def test_issue127_serialization_redacts_unknown_nested_public_context_keys():
+    serialized = runner._serialize_record(
+        {
+            "failure": {"details": {"path": "/home/private/failure.log"}},
+            "correctness": {"diagnostics": {"location": "/tmp/private/correctness.json"}},
+            "environment": {"device_node": "/dev/tenstorrent/1"},
+        }
+    )
+    assert serialized.count("<redacted-path>") == 2
+    assert "/home/private/failure.log" not in serialized
+    assert "/tmp/private/correctness.json" not in serialized
+    assert "/dev/tenstorrent/1" in serialized
+
+
 def test_issue127_environment_is_complete_but_does_not_retain_host_identity_or_worktree():
     environment = runner.sanitize_environment(_environment())
     runner.validate_harness_environment(environment, run_id="run127-test")

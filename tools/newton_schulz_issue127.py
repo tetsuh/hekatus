@@ -1359,18 +1359,59 @@ _REDACTABLE_RECORD_TEXT_KEYS = frozenset(
         "traceback",
     }
 )
+_PUBLIC_RECORD_CONTEXT_KEYS = frozenset(
+    {
+        "algorithm",
+        "cleanup",
+        "comparison_rows",
+        "comparison_summary",
+        "correctness",
+        "cooldown",
+        "device_close",
+        "environment",
+        "failure",
+        "input_generation",
+        "input_fingerprint",
+        "power_clock_provenance",
+        "power_trace",
+        "power_trace_facts",
+        "power_trace_provenance",
+        "preflight",
+        "provenance",
+        "raw_artifact",
+        "reference_fingerprint",
+        "run",
+        "run_timing",
+        "status_components",
+        "warmup",
+        "warmup_hold_gate",
+    }
+)
 
 
-def _redact_record_metadata(value: Any, *, key: str | None = None) -> Any:
-    """Redact paths in public diagnostics while preserving safe record fields."""
+def _redact_record_metadata(
+    value: Any, *, key: str | None = None, public_context: bool = False
+) -> Any:
+    """Redact paths in known public record contexts, including unknown children."""
     if isinstance(value, Mapping):
         return {
-            child_key: _redact_record_metadata(child_value, key=child_key)
+            child_key: _redact_record_metadata(
+                child_value,
+                key=child_key,
+                public_context=public_context or child_key in _PUBLIC_RECORD_CONTEXT_KEYS,
+            )
             for child_key, child_value in value.items()
         }
     if isinstance(value, (list, tuple)):
-        return [_redact_record_metadata(item, key=key) for item in value]
-    if isinstance(value, str) and key in _REDACTABLE_RECORD_TEXT_KEYS:
+        return [
+            _redact_record_metadata(item, key=key, public_context=public_context)
+            for item in value
+        ]
+    if isinstance(value, str) and (
+        public_context or key in _REDACTABLE_RECORD_TEXT_KEYS
+    ):
+        if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
+            return value
         return _ABSOLUTE_PATH_RE.sub("<redacted-path>", value)
     return value
 
