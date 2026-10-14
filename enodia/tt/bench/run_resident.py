@@ -1541,8 +1541,8 @@ def _calibration_load_mappings(
 
 def _calibration_card_ticks(
     metadata: Mapping[str, Any],
-) -> int | None:
-    """Prefer slowest-worker ticks and fall back to aggregate endpoints."""
+) -> Any:
+    """Prefer worker ticks, fall back to aggregate endpoints, and retain invalid input."""
     throughput = metadata["throughput"]
     card_ticks = throughput.get("elapsed_ticks")
     if isinstance(card_ticks, int) and card_ticks > 0:
@@ -1552,7 +1552,7 @@ def _calibration_card_ticks(
     end = interval.get("end_ticks")
     if isinstance(start, int) and isinstance(end, int) and end > start:
         return end - start
-    return None
+    return card_ticks
 
 
 def _calibration_measurement_repeat_count(

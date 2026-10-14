@@ -10,6 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from enodia.tt.bench.load_harness import (
+    CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    CalibrationMetadata,
+    LoadConfigurationError,
+)
 from enodia.tt.bench.resident_harness import (
     ResidentConfig,
     build_measurement_record,
@@ -19,6 +24,7 @@ from enodia.tt.bench.resident_record import (
     PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS,
     validate_resident_record,
 )
+from enodia.tt.bench.run_resident import _read_load_calibration
 from enodia.tt.bench.sampler_contract import SAMPLER_MODES
 
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
@@ -288,6 +294,73 @@ def _set_program_elapsed(record: dict[str, object], elapsed_ns: int) -> None:
         )
     record["program_completion_ns"] = end
     record["program_completion_monotonic_ns"] = end
+
+
+def _loaded_calibration_payload(condition: str) -> dict[str, object]:
+    calibration = CalibrationMetadata(
+        condition=condition,
+        duration_seconds=5,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=1,
+        target_seconds=500,
+        load_card_ticks=321,
+        load_measurement_repeat_count=1,
+        load_interval_aiclk_mhz=1_350,
+        load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    )
+    return {"calibration": calibration.as_record()}
+
+
+def _read_loaded_calibration(
+    tmp_path: Path, payload: dict[str, object]
+) -> CalibrationMetadata:
+    path = tmp_path / "resident-calibration.json"
+    path.write_text(json.dumps(payload))
+    return _read_load_calibration(path)
+
+
+@pytest.mark.parametrize("condition", ("newton_schulz", "dram"))
+def test_loaded_calibration_preserves_tick_preference_and_fallbacks(
+    tmp_path: Path, condition: str
+):
+    payload = _loaded_calibration_payload(condition)
+    payload["load"] = {
+        "card_load_interval": {"start_ticks": 100, "end_ticks": 225},
+        "throughput_interval": {"elapsed_ticks": 0},
+    }
+    aggregate_fallback = _read_loaded_calibration(tmp_path, payload)
+    assert aggregate_fallback.load_card_ticks == 125
+
+    payload["load"]["throughput_interval"]["elapsed_ticks"] = 333
+    preferred = _read_loaded_calibration(tmp_path, payload)
+    assert preferred.load_card_ticks == 333
+
+    payload["load"]["throughput_interval"] = {}
+    absent_with_fallback = _read_loaded_calibration(tmp_path, payload)
+    assert absent_with_fallback.load_card_ticks == 125
+
+    payload["load"]["card_load_interval"] = {}
+    absent_without_fallback = _read_loaded_calibration(tmp_path, payload)
+    assert absent_without_fallback.load_card_ticks == 321
+
+
+@pytest.mark.parametrize("condition", ("newton_schulz", "dram"))
+@pytest.mark.parametrize(
+    "elapsed_ticks",
+    (-1, 0, False, 1.5, "invalid", [1], {"value": 1}),
+    ids=("negative", "zero", "false", "float", "string", "list", "object"),
+)
+def test_loaded_calibration_rejects_invalid_ticks_without_aggregate_fallback(
+    tmp_path: Path, condition: str, elapsed_ticks: object
+):
+    payload = _loaded_calibration_payload(condition)
+    payload["load"] = {"throughput_interval": {"elapsed_ticks": elapsed_ticks}}
+
+    with pytest.raises(
+        LoadConfigurationError, match="calibration load-time metadata is invalid"
+    ):
+        _read_loaded_calibration(tmp_path, payload)
 
 
 @pytest.mark.parametrize("condition", ("newton-schulz", "dram"))
