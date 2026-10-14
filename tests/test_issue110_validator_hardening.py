@@ -15,6 +15,11 @@ from enodia.tt.bench.load_harness import (
     CalibrationMetadata,
     LoadConfigurationError,
 )
+from enodia.tt.bench.power_trace_snapshot import (
+    PowerTraceSnapshotOptions,
+    atomic_power_trace_snapshot,
+    read_power_trace_snapshot,
+)
 from enodia.tt.bench.resident_harness import (
     ResidentConfig,
     build_measurement_record,
@@ -81,6 +86,7 @@ def _success_record(
     mode: str,
     outcome: str,
     trace_path: Path | None,
+    trace_metadata: dict[str, object] | None = None,
     interval_extrema_policy: str | None = None,
 ) -> dict[str, object]:
     frame_count = 4 if outcome == "ok_with_drops" else 3
@@ -97,6 +103,7 @@ def _success_record(
         environment=_environment(mode),
         power_trace=trace_path.name if trace_path is not None else None,
         power_trace_path=trace_path,
+        power_trace_metadata=trace_metadata,
         interval_extrema_policy=interval_extrema_policy,
         run_start="2026-01-01T00:00:00+00:00" if trace_path is not None else None,
         run_end="2026-01-01T00:00:02+00:00" if trace_path is not None else None,
@@ -188,14 +195,67 @@ def trace_record_with_nested_coverage_aliases() -> dict[str, object]:
 
 @pytest.fixture
 def policy_trace_record(tmp_path: Path) -> dict[str, object]:
-    """Build a board-free trace with the explicit interval-extrema policy."""
-    trace_path = tmp_path / "power-policy.csv"
-    _trace(trace_path)
+    """Build a board-free resident snapshot with interval-extrema provenance."""
+    run_id = "issue110-snapshot"
+    source_path = tmp_path / f"power-{run_id}.csv"
+    _trace(source_path)
+    trace_path = atomic_power_trace_snapshot(
+        source_path,
+        tmp_path,
+        run_id=run_id,
+        snapshot_number=1,
+        snapshot_prefix="resident-power-snapshot",
+    )
+    trace_metadata = read_power_trace_snapshot(
+        trace_path,
+        options=PowerTraceSnapshotOptions(
+            run_id=run_id,
+            run_start="2026-01-01T00:00:00+00:00",
+            run_end="2026-01-01T00:00:02+00:00",
+            snapshot_prefix="resident-power-snapshot",
+            source_path=source_path,
+            require_all_rows_valid=True,
+        ),
+    )
     return _success_record(
         mode="default",
         outcome="ok",
         trace_path=trace_path,
+        trace_metadata=trace_metadata,
         interval_extrema_policy=INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+    )
+
+
+def test_interval_policy_on_ordinary_csv_is_not_snapshot_evidence(tmp_path: Path):
+    """A policy alone cannot promote an ordinary CSV to an immutable snapshot."""
+    trace_path = tmp_path / "power-policy.csv"
+    _trace(trace_path)
+    record = _success_record(
+        mode="default",
+        outcome="ok",
+        trace_path=trace_path,
+    )
+    record["power_trace_interval_extrema_policy"] = (
+        INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+    )
+    provenance = record["power_clock_provenance"]
+    provenance["interval_extrema_policy"] = (
+        INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+    )
+    provenance["source_file"] = trace_path.name
+    provenance["immutable_snapshot"] = True
+
+    report = validate_resident_record(
+        record,
+        power_trace_path=trace_path,
+        strict_trace=True,
+    )
+
+    assert report["power_trace"]["immutable_snapshot"] is False
+    assert report["valid"] is False
+    assert any(
+        mismatch["invariant"] == "power_trace.facts"
+        for mismatch in report["mismatches"]
     )
 
 

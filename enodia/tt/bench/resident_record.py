@@ -101,6 +101,7 @@ from enodia.tt.bench.power_trace_snapshot import (
     is_coverage_definition,
     public_power_trace_metadata,
     read_power_trace_csv,
+    validate_power_trace_snapshot_path,
 )
 from enodia.tt.bench.resident_clock import (
     AICLK_SOURCE_CONFIGURED,
@@ -110,6 +111,7 @@ from enodia.tt.bench.resident_clock import (
     select_elapsed_aiclk,
     ticks_to_seconds,
 )
+from enodia.tt.bench.run_binding import RunBindingError, validate_run_id
 from enodia.tt.bench.sampler_contract import (
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
@@ -3965,6 +3967,34 @@ def _trace_coverage_inputs(
     return coverage_definition, interval, None
 
 
+_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
+
+
+def _is_run_bound_resident_snapshot(
+    path: Path, source_file: Any
+) -> bool:
+    """Return whether a trace path and source name prove resident snapshot binding."""
+    if (
+        not isinstance(source_file, str)
+        or Path(source_file).name != source_file
+        or not source_file.startswith("power-")
+        or not source_file.endswith(".csv")
+    ):
+        return False
+    run_id = source_file[len("power-") : -len(".csv")]
+    try:
+        validate_run_id(run_id)
+        validate_power_trace_snapshot_path(
+            path,
+            run_id=run_id,
+            snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+            output_dir=path.parent,
+        )
+    except (RunBindingError, ValueError):
+        return False
+    return True
+
+
 def _trace_report_from_path(
     ctx: ValidationContext,
     *,
@@ -3978,6 +4008,7 @@ def _trace_report_from_path(
     coverage_definition: str,
     sampler_interval: Any,
     interval_extrema_policy: Any,
+    source_file: Any,
 ) -> dict[str, Any]:
     try:
         report = read_power_trace_csv(
@@ -4001,6 +4032,9 @@ def _trace_report_from_path(
                 immutable_snapshot=(
                     interval_extrema_policy
                     == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+                    and _is_run_bound_resident_snapshot(
+                        ctx.power_trace_path, source_file
+                    )
                 ),
                 reject_incomplete_rows=False,
             ),
@@ -4030,6 +4064,7 @@ def _trace_report_from_context(
     load_interval_source: Any,
     require_explicit_load_interval: bool,
     interval_extrema_policy: Any,
+    source_file: Any,
 ) -> dict[str, Any]:
     if ctx.power_trace_path is not None:
         return _trace_report_from_path(
@@ -4044,6 +4079,7 @@ def _trace_report_from_context(
             coverage_definition=coverage_definition,
             sampler_interval=sampler_interval,
             interval_extrema_policy=interval_extrema_policy,
+            source_file=source_file,
         )
     if ctx.power_trace_metadata is not None:
         report = dict(ctx.power_trace_metadata)
@@ -4096,6 +4132,7 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
         load_interval_source=declared.get("load_interval_source", _MISSING),
         require_explicit_load_interval=require_explicit_load_interval,
         interval_extrema_policy=declared.get("interval_extrema_policy", _MISSING),
+        source_file=declared["nested"].get("source_file", _MISSING),
     )
 
 
@@ -4299,6 +4336,27 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         supplied_hash = hashlib.sha256(ctx.power_trace_bytes).hexdigest()
         if declared_hash is _MISSING or declared_hash != supplied_hash:
             mismatches.append(_mismatch(invariant, ("power_trace_sha256",), "power trace SHA-256 does not match supplied bytes"))
+    provenance = _mapping(record, "power_clock_provenance")
+    declared_byte_count = (
+        provenance.get("byte_count", _MISSING)
+        if provenance is not None
+        else _MISSING
+    )
+    actual_byte_count = report.get("byte_count")
+    if (
+        report.get("actual_bytes_available") is True
+        and actual_byte_count is not None
+        and declared_byte_count is not _MISSING
+        and declared_byte_count is not None
+        and declared_byte_count != actual_byte_count
+    ):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("power_clock_provenance.byte_count",),
+                "power trace byte count does not match actual bytes",
+            )
+        )
     # Compatibility branch: a basename-only builder call has no bytes to
     # inspect, so unavailable physical facts are omitted from this check.  It
     # remains diagnostic-only; _timing_block_reason independently rejects any
