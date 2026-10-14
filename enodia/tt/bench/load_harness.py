@@ -1987,6 +1987,19 @@ def _validate_load_coverage(record: Mapping[str, Any], canonical: str) -> None:
         raise LoadEvidenceError("load coverage clock does not match the condition")
 
 
+def _validate_newton_schulz_profile(
+    profile: Any, expected_effective: int
+) -> None:
+    if not isinstance(profile, Mapping):
+        raise LoadEvidenceError("Newton-Schulz profile records must be objects")
+    if profile.get("risc") not in {"TRISC0", "TRISC1", "TRISC2"}:
+        return
+    if profile.get("warmup_event_count") != expected_effective:
+        raise LoadEvidenceError(
+            "Newton-Schulz profile warmup_event_count must match effective_outer_repetitions"
+        )
+
+
 def _validate_newton_schulz_profile_records(
     record: Mapping[str, Any], expected_effective: int
 ) -> None:
@@ -2002,14 +2015,7 @@ def _validate_newton_schulz_profile_records(
         if not isinstance(profile_records, list):
             raise LoadEvidenceError("Newton-Schulz profile_records must be a list")
         for profile in profile_records:
-            if not isinstance(profile, Mapping):
-                raise LoadEvidenceError("Newton-Schulz profile records must be objects")
-            if profile.get("risc") in {"TRISC0", "TRISC1", "TRISC2"} and profile.get(
-                "warmup_event_count"
-            ) != expected_effective:
-                raise LoadEvidenceError(
-                    "Newton-Schulz profile warmup_event_count must match effective_outer_repetitions"
-                )
+            _validate_newton_schulz_profile(profile, expected_effective)
 
 
 def _validate_newton_schulz_work(

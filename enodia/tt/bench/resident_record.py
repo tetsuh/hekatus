@@ -165,6 +165,10 @@ _OUTLIER_ELAPSED_AICLK_SOURCE_PATH = (
 _RESIDENT_TICK_INTERVAL_START_PATH = "resident_tick_interval.start_ticks"
 _RESIDENT_TICK_INTERVAL_END_PATH = "resident_tick_interval.end_ticks"
 _LOAD_RESIDENT_FRAME_INTERVAL_PATH = "load.resident_frame_interval"
+_ENVIRONMENT_HARNESS_COMMIT_PATH = "environment.harness_commit"
+_POWER_CLOCK_LOAD_INTERVAL_START_PATH = "power_clock_provenance.load_interval_start"
+_POWER_CLOCK_LOAD_INTERVAL_END_PATH = "power_clock_provenance.load_interval_end"
+_PROGRAM_HOST_INTERVAL_ELAPSED_PATH = "program_host_interval.elapsed_ns"
 
 _MISSING = object()
 _POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
@@ -632,7 +636,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
                 "clock_source_evidence.image",
                 "cycle_budget.run_budget_ticks",
                 "harness_commit",
-                "environment.harness_commit",
+                _ENVIRONMENT_HARNESS_COMMIT_PATH,
             }
         )
     if kind != RECORD_KIND_SAMPLED_TIMING:
@@ -702,7 +706,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
     elif path in {"raw_timestamps.sha256", "power_trace_sha256", "power_clock_provenance.sha256"}:
         type_rule, range_rule, expected = string, _sha256, "64 lowercase hexadecimal characters"
         invalid_range = "0" * 63 + "G"
-    elif path in {"harness_commit", "environment.harness_commit"}:
+    elif path in {"harness_commit", _ENVIRONMENT_HARNESS_COMMIT_PATH}:
         type_rule, range_rule, expected = string, string, "a non-empty harness commit string"
         invalid_range = ""
     elif path in {"environment.image", "clock_source_evidence.image"}:
@@ -1130,8 +1134,8 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.aiclk_mhz_load_interval_weighted",
     "power_clock_provenance.aiclk_mhz_load_interval_weighted_source",
     "power_clock_provenance.aiclk_mhz_load_interval_weighted_seconds",
-    "power_clock_provenance.load_interval_start",
-    "power_clock_provenance.load_interval_end",
+    _POWER_CLOCK_LOAD_INTERVAL_START_PATH,
+    _POWER_CLOCK_LOAD_INTERVAL_END_PATH,
     "power_clock_provenance.load_interval_source",
     "power_clock_provenance.in_run_samples",
     "power_clock_provenance.in_run_samples[].*",
@@ -1146,7 +1150,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "environment.firmware",
     "environment.firmware.fw_bundle_version",
     "environment.kmd_version",
-    "environment.harness_commit",
+    _ENVIRONMENT_HARNESS_COMMIT_PATH,
     "environment.tt_env_active_release",
     "environment.aiclk_mhz_observed",
     "aiclk_mhz_in_run_min",
@@ -1495,7 +1499,7 @@ def _check_program_host_interval(
         mismatches.append(
             _mismatch(
                 invariant,
-                ("program_host_interval.elapsed_ns",),
+                (_PROGRAM_HOST_INTERVAL_ELAPSED_PATH,),
                 "program host interval elapsed_ns is inconsistent",
             )
         )
@@ -1570,7 +1574,7 @@ def _check_issue118_program_interval_binding(
         return [
             _mismatch(
                 invariant,
-                ("program_host_interval.elapsed_ns",),
+                (_PROGRAM_HOST_INTERVAL_ELAPSED_PATH,),
                 "Issue #118 host monotonic program elapsed_ns must be a non-negative integer",
             )
         ]
@@ -1582,8 +1586,8 @@ def _check_issue118_program_interval_binding(
             _mismatch(
                 invariant,
                 (
-                    "power_clock_provenance.load_interval_start",
-                    "power_clock_provenance.load_interval_end",
+                    _POWER_CLOCK_LOAD_INTERVAL_START_PATH,
+                    _POWER_CLOCK_LOAD_INTERVAL_END_PATH,
                 ),
                 error or "UTC load interval duration is unavailable",
             )
@@ -1595,9 +1599,9 @@ def _check_issue118_program_interval_binding(
         _mismatch(
             invariant,
             (
-                "power_clock_provenance.load_interval_start",
-                "power_clock_provenance.load_interval_end",
-                "program_host_interval.elapsed_ns",
+                _POWER_CLOCK_LOAD_INTERVAL_START_PATH,
+                _POWER_CLOCK_LOAD_INTERVAL_END_PATH,
+                _PROGRAM_HOST_INTERVAL_ELAPSED_PATH,
             ),
             (
                 "UTC and CLOCK_MONOTONIC program intervals differ by "
@@ -1731,6 +1735,16 @@ def _check_loaded_weighted_aiclk(
     return mismatches
 
 
+def _expected_elapsed_aiclk_value(
+    path: str, expected_mhz: float, expected_source: str
+) -> float | str:
+    if "aiclk_mhz_for_elapsed_seconds" in path:
+        return expected_mhz
+    if "aiclk_selection_for_elapsed_seconds" in path:
+        return aiclk_selection_for_source(expected_source)
+    return expected_source
+
+
 def _check_elapsed_aiclk_values(
     record: Mapping[str, Any],
     condition: str | None,
@@ -1771,12 +1785,9 @@ def _check_elapsed_aiclk_values(
     for path, actual in values:
         if "aiclk_selection_for_elapsed_seconds" in path and actual is None:
             continue
-        if ".aiclk_mhz_for_elapsed_seconds" in path:
-            expected = expected_mhz
-        elif ".aiclk_selection_for_elapsed_seconds" in path:
-            expected = aiclk_selection_for_source(expected_source)
-        else:
-            expected = expected_source
+        expected = _expected_elapsed_aiclk_value(
+            path, expected_mhz, expected_source
+        )
         if actual != expected:
             mismatches.append(
                 _mismatch(
@@ -1920,6 +1931,61 @@ def _check_nested_resident_interval(
     return mismatches, start, end, valid
 
 
+def _check_device_load_coverage_endpoint(
+    coverage: Mapping[str, Any],
+    field: str,
+    expected: Any,
+    *,
+    nested_endpoints_valid: bool,
+    resident_start: Any,
+    resident_end: Any,
+    resident_endpoints_valid: bool,
+    timestamps: list[int] | None,
+) -> list[dict[str, Any]]:
+    """Check one resident-frame endpoint against every persisted alias."""
+    value = coverage.get(field, _MISSING)
+    path = f"load.coverage.{field}"
+    valid = _is_uint64(value)
+    mismatches: list[dict[str, Any]] = []
+    if not valid:
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                (path,),
+                f"{path} must be an unsigned 64-bit integer",
+            )
+        )
+    elif nested_endpoints_valid and value != expected:
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                (path, _LOAD_RESIDENT_FRAME_INTERVAL_PATH),
+                f"{path} must match load resident frame endpoints",
+            )
+        )
+    if resident_endpoints_valid and valid:
+        resident_expected = resident_start if field.startswith("first_") else resident_end
+        if value != resident_expected:
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    (path, "resident_tick_interval"),
+                    f"{path} must match the containing resident tick interval",
+                )
+            )
+    if timestamps and all(_is_uint64(item) for item in timestamps) and valid:
+        supplied_expected = timestamps[0] if field.startswith("first_") else timestamps[-1]
+        if value != supplied_expected:
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    (path, "timestamps"),
+                    f"{path} must match the supplied resident timestamp stream",
+                )
+            )
+    return mismatches
+
+
 def _check_device_load_coverage(
     load: Mapping[str, Any],
     *,
@@ -1932,12 +1998,11 @@ def _check_device_load_coverage(
     timestamps: list[int] | None,
 ) -> list[dict[str, Any]]:
     """Validate device-load coverage aliases against all resident endpoints."""
-    invariant = LOAD_EVIDENCE_INVARIANT
     coverage = load.get("coverage")
     if not isinstance(coverage, Mapping):
         return [
             _mismatch(
-                invariant,
+                LOAD_EVIDENCE_INVARIANT,
                 ("load.coverage",),
                 "device load evidence requires coverage metadata",
             )
@@ -1947,48 +2012,27 @@ def _check_device_load_coverage(
         ("first_resident_frame_ticks", nested_start),
         ("last_resident_frame_ticks", nested_end),
     ):
-        value = coverage.get(field, _MISSING)
-        path = f"load.coverage.{field}"
-        if not _is_uint64(value):
-            mismatches.append(
-                _mismatch(invariant, (path,), f"{path} must be an unsigned 64-bit integer")
+        mismatches.extend(
+            _check_device_load_coverage_endpoint(
+                coverage,
+                field,
+                expected,
+                nested_endpoints_valid=nested_endpoints_valid,
+                resident_start=resident_start,
+                resident_end=resident_end,
+                resident_endpoints_valid=resident_endpoints_valid,
+                timestamps=timestamps,
             )
-        elif nested_endpoints_valid and value != expected:
-            mismatches.append(
-                _mismatch(
-                    invariant,
-                    (path, _LOAD_RESIDENT_FRAME_INTERVAL_PATH),
-                    f"{path} must match load resident frame endpoints",
-                )
-            )
-        if resident_endpoints_valid and _is_uint64(value):
-            resident_expected = resident_start if field.startswith("first_") else resident_end
-            if value != resident_expected:
-                mismatches.append(
-                    _mismatch(
-                        invariant,
-                        (path, "resident_tick_interval"),
-                        f"{path} must match the containing resident tick interval",
-                    )
-                )
-        if timestamps and all(_is_uint64(item) for item in timestamps) and _is_uint64(value):
-            supplied_expected = timestamps[0] if field.startswith("first_") else timestamps[-1]
-            if value != supplied_expected:
-                mismatches.append(
-                    _mismatch(
-                        invariant,
-                        (path, "timestamps"),
-                        f"{path} must match the supplied resident timestamp stream",
-                    )
-                )
+        )
     for field in ("load_start_ticks", "load_end_ticks"):
         value = coverage.get(field, _MISSING)
         if not _is_uint64(value):
+            path = f"load.coverage.{field}"
             mismatches.append(
                 _mismatch(
-                    invariant,
-                    (f"load.coverage.{field}",),
-                    f"load.coverage.{field} must be an unsigned 64-bit integer",
+                    LOAD_EVIDENCE_INVARIANT,
+                    (path,),
+                    f"{path} must be an unsigned 64-bit integer",
                 )
             )
     return mismatches
@@ -4055,7 +4099,14 @@ def _trace_flag_mismatches(
             continue
         declared = container.get(declared_name)
         expected = actual.get(actual_name, _MISSING)
-        if expected is not _MISSING and declared != expected:
+        if (
+            expected is not _MISSING
+            and (
+                type(declared) is not bool
+                or type(expected) is not bool
+                or declared is not expected
+            )
+        ):
             mismatches.append(
                 _mismatch(
                     invariant,
@@ -4636,9 +4687,9 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "program_interval.utc_monotonic_binding",
         (
-            "power_clock_provenance.load_interval_start",
-            "power_clock_provenance.load_interval_end",
-            "program_host_interval.elapsed_ns",
+            _POWER_CLOCK_LOAD_INTERVAL_START_PATH,
+            _POWER_CLOCK_LOAD_INTERVAL_END_PATH,
+            _PROGRAM_HOST_INTERVAL_ELAPSED_PATH,
         ),
         "Issue #118 loaded UTC and host monotonic program intervals share a trust bound",
         _check_issue118_program_interval_binding,

@@ -201,6 +201,38 @@ def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(pat
     )
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        ("power_clock_provenance", "readable"),
+        ("power_clock_provenance", "coverage", "readable"),
+    ),
+    ids=lambda value: ".".join(value),
+)
+@pytest.mark.parametrize("numeric_value", (0, 1))
+def test_numeric_trace_coverage_flags_are_not_accepted_as_booleans(
+    path: tuple[str, ...], numeric_value: int
+):
+    """Numeric JSON flags must not compare equal to recomputed booleans."""
+    record = json.loads(TRACE_RECORD.read_text())
+    candidate = copy.deepcopy(record)
+    current = candidate
+    for component in path[:-1]:
+        current = current[component]
+    current[path[-1]] = numeric_value
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert report["valid"] is False, (path, numeric_value, report["mismatches"])
+    assert any(
+        mismatch["invariant"] == "power_trace.coverage_flags"
+        and mismatch["fields"] == [".".join(path)]
+        for mismatch in report["mismatches"]
+    )
+
+
 def _utc_elapsed_ns(record: dict[str, object]) -> int:
     provenance = record["power_clock_provenance"]
     start = datetime.datetime.fromisoformat(provenance["load_interval_start"])
