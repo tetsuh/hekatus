@@ -1519,12 +1519,10 @@ def _calibration_actual_duration(
     }
 
 
-def _calibration_timing_metadata(
-    payload: Mapping[str, Any], calibration: CalibrationMetadata
-) -> CalibrationMetadata:
-    """Recover calibrated card ticks and trace AICLK from a resident record."""
-    if calibration.condition not in {"newton_schulz", "dram"}:
-        return calibration
+def _calibration_load_mappings(
+    payload: Mapping[str, Any],
+) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """Return the nested load and its preferred interval metadata."""
     nested_load = payload.get("load")
     load = nested_load if isinstance(nested_load, Mapping) else {}
     interval = load.get("card_load_interval")
@@ -1533,27 +1531,53 @@ def _calibration_timing_metadata(
     throughput_interval = load.get("throughput_interval")
     if not isinstance(throughput_interval, Mapping):
         throughput_interval = payload.get("throughput_interval")
-    card_ticks = (
-        throughput_interval.get("elapsed_ticks")
-        if isinstance(throughput_interval, Mapping)
-        else None
-    )
-    if not isinstance(card_ticks, int) or card_ticks <= 0:
-        start = interval.get("start_ticks") if isinstance(interval, Mapping) else None
-        end = interval.get("end_ticks") if isinstance(interval, Mapping) else None
-        if isinstance(start, int) and isinstance(end, int) and end > start:
-            card_ticks = end - start
-    measurement_repeat_count = calibration.load_measurement_repeat_count
-    if measurement_repeat_count is None:
-        measurement_repeat_count = payload.get("load_repeat_count")
-        if not isinstance(measurement_repeat_count, int) or measurement_repeat_count <= 0:
-            measurement_repeat_count = load.get("repeat_count")
-        if not isinstance(measurement_repeat_count, int) or measurement_repeat_count <= 0:
-            raw_calibration = payload.get("calibration")
-            if isinstance(raw_calibration, Mapping):
-                measurement_repeat_count = raw_calibration.get(
-                    "measurement_repeat_count"
-                )
+    return load, {
+        "interval": interval if isinstance(interval, Mapping) else {},
+        "throughput": (
+            throughput_interval if isinstance(throughput_interval, Mapping) else {}
+        ),
+    }
+
+
+def _calibration_card_ticks(
+    metadata: Mapping[str, Any],
+) -> int | None:
+    """Prefer slowest-worker ticks and fall back to aggregate endpoints."""
+    throughput = metadata["throughput"]
+    card_ticks = throughput.get("elapsed_ticks")
+    if isinstance(card_ticks, int) and card_ticks > 0:
+        return card_ticks
+    interval = metadata["interval"]
+    start = interval.get("start_ticks")
+    end = interval.get("end_ticks")
+    if isinstance(start, int) and isinstance(end, int) and end > start:
+        return end - start
+    return None
+
+
+def _calibration_measurement_repeat_count(
+    payload: Mapping[str, Any],
+    load: Mapping[str, Any],
+    calibration: CalibrationMetadata,
+) -> Any:
+    """Recover the repeat count used by the calibration measurement."""
+    repeat_count = calibration.load_measurement_repeat_count
+    if repeat_count is not None:
+        return repeat_count
+    repeat_count = payload.get("load_repeat_count")
+    if not isinstance(repeat_count, int) or repeat_count <= 0:
+        repeat_count = load.get("repeat_count")
+    if not isinstance(repeat_count, int) or repeat_count <= 0:
+        raw_calibration = payload.get("calibration")
+        if isinstance(raw_calibration, Mapping):
+            repeat_count = raw_calibration.get("measurement_repeat_count")
+    return repeat_count
+
+
+def _calibration_interval_aiclk(
+    payload: Mapping[str, Any], calibration: CalibrationMetadata
+) -> tuple[Any, Any]:
+    """Recover weighted load-interval AICLK and its provenance."""
     aiclk = calibration.load_interval_aiclk_mhz
     source = calibration.load_interval_aiclk_source
     if aiclk is None:
@@ -1566,6 +1590,21 @@ def _calibration_timing_metadata(
             aiclk = provenance.get("aiclk_mhz_load_interval_weighted")
         if source is None:
             source = provenance.get("aiclk_mhz_load_interval_weighted_source")
+    return aiclk, source
+
+
+def _calibration_timing_metadata(
+    payload: Mapping[str, Any], calibration: CalibrationMetadata
+) -> CalibrationMetadata:
+    """Recover calibrated card ticks and trace AICLK from a resident record."""
+    if calibration.condition not in {"newton_schulz", "dram"}:
+        return calibration
+    load, metadata = _calibration_load_mappings(payload)
+    card_ticks = _calibration_card_ticks(metadata)
+    measurement_repeat_count = _calibration_measurement_repeat_count(
+        payload, load, calibration
+    )
+    aiclk, source = _calibration_interval_aiclk(payload, calibration)
     if card_ticks is None or measurement_repeat_count is None or aiclk is None or source is None:
         return calibration
     try:

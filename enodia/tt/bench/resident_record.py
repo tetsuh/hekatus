@@ -168,6 +168,9 @@ _LOAD_RESIDENT_FRAME_INTERVAL_PATH = "load.resident_frame_interval"
 _MISSING = object()
 _POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
 _POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definition"
+_POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH = (
+    "power_clock_provenance.interval_extrema_policy"
+)
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
 RESIDENT_RECORD_SCHEMA_MARKER = 1
@@ -564,7 +567,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         "power_clock_provenance.run_end",
         "power_clock_provenance.coverage",
         _POWER_CLOCK_COVERAGE_DEFINITION_PATH,
-        "power_clock_provenance.interval_extrema_policy",
+        _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
         "power_trace_interval_extrema_policy",
         "power_clock_provenance.readable",
         "power_clock_provenance.nonempty",
@@ -698,7 +701,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         invalid_range = "unknown-timing-policy"
     elif path in {
         "power_trace_interval_extrema_policy",
-        "power_clock_provenance.interval_extrema_policy",
+        _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
     }:
         type_rule, range_rule, expected = string, _enum(
             INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
@@ -876,7 +879,7 @@ _OPTIONAL_INTERVAL_EXTREMA_POLICY_FIELDS = tuple(
     _field(path, RECORD_KIND_SAMPLED_TIMING)
     for path in (
         "power_trace_interval_extrema_policy",
-        "power_clock_provenance.interval_extrema_policy",
+        _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
     )
 )
 REQUIRED_RECORD_FIELDS = RESIDENT_RECORD_FIELD_MATRIX
@@ -1081,7 +1084,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.errors",
     "power_clock_provenance.source_file",
     "power_clock_provenance.immutable_snapshot",
-    "power_clock_provenance.interval_extrema_policy",
+    _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
     "power_clock_provenance.byte_count",
     "power_clock_provenance.sha256_definition",
     "power_clock_provenance.sampler_interval_seconds",
@@ -1496,104 +1499,120 @@ def _expected_elapsed_aiclk(
     return None, source if isinstance(source, str) else None
 
 
-def _check_elapsed_aiclk_binding(
+def _check_loaded_interval_provenance(
     record: Mapping[str, Any], condition: str | None
 ) -> list[dict[str, Any]]:
-    """Bind elapsed conversion and derived timing to immutable clock provenance."""
+    """Require explicit Issue #118 load endpoints and provenance."""
+    if condition not in {"newton_schulz", "dram"}:
+        return []
+    provenance = _mapping(record, "power_clock_provenance")
+    missing_endpoints = [
+        field
+        for field in ("load_interval_start", "load_interval_end")
+        if provenance is None
+        or not isinstance(provenance.get(field), str)
+        or not provenance.get(field, "").strip()
+    ]
     mismatches: list[dict[str, Any]] = []
-    expected_provenance = _mapping(record, "power_clock_provenance")
-    if condition in {"newton_schulz", "dram"}:
-        missing_endpoints = [
-            field
-            for field in ("load_interval_start", "load_interval_end")
-            if expected_provenance is None
-            or not isinstance(expected_provenance.get(field), str)
-            or not expected_provenance.get(field, "").strip()
-        ]
-        if missing_endpoints:
+    if missing_endpoints:
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                tuple(f"power_clock_provenance.{field}" for field in missing_endpoints),
+                "Issue #118 loaded records require explicit load interval endpoints",
+            )
+        )
+    if provenance is None or provenance.get("load_interval_source") != ISSUE118_LOAD_INTERVAL_SOURCE:
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                ("power_clock_provenance.load_interval_source",),
+                "Issue #118 loaded records require recognized load interval provenance",
+            )
+        )
+    return mismatches
+
+
+def _check_clock_aiclk_selection(record: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Bind the declared clock selection to its AICLK source."""
+    clock = _mapping(record, "clock")
+    if clock is None or "aiclk_selection" not in clock:
+        return []
+    expected = aiclk_selection_for_source(clock.get("aiclk_source"))
+    if clock.get("aiclk_selection") == expected:
+        return []
+    return [
+        _mismatch(
+            _CLOCK_AICLK_SELECTION_PATH,
+            (_CLOCK_AICLK_SELECTION_PATH, "clock.aiclk_source"),
+            "clock AICLK selection does not match its source",
+        )
+    ]
+
+
+def _check_loaded_weighted_aiclk(
+    record: Mapping[str, Any], condition: str | None
+) -> list[dict[str, Any]]:
+    """Bind loaded records to their weighted load-interval AICLK."""
+    if condition not in {"newton_schulz", "dram"}:
+        return []
+    clock = _mapping(record, "clock")
+    weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
+    weighted_source = (
+        clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
+    )
+    mismatches: list[dict[str, Any]] = []
+    if (
+        not _is_number(weighted)
+        or weighted <= 0
+        or weighted_source != AICLK_SOURCE_LOAD_INTERVAL_TRACE
+    ):
+        mismatches.append(
+            _mismatch(
+                LOAD_EVIDENCE_INVARIANT,
+                (_CLOCK_WEIGHTED_AICLK_PATH, "clock.aiclk_mhz_load_interval_weighted_source"),
+                "Issue #118 loaded records require weighted load-interval AICLK provenance",
+            )
+        )
+    provenance = _mapping(record, "power_clock_provenance")
+    for path, value in (
+        ("aiclk_mhz_load_interval_weighted", weighted),
+        ("aiclk_mhz_load_interval_weighted_source", weighted_source),
+    ):
+        if provenance is not None and provenance.get(path) != value:
             mismatches.append(
                 _mismatch(
                     LOAD_EVIDENCE_INVARIANT,
-                    tuple(
-                        f"power_clock_provenance.{field}" for field in missing_endpoints
+                    (f"power_clock_provenance.{path}", f"clock.{path}"),
+                    "loaded elapsed-time provenance disagrees with the immutable trace metadata",
+                )
+            )
+        if record.get(path) != value:
+            mismatches.append(
+                _mismatch(
+                    LOAD_EVIDENCE_INVARIANT,
+                    (path, "clock." + path),
+                    (
+                        "top-level weighted load AICLK disagrees with clock provenance"
+                        if path == "aiclk_mhz_load_interval_weighted"
+                        else "top-level weighted AICLK source disagrees with clock provenance"
                     ),
-                    "Issue #118 loaded records require explicit load interval endpoints",
                 )
             )
-        if (
-            expected_provenance is None
-            or expected_provenance.get("load_interval_source")
-            != ISSUE118_LOAD_INTERVAL_SOURCE
-        ):
-            mismatches.append(
-                _mismatch(
-                    LOAD_EVIDENCE_INVARIANT,
-                    ("power_clock_provenance.load_interval_source",),
-                    "Issue #118 loaded records require recognized load interval provenance",
-                )
-            )
+    return mismatches
+
+
+def _check_elapsed_aiclk_values(
+    record: Mapping[str, Any],
+    condition: str | None,
+) -> list[dict[str, Any]]:
+    """Bind every persisted elapsed-time conversion to the selected clock."""
     expected_mhz, expected_source = _expected_elapsed_aiclk(record, condition)
+    if expected_mhz is None or expected_source is None:
+        return []
     clock = _mapping(record, "clock")
     outlier = _mapping(record, "outlier_analysis")
-    if clock is not None and "aiclk_selection" in clock:
-        declared_clock_source = clock.get("aiclk_source")
-        expected_clock_selection = aiclk_selection_for_source(declared_clock_source)
-        if clock.get("aiclk_selection") != expected_clock_selection:
-            mismatches.append(
-                _mismatch(
-                    _CLOCK_AICLK_SELECTION_PATH,
-                    (_CLOCK_AICLK_SELECTION_PATH, "clock.aiclk_source"),
-                    "clock AICLK selection does not match its source",
-                )
-            )
-    if condition in {"newton_schulz", "dram"}:
-        weighted = clock.get("aiclk_mhz_load_interval_weighted") if clock else None
-        weighted_source = (
-            clock.get("aiclk_mhz_load_interval_weighted_source") if clock else None
-        )
-        if not _is_number(weighted) or weighted <= 0 or weighted_source != AICLK_SOURCE_LOAD_INTERVAL_TRACE:
-            mismatches.append(
-                _mismatch(
-                    LOAD_EVIDENCE_INVARIANT,
-                    (
-                        _CLOCK_WEIGHTED_AICLK_PATH,
-                        "clock.aiclk_mhz_load_interval_weighted_source",
-                    ),
-                    "Issue #118 loaded records require weighted load-interval AICLK provenance",
-                )
-            )
-        expected_provenance = _mapping(record, "power_clock_provenance")
-        for path, value in (
-            ("aiclk_mhz_load_interval_weighted", weighted),
-            ("aiclk_mhz_load_interval_weighted_source", weighted_source),
-        ):
-            if expected_provenance is not None and expected_provenance.get(path) != value:
-                mismatches.append(
-                    _mismatch(
-                        LOAD_EVIDENCE_INVARIANT,
-                        (f"power_clock_provenance.{path}", f"clock.{path}"),
-                        "loaded elapsed-time provenance disagrees with the immutable trace metadata",
-                    )
-                )
-            if path == "aiclk_mhz_load_interval_weighted" and record.get(path) != value:
-                mismatches.append(
-                    _mismatch(
-                        LOAD_EVIDENCE_INVARIANT,
-                        (path, "clock." + path),
-                        "top-level weighted load AICLK disagrees with clock provenance",
-                    )
-                )
-            if path == "aiclk_mhz_load_interval_weighted_source" and record.get(path) != value:
-                mismatches.append(
-                    _mismatch(
-                        LOAD_EVIDENCE_INVARIANT,
-                        (path, "clock." + path),
-                        "top-level weighted AICLK source disagrees with clock provenance",
-                    )
-                )
-    if expected_mhz is None or expected_source is None:
-        return mismatches
-    for path, actual in (
+    values = (
         (
             "clock.aiclk_mhz_for_elapsed_seconds",
             clock.get("aiclk_mhz_for_elapsed_seconds") if clock else None,
@@ -1618,15 +1637,15 @@ def _check_elapsed_aiclk_binding(
             "outlier_analysis.aiclk_selection_for_elapsed_seconds",
             outlier.get("aiclk_selection_for_elapsed_seconds") if outlier else None,
         ),
-    ):
+    )
+    mismatches: list[dict[str, Any]] = []
+    for path, actual in values:
         if "aiclk_selection_for_elapsed_seconds" in path and actual is None:
             continue
         if ".aiclk_mhz_for_elapsed_seconds" in path:
             expected = expected_mhz
         elif ".aiclk_selection_for_elapsed_seconds" in path:
-            expected = aiclk_selection_for_source(
-                expected_source
-            )
+            expected = aiclk_selection_for_source(expected_source)
         else:
             expected = expected_source
         if actual != expected:
@@ -1640,23 +1659,31 @@ def _check_elapsed_aiclk_binding(
     return mismatches
 
 
-def _check_load_resident_bindings(
-    record: Mapping[str, Any], load: Mapping[str, Any], ctx: ValidationContext
+def _check_elapsed_aiclk_binding(
+    record: Mapping[str, Any], condition: str | None
 ) -> list[dict[str, Any]]:
-    """Bind Issue #118 resident endpoints to their containing run span."""
-    invariant = LOAD_EVIDENCE_INVARIANT
-    mismatches: list[dict[str, Any]] = []
-    condition = load.get("condition")
-    if condition not in {"unloaded", "newton_schulz", "dram", "host_cpu_transfer"}:
-        return mismatches
-    nested = load.get("resident_frame_interval")
-    requires_resident_binding = condition in {"newton_schulz", "dram"} or nested is not None
+    """Bind elapsed conversion and derived timing to immutable clock provenance."""
+    mismatches = _check_loaded_interval_provenance(record, condition)
+    mismatches.extend(_check_clock_aiclk_selection(record))
+    mismatches.extend(_check_loaded_weighted_aiclk(record, condition))
+    mismatches.extend(_check_elapsed_aiclk_values(record, condition))
+    return mismatches
 
-    resident_interval = record.get("resident_tick_interval")
-    resident_start = resident_interval.get("start_ticks") if isinstance(resident_interval, Mapping) else _MISSING
-    resident_end = resident_interval.get("end_ticks") if isinstance(resident_interval, Mapping) else _MISSING
-    resident_endpoints_valid = _is_uint64(resident_start) and _is_uint64(resident_end)
-    if not isinstance(resident_interval, Mapping) and requires_resident_binding:
+
+def _check_resident_interval_binding(
+    record: Mapping[str, Any],
+    outlier: Any,
+    *,
+    requires_resident_binding: bool,
+) -> tuple[list[dict[str, Any]], Any, Any, bool]:
+    """Validate the containing resident card interval and its elapsed span."""
+    invariant = LOAD_EVIDENCE_INVARIANT
+    interval = record.get("resident_tick_interval")
+    start = interval.get("start_ticks") if isinstance(interval, Mapping) else _MISSING
+    end = interval.get("end_ticks") if isinstance(interval, Mapping) else _MISSING
+    valid = _is_uint64(start) and _is_uint64(end)
+    mismatches: list[dict[str, Any]] = []
+    if not isinstance(interval, Mapping) and requires_resident_binding:
         mismatches.append(
             _mismatch(
                 invariant,
@@ -1664,7 +1691,7 @@ def _check_load_resident_bindings(
                 "Issue #118 load evidence requires a containing resident tick interval",
             )
         )
-    elif resident_endpoints_valid is False and requires_resident_binding:
+    elif not valid and requires_resident_binding:
         mismatches.append(
             _mismatch(
                 invariant,
@@ -1672,7 +1699,7 @@ def _check_load_resident_bindings(
                 "resident tick endpoints must be unsigned 64-bit integers before load binding",
             )
         )
-    elif resident_endpoints_valid and resident_end < resident_start:
+    elif valid and end < start:
         mismatches.append(
             _mismatch(
                 invariant,
@@ -1680,11 +1707,9 @@ def _check_load_resident_bindings(
                 "resident tick interval end must not precede start",
             )
         )
-
-    outlier = record.get("outlier_analysis")
-    if resident_endpoints_valid and isinstance(outlier, Mapping):
+    if valid and isinstance(outlier, Mapping):
         run_elapsed = outlier.get("run_elapsed_ticks")
-        if not _is_uint64(run_elapsed) or run_elapsed != resident_end - resident_start:
+        if not _is_uint64(run_elapsed) or run_elapsed != end - start:
             mismatches.append(
                 _mismatch(
                     invariant,
@@ -1692,22 +1717,35 @@ def _check_load_resident_bindings(
                     "resident tick span elapsed_ticks must equal outlier_analysis.run_elapsed_ticks",
                 )
             )
+    return mismatches, start, end, valid
 
+
+def _check_nested_resident_interval(
+    load: Mapping[str, Any],
+    *,
+    resident_start: Any,
+    resident_end: Any,
+    resident_endpoints_valid: bool,
+    timestamps: list[int] | None,
+) -> tuple[list[dict[str, Any]], Any, Any, bool]:
+    """Validate the load's resident-frame aliases against the parent span."""
+    invariant = LOAD_EVIDENCE_INVARIANT
+    nested = load.get("resident_frame_interval")
     if nested is None:
-        return mismatches
+        return [], None, None, False
     if not isinstance(nested, Mapping):
-        mismatches.append(
+        return [
             _mismatch(
                 invariant,
                 (_LOAD_RESIDENT_FRAME_INTERVAL_PATH,),
                 "load resident frame interval must be an object",
             )
-        )
-        return mismatches
-    nested_start = nested.get("first_ticks")
-    nested_end = nested.get("last_ticks")
-    nested_endpoints_valid = _is_uint64(nested_start) and _is_uint64(nested_end)
-    if not _is_uint64(nested_start) or not _is_uint64(nested_end):
+        ], None, None, False
+    start = nested.get("first_ticks")
+    end = nested.get("last_ticks")
+    valid = _is_uint64(start) and _is_uint64(end)
+    mismatches: list[dict[str, Any]] = []
+    if not valid:
         mismatches.append(
             _mismatch(
                 invariant,
@@ -1715,7 +1753,7 @@ def _check_load_resident_bindings(
                 "load resident frame endpoints must be unsigned 64-bit integers",
             )
         )
-    elif nested_end < nested_start:
+    elif end < start:
         mismatches.append(
             _mismatch(
                 invariant,
@@ -1731,41 +1769,51 @@ def _check_load_resident_bindings(
                 "load resident frame interval must use the card clock",
             )
         )
-
-    if resident_endpoints_valid and nested_endpoints_valid:
-        if (nested_start, nested_end) != (resident_start, resident_end):
-            mismatches.append(
-                _mismatch(
-                    invariant,
-                    (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "resident_tick_interval"),
-                    "load resident frame endpoints must match the containing resident tick interval",
-                )
+    if resident_endpoints_valid and valid and (start, end) != (resident_start, resident_end):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "resident_tick_interval"),
+                "load resident frame endpoints must match the containing resident tick interval",
             )
-        supplied = ctx.timestamps
-        if supplied and all(_is_uint64(value) for value in supplied) and (
-            nested_start,
-            nested_end,
-        ) != (supplied[0], supplied[-1]):
-            mismatches.append(
-                _mismatch(
-                    invariant,
-                    (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "timestamps"),
-                    "load resident frame endpoints must match the supplied resident timestamp stream",
-                )
+        )
+    if timestamps and valid and all(_is_uint64(value) for value in timestamps) and (
+        start,
+        end,
+    ) != (timestamps[0], timestamps[-1]):
+        mismatches.append(
+            _mismatch(
+                invariant,
+                (_LOAD_RESIDENT_FRAME_INTERVAL_PATH, "timestamps"),
+                "load resident frame endpoints must match the supplied resident timestamp stream",
             )
+        )
+    return mismatches, start, end, valid
 
-    if condition not in {"newton_schulz", "dram"}:
-        return mismatches
+
+def _check_device_load_coverage(
+    load: Mapping[str, Any],
+    *,
+    nested_start: Any,
+    nested_end: Any,
+    nested_endpoints_valid: bool,
+    resident_start: Any,
+    resident_end: Any,
+    resident_endpoints_valid: bool,
+    timestamps: list[int] | None,
+) -> list[dict[str, Any]]:
+    """Validate device-load coverage aliases against all resident endpoints."""
+    invariant = LOAD_EVIDENCE_INVARIANT
     coverage = load.get("coverage")
     if not isinstance(coverage, Mapping):
-        mismatches.append(
+        return [
             _mismatch(
                 invariant,
                 ("load.coverage",),
                 "device load evidence requires coverage metadata",
             )
-        )
-        return mismatches
+        ]
+    mismatches: list[dict[str, Any]] = []
     for field, expected in (
         ("first_resident_frame_ticks", nested_start),
         ("last_resident_frame_ticks", nested_end),
@@ -1774,11 +1822,7 @@ def _check_load_resident_bindings(
         path = f"load.coverage.{field}"
         if not _is_uint64(value):
             mismatches.append(
-                _mismatch(
-                    invariant,
-                    (path,),
-                    f"{path} must be an unsigned 64-bit integer",
-                )
+                _mismatch(invariant, (path,), f"{path} must be an unsigned 64-bit integer")
             )
         elif nested_endpoints_valid and value != expected:
             mismatches.append(
@@ -1798,9 +1842,8 @@ def _check_load_resident_bindings(
                         f"{path} must match the containing resident tick interval",
                     )
                 )
-        supplied = ctx.timestamps
-        if supplied and all(_is_uint64(item) for item in supplied) and _is_uint64(value):
-            supplied_expected = supplied[0] if field.startswith("first_") else supplied[-1]
+        if timestamps and all(_is_uint64(item) for item in timestamps) and _is_uint64(value):
+            supplied_expected = timestamps[0] if field.startswith("first_") else timestamps[-1]
             if value != supplied_expected:
                 mismatches.append(
                     _mismatch(
@@ -1822,36 +1865,58 @@ def _check_load_resident_bindings(
     return mismatches
 
 
-def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
-    """Validate Issue #118 load metadata when a resident record carries it."""
-    if "load" not in record or record.get("load") is None:
+def _check_load_resident_bindings(
+    record: Mapping[str, Any], load: Mapping[str, Any], ctx: ValidationContext
+) -> list[dict[str, Any]]:
+    """Bind Issue #118 resident endpoints to their containing run span."""
+    condition = load.get("condition")
+    if condition not in {"unloaded", "newton_schulz", "dram", "host_cpu_transfer"}:
         return []
-    load = record.get("load")
-    if not isinstance(load, Mapping):
-        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), "load metadata must be an object")]
-    if record.get("num_command_queues") != 2:
-        return [
-            _mismatch(
-                "load.command_queues",
-                ("num_command_queues",),
-                "Issue #118 load records require num_command_queues=2",
+    nested = load.get("resident_frame_interval")
+    requires_binding = condition in {"newton_schulz", "dram"} or nested is not None
+    mismatches, resident_start, resident_end, resident_valid = _check_resident_interval_binding(
+        record,
+        record.get("outlier_analysis"),
+        requires_resident_binding=requires_binding,
+    )
+    nested_mismatches, nested_start, nested_end, nested_valid = _check_nested_resident_interval(
+        load,
+        resident_start=resident_start,
+        resident_end=resident_end,
+        resident_endpoints_valid=resident_valid,
+        timestamps=ctx.timestamps,
+    )
+    mismatches.extend(nested_mismatches)
+    if nested is None or not isinstance(nested, Mapping):
+        return mismatches
+    if condition in {"newton_schulz", "dram"}:
+        mismatches.extend(
+            _check_device_load_coverage(
+                load,
+                nested_start=nested_start,
+                nested_end=nested_end,
+                nested_endpoints_valid=nested_valid,
+                resident_start=resident_start,
+                resident_end=resident_end,
+                resident_endpoints_valid=resident_valid,
+                timestamps=ctx.timestamps,
             )
-        ]
-    try:
-        from enodia.tt.bench.load_harness import validate_load_record
+        )
+    return mismatches
 
-        validate_load_record(load)
-    except (TypeError, ValueError, KeyError) as exc:
-        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), str(exc))]
+
+def _check_mirrored_load_fields(
+    record: Mapping[str, Any], load: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Compare resident-level copies of persisted Issue #118 load fields."""
     mismatches: list[dict[str, Any]] = []
-    mirrored_fields = (
+    for resident_field, load_field in (
         ("card_load_interval", "card_load_interval"),
         ("card_load_worker_intervals", "card_load_worker_intervals"),
         ("host_load_interval", "host_load_interval"),
         ("load_coverage", "coverage"),
         ("calibration", "calibration"),
-    )
-    for resident_field, load_field in mirrored_fields:
+    ):
         if resident_field in record and record.get(resident_field) != load.get(load_field):
             mismatches.append(
                 _mismatch(
@@ -1860,12 +1925,20 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
                     "resident load metadata disagrees with its persisted load record",
                 )
             )
+    return mismatches
+
+
+def _check_load_repeat_bindings(
+    record: Mapping[str, Any], load: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Compare resident-level repeat counters with their load record."""
     load_metadata = load.get("load")
     expected_repeat = (
         load_metadata.get("repeat_count")
         if isinstance(load_metadata, Mapping)
         else None
     )
+    mismatches: list[dict[str, Any]] = []
     if "load_repeat_count" in record and record.get("load_repeat_count") != expected_repeat:
         mismatches.append(
             _mismatch(
@@ -1890,13 +1963,36 @@ def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> l
         mismatches.append(
             _mismatch(
                 LOAD_EVIDENCE_INVARIANT,
-                (
-                    "calibration_measurement_repeat_count",
-                    "load.repeat_count",
-                ),
+                ("calibration_measurement_repeat_count", "load.repeat_count"),
                 "resident calibration measurement repeat metadata disagrees with its persisted load record",
             )
         )
+    return mismatches
+
+
+def _check_load_evidence(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
+    """Validate Issue #118 load metadata when a resident record carries it."""
+    if "load" not in record or record.get("load") is None:
+        return []
+    load = record.get("load")
+    if not isinstance(load, Mapping):
+        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), "load metadata must be an object")]
+    if record.get("num_command_queues") != 2:
+        return [
+            _mismatch(
+                "load.command_queues",
+                ("num_command_queues",),
+                "Issue #118 load records require num_command_queues=2",
+            )
+        ]
+    try:
+        from enodia.tt.bench.load_harness import validate_load_record
+
+        validate_load_record(load)
+    except (TypeError, ValueError, KeyError) as exc:
+        return [_mismatch(LOAD_EVIDENCE_INVARIANT, ("load",), str(exc))]
+    mismatches = _check_mirrored_load_fields(record, load)
+    mismatches.extend(_check_load_repeat_bindings(record, load))
     condition = load.get("condition")
     mismatches.extend(_check_load_resident_bindings(record, load, ctx))
     mismatches.extend(_check_elapsed_aiclk_binding(record, condition))
@@ -3930,7 +4026,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
             mismatches.append(
                 _mismatch(
                     invariant,
-                    ("power_clock_provenance.interval_extrema_policy",),
+                    (_POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,),
                     "power trace interval-extrema policy is not supported",
                 )
             )
@@ -3938,7 +4034,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
             mismatches.append(
                 _mismatch(
                     invariant,
-                    ("power_clock_provenance.interval_extrema_policy",),
+                    (_POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,),
                     "positive-duration interval-extrema policy was not applied to the trace",
                 )
             )
