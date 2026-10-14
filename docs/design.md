@@ -2060,6 +2060,77 @@ corrected-drain
 `docs/measurements/2026-10-07-p150a-issue12-stage1-board-id-alias-500000-adr0005.json`
 record, which also reports zero paired outliers.
 
+### Issue #121 Q1 facts — #118 tick↔host cross-check
+
+The accepted Issue #118 records provide the following factual cross-check. The
+card interval is the resident interval for control and the aggregate load
+interval for the loaded runs; the host interval is the recorded
+`CLOCK_MONOTONIC` program interval.
+
+| Run | Card interval (ticks) | AICLK selection (MHz) | Tick seconds | Host program interval (s) | Host − card (s; %) |
+|---|---:|---:|---:|---:|---:|
+| Control (resident) | 674,998,649,982 | 1350.000 | 499.998999987 | 500.320116957 | +0.321116970 (+0.0642%) |
+| DRAM (aggregate load) | 742,787,678,116 | 1349.8417277524086 | 550.277608733 | 550.332740139 | +0.055131406 (+0.0100%) |
+| Newton-Schulz (synthetic load) | 742,492,282,048 | 1050.9138856647014 | 706.520574308 | 707.446161353 | +0.925587045 (+0.1310%) |
+
+The control selection is 1350.000 MHz because its weighted-load field is
+unavailable. DRAM calibration uses the slowest worker interval, while this
+cross-check uses the aggregate card load interval. The UTC `run_start`→
+`run_end` spans are outer spans, not the same program window: 503.753305 s
+(control), 553.924164 s (DRAM), and 711.978642 s (Newton-Schulz). Power CSV
+samples are about 2.24 s apart, and the Issue #122 audit uses left-held
+samples, so this evidence does not provide an instantaneous mapping.
+
+The Newton-Schulz synthetic-load AICLK trace ranged from 1018 to 1350 MHz and
+spent most loaded time on a sustained plateau near 1025 MHz; its weighted
+interval value was 1050.9138856647014 MHz. These are synthetic
+Newton-Schulz-load facts, not enodia full-load measurements.
+
+### Issue #121 Q3 sensitivity assumption
+
+AICLK-linear effective-capacity scaling is a sensitivity assumption only for
+work limited by AICLK-clocked compute/math or the math-to-pack handoff. DRAM-
+bound portions may not scale in the same way. The 1350/1050.9138856647014/
+1025 MHz cases and their provisional capacity calculations are in the
+[Issue #121 Q3 sensitivity table](budget.md#issue-121-q3-assumption-and-sensitivity-analysis);
+Q2 full-enodia measurement is required before drawing a capacity or card-count
+conclusion.
+
+### Current constraints — Q4 fixed-source audit
+
+The fixed tt-metal v0.75.0 source inspection found the following facts:
+
+- `tt_metal/hw/inc/internal/tt-1xx/risc_common.h:207-217` shows `riscv_wait`
+  looping on `WALL_CLOCK_L/H` plus cycles, while
+  `tt_metal/hw/inc/internal/tt-1xx/risc_common.h:245-255` implements
+  `get_timestamp` and `get_timestamp_32b` from the same wall-clock reads.
+- `tt_metal/hw/inc/internal/tt-1xx/blackhole/c_tensix_core.h:503-509` reads
+  the same wall-clock registers.
+- `tt_metal/impl/dispatch/kernels/realtime_profiler.hpp:64-72` and
+  `tt_metal/tools/profiler/kernel_profiler.hpp:187-192` timestamp with that
+  same wall clock.
+- `tt_metal/hw/inc/internal/tt-1xx/blackhole/tensix.h:135-145,176-204,228-232`
+  exposes performance counters, the watchdog, timestamp-dump, and wall-clock
+  registers. The audited source does not document a fixed-frequency or
+  AICLK-independent real-time basis for the watchdog, timestamp-dump, or
+  performance counters.
+
+The bounded conclusion is that the audited fixed v0.75.0 source did not
+identify a documented AICLK-independent card real-time counter. This is
+evidence, not a claim about undocumented hardware.
+
+These are current documentation constraints, not a new ADR or binding design
+rule:
+
+- Card ticks are cycle-domain measurements only; they are not yet a product
+  wall-clock basis.
+- Product frame pacing comes from data arrival and completion, not from
+  treating card ticks as the display clock.
+- Supervisory timeouts use host `CLOCK_MONOTONIC`, not card ticks.
+
+**Decision pending #121 Q2:** after Q2, the owner decides whether to make
+these constraints a binding rule.
+
 ---
 
 ## 13. Core partitioning and organ recognition
