@@ -90,6 +90,42 @@ uses.**
 A percentage from one table cannot be combined with a card count from
 another without converting: peak % × 2.5 gives the share of usable capacity.
 
+The demand and capacity columns are deliberately separate. The `100–127.5
+TFLOPS` range and the `35/560/19/1,100/37 TFLOPS` workload rows below are
+workload demand at 30 fps, not capacity values to rescale. The sensitivity
+scenarios below scale only the per-card capacity basis. The 600/800-second
+outer caps and 16.7 ms display timing are host/display wall-clock quantities,
+not AICLK scaling assumptions. The `repeats_per_card_second` 1.35e9-tick
+reference is a fixed normalization, not weighted real-time throughput.
+
+### Issue #121 Q1 facts — tick↔host cross-check
+
+The following is a factual cross-check from the accepted Issue #118 records.
+The card interval is the resident interval for control and the aggregate load
+interval for the loaded runs; the host interval is the recorded
+`CLOCK_MONOTONIC` program interval.
+
+| Run | Card interval (ticks) | AICLK selection (MHz) | Tick seconds | Host `CLOCK_MONOTONIC` program interval (s) | Host − card (s; %) |
+|---|---:|---:|---:|---:|---:|
+| Control (resident) | 674,998,649,982 | 1350.000 | 499.998999987 | 500.320116957 | +0.321116970 (+0.0642%) |
+| DRAM (aggregate load) | 742,787,678,116 | 1349.8417277524086 | 550.277608733 | 550.332740139 | +0.055131406 (+0.0100%) |
+| Newton-Schulz (synthetic load) | 742,492,282,048 | 1050.9138856647014 | 706.520574308 | 707.446161353 | +0.925587045 (+0.1310%) |
+
+The control row uses 1350.000 MHz because its weighted-load field is
+unavailable; it is not a weighted-load observation. DRAM calibration uses the
+slowest worker interval, while this Q1 cross-check intentionally uses the
+aggregate card load interval. The UTC `run_start`→`run_end` spans are outer
+spans, not the same program window: 503.753305 s (control), 553.924164 s
+(DRAM), and 711.978642 s (Newton-Schulz). They must not be presented as the
+like-for-like host program intervals above.
+
+The Newton-Schulz synthetic-load trace observed AICLK values from 1018 to
+1350 MHz and spent most loaded time on a sustained plateau near 1025 MHz; its
+weighted interval value was 1050.9138856647014 MHz. These are synthetic
+Newton-Schulz-load facts, not enodia full-load measurements. Power CSV samples
+are about 2.24 s apart, and the Issue #122 audit uses left-held samples; this
+limits instantaneous tick-to-wall-time mapping.
+
 > **The 40% is a target for hand-written kernels, not an expectation of the
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak (a stored `achieved_tflops` fastest-launch stock-catalogue value,
@@ -557,6 +593,30 @@ rounding up to a deployable whole-card count gives **2 cards**. The older Issue 
 performance and PR #101 correctness-only records are historical predecessors, and
 the older PR93-derived
 denominator remains historical context only and is not reused for Issue #100.
+
+### Issue #121 Q3 assumption and sensitivity analysis
+
+**Assumption, not conclusion:** effective compute capacity scales linearly with
+AICLK only when the limiting work is AICLK-clocked compute/math and the
+math↔pack handoff. DRAM-bound portions may not shrink at the same rate. The
+following cases therefore scale capacity as a sensitivity analysis; they do
+not rescale workload demand or establish enodia capacity.
+
+| AICLK case | Ratio to 1350 MHz | 1,350,000 card ticks | Nominal BF16 peak sensitivity | 40% usable sensitivity | Headroom vs one 40%-basis card (100 / 127.5 TFLOPS) | Proportional p50 denominator sensitivity | p50-proportional cards for 100–127.5 TFLOPS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 1350 MHz reference | 1 | 1.000 ms | 332 TFLOPS | 133.000 TFLOPS/card | +33.000 / +5.500 TFLOPS | 78.810716 TFLOPS/card | 1.2689–1.6178 |
+| 1050.9138856647014 MHz (weighted synthetic NS load) | 0.7784547301 | 1.284596 ms | 258.447 TFLOPS | 103.534 TFLOPS/card | +3.534 / −23.966 TFLOPS | 61.3506 TFLOPS/card | 1.6300–2.0782 |
+| 1025 MHz (synthetic NS plateau scenario) | 0.7592592593 | 1.317073 ms | 252.074 TFLOPS | 100.981 TFLOPS/card | +0.981 / −26.519 TFLOPS | 59.8378 TFLOPS/card | 1.6712–2.1308 |
+
+The headroom column shows remaining capacity at 100 TFLOPS and the deficit
+(or remaining capacity) at 127.5 TFLOPS. The `78.810716 TFLOPS/card` value is
+host `perf_counter` evidence, not an AICLK cycle conversion; its proportional
+rescaling in this table is an extra scenario assumption. The 1050.9138856647014
+and 1025 MHz cases are synthetic Newton-Schulz-load values, not enodia
+full-load measurements. At the lower AICLK sensitivities, the upper
+127.5 TFLOPS workload can exceed one card's sensitivity capacity and the
+estimated physical card count may change. This does not conclude that it does
+for enodia; Q2 measurement is required.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
 2026-10-04 record
