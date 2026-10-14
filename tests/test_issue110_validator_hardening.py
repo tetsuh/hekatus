@@ -21,6 +21,7 @@ from enodia.tt.bench.resident_harness import (
     build_rejection_record,
 )
 from enodia.tt.bench.resident_record import (
+    INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
     PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS,
     validate_resident_record,
 )
@@ -76,7 +77,11 @@ def _trace(path: Path) -> None:
 
 
 def _success_record(
-    *, mode: str, outcome: str, trace_path: Path | None
+    *,
+    mode: str,
+    outcome: str,
+    trace_path: Path | None,
+    interval_extrema_policy: str | None = None,
 ) -> dict[str, object]:
     frame_count = 4 if outcome == "ok_with_drops" else 3
     timestamps = [1_000, 2_000, 3_000]
@@ -92,6 +97,7 @@ def _success_record(
         environment=_environment(mode),
         power_trace=trace_path.name if trace_path is not None else None,
         power_trace_path=trace_path,
+        interval_extrema_policy=interval_extrema_policy,
         run_start="2026-01-01T00:00:00+00:00" if trace_path is not None else None,
         run_end="2026-01-01T00:00:02+00:00" if trace_path is not None else None,
         attempted_frame_count=frame_count,
@@ -180,9 +186,23 @@ def trace_record_with_nested_coverage_aliases() -> dict[str, object]:
     return record
 
 
+@pytest.fixture
+def policy_trace_record(tmp_path: Path) -> dict[str, object]:
+    """Build a board-free trace with the explicit interval-extrema policy."""
+    trace_path = tmp_path / "power-policy.csv"
+    _trace(trace_path)
+    return _success_record(
+        mode="default",
+        outcome="ok",
+        trace_path=trace_path,
+        interval_extrema_policy=INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+    )
+
+
 TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "readable"),
     ("power_clock_provenance", "nonempty"),
+    ("power_clock_provenance", "immutable_snapshot"),
     ("power_clock_provenance", "timestamps_parse"),
     ("power_clock_provenance", "timestamps_ordered"),
     ("power_clock_provenance", "covers_run_start"),
@@ -218,17 +238,29 @@ TRACE_FLAG_PATHS = (
 @pytest.mark.parametrize("path", TRACE_FLAG_PATHS, ids=lambda value: ".".join(value))
 def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(
     trace_record_with_nested_coverage_aliases: dict[str, object],
+    policy_trace_record: dict[str, object],
     path: tuple[str, ...],
+    tmp_path: Path,
 ):
     """Flipping any persisted coverage/provenance boolean invalidates the record."""
-    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
+    source = (
+        policy_trace_record
+        if path == ("power_clock_provenance", "immutable_snapshot")
+        else trace_record_with_nested_coverage_aliases
+    )
+    candidate = copy.deepcopy(source)
     current = candidate
     for component in path[:-1]:
         current = current[component]
     current[path[-1]] = not current[path[-1]]
+    trace_path = (
+        tmp_path / str(candidate["power_trace"])
+        if path == ("power_clock_provenance", "immutable_snapshot")
+        else TRACE_CSV
+    )
     report = validate_resident_record(
         candidate,
-        power_trace_path=TRACE_CSV,
+        power_trace_path=trace_path,
         strict_trace=True,
     )
     assert report["valid"] is False, path

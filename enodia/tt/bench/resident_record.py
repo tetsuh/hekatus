@@ -181,6 +181,7 @@ _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH = (
 _TRACE_TOP_FLAG_ALIASES = (
     ("readable", "readable"),
     ("nonempty", "nonempty"),
+    ("immutable_snapshot", "immutable_snapshot"),
     ("timestamps_parse", "timestamps_parse"),
     ("timestamps_ordered", "timestamps_ordered"),
     ("covers_run_start", "covers_run_start"),
@@ -4142,10 +4143,19 @@ def _check_declared_trace_flags(
     invariant = "power_trace.coverage_flags"
     provenance = record.get("power_clock_provenance")
     trace_coverage = record.get("power_trace_coverage")
+    top_flag_aliases = _TRACE_TOP_FLAG_ALIASES
+    # Policy-less historical records retain their legacy snapshot declaration;
+    # bind this alias when the interval-extrema policy supplies the recomputed fact.
+    if not isinstance(provenance, Mapping) or "interval_extrema_policy" not in provenance:
+        top_flag_aliases = tuple(
+            alias
+            for alias in _TRACE_TOP_FLAG_ALIASES
+            if alias[0] != "immutable_snapshot"
+        )
     mismatches = _trace_flag_mismatches(
         provenance if isinstance(provenance, Mapping) else None,
         "power_clock_provenance",
-        _TRACE_TOP_FLAG_ALIASES,
+        top_flag_aliases,
         report,
         invariant,
     )
