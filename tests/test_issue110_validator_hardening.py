@@ -152,6 +152,27 @@ def test_record_kind_matrix_covers_sampler_outcome_product(
 TRACE_ROOT = Path(__file__).parents[1] / "docs/measurements"
 TRACE_RECORD = TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
 TRACE_CSV = TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005-power.csv"
+
+
+@pytest.fixture
+def trace_record_with_nested_coverage_aliases() -> dict[str, object]:
+    """Add every resident-record coverage alias from recomputed CSV facts."""
+    record = json.loads(TRACE_RECORD.read_text())
+    recomputed = validate_resident_record(
+        record,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert recomputed["valid"] is True, recomputed["mismatches"]
+    expected = {
+        name: recomputed["power_trace"][name]
+        for name in ("covers_run_start", "covers_run_end", "coverage_complete")
+    }
+    for container_name in ("power_clock_provenance", "power_trace_coverage"):
+        record[container_name]["coverage"].update(expected)
+    return record
+
+
 TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "readable"),
     ("power_clock_provenance", "nonempty"),
@@ -168,6 +189,9 @@ TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "coverage", "last_at_or_after_run_end"),
     ("power_clock_provenance", "coverage", "last_within_interval_bound"),
     ("power_clock_provenance", "coverage", "complete"),
+    ("power_clock_provenance", "coverage", "covers_run_start"),
+    ("power_clock_provenance", "coverage", "covers_run_end"),
+    ("power_clock_provenance", "coverage", "coverage_complete"),
     ("power_trace_coverage", "coverage_complete"),
     ("power_trace_coverage", "coverage", "readable"),
     ("power_trace_coverage", "coverage", "nonempty"),
@@ -177,14 +201,19 @@ TRACE_FLAG_PATHS = (
     ("power_trace_coverage", "coverage", "last_at_or_after_run_end"),
     ("power_trace_coverage", "coverage", "last_within_interval_bound"),
     ("power_trace_coverage", "coverage", "complete"),
+    ("power_trace_coverage", "coverage", "covers_run_start"),
+    ("power_trace_coverage", "coverage", "covers_run_end"),
+    ("power_trace_coverage", "coverage", "coverage_complete"),
 )
 
 
 @pytest.mark.parametrize("path", TRACE_FLAG_PATHS, ids=lambda value: ".".join(value))
-def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(path):
+def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(
+    trace_record_with_nested_coverage_aliases: dict[str, object],
+    path: tuple[str, ...],
+):
     """Flipping any persisted coverage/provenance boolean invalidates the record."""
-    record = json.loads(TRACE_RECORD.read_text())
-    candidate = copy.deepcopy(record)
+    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
     current = candidate
     for component in path[:-1]:
         current = current[component]
