@@ -604,9 +604,9 @@ not rescale workload demand or establish enodia capacity.
 
 | AICLK case | Ratio to 1350 MHz | 1,350,000 card ticks | Nominal BF16 peak sensitivity | 40% usable sensitivity | Headroom vs one 40%-basis card (100 / 127.5 TFLOPS) | Proportional p50 denominator sensitivity | p50-proportional cards for 100–127.5 TFLOPS |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 1350 MHz reference | 1 | 1.000 ms | 332 TFLOPS | 133.000 TFLOPS/card | +33.000 / +5.500 TFLOPS | 78.810716 TFLOPS/card | 1.2689–1.6178 |
-| 1050.9138856647014 MHz (weighted synthetic NS load) | 0.7784547301 | 1.284596 ms | 258.447 TFLOPS | 103.534 TFLOPS/card | +3.534 / −23.966 TFLOPS | 61.3506 TFLOPS/card | 1.6300–2.0782 |
-| 1025 MHz (synthetic NS plateau scenario) | 0.7592592593 | 1.317073 ms | 252.074 TFLOPS | 100.981 TFLOPS/card | +0.981 / −26.519 TFLOPS | 59.8378 TFLOPS/card | 1.6712–2.1308 |
+| 1350 MHz reference | 1 | 1.000 ms | 332 TFLOPS | 132.800 TFLOPS/card | +32.800 / +5.300 TFLOPS | 78.810716 TFLOPS/card | 1.2689–1.6178 |
+| 1050.9138856647014 MHz (weighted synthetic NS load) | 0.7784547301 | 1.284596 ms | 258.447 TFLOPS | 103.379 TFLOPS/card | +3.379 / −24.121 TFLOPS | 61.3506 TFLOPS/card | 1.6300–2.0782 |
+| 1025 MHz (synthetic NS plateau scenario) | 0.7592592593 | 1.317073 ms | 252.074 TFLOPS | 100.830 TFLOPS/card | +0.830 / −26.670 TFLOPS | 59.8378 TFLOPS/card | 1.6712–2.1308 |
 
 The headroom column shows remaining capacity at 100 TFLOPS and the deficit
 (or remaining capacity) at 127.5 TFLOPS. The `78.810716 TFLOPS/card` value is
