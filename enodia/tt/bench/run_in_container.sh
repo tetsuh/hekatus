@@ -24,6 +24,7 @@ IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RESIDENT_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_resident.py"
 MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
+ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
 # The returned path is the only representation used by runner classifiers and
@@ -187,6 +188,8 @@ validate_decimal_timeout() {
 
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
+ISSUE127_RUNNER=0
+ISSUE127_TIMEOUT_CAP_S="60"
 RESIDENT_TIMEOUT_CAP_S="600"
 RESIDENT_CONDITION="unloaded"
 RESIDENT_REQUESTED_TIMEOUT=""
@@ -246,6 +249,96 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PA
   if [[ "${#CONTAINER_TIMEOUT_S}" == "${#RESIDENT_TIMEOUT_CAP_S}" \
         && "${CONTAINER_TIMEOUT_S}" > "${RESIDENT_TIMEOUT_CAP_S}" ]]; then
     echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
+    exit 2
+  fi
+elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
+  # Issue #127 has its own hard 60-second run budget.  Keep the wrapper from
+  # turning a hung board-side call into an unbounded generic custom run.
+  ISSUE127_RUNNER=1
+  if [[ "${TELEMETRY_MODE}" == "off" ]]; then
+    echo "Issue #127 requires telemetry sampler mode default or explicit; sampler-off runs are rejected" >&2
+    exit 2
+  fi
+  ISSUE127_RUN_NUMBER=""
+  ISSUE127_COOLDOWN_SECONDS=""
+  ISSUE127_EXPECTED_AICLK=""
+  ISSUE127_COOLDOWN_BOUNDS_SUPPLIED=0
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --run-number)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-number requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_NUMBER="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-number=*)
+        ISSUE127_RUN_NUMBER="${argument#--run-number=}"
+        ;;
+      --cooldown-wait-seconds)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--cooldown-wait-seconds requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_COOLDOWN_SECONDS="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --cooldown-wait-seconds=*)
+        ISSUE127_COOLDOWN_SECONDS="${argument#--cooldown-wait-seconds=}"
+        ;;
+      --expected-aiclk-mhz)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--expected-aiclk-mhz requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_EXPECTED_AICLK="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --expected-aiclk-mhz=*)
+        ISSUE127_EXPECTED_AICLK="${argument#--expected-aiclk-mhz=}"
+        ;;
+      --cooldown-start-utc|--cooldown-end-utc|--cooldown-start-utc=*|--cooldown-end-utc=*)
+        ISSUE127_COOLDOWN_BOUNDS_SUPPLIED=1
+        ;;
+    esac
+    ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+  done
+  if [[ "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
+    if [[ ! "${ISSUE127_COOLDOWN_SECONDS}" =~ ^[0-9]+([.][0-9]+)?$ \
+          || "${ISSUE127_COOLDOWN_SECONDS}" =~ ^0+([.]0+)?$ ]]; then
+      echo "Issue #127 run 2 requires a positive numeric cooldown wait" >&2
+      exit 2
+    fi
+    ISSUE127_COOLDOWN_INTEGER_PART="${ISSUE127_COOLDOWN_SECONDS%%.*}"
+    if [[ "${#ISSUE127_COOLDOWN_INTEGER_PART}" -ge 4 ]]; then
+      echo "Issue #127 cooldown wait must be less than 1000 seconds" >&2
+      exit 2
+    fi
+    if [[ ! "${ISSUE127_EXPECTED_AICLK}" =~ ^1350([.]0+)?$ ]]; then
+      echo "Issue #127 run 2 requires expected AICLK=1350" >&2
+      exit 2
+    fi
+    if [[ "${ISSUE127_COOLDOWN_BOUNDS_SUPPLIED}" == "1" ]]; then
+      echo "Issue #127 cooldown UTC bounds are wrapper-owned" >&2
+      exit 2
+    fi
+  elif [[ "${ISSUE127_RUN_NUMBER}" != "1" ]]; then
+    echo "Issue #127 requires --run-number 1 or 2" >&2
+    exit 2
+  fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
+    CONTAINER_TIMEOUT_S="${ISSUE127_TIMEOUT_CAP_S}"
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "${#ISSUE127_TIMEOUT_CAP_S}"
+  if [[ "${#CONTAINER_TIMEOUT_S}" == "${#ISSUE127_TIMEOUT_CAP_S}" \
+        && "${CONTAINER_TIMEOUT_S}" > "${ISSUE127_TIMEOUT_CAP_S}" ]]; then
+    echo "Issue #127 container timeout ${CONTAINER_TIMEOUT_S}s exceeds the 60-second cap" >&2
     exit 2
   fi
 else
@@ -405,6 +498,43 @@ if [[ "${TELEMETRY_MODE}" != "off" ]]; then
   SAMPLER_PID=$!
 fi
 
+# Issue #127 run 2 cooldown is deliberately outside the Docker timeout.  The
+# sampler is already running, so the final immutable trace covers this UTC
+# interval and the runner can verify the return to 1350 MHz from trace facts.
+if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
+  # Ensure the first left-held sample is before the wrapper-owned cooldown
+  # bound.  This is readiness polling, not a change to the two-second sampler.
+  # Ten seconds covers cold startup while remaining outside Docker's timeout.
+  COOLDOWN_READY_MAX_ATTEMPTS=1000
+  COOLDOWN_READY_ATTEMPTS=0
+  while :; do
+    COOLDOWN_SAMPLE_LINES=0
+    if [[ -f "${POWER_CSV}" ]]; then
+      COOLDOWN_SAMPLE_LINES="$(wc -l < "${POWER_CSV}")"
+    fi
+    if [[ "${COOLDOWN_SAMPLE_LINES}" -ge 2 ]]; then
+      break
+    fi
+    if ! kill -0 "${SAMPLER_PID}" 2>/dev/null; then
+      echo "Issue #127 telemetry sampler exited before cooldown" >&2
+      exit 1
+    fi
+    COOLDOWN_READY_ATTEMPTS=$((COOLDOWN_READY_ATTEMPTS + 1))
+    if [[ "${COOLDOWN_READY_ATTEMPTS}" -ge "${COOLDOWN_READY_MAX_ATTEMPTS}" ]]; then
+      echo "Issue #127 telemetry sampler did not produce a pre-cooldown sample" >&2
+      exit 1
+    fi
+    sleep 0.01
+  done
+  COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
+  sleep -- "${ISSUE127_COOLDOWN_SECONDS}"
+  COOLDOWN_END_UTC="$(date -u --iso-8601=ns)"
+  RUNNER_ARGS+=(
+    --cooldown-start-utc "${COOLDOWN_START_UTC}"
+    --cooldown-end-utc "${COOLDOWN_END_UTC}"
+  )
+fi
+
 # Runner arguments are passed as separate arguments, never interpolated into
 # a shell string. The default runner also receives the sibling power trace
 # path, so its JSON record names the same provenance that the wrapper writes.
@@ -488,6 +618,63 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
     RESIDENT_ARGS+=(--power-trace "${RESIDENT_POWER_TRACE}")
   fi
   RUNNER_ARGS=("${RESIDENT_ARGS[@]}")
+fi
+if [[ "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
+  # The generic custom-runner branch remains the execution path, but pass the
+  # wrapper-owned sibling artifacts explicitly so run binding is visible in
+  # the runner CLI and board-free tests can verify the seam.
+  ISSUE127_ARGS=()
+  HAS_ENV_JSON_ARG=0
+  HAS_POWER_TRACE_ARG=0
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --env-json)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--env-json requires a value" >&2
+          exit 2
+        fi
+        HAS_ENV_JSON_ARG=1
+        ISSUE127_ARGS+=("--env-json" "/out/$(basename "${ENV_JSON}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --env-json=*)
+        HAS_ENV_JSON_ARG=1
+        ISSUE127_ARGS+=("--env-json=/out/$(basename "${ENV_JSON}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --power-trace)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--power-trace requires a value" >&2
+          exit 2
+        fi
+        HAS_POWER_TRACE_ARG=1
+        ISSUE127_ARGS+=("--power-trace" "/out/$(basename "${POWER_CSV}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --power-trace=*)
+        HAS_POWER_TRACE_ARG=1
+        ISSUE127_ARGS+=("--power-trace=/out/$(basename "${POWER_CSV}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        ISSUE127_ARGS+=("${argument}")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  if [[ "${HAS_ENV_JSON_ARG}" == "0" ]]; then
+    ISSUE127_ARGS+=(--env-json "/out/$(basename "${ENV_JSON}")")
+  fi
+  if [[ "${TELEMETRY_MODE}" != "off" && "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+    ISSUE127_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+  fi
+  RUNNER_ARGS=("${ISSUE127_ARGS[@]}")
 fi
 # `timeout` is inside the wrapper, so losing an SSH session cannot leave the
 # Docker client or the board-side container unbounded.
