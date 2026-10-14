@@ -88,10 +88,14 @@ def _success_record(
     trace_path: Path | None,
     trace_metadata: dict[str, object] | None = None,
     interval_extrema_policy: str | None = None,
+    environment_run_id: str | None = None,
 ) -> dict[str, object]:
     frame_count = 4 if outcome == "ok_with_drops" else 3
     timestamps = [1_000, 2_000, 3_000]
     dropped = 1 if outcome == "ok_with_drops" else 0
+    environment = _environment(mode)
+    if environment_run_id is not None:
+        environment["run_id"] = environment_run_id
     record = build_measurement_record(
         config=_config(frame_count=frame_count),
         aiclk_mhz=1_350,
@@ -100,7 +104,7 @@ def _success_record(
         consumer_empty_count=0,
         kernel_error_flag=0,
         harness_commit="0123456789abcdef",
-        environment=_environment(mode),
+        environment=environment,
         power_trace=trace_path.name if trace_path is not None else None,
         power_trace_path=trace_path,
         power_trace_metadata=trace_metadata,
@@ -138,6 +142,17 @@ def _error_record(
         "run_error_not_timing_evidence"
     )
     return record
+
+
+def _set_path(record: dict[str, object], path: tuple[str, ...], value: object) -> None:
+    current = record
+    for component in path[:-1]:
+        nested = current.get(component)
+        if not isinstance(nested, dict):
+            nested = {}
+            current[component] = nested
+        current = nested
+    current[path[-1]] = value
 
 
 @pytest.mark.parametrize("mode,outcome", PRODUCT, ids=lambda value: str(value))
@@ -217,13 +232,15 @@ def policy_trace_record(tmp_path: Path) -> dict[str, object]:
             require_all_rows_valid=True,
         ),
     )
-    return _success_record(
+    record = _success_record(
         mode="default",
         outcome="ok",
         trace_path=trace_path,
         trace_metadata=trace_metadata,
         interval_extrema_policy=INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD,
+        environment_run_id=run_id,
     )
+    return record
 
 
 def test_interval_policy_on_ordinary_csv_is_not_snapshot_evidence(tmp_path: Path):
@@ -347,6 +364,98 @@ def test_policyless_snapshot_claim_rejects_a_changed_record_run_id(
     )
 
 
+@pytest.mark.parametrize("mutation", ("missing", "null", "malformed", "mismatched"))
+def test_policy_snapshot_requires_matching_environment_run_id(
+    policy_trace_record: dict[str, object], mutation: str, tmp_path: Path
+):
+    """Policy-bearing snapshots require a valid environment run identity."""
+    candidate = copy.deepcopy(policy_trace_record)
+    environment = candidate["environment"]
+    if mutation == "missing":
+        environment.pop("run_id")
+    elif mutation == "null":
+        environment["run_id"] = None
+    elif mutation == "malformed":
+        environment["run_id"] = "invalid/run"
+    else:
+        environment["run_id"] = "other-run"
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=tmp_path / str(candidate["power_trace"]),
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, (mutation, report["mismatches"])
+
+
+@pytest.mark.parametrize("field", ("sha256", "byte_count"))
+@pytest.mark.parametrize("mutation", ("missing", "null"))
+def test_policy_snapshot_requires_declared_bytes_provenance(
+    policy_trace_record: dict[str, object], field: str, mutation: str, tmp_path: Path
+):
+    """Policy-bearing snapshots require declared hash and byte count facts."""
+    candidate = copy.deepcopy(policy_trace_record)
+    provenance = candidate["power_clock_provenance"]
+    if mutation == "missing":
+        provenance.pop(field)
+    else:
+        provenance[field] = None
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=tmp_path / str(candidate["power_trace"]),
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, (field, mutation, report["mismatches"])
+
+
+@pytest.mark.parametrize("mutation", ("missing", "null"))
+def test_policy_snapshot_requires_top_level_declared_hash_alias(
+    policy_trace_record: dict[str, object], mutation: str, tmp_path: Path
+):
+    """Policy-bearing snapshots bind the duplicate top-level hash alias too."""
+    candidate = copy.deepcopy(policy_trace_record)
+    if mutation == "missing":
+        candidate.pop("power_trace_sha256")
+    else:
+        candidate["power_trace_sha256"] = None
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=tmp_path / str(candidate["power_trace"]),
+        strict_trace=True,
+    )
+    assert report["valid"] is False, (mutation, report["mismatches"])
+
+
+def test_policyless_snapshot_falls_back_when_historical_environment_run_id_is_absent():
+    """Policy-less historical snapshots retain source-file identity fallback."""
+    record = json.loads(TRACE_RECORD.read_text())
+    record["environment"].pop("run_id")
+    report = validate_resident_record(
+        record,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert report["valid"] is True, report["mismatches"]
+
+
+@pytest.mark.parametrize("run_id", ("invalid/run", "other-run"))
+def test_policyless_snapshot_rejects_non_null_invalid_or_mismatched_run_id(
+    run_id: str,
+):
+    """Legacy fallback does not hide malformed or mismatched run identities."""
+    record = json.loads(TRACE_RECORD.read_text())
+    record["environment"]["run_id"] = run_id
+    report = validate_resident_record(
+        record,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert report["valid"] is False, (run_id, report["mismatches"])
+
+
 @pytest.mark.parametrize("condition", ("control", "newton-schulz", "dram"))
 def test_committed_issue118_snapshot_records_validate_unchanged(condition: str):
     """The three committed Issue #118 records remain valid without rewriting."""
@@ -397,6 +506,119 @@ TRACE_FLAG_PATHS = (
     ("power_trace_coverage", "coverage", "covers_run_end"),
     ("power_trace_coverage", "coverage", "coverage_complete"),
 )
+
+
+@pytest.mark.parametrize("outcome", ("ok", "ok_with_drops", "error"))
+def test_sampler_off_trace_alias_mutations_are_rejected(outcome: str):
+    """Sampler-off outcomes reject positive declarations for every trace alias."""
+    base = (
+        _error_record(mode="off", trace_path=None)
+        if outcome == "error"
+        else _success_record(mode="off", outcome=outcome, trace_path=None)
+    )
+    for path in TRACE_FLAG_PATHS:
+        candidate = copy.deepcopy(base)
+        _set_path(candidate, path, True)
+        report = validate_resident_record(
+            candidate,
+            timestamps=[1_000, 2_000, 3_000],
+            strict_trace=False,
+        )
+        assert report["valid"] is False, (outcome, path, report["mismatches"])
+
+
+def test_sampler_off_malformed_trace_aliases_are_rejected():
+    """Sampler-off outcomes reject non-boolean trace alias declarations."""
+    for outcome in ("ok", "ok_with_drops", "error"):
+        base = (
+            _error_record(mode="off", trace_path=None)
+            if outcome == "error"
+            else _success_record(mode="off", outcome=outcome, trace_path=None)
+        )
+        for path in TRACE_FLAG_PATHS:
+            for value in (1, "false"):
+                candidate = copy.deepcopy(base)
+                _set_path(candidate, path, value)
+                report = validate_resident_record(
+                    candidate,
+                    timestamps=[1_000, 2_000, 3_000],
+                    strict_trace=False,
+                )
+                assert report["valid"] is False, (
+                    outcome,
+                    path,
+                    value,
+                    report["mismatches"],
+                )
+
+
+def test_sampler_off_absent_trace_aliases_remain_valid():
+    """Canonical absent and diagnostic aliases remain valid without a trace."""
+    for outcome in ("ok", "ok_with_drops", "error"):
+        base = (
+            _error_record(mode="off", trace_path=None)
+            if outcome == "error"
+            else _success_record(mode="off", outcome=outcome, trace_path=None)
+        )
+        for path in TRACE_FLAG_PATHS:
+            candidate = copy.deepcopy(base)
+            value = False
+            _set_path(candidate, path, value)
+            report = validate_resident_record(
+                candidate,
+                timestamps=[1_000, 2_000, 3_000],
+                strict_trace=False,
+            )
+            assert report["valid"] is True, (
+                outcome,
+                path,
+                report["mismatches"],
+            )
+
+
+@pytest.mark.parametrize("mode", SAMPLER_MODES)
+def test_rejected_trace_alias_mutations_are_checked_without_full_validation(
+    mode: str,
+):
+    """Rejected records retain reduced checks while binding declared aliases."""
+    base = build_rejection_record(
+        config=_config(frame_count=3),
+        reason="board-free Issue #110 rejection",
+        environment={"telemetry_sampler": _environment(mode)["telemetry_sampler"]},
+    )
+    for path in TRACE_FLAG_PATHS:
+        candidate = copy.deepcopy(base)
+        _set_path(candidate, path, True)
+        report = validate_resident_record(candidate)
+        assert report["valid"] is False, (mode, path, report["mismatches"])
+
+        candidate = copy.deepcopy(base)
+        _set_path(
+            candidate,
+            path,
+            1 if path[-1] == "immutable_snapshot" else "false",
+        )
+        report = validate_resident_record(candidate)
+        assert report["valid"] is False, (mode, path, report["mismatches"])
+
+
+def test_rejected_absent_trace_aliases_remain_valid():
+    """Rejected diagnostic records accept canonical absent trace aliases."""
+    for mode in SAMPLER_MODES:
+        base = build_rejection_record(
+            config=_config(frame_count=3),
+            reason="board-free Issue #110 rejection",
+            environment={"telemetry_sampler": _environment(mode)["telemetry_sampler"]},
+        )
+        for path in TRACE_FLAG_PATHS:
+            candidate = copy.deepcopy(base)
+            _set_path(
+                candidate,
+                path,
+                False,
+            )
+            report = validate_resident_record(candidate)
+            assert report["valid"] is True, (mode, path, report["mismatches"])
 
 
 @pytest.mark.parametrize("path", TRACE_FLAG_PATHS, ids=lambda value: ".".join(value))

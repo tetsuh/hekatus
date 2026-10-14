@@ -65,6 +65,7 @@ from enodia.tt.bench.resident_record import (
     validate_pair_analysis,
     validate_resident_record,
 )
+from enodia.tt.bench.run_binding import validate_run_id
 from enodia.tt.bench.sampler_contract import (
     EXPLICIT_FINAL_SAMPLE,
     MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS,
@@ -1225,6 +1226,32 @@ def _power_trace_metadata(
     )
 
 
+def _bind_policy_run_id(
+    environment: dict[str, Any],
+    trace_metadata: Mapping[str, Any] | None,
+    interval_extrema_policy: str | None,
+) -> None:
+    if (
+        interval_extrema_policy != INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+        or "run_id" in environment
+        or not isinstance(trace_metadata, Mapping)
+    ):
+        return
+    source_file = trace_metadata.get("source_file")
+    if (
+        not isinstance(source_file, str)
+        or not source_file.startswith("power-")
+        or not source_file.endswith(".csv")
+    ):
+        return
+    try:
+        environment["run_id"] = validate_run_id(
+            source_file[len("power-") : -len(".csv")]
+        )
+    except (TypeError, ValueError):
+        return
+
+
 def _diagnostic_trace_metadata(
     *, run_start: Any = None, run_end: Any = None
 ) -> dict[str, Any]:
@@ -1436,6 +1463,9 @@ def build_measurement_record(
         )
         trace_metadata["aiclk_source"] = AICLK_SOURCE_LEGACY_UNVERIFIED
         trace_reason = "legacy_power_trace_unverified"
+    _bind_policy_run_id(
+        normalized_environment, trace_metadata, interval_extrema_policy
+    )
     selected_source = aiclk_source or (
         trace_metadata.get("aiclk_source")
         if not sampler_off and trace_metadata is not None

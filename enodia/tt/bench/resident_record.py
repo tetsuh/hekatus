@@ -4124,7 +4124,7 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
     )
     if invalid_report is not None:
         return invalid_report
-    return _trace_report_from_context(
+    report = _trace_report_from_context(
         ctx,
         trace_name=trace_name,
         coverage_definition=coverage_definition,
@@ -4138,6 +4138,16 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
         interval_extrema_policy=declared.get("interval_extrema_policy", _MISSING),
         source_file=declared["nested"].get("source_file", _MISSING),
     )
+    if declared.get("interval_extrema_policy", _MISSING) == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD:
+        report["immutable_snapshot"] = _has_legacy_snapshot_provenance(
+            record,
+            report,
+            trace_path=ctx.power_trace_path,
+            require_environment_run_id=True,
+            require_snapshot_path=True,
+            require_top_hash=True,
+        )
+    return report
 
 
 def _trace_flag_mismatches(
@@ -4158,6 +4168,9 @@ def _trace_flag_mismatches(
         expected = actual.get(actual_name, _MISSING)
         if (
             expected is not _MISSING
+            and not (
+                expected is None and (declared is None or declared is False)
+            )
             and (
                 type(declared) is not bool
                 or type(expected) is not bool
@@ -4174,10 +4187,131 @@ def _trace_flag_mismatches(
     return mismatches
 
 
-def _has_legacy_snapshot_provenance(
-    record: Mapping[str, Any], report: Mapping[str, Any], *, trace_path: Path | None
+def _absent_trace_report() -> dict[str, Any]:
+    """Return canonical facts for trace data that is absent by design."""
+    coverage = {
+        "readable": False,
+        "nonempty": False,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "first_at_or_before_run_start": False,
+        "last_at_or_after_run_end": False,
+        "last_within_interval_bound": False,
+        "complete": False,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+    }
+    return {
+        "readable": False,
+        "nonempty": False,
+        "immutable_snapshot": None,
+        "timestamps_parse": False,
+        "timestamps_ordered": False,
+        "covers_run_start": False,
+        "covers_run_end": False,
+        "coverage_complete": False,
+        "coverage": coverage,
+        "actual_bytes_available": False,
+    }
+
+
+def _snapshot_source_run_id(source_file: Any) -> str | None:
+    if (
+        not isinstance(source_file, str)
+        or not source_file.strip()
+        or Path(source_file).name != source_file
+        or not source_file.startswith("power-")
+        or not source_file.endswith(".csv")
+    ):
+        return None
+    source_run_id = source_file[len("power-") : -len(".csv")]
+    try:
+        expected_source_file = run_artifact_name(
+            prefix="power-", suffix=".csv", run_id=source_run_id
+        )
+    except ValueError:
+        return None
+    return source_run_id if source_file == expected_source_file else None
+
+
+def _snapshot_environment_matches(
+    record: Mapping[str, Any], source_run_id: str, *, required: bool
 ) -> bool:
-    """Return whether legacy bytes carry a validated run-bound snapshot claim.
+    environment = record.get("environment")
+    if not isinstance(environment, Mapping):
+        return not required
+    record_run_id = environment.get("run_id", _MISSING)
+    if record_run_id is _MISSING or record_run_id is None:
+        return not required
+    try:
+        record_run_id = validate_run_id(record_run_id)
+    except (TypeError, ValueError):
+        return False
+    return record_run_id == source_run_id
+
+
+def _snapshot_path_matches(
+    trace_path: Path | None, source_run_id: str, *, required: bool
+) -> bool:
+    if trace_path is None:
+        return not required
+    is_snapshot = trace_path.name.startswith(
+        f"{_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-"
+    )
+    if not is_snapshot:
+        return not required
+    try:
+        validate_power_trace_snapshot_path(
+            trace_path,
+            run_id=source_run_id,
+            snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+            output_dir=trace_path.parent,
+        )
+    except (RunBindingError, ValueError):
+        return False
+    return True
+
+
+def _snapshot_bytes_match(
+    record: Mapping[str, Any],
+    provenance: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    require_top_hash: bool,
+) -> bool:
+    declared_hash = provenance.get("sha256", _MISSING)
+    actual_hash = report.get("sha256")
+    if (
+        not isinstance(declared_hash, str)
+        or not declared_hash
+        or declared_hash != actual_hash
+    ):
+        return False
+    if require_top_hash:
+        top_hash = record.get("power_trace_sha256", _MISSING)
+        if not isinstance(top_hash, str) or not top_hash or top_hash != actual_hash:
+            return False
+    declared_byte_count = provenance.get("byte_count", _MISSING)
+    actual_byte_count = report.get("byte_count")
+    return (
+        type(declared_byte_count) is int
+        and declared_byte_count >= 0
+        and type(actual_byte_count) is int
+        and declared_byte_count == actual_byte_count
+    )
+
+
+def _has_legacy_snapshot_provenance(
+    record: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    trace_path: Path | None,
+    require_environment_run_id: bool = False,
+    require_snapshot_path: bool = False,
+    require_top_hash: bool = False,
+) -> bool:
+    """Return whether bytes support a validated run-bound snapshot claim.
 
     Retrieval-time immutability cannot be proven later.  The validator checks
     the snapshot bytes' hash and byte count and their binding to run identity;
@@ -4188,66 +4322,19 @@ def _has_legacy_snapshot_provenance(
     provenance = record.get("power_clock_provenance")
     if not isinstance(provenance, Mapping):
         return False
-    source_file = provenance.get("source_file")
-    if (
-        not isinstance(source_file, str)
-        or not source_file.strip()
-        or Path(source_file).name != source_file
-        or not source_file.startswith("power-")
-        or not source_file.endswith(".csv")
-    ):
+    source_run_id = _snapshot_source_run_id(provenance.get("source_file"))
+    if source_run_id is None:
         return False
-    source_run_id = source_file[len("power-") : -len(".csv")]
-    try:
-        expected_source_file = run_artifact_name(
-            prefix="power-", suffix=".csv", run_id=source_run_id
-        )
-    except ValueError:
-        return False
-    if source_file != expected_source_file:
-        return False
-
-    environment = record.get("environment")
-    if isinstance(environment, Mapping) and "run_id" in environment:
-        try:
-            record_run_id = validate_run_id(environment["run_id"])
-        except (TypeError, ValueError):
-            return False
-        if record_run_id != source_run_id:
-            return False
-
-    # New resident snapshots encode the same identity in their path.  The
-    # renamed measurement artifacts committed by Issue #118 are accepted as
-    # historical compatibility inputs after the source declaration and bytes
-    # above have been checked.
-    if trace_path is not None and trace_path.name.startswith(
-        f"{_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-"
-    ):
-        try:
-            validate_power_trace_snapshot_path(
-                trace_path,
-                run_id=source_run_id,
-                snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
-                output_dir=trace_path.parent,
-            )
-        except (RunBindingError, ValueError):
-            return False
-
-    declared_hash = provenance.get("sha256", _MISSING)
-    actual_hash = report.get("sha256")
-    if (
-        not isinstance(declared_hash, str)
-        or not declared_hash
-        or declared_hash != actual_hash
-    ):
-        return False
-    declared_byte_count = provenance.get("byte_count", _MISSING)
-    actual_byte_count = report.get("byte_count")
     return (
-        type(declared_byte_count) is int
-        and declared_byte_count >= 0
-        and type(actual_byte_count) is int
-        and declared_byte_count == actual_byte_count
+        _snapshot_environment_matches(
+            record, source_run_id, required=require_environment_run_id
+        )
+        and _snapshot_path_matches(
+            trace_path, source_run_id, required=require_snapshot_path
+        )
+        and _snapshot_bytes_match(
+            record, provenance, report, require_top_hash=require_top_hash
+        )
     )
 
 
@@ -4266,15 +4353,26 @@ def _check_declared_trace_flags(
     provenance = record.get("power_clock_provenance")
     trace_coverage = record.get("power_trace_coverage")
     top_flag_actual = report
+    policy_bearing = (
+        declared.get("interval_extrema_policy", _MISSING)
+        == INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD
+    )
     # Historical records predate interval_extrema_policy.  Their direct CSV
     # read intentionally keeps the raw timestamp-based fact false, but a
     # persisted source basename plus matching bytes/hash is enough to bind the
-    # legacy declaration to an immutable snapshot for this alias only.
-    if declared.get("interval_extrema_policy", _MISSING) is _MISSING:
+    # legacy declaration to an immutable snapshot for this alias only.  A
+    # policy-bearing declaration uses the same checks plus mandatory run and
+    # snapshot-path identity.
+    if report.get("actual_bytes_available") is True:
         top_flag_actual = {
             **report,
             "immutable_snapshot": _has_legacy_snapshot_provenance(
-                record, report, trace_path=trace_path
+                record,
+                report,
+                trace_path=trace_path,
+                require_environment_run_id=policy_bearing,
+                require_snapshot_path=policy_bearing,
+                require_top_hash=policy_bearing,
             ),
         }
     mismatches = _trace_flag_mismatches(
@@ -4322,6 +4420,10 @@ def _check_declared_trace_flags(
 
 def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     invariant = "power_trace.facts"
+    if _record_kind(record) == RECORD_KIND_REJECTED:
+        return _check_declared_trace_flags(
+            record, _absent_trace_report(), trace_path=None
+        )
     sampler = _sampler(record)
     mode = sampler.get("mode") if isinstance(sampler, Mapping) else None
     if mode == "off":
@@ -4382,6 +4484,11 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
                             f"sampler-off power trace {field} must be {expected!r}",
                         )
                     )
+        mismatches.extend(
+            _check_declared_trace_flags(
+                record, _absent_trace_report(), trace_path=None
+            )
+        )
         return mismatches
     if mode not in {"default", "explicit"} or not record.get("power_trace"):
         return []
@@ -4472,14 +4579,36 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
                     "power trace interval-extrema policy is not supported",
                 )
             )
-        elif actual_available and report.get("immutable_snapshot") is not True:
-            mismatches.append(
-                _mismatch(
-                    invariant,
-                    (_POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,),
-                    "positive-duration interval-extrema policy was not applied to the trace",
+        elif actual_available:
+            if report.get("immutable_snapshot") is not True:
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (_POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,),
+                        "positive-duration interval-extrema policy was not applied to the trace",
+                    )
                 )
-            )
+            if not _has_legacy_snapshot_provenance(
+                record,
+                report,
+                trace_path=ctx.power_trace_path,
+                require_environment_run_id=True,
+                require_snapshot_path=True,
+                require_top_hash=True,
+            ):
+                mismatches.append(
+                    _mismatch(
+                        invariant,
+                        (
+                            _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
+                            "power_clock_provenance.source_file",
+                            "environment.run_id",
+                            "power_clock_provenance.sha256",
+                            "power_clock_provenance.byte_count",
+                        ),
+                        "policy-bearing immutable snapshot lacks complete run and byte provenance",
+                    )
+                )
     required_fields = (
         "columns",
         "sample_count",
@@ -5109,6 +5238,7 @@ def validate_resident_record(
                 "clock_source_evidence",
                 "failure_check",
                 "cycle_budget",
+                "power_trace.facts",
                 "clock.timing_evidence",
             }:
                 entry_mismatches = []
