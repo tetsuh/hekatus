@@ -259,6 +259,34 @@ def test_interval_policy_on_ordinary_csv_is_not_snapshot_evidence(tmp_path: Path
     )
 
 
+def test_committed_policyless_snapshot_flag_is_bound_to_trace_provenance(
+    trace_record_with_nested_coverage_aliases: dict[str, object],
+):
+    """A verified historical snapshot binds both immutable flag mutations."""
+    baseline = validate_resident_record(
+        trace_record_with_nested_coverage_aliases,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert baseline["valid"] is True, baseline["mismatches"]
+    assert baseline["power_trace"]["immutable_snapshot"] is False
+
+    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
+    candidate["power_clock_provenance"]["immutable_snapshot"] = False
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, report["mismatches"]
+    assert any(
+        mismatch["invariant"] == "power_trace.coverage_flags"
+        and mismatch["fields"] == ["power_clock_provenance.immutable_snapshot"]
+        for mismatch in report["mismatches"]
+    )
+
+
 TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "readable"),
     ("power_clock_provenance", "nonempty"),

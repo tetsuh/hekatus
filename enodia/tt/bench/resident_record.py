@@ -4170,6 +4170,40 @@ def _trace_flag_mismatches(
     return mismatches
 
 
+def _has_legacy_snapshot_provenance(
+    record: Mapping[str, Any], report: Mapping[str, Any]
+) -> bool:
+    """Return whether trace bytes support the historical snapshot declaration."""
+    if report.get("actual_bytes_available") is not True:
+        return False
+    provenance = record.get("power_clock_provenance")
+    if not isinstance(provenance, Mapping):
+        return False
+    source_file = provenance.get("source_file")
+    if (
+        not isinstance(source_file, str)
+        or not source_file.strip()
+        or Path(source_file).name != source_file
+    ):
+        return False
+    declared_hash = provenance.get("sha256", _MISSING)
+    actual_hash = report.get("sha256")
+    if (
+        not isinstance(declared_hash, str)
+        or not declared_hash
+        or declared_hash != actual_hash
+    ):
+        return False
+    declared_byte_count = provenance.get("byte_count", _MISSING)
+    actual_byte_count = report.get("byte_count")
+    return (
+        type(declared_byte_count) is int
+        and declared_byte_count >= 0
+        and type(actual_byte_count) is int
+        and declared_byte_count == actual_byte_count
+    )
+
+
 def _check_declared_trace_flags(
     record: Mapping[str, Any], report: Mapping[str, Any]
 ) -> list[dict[str, Any]]:
@@ -4178,22 +4212,24 @@ def _check_declared_trace_flags(
     if not isinstance(actual_coverage, Mapping):
         actual_coverage = {}
     invariant = "power_trace.coverage_flags"
+    declared = _declared_power_metadata(record)
     provenance = record.get("power_clock_provenance")
     trace_coverage = record.get("power_trace_coverage")
-    top_flag_aliases = _TRACE_TOP_FLAG_ALIASES
-    # Policy-less historical records retain their legacy snapshot declaration;
-    # bind this alias when the interval-extrema policy supplies the recomputed fact.
-    if not isinstance(provenance, Mapping) or "interval_extrema_policy" not in provenance:
-        top_flag_aliases = tuple(
-            alias
-            for alias in _TRACE_TOP_FLAG_ALIASES
-            if alias[0] != "immutable_snapshot"
-        )
+    top_flag_actual = report
+    # Historical records predate interval_extrema_policy.  Their direct CSV
+    # read intentionally keeps the raw timestamp-based fact false, but a
+    # persisted source basename plus matching bytes/hash is enough to bind the
+    # legacy declaration to an immutable snapshot for this alias only.
+    if declared.get("interval_extrema_policy", _MISSING) is _MISSING:
+        top_flag_actual = {
+            **report,
+            "immutable_snapshot": _has_legacy_snapshot_provenance(record, report),
+        }
     mismatches = _trace_flag_mismatches(
         provenance if isinstance(provenance, Mapping) else None,
         "power_clock_provenance",
-        top_flag_aliases,
-        report,
+        _TRACE_TOP_FLAG_ALIASES,
+        top_flag_actual,
         invariant,
     )
     provenance_coverage = (
@@ -4364,6 +4400,17 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     legacy_unverified = declared.get("aiclk_source") == "legacy_unverified"
     actual_available = report.get("actual_bytes_available") is True
     interval_extrema_policy = declared.get("interval_extrema_policy", _MISSING)
+    provenance = _mapping(record, "power_clock_provenance")
+    if not actual_available and provenance is not None and provenance.get(
+        "immutable_snapshot"
+    ) is True:
+        mismatches.append(
+            _mismatch(
+                invariant,
+                ("power_clock_provenance.immutable_snapshot",),
+                "immutable snapshot claim lacks trace-byte provenance",
+            )
+        )
     if interval_extrema_policy is not _MISSING:
         if interval_extrema_policy != INTERVAL_EXTREMA_POLICY_POSITIVE_DURATION_LEFT_HELD:
             mismatches.append(
