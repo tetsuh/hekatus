@@ -408,113 +408,131 @@ class CalibrationMetadata:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "condition", normalize_condition(self.condition))
-        if self.watcher_enabled:
-            raise LoadConfigurationError("load calibration must run with Watcher disabled")
-        duration = _finite_positive(self.duration_seconds, "duration_seconds")
-        if duration > MAX_CALIBRATION_SECONDS:
-            raise LoadConfigurationError("calibration duration must be <= 60 seconds")
-        _finite_positive(self.achieved_throughput, "achieved_throughput")
-        if self.throughput_unit != repeat_throughput_unit(self.condition):
-            raise LoadConfigurationError(
-                "throughput_unit does not match the calibration condition"
-            )
-        _positive_int(self.repeat_count, "repeat_count")
-        if not isinstance(self.source, str) or not self.source.strip():
-            raise LoadConfigurationError("calibration source must be a non-empty string")
-        if self.target_seconds is not None:
-            target = _finite_positive(self.target_seconds, "target_seconds")
-            if target > MAX_MEASUREMENT_TARGET_SECONDS:
-                raise LoadConfigurationError(
-                    "target_seconds must be <= 500 seconds for the 600-second run cap"
-                )
-        _finite_positive(self.safety_factor, "safety_factor")
-        if not isinstance(self.throughput_reference_aiclk_source, str) or not self.throughput_reference_aiclk_source.strip():
-            raise LoadConfigurationError(
-                "throughput reference AICLK source must be a non-empty string"
-            )
+        _validate_calibration_basics(self)
         _validate_calibration_aiclk_metadata(self)
-        if (self.actual_duration_aiclk_mhz is None) != (
-            self.actual_duration_aiclk_source is None
-        ):
-            raise LoadConfigurationError(
-                "actual-duration AICLK metadata must include value and provenance"
-            )
-        if self.actual_duration_aiclk_mhz is not None:
-            _finite_positive(
-                self.actual_duration_aiclk_mhz, "actual_duration_aiclk_mhz"
-            )
-            if not isinstance(self.actual_duration_aiclk_source, str) or not self.actual_duration_aiclk_source.strip():
-                raise LoadConfigurationError(
-                    "actual-duration AICLK source must be a non-empty string"
-                )
-            expected_selection = aiclk_selection_for_source(
-                self.actual_duration_aiclk_source
-            )
-            if self.actual_duration_aiclk_selection not in {
-                None,
-                expected_selection,
-            }:
-                raise LoadConfigurationError(
-                    "actual-duration AICLK selection does not match its source"
-                )
-            if self.actual_duration_aiclk_selection is None:
-                object.__setattr__(
-                    self, "actual_duration_aiclk_selection", expected_selection
-                )
-        if (
-            self.actual_duration_aiclk_mhz is not None
-            and self.load_interval_aiclk_mhz is not None
-            and (
-                not math.isclose(
-                    float(self.actual_duration_aiclk_mhz),
-                    float(self.load_interval_aiclk_mhz),
-                    rel_tol=0.0,
-                    abs_tol=1e-12,
-                )
-                or self.actual_duration_aiclk_source
-                != self.load_interval_aiclk_source
-            )
-        ):
-            raise LoadConfigurationError(
-                "loaded actual-duration AICLK must use the weighted load interval"
-            )
-        if self.condition in _DEVICE_LOAD_CONDITIONS:
-            if (
-                isinstance(self.throughput_reference_aiclk_mhz, bool)
-                or not isinstance(self.throughput_reference_aiclk_mhz, int)
-                or self.throughput_reference_aiclk_mhz
-                != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
-            ):
-                raise LoadConfigurationError(
-                    "device throughput reference AICLK must be 1350 MHz"
-                )
-            if self.throughput_unit_definition != CARD_THROUGHPUT_UNIT_DEFINITION:
-                raise LoadConfigurationError(
-                    "device throughput unit definition is missing or inconsistent"
-                )
-            if self.throughput_reference_aiclk_source != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
-                raise LoadConfigurationError(
-                    "device throughput reference AICLK source is inconsistent"
-                )
+        _validate_actual_duration_aiclk(self)
+        _validate_device_calibration_reference(self)
 
     def as_record(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _validate_calibration_aiclk_metadata(calibration: CalibrationMetadata) -> None:
-    """Validate and derive distinct interval and prediction AICLK metadata."""
-    interval_fields = (
+def _validate_calibration_basics(calibration: CalibrationMetadata) -> None:
+    """Validate the common watcher-off calibration fields."""
+    if calibration.watcher_enabled:
+        raise LoadConfigurationError("load calibration must run with Watcher disabled")
+    duration = _finite_positive(calibration.duration_seconds, "duration_seconds")
+    if duration > MAX_CALIBRATION_SECONDS:
+        raise LoadConfigurationError("calibration duration must be <= 60 seconds")
+    _finite_positive(calibration.achieved_throughput, "achieved_throughput")
+    if calibration.throughput_unit != repeat_throughput_unit(calibration.condition):
+        raise LoadConfigurationError("throughput_unit does not match the calibration condition")
+    _positive_int(calibration.repeat_count, "repeat_count")
+    if not isinstance(calibration.source, str) or not calibration.source.strip():
+        raise LoadConfigurationError("calibration source must be a non-empty string")
+    if calibration.target_seconds is not None:
+        target = _finite_positive(calibration.target_seconds, "target_seconds")
+        if target > MAX_MEASUREMENT_TARGET_SECONDS:
+            raise LoadConfigurationError(
+                "target_seconds must be <= 500 seconds for the 600-second run cap"
+            )
+    _finite_positive(calibration.safety_factor, "safety_factor")
+    if not isinstance(calibration.throughput_reference_aiclk_source, str) or not calibration.throughput_reference_aiclk_source.strip():
+        raise LoadConfigurationError(
+            "throughput reference AICLK source must be a non-empty string"
+        )
+
+
+def _validate_actual_duration_aiclk(calibration: CalibrationMetadata) -> None:
+    """Validate actual-duration AICLK metadata and its load binding."""
+    if (calibration.actual_duration_aiclk_mhz is None) != (
+        calibration.actual_duration_aiclk_source is None
+    ):
+        raise LoadConfigurationError(
+            "actual-duration AICLK metadata must include value and provenance"
+        )
+    if calibration.actual_duration_aiclk_mhz is not None:
+        _finite_positive(
+            calibration.actual_duration_aiclk_mhz, "actual_duration_aiclk_mhz"
+        )
+        if not isinstance(calibration.actual_duration_aiclk_source, str) or not calibration.actual_duration_aiclk_source.strip():
+            raise LoadConfigurationError(
+                "actual-duration AICLK source must be a non-empty string"
+            )
+        expected_selection = aiclk_selection_for_source(
+            calibration.actual_duration_aiclk_source
+        )
+        if calibration.actual_duration_aiclk_selection not in {
+            None,
+            expected_selection,
+        }:
+            raise LoadConfigurationError(
+                "actual-duration AICLK selection does not match its source"
+            )
+        if calibration.actual_duration_aiclk_selection is None:
+            object.__setattr__(
+                calibration, "actual_duration_aiclk_selection", expected_selection
+            )
+    if (
+        calibration.actual_duration_aiclk_mhz is not None
+        and calibration.load_interval_aiclk_mhz is not None
+        and (
+            not math.isclose(
+                float(calibration.actual_duration_aiclk_mhz),
+                float(calibration.load_interval_aiclk_mhz),
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            )
+            or calibration.actual_duration_aiclk_source
+            != calibration.load_interval_aiclk_source
+        )
+    ):
+        raise LoadConfigurationError(
+            "loaded actual-duration AICLK must use the weighted load interval"
+        )
+
+
+def _validate_device_calibration_reference(calibration: CalibrationMetadata) -> None:
+    """Require the fixed card-clock reference for device calibration."""
+    if calibration.condition not in _DEVICE_LOAD_CONDITIONS:
+        return
+    if (
+        isinstance(calibration.throughput_reference_aiclk_mhz, bool)
+        or not isinstance(calibration.throughput_reference_aiclk_mhz, int)
+        or calibration.throughput_reference_aiclk_mhz
+        != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ
+    ):
+        raise LoadConfigurationError("device throughput reference AICLK must be 1350 MHz")
+    if calibration.throughput_unit_definition != CARD_THROUGHPUT_UNIT_DEFINITION:
+        raise LoadConfigurationError(
+            "device throughput unit definition is missing or inconsistent"
+        )
+    if calibration.throughput_reference_aiclk_source != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
+        raise LoadConfigurationError(
+            "device throughput reference AICLK source is inconsistent"
+        )
+
+
+def _calibration_interval_fields(
+    calibration: CalibrationMetadata,
+) -> tuple[Any, ...]:
+    return (
         calibration.load_card_ticks,
         calibration.load_measurement_repeat_count,
         calibration.load_interval_aiclk_mhz,
         calibration.load_interval_aiclk_source,
     )
-    if any(value is not None for value in (calibration.predicted_load_time_aiclk_mhz, calibration.predicted_load_time_aiclk_source, calibration.predicted_load_time_aiclk_selection)) and any(value is None for value in interval_fields):
-        raise LoadConfigurationError("prediction AICLK metadata requires complete load-interval metadata")
-    if not any(value is not None for value in interval_fields + (calibration.load_interval_aiclk_min_mhz, calibration.load_interval_aiclk_selection)):
-        return
+
+
+def _validate_calibration_interval_values(
+    calibration: CalibrationMetadata,
+    interval_fields: tuple[Any, ...],
+) -> None:
+    """Validate the persisted load-interval AICLK facts."""
     if any(value is None for value in interval_fields):
-        raise LoadConfigurationError("load-interval AICLK metadata must include ticks, repeat count, AICLK, and provenance")
+        raise LoadConfigurationError(
+            "load-interval AICLK metadata must include ticks, repeat count, AICLK, and provenance"
+        )
     _positive_int(calibration.load_card_ticks, "load_card_ticks")
     _positive_int(
         calibration.load_measurement_repeat_count, "load_measurement_repeat_count"
@@ -525,35 +543,83 @@ def _validate_calibration_aiclk_metadata(calibration: CalibrationMetadata) -> No
             calibration.load_interval_aiclk_min_mhz, "load_interval_aiclk_min_mhz"
         )
     if calibration.load_interval_aiclk_source != CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE:
-        raise LoadConfigurationError("calibration load-interval AICLK requires sampler-on load-interval trace provenance")
-    expected_interval_selection = aiclk_selection_for_source(calibration.load_interval_aiclk_source)
-    if calibration.load_interval_aiclk_selection not in {None, expected_interval_selection}:
-        raise LoadConfigurationError("load interval AICLK selection does not match load-interval trace provenance")
+        raise LoadConfigurationError(
+            "calibration load-interval AICLK requires sampler-on load-interval trace provenance"
+        )
+    expected_selection = aiclk_selection_for_source(
+        calibration.load_interval_aiclk_source
+    )
+    if calibration.load_interval_aiclk_selection not in {None, expected_selection}:
+        raise LoadConfigurationError(
+            "load interval AICLK selection does not match load-interval trace provenance"
+        )
     if calibration.load_interval_aiclk_selection is None:
-        object.__setattr__(calibration, "load_interval_aiclk_selection", expected_interval_selection)
-    expected_prediction_aiclk, expected_prediction_source, expected_prediction_selection = _prediction_aiclk_selection(
+        object.__setattr__(calibration, "load_interval_aiclk_selection", expected_selection)
+
+
+def _bind_prediction_aiclk_metadata(calibration: CalibrationMetadata) -> None:
+    """Derive and validate the persisted weighted/minimum prediction choice."""
+    expected_aiclk, expected_source, expected_selection = _prediction_aiclk_selection(
         calibration.load_interval_aiclk_mhz, calibration.load_interval_aiclk_min_mhz
     )
     if calibration.predicted_load_time_aiclk_mhz is None:
-        object.__setattr__(calibration, "predicted_load_time_aiclk_mhz", expected_prediction_aiclk)
+        object.__setattr__(
+            calibration, "predicted_load_time_aiclk_mhz", expected_aiclk
+        )
     else:
-        _finite_positive(calibration.predicted_load_time_aiclk_mhz, "predicted_load_time_aiclk_mhz")
-        if not math.isclose(float(calibration.predicted_load_time_aiclk_mhz), expected_prediction_aiclk, rel_tol=0.0, abs_tol=1e-12):
+        _finite_positive(
+            calibration.predicted_load_time_aiclk_mhz,
+            "predicted_load_time_aiclk_mhz",
+        )
+        if not math.isclose(
+            float(calibration.predicted_load_time_aiclk_mhz),
+            expected_aiclk,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
             raise LoadConfigurationError(
                 "prediction AICLK value does not match the weighted/minimum choice"
             )
     if calibration.predicted_load_time_aiclk_source is None:
-        object.__setattr__(calibration, "predicted_load_time_aiclk_source", expected_prediction_source)
-    elif calibration.predicted_load_time_aiclk_source != expected_prediction_source:
+        object.__setattr__(
+            calibration, "predicted_load_time_aiclk_source", expected_source
+        )
+    elif calibration.predicted_load_time_aiclk_source != expected_source:
         raise LoadConfigurationError(
             "prediction AICLK source does not match the weighted/minimum choice"
         )
     if calibration.predicted_load_time_aiclk_selection is None:
-        object.__setattr__(calibration, "predicted_load_time_aiclk_selection", expected_prediction_selection)
-    elif calibration.predicted_load_time_aiclk_selection != expected_prediction_selection:
+        object.__setattr__(
+            calibration, "predicted_load_time_aiclk_selection", expected_selection
+        )
+    elif calibration.predicted_load_time_aiclk_selection != expected_selection:
         raise LoadConfigurationError(
             "prediction AICLK selection does not match the weighted/minimum choice"
         )
+
+
+def _validate_calibration_aiclk_metadata(calibration: CalibrationMetadata) -> None:
+    """Validate and derive distinct interval and prediction AICLK metadata."""
+    interval_fields = _calibration_interval_fields(calibration)
+    prediction_fields = (
+        calibration.predicted_load_time_aiclk_mhz,
+        calibration.predicted_load_time_aiclk_source,
+        calibration.predicted_load_time_aiclk_selection,
+    )
+    if any(value is not None for value in prediction_fields) and any(
+        value is None for value in interval_fields
+    ):
+        raise LoadConfigurationError(
+            "prediction AICLK metadata requires complete load-interval metadata"
+        )
+    if not any(
+        value is not None
+        for value in interval_fields
+        + (calibration.load_interval_aiclk_min_mhz, calibration.load_interval_aiclk_selection)
+    ):
+        return
+    _validate_calibration_interval_values(calibration, interval_fields)
+    _bind_prediction_aiclk_metadata(calibration)
 
 
 def _prediction_aiclk_selection(
@@ -1140,6 +1206,49 @@ def _worker_interval_statistics(
     }
 
 
+def _unloaded_load_coverage(
+    repeat_count: int,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+    normalized_workers: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return the fixed not-applicable coverage for the unloaded control."""
+    if normalized_workers:
+        raise LoadConfigurationError("unloaded control cannot claim worker intervals")
+    if repeat_count != 0:
+        raise LoadConfigurationError("unloaded control must record repeat_count=0")
+    if card_interval is not None or host_interval is not None:
+        raise LoadConfigurationError("unloaded control cannot claim a load interval")
+    return {"verdict": "not_applicable", "valid": True, "covered": True}
+
+
+def _loaded_device_coverage(
+    repeat_count: int,
+    resident_timestamps: list[int] | tuple[int, ...] | None,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+) -> dict[str, Any]:
+    """Validate card-load interval shape and return its coverage facts."""
+    _positive_int(repeat_count, "repeat_count")
+    if host_interval is not None:
+        raise LoadEvidenceError("device-load coverage cannot use a host interval")
+    return _card_coverage(card_interval, resident_timestamps)
+
+
+def _loaded_host_coverage(
+    repeat_count: int,
+    card_interval: CardLoadInterval | None,
+    host_interval: HostLoadInterval | None,
+    measurement_start_ns: int | None,
+    measurement_end_ns: int | None,
+) -> dict[str, Any]:
+    """Validate host-load interval shape and return its coverage facts."""
+    _positive_int(repeat_count, "repeat_count")
+    if card_interval is not None:
+        raise LoadEvidenceError("host condition cannot claim a card-clock load interval")
+    return _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
+
+
 def _load_record_coverage(
     canonical: str,
     repeat_count: int,
@@ -1151,23 +1260,25 @@ def _load_record_coverage(
     measurement_end_ns: int | None,
 ) -> dict[str, Any]:
     if canonical == "unloaded":
-        if normalized_workers:
-            raise LoadConfigurationError("unloaded control cannot claim worker intervals")
-        if repeat_count != 0:
-            raise LoadConfigurationError("unloaded control must record repeat_count=0")
-        if card_interval is not None or host_interval is not None:
-            raise LoadConfigurationError("unloaded control cannot claim a load interval")
-        return {"verdict": "not_applicable", "valid": True, "covered": True}
-    if canonical in _DEVICE_LOAD_CONDITIONS:
-        _positive_int(repeat_count, "repeat_count")
-        if host_interval is not None:
-            raise LoadEvidenceError("device-load coverage cannot use a host interval")
-        coverage = _card_coverage(card_interval, resident_timestamps)
-    else:
-        _positive_int(repeat_count, "repeat_count")
-        if card_interval is not None:
-            raise LoadEvidenceError("host condition cannot claim a card-clock load interval")
-        coverage = _host_coverage(host_interval, measurement_start_ns, measurement_end_ns)
+        return _unloaded_load_coverage(
+            repeat_count, card_interval, host_interval, normalized_workers
+        )
+    coverage = (
+        _loaded_device_coverage(
+            repeat_count,
+            resident_timestamps,
+            card_interval,
+            host_interval,
+        )
+        if canonical in _DEVICE_LOAD_CONDITIONS
+        else _loaded_host_coverage(
+            repeat_count,
+            card_interval,
+            host_interval,
+            measurement_start_ns,
+            measurement_end_ns,
+        )
+    )
     if not coverage["valid"] or not coverage["covered"]:
         raise LoadEvidenceError(coverage["reason"])
     if canonical in _DEVICE_LOAD_CONDITIONS and normalized_workers:
@@ -1511,6 +1622,140 @@ def build_calibration_load_record(
     return record
 
 
+def _validate_dram_worker_rows(
+    record: Mapping[str, Any], normalized: list[dict[str, Any]]
+) -> None:
+    """Validate the fixed eight-bank DRAM worker row contract."""
+    if len(normalized) != DRAM_BANK_COUNT:
+        raise LoadEvidenceError(_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR)
+    if {row["worker_index"] for row in normalized} != set(range(DRAM_BANK_COUNT)):
+        raise LoadEvidenceError("DRAM worker indexes must cover all eight banks")
+    load_metadata = record.get("load")
+    if not isinstance(load_metadata, Mapping):
+        raise LoadEvidenceError("DRAM worker rows require load metadata")
+    expected_repeat_count = load_metadata.get("repeat_count")
+    if (
+        isinstance(expected_repeat_count, bool)
+        or not isinstance(expected_repeat_count, int)
+        or expected_repeat_count <= 0
+    ):
+        raise LoadEvidenceError("DRAM worker rows require a positive load repeat_count")
+    expected_pages = DRAM_PAGES_PER_BANK * expected_repeat_count
+    for row in normalized:
+        statistics = row.get("statistics")
+        if not isinstance(statistics, Mapping):
+            raise LoadEvidenceError("DRAM worker rows require read/write page counters")
+        for field, expected in (
+            ("repeat_count", expected_repeat_count),
+            ("read_pages", expected_pages),
+            ("write_pages", expected_pages),
+        ):
+            actual = statistics.get(field, _MISSING)
+            if isinstance(actual, bool) or not isinstance(actual, int) or actual != expected:
+                raise LoadEvidenceError(
+                    f"DRAM worker statistics {field} must equal the fixed load count"
+                )
+
+
+def _worker_aggregate_interval(
+    record: Mapping[str, Any], normalized: list[dict[str, Any]]
+) -> CardLoadInterval:
+    """Validate the aggregate span and return its canonical interval."""
+    aggregate = record.get("card_load_interval")
+    if not isinstance(aggregate, Mapping):
+        raise LoadEvidenceError("worker intervals require aggregate card interval metadata")
+    try:
+        interval = CardLoadInterval(
+            _uint64(aggregate.get("start_ticks"), _CARD_LOAD_START_FIELD),
+            _uint64(aggregate.get("end_ticks"), _CARD_LOAD_END_FIELD),
+        )
+    except (LoadEvidenceError, TypeError) as exc:
+        raise LoadEvidenceError(str(exc)) from exc
+    starts = [row["start_ticks"] for row in normalized]
+    ends = [row["end_ticks"] for row in normalized]
+    if interval.start_ticks != min(starts) or interval.end_ticks != max(ends):
+        raise LoadEvidenceError("aggregate card interval must remain separate and cover workers")
+    if any(
+        row["start_ticks"] < interval.start_ticks
+        or row["end_ticks"] > interval.end_ticks
+        for row in normalized
+    ):
+        raise LoadEvidenceError("worker interval endpoints do not belong to the aggregate load run")
+    return interval
+
+
+def _validate_dram_worker_bindings(
+    record: Mapping[str, Any], normalized: list[dict[str, Any]]
+) -> None:
+    """Bind DRAM worker cores and repeat counters to the selected load."""
+    expected_cores = P150_RESIDUAL_WORKER_COORDINATES[:DRAM_BANK_COUNT]
+    load_metadata = record.get("load")
+    repeat_count = (
+        load_metadata.get("repeat_count")
+        if isinstance(load_metadata, Mapping)
+        else None
+    )
+    for row in normalized:
+        core = row.get("core")
+        if core is not None and core != list(expected_cores[row["worker_index"]]):
+            raise LoadEvidenceError("DRAM worker core does not match its bank worker")
+        statistics = row.get("statistics")
+        if (
+            isinstance(statistics, Mapping)
+            and "repeat_count" in statistics
+            and statistics.get("repeat_count") != repeat_count
+        ):
+            raise LoadEvidenceError("DRAM worker statistics belong to another load repeat")
+
+
+def _validate_worker_interval_statistics(
+    record: Mapping[str, Any],
+    normalized: list[dict[str, Any]],
+    aggregate: CardLoadInterval,
+) -> int:
+    """Validate aggregate worker statistics and return the slowest duration."""
+    statistics = record.get("card_load_interval_statistics")
+    if not isinstance(statistics, Mapping):
+        raise LoadEvidenceError("worker interval statistics are required with worker rows")
+    slowest = max(row["elapsed_ticks"] for row in normalized)
+    if statistics.get("worker_count") != len(normalized):
+        raise LoadEvidenceError("worker statistics count does not match worker rows")
+    if statistics.get("slowest_worker_elapsed_ticks") != slowest:
+        raise LoadEvidenceError("worker statistics must use the slowest worker own interval")
+    if (
+        statistics.get("aggregate_start_ticks") != aggregate.start_ticks
+        or statistics.get("aggregate_end_ticks") != aggregate.end_ticks
+        or statistics.get("aggregate_elapsed_ticks") != aggregate.elapsed_ticks
+    ):
+        raise LoadEvidenceError("worker statistics aggregate span is inconsistent")
+    if statistics.get("aggregate_span_role") != "coverage_only":
+        raise LoadEvidenceError("aggregate worker span is coverage-only")
+    return slowest
+
+
+def _validate_worker_throughput_interval(
+    record: Mapping[str, Any], slowest: int, aggregate: CardLoadInterval
+) -> None:
+    """Validate optional throughput facts against the slowest worker."""
+    throughput = record.get("throughput_interval")
+    if not isinstance(throughput, Mapping):
+        return
+    if throughput.get("source") != "slowest_worker_own_elapsed_interval":
+        raise LoadEvidenceError("throughput interval must use the slowest worker own interval")
+    if throughput.get("elapsed_ticks") != slowest:
+        raise LoadEvidenceError("throughput interval does not match the slowest worker")
+    if "reference_aiclk_mhz" in throughput and throughput.get(
+        "reference_aiclk_mhz"
+    ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
+        raise LoadEvidenceError("throughput interval reference AICLK must be 1350 MHz")
+    if "reference_aiclk_source" in throughput and throughput.get(
+        "reference_aiclk_source"
+    ) != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
+        raise LoadEvidenceError("throughput interval reference AICLK source is invalid")
+    if throughput.get("aggregate_span_elapsed_ticks") != aggregate.elapsed_ticks:
+        raise LoadEvidenceError("throughput interval aggregate span is inconsistent")
+
+
 def _validate_worker_interval_records(
     record: Mapping[str, Any], *, condition: str
 ) -> None:
@@ -1521,110 +1766,14 @@ def _validate_worker_interval_records(
         return
     normalized = _normalize_worker_intervals(rows)
     if condition == "dram":
-        if len(normalized) != DRAM_BANK_COUNT:
-            raise LoadEvidenceError(_DRAM_LOAD_EVIDENCE_INTERVALS_ERROR)
-        if {row["worker_index"] for row in normalized} != set(range(DRAM_BANK_COUNT)):
-            raise LoadEvidenceError("DRAM worker indexes must cover all eight banks")
-        load_metadata = record.get("load")
-        if not isinstance(load_metadata, Mapping):
-            raise LoadEvidenceError("DRAM worker rows require load metadata")
-        expected_repeat_count = load_metadata.get("repeat_count")
-        if (
-            isinstance(expected_repeat_count, bool)
-            or not isinstance(expected_repeat_count, int)
-            or expected_repeat_count <= 0
-        ):
-            raise LoadEvidenceError("DRAM worker rows require a positive load repeat_count")
-        expected_pages = DRAM_PAGES_PER_BANK * expected_repeat_count
-        for row in normalized:
-            statistics = row.get("statistics")
-            if not isinstance(statistics, Mapping):
-                raise LoadEvidenceError("DRAM worker rows require read/write page counters")
-            for field, expected in (
-                ("repeat_count", expected_repeat_count),
-                ("read_pages", expected_pages),
-                ("write_pages", expected_pages),
-            ):
-                actual = statistics.get(field, _MISSING)
-                if (
-                    isinstance(actual, bool)
-                    or not isinstance(actual, int)
-                    or actual != expected
-                ):
-                    raise LoadEvidenceError(
-                        f"DRAM worker statistics {field} must equal the fixed load count"
-                    )
-    aggregate = record.get("card_load_interval")
-    if not isinstance(aggregate, Mapping):
-        raise LoadEvidenceError("worker intervals require aggregate card interval metadata")
-    try:
-        aggregate_interval = CardLoadInterval(
-            _uint64(aggregate.get("start_ticks"), _CARD_LOAD_START_FIELD),
-            _uint64(aggregate.get("end_ticks"), _CARD_LOAD_END_FIELD),
-        )
-    except (LoadEvidenceError, TypeError) as exc:
-        raise LoadEvidenceError(str(exc)) from exc
-    starts = [row["start_ticks"] for row in normalized]
-    ends = [row["end_ticks"] for row in normalized]
-    if aggregate_interval.start_ticks != min(starts) or aggregate_interval.end_ticks != max(ends):
-        raise LoadEvidenceError("aggregate card interval must remain separate and cover workers")
-    if any(
-        row["start_ticks"] < aggregate_interval.start_ticks
-        or row["end_ticks"] > aggregate_interval.end_ticks
-        for row in normalized
-    ):
-        raise LoadEvidenceError("worker interval endpoints do not belong to the aggregate load run")
+        _validate_dram_worker_rows(record, normalized)
+    aggregate_interval = _worker_aggregate_interval(record, normalized)
     if condition == "dram":
-        expected_cores = P150_RESIDUAL_WORKER_COORDINATES[:DRAM_BANK_COUNT]
-        for row in normalized:
-            core = row.get("core")
-            if core is not None and core != list(expected_cores[row["worker_index"]]):
-                raise LoadEvidenceError("DRAM worker core does not match its bank worker")
-            statistics = row.get("statistics")
-            load_metadata = record.get("load")
-            repeat_count = (
-                load_metadata.get("repeat_count")
-                if isinstance(load_metadata, Mapping)
-                else None
-            )
-            if (
-                isinstance(statistics, Mapping)
-                and "repeat_count" in statistics
-                and statistics.get("repeat_count") != repeat_count
-            ):
-                raise LoadEvidenceError("DRAM worker statistics belong to another load repeat")
-    statistics = record.get("card_load_interval_statistics")
-    if not isinstance(statistics, Mapping):
-        raise LoadEvidenceError("worker interval statistics are required with worker rows")
-    slowest = max(row["elapsed_ticks"] for row in normalized)
-    if statistics.get("worker_count") != len(normalized):
-        raise LoadEvidenceError("worker statistics count does not match worker rows")
-    if statistics.get("slowest_worker_elapsed_ticks") != slowest:
-        raise LoadEvidenceError("worker statistics must use the slowest worker own interval")
-    if (
-        statistics.get("aggregate_start_ticks") != aggregate_interval.start_ticks
-        or statistics.get("aggregate_end_ticks") != aggregate_interval.end_ticks
-        or statistics.get("aggregate_elapsed_ticks") != aggregate_interval.elapsed_ticks
-    ):
-        raise LoadEvidenceError("worker statistics aggregate span is inconsistent")
-    if statistics.get("aggregate_span_role") != "coverage_only":
-        raise LoadEvidenceError("aggregate worker span is coverage-only")
-    throughput = record.get("throughput_interval")
-    if isinstance(throughput, Mapping):
-        if throughput.get("source") != "slowest_worker_own_elapsed_interval":
-            raise LoadEvidenceError("throughput interval must use the slowest worker own interval")
-        if throughput.get("elapsed_ticks") != slowest:
-            raise LoadEvidenceError("throughput interval does not match the slowest worker")
-        if "reference_aiclk_mhz" in throughput and throughput.get(
-            "reference_aiclk_mhz"
-        ) != CARD_THROUGHPUT_REFERENCE_AICLK_MHZ:
-            raise LoadEvidenceError("throughput interval reference AICLK must be 1350 MHz")
-        if "reference_aiclk_source" in throughput and throughput.get(
-            "reference_aiclk_source"
-        ) != CARD_THROUGHPUT_REFERENCE_AICLK_SOURCE:
-            raise LoadEvidenceError("throughput interval reference AICLK source is invalid")
-        if throughput.get("aggregate_span_elapsed_ticks") != aggregate_interval.elapsed_ticks:
-            raise LoadEvidenceError("throughput interval aggregate span is inconsistent")
+        _validate_dram_worker_bindings(record, normalized)
+    slowest = _validate_worker_interval_statistics(
+        record, normalized, aggregate_interval
+    )
+    _validate_worker_throughput_interval(record, slowest, aggregate_interval)
 
 
 def _validate_calibration_repeat_binding(
@@ -1838,6 +1987,37 @@ def _validate_load_coverage(record: Mapping[str, Any], canonical: str) -> None:
         raise LoadEvidenceError("load coverage clock does not match the condition")
 
 
+def _validate_newton_schulz_profile(
+    profile: Any, expected_effective: int
+) -> None:
+    if not isinstance(profile, Mapping):
+        raise LoadEvidenceError("Newton-Schulz profile records must be objects")
+    if profile.get("risc") not in {"TRISC0", "TRISC1", "TRISC2"}:
+        return
+    if profile.get("warmup_event_count") != expected_effective:
+        raise LoadEvidenceError(
+            "Newton-Schulz profile warmup_event_count must match effective_outer_repetitions"
+        )
+
+
+def _validate_newton_schulz_profile_records(
+    record: Mapping[str, Any], expected_effective: int
+) -> None:
+    """Validate optional NS profile counters against effective repetitions."""
+    worker_rows = record.get("card_load_worker_intervals")
+    if not isinstance(worker_rows, list):
+        return
+    for row in worker_rows:
+        statistics = row.get("statistics") if isinstance(row, Mapping) else None
+        if not isinstance(statistics, Mapping) or "profile_records" not in statistics:
+            continue
+        profile_records = statistics.get("profile_records")
+        if not isinstance(profile_records, list):
+            raise LoadEvidenceError("Newton-Schulz profile_records must be a list")
+        for profile in profile_records:
+            _validate_newton_schulz_profile(profile, expected_effective)
+
+
 def _validate_newton_schulz_work(
     record: Mapping[str, Any], load: Mapping[str, Any], repeat_count: int
 ) -> None:
@@ -1862,26 +2042,7 @@ def _validate_newton_schulz_work(
         raise LoadEvidenceError(
             "Newton-Schulz load outer_repetitions must match the fixed load profile"
         )
-
-    worker_rows = record.get("card_load_worker_intervals")
-    if not isinstance(worker_rows, list):
-        return
-    for row in worker_rows:
-        statistics = row.get("statistics") if isinstance(row, Mapping) else None
-        if not isinstance(statistics, Mapping) or "profile_records" not in statistics:
-            continue
-        profile_records = statistics.get("profile_records")
-        if not isinstance(profile_records, list):
-            raise LoadEvidenceError("Newton-Schulz profile_records must be a list")
-        for profile in profile_records:
-            if not isinstance(profile, Mapping):
-                raise LoadEvidenceError("Newton-Schulz profile records must be objects")
-            if profile.get("risc") in {"TRISC0", "TRISC1", "TRISC2"} and profile.get(
-                "warmup_event_count"
-            ) != expected_effective:
-                raise LoadEvidenceError(
-                    "Newton-Schulz profile warmup_event_count must match effective_outer_repetitions"
-                )
+    _validate_newton_schulz_profile_records(record, expected_effective)
 
 
 def _validate_device_load_record(record: Mapping[str, Any], canonical: str) -> None:

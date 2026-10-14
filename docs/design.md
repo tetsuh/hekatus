@@ -1972,6 +1972,30 @@ of repeats per 1.35e9 card-clock ticks at 1350 MHz, not repeats per weighted
 real-time second. Absent interval bounds or trace provenance are rejected
 rather than replaced by the maximum or an environment snapshot.
 
+The legacy snapshot compatibility validator cannot prove retrieval-time
+immutability after the fact. It checks the snapshot bytes' SHA-256 and
+byte_count and their binding to the record's validated run identity; immutable
+snapshot is treated as a provenance declaration made at retrieval. The source
+identity follows the runner's `require_run_artifact(prefix="power-",
+suffix=".csv", run_id=...)` binding rather than a directory or recency guess.
+
+The capture-order and trust-bound decision is recorded in
+[ADR-0014](adr/0014-issue118-utc-monotonic-trust-bound.md).
+Loaded records also bind the UTC program interval used by the power trace to
+its host `CLOCK_MONOTONIC` interval. This comparison applies only when
+`load_interval_source` is exactly `issue118_program_host_interval`; the
+unloaded control's `run_bounds` interval is deliberately not compared. The
+runner reads each endpoint from `CLOCK_MONOTONIC` first and UTC second. UTC
+serialization has microsecond resolution, so quantization contributes at most
+1 us per endpoint (2 us across the interval), while the monotonic values retain
+nanoseconds. The validator reserves 1 ms per endpoint for a scheduling
+interruption between those two reads. Its trust bound is therefore
+`2 × (1 us + 1 ms) = 2,002,000 ns`. This headroom is a capture-scheduling
+bound chosen independently of the observations, not a tolerance fitted to
+records; a record beyond it is not trustworthy evidence. The committed loaded
+records differ by 647 ns (Newton-Schulz) and 1,861 ns (DRAM), both with
+substantial margin below the bound.
+
 Every completed resident record pairs its card-side resident/load tick spans
 with host `CLOCK_MONOTONIC` launch and completion nanoseconds. Device-load
 records retain each worker interval: all eight DRAM workers remain separate,
