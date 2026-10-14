@@ -171,6 +171,28 @@ _POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definit
 _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH = (
     "power_clock_provenance.interval_extrema_policy"
 )
+_TRACE_TOP_FLAG_ALIASES = (
+    ("readable", "readable"),
+    ("nonempty", "nonempty"),
+    ("timestamps_parse", "timestamps_parse"),
+    ("timestamps_ordered", "timestamps_ordered"),
+    ("covers_run_start", "covers_run_start"),
+    ("covers_run_end", "covers_run_end"),
+    ("coverage_complete", "coverage_complete"),
+)
+_TRACE_COVERAGE_FLAG_ALIASES = (
+    ("readable", "readable"),
+    ("nonempty", "nonempty"),
+    ("timestamps_parse", "timestamps_parse"),
+    ("timestamps_ordered", "timestamps_ordered"),
+    ("first_at_or_before_run_start", "covers_run_start"),
+    ("last_at_or_after_run_end", "covers_run_end"),
+    ("last_within_interval_bound", "last_within_interval_bound"),
+    ("covers_run_start", "covers_run_start"),
+    ("covers_run_end", "covers_run_end"),
+    ("complete", "coverage_complete"),
+    ("coverage_complete", "coverage_complete"),
+)
 
 RESIDENT_RECORD_SCHEMA = "issue-12-stage-1-resident-v1"
 RESIDENT_RECORD_SCHEMA_MARKER = 1
@@ -3912,6 +3934,86 @@ def _trace_report(record: Mapping[str, Any], ctx: ValidationContext) -> dict[str
     )
 
 
+def _trace_flag_mismatches(
+    container: Mapping[str, Any] | None,
+    prefix: str,
+    aliases: tuple[tuple[str, str], ...],
+    actual: Mapping[str, Any],
+    invariant: str,
+) -> list[dict[str, Any]]:
+    """Compare every declared boolean alias with one recomputed trace fact."""
+    if not isinstance(container, Mapping):
+        return []
+    mismatches: list[dict[str, Any]] = []
+    for declared_name, actual_name in aliases:
+        if declared_name not in container:
+            continue
+        declared = container.get(declared_name)
+        expected = actual.get(actual_name, _MISSING)
+        if expected is not _MISSING and declared != expected:
+            mismatches.append(
+                _mismatch(
+                    invariant,
+                    (f"{prefix}.{declared_name}",),
+                    f"{prefix}.{declared_name} does not match recomputed power-trace coverage",
+                )
+            )
+    return mismatches
+
+
+def _check_declared_trace_flags(
+    record: Mapping[str, Any], report: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Bind top-level and nested coverage/provenance flags to CSV facts."""
+    actual_coverage = report.get("coverage")
+    if not isinstance(actual_coverage, Mapping):
+        actual_coverage = {}
+    invariant = "power_trace.coverage_flags"
+    provenance = record.get("power_clock_provenance")
+    trace_coverage = record.get("power_trace_coverage")
+    mismatches = _trace_flag_mismatches(
+        provenance if isinstance(provenance, Mapping) else None,
+        "power_clock_provenance",
+        _TRACE_TOP_FLAG_ALIASES,
+        report,
+        invariant,
+    )
+    provenance_coverage = (
+        provenance.get("coverage")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    mismatches.extend(
+        _trace_flag_mismatches(
+            provenance_coverage,
+            "power_clock_provenance.coverage",
+            _TRACE_COVERAGE_FLAG_ALIASES,
+            {**report, **actual_coverage},
+            invariant,
+        )
+    )
+    if isinstance(trace_coverage, Mapping):
+        mismatches.extend(
+            _trace_flag_mismatches(
+                trace_coverage,
+                "power_trace_coverage",
+                (("coverage_complete", "coverage_complete"),),
+                report,
+                invariant,
+            )
+        )
+        mismatches.extend(
+            _trace_flag_mismatches(
+                trace_coverage.get("coverage"),
+                "power_trace_coverage.coverage",
+                _TRACE_COVERAGE_FLAG_ALIASES,
+                {**report, **actual_coverage},
+                invariant,
+            )
+        )
+    return mismatches
+
+
 def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) -> list[dict[str, Any]]:
     invariant = "power_trace.facts"
     sampler = _sampler(record)
@@ -4059,6 +4161,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     if not actual_available:
         mismatches.append(_mismatch(invariant, ("power_trace",), "power trace actual bytes are unavailable for SHA-256 and row validation"))
         return mismatches
+    mismatches.extend(_check_declared_trace_flags(record, report))
     if report.get("columns") != list(POWER_TRACE_COLUMNS):
         mismatches.append(_mismatch(invariant, ("power_trace.columns",), "power trace columns are not the declared telemetry columns"))
     for field in ("readable", "nonempty", "timestamps_parse", "timestamps_ordered"):

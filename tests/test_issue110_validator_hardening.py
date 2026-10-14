@@ -142,3 +142,57 @@ def test_record_kind_matrix_covers_sampler_outcome_product(
         strict_trace=trace_path is not None,
     )
     assert report["valid"] is True, report["mismatches"]
+
+
+TRACE_ROOT = Path(__file__).parents[1] / "docs/measurements"
+TRACE_RECORD = TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
+TRACE_CSV = TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005-power.csv"
+TRACE_FLAG_PATHS = (
+    ("power_clock_provenance", "readable"),
+    ("power_clock_provenance", "nonempty"),
+    ("power_clock_provenance", "timestamps_parse"),
+    ("power_clock_provenance", "timestamps_ordered"),
+    ("power_clock_provenance", "covers_run_start"),
+    ("power_clock_provenance", "covers_run_end"),
+    ("power_clock_provenance", "coverage_complete"),
+    ("power_clock_provenance", "coverage", "readable"),
+    ("power_clock_provenance", "coverage", "nonempty"),
+    ("power_clock_provenance", "coverage", "timestamps_parse"),
+    ("power_clock_provenance", "coverage", "timestamps_ordered"),
+    ("power_clock_provenance", "coverage", "first_at_or_before_run_start"),
+    ("power_clock_provenance", "coverage", "last_at_or_after_run_end"),
+    ("power_clock_provenance", "coverage", "last_within_interval_bound"),
+    ("power_clock_provenance", "coverage", "complete"),
+    ("power_trace_coverage", "coverage_complete"),
+    ("power_trace_coverage", "coverage", "readable"),
+    ("power_trace_coverage", "coverage", "nonempty"),
+    ("power_trace_coverage", "coverage", "timestamps_parse"),
+    ("power_trace_coverage", "coverage", "timestamps_ordered"),
+    ("power_trace_coverage", "coverage", "first_at_or_before_run_start"),
+    ("power_trace_coverage", "coverage", "last_at_or_after_run_end"),
+    ("power_trace_coverage", "coverage", "last_within_interval_bound"),
+    ("power_trace_coverage", "coverage", "complete"),
+)
+
+
+@pytest.mark.parametrize("path", TRACE_FLAG_PATHS, ids=lambda value: ".".join(value))
+def test_every_declared_trace_coverage_flag_is_bound_to_recomputed_csv_facts(path):
+    """Flipping any persisted coverage/provenance boolean invalidates the record."""
+    import json
+
+    record = json.loads(TRACE_RECORD.read_text())
+    candidate = copy.deepcopy(record)
+    current = candidate
+    for component in path[:-1]:
+        current = current[component]
+    current[path[-1]] = not current[path[-1]]
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+    assert report["valid"] is False, path
+    assert any(
+        mismatch["invariant"] == "power_trace.coverage_flags"
+        for mismatch in report["mismatches"]
+    )
