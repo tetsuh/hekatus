@@ -287,6 +287,82 @@ def test_committed_policyless_snapshot_flag_is_bound_to_trace_provenance(
     )
 
 
+def test_policyless_snapshot_claim_rejects_ordinary_source_file(
+    trace_record_with_nested_coverage_aliases: dict[str, object],
+):
+    """A legacy immutable claim requires the run-bound power source name."""
+    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
+    candidate["power_clock_provenance"]["source_file"] = "ordinary.csv"
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, report["mismatches"]
+    assert any(
+        mismatch["fields"] == ["power_clock_provenance.immutable_snapshot"]
+        for mismatch in report["mismatches"]
+    )
+
+
+def test_policyless_snapshot_claim_rejects_a_different_run_source_file(
+    trace_record_with_nested_coverage_aliases: dict[str, object],
+):
+    """A legacy immutable claim cannot borrow another run's source artifact."""
+    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
+    candidate["power_clock_provenance"]["source_file"] = "power-other-run.csv"
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, report["mismatches"]
+    assert any(
+        mismatch["fields"] == ["power_clock_provenance.immutable_snapshot"]
+        for mismatch in report["mismatches"]
+    )
+
+
+def test_policyless_snapshot_claim_rejects_a_changed_record_run_id(
+    trace_record_with_nested_coverage_aliases: dict[str, object],
+):
+    """The source declaration must remain bound to the record environment run."""
+    candidate = copy.deepcopy(trace_record_with_nested_coverage_aliases)
+    candidate["environment"]["run_id"] = "other-run"
+
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_CSV,
+        strict_trace=True,
+    )
+
+    assert report["valid"] is False, report["mismatches"]
+    assert any(
+        mismatch["fields"] == ["power_clock_provenance.immutable_snapshot"]
+        for mismatch in report["mismatches"]
+    )
+
+
+@pytest.mark.parametrize("condition", ("control", "newton-schulz", "dram"))
+def test_committed_issue118_snapshot_records_validate_unchanged(condition: str):
+    """The three committed Issue #118 records remain valid without rewriting."""
+    stem = f"2026-10-11-p150a-issue118-{condition}-500000-adr0005"
+    record = json.loads((TRACE_ROOT / f"{stem}.json").read_text())
+    before = copy.deepcopy(record)
+    report = validate_resident_record(
+        record,
+        power_trace_path=TRACE_ROOT / f"{stem}-power.csv",
+        strict_trace=True,
+    )
+
+    assert report["valid"] is True, report["mismatches"]
+    assert record == before
+
+
 TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "readable"),
     ("power_clock_provenance", "nonempty"),

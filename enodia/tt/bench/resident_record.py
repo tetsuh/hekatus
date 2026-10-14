@@ -111,7 +111,11 @@ from enodia.tt.bench.resident_clock import (
     select_elapsed_aiclk,
     ticks_to_seconds,
 )
-from enodia.tt.bench.run_binding import RunBindingError, validate_run_id
+from enodia.tt.bench.run_binding import (
+    RunBindingError,
+    run_artifact_name,
+    validate_run_id,
+)
 from enodia.tt.bench.sampler_contract import (
     SAMPLER_CONTRACT,
     normalize_sampler_metadata,
@@ -4171,9 +4175,14 @@ def _trace_flag_mismatches(
 
 
 def _has_legacy_snapshot_provenance(
-    record: Mapping[str, Any], report: Mapping[str, Any]
+    record: Mapping[str, Any], report: Mapping[str, Any], *, trace_path: Path | None
 ) -> bool:
-    """Return whether trace bytes support the historical snapshot declaration."""
+    """Return whether legacy bytes carry a validated run-bound snapshot claim.
+
+    Retrieval-time immutability cannot be proven later.  The validator checks
+    the snapshot bytes' hash and byte count and their binding to run identity;
+    immutability is treated as a provenance declaration made at retrieval.
+    """
     if report.get("actual_bytes_available") is not True:
         return False
     provenance = record.get("power_clock_provenance")
@@ -4184,8 +4193,46 @@ def _has_legacy_snapshot_provenance(
         not isinstance(source_file, str)
         or not source_file.strip()
         or Path(source_file).name != source_file
+        or not source_file.startswith("power-")
+        or not source_file.endswith(".csv")
     ):
         return False
+    source_run_id = source_file[len("power-") : -len(".csv")]
+    try:
+        expected_source_file = run_artifact_name(
+            prefix="power-", suffix=".csv", run_id=source_run_id
+        )
+    except ValueError:
+        return False
+    if source_file != expected_source_file:
+        return False
+
+    environment = record.get("environment")
+    if isinstance(environment, Mapping) and "run_id" in environment:
+        try:
+            record_run_id = validate_run_id(environment["run_id"])
+        except (TypeError, ValueError):
+            return False
+        if record_run_id != source_run_id:
+            return False
+
+    # New resident snapshots encode the same identity in their path.  The
+    # renamed measurement artifacts committed by Issue #118 are accepted as
+    # historical compatibility inputs after the source declaration and bytes
+    # above have been checked.
+    if trace_path is not None and trace_path.name.startswith(
+        f"{_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-"
+    ):
+        try:
+            validate_power_trace_snapshot_path(
+                trace_path,
+                run_id=source_run_id,
+                snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
+                output_dir=trace_path.parent,
+            )
+        except (RunBindingError, ValueError):
+            return False
+
     declared_hash = provenance.get("sha256", _MISSING)
     actual_hash = report.get("sha256")
     if (
@@ -4205,7 +4252,10 @@ def _has_legacy_snapshot_provenance(
 
 
 def _check_declared_trace_flags(
-    record: Mapping[str, Any], report: Mapping[str, Any]
+    record: Mapping[str, Any],
+    report: Mapping[str, Any],
+    *,
+    trace_path: Path | None,
 ) -> list[dict[str, Any]]:
     """Bind top-level and nested coverage/provenance flags to CSV facts."""
     actual_coverage = report.get("coverage")
@@ -4223,7 +4273,9 @@ def _check_declared_trace_flags(
     if declared.get("interval_extrema_policy", _MISSING) is _MISSING:
         top_flag_actual = {
             **report,
-            "immutable_snapshot": _has_legacy_snapshot_provenance(record, report),
+            "immutable_snapshot": _has_legacy_snapshot_provenance(
+                record, report, trace_path=trace_path
+            ),
         }
     mismatches = _trace_flag_mismatches(
         provenance if isinstance(provenance, Mapping) else None,
@@ -4447,7 +4499,11 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
     if not actual_available:
         mismatches.append(_mismatch(invariant, ("power_trace",), "power trace actual bytes are unavailable for SHA-256 and row validation"))
         return mismatches
-    mismatches.extend(_check_declared_trace_flags(record, report))
+    mismatches.extend(
+        _check_declared_trace_flags(
+            record, report, trace_path=ctx.power_trace_path
+        )
+    )
     if report.get("columns") != list(POWER_TRACE_COLUMNS):
         mismatches.append(_mismatch(invariant, ("power_trace.columns",), "power trace columns are not the declared telemetry columns"))
     for field in ("readable", "nonempty", "timestamps_parse", "timestamps_ordered"):
@@ -4888,7 +4944,11 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
     ResidentInvariant(
         "power_trace.facts",
         ("power_trace", "power_clock_provenance", "power_trace_sha256"),
-        "trace bytes, rows, timestamps, run bounds, AICLK, and PR #109 coverage; basename-only legacy facts are diagnostic-only",
+        (
+            "trace bytes, rows, timestamps, run bounds, AICLK, and PR #109 coverage; "
+            "legacy snapshot claims bind source_file to a validated run identity and "
+            "matching bytes"
+        ),
         _check_power_trace_facts,
     ),
     ResidentInvariant(
