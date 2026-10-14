@@ -1972,6 +1972,8 @@ of repeats per 1.35e9 card-clock ticks at 1350 MHz, not repeats per weighted
 real-time second. Absent interval bounds or trace provenance are rejected
 rather than replaced by the maximum or an environment snapshot.
 
+The capture-order and trust-bound decision is recorded in
+[ADR-0014](adr/0014-issue118-utc-monotonic-trust-bound.md).
 Loaded records also bind the UTC program interval used by the power trace to
 its host `CLOCK_MONOTONIC` interval. This comparison applies only when
 `load_interval_source` is exactly `issue118_program_host_interval`; the

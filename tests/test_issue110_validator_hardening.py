@@ -303,6 +303,30 @@ def test_committed_loaded_program_intervals_pass_with_substantial_margin(conditi
     assert difference * 100 < PROGRAM_INTERVAL_UTC_MONOTONIC_TOLERANCE_NS
 
 
+@pytest.mark.parametrize(
+    "interval_name", ("program_host_interval", "host_program_interval")
+)
+def test_loaded_program_interval_alias_mutation_is_rejected(interval_name: str):
+    """A mutation of only one persisted interval alias cannot pass validation."""
+    record = json.loads(
+        (TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json").read_text()
+    )
+    candidate = copy.deepcopy(record)
+    candidate[interval_name]["elapsed_ns"] += 50_000_000
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_ROOT
+        / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005-power.csv",
+        strict_trace=True,
+    )
+    assert report["valid"] is False, report["mismatches"]
+    assert any(
+        mismatch["invariant"] == "program_interval.utc_monotonic_binding"
+        and "host_program_interval.elapsed_ns" in mismatch["fields"]
+        for mismatch in report["mismatches"]
+    )
+
+
 @pytest.mark.parametrize("condition", ("newton-schulz", "dram"))
 @pytest.mark.parametrize("extra_ns", (0, 1))
 def test_loaded_program_interval_boundary_is_inclusive_and_outside_fails(

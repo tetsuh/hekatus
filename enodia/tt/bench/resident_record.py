@@ -169,6 +169,8 @@ _ENVIRONMENT_HARNESS_COMMIT_PATH = "environment.harness_commit"
 _POWER_CLOCK_LOAD_INTERVAL_START_PATH = "power_clock_provenance.load_interval_start"
 _POWER_CLOCK_LOAD_INTERVAL_END_PATH = "power_clock_provenance.load_interval_end"
 _PROGRAM_HOST_INTERVAL_ELAPSED_PATH = "program_host_interval.elapsed_ns"
+_HOST_PROGRAM_INTERVAL_PATH = "host_program_interval"
+_HOST_PROGRAM_INTERVAL_ELAPSED_PATH = "host_program_interval.elapsed_ns"
 
 _MISSING = object()
 _POWER_TRACE_COVERAGE_DEFINITION_PATH = "power_trace_coverage.coverage_definition"
@@ -1580,6 +1582,15 @@ def _check_issue118_program_interval_binding(
                 invariant,
                 (_PROGRAM_HOST_INTERVAL_ELAPSED_PATH,),
                 "Issue #118 host monotonic program elapsed_ns must be a non-negative integer",
+            )
+        ]
+    alias = record.get(_HOST_PROGRAM_INTERVAL_PATH, _MISSING)
+    if alias is not _MISSING and alias != program:
+        return [
+            _mismatch(
+                invariant,
+                (_PROGRAM_HOST_INTERVAL_ELAPSED_PATH, _HOST_PROGRAM_INTERVAL_ELAPSED_PATH),
+                "host monotonic program interval aliases must match",
             )
         ]
     utc_elapsed, error = _utc_interval_elapsed_ns(
@@ -4694,8 +4705,9 @@ RESIDENT_INVARIANT_CATALOG: tuple[ResidentInvariant, ...] = (
             _POWER_CLOCK_LOAD_INTERVAL_START_PATH,
             _POWER_CLOCK_LOAD_INTERVAL_END_PATH,
             _PROGRAM_HOST_INTERVAL_ELAPSED_PATH,
+            _HOST_PROGRAM_INTERVAL_ELAPSED_PATH,
         ),
-        "Issue #118 loaded UTC and host monotonic program intervals share a trust bound",
+        "Issue #118 loaded UTC and host monotonic program interval aliases share a trust bound",
         _check_issue118_program_interval_binding,
     ),
     ResidentInvariant(
