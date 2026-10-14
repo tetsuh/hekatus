@@ -4158,6 +4158,8 @@ def _trace_flag_mismatches(
     aliases: tuple[tuple[str, str], ...],
     actual: Mapping[str, Any],
     invariant: str,
+    *,
+    allow_none_for_unavailable: bool = False,
 ) -> list[dict[str, Any]]:
     """Compare every declared boolean alias with one recomputed trace fact."""
     if not isinstance(container, Mapping):
@@ -4172,6 +4174,11 @@ def _trace_flag_mismatches(
             expected is not _MISSING
             and not (
                 expected is None and (declared is None or declared is False)
+            )
+            and not (
+                allow_none_for_unavailable
+                and expected is False
+                and declared is None
             )
             and (
                 type(declared) is not bool
@@ -4345,6 +4352,7 @@ def _check_declared_trace_flags(
     report: Mapping[str, Any],
     *,
     trace_path: Path | None,
+    allow_none_for_unavailable: bool = False,
 ) -> list[dict[str, Any]]:
     """Bind top-level and nested coverage/provenance flags to CSV facts."""
     actual_coverage = report.get("coverage")
@@ -4383,6 +4391,7 @@ def _check_declared_trace_flags(
         _TRACE_TOP_FLAG_ALIASES,
         top_flag_actual,
         invariant,
+        allow_none_for_unavailable=allow_none_for_unavailable,
     )
     provenance_coverage = (
         provenance.get("coverage")
@@ -4396,6 +4405,7 @@ def _check_declared_trace_flags(
             _TRACE_COVERAGE_FLAG_ALIASES,
             {**report, **actual_coverage},
             invariant,
+            allow_none_for_unavailable=allow_none_for_unavailable,
         )
     )
     if isinstance(trace_coverage, Mapping):
@@ -4406,6 +4416,7 @@ def _check_declared_trace_flags(
                 _TRACE_RECORD_COVERAGE_FLAG_ALIASES,
                 report,
                 invariant,
+                allow_none_for_unavailable=allow_none_for_unavailable,
             )
         )
         mismatches.extend(
@@ -4415,6 +4426,7 @@ def _check_declared_trace_flags(
                 _TRACE_COVERAGE_FLAG_ALIASES,
                 {**report, **actual_coverage},
                 invariant,
+                allow_none_for_unavailable=allow_none_for_unavailable,
             )
         )
     return mismatches
@@ -4626,6 +4638,14 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         "aiclk_source",
     )
     if not actual_available and legacy_unverified:
+        mismatches.extend(
+            _check_declared_trace_flags(
+                record,
+                _absent_trace_report(),
+                trace_path=None,
+                allow_none_for_unavailable=True,
+            )
+        )
         return mismatches
     if not actual_available:
         mismatches.append(_mismatch(invariant, ("power_trace",), "power trace actual bytes are unavailable for SHA-256 and row validation"))

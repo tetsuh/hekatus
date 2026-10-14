@@ -155,6 +155,23 @@ def _set_path(record: dict[str, object], path: tuple[str, ...], value: object) -
     current[path[-1]] = value
 
 
+def _legacy_no_bytes_record() -> dict[str, object]:
+    environment = _environment("default")
+    environment.pop("telemetry_sampler")
+    return build_measurement_record(
+        config=_config(frame_count=3),
+        aiclk_mhz=1_350,
+        timestamps=[1_000, 2_000, 3_000],
+        producer_full_count=0,
+        consumer_empty_count=0,
+        kernel_error_flag=0,
+        harness_commit="0123456789abcdef",
+        environment=environment,
+        power_trace="legacy.csv",
+        timing_evidence=False,
+    )
+
+
 @pytest.mark.parametrize("mode,outcome", PRODUCT, ids=lambda value: str(value))
 def test_record_kind_matrix_covers_sampler_outcome_product(
     tmp_path: Path, mode: str, outcome: str
@@ -574,6 +591,52 @@ def test_sampler_off_absent_trace_aliases_remain_valid():
                 path,
                 report["mismatches"],
             )
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        ("power_clock_provenance", "readable"),
+        ("power_clock_provenance", "coverage", "covers_run_start"),
+    ),
+    ids=lambda value: ".".join(value),
+)
+@pytest.mark.parametrize("value", (True, 1, "true"), ids=("positive", "numeric", "text"))
+def test_legacy_no_bytes_trace_alias_mutations_are_rejected(
+    path: tuple[str, ...], value: object
+):
+    """Legacy basename-only records reject positive and malformed trace flags."""
+    candidate = _legacy_no_bytes_record()
+    _set_path(candidate, path, value)
+    report = validate_resident_record(
+        candidate,
+        timestamps=[1_000, 2_000, 3_000],
+        strict_trace=False,
+    )
+    assert report["valid"] is False, (path, value, report["mismatches"])
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        ("power_clock_provenance", "readable"),
+        ("power_clock_provenance", "coverage", "covers_run_start"),
+    ),
+    ids=lambda value: ".".join(value),
+)
+@pytest.mark.parametrize("value", (False, None), ids=("false", "none"))
+def test_legacy_no_bytes_diagnostic_trace_aliases_remain_compatible(
+    path: tuple[str, ...], value: object
+):
+    """Legacy basename-only records retain false and None diagnostic aliases."""
+    candidate = _legacy_no_bytes_record()
+    _set_path(candidate, path, value)
+    report = validate_resident_record(
+        candidate,
+        timestamps=[1_000, 2_000, 3_000],
+        strict_trace=False,
+    )
+    assert report["valid"] is True, (path, value, report["mismatches"])
 
 
 @pytest.mark.parametrize("mode", SAMPLER_MODES)
