@@ -813,9 +813,48 @@ def test_loaded_program_interval_alias_mutation_is_rejected(interval_name: str):
     assert report["valid"] is False, report["mismatches"]
     assert any(
         mismatch["invariant"] == "program_interval.utc_monotonic_binding"
-        and "host_program_interval.elapsed_ns" in mismatch["fields"]
+        and {
+            "program_host_interval",
+            "host_program_interval",
+        }
+        <= set(mismatch["fields"])
+        and "aliases must match exactly" in mismatch["message"]
         for mismatch in report["mismatches"]
     )
+
+
+@pytest.mark.parametrize("interval_name", ("program_host_interval", "host_program_interval"))
+@pytest.mark.parametrize("field", ("clock", "start_ns"))
+def test_loaded_program_interval_alias_non_elapsed_mutation_is_rejected(
+    interval_name: str, field: str
+):
+    """A non-elapsed mutation of either interval alias cannot pass validation."""
+    record = json.loads(
+        (TRACE_ROOT / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json").read_text()
+    )
+    candidate = copy.deepcopy(record)
+    if field == "clock":
+        candidate[interval_name][field] = "different_clock"
+    else:
+        candidate[interval_name][field] += 1
+    report = validate_resident_record(
+        candidate,
+        power_trace_path=TRACE_ROOT
+        / "2026-10-11-p150a-issue118-newton-schulz-500000-adr0005-power.csv",
+        strict_trace=True,
+    )
+    assert report["valid"] is False, report["mismatches"]
+    alias_mismatches = [
+        mismatch
+        for mismatch in report["mismatches"]
+        if mismatch["invariant"] == "program_interval.utc_monotonic_binding"
+        and "aliases must match exactly" in mismatch["message"]
+    ]
+    assert alias_mismatches
+    assert {
+        "program_host_interval",
+        "host_program_interval",
+    } <= set(alias_mismatches[0]["fields"])
 
 
 @pytest.mark.parametrize("condition", ("newton-schulz", "dram"))

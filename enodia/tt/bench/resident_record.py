@@ -174,6 +174,7 @@ _LOAD_RESIDENT_FRAME_INTERVAL_PATH = "load.resident_frame_interval"
 _ENVIRONMENT_HARNESS_COMMIT_PATH = "environment.harness_commit"
 _POWER_CLOCK_LOAD_INTERVAL_START_PATH = "power_clock_provenance.load_interval_start"
 _POWER_CLOCK_LOAD_INTERVAL_END_PATH = "power_clock_provenance.load_interval_end"
+_PROGRAM_HOST_INTERVAL_PATH = "program_host_interval"
 _PROGRAM_HOST_INTERVAL_ELAPSED_PATH = "program_host_interval.elapsed_ns"
 _HOST_PROGRAM_INTERVAL_PATH = "host_program_interval"
 _HOST_PROGRAM_INTERVAL_ELAPSED_PATH = "host_program_interval.elapsed_ns"
@@ -184,6 +185,7 @@ _POWER_CLOCK_COVERAGE_DEFINITION_PATH = "power_clock_provenance.coverage_definit
 _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH = (
     "power_clock_provenance.interval_extrema_policy"
 )
+_POWER_CLOCK_PROVENANCE_BYTE_COUNT_PATH = "power_clock_provenance.byte_count"
 _TRACE_TOP_FLAG_ALIASES = (
     ("readable", "readable"),
     ("nonempty", "nonempty"),
@@ -1137,7 +1139,7 @@ _COMMON_ALLOWED_EXTRA_FIELDS = (
     "power_clock_provenance.source_file",
     "power_clock_provenance.immutable_snapshot",
     _POWER_CLOCK_PROVENANCE_INTERVAL_EXTREMA_POLICY_PATH,
-    "power_clock_provenance.byte_count",
+    _POWER_CLOCK_PROVENANCE_BYTE_COUNT_PATH,
     "power_clock_provenance.sha256_definition",
     "power_clock_provenance.sampler_interval_seconds",
     "power_clock_provenance.aiclk_selection",
@@ -1573,7 +1575,7 @@ def _check_issue118_program_interval_binding(
     ):
         return []
     invariant = "program_interval.utc_monotonic_binding"
-    program = record.get("program_host_interval")
+    program = record.get(_PROGRAM_HOST_INTERVAL_PATH)
     if not isinstance(program, Mapping):
         return [
             _mismatch(
@@ -1596,8 +1598,8 @@ def _check_issue118_program_interval_binding(
         return [
             _mismatch(
                 invariant,
-                (_PROGRAM_HOST_INTERVAL_ELAPSED_PATH, _HOST_PROGRAM_INTERVAL_ELAPSED_PATH),
-                "host monotonic program interval aliases must match",
+                (_PROGRAM_HOST_INTERVAL_PATH, _HOST_PROGRAM_INTERVAL_PATH),
+                "host monotonic program interval aliases must match exactly",
             )
         ]
     utc_elapsed, error = _utc_interval_elapsed_ns(
@@ -4548,7 +4550,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
         mismatches.append(
             _mismatch(
                 invariant,
-                ("power_clock_provenance.byte_count",),
+                (_POWER_CLOCK_PROVENANCE_BYTE_COUNT_PATH,),
                 "power trace byte count does not match actual bytes",
             )
         )
@@ -4604,7 +4606,7 @@ def _check_power_trace_facts(record: Mapping[str, Any], ctx: ValidationContext) 
                             "power_clock_provenance.source_file",
                             "environment.run_id",
                             "power_clock_provenance.sha256",
-                            "power_clock_provenance.byte_count",
+                            _POWER_CLOCK_PROVENANCE_BYTE_COUNT_PATH,
                         ),
                         "policy-bearing immutable snapshot lacks complete run and byte provenance",
                     )
