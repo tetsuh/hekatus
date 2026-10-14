@@ -1,9 +1,8 @@
 # ADR-0014: Issue #118 UTC/monotonic program-interval trust bound
 
-- Status: **Proposed**
+- Status: **Accepted** — 2026-10-14
 - Date: 2026-10-14
-- Owner decision: pending — the transition to `Accepted` is written in this
-  pull request before it merges.
+- Owner decision: accepted by the owner on 2026-10-14
 
 ## Context
 
@@ -68,3 +67,4 @@ margin below a capture-derived bound.
 - 2026-10-14: Proposed in pull request #130 as the Issue #110 AC3
   capture-derived tolerance rationale; it records the existing rule and does
   not introduce observation-based tuning.
+- 2026-10-14: Accepted by the owner in pull request #130.
