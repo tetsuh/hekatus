@@ -170,6 +170,7 @@ def trace_record_with_nested_coverage_aliases() -> dict[str, object]:
     }
     for container_name in ("power_clock_provenance", "power_trace_coverage"):
         record[container_name]["coverage"].update(expected)
+    record["power_trace_coverage"]["complete"] = expected["coverage_complete"]
     return record
 
 
@@ -193,6 +194,7 @@ TRACE_FLAG_PATHS = (
     ("power_clock_provenance", "coverage", "covers_run_end"),
     ("power_clock_provenance", "coverage", "coverage_complete"),
     ("power_trace_coverage", "coverage_complete"),
+    ("power_trace_coverage", "complete"),
     ("power_trace_coverage", "coverage", "readable"),
     ("power_trace_coverage", "coverage", "nonempty"),
     ("power_trace_coverage", "coverage", "timestamps_parse"),

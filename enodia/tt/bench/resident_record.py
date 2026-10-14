@@ -198,6 +198,10 @@ _TRACE_COVERAGE_FLAG_ALIASES = (
     ("complete", "coverage_complete"),
     ("coverage_complete", "coverage_complete"),
 )
+_TRACE_RECORD_COVERAGE_FLAG_ALIASES = (
+    ("coverage_complete", "coverage_complete"),
+    ("complete", "coverage_complete"),
+)
 # Each endpoint is captured with CLOCK_MONOTONIC first and UTC second. UTC is
 # serialized to microseconds while CLOCK_MONOTONIC is retained in nanoseconds.
 # Reserve 1 ms per endpoint for a scheduling interruption; this is a declared
@@ -4153,7 +4157,7 @@ def _check_declared_trace_flags(
             _trace_flag_mismatches(
                 trace_coverage,
                 "power_trace_coverage",
-                (("coverage_complete", "coverage_complete"),),
+                _TRACE_RECORD_COVERAGE_FLAG_ALIASES,
                 report,
                 invariant,
             )
