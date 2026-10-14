@@ -1335,6 +1335,46 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+_REDACTABLE_RECORD_TEXT_KEYS = frozenset(
+    {
+        "cleanup_error",
+        "cleanup_failures",
+        "detail",
+        "details",
+        "diagnostic",
+        "error",
+        "errors",
+        "exception",
+        "failure",
+        "failures",
+        "file",
+        "message",
+        "poll_error",
+        "power_trace",
+        "reason",
+        "source_file",
+        "stderr",
+        "stdout",
+        "trace",
+        "traceback",
+    }
+)
+
+
+def _redact_record_metadata(value: Any, *, key: str | None = None) -> Any:
+    """Redact paths in public diagnostics while preserving safe record fields."""
+    if isinstance(value, Mapping):
+        return {
+            child_key: _redact_record_metadata(child_value, key=child_key)
+            for child_key, child_value in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_record_metadata(item, key=key) for item in value]
+    if isinstance(value, str) and key in _REDACTABLE_RECORD_TEXT_KEYS:
+        return _ABSOLUTE_PATH_RE.sub("<redacted-path>", value)
+    return value
+
+
 def _record_string_is_safe(value: str, *, key: str | None = None) -> bool:
     if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
         return True
@@ -1361,8 +1401,9 @@ def _validate_record_safety(value: Any, *, key: str | None = None) -> None:
 
 
 def _serialize_record(payload: Mapping[str, Any]) -> str:
-    _validate_record_safety(payload)
-    serialized = strict_json_dumps(dict(payload), indent=2)
+    redacted_payload = _redact_record_metadata(payload)
+    _validate_record_safety(redacted_payload)
+    serialized = strict_json_dumps(dict(redacted_payload), indent=2)
     decoded = json.loads(serialized)
     _validate_record_safety(decoded)
     return serialized

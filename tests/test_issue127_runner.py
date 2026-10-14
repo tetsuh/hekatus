@@ -396,6 +396,22 @@ def test_issue127_close_failure_cannot_produce_pass_record():
     assert record["device_close_failed"] is True
 
 
+def test_issue127_serialization_redacts_paths_in_public_failure_text_only():
+    serialized = runner._serialize_record(
+        {
+            "failure": {
+                "message": "kernel failed at /home/private/worktree/file.cpp:12",
+                "trace": "/tmp/private-trace.csv",
+            },
+            "device_node": "/dev/tenstorrent/1",
+        }
+    )
+    assert "<redacted-path>" in serialized
+    assert "/home/private/worktree" not in serialized
+    assert "/tmp/private-trace.csv" not in serialized
+    assert "/dev/tenstorrent/1" in serialized
+
+
 def test_issue127_environment_is_complete_but_does_not_retain_host_identity_or_worktree():
     environment = runner.sanitize_environment(_environment())
     runner.validate_harness_environment(environment, run_id="run127-test")
