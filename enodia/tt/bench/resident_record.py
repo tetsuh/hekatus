@@ -598,6 +598,8 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
                 "environment.image",
                 "clock_source_evidence.image",
                 "cycle_budget.run_budget_ticks",
+                "harness_commit",
+                "environment.harness_commit",
             }
         )
     if kind != RECORD_KIND_SAMPLED_TIMING:
@@ -782,7 +784,7 @@ def _field_predicates(path: str, kind: str) -> tuple[str, Callable[[Any], bool],
         invalid_range = -1
     elif path in {"power_clock_provenance.columns"}:
         type_rule = _optional(list_value) if optional_value else list_value
-        if kind == RECORD_KIND_SAMPLED_TIMING:
+        if kind in {RECORD_KIND_SAMPLED_TIMING, RECORD_KIND_ERROR, RECORD_KIND_REJECTED}:
             range_rule = _optional(
                 lambda value: value is None or value == [] or value == list(POWER_TRACE_COLUMNS)
             ) if optional_value else lambda value: value == list(POWER_TRACE_COLUMNS)
