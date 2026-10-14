@@ -2086,6 +2086,16 @@ spent most loaded time on a sustained plateau near 1025 MHz; its weighted
 interval value was 1050.9138856647014 MHz. These are synthetic
 Newton-Schulz-load facts, not enodia full-load measurements.
 
+### Issue #121 Q3 sensitivity assumption
+
+AICLK-linear effective-capacity scaling is a sensitivity assumption only for
+work limited by AICLK-clocked compute/math or the math-to-pack handoff. DRAM-
+bound portions may not scale in the same way. The 1350/1050.9138856647014/
+1025 MHz cases and their provisional capacity calculations are in the
+[Issue #121 Q3 sensitivity table](budget.md#issue-121-q3-assumption-and-sensitivity-analysis);
+Q2 full-enodia measurement is required before drawing a capacity or card-count
+conclusion.
+
 ### Current constraints — Q4 fixed-source audit
 
 The fixed tt-metal v0.75.0 source inspection found the following facts:
