@@ -979,7 +979,16 @@ exec "$@"
     assert events.read_text(encoding="utf-8").splitlines() == events_seen
 
 
-def test_issue127_wrapper_refuses_measurement_when_cooldown_gate_reaches_cap(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("run_scope", "expected_run_scope"),
+    (
+        (None, None),
+        ("measurement-2-rerun", "measurement-2-rerun"),
+    ),
+)
+def test_issue127_wrapper_refuses_measurement_when_cooldown_gate_reaches_cap(
+    tmp_path: Path, run_scope: str | None, expected_run_scope: str | None
+):
     bindir = _fake_wrapper_tools(tmp_path)
     (bindir / "python3").write_text(
         """#!/bin/sh
@@ -1015,18 +1024,24 @@ esac
     shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
     docker_args = tmp_path / "docker-args"
     output_dir = tmp_path / "rejected-at-cap"
+    command = [
+        str(copied_wrapper),
+        str(output_dir),
+        "--",
+        "--run-number",
+        "2",
+    ]
+    if run_scope is not None:
+        command.extend(
+            [
+                "--run-scope",
+                run_scope,
+                "--run-timeout-seconds",
+                "90",
+            ]
+        )
     completed = subprocess.run(
-        [
-            str(copied_wrapper),
-            str(output_dir),
-            "--",
-            "--run-number",
-            "2",
-            "--run-scope",
-            "measurement-2-rerun",
-            "--run-timeout-seconds",
-            "90",
-        ],
+        command,
         cwd=tmp_path / "repo",
         env={
             **os.environ,
@@ -1050,6 +1065,7 @@ esac
     failure = json.loads(failures[0].read_text(encoding="utf-8"))
     assert failure["failure_type"] == "cooldown_gate_failure"
     assert failure["measurement_started"] is False
+    assert failure["run_scope"] == expected_run_scope
     assert failure["wait_cap_seconds"] == 600.0
     assert failure["observed_idle_aiclk_mhz"] == 800.0
 

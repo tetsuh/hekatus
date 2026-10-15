@@ -627,11 +627,15 @@ if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
 
   issue127_write_cooldown_failure() {
     local failure_path="${OUT_DIR}/cooldown-gate-failure-${RUN_ID}.json"
+    local run_scope_json="null"
+    if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+      run_scope_json="\"${ISSUE127_RUN_SCOPE}\""
+    fi
     cat > "${failure_path}" <<EOF
 {
   "issue": "#127",
   "run_number": 2,
-  "run_scope": "${ISSUE127_RUN_SCOPE:-measurement-2-rerun}",
+  "run_scope": ${run_scope_json},
   "status": "failed",
   "failure_type": "cooldown_gate_failure",
   "measurement_started": false,
