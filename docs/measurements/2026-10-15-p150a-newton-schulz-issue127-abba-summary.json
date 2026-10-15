@@ -799,5 +799,188 @@
     "prior_reset_performed": true,
     "prior_stage1_health_probe": "pass",
     "rerun_reset_performed": false
+  },
+  "aiclk_alignment": {
+    "definition": "Compare each matched occurrence using the persisted AICLK min/max interval; when the intervals differ, retain their positive-overlap intersection as the explicit bound. No claim of identical AICLK ranges is made, and adjusted P50 remains supplementary.",
+    "L16_L1": {
+      "same_range_for_all_matched_occurrences": false,
+      "matched_occurrences": [
+        {
+          "run_number": 1,
+          "occurrence": 1,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1187.0,
+            1331.0
+          ],
+          "right_range_mhz": [
+            1262.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1262.0,
+            1331.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1285.475932892986,
+          "right_time_weighted_aiclk_mhz": 1304.262630653801
+        },
+        {
+          "run_number": 1,
+          "occurrence": 2,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1250.0,
+            1312.0
+          ],
+          "right_range_mhz": [
+            1250.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1250.0,
+            1312.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1284.6906489676953,
+          "right_time_weighted_aiclk_mhz": 1298.6599176562308
+        },
+        {
+          "run_number": 2,
+          "occurrence": 1,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1300.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            1306.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1306.0,
+            1350.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1327.127680913874,
+          "right_time_weighted_aiclk_mhz": 1328.9806005732135
+        },
+        {
+          "run_number": 2,
+          "occurrence": 2,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1287.0,
+            1343.0
+          ],
+          "right_range_mhz": [
+            1262.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1287.0,
+            1343.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1317.716339795503,
+          "right_time_weighted_aiclk_mhz": 1303.4104824413903
+        }
+      ],
+      "explicit_bounds_when_ranges_differ": true
+    },
+    "L32_DRAM": {
+      "same_range_for_all_matched_occurrences": false,
+      "matched_occurrences": [
+        {
+          "run_number": 1,
+          "occurrence": 1,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            968.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1170.4804016216447,
+          "right_time_weighted_aiclk_mhz": 1156.2847622792297
+        },
+        {
+          "run_number": 1,
+          "occurrence": 2,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            993.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            956.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            993.0,
+            1350.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1176.2437602338548,
+          "right_time_weighted_aiclk_mhz": 1124.7231383375613
+        },
+        {
+          "run_number": 2,
+          "occurrence": 1,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1018.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            987.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1018.0,
+            1350.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1177.3182615511776,
+          "right_time_weighted_aiclk_mhz": 1152.2079619078045
+        },
+        {
+          "run_number": 2,
+          "occurrence": 2,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            968.0,
+            1350.0
+          ],
+          "same_range": false,
+          "overlap_bound_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "left_time_weighted_aiclk_mhz": 1167.0589174772285,
+          "right_time_weighted_aiclk_mhz": 1159.5153086743878
+        }
+      ],
+      "explicit_bounds_when_ranges_differ": true
+    }
   }
 }
