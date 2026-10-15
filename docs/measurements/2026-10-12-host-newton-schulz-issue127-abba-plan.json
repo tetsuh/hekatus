@@ -1,5 +1,5 @@
 {
-  "record_schema": "issue127-abba-plan-v1",
+  "record_schema": "issue127-abba-plan-v2",
   "status": "planned",
   "issue": "#127",
   "runner": "tools/newton_schulz_issue127.py",
@@ -32,8 +32,8 @@
       "r_format": "BF16",
       "matrix_size": 16,
       "r_memory": "l1",
-      "launches_per_occurrence": 6500,
-      "expected_timed_duration_seconds": [2.4, 2.8],
+      "launches_per_occurrence": 10000,
+      "expected_timed_duration_seconds": [4.0, 4.6],
       "predicted_raw_p50_tflops": 16.33,
       "predicted_row_time_weighted_aiclk_mhz": 1350.0,
       "predicted_adjusted_p50_tflops": 16.33
@@ -45,8 +45,8 @@
       "r_format": "FP32",
       "matrix_size": 16,
       "r_memory": "l1",
-      "launches_per_occurrence": 6500,
-      "expected_timed_duration_seconds": [2.4, 2.8],
+      "launches_per_occurrence": 10000,
+      "expected_timed_duration_seconds": [4.0, 4.6],
       "predicted_raw_p50_tflops": 16.05,
       "predicted_row_time_weighted_aiclk_mhz": 1350.0,
       "predicted_adjusted_p50_tflops": 16.05
@@ -58,8 +58,8 @@
       "r_format": "BF16",
       "matrix_size": 32,
       "r_memory": "dram",
-      "launches_per_occurrence": 4000,
-      "expected_timed_duration_seconds": [2.4, 2.8],
+      "launches_per_occurrence": 5500,
+      "expected_timed_duration_seconds": [4.0, 4.6],
       "predicted_raw_p50_tflops": 78.13,
       "predicted_row_time_weighted_aiclk_mhz": 1350.0,
       "predicted_adjusted_p50_tflops": 78.13
@@ -71,8 +71,8 @@
       "r_format": "FP32",
       "matrix_size": 32,
       "r_memory": "dram",
-      "launches_per_occurrence": 4000,
-      "expected_timed_duration_seconds": [2.4, 2.8],
+      "launches_per_occurrence": 5500,
+      "expected_timed_duration_seconds": [4.0, 4.6],
       "predicted_raw_p50_tflops": 74.47,
       "predicted_row_time_weighted_aiclk_mhz": 1350.0,
       "predicted_adjusted_p50_tflops": 74.47
@@ -134,10 +134,13 @@
     },
     "first_measured_row_gate": "The first measured row starts only after the startup 800-MHz hold has ended; the final immutable trace must show a left-held AICLK above 800 MHz at that row start.",
     "row_timestamps": "Every timed interval stores host UTC ISO timestamps immediately before and after the timed launches plus host monotonic bounds.",
-    "row_duration_target_seconds": [2.4, 2.8],
+    "row_duration_target_seconds": [2.24, null],
+    "power_samples_per_row_target": 2,
+    "power_samples_per_row_target_seconds": 4.48,
     "measurement_interval_scope": "run_start/run_end/run_duration cover device measurement only; the wrapper cooldown is outside the Docker timeout and outside this interval.",
-    "row_duration_guard_rationale": "6500 L16 BF16 launches predict about 2.56 seconds from the #88 final-retake P50; the minimum is 2.4 seconds so the nominal baseline is not rejected, while any measured row at or below the approximately 2.24-second sampler gap remains a failure.",
+    "row_duration_guard_rationale": "The per-row upper bound is removed. A row must be strictly longer than the approximately 2.24-second observed sampler gap; the selected 10000/5500 launch counts target roughly 4.0-4.6 seconds so two trace samples are expected in most row phases.",
     "run_timeout_seconds": 60.0,
+    "run_budget_guard": "Before each remaining occurrence, project completion from elapsed time and completed row durations plus fixed setup margin; stop before launch when the projection exceeds 60 seconds.",
     "timeout_policy": "The dedicated runner has no timeout override and stops/fails rather than hiding a run longer than 60 seconds."
   },
   "sampler_decision": {
@@ -202,6 +205,27 @@
     "device_node": "A standard /dev/tenstorrent node may be retained; other paths are rejected or redacted.",
     "historical_records": "Existing Issue #88 JSON/CSV records are immutable and are not rewritten."
   },
+  "revision_history": [
+    {
+      "revision": 1,
+      "date": "2026-10-12",
+      "change": "Created the pre-board counterbalanced ABBA prediction and fixed sampler contract.",
+      "selected_launches_per_occurrence": {
+        "L16": 6500,
+        "L32": 4000
+      }
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-15",
+      "change": "Removed the per-row upper bound, retained the sampler-gap lower bound, added the projected 60-second run guard, and increased fixed launch counts to target two power samples per row.",
+      "evidence": "retry2 measured 33.239954 seconds for five rows; linear eight-row scaling is 53.183926 seconds before the count increase. At 2.24 seconds per sampler gap, two samples target 4.48 seconds per row. The selected counts target approximately 4.0-4.6 seconds per row and retain margin for setup and AICLK drift under the 60-second run guard.",
+      "selected_launches_per_occurrence": {
+        "L16": 10000,
+        "L32": 5500
+      }
+    }
+  ],
   "limitations": [
     "No board measurements are present until the owner authorizes the two runs.",
     "The four configuration summaries are derived from two occurrence rows each; raw P50 occurrence values remain the primary evidence.",
