@@ -192,6 +192,42 @@ def test_issue127_run_comparison_stops_before_projected_next_occurrence(monkeypa
     assert result["failure"]["order_index"] == 1
 
 
+def test_issue127_timeout_policy_keeps_default_and_closes_approved_exception():
+    default_timeout, default_policy = runner.resolve_run_timeout(1)
+    assert default_timeout == 60.0
+    assert default_policy["approved_override"] is False
+
+    for scope, run_number in runner.APPROVED_RUN_TARGETS.items():
+        timeout, policy = runner.resolve_run_timeout(
+            run_number,
+            runner.APPROVED_RUN_TIMEOUT_SECONDS,
+            scope,
+        )
+        assert timeout == 90.0
+        assert policy["approved_override"] is True
+        assert policy["approval_date"] == "2026-10-16"
+        assert policy["scope"] == scope
+        assert policy["run_number"] == run_number
+
+    with pytest.raises(ValueError, match="requires --run-scope"):
+        runner.resolve_run_timeout(1, runner.APPROVED_RUN_TIMEOUT_SECONDS)
+    with pytest.raises(ValueError, match="approved target"):
+        runner.resolve_run_timeout(1, runner.APPROVED_RUN_TIMEOUT_SECONDS, "other")
+    with pytest.raises(ValueError, match="requires run_number=2"):
+        runner.resolve_run_timeout(1, runner.APPROVED_RUN_TIMEOUT_SECONDS, "measurement-2")
+    with pytest.raises(ValueError, match="only the default 60-second"):
+        runner.resolve_run_timeout(1, 75.0, "confirmation")
+
+    projected = runner.project_run_budget(
+        25.0,
+        [{"timed_duration_seconds": 7.0}],
+        remaining_occurrences=6,
+        run_timeout_seconds=90.0,
+    )
+    assert projected["run_timeout_seconds"] == 90.0
+    assert projected["within_budget"] is True
+
+
 def test_issue127_timed_bounds_and_adjusted_p50_formula():
     row = {
         "timed_start_utc": "2026-10-12T00:00:00+00:00",
@@ -426,7 +462,11 @@ def test_issue127_close_failure_cannot_produce_pass_record():
             "status": "pass",
             "comparison_rows": rows,
             "warmup": {"end_utc": "2026-10-12T00:00:01+00:00"},
-            "run_under_60_seconds": True,
+            "run_timeout_seconds": 90.0,
+            "run_under_timeout": True,
+            "run_timeout_policy": runner.resolve_run_timeout(
+                1, 90.0, "confirmation"
+            )[1],
             "run_duration_seconds": 20.0,
             "run_start_monotonic": 0.0,
             "run_end_monotonic": 20.0,
@@ -457,6 +497,10 @@ def test_issue127_close_failure_cannot_produce_pass_record():
     )
     assert record["status"] == "failed"
     assert record["device_close_failed"] is True
+    assert record["run_timing"]["run_timeout_seconds"] == 90.0
+    assert record["run_timing"]["under_timeout"] is True
+    assert record["run_timeout_policy"]["approval_date"] == "2026-10-16"
+    assert record["run_timeout_policy"]["scope"] == "confirmation"
 
 
 def test_issue127_serialization_replaces_known_path_fields_and_audits_fields():
@@ -606,6 +650,20 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
     assert plan["timing_protocol"]["startup_warmup"]["launches"] == 4500
     assert plan["timing_protocol"]["row_duration_target_seconds"] == [2.24, None]
     assert plan["timing_protocol"]["power_samples_per_row_target"] == 2
+    assert plan["timing_protocol"]["run_timeout_seconds"] == 60.0
+    assert plan["timing_protocol"]["approved_run_timeout"] == {
+        "run_timeout_seconds": 90.0,
+        "docker_timeout_seconds": 90.0,
+        "approval_date": "2026-10-16",
+        "approval": "owner-approved exception",
+        "targets": [
+            {"scope": "confirmation", "run_number": 1},
+            {"scope": "measurement-1", "run_number": 1},
+            {"scope": "measurement-2", "run_number": 2},
+        ],
+        "required_cli": "--run-scope <approved target> --run-timeout-seconds 90",
+        "default_unchanged_seconds": 60.0,
+    }
     assert plan["revision_history"][-1]["selected_launches_per_occurrence"] == {
         "L16": 11000,
         "L32": 5800,
@@ -810,6 +868,115 @@ exec "$@"
     assert rejected.returncode == 2
     assert "less than 1000" in rejected.stderr
     assert events.read_text(encoding="utf-8").splitlines() == events_seen
+
+
+def test_issue127_wrapper_requires_explicit_approved_90_second_scope(tmp_path: Path):
+    bindir = _fake_wrapper_tools(tmp_path)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+    docker_args = tmp_path / "docker-args"
+    timeout_log = tmp_path / "timeout-args"
+    base_env = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "DOCKER_ARGS": str(docker_args),
+        "TIMEOUT_LOG": str(timeout_log),
+        "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
+    }
+
+    approved = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "approved"),
+            "--",
+            "--run-number",
+            "1",
+            "--run-scope",
+            "confirmation",
+            "--run-timeout-seconds",
+            "90",
+        ],
+        cwd=copied_root,
+        env=base_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert approved.returncode == 0, approved.stderr
+    assert timeout_log.read_text(encoding="utf-8").splitlines()[2] == "90s"
+    docker = docker_args.read_text(encoding="utf-8").splitlines()
+    assert "--run-scope" in docker
+    assert docker[docker.index("--run-scope") + 1] == "confirmation"
+    assert "--run-timeout-seconds" in docker
+    assert docker[docker.index("--run-timeout-seconds") + 1] == "90"
+
+    rejected = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "rejected"),
+            "--",
+            "--run-number",
+            "1",
+            "--run-timeout-seconds",
+            "90",
+        ],
+        cwd=copied_root,
+        env=base_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert rejected.returncode == 2
+    assert "approved target" in rejected.stderr
+
+    env_only = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "env-only"),
+            "--",
+            "--run-number",
+            "1",
+        ],
+        cwd=copied_root,
+        env={**base_env, "HEKATUS_TT_CONTAINER_TIMEOUT_S": "90"},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert env_only.returncode == 2
+    assert "must match" in env_only.stderr
+
+    mismatched = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "mismatched"),
+            "--",
+            "--run-number",
+            "2",
+            "--run-scope",
+            "confirmation",
+            "--run-timeout-seconds",
+            "90",
+            "--cooldown-wait-seconds",
+            "0.1",
+            "--expected-aiclk-mhz",
+            "1350",
+        ],
+        cwd=copied_root,
+        env=base_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert mismatched.returncode == 2
+    assert "requires --run-number 1" in mismatched.stderr
 
 
 def test_issue127_wrapper_selects_generic_custom_runner_with_bound_artifacts(tmp_path: Path):

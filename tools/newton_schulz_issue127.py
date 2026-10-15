@@ -63,7 +63,15 @@ FIXED_ITERATIONS = NEWTON_SCHULZ_ITERATIONS
 NOMINAL_AICLK_MHZ = 1350.0
 STARTUP_HOLD_AICLK_MHZ = 800.0
 WARMUP_LAUNCHES = 4500
-RUN_TIMEOUT_SECONDS = 60.0
+DEFAULT_RUN_TIMEOUT_SECONDS = 60.0
+RUN_TIMEOUT_SECONDS = DEFAULT_RUN_TIMEOUT_SECONDS
+APPROVED_RUN_TIMEOUT_SECONDS = 90.0
+APPROVED_RUN_TIMEOUT_DATE = "2026-10-16"
+APPROVED_RUN_TARGETS = {
+    "confirmation": 1,
+    "measurement-1": 1,
+    "measurement-2": 2,
+}
 POWER_TRACE_POLL_TIMEOUT_SECONDS = 6.0
 POWER_TRACE_POLL_INTERVAL_SECONDS = 0.25
 POWER_TRACE_SNAPSHOT_PREFIX = "issue127-abba-power-snapshot"
@@ -376,6 +384,70 @@ def validate_occurrence_plan(
         raise ValueError("Issue #127 requires two occurrences of every configuration")
 
 
+def resolve_run_timeout(
+    run_number: int,
+    requested_seconds: float | None = None,
+    run_scope: str | None = None,
+) -> tuple[float, dict[str, Any]]:
+    """Resolve the default budget or one explicit owner-approved exception."""
+    if requested_seconds is None and run_scope is None:
+        return DEFAULT_RUN_TIMEOUT_SECONDS, {
+            "default_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
+            "effective_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
+            "approved_override": False,
+            "approval_date": None,
+            "scope": None,
+            "run_number": run_number,
+        }
+    if requested_seconds is None:
+        raise ValueError(
+            "Issue #127 approved timeout requires --run-scope and "
+            f"--run-timeout-seconds {int(APPROVED_RUN_TIMEOUT_SECONDS)}"
+        )
+    try:
+        requested = float(requested_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Issue #127 run timeout must be numeric") from exc
+    if not math.isfinite(requested):
+        raise ValueError("Issue #127 run timeout must be finite")
+    if requested == DEFAULT_RUN_TIMEOUT_SECONDS and run_scope is None:
+        return DEFAULT_RUN_TIMEOUT_SECONDS, {
+            "default_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
+            "effective_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
+            "approved_override": False,
+            "approval_date": None,
+            "scope": None,
+            "run_number": run_number,
+        }
+    if run_scope is None:
+        raise ValueError(
+            "Issue #127 approved timeout requires --run-scope and "
+            f"--run-timeout-seconds {int(APPROVED_RUN_TIMEOUT_SECONDS)}"
+        )
+    if requested != APPROVED_RUN_TIMEOUT_SECONDS:
+        raise ValueError(
+            "Issue #127 permits only the default 60-second timeout or the "
+            "owner-approved 90-second timeout"
+        )
+    if run_scope not in APPROVED_RUN_TARGETS:
+        raise ValueError("Issue #127 run scope is not an approved target")
+    expected_run_number = APPROVED_RUN_TARGETS[run_scope]
+    if int(run_number) != expected_run_number:
+        raise ValueError(
+            f"Issue #127 run scope {run_scope!r} requires run_number="
+            f"{expected_run_number}"
+        )
+    return APPROVED_RUN_TIMEOUT_SECONDS, {
+        "default_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
+        "effective_run_timeout_seconds": APPROVED_RUN_TIMEOUT_SECONDS,
+        "approved_override": True,
+        "approval_date": APPROVED_RUN_TIMEOUT_DATE,
+        "scope": run_scope,
+        "run_number": run_number,
+        "approved_targets": dict(APPROVED_RUN_TARGETS),
+    }
+
+
 def row_duration_guard(
     duration_seconds: float,
     row: Mapping[str, Any] | str,
@@ -407,12 +479,17 @@ def project_run_budget(
     elapsed_seconds: float,
     completed_rows: Sequence[Mapping[str, Any]],
     remaining_occurrences: int,
+    *,
+    run_timeout_seconds: float = RUN_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
     """Project completion before starting the next fixed-work occurrence."""
     elapsed = float(elapsed_seconds)
     remaining = int(remaining_occurrences)
+    timeout = float(run_timeout_seconds)
     if not math.isfinite(elapsed) or elapsed < 0.0:
         raise ValueError("run budget elapsed time must be finite and non-negative")
+    if not math.isfinite(timeout) or timeout <= 0.0:
+        raise ValueError("run budget timeout must be finite and positive")
     if remaining < 0:
         raise ValueError("run budget remaining occurrence count must be non-negative")
     durations = []
@@ -436,8 +513,8 @@ def project_run_budget(
         "observed_timed_duration_max_seconds": observed_max or None,
         "estimated_seconds_per_remaining_occurrence": estimated_occurrence,
         "projected_total_seconds": projected_total,
-        "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
-        "within_budget": projected_total <= RUN_TIMEOUT_SECONDS,
+        "run_timeout_seconds": timeout,
+        "within_budget": projected_total <= timeout,
         "estimation_policy": (
             "max(initial fixed estimate, observed maximum timed row plus setup margin); "
             "launch counts remain fixed per occurrence"
@@ -839,6 +916,7 @@ def _run_sustained_warmup(
     *,
     kernel_class: Any,
     run_deadline: float,
+    run_timeout_seconds: float,
     time_fn: Callable[[], float],
     utc_now_fn: Callable[[], datetime.datetime],
 ) -> dict[str, Any]:
@@ -853,7 +931,9 @@ def _run_sustained_warmup(
         )
         for _ in range(WARMUP_LAUNCHES):
             if time_fn() > run_deadline:
-                raise TimeoutError("Issue #127 run exceeded 60 seconds during warm-up")
+                raise TimeoutError(
+                    f"Issue #127 run exceeded {run_timeout_seconds:g} seconds during warm-up"
+                )
             kernel.launch()
             ttnn.synchronize_device(device)
             launches_completed += 1
@@ -891,6 +971,7 @@ def _run_occurrence(
     *,
     kernel_class: Any,
     run_deadline: float,
+    run_timeout_seconds: float,
     time_fn: Callable[[], float],
     utc_now_fn: Callable[[], datetime.datetime],
 ) -> dict[str, Any]:
@@ -925,7 +1006,9 @@ def _run_occurrence(
             ttnn, device, matrices, **_kernel_prepare_kwargs(config)
         )
         if time_fn() > run_deadline:
-            raise TimeoutError("Issue #127 run exceeded 60 seconds before correctness")
+            raise TimeoutError(
+                f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before correctness"
+            )
         kernel.launch()
         ttnn.synchronize_device(device)
         actual = kernel.result()
@@ -942,7 +1025,9 @@ def _run_occurrence(
             raise ValueError("correctness device-test gate failed")
 
         if time_fn() > run_deadline:
-            raise TimeoutError("Issue #127 run exceeded 60 seconds before occurrence warm-up")
+            raise TimeoutError(
+                f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before occurrence warm-up"
+            )
         kernel.launch()
         ttnn.synchronize_device(device)
         result["occurrence_warmup"] = {
@@ -956,7 +1041,9 @@ def _run_occurrence(
         timed_start_monotonic = time_fn()
         for _ in range(launch_count):
             if time_fn() > run_deadline:
-                raise TimeoutError("Issue #127 run exceeded 60 seconds during timed launches")
+                raise TimeoutError(
+                    f"Issue #127 run exceeded {run_timeout_seconds:g} seconds during timed launches"
+                )
             launch_started = time_fn()
             kernel.launch()
             ttnn.synchronize_device(device)
@@ -1048,6 +1135,8 @@ def run_comparison(
     *,
     run_number: int,
     run_id: str,
+    run_timeout_seconds: float = RUN_TIMEOUT_SECONDS,
+    run_timeout_policy: Mapping[str, Any] | None = None,
     time_fn: Callable[[], float] = time.monotonic,
     utc_now_fn: Callable[[], datetime.datetime] | None = None,
     kernel_class: Any | None = None,
@@ -1056,6 +1145,31 @@ def run_comparison(
     """Run one fixed Issue #127 order on an already-open device."""
     validate_run_id(run_id)
     validate_comparison_rows()
+    try:
+        effective_timeout = float(run_timeout_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Issue #127 run timeout must be numeric") from exc
+    if not math.isfinite(effective_timeout) or effective_timeout <= 0.0:
+        raise ValueError("Issue #127 run timeout must be finite and positive")
+    if run_timeout_policy is None:
+        if effective_timeout != DEFAULT_RUN_TIMEOUT_SECONDS:
+            raise ValueError(
+                "Issue #127 non-default timeout requires the owner-approved "
+                "run timeout policy"
+            )
+        effective_timeout, timeout_policy = resolve_run_timeout(run_number)
+    else:
+        policy_timeout = run_timeout_policy.get(
+            "effective_run_timeout_seconds", effective_timeout
+        )
+        resolved_timeout, _ = resolve_run_timeout(
+            run_number,
+            policy_timeout,
+            run_timeout_policy.get("scope"),
+        )
+        if resolved_timeout != effective_timeout:
+            raise ValueError("Issue #127 run timeout policy does not match its budget")
+        timeout_policy = dict(run_timeout_policy)
     plan = build_occurrence_plan(run_number)
     now_utc = (lambda: datetime.datetime.now(datetime.UTC)) if utc_now_fn is None else utc_now_fn
     if kernel_class is None:
@@ -1063,7 +1177,7 @@ def run_comparison(
 
         kernel_class = NewtonSchulzKernel
     start_monotonic = time_fn()
-    run_deadline = start_monotonic + RUN_TIMEOUT_SECONDS
+    run_deadline = start_monotonic + effective_timeout
     warmup_config = ROW_BY_NAME["bf16-r-L32-r-dram"]
     matrices_by_size: dict[int, np.ndarray] = {}
     references_by_key: dict[tuple[int, str], dict[str, Any]] = {}
@@ -1082,6 +1196,7 @@ def run_comparison(
         warmup_config,
         kernel_class=kernel_class,
         run_deadline=run_deadline,
+        run_timeout_seconds=effective_timeout,
         time_fn=time_fn,
         utc_now_fn=now_utc,
     )
@@ -1094,6 +1209,7 @@ def run_comparison(
             time_fn() - start_monotonic,
             occurrences,
             len(plan) - len(occurrences),
+            run_timeout_seconds=effective_timeout,
         )
         projection["next_order_index"] = occurrence["order_index"]
         projection["next_occurrence_id"] = occurrence["occurrence_id"]
@@ -1102,8 +1218,9 @@ def run_comparison(
             budget_failure = {
                 "type": "TimeoutError",
                 "message": (
-                    "Issue #127 projected run completion exceeds the 60-second budget "
-                    f"before occurrence {occurrence['occurrence_id']}"
+                    f"Issue #127 projected run completion exceeds the "
+                    f"{effective_timeout:g}-second budget before occurrence "
+                    f"{occurrence['occurrence_id']}"
                 ),
                 "order_index": occurrence["order_index"],
                 "projection": projection,
@@ -1126,6 +1243,7 @@ def run_comparison(
             occurrence,
             kernel_class=kernel_class,
             run_deadline=run_deadline,
+            run_timeout_seconds=effective_timeout,
             time_fn=time_fn,
             utc_now_fn=now_utc,
         )
@@ -1137,7 +1255,7 @@ def run_comparison(
     run_budget = {
         "policy": (
             "Project the fixed eight-occurrence run before each occurrence and stop "
-            "before launch when the projection exceeds 60 seconds."
+            "before launch when the projection exceeds the effective run timeout."
         ),
         "projections": budget_projections,
         "stopped_before_occurrence": (
@@ -1149,7 +1267,7 @@ def run_comparison(
         "status": "pass"
         if len(occurrences) == len(plan)
         and not stopped_on_failure
-        and end_monotonic - start_monotonic <= RUN_TIMEOUT_SECONDS
+        and end_monotonic - start_monotonic <= effective_timeout
         else "failed",
         "run_number": run_number,
         "run_id": run_id,
@@ -1162,8 +1280,9 @@ def run_comparison(
         "run_start_monotonic": start_monotonic,
         "run_end_monotonic": end_monotonic,
         "run_duration_seconds": end_monotonic - start_monotonic,
-        "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
-        "run_under_60_seconds": end_monotonic - start_monotonic <= RUN_TIMEOUT_SECONDS,
+        "run_timeout_seconds": effective_timeout,
+        "run_under_timeout": end_monotonic - start_monotonic <= effective_timeout,
+        "run_timeout_policy": timeout_policy,
         "warmup": warmup,
         "comparison_rows": occurrences,
         "input_generation": {
@@ -1656,13 +1775,20 @@ def build_record(
         isinstance(run.get("cleanup"), Mapping)
         and run["cleanup"].get("close_succeeded") is False
     )
+    effective_timeout = float(run.get("run_timeout_seconds", RUN_TIMEOUT_SECONDS))
+    timeout_policy = dict(
+        run.get("run_timeout_policy") or resolve_run_timeout(run_number)[1]
+    )
+    under_timeout = run.get("run_under_timeout")
+    if under_timeout is None and effective_timeout == DEFAULT_RUN_TIMEOUT_SECONDS:
+        under_timeout = run.get("run_under_60_seconds")
     run_status = (
         run.get("status") == "pass"
         and all(row.get("status") == "ok" for row in rows)
         and all(row.get("adjusted_p50_tflops") is not None for row in rows)
         and gate["verified"]
         and power_trace.get("coverage_complete") is True
-        and run.get("run_under_60_seconds") is True
+        and under_timeout is True
         and not close_failed
         and (run_number != 2 or cooldown.get("power_trace_verified") is True)
     )
@@ -1713,9 +1839,10 @@ def build_record(
             "run_start_monotonic": run.get("run_start_monotonic"),
             "run_end_monotonic": run.get("run_end_monotonic"),
             "run_duration_seconds": run.get("run_duration_seconds"),
-            "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
-            "under_60_seconds": run.get("run_under_60_seconds"),
+            "run_timeout_seconds": effective_timeout,
+            "under_timeout": under_timeout,
         },
+        "run_timeout_policy": timeout_policy,
         "run_budget": run.get("run_budget"),
         "sampler_decision": sampler,
         "power_trace": trace,
@@ -1757,6 +1884,8 @@ def _raw_path(result_path: Path, run_id: str) -> Path:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--run-number", type=int, choices=(1, 2), required=True)
+    parser.add_argument("--run-timeout-seconds", type=float, default=None)
+    parser.add_argument("--run-scope", choices=tuple(APPROVED_RUN_TARGETS), default=None)
     parser.add_argument("--device-id", type=int, default=DEVICE_ID)
     parser.add_argument("--cooldown-wait-seconds", type=float, default=None)
     parser.add_argument("--cooldown-start-utc", default=None)
@@ -1826,6 +1955,14 @@ def main(
     parser = _build_parser()
     args = parser.parse_args(argv)
     _validate_args(parser, args)
+    try:
+        run_timeout_seconds, run_timeout_policy = resolve_run_timeout(
+            args.run_number,
+            args.run_timeout_seconds,
+            args.run_scope,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     now_utc = (lambda: datetime.datetime.now(datetime.UTC)) if utc_now_fn is None else utc_now_fn
     monotonic = time.monotonic if monotonic_fn is None else monotonic_fn
     sleep = time.sleep if sleep_fn is None else sleep_fn
@@ -1862,6 +1999,8 @@ def main(
                 device,
                 run_number=args.run_number,
                 run_id=run_id,
+                run_timeout_seconds=run_timeout_seconds,
+                run_timeout_policy=run_timeout_policy,
                 time_fn=monotonic,
                 utc_now_fn=now_utc,
             )
@@ -1877,8 +2016,9 @@ def main(
                 "run_start_monotonic": monotonic(),
                 "run_end_monotonic": monotonic(),
                 "run_duration_seconds": 0.0,
-                "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
-                "run_under_60_seconds": False,
+                "run_timeout_seconds": run_timeout_seconds,
+                "run_under_timeout": False,
+                "run_timeout_policy": run_timeout_policy,
                 "warmup": {
                     "launches_requested": WARMUP_LAUNCHES,
                     "launches_completed": 0,
@@ -1902,9 +2042,11 @@ def main(
         run["run_start_monotonic"] = measurement_start_monotonic
         run["run_end_monotonic"] = measurement_end_monotonic
         run["run_duration_seconds"] = measurement_end_monotonic - measurement_start_monotonic
-        run["run_under_60_seconds"] = (
-            run["run_duration_seconds"] <= RUN_TIMEOUT_SECONDS
+        run["run_under_timeout"] = (
+            run["run_duration_seconds"] <= run_timeout_seconds
         )
+        run["run_timeout_seconds"] = run_timeout_seconds
+        run["run_timeout_policy"] = run_timeout_policy
         measurement_end_utc = _timestamp(now_utc(), field="run_end")
         power_path = args.power_trace or (
             output_dir / run_artifact_name(prefix="power-", suffix=".csv", run_id=run_id)

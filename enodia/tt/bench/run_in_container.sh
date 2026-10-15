@@ -189,7 +189,8 @@ validate_decimal_timeout() {
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 ISSUE127_RUNNER=0
-ISSUE127_TIMEOUT_CAP_S="60"
+ISSUE127_DEFAULT_TIMEOUT_S="60"
+ISSUE127_APPROVED_TIMEOUT_S="90"
 RESIDENT_TIMEOUT_CAP_S="600"
 RESIDENT_CONDITION="unloaded"
 RESIDENT_REQUESTED_TIMEOUT=""
@@ -252,8 +253,8 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PA
     exit 2
   fi
 elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
-  # Issue #127 has its own hard 60-second run budget.  Keep the wrapper from
-  # turning a hung board-side call into an unbounded generic custom run.
+  # Issue #127 defaults to a 60-second run budget.  Only the explicit owner-
+  # approved scope plus --run-timeout-seconds 90 may raise the Docker timeout.
   ISSUE127_RUNNER=1
   if [[ "${TELEMETRY_MODE}" == "off" ]]; then
     echo "Issue #127 requires telemetry sampler mode default or explicit; sampler-off runs are rejected" >&2
@@ -262,6 +263,8 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
   ISSUE127_RUN_NUMBER=""
   ISSUE127_COOLDOWN_SECONDS=""
   ISSUE127_EXPECTED_AICLK=""
+  ISSUE127_RUN_TIMEOUT_SECONDS=""
+  ISSUE127_RUN_SCOPE=""
   ISSUE127_COOLDOWN_BOUNDS_SUPPLIED=0
   ISSUE127_ARGUMENT_INDEX=0
   while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
@@ -278,6 +281,46 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
         ;;
       --run-number=*)
         ISSUE127_RUN_NUMBER="${argument#--run-number=}"
+        ;;
+      --run-timeout-seconds)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-timeout-seconds requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+          echo "Issue #127 run timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_TIMEOUT_SECONDS="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-timeout-seconds=*)
+        if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+          echo "Issue #127 run timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_TIMEOUT_SECONDS="${argument#--run-timeout-seconds=}"
+        ;;
+      --run-scope)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-scope requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+          echo "Issue #127 run scope may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_SCOPE="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-scope=*)
+        if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+          echo "Issue #127 run scope may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_SCOPE="${argument#--run-scope=}"
         ;;
       --cooldown-wait-seconds)
         if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
@@ -332,15 +375,54 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
     echo "Issue #127 requires --run-number 1 or 2" >&2
     exit 2
   fi
-  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
-    CONTAINER_TIMEOUT_S="${ISSUE127_TIMEOUT_CAP_S}"
-  fi
-  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "${#ISSUE127_TIMEOUT_CAP_S}"
-  if [[ "${#CONTAINER_TIMEOUT_S}" == "${#ISSUE127_TIMEOUT_CAP_S}" \
-        && "${CONTAINER_TIMEOUT_S}" > "${ISSUE127_TIMEOUT_CAP_S}" ]]; then
-    echo "Issue #127 container timeout ${CONTAINER_TIMEOUT_S}s exceeds the 60-second cap" >&2
+  ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_DEFAULT_TIMEOUT_S}"
+  if [[ -z "${ISSUE127_RUN_TIMEOUT_SECONDS}" && -n "${ISSUE127_RUN_SCOPE}" ]]; then
+    echo "Issue #127 approved run scope requires --run-timeout-seconds 90" >&2
     exit 2
   fi
+  if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+    if [[ ! "${ISSUE127_RUN_TIMEOUT_SECONDS}" =~ ^90([.]0+)?$ ]]; then
+      if [[ "${ISSUE127_RUN_TIMEOUT_SECONDS}" =~ ^60([.]0+)?$ && -z "${ISSUE127_RUN_SCOPE}" ]]; then
+        ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_DEFAULT_TIMEOUT_S}"
+      else
+        echo "Issue #127 permits 90 seconds only for an approved run scope" >&2
+        exit 2
+      fi
+    else
+      case "${ISSUE127_RUN_SCOPE}" in
+        confirmation|measurement-1)
+          if [[ "${ISSUE127_RUN_NUMBER}" != "1" ]]; then
+            echo "Issue #127 run scope ${ISSUE127_RUN_SCOPE} requires --run-number 1" >&2
+            exit 2
+          fi
+          ;;
+        measurement-2)
+          if [[ "${ISSUE127_RUN_NUMBER}" != "2" ]]; then
+            echo "Issue #127 run scope measurement-2 requires --run-number 2" >&2
+            exit 2
+          fi
+          ;;
+        *)
+          echo "Issue #127 run scope is not an approved target" >&2
+          exit 2
+          ;;
+      esac
+      ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_APPROVED_TIMEOUT_S}"
+    fi
+  elif [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+    echo "Issue #127 approved run scope requires --run-timeout-seconds 90" >&2
+    exit 2
+  fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
+    CONTAINER_TIMEOUT_S="${ISSUE127_EFFECTIVE_TIMEOUT_S}"
+  else
+    validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
+    if [[ "${CONTAINER_TIMEOUT_S}" != "${ISSUE127_EFFECTIVE_TIMEOUT_S}" ]]; then
+      echo "Issue #127 container timeout must match the approved run timeout" >&2
+      exit 2
+    fi
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
 else
   # Non-resident wrapper users retain their historical timeout range, but the
   # input is still bounded before GNU timeout or any shell arithmetic sees it.
