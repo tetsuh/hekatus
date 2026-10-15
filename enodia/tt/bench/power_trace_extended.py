@@ -534,10 +534,13 @@ def _format_extended_power_trace_value(field: str, value: Any) -> str:
 def format_extended_power_trace_row(row: Mapping[str, Any]) -> str:
     """Validate and serialize one complete extended row in column order."""
     _validate_extended_row_columns(row)
-    return ",".join(
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="")
+    writer.writerow(
         _format_extended_power_trace_value(field, row.get(field))
         for field in EXTENDED_POWER_TRACE_COLUMNS
     )
+    return buffer.getvalue()
 
 
 def extended_telemetry_csv_row(

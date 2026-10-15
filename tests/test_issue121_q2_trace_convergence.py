@@ -1,0 +1,137 @@
+"""Regression tests for Issue #134 extended trace convergence findings."""
+
+from __future__ import annotations
+
+import csv
+import io
+import json
+from pathlib import Path
+
+import pytest
+
+from enodia.tt.bench.power_trace_extended import (
+    EXTENDED_POWER_TRACE_COLUMNS,
+    EXTENDED_POWER_TRACE_HEADER,
+    EXTENDED_POWER_TRACE_SCHEMA,
+    EXTENDED_POWER_TRACE_SCHEMA_VERSION,
+    format_extended_power_trace_row,
+    read_extended_power_trace_csv,
+    read_extended_power_trace_snapshot,
+)
+
+
+def _trace_row(
+    timestamp_monotonic_ns: int,
+    *,
+    board_power_w: float,
+    power_w: float | None = None,
+    throttle_reason: str | None = None,
+) -> dict[str, object]:
+    if power_w is None:
+        power_w = board_power_w
+    seconds = timestamp_monotonic_ns // 1_000_000_000
+    return {
+        "timestamp_utc": f"2026-01-01T00:00:{seconds:02d}+00:00",
+        "power_w": power_w,
+        "aiclk_mhz": 1000,
+        "asic_temp_c": 40,
+        "timestamp_monotonic_ns": timestamp_monotonic_ns,
+        "snapshot_elapsed_ns": 10,
+        "current_a": 2.0,
+        "voltage_v": 12.0,
+        "board_power_w": board_power_w,
+        "fan_rpm": 1000,
+        "heartbeat": 1,
+        "therm_trip_count": 0,
+        "throttle_status": "active" if throttle_reason is not None else None,
+        "throttle_reason": throttle_reason,
+    }
+
+
+def _write_sidecar(path: Path, samples: list[dict[str, object]], **overrides: object) -> None:
+    payload: dict[str, object] = {
+        "schema": EXTENDED_POWER_TRACE_SCHEMA,
+        "schema_version": EXTENDED_POWER_TRACE_SCHEMA_VERSION,
+        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+        "samples": samples,
+    }
+    payload.update(overrides)
+    path.write_text(json.dumps(payload))
+
+
+def test_extended_row_csv_escaping_round_trips_throttle_labels(tmp_path: Path) -> None:
+    status = "active, thermal\nstate"
+    reason = "thermal, limit\nsecondary limit"
+    first = _trace_row(0, board_power_w=10.0, throttle_reason=reason)
+    first["throttle_status"] = status
+    second = _trace_row(2_000_000_000, board_power_w=20.0)
+
+    serialized = format_extended_power_trace_row(first)
+    parsed_fields = next(csv.reader(io.StringIO(serialized)))
+    assert len(parsed_fields) == len(EXTENDED_POWER_TRACE_COLUMNS) == 14
+    assert parsed_fields[EXTENDED_POWER_TRACE_COLUMNS.index("throttle_status")] == status
+    assert parsed_fields[EXTENDED_POWER_TRACE_COLUMNS.index("throttle_reason")] == reason
+
+    path = tmp_path / "extended.csv"
+    path.write_text(
+        EXTENDED_POWER_TRACE_HEADER
+        + "\n"
+        + serialized
+        + "\n"
+        + format_extended_power_trace_row(second)
+        + "\n"
+    )
+    trace = read_extended_power_trace_csv(path)
+
+    assert trace["valid"] is True
+    assert trace["samples"][0]["throttle_status"] == status
+    assert trace["samples"][0]["throttle_reason"] == reason
+
+
+def test_extended_json_sidecar_reader_aggregates_left_held_samples(tmp_path: Path) -> None:
+    path = tmp_path / "extended.json"
+    _write_sidecar(
+        path,
+        [
+            _trace_row(0, board_power_w=10.0),
+            _trace_row(2_000_000_000, board_power_w=36.0),
+            _trace_row(5_000_000_000, board_power_w=22.0),
+        ],
+    )
+
+    trace = read_extended_power_trace_snapshot(
+        path,
+        run_start_monotonic_ns=1_000_000_000,
+        run_end_monotonic_ns=5_000_000_000,
+    )
+
+    assert trace["valid"] is True
+    assert trace["sample_count"] == 3
+    assert trace["duration_ns"] == 4_000_000_000
+    assert trace["segment_count"] == 2
+    board_power = trace["aggregates"]["board_power_w"]
+    assert board_power["min"] == 10.0
+    assert board_power["max"] == 36.0
+    assert board_power["time_weighted"] == pytest.approx(29.5)
+
+
+@pytest.mark.parametrize("failure", ("schema", "malformed_sample"))
+def test_extended_json_sidecar_reader_rejects_invalid_payload(
+    tmp_path: Path, failure: str
+) -> None:
+    path = tmp_path / f"invalid-{failure}.json"
+    samples = [_trace_row(0, board_power_w=10.0)]
+    if failure == "schema":
+        _write_sidecar(path, samples, schema="unsupported-schema")
+    else:
+        samples[0].pop("board_power_w")
+        _write_sidecar(path, samples)
+
+    trace = read_extended_power_trace_snapshot(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    if failure == "schema":
+        assert "schema is not supported" in trace["error"]
+    else:
+        assert "board_power_w" in trace["error"]
