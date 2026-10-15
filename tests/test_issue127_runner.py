@@ -118,10 +118,10 @@ def test_issue127_orders_and_occurrence_balance_are_fixed():
 
 
 def test_issue127_launch_counts_and_duration_guard_are_explicit():
-    assert runner.launches_for_row("bf16-r-L16") == 10000
-    assert runner.launches_for_row("fp32-r-L16") == 10000
-    assert runner.launches_for_row("bf16-r-L32-r-dram") == 5500
-    assert runner.launches_for_row("fp32-r-L32-r-dram") == 5500
+    assert runner.launches_for_row("bf16-r-L16") == 11000
+    assert runner.launches_for_row("fp32-r-L16") == 11000
+    assert runner.launches_for_row("bf16-r-L32-r-dram") == 5800
+    assert runner.launches_for_row("fp32-r-L32-r-dram") == 5800
 
     passing = runner.row_duration_guard(2.7, "bf16-r-L16")
     assert passing["passes"] is True
@@ -490,6 +490,39 @@ def test_issue127_serialization_replaces_known_path_fields_and_audits_fields():
 def test_issue127_serialization_rejects_unknown_absolute_path_with_field():
     with pytest.raises(ValueError, match=r"field failure\.location"):
         runner._serialize_record({"failure": {"location": "/tmp/private.json"}})
+    with pytest.raises(ValueError, match=r"field metadata\.description"):
+        runner._serialize_record(
+            {"metadata": {"description": "/home/user/private report.csv"}}
+        )
+
+
+def test_issue127_serialization_rejects_embedded_host_path_with_field():
+    with pytest.raises(ValueError, match=r"field failure\.message"):
+        runner._serialize_record(
+            {
+                "failure": {
+                    "message": "open failed for '/home/user/private report.csv'",
+                }
+            }
+        )
+    with pytest.raises(ValueError, match=r"field failure\.message"):
+        runner._serialize_record(
+            {"failure": {"message": r"open failed for C:\\Users\\user\\private report.csv"}}
+        )
+
+
+def test_issue127_environment_path_lists_are_placeholdered_without_formula_false_positive():
+    environment = runner.sanitize_environment(
+        {
+            "pythonpath": "/home/user/private path:/work/tree",
+            "path": "/usr/bin:/usr/local/bin",
+            "definition": "/abs(response_at_look)",
+        }
+    )
+    assert environment["pythonpath"] == "<redacted-path>"
+    assert environment["path"] == "<redacted-path>"
+    assert environment["definition"] == "/abs(response_at_look)"
+    assert "/home/user" not in json.dumps(environment)
 
 
 def test_issue127_formula_is_byte_identical_to_issue88_and_slash_is_not_a_path():
@@ -539,7 +572,7 @@ def test_issue127_environment_is_complete_but_does_not_retain_host_identity_or_w
     assert "hostname" not in environment
     assert "worktree_path" not in environment
     assert environment["device_node"] == "/dev/tenstorrent/0"
-    with pytest.raises(ValueError, match="absolute path"):
+    with pytest.raises(ValueError, match="path"):
         runner._serialize_record({"bad": "/home/user/private-worktree"})
 
 
@@ -565,17 +598,17 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
         row["name"]: row["launches_per_occurrence"]
         for row in plan["comparison_configurations"]
     } == {
-        "bf16-r-L16": 10000,
-        "fp32-r-L16": 10000,
-        "bf16-r-L32-r-dram": 5500,
-        "fp32-r-L32-r-dram": 5500,
+        "bf16-r-L16": 11000,
+        "fp32-r-L16": 11000,
+        "bf16-r-L32-r-dram": 5800,
+        "fp32-r-L32-r-dram": 5800,
     }
     assert plan["timing_protocol"]["startup_warmup"]["launches"] == 4500
     assert plan["timing_protocol"]["row_duration_target_seconds"] == [2.24, None]
     assert plan["timing_protocol"]["power_samples_per_row_target"] == 2
     assert plan["revision_history"][-1]["selected_launches_per_occurrence"] == {
-        "L16": 10000,
-        "L32": 5500,
+        "L16": 11000,
+        "L32": 5800,
     }
     assert plan["predicted_aiclk_ranges_mhz"]["basis"].endswith("predictions, not measured results.")
     for run_number, key in ((1, "run_1"), (2, "run_2")):

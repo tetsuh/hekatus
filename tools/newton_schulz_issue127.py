@@ -131,7 +131,7 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
 ISSUE127_COMPARISON_ROWS = comparison_rows()
 ISSUE127_ROW_NAMES = tuple(row["name"] for row in ISSUE127_COMPARISON_ROWS)
 ROW_BY_NAME = {row["name"]: row for row in ISSUE127_COMPARISON_ROWS}
-LAUNCHES_BY_SIZE = {16: 10000, 32: 5500}
+LAUNCHES_BY_SIZE = {16: 11000, 32: 5800}
 RUN_1_ORDER = (
     "bf16-r-L16",
     "fp32-r-L16",
@@ -219,6 +219,11 @@ _ABSOLUTE_PATH_RE = re.compile(
     rf"^(?:/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}|~/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}|"
     rf"[A-Za-z]:[\\/](?:{_PATH_COMPONENT}[\\/])*{_PATH_COMPONENT})$"
 )
+_EMBEDDED_HOST_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_])/(?:home|Users|tmp|root|workspace|work)(?:[\\/]|(?=$|[\\s'\"),;:]))"
+    r"|(?<![A-Za-z0-9_])~[\\/]"
+    r"|(?<![A-Za-z0-9_])[A-Za-z]:[\\/]"
+)
 _RECORD_PATH_FIELD_NAMES = frozenset(
     {
         "artifact_path",
@@ -236,6 +241,9 @@ _RECORD_PATH_FIELD_NAMES = frozenset(
 )
 _FORBIDDEN_RECORD_KEYS = frozenset(
     {"hostname", "host_name", "worktree_path", "repository_path"}
+)
+_ENVIRONMENT_PATH_KEYS = frozenset(
+    {"path", "pythonpath", "ld_library_path", "library_path", "library_paths"}
 )
 _FORBIDDEN_ENV_KEY_PARTS = (
     "hostname",
@@ -512,10 +520,13 @@ def _sanitize_environment_value(value: Any, *, key: str | None = None) -> Any:
     scalar = _json_safe_scalar(value)
     if scalar is None:
         return None
-    if isinstance(scalar, str) and _ABSOLUTE_PATH_RE.search(scalar):
+    if isinstance(scalar, str):
         if key == "device_node" and _DEVICE_NODE_RE.fullmatch(scalar):
             return scalar
-        return None
+        if _environment_value_contains_path(scalar, key=key):
+            return "<redacted-path>"
+        if _is_whole_absolute_path(scalar):
+            return None
     return scalar
 
 
@@ -1455,6 +1466,20 @@ def _is_whole_absolute_path(value: str) -> bool:
     return bool(_ABSOLUTE_PATH_RE.fullmatch(value))
 
 
+def _contains_embedded_host_path(value: str) -> bool:
+    """Find recognizable host-path prefixes inside diagnostic text."""
+    return _EMBEDDED_HOST_PATH_RE.search(value) is not None
+
+
+def _looks_like_absolute_path(value: str) -> bool:
+    """Recognize a path value for a field whose name explicitly carries a path."""
+    return bool(
+        _is_whole_absolute_path(value)
+        or value.startswith(("/", "~/", "~\\"))
+        or (len(value) >= 3 and value[0].isalpha() and value[1] == ":" and value[2] in "\\/")
+    )
+
+
 def _is_known_path_field(key: str | None) -> bool:
     return isinstance(key, str) and key.lower() in _RECORD_PATH_FIELD_NAMES
 
@@ -1464,18 +1489,24 @@ def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, 
     key = field_path.rsplit(".", 1)[-1]
     if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
         return value, {}
-    if not _is_whole_absolute_path(value):
+    if not _looks_like_absolute_path(value):
         return value, {}
-    basename = Path(value).name
-    if not _SAFE_BASENAME_RE.fullmatch(basename):
-        raise ValueError(
-            f"Issue #127 record contains an unsafe path in field {field_path}"
-        )
-    return basename, {
+    basename = value.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
+    replacement = basename if _SAFE_BASENAME_RE.fullmatch(basename) else "<redacted-path>"
+    return replacement, {
         "field": field_path,
-        "replacement": basename,
+        "replacement": replacement,
         "reason": "absolute path replaced by harness-relative basename",
     }
+
+
+def _environment_value_contains_path(value: str, *, key: str | None) -> bool:
+    """Recognize embedded paths in environment values without matching formulas."""
+    if _contains_embedded_host_path(value):
+        return True
+    if isinstance(key, str) and key.lower() in _ENVIRONMENT_PATH_KEYS:
+        return bool(re.search(r"(?:^|[:;=])(?:/|~/|~\\|[A-Za-z]:[\\/])", value))
+    return False
 
 
 def _normalize_record_paths(
@@ -1521,6 +1552,10 @@ def _normalize_record_paths(
             if audit:
                 replacements.append(audit)
             return replacement
+        if _contains_embedded_host_path(value):
+            raise ValueError(
+                f"Issue #127 record contains an embedded host path in field {field_path}"
+            )
         if _is_whole_absolute_path(value):
             raise ValueError(
                 f"Issue #127 record contains an unsafe absolute path in field {field_path}"
@@ -1550,6 +1585,11 @@ def _validate_record_safety(value: Any, *, path: tuple[str, ...] = ()) -> None:
         key = path[-1] if path else None
         if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
             return
+        if _contains_embedded_host_path(value):
+            raise ValueError(
+                f"Issue #127 record contains an embedded host path in field "
+                f"{_record_field_path(path)}"
+            )
         if _is_whole_absolute_path(value):
             raise ValueError(
                 f"Issue #127 record contains an unsafe absolute path in field "
