@@ -1,8 +1,8 @@
 {
-  "record_schema": "issue127-abba-summary-v1",
+  "record_schema": "issue127-abba-summary-v2",
   "status": "pass",
   "issue": "#127",
-  "summary_role": "mechanical decision summary for the two accepted measurement records",
+  "summary_role": "mechanical decision and clock-sensitivity summary for the two accepted measurement records",
   "excluded_records": [
     "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
     "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json"
@@ -791,8 +791,19 @@
     "r_format_criterion_passes": true,
     "clock_criterion_passes": false,
     "conclusion": "r_format",
-    "conclusion_text": "The plan criteria classify the matched raw P50 differences as an R-format effect.",
-    "adjusted_p50_role": "supplementary only; not used for the primary conclusion"
+    "conclusion_text": "The precommitted raw P50 decision remains R-format effect. Under assumptions (a) and (b), all eight matched-occurrence sensitivity intervals remain negative. Without assumption (b), descriptive range-only information does not fully exclude a clock explanation.",
+    "adjusted_p50_role": "supplementary only; not used for the primary conclusion",
+    "precommitted_raw_p50_decision": "R-format effect",
+    "sensitivity_intervals_under_assumptions": {
+      "assumptions": [
+        "a",
+        "b"
+      ],
+      "matched_occurrence_count": 8,
+      "all_negative": true,
+      "any_crosses_zero": false
+    },
+    "range_only_clock_limitation": "Without assumption (b), descriptive AICLK range-only information does not fully exclude a zero/clock explanation."
   },
   "recovery_context": {
     "prior_failed_attempt_record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
@@ -801,7 +812,35 @@
     "rerun_reset_performed": false
   },
   "aiclk_alignment": {
-    "definition": "Compare each matched occurrence using the persisted AICLK min/max interval; when the intervals differ, retain their positive-overlap intersection as the explicit bound. No claim of identical AICLK ranges is made, and adjusted P50 remains supplementary.",
+    "definition": "The persisted per-row AICLK min/max intersections are descriptive range overlap only. They are not an AICLK-aligned effect boundary or an effect bound. Without assumption (b), range-only information cannot exclude a zero/clock explanation.",
+    "interpretation": "descriptive_range_overlap_only",
+    "assumptions": {
+      "a": {
+        "symbol": "s",
+        "range": [
+          0.0,
+          1.0
+        ],
+        "description": "Throughput clock sensitivity s is in [0, 1]; s=0 is clock-independent and s=1 is proportional to clock."
+      },
+      "b": {
+        "description": "The row's #122 left-held time-weighted AICLK represents its effective clock.",
+        "approximation": "This is an approximation because power samples are about 2.24 seconds apart and AICLK moves across the row.",
+        "sample_spacing_seconds_approx": 2.24
+      }
+    },
+    "sensitivity_method": {
+      "raw_p50_delta_percent": {
+        "s": 0.0,
+        "source": "persisted raw P50 values"
+      },
+      "adjusted_p50_delta_percent": {
+        "s": 1.0,
+        "source": "persisted time-weighted-AICLK-adjusted P50 values"
+      },
+      "sensitivity_interval_percent": "[min(raw_p50_delta_percent, adjusted_p50_delta_percent), max(raw_p50_delta_percent, adjusted_p50_delta_percent)]",
+      "crosses_zero": "sensitivity interval lower <= 0 <= upper"
+    },
     "L16_L1": {
       "same_range_for_all_matched_occurrences": false,
       "matched_occurrences": [
@@ -819,12 +858,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1262.0,
             1331.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.817750005207014,
+          "right_raw_p50_tflops": 15.227014699412125,
+          "left_adjusted_p50_tflops": 16.611717077403387,
+          "right_adjusted_p50_tflops": 15.760989666553444,
+          "raw_p50_delta_percent": -3.734635492408378,
+          "adjusted_p50_delta_percent": -5.121249097163904,
           "left_time_weighted_aiclk_mhz": 1285.475932892986,
-          "right_time_weighted_aiclk_mhz": 1304.262630653801
+          "right_time_weighted_aiclk_mhz": 1304.262630653801,
+          "sensitivity_interval_percent": [
+            -5.121249097163904,
+            -3.734635492408378
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 1,
@@ -840,12 +891,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1250.0,
             1312.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.549625692578225,
+          "right_raw_p50_tflops": 15.044230360125551,
+          "left_adjusted_p50_tflops": 16.34011635551997,
+          "right_adjusted_p50_tflops": 15.638975770364612,
+          "raw_p50_delta_percent": -3.250208991808057,
+          "adjusted_p50_delta_percent": -4.290915498398529,
           "left_time_weighted_aiclk_mhz": 1284.6906489676953,
-          "right_time_weighted_aiclk_mhz": 1298.6599176562308
+          "right_time_weighted_aiclk_mhz": 1298.6599176562308,
+          "sensitivity_interval_percent": [
+            -4.290915498398529,
+            -3.250208991808057
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 2,
@@ -861,12 +924,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1306.0,
             1350.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.88285413772009,
+          "right_raw_p50_tflops": 15.578371090833862,
+          "left_adjusted_p50_tflops": 16.156586434213352,
+          "right_adjusted_p50_tflops": 15.824761447649987,
+          "raw_p50_delta_percent": -1.9170549842368212,
+          "adjusted_p50_delta_percent": -2.0538062784146605,
           "left_time_weighted_aiclk_mhz": 1327.127680913874,
-          "right_time_weighted_aiclk_mhz": 1328.9806005732135
+          "right_time_weighted_aiclk_mhz": 1328.9806005732135,
+          "sensitivity_interval_percent": [
+            -2.0538062784146605,
+            -1.9170549842368212
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 2,
@@ -882,15 +957,29 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1287.0,
             1343.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.859082500121286,
+          "right_raw_p50_tflops": 15.019924004668033,
+          "left_adjusted_p50_tflops": 16.247625326165664,
+          "right_adjusted_p50_tflops": 15.556800930679659,
+          "raw_p50_delta_percent": -5.291343275670801,
+          "adjusted_p50_delta_percent": -4.25184838779783,
           "left_time_weighted_aiclk_mhz": 1317.716339795503,
-          "right_time_weighted_aiclk_mhz": 1303.4104824413903
+          "right_time_weighted_aiclk_mhz": 1303.4104824413903,
+          "sensitivity_interval_percent": [
+            -5.291343275670801,
+            -4.25184838779783
+          ],
+          "crosses_zero": false
         }
       ],
-      "explicit_bounds_when_ranges_differ": true
+      "all_sensitivity_intervals_negative": true,
+      "range_overlap_is_effect_bound": false,
+      "any_crosses_zero": false
     },
     "L32_DRAM": {
       "same_range_for_all_matched_occurrences": false,
@@ -909,12 +998,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1006.0,
             1350.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.48745650559327,
+          "right_raw_p50_tflops": 56.198459876858244,
+          "left_adjusted_p50_tflops": 69.76457373350085,
+          "right_adjusted_p50_tflops": 65.61352645018891,
+          "raw_p50_delta_percent": -7.090720748587643,
+          "adjusted_p50_delta_percent": -5.950079046091283,
           "left_time_weighted_aiclk_mhz": 1170.4804016216447,
-          "right_time_weighted_aiclk_mhz": 1156.2847622792297
+          "right_time_weighted_aiclk_mhz": 1156.2847622792297,
+          "sensitivity_interval_percent": [
+            -7.090720748587643,
+            -5.950079046091283
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 1,
@@ -930,12 +1031,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             993.0,
             1350.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 59.3897096836659,
+          "right_raw_p50_tflops": 55.85826107807305,
+          "left_adjusted_p50_tflops": 68.16283391548768,
+          "right_adjusted_p50_tflops": 67.04641336610106,
+          "raw_p50_delta_percent": -5.946229783581702,
+          "adjusted_p50_delta_percent": -1.637872848377786,
           "left_time_weighted_aiclk_mhz": 1176.2437602338548,
-          "right_time_weighted_aiclk_mhz": 1124.7231383375613
+          "right_time_weighted_aiclk_mhz": 1124.7231383375613,
+          "sensitivity_interval_percent": [
+            -5.946229783581702,
+            -1.637872848377786
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 2,
@@ -951,12 +1064,24 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1018.0,
             1350.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.75938915201044,
+          "right_raw_p50_tflops": 56.40171762098234,
+          "left_adjusted_p50_tflops": 69.67119939780913,
+          "right_adjusted_p50_tflops": 66.083833219006,
+          "raw_p50_delta_percent": -7.172013398827781,
+          "adjusted_p50_delta_percent": -5.148994433582188,
           "left_time_weighted_aiclk_mhz": 1177.3182615511776,
-          "right_time_weighted_aiclk_mhz": 1152.2079619078045
+          "right_time_weighted_aiclk_mhz": 1152.2079619078045,
+          "sensitivity_interval_percent": [
+            -7.172013398827781,
+            -5.148994433582188
+          ],
+          "crosses_zero": false
         },
         {
           "run_number": 2,
@@ -972,15 +1097,32 @@
             1350.0
           ],
           "same_range": false,
-          "overlap_bound_mhz": [
+          "descriptive_range_overlap_mhz": [
             1006.0,
             1350.0
           ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.38561742053282,
+          "right_raw_p50_tflops": 56.07083163927223,
+          "left_adjusted_p50_tflops": 69.8513008185895,
+          "right_adjusted_p50_tflops": 65.28212447626612,
+          "raw_p50_delta_percent": -7.145386543308641,
+          "adjusted_p50_delta_percent": -6.541290267721656,
           "left_time_weighted_aiclk_mhz": 1167.0589174772285,
-          "right_time_weighted_aiclk_mhz": 1159.5153086743878
+          "right_time_weighted_aiclk_mhz": 1159.5153086743878,
+          "sensitivity_interval_percent": [
+            -7.145386543308641,
+            -6.541290267721656
+          ],
+          "crosses_zero": false
         }
       ],
-      "explicit_bounds_when_ranges_differ": true
-    }
+      "all_sensitivity_intervals_negative": true,
+      "range_overlap_is_effect_bound": false,
+      "any_crosses_zero": false
+    },
+    "all_eight_sensitivity_intervals_negative": true,
+    "conclusion": "The precommitted raw P50 decision remains R-format effect. Under assumptions (a) and (b), all eight matched-occurrence sensitivity intervals remain negative. Without assumption (b), descriptive range-only information does not fully exclude a clock explanation.",
+    "any_crosses_zero": false
   }
 }

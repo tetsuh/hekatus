@@ -711,8 +711,13 @@ is not done.
 The reproducible board-free corpus audit classifies endpoint-only and
 intermediate AICLK traces, and separates exact covered intervals from CSV-span
 diagnostics. See [the generated Issue #122 audit](issue122-aiclk-audit.md).
-Issue #127's counterbalanced records resolve the R-format/clock attribution
-limitation described by that generated audit; the audit itself remains unchanged.
+Issue #127's counterbalanced records retain the precommitted raw P50 decision
+while qualifying the clock sensitivity: under (a) `s` in `[0, 1]` and (b) the
+#122 left-held time-weighted AICLK representing effective clock, all eight
+matched-occurrence sensitivity intervals remain negative. The persisted min/max
+intersections are descriptive range overlap only, not an effect bound or proof
+of AICLK alignment; without (b), range-only information does not fully exclude
+a zero/clock explanation. The audit itself remains unchanged.
 
 ## Issue #127 confirmation run
 
@@ -730,5 +735,5 @@ limitation described by that generated audit; the audit itself remains unchanged
 
 - `2026-10-15-p150a-newton-schulz-issue127-measurement-1.json` is the first accepted measurement record.
 - `2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json` is the accepted replacement for the failed `measurement-2` attempt, using the separately approved `measurement-2-rerun` scope.
-- `2026-10-15-p150a-newton-schulz-issue127-abba-summary.json` mechanically applies the committed plan criteria to those two records. The confirmation and failed-attempt records are excluded.
-- The mechanical decision is **R-format effect**; the default remains BF16-R and FP32-R remains an explicit variant.
+- `2026-10-15-p150a-newton-schulz-issue127-abba-summary.json` mechanically applies the committed plan criteria and the qualified clock-sensitivity calculation to those two records. The confirmation and failed-attempt records are excluded; the summary's range overlaps are descriptive only, not effect bounds.
+- The precommitted raw P50 decision remains **R-format effect**; under assumptions (a) and (b), all eight sensitivity intervals remain negative. Without (b), range-only information does not fully exclude a zero/clock explanation. The default remains BF16-R and FP32-R remains an explicit variant.

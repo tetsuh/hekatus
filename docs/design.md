@@ -1248,14 +1248,25 @@ DRAM**, the two-run means reported by the Issue #127 ABBA summary
 `docs/measurements/2026-10-15-p150a-newton-schulz-issue127-abba-summary.json`.
 Issue #127 retained per-row host timestamps and AICLK facts in two
 counterbalanced, order-swapped runs; both run deltas had the same sign and met
-the committed R-format criterion. Row time-weighted AICLK was approximately
-**1120–1330 MHz**, lower than the short Issue #88 run, so the absolute TFLOPS
-values are not directly comparable between those records. The earlier Issue #88
-**−2%** and **−4.7%** observations could not separate clock and R-format
-contributions and are replaced here by the Issue #127 attribution result. The
-FP32-R/L=32/R-in-L1 placement is rejected before allocation at **1,884,928 B**
-against the **1,572,864 B** L1 budget. These are solver and corrected beam
-diagnostics, not an image-quality or gCNR result.
+the committed R-format criterion. For the supplementary clock-sensitivity
+calculation, (a) throughput clock sensitivity `s` is in `[0, 1]`, where `s=0`
+is clock-independent and `s=1` is proportional to clock, and (b) the row's
+#122 left-held time-weighted AICLK represents effective clock. Assumption (b)
+is an approximation because power samples are about 2.24 seconds apart and
+AICLK moves across the row. Under (a) and (b), all eight matched-occurrence
+sensitivity intervals between the raw (`s=0`) and time-weighted-AICLK-adjusted
+(`s=1`) deltas remain negative. The persisted min/max intersections are only
+descriptive range overlap, not an effect bound or proof of AICLK alignment;
+without (b), range-only information does not fully exclude a zero/clock
+explanation. The precommitted raw P50 decision remains **R-format effect**.
+Row time-weighted AICLK was approximately **1120–1330 MHz**, lower than the
+short Issue #88 run, so the absolute TFLOPS values are not directly comparable
+between those records. The earlier Issue #88 **−2%** and **−4.7%** observations
+could not separate clock and R-format contributions and are superseded here by
+the qualified Issue #127 sensitivity result. The FP32-R/L=32/R-in-L1 placement
+is rejected before allocation at **1,884,928 B** against the **1,572,864 B** L1
+budget. These are solver and corrected beam diagnostics, not an image-quality
+or gCNR result.
 
 The current kernel's math↔pack handoff/queue interpretation is the leading,
 cautious explanation of its limiting stage; the steady Issue #63 record does

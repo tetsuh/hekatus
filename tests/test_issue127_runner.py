@@ -595,6 +595,52 @@ def test_issue127_serialization_rejects_embedded_host_path_with_field():
         )
 
 
+@pytest.mark.parametrize(
+    "value",
+    (
+        "/srv/private report/秘密.csv",
+        "open failed for '/opt/équipe data/private report.csv'",
+        "\\\\server\\share\\private file",
+        "open failed for \\\\server\\share\\private file",
+    ),
+)
+def test_issue127_environment_sanitizes_arbitrary_absolute_and_unc_paths(value: str):
+    environment = runner.sanitize_environment({"diagnostic": value})
+
+    assert environment.get("diagnostic") in (None, "<redacted-path>")
+    assert value not in json.dumps(environment, ensure_ascii=False)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "/srv/private report/秘密.csv",
+        "open failed for '/opt/équipe data/private report.csv'",
+        "\\\\server\\share\\private file",
+        "open failed for \\\\server\\share\\private file",
+    ),
+)
+def test_issue127_serialization_rejects_arbitrary_absolute_and_unc_paths(value: str):
+    with pytest.raises(ValueError, match=r"field payload\.value"):
+        runner._serialize_record({"payload": {"value": value}})
+
+
+def test_issue127_known_path_field_keeps_basename_audit_for_unc_path():
+    serialized = runner._serialize_record(
+        {"power_trace": {"source_file": "\\\\server\\share\\private-file.csv"}}
+    )
+    decoded = json.loads(serialized)
+
+    assert decoded["power_trace"]["source_file"] == "private-file.csv"
+    assert decoded["record_safety"]["path_replacements"] == [
+        {
+            "field": "power_trace.source_file",
+            "replacement": "private-file.csv",
+            "reason": "absolute path replaced by harness-relative basename",
+        }
+    ]
+
+
 def test_issue127_environment_path_lists_are_placeholdered_without_formula_false_positive():
     environment = runner.sanitize_environment(
         {
