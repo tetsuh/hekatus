@@ -717,3 +717,9 @@ diagnostics. See [the generated Issue #122 audit](issue122-aiclk-audit.md).
 - `2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json` is the owner-reviewed confirmation run record.
 - `2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv` is its immutable power-trace companion.
 - The confirmation record validates execution and provenance only. It is explicitly excluded from the Issue #127 plan prediction and decision criteria; its reference deltas must not change the prediction, thresholds, or fixed run order.
+
+## Issue #127 failed measurement-2 attempt
+
+- `2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json` is the committed failed record for the original `measurement-2` attempt.
+- `2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv` is its immutable power-trace companion.
+- The record is excluded from the Issue #127 prediction and decision criteria. Its cooldown gate incorrectly required 1350 MHz while the card was idle at 800 MHz; all eight measured rows completed, but the run is not accepted as measurement evidence.
