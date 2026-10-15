@@ -16,6 +16,7 @@ import itertools
 import json
 import math
 import os
+import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,10 @@ _RAW_THROTTLE_STATUS_KEYS = (
 )
 _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
 _MISSING = object()
+_PCI_BUS_ID_RE = re.compile(
+    r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])",
+    re.IGNORECASE,
+)
 
 
 class ExtendedPowerTraceError(ValueError):
@@ -150,6 +155,20 @@ def _identity_text(value: Any, *, field: str) -> str:
     if text is None:
         raise ExtendedPowerTraceError(f"{field} must be a non-empty string")
     return text
+
+
+def _normalize_pci_bus_id(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = _PCI_BUS_ID_RE.fullmatch(value.strip())
+    return match.group(1).lower() if match else None
+
+
+def _required_pci_bus_id(value: Any) -> str:
+    normalized = _normalize_pci_bus_id(value)
+    if normalized is None:
+        raise ExtendedPowerTraceError("bus_id must be a valid PCI BDF")
+    return normalized
 
 
 def _board_entries(root: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -195,11 +214,9 @@ def _extended_board_matches(
         if not isinstance(board_info, Mapping):
             continue
         candidate_board_id = _nonempty_text(board_info.get("board_id"))
-        candidate_bus_id = _nonempty_text(board_info.get("bus_id"))
+        candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
         board_matches_identity = candidate_board_id == requested_board_id
-        bus_matches_identity = (
-            candidate_bus_id is not None and candidate_bus_id.lower() == requested_bus_id
-        )
+        bus_matches_identity = candidate_bus_id == requested_bus_id
         if board_matches_identity:
             board_matches.append(device)
         if bus_matches_identity:
@@ -224,7 +241,7 @@ def select_extended_board(
     root = _as_snapshot_object(snapshot)
     board_id, bus_id = _requested_extended_identity(board_id, bus_id)
     requested_board_id = _identity_text(board_id, field="board_id")
-    requested_bus_id = _identity_text(bus_id, field="bus_id").lower()
+    requested_bus_id = _required_pci_bus_id(_identity_text(bus_id, field="bus_id"))
     devices = _board_entries(root)
     board_matches, bus_matches, pair_matches = _extended_board_matches(
         devices,

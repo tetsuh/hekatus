@@ -185,6 +185,35 @@ def test_extended_sampler_selects_board_identity_not_device_info_position():
     )
 
 
+def test_extended_selector_normalizes_pci_bus_ids_before_matching():
+    payload = json.loads(_snapshot())
+    payload["device_info"][1]["board_info"]["bus_id"] = " 0000:0A:0B.1 "
+
+    selected = select_extended_board(
+        payload, board_id="fixture-board-a", bus_id="0000:0a:0b.1"
+    )
+
+    assert selected["board_info"]["board_id"] == "fixture-board-a"
+
+
+@pytest.mark.parametrize("bus_id", ["not-a-pci-bdf", "0000:01:00.8"])
+def test_extended_selector_rejects_malformed_requested_bus_id(bus_id: str):
+    with pytest.raises(ExtendedPowerTraceError, match="valid PCI BDF"):
+        select_extended_board(
+            _snapshot(), board_id="fixture-board-a", bus_id=bus_id
+        )
+
+
+def test_extended_selector_rejects_malformed_snapshot_bus_id():
+    payload = json.loads(_snapshot())
+    payload["device_info"][1]["board_info"]["bus_id"] = "not-a-pci-bdf"
+
+    with pytest.raises(ExtendedPowerTraceError, match="bus_id"):
+        select_extended_board(
+            payload, board_id="fixture-board-a", bus_id="0000:01:00.0"
+        )
+
+
 @pytest.mark.parametrize(
     ("board_id", "bus_id"),
     [
