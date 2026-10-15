@@ -596,6 +596,25 @@ def test_issue127_serialization_rejects_embedded_host_path_with_field():
 
 
 @pytest.mark.parametrize(
+    "definition",
+    (
+        (
+            "||response_candidate - response_reference||_F / "
+            "||response_reference||_F; complex phase and response scale are retained"
+        ),
+        "FP32-R raw P50 / BF16-R raw P50 - 1",
+    ),
+)
+def test_issue127_serialization_preserves_ordinary_quotient_definitions(definition: str):
+    serialized = runner._serialize_record({"correctness": {"definition": definition}})
+    decoded = json.loads(serialized)
+
+    assert decoded["correctness"]["definition"] == definition
+    environment = runner.sanitize_environment({"definition": definition})
+    assert environment["definition"] == definition
+
+
+@pytest.mark.parametrize(
     "value",
     (
         "/srv/private report/秘密.csv",

@@ -243,9 +243,12 @@ _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
 _PCI_BDF_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _DEVICE_NODE_RE = re.compile(r"^/dev/tenstorrent/(?:[0-9]+|by-id/[A-Za-z0-9_.:-]+)$")
-# Keep path components broad enough for real host paths, while excluding prose
-# punctuation that marks expressions such as ``/abs(response_at_look)``.
-_PATH_COMPONENT = r'''[^/\\\x00-\x1f"'(),;:{}\[\]]+'''
+# Keep path components broad enough for real host paths, while requiring a
+# token-like first character.  The latter keeps a quotient slash followed by
+# whitespace or ``|`` (for example, ``... / ||R||``) from becoming a path;
+# spaces and non-ASCII characters remain valid inside a component.
+_PATH_COMPONENT_START = r'''(?=[^\s|])'''
+_PATH_COMPONENT = _PATH_COMPONENT_START + r'''[^/\\\x00-\x1f"'(),;:{}\[\]]+'''
 _ABSOLUTE_PATH_RE = re.compile(
     rf"^(?:/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}[\\/]*|~/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}[\\/]*|"
     rf"[A-Za-z]:[\\/](?:{_PATH_COMPONENT}[\\/])*{_PATH_COMPONENT}[\\/]*|"
