@@ -361,6 +361,28 @@ def test_issue127_warmup_800mhz_hold_gate_is_verified_from_row_facts():
     assert warmup["hold_gate_verified"] is True
 
 
+def test_issue127_cooldown_gate_uses_power_and_temperature_tolerances_only():
+    passing = runner.evaluate_cooldown_gate(
+        52.0,
+        61.5,
+        observed_idle_aiclk_mhz=800.0,
+    )
+    assert passing["passes"] is True
+    assert passing["result"] == "pass"
+    assert passing["power_limit_w"] == 52.0
+    assert passing["temperature_limit_c"] == 61.5
+    assert passing["aiclk_gate"] is False
+
+    failing = runner.evaluate_cooldown_gate(
+        52.01,
+        61.5,
+        observed_idle_aiclk_mhz=800.0,
+    )
+    assert failing["passes"] is False
+    assert failing["failure_type"] == "cooldown_gate_failure"
+    assert runner.evaluate_cooldown_gate(47.0, 58.5)["passes"] is True
+
+
 def test_issue127_cooldown_metadata_requires_wait_and_keeps_pre_cooldown_aiclk_provenance():
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
@@ -377,17 +399,31 @@ def test_issue127_cooldown_metadata_requires_wait_and_keeps_pre_cooldown_aiclk_p
     )
     assert metadata["environment_verified"] is True
     assert metadata["environment_observed_aiclk_mhz"] == [800]
+    assert metadata["observed_idle_aiclk_mhz"] == 800.0
+    assert metadata["baseline_source"] == "measurement-1 pre-run power trace"
+    assert metadata["baseline_power_w"] == 47.0
+    assert metadata["baseline_temperature_c"] == 58.5
+    assert metadata["power_tolerance_w"] == 5.0
+    assert metadata["temperature_tolerance_c"] == 3.0
+    assert metadata["power_limit_w"] == 52.0
+    assert metadata["temperature_limit_c"] == 61.5
+    assert metadata["wait_cap_seconds"] == 600.0
+    assert metadata["aiclk_gate"] is False
     assert metadata["verified"] is False
-    with pytest.raises(ValueError, match="power-trace proof"):
+    with pytest.raises(ValueError, match="gate proof"):
         runner.validate_cooldown_metadata(metadata, environment=environment, require_power_trace=True)
-    with pytest.raises(ValueError, match="cooldown_wait_seconds"):
+    with pytest.raises(ValueError, match="wait bounds"):
         runner.validate_cooldown_metadata(
             {**metadata, "cooldown_wait_seconds": None}, environment=environment
         )
-    with pytest.raises(ValueError, match="expected_aiclk_mhz must be 1350"):
+    with pytest.raises(ValueError, match="600-second cap"):
         runner.validate_cooldown_metadata(
-            {**metadata, "expected_aiclk_mhz": 1200}, environment=environment
+            {**metadata, "cooldown_wait_seconds": 600.1}, environment=environment
         )
+    # AICLK remains valid provenance even when it is not the nominal clock.
+    runner.validate_cooldown_metadata(
+        {**metadata, "expected_aiclk_mhz": 1200}, environment=environment
+    )
 
 
 def _cooldown_trace(*, terminal_timestamp: str = "2026-10-12T00:00:04+00:00") -> dict:
@@ -402,13 +438,13 @@ def _cooldown_trace(*, terminal_timestamp: str = "2026-10-12T00:00:04+00:00") ->
         "samples": [
             {"timestamp_utc": "2026-10-12T00:00:00+00:00", "power_w": "40", "aiclk_mhz": "800", "asic_temp_c": "50"},
             {"timestamp_utc": "2026-10-12T00:00:01+00:00", "power_w": "50", "aiclk_mhz": "1000", "asic_temp_c": "51"},
-            {"timestamp_utc": "2026-10-12T00:00:02+00:00", "power_w": "60", "aiclk_mhz": "1350", "asic_temp_c": "52"},
-            {"timestamp_utc": terminal_timestamp, "power_w": "60", "aiclk_mhz": "1350", "asic_temp_c": "52"},
+            {"timestamp_utc": "2026-10-12T00:00:02+00:00", "power_w": "50", "aiclk_mhz": "800", "asic_temp_c": "51"},
+            {"timestamp_utc": terminal_timestamp, "power_w": "50", "aiclk_mhz": "800", "asic_temp_c": "51"},
         ],
     }
 
 
-def test_issue127_cooldown_proof_uses_final_trace_terminal_held_segment():
+def test_issue127_cooldown_proof_uses_power_temperature_gate_and_keeps_idle_clock_provenance():
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
     metadata = runner.build_cooldown_metadata(
@@ -426,15 +462,19 @@ def test_issue127_cooldown_proof_uses_final_trace_terminal_held_segment():
     assert verified["power_trace_verified"] is True
     assert verified["verified"] is True
     assert verified["power_trace_facts"]["first_held_aiclk_mhz"] == 800.0
-    assert verified["power_trace_facts"]["terminal_held_aiclk_mhz"] == 1350.0
+    assert verified["power_trace_facts"]["terminal_held_aiclk_mhz"] == 800.0
+    assert verified["power_trace_facts"]["gate"]["result"] == "pass"
+    assert verified["power_trace_facts"]["gate"]["aiclk_gate"] is False
 
     unbounded = runner.verify_cooldown_power_trace(
         metadata,
         power_trace=_cooldown_trace(terminal_timestamp="2026-10-12T00:00:03+00:00"),
     )
-    assert unbounded["power_trace_verified"] is False
+    # Missing terminal AICLK coverage remains visible provenance, but it does
+    # not turn an otherwise passing power/temperature gate into a failure.
+    assert unbounded["power_trace_verified"] is True
     assert unbounded["power_trace_facts"]["coverage_complete"] is False
-    assert unbounded["verified"] is False
+    assert unbounded["verified"] is True
 
 
 def test_issue127_close_failure_cannot_produce_pass_record():
@@ -660,6 +700,7 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
             {"scope": "confirmation", "run_number": 1},
             {"scope": "measurement-1", "run_number": 1},
             {"scope": "measurement-2", "run_number": 2},
+            {"scope": "measurement-2-rerun", "run_number": 2},
         ],
         "required_cli": "--run-scope <approved target> --run-timeout-seconds 90",
         "default_unchanged_seconds": 60.0,
@@ -667,6 +708,20 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
     assert plan["revision_history"][-1]["selected_launches_per_occurrence"] == {
         "L16": 11000,
         "L32": 5800,
+    }
+    assert plan["revision_history"][-1]["cooldown_correction"] == {
+        "prior_run_failure": "The prior measurement-2 cooldown trace remained at idle 800 MHz, so the 1350-MHz success condition could not pass.",
+        "baseline_source": "measurement-1 pre-run power trace",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5,
+        "wait_cap_seconds": 600.0,
+        "observed_idle_aiclk_mhz": 800.0,
+        "aiclk_gate": False,
+        "prediction_and_decision_criteria_changed": False,
     }
     assert plan["predicted_aiclk_ranges_mhz"]["basis"].endswith("predictions, not measured results.")
     for run_number, key in ((1, "run_1"), (2, "run_2")):
@@ -701,6 +756,13 @@ case "${2:-}" in
     printf '%s\n' '{"fake": true}' > "$out"
     ;;
   sample)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
+    printf '%s\n' '2026-10-12T00:00:00+00:00,47,800,58.5' >> "$out"
     trap 'exit 0' TERM INT
     while :; do sleep 1; done
     ;;
@@ -826,15 +888,16 @@ exec "$@"
     )
     assert completed.returncode == 0, completed.stderr
     events_seen = events.read_text(encoding="utf-8").splitlines()
-    cooldown_indices = [
-        index for index, event in enumerate(events_seen) if event == "sleep:-- 0.1"
-    ]
-    docker_index = events_seen.index("docker")
-    assert len(cooldown_indices) == 1
-    assert cooldown_indices[0] < docker_index
+    assert "docker" in events_seen
+    assert all(event != "sleep:-- 0.1" for event in events_seen)
     docker = docker_args.read_text(encoding="utf-8").splitlines()
+    assert docker[docker.index("--cooldown-wait-seconds") + 1] == "600"
     assert "--cooldown-start-utc" in docker
     assert "--cooldown-end-utc" in docker
+    assert docker[docker.index("--cooldown-baseline-power-w") + 1] == "47.0"
+    assert docker[docker.index("--cooldown-power-tolerance-w") + 1] == "5.0"
+    assert docker[docker.index("--cooldown-gate-result") + 1] == "pass"
+    assert "--cooldown-gate-verified" in docker
     assert timeout_log.read_text(encoding="utf-8").splitlines()[2] == "60s"
     assert "sleep(args.cooldown_wait_seconds)" not in Path(runner.__file__).read_text(
         encoding="utf-8"
@@ -866,8 +929,83 @@ exec "$@"
         timeout=10,
     )
     assert rejected.returncode == 2
-    assert "less than 1000" in rejected.stderr
+    assert "at most 600" in rejected.stderr
     assert events.read_text(encoding="utf-8").splitlines() == events_seen
+
+
+def test_issue127_wrapper_refuses_measurement_when_cooldown_gate_reaches_cap(tmp_path: Path):
+    bindir = _fake_wrapper_tools(tmp_path)
+    (bindir / "python3").write_text(
+        """#!/bin/sh
+set -eu
+case "${2:-}" in
+  capture-env)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\\n' '{"fake": true}' > "$out"
+    ;;
+  sample)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
+    printf '%s\\n' '2026-10-12T00:00:00+00:00,80,800,70' >> "$out"
+    trap 'exit 0' TERM INT
+    while :; do sleep 1; done
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    docker_args = tmp_path / "docker-args"
+    output_dir = tmp_path / "rejected-at-cap"
+    completed = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(output_dir),
+            "--",
+            "--run-number",
+            "2",
+            "--run-scope",
+            "measurement-2-rerun",
+            "--run-timeout-seconds",
+            "90",
+        ],
+        cwd=tmp_path / "repo",
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(docker_args),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
+            "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.01",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 1
+    assert "cooldown gate failure" in completed.stderr
+    assert "measurement was not started" in completed.stderr
+    assert docker_args.exists()
+    assert docker_args.read_text(encoding="utf-8").splitlines()[0] == "kill"
+    failures = list(output_dir.glob("cooldown-gate-failure-*.json"))
+    assert len(failures) == 1
+    failure = json.loads(failures[0].read_text(encoding="utf-8"))
+    assert failure["failure_type"] == "cooldown_gate_failure"
+    assert failure["measurement_started"] is False
+    assert failure["wait_cap_seconds"] == 600.0
+    assert failure["observed_idle_aiclk_mhz"] == 800.0
 
 
 def test_issue127_wrapper_requires_explicit_approved_90_second_scope(tmp_path: Path):
@@ -913,6 +1051,30 @@ def test_issue127_wrapper_requires_explicit_approved_90_second_scope(tmp_path: P
     assert docker[docker.index("--run-scope") + 1] == "confirmation"
     assert "--run-timeout-seconds" in docker
     assert docker[docker.index("--run-timeout-seconds") + 1] == "90"
+
+    rerun = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "measurement-2-rerun"),
+            "--",
+            "--run-number",
+            "2",
+            "--run-scope",
+            "measurement-2-rerun",
+            "--run-timeout-seconds",
+            "90",
+        ],
+        cwd=copied_root,
+        env=base_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert rerun.returncode == 0, rerun.stderr
+    rerun_docker = docker_args.read_text(encoding="utf-8").splitlines()
+    assert rerun_docker[rerun_docker.index("--run-scope") + 1] == "measurement-2-rerun"
+    assert timeout_log.read_text(encoding="utf-8").splitlines()[2] == "90s"
 
     rejected = subprocess.run(
         [

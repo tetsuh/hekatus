@@ -71,7 +71,24 @@ APPROVED_RUN_TARGETS = {
     "confirmation": 1,
     "measurement-1": 1,
     "measurement-2": 2,
+    "measurement-2-rerun": 2,
 }
+
+# The run-2 cooldown is a thermal/power readiness gate.  These values come
+# from the first measurement-1 trace sample at or before its run start; the
+# idle clock is retained as provenance and is deliberately not part of the
+# gate.
+COOLDOWN_BASELINE_SOURCE = "measurement-1 pre-run power trace"
+COOLDOWN_BASELINE_POWER_W = 47.0
+COOLDOWN_BASELINE_ASIC_TEMPERATURE_C = 58.5
+COOLDOWN_POWER_TOLERANCE_W = 5.0
+COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
+COOLDOWN_POWER_LIMIT_W = COOLDOWN_BASELINE_POWER_W + COOLDOWN_POWER_TOLERANCE_W
+COOLDOWN_TEMPERATURE_LIMIT_C = (
+    COOLDOWN_BASELINE_ASIC_TEMPERATURE_C + COOLDOWN_TEMPERATURE_TOLERANCE_C
+)
+COOLDOWN_OBSERVED_IDLE_AICLK_MHZ = 800.0
+COOLDOWN_WAIT_CAP_SECONDS = 600.0
 POWER_TRACE_POLL_TIMEOUT_SECONDS = 6.0
 POWER_TRACE_POLL_INTERVAL_SECONDS = 0.25
 POWER_TRACE_SNAPSHOT_PREFIX = "issue127-abba-power-snapshot"
@@ -682,6 +699,95 @@ def validate_harness_environment(
         raise ValueError("Issue #127 requires the current default 2.0-second sampler")
 
 
+def _finite_cooldown_value(value: Any, *, field: str) -> float | None:
+    """Return a finite telemetry value, or None when the sample is unusable."""
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if math.isfinite(parsed) else None
+
+
+def evaluate_cooldown_gate(
+    power_w: Any,
+    asic_temperature_c: Any,
+    *,
+    baseline_power_w: float = COOLDOWN_BASELINE_POWER_W,
+    baseline_temperature_c: float = COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
+    power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W,
+    temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
+    observed_idle_aiclk_mhz: Any = None,
+) -> dict[str, Any]:
+    """Evaluate the run-2 readiness gate without making AICLK a condition."""
+    baseline_power = _finite_cooldown_value(baseline_power_w, field="baseline_power_w")
+    baseline_temperature = _finite_cooldown_value(
+        baseline_temperature_c, field="baseline_temperature_c"
+    )
+    power_tolerance = _finite_cooldown_value(power_tolerance_w, field="power_tolerance_w")
+    temperature_tolerance = _finite_cooldown_value(
+        temperature_tolerance_c, field="temperature_tolerance_c"
+    )
+    observed_power = _finite_cooldown_value(power_w, field="observed_power_w")
+    observed_temperature = _finite_cooldown_value(
+        asic_temperature_c, field="observed_temperature_c"
+    )
+    observed_aiclk = _finite_cooldown_value(
+        observed_idle_aiclk_mhz, field="observed_idle_aiclk_mhz"
+    )
+    valid_baseline = all(
+        value is not None
+        for value in (
+            baseline_power,
+            baseline_temperature,
+            power_tolerance,
+            temperature_tolerance,
+        )
+    ) and power_tolerance >= 0.0 and temperature_tolerance >= 0.0
+    power_limit = (
+        baseline_power + power_tolerance if valid_baseline else None
+    )
+    temperature_limit = (
+        baseline_temperature + temperature_tolerance if valid_baseline else None
+    )
+    power_passes = (
+        observed_power is not None
+        and power_limit is not None
+        and observed_power <= power_limit
+    )
+    temperature_passes = (
+        observed_temperature is not None
+        and temperature_limit is not None
+        and observed_temperature <= temperature_limit
+    )
+    passes = bool(power_passes and temperature_passes)
+    reason = None
+    if not valid_baseline or observed_power is None or observed_temperature is None:
+        reason = "cooldown telemetry sample is missing or non-finite"
+    elif not passes:
+        reason = "cooldown power/temperature gate did not pass"
+    return {
+        "baseline_source": COOLDOWN_BASELINE_SOURCE,
+        "baseline_power_w": baseline_power,
+        "baseline_temperature_c": baseline_temperature,
+        "power_tolerance_w": power_tolerance,
+        "temperature_tolerance_c": temperature_tolerance,
+        "power_limit_w": power_limit,
+        "temperature_limit_c": temperature_limit,
+        "observed_power_w": observed_power,
+        "observed_temperature_c": observed_temperature,
+        "observed_idle_aiclk_mhz": observed_aiclk,
+        "aiclk_gate": False,
+        "aiclk_role": "provenance_only",
+        "power_passes": power_passes,
+        "temperature_passes": temperature_passes,
+        "passes": passes,
+        "result": "pass" if passes else "fail",
+        "verified": passes,
+        "failure_type": None if passes else "cooldown_gate_failure",
+        "failure_reason": reason,
+    }
+
+
 def build_cooldown_metadata(
     *,
     run_number: int,
@@ -693,29 +799,82 @@ def build_cooldown_metadata(
     start_monotonic: float | None = None,
     end_monotonic: float | None = None,
     wait_performed: bool = False,
+    baseline_source: str = COOLDOWN_BASELINE_SOURCE,
+    baseline_power_w: float = COOLDOWN_BASELINE_POWER_W,
+    baseline_temperature_c: float = COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
+    power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W,
+    temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
+    observed_power_w: float | None = None,
+    observed_temperature_c: float | None = None,
+    observed_idle_aiclk_mhz: float | None = None,
+    gate_result: str | None = None,
+    gate_verified: bool | None = None,
 ) -> dict[str, Any]:
     """Build cooldown metadata supplied by the wrapper before measurement."""
     observed = environment.get("aiclk_mhz_observed")
     observed_values = list(observed) if isinstance(observed, list) else None
+    if observed_idle_aiclk_mhz is None and observed_values:
+        observed_idle_aiclk_mhz = observed_values[-1]
     actual_wait_seconds = None
     if start_utc is not None and end_utc is not None:
         start = _parse_trace_timestamp(start_utc, field="cooldown start_utc")
         end = _parse_trace_timestamp(end_utc, field="cooldown end_utc")
         actual_wait_seconds = (end - start).total_seconds()
+    gate = evaluate_cooldown_gate(
+        observed_power_w,
+        observed_temperature_c,
+        baseline_power_w=baseline_power_w,
+        baseline_temperature_c=baseline_temperature_c,
+        power_tolerance_w=power_tolerance_w,
+        temperature_tolerance_c=temperature_tolerance_c,
+        observed_idle_aiclk_mhz=observed_idle_aiclk_mhz,
+    )
+    gate["baseline_source"] = baseline_source
+    gate_result = gate_result or (gate["result"] if observed_power_w is not None else "pending")
+    if gate_verified is None:
+        gate_verified = gate_result == "pass" and gate["passes"]
+    cooldown_wait_seconds = wait_seconds
+    if run_number == 2 and cooldown_wait_seconds is None:
+        cooldown_wait_seconds = COOLDOWN_WAIT_CAP_SECONDS
     metadata = {
         "required": run_number == 2,
         "run_number": run_number,
-        "cooldown_wait_seconds": wait_seconds,
+        "cooldown_wait_seconds": cooldown_wait_seconds,
+        "wait_cap_seconds": COOLDOWN_WAIT_CAP_SECONDS if run_number == 2 else None,
         "actual_wait_seconds": actual_wait_seconds,
         "wait_performed": wait_performed,
         "start_utc": start_utc,
         "end_utc": end_utc,
+        "wait_bounds": {
+            "start_utc": start_utc,
+            "end_utc": end_utc,
+            "source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds",
+        },
         "start_monotonic": start_monotonic,
         "end_monotonic": end_monotonic,
+        # Retain this historical field as a non-gating observation.  The
+        # corrected contract never compares it to a required clock value.
         "expected_aiclk_mhz": expected_aiclk_mhz,
         "environment_observed_aiclk_mhz": observed_values,
+        "observed_idle_aiclk_mhz": _finite_cooldown_value(
+            observed_idle_aiclk_mhz, field="observed_idle_aiclk_mhz"
+        ),
         "environment_observation_source": "wrapper capture-env before this run",
         "bounds_source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds",
+        "baseline_source": baseline_source,
+        "baseline_power_w": baseline_power_w,
+        "baseline_temperature_c": baseline_temperature_c,
+        "power_tolerance_w": power_tolerance_w,
+        "temperature_tolerance_c": temperature_tolerance_c,
+        "power_limit_w": COOLDOWN_POWER_LIMIT_W,
+        "temperature_limit_c": COOLDOWN_TEMPERATURE_LIMIT_C,
+        "observed_power_w": observed_power_w,
+        "observed_temperature_c": observed_temperature_c,
+        "gate": gate,
+        "gate_result": gate_result,
+        "gate_verified": bool(gate_verified),
+        "aiclk_gate": False,
+        "aiclk_role": "provenance_only",
         "environment_verified": False,
         "power_trace_facts": None,
         "power_trace_verified": False,
@@ -732,7 +891,7 @@ def validate_cooldown_metadata(
     environment: Mapping[str, Any] | None = None,
     require_power_trace: bool = False,
 ) -> None:
-    """Reject missing wait bounds, environment evidence, or required trace proof."""
+    """Reject missing bounds, baseline evidence, or required gate proof."""
     if not isinstance(metadata, Mapping):
         raise TypeError("cooldown metadata is missing")
     run_number = metadata.get("run_number")
@@ -744,26 +903,79 @@ def validate_cooldown_metadata(
     if required:
         try:
             wait_seconds = float(metadata.get("cooldown_wait_seconds"))
+            wait_cap = float(metadata.get("wait_cap_seconds"))
         except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("run 2 requires cooldown_wait_seconds") from exc
+            raise ValueError("run 2 cooldown wait bounds are missing") from exc
         if not math.isfinite(wait_seconds) or wait_seconds <= 0.0:
             raise ValueError("run 2 cooldown_wait_seconds must be positive")
+        if not math.isfinite(wait_cap) or wait_cap != COOLDOWN_WAIT_CAP_SECONDS:
+            raise ValueError("run 2 cooldown wait cap must be 600 seconds")
+        if wait_seconds > wait_cap:
+            raise ValueError("run 2 cooldown_wait_seconds exceeds the 600-second cap")
         if metadata.get("wait_performed") is not True:
             raise ValueError("run 2 cooldown wait was not performed")
-        expected = metadata.get("expected_aiclk_mhz")
-        if expected != NOMINAL_AICLK_MHZ:
-            raise ValueError("run 2 expected_aiclk_mhz must be 1350")
         observed = metadata.get("environment_observed_aiclk_mhz")
         if not isinstance(observed, list):
             raise ValueError("run 2 environment AICLK provenance is missing")
+        if metadata.get("aiclk_gate") is not False:
+            raise ValueError("run 2 AICLK must remain provenance only")
+        if metadata.get("aiclk_role") != "provenance_only":
+            raise ValueError("run 2 AICLK role is not provenance-only")
+        baseline_source = metadata.get("baseline_source")
+        if not isinstance(baseline_source, str) or not baseline_source.strip():
+            raise ValueError("run 2 cooldown baseline source is missing")
+        numeric_fields = (
+            "baseline_power_w",
+            "baseline_temperature_c",
+            "power_tolerance_w",
+            "temperature_tolerance_c",
+            "power_limit_w",
+            "temperature_limit_c",
+        )
+        numeric_values: dict[str, float] = {}
+        for field in numeric_fields:
+            value = _finite_cooldown_value(metadata.get(field), field=field)
+            if value is None:
+                raise ValueError(f"run 2 cooldown {field} is missing or non-finite")
+            numeric_values[field] = value
+        if numeric_values["power_tolerance_w"] < 0.0 or numeric_values[
+            "temperature_tolerance_c"
+        ] < 0.0:
+            raise ValueError("run 2 cooldown tolerances must not be negative")
+        expected_gate_values = {
+            "baseline_power_w": COOLDOWN_BASELINE_POWER_W,
+            "baseline_temperature_c": COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
+            "power_tolerance_w": COOLDOWN_POWER_TOLERANCE_W,
+            "temperature_tolerance_c": COOLDOWN_TEMPERATURE_TOLERANCE_C,
+            "power_limit_w": COOLDOWN_POWER_LIMIT_W,
+            "temperature_limit_c": COOLDOWN_TEMPERATURE_LIMIT_C,
+        }
+        if any(
+            not math.isclose(numeric_values[field], expected, rel_tol=0.0, abs_tol=1e-9)
+            for field, expected in expected_gate_values.items()
+        ):
+            raise ValueError("run 2 cooldown baseline and tolerances are fixed")
+        if not math.isclose(
+            numeric_values["power_limit_w"],
+            numeric_values["baseline_power_w"] + numeric_values["power_tolerance_w"],
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ) or not math.isclose(
+            numeric_values["temperature_limit_c"],
+            numeric_values["baseline_temperature_c"]
+            + numeric_values["temperature_tolerance_c"],
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ValueError("run 2 cooldown gate limits do not match baseline tolerances")
         for field in ("start_utc", "end_utc"):
             _parse_trace_timestamp(metadata.get(field), field=f"cooldown {field}")
         try:
             actual_wait = float(metadata.get("actual_wait_seconds"))
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("run 2 cooldown actual_wait_seconds is missing") from exc
-        if not math.isfinite(actual_wait) or actual_wait <= 0.0:
-            raise ValueError("run 2 cooldown UTC bounds are not increasing")
+        if not math.isfinite(actual_wait) or actual_wait <= 0.0 or actual_wait > wait_cap:
+            raise ValueError("run 2 cooldown UTC bounds exceed the 600-second cap")
         monotonic_values = [metadata.get("start_monotonic"), metadata.get("end_monotonic")]
         if any(value is not None for value in monotonic_values) and (
             not all(
@@ -774,18 +986,57 @@ def validate_cooldown_metadata(
             or float(monotonic_values[1]) <= float(monotonic_values[0])
         ):
             raise ValueError("cooldown monotonic bounds are invalid")
+        gate_result = metadata.get("gate_result")
+        if gate_result not in {"pending", "pass", "fail"}:
+            raise ValueError("run 2 cooldown gate result is invalid")
+        if not isinstance(metadata.get("gate_verified"), bool):
+            raise ValueError("run 2 cooldown gate verification is missing")
         if environment is not None:
             validate_harness_environment(environment)
-        if require_power_trace and metadata.get("power_trace_verified") is not True:
-            raise ValueError("run 2 cooldown power-trace proof is missing")
+        if require_power_trace and (
+            metadata.get("power_trace_verified") is not True
+            or metadata.get("gate_result") != "pass"
+            or metadata.get("gate_verified") is not True
+        ):
+            raise ValueError("run 2 cooldown gate proof is missing")
     elif metadata.get("wait_performed") not in (False, None):
         raise ValueError("run 1 must not claim a cooldown wait")
+
+
+def _cooldown_trace_sample(
+    samples: Sequence[Mapping[str, Any]], *, end_utc: Any
+) -> dict[str, Any] | None:
+    """Return the newest usable cooldown sample at or before the gate end."""
+    try:
+        end = _parse_trace_timestamp(end_utc, field="cooldown end_utc")
+    except (TypeError, ValueError):
+        return None
+    candidates: list[tuple[datetime.datetime, Mapping[str, Any]]] = []
+    for sample in samples:
+        if not isinstance(sample, Mapping):
+            continue
+        try:
+            timestamp = _parse_trace_timestamp(
+                sample.get("timestamp_utc"), field="cooldown sample timestamp_utc"
+            )
+        except (TypeError, ValueError):
+            continue
+        if timestamp <= end:
+            power = _finite_cooldown_value(sample.get("power_w"), field="power_w")
+            temperature = _finite_cooldown_value(
+                sample.get("asic_temp_c"), field="asic_temp_c"
+            )
+            if power is not None and temperature is not None:
+                candidates.append((timestamp, sample))
+    if not candidates:
+        return None
+    return dict(max(candidates, key=lambda item: item[0])[1])
 
 
 def verify_cooldown_power_trace(
     metadata: dict[str, Any], *, power_trace: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Verify the run-2 cooldown interval from the final immutable UTC trace."""
+    """Verify power/temperature readiness from the final immutable trace."""
     if metadata.get("run_number") != 2:
         metadata["power_trace_verified"] = False
         metadata["verified"] = metadata.get("environment_verified") is True
@@ -798,6 +1049,7 @@ def verify_cooldown_power_trace(
             "reason": "immutable_trace_samples_unavailable",
             "segments": [],
         }
+        trace_sample = None
     else:
         facts = left_held_aiclk_interval_facts(
             samples,
@@ -805,6 +1057,26 @@ def verify_cooldown_power_trace(
             end=metadata.get("end_utc"),
             row_label="run 2 cooldown AICLK interval",
         )
+        trace_sample = _cooldown_trace_sample(samples, end_utc=metadata.get("end_utc"))
+    observed_power = metadata.get("observed_power_w")
+    observed_temperature = metadata.get("observed_temperature_c")
+    observed_aiclk = metadata.get("observed_idle_aiclk_mhz")
+    if observed_power is None and trace_sample is not None:
+        observed_power = trace_sample.get("power_w")
+    if observed_temperature is None and trace_sample is not None:
+        observed_temperature = trace_sample.get("asic_temp_c")
+    if observed_aiclk is None and trace_sample is not None:
+        observed_aiclk = trace_sample.get("aiclk_mhz")
+    gate = evaluate_cooldown_gate(
+        observed_power,
+        observed_temperature,
+        baseline_power_w=metadata.get("baseline_power_w"),
+        baseline_temperature_c=metadata.get("baseline_temperature_c"),
+        power_tolerance_w=metadata.get("power_tolerance_w"),
+        temperature_tolerance_c=metadata.get("temperature_tolerance_c"),
+        observed_idle_aiclk_mhz=observed_aiclk,
+    )
+    gate["baseline_source"] = metadata.get("baseline_source")
     facts.update(
         {
             "trace": power_trace.get("file"),
@@ -816,18 +1088,28 @@ def verify_cooldown_power_trace(
             "trace_coverage_complete": power_trace.get("coverage_complete") is True,
             "immutable_snapshot": power_trace.get("immutable_snapshot") is True,
             "terminal_held_aiclk_mhz": facts.get("last_held_aiclk_mhz"),
+            "gate_sample": trace_sample,
+            "gate": gate,
+            "aiclk_gate": False,
+            "aiclk_role": "provenance_only",
         }
     )
+    # AICLK interval facts are retained as provenance.  They are deliberately
+    # not part of the cooldown gate: an idle 800-MHz observation is valid.
     verified = (
-        facts.get("available") is True
-        and facts.get("coverage_complete") is True
+        gate["passes"]
         and facts.get("trace_coverage_complete") is True
         and facts.get("immutable_snapshot") is True
-        and facts.get("last_held_aiclk_mhz") == NOMINAL_AICLK_MHZ
     )
+    metadata["observed_power_w"] = gate["observed_power_w"]
+    metadata["observed_temperature_c"] = gate["observed_temperature_c"]
+    metadata["observed_idle_aiclk_mhz"] = gate["observed_idle_aiclk_mhz"]
+    metadata["gate"] = gate
+    metadata["gate_result"] = gate["result"]
+    metadata["gate_verified"] = bool(verified)
     metadata["power_trace_facts"] = facts
-    metadata["power_trace_verified"] = verified
-    metadata["verified"] = metadata.get("environment_verified") is True and verified
+    metadata["power_trace_verified"] = bool(verified)
+    metadata["verified"] = metadata.get("environment_verified") is True and bool(verified)
     return metadata
 
 
@@ -1790,9 +2072,16 @@ def build_record(
         and power_trace.get("coverage_complete") is True
         and under_timeout is True
         and not close_failed
-        and (run_number != 2 or cooldown.get("power_trace_verified") is True)
+        and (run_number != 2 or cooldown.get("gate_verified") is True)
     )
     trace = _public_trace(power_trace)
+    failure = run.get("failure")
+    if failure is None and run_number == 2 and cooldown.get("gate_verified") is not True:
+        failure = {
+            "type": "cooldown_gate_failure",
+            "message": "run 2 power/temperature cooldown gate did not pass",
+            "measurement_started": True,
+        }
     record = {
         "record_schema": ISSUE127_RECORD_SCHEMA,
         "status": "pass" if run_status else "failed",
@@ -1800,7 +2089,7 @@ def build_record(
         "runner": ISSUE127_RUNNER,
         "run_id": run_id,
         "run_number": run_number,
-        "failure": run.get("failure"),
+        "failure": failure,
         "device_close_failed": close_failed,
         "captured_at": run_start_utc,
         "run_start": run_start_utc,
@@ -1891,6 +2180,32 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cooldown-start-utc", default=None)
     parser.add_argument("--cooldown-end-utc", default=None)
     parser.add_argument("--expected-aiclk-mhz", type=float, default=None)
+    parser.add_argument("--cooldown-baseline-source", default=COOLDOWN_BASELINE_SOURCE)
+    parser.add_argument("--cooldown-baseline-power-w", type=float, default=COOLDOWN_BASELINE_POWER_W)
+    parser.add_argument(
+        "--cooldown-baseline-temperature-c",
+        type=float,
+        default=COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
+    )
+    parser.add_argument(
+        "--cooldown-power-tolerance-w",
+        type=float,
+        default=COOLDOWN_POWER_TOLERANCE_W,
+    )
+    parser.add_argument(
+        "--cooldown-temperature-tolerance-c",
+        type=float,
+        default=COOLDOWN_TEMPERATURE_TOLERANCE_C,
+    )
+    parser.add_argument("--cooldown-observed-power-w", type=float, default=None)
+    parser.add_argument("--cooldown-observed-temperature-c", type=float, default=None)
+    parser.add_argument("--cooldown-observed-aiclk-mhz", type=float, default=None)
+    parser.add_argument("--cooldown-gate-result", choices=("pass", "fail"), default=None)
+    parser.add_argument(
+        "--cooldown-gate-verified",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", type=Path, default=None)
@@ -1926,12 +2241,16 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     if not args.fuse_s or not args.double_buffer or not args.dst_full_sync or not args.fp32_dest_acc:
         parser.error("Issue #127 requires fused S, double buffering, full DEST sync, and FP32 accumulation")
     if args.run_number == 2:
-        if args.cooldown_wait_seconds is None or not math.isfinite(args.cooldown_wait_seconds) or args.cooldown_wait_seconds <= 0.0:
-            parser.error("run 2 requires a positive --cooldown-wait-seconds")
-        if args.expected_aiclk_mhz != NOMINAL_AICLK_MHZ:
-            parser.error("run 2 requires --expected-aiclk-mhz 1350")
+        if args.cooldown_wait_seconds is not None and (
+            not math.isfinite(args.cooldown_wait_seconds)
+            or args.cooldown_wait_seconds <= 0.0
+            or args.cooldown_wait_seconds > COOLDOWN_WAIT_CAP_SECONDS
+        ):
+            parser.error("run 2 cooldown wait must be positive and at most 600 seconds")
         if args.cooldown_start_utc is None or args.cooldown_end_utc is None:
             parser.error("run 2 requires wrapper-provided cooldown UTC bounds")
+        if args.cooldown_gate_verified is False:
+            parser.error("run 2 cannot start with an unverified cooldown gate")
     elif any(
         value is not None
         for value in (
@@ -1939,6 +2258,11 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
             args.cooldown_start_utc,
             args.cooldown_end_utc,
             args.expected_aiclk_mhz,
+            args.cooldown_observed_power_w,
+            args.cooldown_observed_temperature_c,
+            args.cooldown_observed_aiclk_mhz,
+            args.cooldown_gate_result,
+            args.cooldown_gate_verified,
         )
     ):
         parser.error("cooldown and observed-AICLK confirmation belong to run 2")
@@ -1985,6 +2309,16 @@ def main(
             start_utc=cooldown_start_utc,
             end_utc=cooldown_end_utc,
             wait_performed=args.run_number == 2,
+            baseline_source=args.cooldown_baseline_source,
+            baseline_power_w=args.cooldown_baseline_power_w,
+            baseline_temperature_c=args.cooldown_baseline_temperature_c,
+            power_tolerance_w=args.cooldown_power_tolerance_w,
+            temperature_tolerance_c=args.cooldown_temperature_tolerance_c,
+            observed_power_w=args.cooldown_observed_power_w,
+            observed_temperature_c=args.cooldown_observed_temperature_c,
+            observed_idle_aiclk_mhz=args.cooldown_observed_aiclk_mhz,
+            gate_result=args.cooldown_gate_result,
+            gate_verified=args.cooldown_gate_verified,
         )
         measurement_start_utc = _timestamp(now_utc(), field="run_start")
         measurement_start_monotonic = monotonic()

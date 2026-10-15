@@ -148,13 +148,14 @@
       "targets": [
         {"scope": "confirmation", "run_number": 1},
         {"scope": "measurement-1", "run_number": 1},
-        {"scope": "measurement-2", "run_number": 2}
+        {"scope": "measurement-2", "run_number": 2},
+        {"scope": "measurement-2-rerun", "run_number": 2}
       ],
       "required_cli": "--run-scope <approved target> --run-timeout-seconds 90",
       "default_unchanged_seconds": 60.0
     },
-    "run_budget_guard": "Use the default 60-second budget unless the explicit owner-approved scope and --run-timeout-seconds 90 are supplied; for the three approved targets, project completion before each remaining occurrence and stop before launch when the projection exceeds the effective timeout.",
-    "timeout_policy": "The dedicated runner and Docker wrapper default to 60 seconds. Only the three targets in approved_run_timeout may explicitly use 90 seconds; no other timeout override is accepted."
+    "run_budget_guard": "Use the default 60-second budget unless the explicit owner-approved scope and --run-timeout-seconds 90 are supplied; for the four approved targets, project completion before each remaining occurrence and stop before launch when the projection exceeds the effective timeout.",
+    "timeout_policy": "The dedicated runner and Docker wrapper default to 60 seconds. Only the four targets in approved_run_timeout may explicitly use 90 seconds; no other timeout override is accepted."
   },
   "sampler_decision": {
     "mode": "default",
@@ -174,11 +175,21 @@
   "cooldown": {
     "run_1": "No inter-run cooldown metadata is required.",
     "run_2": {
-      "planned_wait_seconds": 30.0,
-      "required_cli": ["--cooldown-wait-seconds", "--expected-aiclk-mhz", "1350"],
-      "required_wait": "run_in_container.sh starts the sampler, waits for one pre-cooldown sample as readiness (without changing the 2.0-second sampling interval), waits outside the effective 60- or approved 90-second Docker timeout, then passes wrapper-owned UTC start/end bounds to the runner; the runner does not sleep.",
-      "environment_gate": "The wrapper environment captured before cooldown retains its observed AICLK value as provenance only; it may still show the pre-cooldown low clock and is not a success gate. The primary return-to-1350 proof is the final immutable power trace.",
-      "record_fields": ["cooldown_wait_seconds", "actual_wait_seconds", "wait_performed", "start_utc", "end_utc", "bounds_source", "environment_observed_aiclk_mhz", "power_trace_facts", "power_trace_verified", "verified"]
+      "planned_wait_seconds": null,
+      "wait_cap_seconds": 600.0,
+      "required_cli": ["--run-scope", "measurement-2-rerun", "--run-timeout-seconds", "90"],
+      "required_wait": "run_in_container.sh starts the sampler and polls outside the effective 90-second Docker timeout until the latest usable sample is at or below the measurement-1 pre-run baseline plus the fixed power/temperature tolerances; it refuses to start the measurement when the 600-second cap is reached, then passes wrapper-owned UTC bounds and the gate observations to the runner.",
+      "baseline": {
+        "source": "measurement-1 pre-run power trace",
+        "power_w": 47.0,
+        "asic_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5
+      },
+      "environment_gate": "AICLK is recorded as provenance only; idle 800 MHz is expected and is not a cooldown success condition.",
+      "record_fields": ["cooldown_wait_seconds", "wait_cap_seconds", "actual_wait_seconds", "wait_performed", "start_utc", "end_utc", "bounds_source", "baseline_source", "baseline_power_w", "baseline_temperature_c", "power_tolerance_w", "temperature_tolerance_c", "power_limit_w", "temperature_limit_c", "observed_power_w", "observed_temperature_c", "observed_idle_aiclk_mhz", "aiclk_gate", "gate", "gate_result", "gate_verified", "power_trace_facts", "power_trace_verified", "verified"]
     }
   },
   "metrics": {
@@ -263,6 +274,37 @@
         ],
         "default_run_timeout_seconds": 60.0,
         "launch_counts_changed": false
+      },
+      "selected_launches_per_occurrence": {
+        "L16": 11000,
+        "L32": 5800
+      }
+    },
+    {
+      "revision": 5,
+      "date": "2026-10-16",
+      "change": "Added the owner-approved measurement-2-rerun scope after the prior measurement-2 run failed because its impossible 1350-MHz cooldown gate was used; the gate is corrected to idle power and ASIC temperature, while prediction and decision criteria remain unchanged.",
+      "approval": {
+        "approval_date": "2026-10-16",
+        "run_timeout_seconds": 90.0,
+        "docker_timeout_seconds": 90.0,
+        "scope": "measurement-2-rerun",
+        "run_number": 2,
+        "approval": "owner-approved fourth target, separate from revision 4's three targets"
+      },
+      "cooldown_correction": {
+        "prior_run_failure": "The prior measurement-2 cooldown trace remained at idle 800 MHz, so the 1350-MHz success condition could not pass.",
+        "baseline_source": "measurement-1 pre-run power trace",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5,
+        "wait_cap_seconds": 600.0,
+        "observed_idle_aiclk_mhz": 800.0,
+        "aiclk_gate": false,
+        "prediction_and_decision_criteria_changed": false
       },
       "selected_launches_per_occurrence": {
         "L16": 11000,

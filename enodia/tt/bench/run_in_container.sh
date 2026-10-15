@@ -191,6 +191,14 @@ RESIDENT_WATCHER_MODE=0
 ISSUE127_RUNNER=0
 ISSUE127_DEFAULT_TIMEOUT_S="60"
 ISSUE127_APPROVED_TIMEOUT_S="90"
+ISSUE127_COOLDOWN_WAIT_CAP_S="600"
+ISSUE127_COOLDOWN_BASELINE_SOURCE="measurement-1 pre-run power trace"
+ISSUE127_COOLDOWN_BASELINE_POWER_W="47.0"
+ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C="58.5"
+ISSUE127_COOLDOWN_POWER_TOLERANCE_W="5.0"
+ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C="3.0"
+ISSUE127_COOLDOWN_POWER_LIMIT_W="52.0"
+ISSUE127_COOLDOWN_TEMPERATURE_LIMIT_C="61.5"
 RESIDENT_TIMEOUT_CAP_S="600"
 RESIDENT_CONDITION="unloaded"
 RESIDENT_REQUESTED_TIMEOUT=""
@@ -353,20 +361,20 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
     ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
   done
   if [[ "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
-    if [[ ! "${ISSUE127_COOLDOWN_SECONDS}" =~ ^[0-9]+([.][0-9]+)?$ \
-          || "${ISSUE127_COOLDOWN_SECONDS}" =~ ^0+([.]0+)?$ ]]; then
-      echo "Issue #127 run 2 requires a positive numeric cooldown wait" >&2
-      exit 2
+    if [[ -n "${ISSUE127_COOLDOWN_SECONDS}" ]]; then
+      if [[ ! "${ISSUE127_COOLDOWN_SECONDS}" =~ ^[0-9]+([.][0-9]+)?$ \
+            || "${ISSUE127_COOLDOWN_SECONDS}" =~ ^0+([.]0+)?$ ]]; then
+        echo "Issue #127 run 2 requires a positive numeric cooldown wait" >&2
+        exit 2
+      fi
+      if ! awk -v value="${ISSUE127_COOLDOWN_SECONDS}" \
+          'BEGIN { exit !(value > 0 && value <= 600) }'; then
+        echo "Issue #127 cooldown wait must be at most 600 seconds" >&2
+        exit 2
+      fi
     fi
-    ISSUE127_COOLDOWN_INTEGER_PART="${ISSUE127_COOLDOWN_SECONDS%%.*}"
-    if [[ "${#ISSUE127_COOLDOWN_INTEGER_PART}" -ge 4 ]]; then
-      echo "Issue #127 cooldown wait must be less than 1000 seconds" >&2
-      exit 2
-    fi
-    if [[ ! "${ISSUE127_EXPECTED_AICLK}" =~ ^1350([.]0+)?$ ]]; then
-      echo "Issue #127 run 2 requires expected AICLK=1350" >&2
-      exit 2
-    fi
+    # AICLK is accepted only as legacy provenance input.  The corrected gate
+    # below never compares it with a target value.
     if [[ "${ISSUE127_COOLDOWN_BOUNDS_SUPPLIED}" == "1" ]]; then
       echo "Issue #127 cooldown UTC bounds are wrapper-owned" >&2
       exit 2
@@ -396,9 +404,9 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_
             exit 2
           fi
           ;;
-        measurement-2)
+        measurement-2|measurement-2-rerun)
           if [[ "${ISSUE127_RUN_NUMBER}" != "2" ]]; then
-            echo "Issue #127 run scope measurement-2 requires --run-number 2" >&2
+            echo "Issue #127 run scope ${ISSUE127_RUN_SCOPE} requires --run-number 2" >&2
             exit 2
           fi
           ;;
@@ -581,39 +589,160 @@ if [[ "${TELEMETRY_MODE}" != "off" ]]; then
 fi
 
 # Issue #127 run 2 cooldown is deliberately outside the Docker timeout.  The
-# sampler is already running, so the final immutable trace covers this UTC
-# interval and the runner can verify the return to 1350 MHz from trace facts.
+# sampler is already running.  Wait for an idle power/temperature sample rather
+# than requiring the card to return to a particular AICLK; AICLK is provenance
+# only.  A lower cap can be selected by board-free wrapper tests, but production
+# can never exceed the fixed 600-second cap.
 if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
-  # Ensure the first left-held sample is before the wrapper-owned cooldown
-  # bound.  This is readiness polling, not a change to the two-second sampler.
-  # Ten seconds covers cold startup while remaining outside Docker's timeout.
-  COOLDOWN_READY_MAX_ATTEMPTS=1000
-  COOLDOWN_READY_ATTEMPTS=0
-  while :; do
-    COOLDOWN_SAMPLE_LINES=0
-    if [[ -f "${POWER_CSV}" ]]; then
-      COOLDOWN_SAMPLE_LINES="$(wc -l < "${POWER_CSV}")"
+  COOLDOWN_CAP_S="${HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS:-${ISSUE127_COOLDOWN_WAIT_CAP_S}}"
+  if [[ ! "${COOLDOWN_CAP_S}" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+        || ! awk -v value="${COOLDOWN_CAP_S}" \
+          'BEGIN { exit !(value > 0 && value <= 600) }'; then
+    echo "Issue #127 cooldown wait cap must be positive and at most 600 seconds" >&2
+    exit 2
+  fi
+
+  issue127_latest_sample() {
+    if [[ ! -f "${POWER_CSV}" ]]; then
+      return 0
     fi
-    if [[ "${COOLDOWN_SAMPLE_LINES}" -ge 2 ]]; then
+    LC_ALL=C awk -F, '
+      NR == 1 { next }
+      NF >= 4 \
+        && $2 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
+        && $3 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
+        && $4 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ {
+          power = $2
+          aiclk = $3
+          temperature = $4
+          found = 1
+        }
+      END {
+        if (found) {
+          printf "%.17g|%.17g|%.17g\n", power, aiclk, temperature
+        }
+      }
+    ' "${POWER_CSV}" 2>/dev/null
+  }
+
+  issue127_write_cooldown_failure() {
+    local failure_path="${OUT_DIR}/cooldown-gate-failure-${RUN_ID}.json"
+    cat > "${failure_path}" <<EOF
+{
+  "issue": "#127",
+  "run_number": 2,
+  "run_scope": "${ISSUE127_RUN_SCOPE:-measurement-2-rerun}",
+  "status": "failed",
+  "failure_type": "cooldown_gate_failure",
+  "measurement_started": false,
+  "baseline_source": "${ISSUE127_COOLDOWN_BASELINE_SOURCE}",
+  "baseline_power_w": ${ISSUE127_COOLDOWN_BASELINE_POWER_W},
+  "baseline_temperature_c": ${ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C},
+  "power_tolerance_w": ${ISSUE127_COOLDOWN_POWER_TOLERANCE_W},
+  "temperature_tolerance_c": ${ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C},
+  "power_limit_w": ${ISSUE127_COOLDOWN_POWER_LIMIT_W},
+  "temperature_limit_c": ${ISSUE127_COOLDOWN_TEMPERATURE_LIMIT_C},
+  "wait_cap_seconds": 600.0,
+  "wait_performed": true,
+  "wait_start_utc": "${COOLDOWN_START_UTC}",
+  "wait_end_utc": "${COOLDOWN_END_UTC}",
+  "actual_wait_seconds": ${COOLDOWN_ACTUAL_WAIT_SECONDS},
+  "gate_result": "fail",
+  "gate_verified": false,
+  "aiclk_role": "provenance_only",
+  "observed_power_w": ${COOLDOWN_OBSERVED_POWER_W:-null},
+  "observed_temperature_c": ${COOLDOWN_OBSERVED_TEMPERATURE_C:-null},
+  "observed_idle_aiclk_mhz": ${COOLDOWN_OBSERVED_AICLK_MHZ:-null}
+}
+EOF
+  }
+
+  COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
+  COOLDOWN_START_NS="$(date +%s%N)"
+  COOLDOWN_CAP_NS="$(awk -v start="${COOLDOWN_START_NS}" -v cap="${COOLDOWN_CAP_S}" \
+    'BEGIN { printf "%.0f", start + cap * 1000000000 }')"
+  COOLDOWN_GATE_PASSED=0
+  COOLDOWN_GATE_REASON="cooldown gate did not pass before the wait cap"
+  COOLDOWN_OBSERVED_POWER_W=""
+  COOLDOWN_OBSERVED_TEMPERATURE_C=""
+  COOLDOWN_OBSERVED_AICLK_MHZ=""
+  while :; do
+    COOLDOWN_NOW_NS="$(date +%s%N)"
+    if [[ "${COOLDOWN_NOW_NS}" -ge "${COOLDOWN_CAP_NS}" ]]; then
       break
     fi
+    COOLDOWN_SAMPLE="$(issue127_latest_sample)"
+    if [[ -n "${COOLDOWN_SAMPLE}" ]]; then
+      IFS='|' read -r COOLDOWN_OBSERVED_POWER_W COOLDOWN_OBSERVED_AICLK_MHZ \
+        COOLDOWN_OBSERVED_TEMPERATURE_C <<< "${COOLDOWN_SAMPLE}"
+      if awk -v power="${COOLDOWN_OBSERVED_POWER_W}" \
+          -v temperature="${COOLDOWN_OBSERVED_TEMPERATURE_C}" \
+          'BEGIN { exit !(power <= 52.0 && temperature <= 61.5) }'; then
+        COOLDOWN_GATE_PASSED=1
+        break
+      fi
+      COOLDOWN_GATE_REASON="observed power/temperature exceeded the cooldown gate"
+    fi
     if ! kill -0 "${SAMPLER_PID}" 2>/dev/null; then
-      echo "Issue #127 telemetry sampler exited before cooldown" >&2
-      exit 1
+      COOLDOWN_GATE_REASON="telemetry sampler exited before the cooldown gate passed"
+      break
     fi
-    COOLDOWN_READY_ATTEMPTS=$((COOLDOWN_READY_ATTEMPTS + 1))
-    if [[ "${COOLDOWN_READY_ATTEMPTS}" -ge "${COOLDOWN_READY_MAX_ATTEMPTS}" ]]; then
-      echo "Issue #127 telemetry sampler did not produce a pre-cooldown sample" >&2
-      exit 1
+    COOLDOWN_REMAINING_S="$(awk -v deadline="${COOLDOWN_CAP_NS}" -v now="${COOLDOWN_NOW_NS}" \
+      'BEGIN { remaining = (deadline - now) / 1000000000; printf "%.6f", remaining }')"
+    if ! awk -v remaining="${COOLDOWN_REMAINING_S}" \
+        'BEGIN { exit !(remaining > 0) }'; then
+      break
     fi
-    sleep 0.01
+    COOLDOWN_SLEEP_S="$(awk -v remaining="${COOLDOWN_REMAINING_S}" \
+      'BEGIN { print (remaining < 0.25 ? remaining : 0.25) }')"
+    sleep "${COOLDOWN_SLEEP_S}"
   done
-  COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
-  sleep -- "${ISSUE127_COOLDOWN_SECONDS}"
+  COOLDOWN_END_NS="$(date +%s%N)"
   COOLDOWN_END_UTC="$(date -u --iso-8601=ns)"
+  COOLDOWN_ACTUAL_WAIT_SECONDS="$(awk -v start="${COOLDOWN_START_NS}" -v end="${COOLDOWN_END_NS}" \
+    'BEGIN { printf "%.9f", (end - start) / 1000000000 }')"
+  if [[ "${COOLDOWN_GATE_PASSED}" != "1" ]]; then
+    issue127_write_cooldown_failure
+    echo "Issue #127 cooldown gate failure: ${COOLDOWN_GATE_REASON}; measurement was not started" >&2
+    echo "Issue #127 cooldown gate failure record -> ${OUT_DIR}/cooldown-gate-failure-${RUN_ID}.json" >&2
+    exit 1
+  fi
+  # Replace the historical requested-duration argument with the fixed contract
+  # cap so the runner persists one unambiguous 600-second wait bound.
+  ISSUE127_FILTERED_ARGS=()
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --cooldown-wait-seconds)
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --cooldown-wait-seconds=*)
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        ISSUE127_FILTERED_ARGS+=("${argument}")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  RUNNER_ARGS=("${ISSUE127_FILTERED_ARGS[@]}")
   RUNNER_ARGS+=(
+    --cooldown-wait-seconds "${ISSUE127_COOLDOWN_WAIT_CAP_S}"
     --cooldown-start-utc "${COOLDOWN_START_UTC}"
     --cooldown-end-utc "${COOLDOWN_END_UTC}"
+    --cooldown-baseline-source "${ISSUE127_COOLDOWN_BASELINE_SOURCE}"
+    --cooldown-baseline-power-w "${ISSUE127_COOLDOWN_BASELINE_POWER_W}"
+    --cooldown-baseline-temperature-c "${ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C}"
+    --cooldown-power-tolerance-w "${ISSUE127_COOLDOWN_POWER_TOLERANCE_W}"
+    --cooldown-temperature-tolerance-c "${ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C}"
+    --cooldown-observed-power-w "${COOLDOWN_OBSERVED_POWER_W}"
+    --cooldown-observed-temperature-c "${COOLDOWN_OBSERVED_TEMPERATURE_C}"
+    --cooldown-observed-aiclk-mhz "${COOLDOWN_OBSERVED_AICLK_MHZ}"
+    --cooldown-gate-result pass
+    --cooldown-gate-verified
   )
 fi
 
