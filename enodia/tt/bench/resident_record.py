@@ -112,7 +112,6 @@ from enodia.tt.bench.resident_clock import (
     ticks_to_seconds,
 )
 from enodia.tt.bench.run_binding import (
-    RunBindingError,
     run_artifact_name,
     validate_run_id,
 )
@@ -3996,7 +3995,7 @@ def _is_run_bound_resident_snapshot(
             snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
             output_dir=path.parent,
         )
-    except (RunBindingError, ValueError):
+    except ValueError:
         return False
     return True
 
@@ -4277,7 +4276,7 @@ def _snapshot_path_matches(
             snapshot_prefix=_RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX,
             output_dir=trace_path.parent,
         )
-    except (RunBindingError, ValueError):
+    except ValueError:
         return False
     return True
 
