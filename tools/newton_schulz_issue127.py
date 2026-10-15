@@ -55,6 +55,10 @@ from tools import newton_schulz_issue88 as issue88
 ISSUE127_RUNNER = "tools/newton_schulz_issue127.py"
 ISSUE127_RECORD_SCHEMA = "issue127-abba-v2"
 ISSUE127_RAW_SCHEMA = "issue127-abba-raw-v2"
+INITIAL_VALUE = "I/||R||inf"
+JSON_SUFFIX = ".json"
+REDACTED_PATH = "<redacted-path>"
+DEVICE_NODE_KEY = "device_node"
 DEVICE_ID = 0
 BATCH = 8192
 CONDITION_NUMBER = 100.0
@@ -107,7 +111,7 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
     common = {
         "batch": BATCH,
         "iterations": FIXED_ITERATIONS,
-        "initial_value": "I/||R||inf",
+        "initial_value": INITIAL_VALUE,
         "state_format": "BF16",
         "destination_format": "FP32",
         "fp32_dest_acc_en": True,
@@ -245,9 +249,9 @@ _ABSOLUTE_PATH_RE = re.compile(
     rf"[A-Za-z]:[\\/](?:{_PATH_COMPONENT}[\\/])*{_PATH_COMPONENT})$"
 )
 _EMBEDDED_HOST_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_])/(?:home|Users|tmp|root|workspace|work)(?:[\\/]|(?=$|[\\s'\"),;:]))"
-    r"|(?<![A-Za-z0-9_])~[\\/]"
-    r"|(?<![A-Za-z0-9_])[A-Za-z]:[\\/]"
+    r"""(?<![A-Za-z0-9_])/(?:home|Users|tmp|root|workspace|work)(?:[\\/]|(?=$|[\\s'"),;:]))"""
+    r"""|(?<![A-Za-z0-9_])~[\\/]"""
+    r"""|(?<![A-Za-z0-9_])[A-Za-z]:[\\/]"""
 )
 _RECORD_PATH_FIELD_NAMES = frozenset(
     {
@@ -292,7 +296,7 @@ def validate_comparison_rows(
     common = {
         "batch": BATCH,
         "iterations": FIXED_ITERATIONS,
-        "initial_value": "I/||R||inf",
+        "initial_value": INITIAL_VALUE,
         "state_format": "BF16",
         "destination_format": "FP32",
         "fp32_dest_acc_en": True,
@@ -427,7 +431,7 @@ def resolve_run_timeout(
         raise ValueError("Issue #127 run timeout must be numeric") from exc
     if not math.isfinite(requested):
         raise ValueError("Issue #127 run timeout must be finite")
-    if requested == DEFAULT_RUN_TIMEOUT_SECONDS and run_scope is None:
+    if _same_float(requested, DEFAULT_RUN_TIMEOUT_SECONDS) and run_scope is None:
         return DEFAULT_RUN_TIMEOUT_SECONDS, {
             "default_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
             "effective_run_timeout_seconds": DEFAULT_RUN_TIMEOUT_SECONDS,
@@ -441,7 +445,7 @@ def resolve_run_timeout(
             "Issue #127 approved timeout requires --run-scope and "
             f"--run-timeout-seconds {int(APPROVED_RUN_TIMEOUT_SECONDS)}"
         )
-    if requested != APPROVED_RUN_TIMEOUT_SECONDS:
+    if not _same_float(requested, APPROVED_RUN_TIMEOUT_SECONDS):
         raise ValueError(
             "Issue #127 permits only the default 60-second timeout or the "
             "owner-approved 90-second timeout"
@@ -539,6 +543,14 @@ def project_run_budget(
     }
 
 
+def _same_float(left: Any, right: Any) -> bool:
+    """Compare numeric values without relying on exact floating-point equality."""
+    try:
+        return math.isclose(float(left), float(right), rel_tol=0.0, abs_tol=1e-9)
+    except (TypeError, ValueError, OverflowError):
+        return False
+
+
 def adjusted_p50_tflops(raw_p50_tflops: float, row_time_weighted_aiclk_mhz: float | None) -> float | None:
     """Compute the supplementary 1350-MHz-linear adjusted P50 value."""
     try:
@@ -589,39 +601,54 @@ def _environment_key_allowed(key: str) -> bool:
     return not any(part in lowered for part in _FORBIDDEN_ENV_KEY_PARTS)
 
 
-def _sanitize_environment_value(value: Any, *, key: str | None = None) -> Any:
-    if isinstance(value, Mapping):
-        result: dict[str, Any] = {}
-        for child_key, child_value in value.items():
-            if not isinstance(child_key, str) or not _environment_key_allowed(child_key):
-                continue
-            if child_key == "device_node":
-                if isinstance(child_value, str) and _DEVICE_NODE_RE.fullmatch(child_value):
-                    result[child_key] = child_value
-                else:
-                    result[child_key] = "<redacted-path>"
-                continue
-            sanitized = _sanitize_environment_value(child_value, key=child_key)
-            if sanitized is not None:
-                result[child_key] = sanitized
-        return result
-    if isinstance(value, (list, tuple)):
-        return [
-            sanitized
-            for item in value
-            if (sanitized := _sanitize_environment_value(item, key=key)) is not None
-        ]
+def _sanitize_environment_device_node(value: Any) -> str:
+    if isinstance(value, str) and _DEVICE_NODE_RE.fullmatch(value):
+        return value
+    return REDACTED_PATH
+
+
+def _sanitize_environment_mapping(value: Mapping[Any, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for child_key, child_value in value.items():
+        if not isinstance(child_key, str) or not _environment_key_allowed(child_key):
+            continue
+        if child_key == DEVICE_NODE_KEY:
+            result[child_key] = _sanitize_environment_device_node(child_value)
+            continue
+        sanitized = _sanitize_environment_value(child_value, key=child_key)
+        if sanitized is not None:
+            result[child_key] = sanitized
+    return result
+
+
+def _sanitize_environment_sequence(
+    value: list[Any] | tuple[Any, ...], *, key: str | None
+) -> list[Any]:
+    sanitized_values = (_sanitize_environment_value(item, key=key) for item in value)
+    return [item for item in sanitized_values if item is not None]
+
+
+def _sanitize_environment_scalar(value: Any, *, key: str | None) -> Any:
     scalar = _json_safe_scalar(value)
     if scalar is None:
         return None
-    if isinstance(scalar, str):
-        if key == "device_node" and _DEVICE_NODE_RE.fullmatch(scalar):
-            return scalar
-        if _environment_value_contains_path(scalar, key=key):
-            return "<redacted-path>"
-        if _is_whole_absolute_path(scalar):
-            return None
+    if not isinstance(scalar, str):
+        return scalar
+    if key == DEVICE_NODE_KEY and _DEVICE_NODE_RE.fullmatch(scalar):
+        return scalar
+    if _environment_value_contains_path(scalar, key=key):
+        return REDACTED_PATH
+    if _is_whole_absolute_path(scalar):
+        return None
     return scalar
+
+
+def _sanitize_environment_value(value: Any, *, key: str | None = None) -> Any:
+    if isinstance(value, Mapping):
+        return _sanitize_environment_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return _sanitize_environment_sequence(value, key=key)
+    return _sanitize_environment_scalar(value, key=key)
 
 
 def sanitize_environment(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -654,16 +681,14 @@ def sanitize_environment(raw: Mapping[str, Any]) -> dict[str, Any]:
     return environment
 
 
-def validate_harness_environment(
-    environment: Mapping[str, Any],
-    *,
-    run_id: str | None = None,
+def _validate_environment_run_id(
+    environment: Mapping[str, Any], run_id: str | None
 ) -> None:
-    """Fail closed unless the wrapper supplied the complete harness identity."""
-    if not isinstance(environment, Mapping):
-        raise TypeError("normalized harness environment is missing")
     if run_id is not None and environment.get("run_id") != run_id:
         raise ValueError("environment run_id does not match the current run")
+
+
+def _validate_environment_board(environment: Mapping[str, Any]) -> None:
     board = environment.get("board")
     if not isinstance(board, Mapping):
         raise TypeError("board serial environment is missing")
@@ -675,6 +700,9 @@ def validate_harness_environment(
         raise ValueError("board serial is missing or unsafe")
     if not isinstance(board_id, str) or _BOARD_ID_RE.fullmatch(board_id) is None:
         raise ValueError("board_id is missing or unsafe")
+
+
+def _validate_environment_toolchain(environment: Mapping[str, Any]) -> None:
     firmware = environment.get("firmware")
     if not isinstance(firmware, Mapping) or not str(firmware.get("fw_bundle_version", "")):
         raise ValueError("firmware bundle version is missing")
@@ -686,20 +714,38 @@ def validate_harness_environment(
         raise ValueError("image digest is missing or unsafe")
     if environment.get("image_pinned") is not True:
         raise ValueError("image must be digest-pinned")
-    if not isinstance(environment.get("harness_commit"), str) or not _COMMIT_RE.fullmatch(
-        environment["harness_commit"]
-    ):
+    harness_commit = environment.get("harness_commit")
+    if not isinstance(harness_commit, str) or _COMMIT_RE.fullmatch(harness_commit) is None:
         raise ValueError("harness commit is missing or not a full commit")
     if environment.get("harness_dirty") is not False:
         raise ValueError("harness must be clean")
+
+
+def _validate_environment_sampler(environment: Mapping[str, Any]) -> None:
     sampler = normalize_sampler_metadata(
         environment.get("telemetry_sampler"), complete_default=False
     )
-    if sampler["mode"] != "default" or sampler["interval_seconds"] != SAMPLER_INTERVAL_SECONDS:
+    if sampler["mode"] != "default" or not _same_float(
+        sampler["interval_seconds"], SAMPLER_INTERVAL_SECONDS
+    ):
         raise ValueError("Issue #127 requires the current default 2.0-second sampler")
 
 
-def _finite_cooldown_value(value: Any, *, field: str) -> float | None:
+def validate_harness_environment(
+    environment: Mapping[str, Any],
+    *,
+    run_id: str | None = None,
+) -> None:
+    """Fail closed unless the wrapper supplied the complete harness identity."""
+    if not isinstance(environment, Mapping):
+        raise TypeError("normalized harness environment is missing")
+    _validate_environment_run_id(environment, run_id)
+    _validate_environment_board(environment)
+    _validate_environment_toolchain(environment)
+    _validate_environment_sampler(environment)
+
+
+def _finite_cooldown_value(value: Any) -> float | None:
     """Return a finite telemetry value, or None when the sample is unusable."""
     try:
         parsed = float(value)
@@ -719,21 +765,13 @@ def evaluate_cooldown_gate(
     observed_idle_aiclk_mhz: Any = None,
 ) -> dict[str, Any]:
     """Evaluate the run-2 readiness gate without making AICLK a condition."""
-    baseline_power = _finite_cooldown_value(baseline_power_w, field="baseline_power_w")
-    baseline_temperature = _finite_cooldown_value(
-        baseline_temperature_c, field="baseline_temperature_c"
-    )
-    power_tolerance = _finite_cooldown_value(power_tolerance_w, field="power_tolerance_w")
-    temperature_tolerance = _finite_cooldown_value(
-        temperature_tolerance_c, field="temperature_tolerance_c"
-    )
-    observed_power = _finite_cooldown_value(power_w, field="observed_power_w")
-    observed_temperature = _finite_cooldown_value(
-        asic_temperature_c, field="observed_temperature_c"
-    )
-    observed_aiclk = _finite_cooldown_value(
-        observed_idle_aiclk_mhz, field="observed_idle_aiclk_mhz"
-    )
+    baseline_power = _finite_cooldown_value(baseline_power_w)
+    baseline_temperature = _finite_cooldown_value(baseline_temperature_c)
+    power_tolerance = _finite_cooldown_value(power_tolerance_w)
+    temperature_tolerance = _finite_cooldown_value(temperature_tolerance_c)
+    observed_power = _finite_cooldown_value(power_w)
+    observed_temperature = _finite_cooldown_value(asic_temperature_c)
+    observed_aiclk = _finite_cooldown_value(observed_idle_aiclk_mhz)
     valid_baseline = all(
         value is not None
         for value in (
@@ -856,9 +894,7 @@ def build_cooldown_metadata(
         # corrected contract never compares it to a required clock value.
         "expected_aiclk_mhz": expected_aiclk_mhz,
         "environment_observed_aiclk_mhz": observed_values,
-        "observed_idle_aiclk_mhz": _finite_cooldown_value(
-            observed_idle_aiclk_mhz, field="observed_idle_aiclk_mhz"
-        ),
+        "observed_idle_aiclk_mhz": _finite_cooldown_value(observed_idle_aiclk_mhz),
         "environment_observation_source": "wrapper capture-env before this run",
         "bounds_source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds",
         "baseline_source": baseline_source,
@@ -885,6 +921,134 @@ def build_cooldown_metadata(
     return metadata
 
 
+def _validate_cooldown_wait(metadata: Mapping[str, Any]) -> float:
+    try:
+        wait_seconds = float(metadata.get("cooldown_wait_seconds"))
+        wait_cap = float(metadata.get("wait_cap_seconds"))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("run 2 cooldown wait bounds are missing") from exc
+    if not math.isfinite(wait_seconds) or wait_seconds <= 0.0:
+        raise ValueError("run 2 cooldown_wait_seconds must be positive")
+    if not math.isfinite(wait_cap) or not _same_float(
+        wait_cap, COOLDOWN_WAIT_CAP_SECONDS
+    ):
+        raise ValueError("run 2 cooldown wait cap must be 600 seconds")
+    if wait_seconds > wait_cap:
+        raise ValueError("run 2 cooldown_wait_seconds exceeds the 600-second cap")
+    if metadata.get("wait_performed") is not True:
+        raise ValueError("run 2 cooldown wait was not performed")
+    return wait_cap
+
+
+def _validate_cooldown_provenance(metadata: Mapping[str, Any]) -> None:
+    if not isinstance(metadata.get("environment_observed_aiclk_mhz"), list):
+        raise TypeError("run 2 environment AICLK provenance is missing")
+    if metadata.get("aiclk_gate") is not False:
+        raise ValueError("run 2 AICLK must remain provenance only")
+    if metadata.get("aiclk_role") != "provenance_only":
+        raise ValueError("run 2 AICLK role is not provenance-only")
+    baseline_source = metadata.get("baseline_source")
+    if not isinstance(baseline_source, str) or not baseline_source.strip():
+        raise ValueError("run 2 cooldown baseline source is missing")
+
+
+def _cooldown_numeric_values(metadata: Mapping[str, Any]) -> dict[str, float]:
+    fields = (
+        "baseline_power_w",
+        "baseline_temperature_c",
+        "power_tolerance_w",
+        "temperature_tolerance_c",
+        "power_limit_w",
+        "temperature_limit_c",
+    )
+    values: dict[str, float] = {}
+    for field in fields:
+        value = _finite_cooldown_value(metadata.get(field))
+        if value is None:
+            raise ValueError(f"run 2 cooldown {field} is missing or non-finite")
+        values[field] = value
+    return values
+
+
+def _validate_cooldown_numeric_values(values: Mapping[str, float]) -> None:
+    if values["power_tolerance_w"] < 0.0 or values["temperature_tolerance_c"] < 0.0:
+        raise ValueError("run 2 cooldown tolerances must not be negative")
+    expected = {
+        "baseline_power_w": COOLDOWN_BASELINE_POWER_W,
+        "baseline_temperature_c": COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
+        "power_tolerance_w": COOLDOWN_POWER_TOLERANCE_W,
+        "temperature_tolerance_c": COOLDOWN_TEMPERATURE_TOLERANCE_C,
+        "power_limit_w": COOLDOWN_POWER_LIMIT_W,
+        "temperature_limit_c": COOLDOWN_TEMPERATURE_LIMIT_C,
+    }
+    if any(
+        not math.isclose(values[field], expected_value, rel_tol=0.0, abs_tol=1e-9)
+        for field, expected_value in expected.items()
+    ):
+        raise ValueError("run 2 cooldown baseline and tolerances are fixed")
+    limits_match = (
+        math.isclose(
+            values["power_limit_w"],
+            values["baseline_power_w"] + values["power_tolerance_w"],
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+        and math.isclose(
+            values["temperature_limit_c"],
+            values["baseline_temperature_c"] + values["temperature_tolerance_c"],
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        )
+    )
+    if not limits_match:
+        raise ValueError("run 2 cooldown gate limits do not match baseline tolerances")
+
+
+def _validate_cooldown_time_bounds(
+    metadata: Mapping[str, Any], *, wait_cap: float
+) -> None:
+    for field in ("start_utc", "end_utc"):
+        _parse_trace_timestamp(metadata.get(field), field=f"cooldown {field}")
+    try:
+        actual_wait = float(metadata.get("actual_wait_seconds"))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("run 2 cooldown actual_wait_seconds is missing") from exc
+    if not math.isfinite(actual_wait) or actual_wait <= 0.0 or actual_wait > wait_cap:
+        raise ValueError("run 2 cooldown UTC bounds exceed the 600-second cap")
+    monotonic_values = [metadata.get("start_monotonic"), metadata.get("end_monotonic")]
+    if all(value is None for value in monotonic_values):
+        return
+    if any(value is None for value in monotonic_values):
+        raise ValueError("cooldown monotonic bounds are invalid")
+    valid_values = all(
+        isinstance(value, (int, float)) and math.isfinite(float(value))
+        for value in monotonic_values
+    )
+    if not valid_values or float(monotonic_values[1]) <= float(monotonic_values[0]):
+        raise ValueError("cooldown monotonic bounds are invalid")
+
+
+def _validate_cooldown_gate_proof(
+    metadata: Mapping[str, Any],
+    *,
+    environment: Mapping[str, Any] | None,
+    require_power_trace: bool,
+) -> None:
+    gate_result = metadata.get("gate_result")
+    if gate_result not in {"pending", "pass", "fail"}:
+        raise ValueError("run 2 cooldown gate result is invalid")
+    if not isinstance(metadata.get("gate_verified"), bool):
+        raise TypeError("run 2 cooldown gate verification is missing")
+    if environment is not None:
+        validate_harness_environment(environment)
+    if require_power_trace and (
+        metadata.get("power_trace_verified") is not True
+        or metadata.get("gate_result") != "pass"
+        or metadata.get("gate_verified") is not True
+    ):
+        raise ValueError("run 2 cooldown gate proof is missing")
+
+
 def validate_cooldown_metadata(
     metadata: Mapping[str, Any],
     *,
@@ -900,107 +1064,19 @@ def validate_cooldown_metadata(
     required = run_number == 2
     if bool(metadata.get("required")) != required:
         raise ValueError("cooldown required flag disagrees with run number")
-    if required:
-        try:
-            wait_seconds = float(metadata.get("cooldown_wait_seconds"))
-            wait_cap = float(metadata.get("wait_cap_seconds"))
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("run 2 cooldown wait bounds are missing") from exc
-        if not math.isfinite(wait_seconds) or wait_seconds <= 0.0:
-            raise ValueError("run 2 cooldown_wait_seconds must be positive")
-        if not math.isfinite(wait_cap) or wait_cap != COOLDOWN_WAIT_CAP_SECONDS:
-            raise ValueError("run 2 cooldown wait cap must be 600 seconds")
-        if wait_seconds > wait_cap:
-            raise ValueError("run 2 cooldown_wait_seconds exceeds the 600-second cap")
-        if metadata.get("wait_performed") is not True:
-            raise ValueError("run 2 cooldown wait was not performed")
-        observed = metadata.get("environment_observed_aiclk_mhz")
-        if not isinstance(observed, list):
-            raise ValueError("run 2 environment AICLK provenance is missing")
-        if metadata.get("aiclk_gate") is not False:
-            raise ValueError("run 2 AICLK must remain provenance only")
-        if metadata.get("aiclk_role") != "provenance_only":
-            raise ValueError("run 2 AICLK role is not provenance-only")
-        baseline_source = metadata.get("baseline_source")
-        if not isinstance(baseline_source, str) or not baseline_source.strip():
-            raise ValueError("run 2 cooldown baseline source is missing")
-        numeric_fields = (
-            "baseline_power_w",
-            "baseline_temperature_c",
-            "power_tolerance_w",
-            "temperature_tolerance_c",
-            "power_limit_w",
-            "temperature_limit_c",
-        )
-        numeric_values: dict[str, float] = {}
-        for field in numeric_fields:
-            value = _finite_cooldown_value(metadata.get(field), field=field)
-            if value is None:
-                raise ValueError(f"run 2 cooldown {field} is missing or non-finite")
-            numeric_values[field] = value
-        if numeric_values["power_tolerance_w"] < 0.0 or numeric_values[
-            "temperature_tolerance_c"
-        ] < 0.0:
-            raise ValueError("run 2 cooldown tolerances must not be negative")
-        expected_gate_values = {
-            "baseline_power_w": COOLDOWN_BASELINE_POWER_W,
-            "baseline_temperature_c": COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
-            "power_tolerance_w": COOLDOWN_POWER_TOLERANCE_W,
-            "temperature_tolerance_c": COOLDOWN_TEMPERATURE_TOLERANCE_C,
-            "power_limit_w": COOLDOWN_POWER_LIMIT_W,
-            "temperature_limit_c": COOLDOWN_TEMPERATURE_LIMIT_C,
-        }
-        if any(
-            not math.isclose(numeric_values[field], expected, rel_tol=0.0, abs_tol=1e-9)
-            for field, expected in expected_gate_values.items()
-        ):
-            raise ValueError("run 2 cooldown baseline and tolerances are fixed")
-        if not math.isclose(
-            numeric_values["power_limit_w"],
-            numeric_values["baseline_power_w"] + numeric_values["power_tolerance_w"],
-            rel_tol=0.0,
-            abs_tol=1e-9,
-        ) or not math.isclose(
-            numeric_values["temperature_limit_c"],
-            numeric_values["baseline_temperature_c"]
-            + numeric_values["temperature_tolerance_c"],
-            rel_tol=0.0,
-            abs_tol=1e-9,
-        ):
-            raise ValueError("run 2 cooldown gate limits do not match baseline tolerances")
-        for field in ("start_utc", "end_utc"):
-            _parse_trace_timestamp(metadata.get(field), field=f"cooldown {field}")
-        try:
-            actual_wait = float(metadata.get("actual_wait_seconds"))
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise ValueError("run 2 cooldown actual_wait_seconds is missing") from exc
-        if not math.isfinite(actual_wait) or actual_wait <= 0.0 or actual_wait > wait_cap:
-            raise ValueError("run 2 cooldown UTC bounds exceed the 600-second cap")
-        monotonic_values = [metadata.get("start_monotonic"), metadata.get("end_monotonic")]
-        if any(value is not None for value in monotonic_values) and (
-            not all(
-                isinstance(value, (int, float))
-                and math.isfinite(float(value))
-                for value in monotonic_values
-            )
-            or float(monotonic_values[1]) <= float(monotonic_values[0])
-        ):
-            raise ValueError("cooldown monotonic bounds are invalid")
-        gate_result = metadata.get("gate_result")
-        if gate_result not in {"pending", "pass", "fail"}:
-            raise ValueError("run 2 cooldown gate result is invalid")
-        if not isinstance(metadata.get("gate_verified"), bool):
-            raise ValueError("run 2 cooldown gate verification is missing")
-        if environment is not None:
-            validate_harness_environment(environment)
-        if require_power_trace and (
-            metadata.get("power_trace_verified") is not True
-            or metadata.get("gate_result") != "pass"
-            or metadata.get("gate_verified") is not True
-        ):
-            raise ValueError("run 2 cooldown gate proof is missing")
-    elif metadata.get("wait_performed") not in (False, None):
-        raise ValueError("run 1 must not claim a cooldown wait")
+    if run_number == 1:
+        if metadata.get("wait_performed") not in (False, None):
+            raise ValueError("run 1 must not claim a cooldown wait")
+        return
+    wait_cap = _validate_cooldown_wait(metadata)
+    _validate_cooldown_provenance(metadata)
+    _validate_cooldown_numeric_values(_cooldown_numeric_values(metadata))
+    _validate_cooldown_time_bounds(metadata, wait_cap=wait_cap)
+    _validate_cooldown_gate_proof(
+        metadata,
+        environment=environment,
+        require_power_trace=require_power_trace,
+    )
 
 
 def _cooldown_trace_sample(
@@ -1022,10 +1098,8 @@ def _cooldown_trace_sample(
         except (TypeError, ValueError):
             continue
         if timestamp <= end:
-            power = _finite_cooldown_value(sample.get("power_w"), field="power_w")
-            temperature = _finite_cooldown_value(
-                sample.get("asic_temp_c"), field="asic_temp_c"
-            )
+            power = _finite_cooldown_value(sample.get("power_w"))
+            temperature = _finite_cooldown_value(sample.get("asic_temp_c"))
             if power is not None and temperature is not None:
                 candidates.append((timestamp, sample))
     if not candidates:
@@ -1120,8 +1194,8 @@ def validate_sampler_decision(
     normalized = normalize_sampler_metadata(sampler, complete_default=False)
     if (
         normalized["mode"] != "default"
-        or normalized["interval_seconds"] != 2.0
-        or sampler.get("requested_interval_seconds") != 2.0
+        or not _same_float(normalized["interval_seconds"], 2.0)
+        or not _same_float(sampler.get("requested_interval_seconds"), 2.0)
     ):
         raise ValueError("Issue #127 sampler must be default at 2.0 seconds")
     if sampler.get("shortened_interval") is not False:
@@ -1244,20 +1318,9 @@ def _run_sustained_warmup(
     }
 
 
-def _run_occurrence(
-    ttnn: Any,
-    device: Any,
-    matrices: np.ndarray,
-    config: Mapping[str, Any],
-    occurrence: Mapping[str, Any],
-    *,
-    kernel_class: Any,
-    run_deadline: float,
-    run_timeout_seconds: float,
-    time_fn: Callable[[], float],
-    utc_now_fn: Callable[[], datetime.datetime],
+def _initial_occurrence_result(
+    config: Mapping[str, Any], occurrence: Mapping[str, Any]
 ) -> dict[str, Any]:
-    """Run one correctness launch, one excluded warm-up, and fixed timed work."""
     result = dict(occurrence)
     result.update(
         {
@@ -1272,12 +1335,171 @@ def _run_occurrence(
             ),
         }
     )
+    return result
+
+
+def _check_occurrence_deadline(
+    run_deadline: float, *, time_fn: Callable[[], float], message: str
+) -> None:
+    if time_fn() > run_deadline:
+        raise TimeoutError(message)
+
+
+def _run_correctness_launch(
+    ttnn: Any,
+    device: Any,
+    kernel: Any,
+    reference: Mapping[str, Any],
+    result: dict[str, Any],
+    *,
+    run_deadline: float,
+    run_timeout_seconds: float,
+    time_fn: Callable[[], float],
+) -> dict[str, Any]:
+    _check_occurrence_deadline(
+        run_deadline,
+        time_fn=time_fn,
+        message=(
+            f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before correctness"
+        ),
+    )
+    kernel.launch()
+    ttnn.synchronize_device(device)
+    correctness = issue88.correctness_metrics(kernel.result(), reference)
+    result["correctness"] = correctness
+    if not correctness["device_test_gate"]["pass"]:
+        raise ValueError("correctness device-test gate failed")
+    return correctness
+
+
+def _run_occurrence_warmup(
+    ttnn: Any,
+    device: Any,
+    kernel: Any,
+    *,
+    run_deadline: float,
+    run_timeout_seconds: float,
+    time_fn: Callable[[], float],
+) -> None:
+    _check_occurrence_deadline(
+        run_deadline,
+        time_fn=time_fn,
+        message=(
+            f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before occurrence warm-up"
+        ),
+    )
+    kernel.launch()
+    ttnn.synchronize_device(device)
+
+
+def _run_timed_occurrence_launches(
+    ttnn: Any,
+    device: Any,
+    kernel: Any,
+    config: Mapping[str, Any],
+    *,
+    run_deadline: float,
+    run_timeout_seconds: float,
+    time_fn: Callable[[], float],
+    utc_now_fn: Callable[[], datetime.datetime],
+    timing: dict[str, Any],
+) -> None:
+    timing["timed_start_utc"] = _timestamp(utc_now_fn(), field="timed_start_utc")
+    timing["timed_start_monotonic"] = time_fn()
+    for _ in range(launches_for_row(config)):
+        _check_occurrence_deadline(
+            run_deadline,
+            time_fn=time_fn,
+            message=(
+                f"Issue #127 run exceeded {run_timeout_seconds:g} seconds during timed launches"
+            ),
+        )
+        launch_started = time_fn()
+        kernel.launch()
+        ttnn.synchronize_device(device)
+        timing["samples"].append(time_fn() - launch_started)
+    timing["timed_end_monotonic"] = time_fn()
+    timing["timed_end_utc"] = _timestamp(utc_now_fn(), field="timed_end_utc")
+
+
+def _complete_occurrence_result(
+    result: dict[str, Any], config: Mapping[str, Any], timing: Mapping[str, Any]
+) -> None:
+    samples = timing["samples"]
+    launch_count = launches_for_row(config)
+    result.update(_timing_summary(samples, _flops_per_launch(config)))
+    result.update(
+        {
+            "timed_start_utc": timing["timed_start_utc"],
+            "timed_end_utc": timing["timed_end_utc"],
+            "timed_start_monotonic": timing["timed_start_monotonic"],
+            "timed_end_monotonic": timing["timed_end_monotonic"],
+            "timed_duration_seconds": (
+                timing["timed_end_monotonic"] - timing["timed_start_monotonic"]
+            ),
+            "timed_launches_requested": launch_count,
+            "launches_requested": launch_count,
+            "timed_launches_excluded": 2,
+        }
+    )
+    validate_row_bounds(result)
+    result["duration_guard"] = row_duration_guard(
+        result["timed_duration_seconds"], config
+    )
+    result["status"] = "ok" if result["duration_guard"]["passes"] else "failed"
+    if result["status"] != "ok":
+        result["failure"] = "timed row duration did not exceed the sampler gap"
+
+
+def _record_occurrence_failure(
+    result: dict[str, Any], config: Mapping[str, Any], timing: Mapping[str, Any], exc: Exception
+) -> None:
+    result["failure"] = {"type": type(exc).__name__, "message": str(exc)}
+    start_utc = timing.get("timed_start_utc")
+    end_utc = timing.get("timed_end_utc")
+    start_monotonic = timing.get("timed_start_monotonic")
+    end_monotonic = timing.get("timed_end_monotonic")
+    result["failure_stage"] = "timed_row" if start_utc else "row_setup"
+    if start_utc is not None:
+        result["timed_start_utc"] = start_utc
+        result["timed_start_monotonic"] = start_monotonic
+    if end_utc is not None:
+        result["timed_end_utc"] = end_utc
+        result["timed_end_monotonic"] = end_monotonic
+    if start_monotonic is not None and end_monotonic is not None:
+        result["timed_duration_seconds"] = end_monotonic - start_monotonic
+    if timing["samples"]:
+        result.update(_timing_summary(timing["samples"], _flops_per_launch(config)))
+    result["timed_launches_requested"] = launches_for_row(config)
+    result["launches_requested"] = launches_for_row(config)
+
+
+def _close_occurrence_kernel(result: dict[str, Any], kernel: Any | None) -> None:
+    if kernel is None:
+        return
+    try:
+        kernel.close()
+    except Exception as exc:  # noqa: BLE001 - preserve cleanup failure
+        result.setdefault("cleanup_failures", []).append(type(exc).__name__)
+
+
+def _run_occurrence(
+    ttnn: Any,
+    device: Any,
+    matrices: np.ndarray,
+    config: Mapping[str, Any],
+    occurrence: Mapping[str, Any],
+    *,
+    kernel_class: Any,
+    run_deadline: float,
+    run_timeout_seconds: float,
+    time_fn: Callable[[], float],
+    utc_now_fn: Callable[[], datetime.datetime],
+) -> dict[str, Any]:
+    """Run one correctness launch, one excluded warm-up, and fixed timed work."""
+    result = _initial_occurrence_result(config, occurrence)
     kernel = None
-    samples: list[float] = []
-    timed_start_utc: str | None = None
-    timed_end_utc: str | None = None
-    timed_start_monotonic: float | None = None
-    timed_end_monotonic: float | None = None
+    timing: dict[str, Any] = {"samples": []}
     try:
         preflight = issue88._preflight_accounting(config, ttnn)
         result["preflight"] = preflight
@@ -1287,15 +1509,16 @@ def _run_occurrence(
         kernel = kernel_class.prepare(
             ttnn, device, matrices, **_kernel_prepare_kwargs(config)
         )
-        if time_fn() > run_deadline:
-            raise TimeoutError(
-                f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before correctness"
-            )
-        kernel.launch()
-        ttnn.synchronize_device(device)
-        actual = kernel.result()
-        correctness = issue88.correctness_metrics(actual, reference)
-        result["correctness"] = correctness
+        correctness = _run_correctness_launch(
+            ttnn,
+            device,
+            kernel,
+            reference,
+            result,
+            run_deadline=run_deadline,
+            run_timeout_seconds=run_timeout_seconds,
+            time_fn=time_fn,
+        )
         result["correctness_launch"] = {
             "launches": 1,
             "synchronized": True,
@@ -1303,80 +1526,36 @@ def _run_occurrence(
             "finite": correctness["finite"],
             "excluded_from_timing": True,
         }
-        if not correctness["device_test_gate"]["pass"]:
-            raise ValueError("correctness device-test gate failed")
-
-        if time_fn() > run_deadline:
-            raise TimeoutError(
-                f"Issue #127 run exceeded {run_timeout_seconds:g} seconds before occurrence warm-up"
-            )
-        kernel.launch()
-        ttnn.synchronize_device(device)
+        _run_occurrence_warmup(
+            ttnn,
+            device,
+            kernel,
+            run_deadline=run_deadline,
+            run_timeout_seconds=run_timeout_seconds,
+            time_fn=time_fn,
+        )
         result["occurrence_warmup"] = {
             "launches": 1,
             "synchronized": True,
             "excluded_from_timing": True,
         }
-
-        launch_count = launches_for_row(config)
-        timed_start_utc = _timestamp(utc_now_fn(), field="timed_start_utc")
-        timed_start_monotonic = time_fn()
-        for _ in range(launch_count):
-            if time_fn() > run_deadline:
-                raise TimeoutError(
-                    f"Issue #127 run exceeded {run_timeout_seconds:g} seconds during timed launches"
-                )
-            launch_started = time_fn()
-            kernel.launch()
-            ttnn.synchronize_device(device)
-            samples.append(time_fn() - launch_started)
-        timed_end_monotonic = time_fn()
-        timed_end_utc = _timestamp(utc_now_fn(), field="timed_end_utc")
-        result.update(_timing_summary(samples, _flops_per_launch(config)))
-        result.update(
-            {
-                "timed_start_utc": timed_start_utc,
-                "timed_end_utc": timed_end_utc,
-                "timed_start_monotonic": timed_start_monotonic,
-                "timed_end_monotonic": timed_end_monotonic,
-                "timed_duration_seconds": timed_end_monotonic - timed_start_monotonic,
-                "timed_launches_requested": launch_count,
-                "launches_requested": launch_count,
-                "timed_launches_excluded": 2,
-            }
+        _run_timed_occurrence_launches(
+            ttnn,
+            device,
+            kernel,
+            config,
+            run_deadline=run_deadline,
+            run_timeout_seconds=run_timeout_seconds,
+            time_fn=time_fn,
+            utc_now_fn=utc_now_fn,
+            timing=timing,
         )
-        validate_row_bounds(result)
-        result["duration_guard"] = row_duration_guard(
-            result["timed_duration_seconds"], config
-        )
-        result["status"] = "ok" if result["duration_guard"]["passes"] else "failed"
-        if result["status"] != "ok":
-            result["failure"] = "timed row duration did not exceed the sampler gap"
+        _complete_occurrence_result(result, config, timing)
     except Exception as exc:  # noqa: BLE001 - preserve a row-local board failure
-        result["failure"] = {
-            "type": type(exc).__name__,
-            "message": str(exc),
-        }
-        result["failure_stage"] = "timed_row" if timed_start_utc else "row_setup"
-        if timed_start_utc is not None:
-            result["timed_start_utc"] = timed_start_utc
-            result["timed_start_monotonic"] = timed_start_monotonic
-        if timed_end_utc is not None:
-            result["timed_end_utc"] = timed_end_utc
-            result["timed_end_monotonic"] = timed_end_monotonic
-        if timed_start_monotonic is not None and timed_end_monotonic is not None:
-            result["timed_duration_seconds"] = timed_end_monotonic - timed_start_monotonic
-        if samples:
-            result.update(_timing_summary(samples, _flops_per_launch(config)))
-        result["timed_launches_requested"] = launches_for_row(config)
-        result["launches_requested"] = launches_for_row(config)
+        _record_occurrence_failure(result, config, timing, exc)
     finally:
-        if kernel is not None:
-            try:
-                kernel.close()
-            except Exception as exc:  # noqa: BLE001 - preserve cleanup failure
-                result.setdefault("cleanup_failures", []).append(type(exc).__name__)
-        result["timed_launches_measured"] = len(samples)
+        _close_occurrence_kernel(result, kernel)
+        result["timed_launches_measured"] = len(timing["samples"])
     return result
 
 
@@ -1411,6 +1590,107 @@ def _prepare_inputs(
     return matrices_by_size[size], references_by_key[key]
 
 
+def _resolve_comparison_timeout(
+    run_number: int,
+    requested_seconds: float,
+    policy: Mapping[str, Any] | None,
+) -> tuple[float, dict[str, Any]]:
+    try:
+        effective_timeout = float(requested_seconds)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("Issue #127 run timeout must be numeric") from exc
+    if not math.isfinite(effective_timeout) or effective_timeout <= 0.0:
+        raise ValueError("Issue #127 run timeout must be finite and positive")
+    if policy is None:
+        if not _same_float(effective_timeout, DEFAULT_RUN_TIMEOUT_SECONDS):
+            raise ValueError(
+                "Issue #127 non-default timeout requires the owner-approved "
+                "run timeout policy"
+            )
+        return resolve_run_timeout(run_number)
+    policy_timeout = policy.get("effective_run_timeout_seconds", effective_timeout)
+    resolved_timeout, _ = resolve_run_timeout(
+        run_number, policy_timeout, policy.get("scope")
+    )
+    if not _same_float(resolved_timeout, effective_timeout):
+        raise ValueError("Issue #127 run timeout policy does not match its budget")
+    return effective_timeout, dict(policy)
+
+
+def _run_comparison_occurrences(
+    ttnn: Any,
+    device: Any,
+    plan: Sequence[Mapping[str, Any]],
+    *,
+    matrices_by_size: dict[int, np.ndarray],
+    references_by_key: dict[tuple[int, str], dict[str, Any]],
+    fingerprints: dict[str, dict[str, Any]],
+    matrices_factory: Callable[..., np.ndarray],
+    kernel_class: Any,
+    run_deadline: float,
+    run_timeout_seconds: float,
+    time_fn: Callable[[], float],
+    utc_now_fn: Callable[[], datetime.datetime],
+    start_monotonic: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool, dict[str, Any] | None]:
+    occurrences: list[dict[str, Any]] = []
+    projections: list[dict[str, Any]] = []
+    stopped_on_failure = False
+    budget_failure: dict[str, Any] | None = None
+    for occurrence in plan:
+        projection = project_run_budget(
+            time_fn() - start_monotonic,
+            occurrences,
+            len(plan) - len(occurrences),
+            run_timeout_seconds=run_timeout_seconds,
+        )
+        projection.update(
+            {
+                "next_order_index": occurrence["order_index"],
+                "next_occurrence_id": occurrence["occurrence_id"],
+            }
+        )
+        projections.append(projection)
+        if not projection["within_budget"]:
+            budget_failure = {
+                "type": "TimeoutError",
+                "message": (
+                    f"Issue #127 projected run completion exceeds the "
+                    f"{run_timeout_seconds:g}-second budget before occurrence "
+                    f"{occurrence['occurrence_id']}"
+                ),
+                "order_index": occurrence["order_index"],
+                "projection": projection,
+            }
+            stopped_on_failure = True
+            break
+        config = ROW_BY_NAME[occurrence["row"]]
+        matrices, _ = _prepare_inputs(
+            config,
+            matrices_by_size=matrices_by_size,
+            references_by_key=references_by_key,
+            fingerprints=fingerprints,
+            matrices_factory=matrices_factory,
+        )
+        result = _run_occurrence(
+            ttnn,
+            device,
+            matrices,
+            config,
+            occurrence,
+            kernel_class=kernel_class,
+            run_deadline=run_deadline,
+            run_timeout_seconds=run_timeout_seconds,
+            time_fn=time_fn,
+            utc_now_fn=utc_now_fn,
+        )
+        occurrences.append(result)
+        if result.get("status") != "ok":
+            stopped_on_failure = True
+            break
+    return occurrences, projections, stopped_on_failure, budget_failure
+
+
 def run_comparison(
     ttnn: Any,
     device: Any,
@@ -1427,43 +1707,25 @@ def run_comparison(
     """Run one fixed Issue #127 order on an already-open device."""
     validate_run_id(run_id)
     validate_comparison_rows()
-    try:
-        effective_timeout = float(run_timeout_seconds)
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError("Issue #127 run timeout must be numeric") from exc
-    if not math.isfinite(effective_timeout) or effective_timeout <= 0.0:
-        raise ValueError("Issue #127 run timeout must be finite and positive")
-    if run_timeout_policy is None:
-        if effective_timeout != DEFAULT_RUN_TIMEOUT_SECONDS:
-            raise ValueError(
-                "Issue #127 non-default timeout requires the owner-approved "
-                "run timeout policy"
-            )
-        effective_timeout, timeout_policy = resolve_run_timeout(run_number)
-    else:
-        policy_timeout = run_timeout_policy.get(
-            "effective_run_timeout_seconds", effective_timeout
-        )
-        resolved_timeout, _ = resolve_run_timeout(
-            run_number,
-            policy_timeout,
-            run_timeout_policy.get("scope"),
-        )
-        if resolved_timeout != effective_timeout:
-            raise ValueError("Issue #127 run timeout policy does not match its budget")
-        timeout_policy = dict(run_timeout_policy)
+    effective_timeout, timeout_policy = _resolve_comparison_timeout(
+        run_number, run_timeout_seconds, run_timeout_policy
+    )
     plan = build_occurrence_plan(run_number)
-    now_utc = (lambda: datetime.datetime.now(datetime.UTC)) if utc_now_fn is None else utc_now_fn
+    now_utc = (
+        (lambda: datetime.datetime.now(datetime.UTC))
+        if utc_now_fn is None
+        else utc_now_fn
+    )
     if kernel_class is None:
         from enodia.tt.bench.newton_schulz_kernel import NewtonSchulzKernel
 
         kernel_class = NewtonSchulzKernel
     start_monotonic = time_fn()
     run_deadline = start_monotonic + effective_timeout
-    warmup_config = ROW_BY_NAME["bf16-r-L32-r-dram"]
     matrices_by_size: dict[int, np.ndarray] = {}
     references_by_key: dict[tuple[int, str], dict[str, Any]] = {}
     fingerprints: dict[str, dict[str, Any]] = {}
+    warmup_config = ROW_BY_NAME["bf16-r-L32-r-dram"]
     warmup_matrices, _ = _prepare_inputs(
         warmup_config,
         matrices_by_size=matrices_by_size,
@@ -1482,75 +1744,43 @@ def run_comparison(
         time_fn=time_fn,
         utc_now_fn=now_utc,
     )
-    occurrences: list[dict[str, Any]] = []
-    budget_projections: list[dict[str, Any]] = []
-    stopped_on_failure = False
-    budget_failure: dict[str, Any] | None = None
-    for occurrence in plan:
-        projection = project_run_budget(
-            time_fn() - start_monotonic,
-            occurrences,
-            len(plan) - len(occurrences),
-            run_timeout_seconds=effective_timeout,
-        )
-        projection["next_order_index"] = occurrence["order_index"]
-        projection["next_occurrence_id"] = occurrence["occurrence_id"]
-        budget_projections.append(projection)
-        if not projection["within_budget"]:
-            budget_failure = {
-                "type": "TimeoutError",
-                "message": (
-                    f"Issue #127 projected run completion exceeds the "
-                    f"{effective_timeout:g}-second budget before occurrence "
-                    f"{occurrence['occurrence_id']}"
-                ),
-                "order_index": occurrence["order_index"],
-                "projection": projection,
-            }
-            stopped_on_failure = True
-            break
-        config = ROW_BY_NAME[occurrence["row"]]
-        matrices, _reference = _prepare_inputs(
-            config,
+    occurrences, projections, stopped_on_failure, budget_failure = (
+        _run_comparison_occurrences(
+            ttnn,
+            device,
+            plan,
             matrices_by_size=matrices_by_size,
             references_by_key=references_by_key,
             fingerprints=fingerprints,
             matrices_factory=matrices_factory,
-        )
-        result = _run_occurrence(
-            ttnn,
-            device,
-            matrices,
-            config,
-            occurrence,
             kernel_class=kernel_class,
             run_deadline=run_deadline,
             run_timeout_seconds=effective_timeout,
             time_fn=time_fn,
             utc_now_fn=now_utc,
+            start_monotonic=start_monotonic,
         )
-        occurrences.append(result)
-        if result.get("status") != "ok":
-            stopped_on_failure = True
-            break
+    )
     end_monotonic = time_fn()
     run_budget = {
         "policy": (
             "Project the fixed eight-occurrence run before each occurrence and stop "
             "before launch when the projection exceeds the effective run timeout."
         ),
-        "projections": budget_projections,
+        "projections": projections,
         "stopped_before_occurrence": (
             budget_failure["order_index"] if budget_failure is not None else None
         ),
         "failure": budget_failure,
     }
+    run_duration = end_monotonic - start_monotonic
+    run_under_timeout = run_duration <= effective_timeout
     return {
-        "status": "pass"
-        if len(occurrences) == len(plan)
-        and not stopped_on_failure
-        and end_monotonic - start_monotonic <= effective_timeout
-        else "failed",
+        "status": (
+            "pass"
+            if len(occurrences) == len(plan) and not stopped_on_failure and run_under_timeout
+            else "failed"
+        ),
         "run_number": run_number,
         "run_id": run_id,
         "order": list(order_for_run(run_number)),
@@ -1561,9 +1791,9 @@ def run_comparison(
         "run_budget": run_budget,
         "run_start_monotonic": start_monotonic,
         "run_end_monotonic": end_monotonic,
-        "run_duration_seconds": end_monotonic - start_monotonic,
+        "run_duration_seconds": run_duration,
         "run_timeout_seconds": effective_timeout,
-        "run_under_timeout": end_monotonic - start_monotonic <= effective_timeout,
+        "run_under_timeout": run_under_timeout,
         "run_timeout_policy": timeout_policy,
         "warmup": warmup,
         "comparison_rows": occurrences,
@@ -1757,20 +1987,105 @@ def _resolve_result_path(args: argparse.Namespace) -> Path:
     return path
 
 
-def _read_environment(path: Path, *, run_id: str) -> dict[str, Any]:
-    expected = path.parent / run_artifact_name(prefix="env-", suffix=".json", run_id=run_id)
+def _validated_run_artifact(
+    path: Path,
+    output_dir: Path,
+    *,
+    run_id: str,
+    prefix: str,
+    suffix: str,
+    kind: str,
+) -> Path:
+    root = Path(output_dir).resolve()
     selected = require_run_artifact(
-        path.parent,
-        prefix="env-",
-        suffix=".json",
+        root,
+        prefix=prefix,
+        suffix=suffix,
         run_id=run_id,
-        explicit=path if path is not None else expected,
+        explicit=Path(path),
+        kind=kind,
+    )
+    try:
+        resolved = selected.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"{kind} path could not be resolved safely") from exc
+    if selected.is_symlink() or resolved.parent != root:
+        raise ValueError(f"{kind} path is outside the current run output directory")
+    return resolved
+
+
+def _read_environment(
+    path: Path,
+    *,
+    run_id: str,
+    output_dir: Path | None = None,
+    read_text_fn: Callable[[Path], str] | None = None,
+) -> dict[str, Any]:
+    artifact_dir = (
+        Path(path).parent if output_dir is None else Path(output_dir)
+    ).resolve()
+    _validated_run_artifact(
+        path,
+        artifact_dir,
+        run_id=run_id,
+        prefix="env-",
+        suffix=JSON_SUFFIX,
         kind="environment",
     )
-    raw = json.loads(selected.read_text(encoding="utf-8"))
+    safe_path = artifact_dir / run_artifact_name(
+        prefix="env-", suffix=JSON_SUFFIX, run_id=run_id
+    )
+    text = (
+        safe_path.read_text(encoding="utf-8")
+        if read_text_fn is None
+        else read_text_fn(safe_path)
+    )
+    raw = json.loads(text)
     normalized = sanitize_environment(raw)
     validate_harness_environment(normalized, run_id=run_id)
     return normalized
+
+
+def _read_final_power_snapshot(
+    source: Path,
+    output_dir: Path,
+    *,
+    run_id: str,
+    run_start: str,
+    run_end: str,
+    snapshot_number: int,
+) -> dict[str, Any]:
+    snapshot = atomic_power_trace_snapshot(
+        source,
+        output_dir,
+        run_id=run_id,
+        snapshot_number=snapshot_number,
+        snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
+    )
+    return read_power_trace_snapshot(
+        snapshot,
+        options=PowerTraceSnapshotOptions(
+            run_id=run_id,
+            run_start=run_start,
+            run_end=run_end,
+            snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
+            source_path=source,
+            sampler_interval_seconds=SAMPLER_INTERVAL_SECONDS,
+            coverage_definition=EXPLICIT_FINAL_SAMPLE,
+            require_all_rows_valid=True,
+            include_issue118_metadata=True,
+        ),
+    )
+
+
+def _complete_final_power_trace(
+    trace: dict[str, Any], *, samples: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    trace["poll_complete"] = True
+    trace["requested_sampler_interval_seconds"] = SAMPLER_INTERVAL_SECONDS
+    trace["coverage_contract"] = EXPLICIT_FINAL_SAMPLE
+    trace["timestamp_gap_facts"] = _trace_gap_metadata(samples)
+    return trace
 
 
 def _capture_final_power_trace(
@@ -1793,50 +2108,51 @@ def _capture_final_power_trace(
     while True:
         if source.exists():
             try:
-                snapshot = atomic_power_trace_snapshot(
+                trace = _read_final_power_snapshot(
                     source,
                     output_dir,
                     run_id=run_id,
+                    run_start=run_start,
+                    run_end=run_end,
                     snapshot_number=snapshot_number,
-                    snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
                 )
-                snapshot_number += 1
-                trace = read_power_trace_snapshot(
-                    snapshot,
-                    options=PowerTraceSnapshotOptions(
-                        run_id=run_id,
-                        run_start=run_start,
-                        run_end=run_end,
-                        snapshot_prefix=POWER_TRACE_SNAPSHOT_PREFIX,
-                        source_path=source,
-                        sampler_interval_seconds=SAMPLER_INTERVAL_SECONDS,
-                        coverage_definition=EXPLICIT_FINAL_SAMPLE,
-                        require_all_rows_valid=True,
-                        include_issue118_metadata=True,
-                    ),
-                )
-                last_trace = trace
-                if trace.get("coverage_complete") is True:
-                    trace["poll_complete"] = True
-                    trace["requested_sampler_interval_seconds"] = SAMPLER_INTERVAL_SECONDS
-                    trace["coverage_contract"] = EXPLICIT_FINAL_SAMPLE
-                    trace["timestamp_gap_facts"] = _trace_gap_metadata(trace.get("samples", []))
-                    return trace
             except (OSError, ValueError):
                 pass
+            else:
+                snapshot_number += 1
+                last_trace = trace
+                if trace.get("coverage_complete") is True:
+                    return _complete_final_power_trace(
+                        trace, samples=trace.get("samples", [])
+                    )
         if monotonic_fn() >= deadline:
-            if last_trace is not None:
-                last_trace["poll_complete"] = False
-                return last_trace
-            raise TimeoutError("no usable immutable Issue #127 power trace was captured")
+            if last_trace is None:
+                raise TimeoutError("no usable immutable Issue #127 power trace was captured")
+            last_trace["poll_complete"] = False
+            return last_trace
         sleep_fn(POWER_TRACE_POLL_INTERVAL_SECONDS)
 
 
-def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
+def _atomic_json_write(
+    path: Path, payload: Mapping[str, Any], *, output_dir: Path
+) -> None:
     serialized = _serialize_record(payload)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    root = Path(output_dir).resolve()
+    candidate = Path(path)
+    if not _SAFE_BASENAME_RE.fullmatch(candidate.name) or not candidate.name.endswith(
+        JSON_SUFFIX
+    ):
+        raise ValueError("JSON destination must have a safe basename")
+    try:
+        candidate_parent = candidate.parent.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("JSON destination parent could not be resolved safely") from exc
+    if candidate.is_symlink() or candidate_parent != root:
+        raise ValueError("JSON destination must stay in the current run output directory")
+    destination = root / candidate.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
     )
     temporary = Path(temporary_name)
     try:
@@ -1844,7 +2160,7 @@ def _atomic_json_write(path: Path, payload: Mapping[str, Any]) -> None:
             handle.write(serialized + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
+        os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -1893,7 +2209,7 @@ def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, 
     if not _looks_like_absolute_path(value):
         return value, {}
     basename = value.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
-    replacement = basename if _SAFE_BASENAME_RE.fullmatch(basename) else "<redacted-path>"
+    replacement = basename if _SAFE_BASENAME_RE.fullmatch(basename) else REDACTED_PATH
     return replacement, {
         "field": field_path,
         "replacement": replacement,
@@ -1910,6 +2226,65 @@ def _environment_value_contains_path(value: str, *, key: str | None) -> bool:
     return False
 
 
+def _normalize_record_mapping(
+    value: Mapping[Any, Any],
+    *,
+    path: tuple[str, ...],
+    replacements: list[dict[str, str]],
+) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    for key, child_value in value.items():
+        if not isinstance(key, str):
+            raise TypeError("Issue #127 record has a non-string key")
+        child_path = (*path, key)
+        if key.lower() in _FORBIDDEN_RECORD_KEYS:
+            raise ValueError(
+                f"Issue #127 record must not retain host identity field "
+                f"{_record_field_path(child_path)}"
+            )
+        normalized[key] = _normalize_record_paths(
+            child_value, path=child_path, replacements=replacements
+        )
+    return normalized
+
+
+def _normalize_record_sequence(
+    value: list[Any] | tuple[Any, ...],
+    *,
+    path: tuple[str, ...],
+    replacements: list[dict[str, str]],
+) -> list[Any]:
+    return [
+        _normalize_record_paths(
+            item, path=(*path, f"[{index}]"), replacements=replacements
+        )
+        for index, item in enumerate(value)
+    ]
+
+
+def _normalize_record_string(
+    value: str, *, path: tuple[str, ...], replacements: list[dict[str, str]]
+) -> str:
+    field_path = _record_field_path(path)
+    key = path[-1] if path else None
+    if key == DEVICE_NODE_KEY and _DEVICE_NODE_RE.fullmatch(value):
+        return value
+    if _is_known_path_field(key):
+        replacement, audit = _replace_known_path(value, field_path=field_path)
+        if audit:
+            replacements.append(audit)
+        return replacement
+    if _contains_embedded_host_path(value):
+        raise ValueError(
+            f"Issue #127 record contains an embedded host path in field {field_path}"
+        )
+    if _is_whole_absolute_path(value):
+        raise ValueError(
+            f"Issue #127 record contains an unsafe absolute path in field {field_path}"
+        )
+    return value
+
+
 def _normalize_record_paths(
     value: Any,
     *,
@@ -1918,84 +2293,59 @@ def _normalize_record_paths(
 ) -> Any:
     """Copy records while changing only explicitly known artifact path fields."""
     if isinstance(value, Mapping):
-        normalized: dict[str, Any] = {}
-        for key, child_value in value.items():
-            if not isinstance(key, str):
-                raise TypeError("Issue #127 record has a non-string key")
-            child_path = (*path, key)
-            if key.lower() in _FORBIDDEN_RECORD_KEYS:
-                raise ValueError(
-                    f"Issue #127 record must not retain host identity field "
-                    f"{_record_field_path(child_path)}"
-                )
-            normalized[key] = _normalize_record_paths(
-                child_value,
-                path=child_path,
-                replacements=replacements,
-            )
-        return normalized
+        return _normalize_record_mapping(value, path=path, replacements=replacements)
     if isinstance(value, (list, tuple)):
-        return [
-            _normalize_record_paths(
-                item,
-                path=(*path, f"[{index}]"),
-                replacements=replacements,
-            )
-            for index, item in enumerate(value)
-        ]
+        return _normalize_record_sequence(value, path=path, replacements=replacements)
     if isinstance(value, str):
-        field_path = _record_field_path(path)
-        key = path[-1] if path else None
-        if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
-            return value
-        if _is_known_path_field(key):
-            replacement, audit = _replace_known_path(value, field_path=field_path)
-            if audit:
-                replacements.append(audit)
-            return replacement
-        if _contains_embedded_host_path(value):
-            raise ValueError(
-                f"Issue #127 record contains an embedded host path in field {field_path}"
-            )
-        if _is_whole_absolute_path(value):
-            raise ValueError(
-                f"Issue #127 record contains an unsafe absolute path in field {field_path}"
-            )
-        return value
+        return _normalize_record_string(value, path=path, replacements=replacements)
     if isinstance(value, float) and not math.isfinite(value):
         raise ValueError("Issue #127 record contains a non-finite number")
     return value
 
 
+def _validate_record_mapping(value: Mapping[Any, Any], *, path: tuple[str, ...]) -> None:
+    for child_key, child_value in value.items():
+        if not isinstance(child_key, str):
+            raise TypeError("Issue #127 record has a non-string key")
+        child_path = (*path, child_key)
+        if child_key.lower() in _FORBIDDEN_RECORD_KEYS:
+            raise ValueError(
+                f"Issue #127 record must not retain host identity field "
+                f"{_record_field_path(child_path)}"
+            )
+        _validate_record_safety(child_value, path=child_path)
+
+
+def _validate_record_sequence(
+    value: list[Any] | tuple[Any, ...], *, path: tuple[str, ...]
+) -> None:
+    for index, item in enumerate(value):
+        _validate_record_safety(item, path=(*path, f"[{index}]"))
+
+
+def _validate_record_string(value: str, *, path: tuple[str, ...]) -> None:
+    key = path[-1] if path else None
+    if key == DEVICE_NODE_KEY and _DEVICE_NODE_RE.fullmatch(value):
+        return
+    if _contains_embedded_host_path(value):
+        raise ValueError(
+            f"Issue #127 record contains an embedded host path in field "
+            f"{_record_field_path(path)}"
+        )
+    if _is_whole_absolute_path(value):
+        raise ValueError(
+            f"Issue #127 record contains an unsafe absolute path in field "
+            f"{_record_field_path(path)}"
+        )
+
+
 def _validate_record_safety(value: Any, *, path: tuple[str, ...] = ()) -> None:
     if isinstance(value, Mapping):
-        for child_key, child_value in value.items():
-            if not isinstance(child_key, str):
-                raise TypeError("Issue #127 record has a non-string key")
-            child_path = (*path, child_key)
-            if child_key.lower() in _FORBIDDEN_RECORD_KEYS:
-                raise ValueError(
-                    f"Issue #127 record must not retain host identity field "
-                    f"{_record_field_path(child_path)}"
-                )
-            _validate_record_safety(child_value, path=child_path)
+        _validate_record_mapping(value, path=path)
     elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            _validate_record_safety(item, path=(*path, f"[{index}]"))
+        _validate_record_sequence(value, path=path)
     elif isinstance(value, str):
-        key = path[-1] if path else None
-        if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
-            return
-        if _contains_embedded_host_path(value):
-            raise ValueError(
-                f"Issue #127 record contains an embedded host path in field "
-                f"{_record_field_path(path)}"
-            )
-        if _is_whole_absolute_path(value):
-            raise ValueError(
-                f"Issue #127 record contains an unsafe absolute path in field "
-                f"{_record_field_path(path)}"
-            )
+        _validate_record_string(value, path=path)
     elif isinstance(value, float) and not math.isfinite(value):
         raise ValueError("Issue #127 record contains a non-finite number")
 
@@ -2062,7 +2412,9 @@ def build_record(
         run.get("run_timeout_policy") or resolve_run_timeout(run_number)[1]
     )
     under_timeout = run.get("run_under_timeout")
-    if under_timeout is None and effective_timeout == DEFAULT_RUN_TIMEOUT_SECONDS:
+    if under_timeout is None and _same_float(
+        effective_timeout, DEFAULT_RUN_TIMEOUT_SECONDS
+    ):
         under_timeout = run.get("run_under_60_seconds")
     run_status = (
         run.get("status") == "pass"
@@ -2098,7 +2450,7 @@ def build_record(
         "algorithm": {
             "batch": BATCH,
             "iterations": FIXED_ITERATIONS,
-            "initial_value": "I/||R||inf",
+            "initial_value": INITIAL_VALUE,
             "condition_number": CONDITION_NUMBER,
             "state_format": "BF16",
             "destination_format": "FP32",
@@ -2167,7 +2519,7 @@ def build_record(
 
 
 def _raw_path(result_path: Path, run_id: str) -> Path:
-    return result_path.parent / f"issue127-abba-raw-{validate_run_id(run_id)}.json"
+    return result_path.parent / f"issue127-abba-raw-{validate_run_id(run_id)}{JSON_SUFFIX}"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -2223,7 +2575,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+def _validate_fixed_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     if args.device_id != DEVICE_ID:
         parser.error("Issue #127 must run on visible device_id=0 inside the container")
     if args.kind and any(kind != "custom_newton_schulz" for kind in args.kind):
@@ -2238,34 +2590,49 @@ def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
         parser.error("Issue #127 requires matrix_block=8")
     if args.custom_math_fidelity != "HiFi3":
         parser.error("Issue #127 requires HiFi3")
-    if not args.fuse_s or not args.double_buffer or not args.dst_full_sync or not args.fp32_dest_acc:
-        parser.error("Issue #127 requires fused S, double buffering, full DEST sync, and FP32 accumulation")
-    if args.run_number == 2:
-        if args.cooldown_wait_seconds is not None and (
-            not math.isfinite(args.cooldown_wait_seconds)
-            or args.cooldown_wait_seconds <= 0.0
-            or args.cooldown_wait_seconds > COOLDOWN_WAIT_CAP_SECONDS
-        ):
-            parser.error("run 2 cooldown wait must be positive and at most 600 seconds")
-        if args.cooldown_start_utc is None or args.cooldown_end_utc is None:
-            parser.error("run 2 requires wrapper-provided cooldown UTC bounds")
-        if args.cooldown_gate_verified is False:
-            parser.error("run 2 cannot start with an unverified cooldown gate")
-    elif any(
-        value is not None
-        for value in (
-            args.cooldown_wait_seconds,
-            args.cooldown_start_utc,
-            args.cooldown_end_utc,
-            args.expected_aiclk_mhz,
-            args.cooldown_observed_power_w,
-            args.cooldown_observed_temperature_c,
-            args.cooldown_observed_aiclk_mhz,
-            args.cooldown_gate_result,
-            args.cooldown_gate_verified,
-        )
+    if not all(
+        (args.fuse_s, args.double_buffer, args.dst_full_sync, args.fp32_dest_acc)
     ):
+        parser.error(
+            "Issue #127 requires fused S, double buffering, full DEST sync, and FP32 accumulation"
+        )
+
+
+def _validate_run2_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if args.cooldown_wait_seconds is not None and (
+        not math.isfinite(args.cooldown_wait_seconds)
+        or args.cooldown_wait_seconds <= 0.0
+        or args.cooldown_wait_seconds > COOLDOWN_WAIT_CAP_SECONDS
+    ):
+        parser.error("run 2 cooldown wait must be positive and at most 600 seconds")
+    if args.cooldown_start_utc is None or args.cooldown_end_utc is None:
+        parser.error("run 2 requires wrapper-provided cooldown UTC bounds")
+    if args.cooldown_gate_verified is False:
+        parser.error("run 2 cannot start with an unverified cooldown gate")
+
+
+def _validate_no_run2_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    values = (
+        args.cooldown_wait_seconds,
+        args.cooldown_start_utc,
+        args.cooldown_end_utc,
+        args.expected_aiclk_mhz,
+        args.cooldown_observed_power_w,
+        args.cooldown_observed_temperature_c,
+        args.cooldown_observed_aiclk_mhz,
+        args.cooldown_gate_result,
+        args.cooldown_gate_verified,
+    )
+    if any(value is not None for value in values):
         parser.error("cooldown and observed-AICLK confirmation belong to run 2")
+
+
+def _validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    _validate_fixed_args(parser, args)
+    if args.run_number == 2:
+        _validate_run2_args(parser, args)
+    else:
+        _validate_no_run2_args(parser, args)
 
 
 def main(
@@ -2295,9 +2662,14 @@ def main(
         result_path = _resolve_result_path(args)
         output_dir = result_path.parent
         environment_path = args.env_json or (
-            output_dir / run_artifact_name(prefix="env-", suffix=".json", run_id=run_id)
+            output_dir / run_artifact_name(prefix="env-", suffix=JSON_SUFFIX, run_id=run_id)
         )
-        environment = _read_environment(environment_path, run_id=run_id)
+        environment = _read_environment(
+            environment_path,
+            run_id=run_id,
+            output_dir=output_dir,
+            read_text_fn=read_text_fn,
+        )
         validate_harness_environment(environment, run_id=run_id)
         cooldown_start_utc = args.cooldown_start_utc if args.run_number == 2 else None
         cooldown_end_utc = args.cooldown_end_utc if args.run_number == 2 else None
@@ -2422,13 +2794,13 @@ def main(
             "run": run,
             "power_trace": _public_trace(power_trace),
         }
-        _atomic_json_write(raw_path, raw_payload)
+        _atomic_json_write(raw_path, raw_payload, output_dir=output_dir)
         record["raw_artifact"] = {
             "file": raw_path.name,
             "sha256": _file_sha256(raw_path),
             "sha256_definition": "SHA-256 of the complete Issue #127 raw JSON bytes",
         }
-        _atomic_json_write(result_path, record)
+        _atomic_json_write(result_path, record, output_dir=output_dir)
         print(f"issue127 result -> {result_path}", flush=True)
         print(f"issue127 raw -> {raw_path.name}", flush=True)
         return 0 if record["status"] == "pass" else 1
