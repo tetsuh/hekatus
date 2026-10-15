@@ -197,17 +197,16 @@ def test_extended_sampler_rejects_missing_or_mismatched_board_identity(
 ):
     with pytest.raises(ExtendedPowerTraceError):
         select_extended_board(_snapshot(), board_id=board_id, bus_id=bus_id)
-    assert (
-        extended_telemetry_csv_row(
-            _snapshot(),
-            board_id=board_id,
-            bus_id=bus_id,
-            timestamp_utc="2026-01-01T00:00:00+00:00",
-            timestamp_monotonic_ns=100,
-            snapshot_elapsed_ns=0,
-        )
-        is None
+
+    row = extended_telemetry_csv_row(
+        _snapshot(),
+        board_id=board_id,
+        bus_id=bus_id,
+        timestamp_utc="2026-01-01T00:00:00+00:00",
+        timestamp_monotonic_ns=100,
+        snapshot_elapsed_ns=0,
     )
+    assert row is None
 
 
 def test_extended_board_identity_must_be_unique():

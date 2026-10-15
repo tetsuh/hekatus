@@ -376,6 +376,41 @@ def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
     assert excinfo.value.code == 2
 
 
+def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
+    output = tmp_path / "extended.csv"
+    calls = []
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_extended_forever",
+        lambda path, interval, **kwargs: calls.append((path, interval, kwargs)),
+    )
+
+    telemetry.main(
+        [
+            "sample",
+            "--trace-schema",
+            "extended-v1",
+            "--out",
+            str(output),
+            "--interval",
+            "1",
+        ]
+    )
+
+    assert calls == [(output.resolve(), 1.0, {"board_id": None, "bus_id": None})]
+
+
+def test_cli_output_path_cannot_escape_trusted_roots(tmp_path):
+    outside = Path.cwd().parent / f"hekatus-sonar-output-{tmp_path.name}.csv"
+    assert not outside.exists()
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(["sample", "--trace-schema", "extended-v1", "--out", str(outside)])
+
+    assert excinfo.value.code == 2
+    assert not outside.exists()
+
+
 class _WriterThatFillsUp:
     """Accepts the header, then fails the way a full disk does."""
 

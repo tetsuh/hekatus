@@ -180,6 +180,35 @@ def _requested_extended_identity(
     return board_id, bus_id
 
 
+def _extended_board_matches(
+    devices: Sequence[Mapping[str, Any]],
+    *,
+    requested_board_id: str,
+    requested_bus_id: str,
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+    """Collect independent and paired matches for explicit board identities."""
+    board_matches: list[Mapping[str, Any]] = []
+    bus_matches: list[Mapping[str, Any]] = []
+    pair_matches: list[Mapping[str, Any]] = []
+    for device in devices:
+        board_info = device.get("board_info")
+        if not isinstance(board_info, Mapping):
+            continue
+        candidate_board_id = _nonempty_text(board_info.get("board_id"))
+        candidate_bus_id = _nonempty_text(board_info.get("bus_id"))
+        board_matches_identity = candidate_board_id == requested_board_id
+        bus_matches_identity = (
+            candidate_bus_id is not None and candidate_bus_id.lower() == requested_bus_id
+        )
+        if board_matches_identity:
+            board_matches.append(device)
+        if bus_matches_identity:
+            bus_matches.append(device)
+        if board_matches_identity and bus_matches_identity:
+            pair_matches.append(device)
+    return board_matches, bus_matches, pair_matches
+
+
 def select_extended_board(
     snapshot: str | bytes | Mapping[str, Any],
     *,
@@ -197,26 +226,11 @@ def select_extended_board(
     requested_board_id = _identity_text(board_id, field="board_id")
     requested_bus_id = _identity_text(bus_id, field="bus_id").lower()
     devices = _board_entries(root)
-
-    board_matches: list[Mapping[str, Any]] = []
-    bus_matches: list[Mapping[str, Any]] = []
-    pair_matches: list[Mapping[str, Any]] = []
-    for device in devices:
-        board_info = device.get("board_info")
-        if not isinstance(board_info, Mapping):
-            continue
-        candidate_board_id = _nonempty_text(board_info.get("board_id"))
-        candidate_bus_id = _nonempty_text(board_info.get("bus_id"))
-        if candidate_board_id == requested_board_id:
-            board_matches.append(device)
-        if candidate_bus_id is not None and candidate_bus_id.lower() == requested_bus_id:
-            bus_matches.append(device)
-        if (
-            candidate_board_id == requested_board_id
-            and candidate_bus_id is not None
-            and candidate_bus_id.lower() == requested_bus_id
-        ):
-            pair_matches.append(device)
+    board_matches, bus_matches, pair_matches = _extended_board_matches(
+        devices,
+        requested_board_id=requested_board_id,
+        requested_bus_id=requested_bus_id,
+    )
 
     if len(board_matches) != 1:
         raise ExtendedPowerTraceError(
@@ -285,34 +299,42 @@ def _parse_numeric(value: Any, *, field: str, positive: bool = False) -> float:
     return parsed
 
 
+def _invalid_nonnegative_integer(field: str) -> ExtendedPowerTraceError:
+    return ExtendedPowerTraceError(f"{field} must be a non-negative integer")
+
+
+def _integer_from_float(value: float, *, field: str) -> int:
+    if not math.isfinite(value) or not value.is_integer():
+        raise _invalid_nonnegative_integer(field)
+    return int(value)
+
+
+def _integer_from_text(value: str, *, field: str) -> int:
+    text = value.strip()
+    try:
+        # Base zero permits the raw hexadecimal spelling used by SMBus.
+        return int(text, 0)
+    except (TypeError, ValueError, OverflowError):
+        try:
+            numeric = float(text)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise _invalid_nonnegative_integer(field) from exc
+        return _integer_from_float(numeric, field=field)
+
+
 def _nonnegative_integer(value: Any, *, field: str) -> int:
     if isinstance(value, bool):
-        raise ExtendedPowerTraceError(f"{field} must be a non-negative integer")
+        raise _invalid_nonnegative_integer(field)
     if isinstance(value, int):
         parsed = value
     elif isinstance(value, float):
-        if not math.isfinite(value) or not value.is_integer():
-            raise ExtendedPowerTraceError(f"{field} must be a non-negative integer")
-        parsed = int(value)
+        parsed = _integer_from_float(value, field=field)
     elif isinstance(value, str):
-        text = value.strip()
-        try:
-            # Base zero permits the raw hexadecimal spelling used by SMBus.
-            parsed = int(text, 0)
-        except (TypeError, ValueError, OverflowError):
-            try:
-                numeric = float(text)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise ExtendedPowerTraceError(
-                    f"{field} must be a non-negative integer"
-                ) from exc
-            if not math.isfinite(numeric) or not numeric.is_integer():
-                raise ExtendedPowerTraceError(f"{field} must be a non-negative integer")
-            parsed = int(numeric)
+        parsed = _integer_from_text(value, field=field)
     else:
-        raise ExtendedPowerTraceError(f"{field} must be a non-negative integer")
+        raise _invalid_nonnegative_integer(field)
     if parsed < 0:
-        raise ExtendedPowerTraceError(f"{field} must be a non-negative integer")
+        raise _invalid_nonnegative_integer(field)
     return parsed
 
 
@@ -367,6 +389,74 @@ def _nullable_text(value: Any) -> str | None:
     return str(value)
 
 
+def _snapshot_timestamp_text(
+    root: Mapping[str, Any], timestamp_utc: datetime.datetime | str | None
+) -> str:
+    if timestamp_utc is None:
+        timestamp_utc = root.get("timestamp_utc")
+    if timestamp_utc is None:
+        raise ExtendedPowerTraceError("required snapshot value 'timestamp_utc' is missing")
+    return _timestamp_value(timestamp_utc, field="timestamp_utc")[0]
+
+
+def _snapshot_normalized_values(
+    telemetry: Mapping[str, Any], fields: Sequence[str]
+) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for field in fields:
+        source_key = _NORMALIZED_TELEMETRY_KEYS[field]
+        values[field] = _source_number_text(
+            _mapping_value(telemetry, source_key, field=f"telemetry.{source_key}"),
+            field=field,
+        )
+    return values
+
+
+def _snapshot_timing_values(
+    root: Mapping[str, Any],
+    *,
+    timestamp_monotonic_ns: int | None,
+    snapshot_elapsed_ns: int | None,
+) -> dict[str, int]:
+    supplied_values = {
+        "timestamp_monotonic_ns": timestamp_monotonic_ns,
+        "snapshot_elapsed_ns": snapshot_elapsed_ns,
+    }
+    values: dict[str, int] = {}
+    for field, supplied in supplied_values.items():
+        value = supplied if supplied is not None else root.get(field, _MISSING)
+        if value is _MISSING or value is None:
+            raise ExtendedPowerTraceError(f"required snapshot value {field!r} is missing")
+        values[field] = _nonnegative_integer(value, field=field)
+    return values
+
+
+def _snapshot_therm_trip_count(smbus_telem: Mapping[str, Any]) -> str:
+    therm_trip_count = _first_mapping_value(smbus_telem, _RAW_THERM_TRIP_KEYS)
+    if therm_trip_count is _MISSING or therm_trip_count is None:
+        raise ExtendedPowerTraceError(
+            "required snapshot value 'smbus_telem.THERM_TRIP_COUNT' is missing"
+        )
+    return _source_number_text(therm_trip_count, field="therm_trip_count")
+
+
+def _snapshot_throttle_values(
+    telemetry: Mapping[str, Any], smbus_telem: Mapping[str, Any]
+) -> dict[str, str | None]:
+    values: dict[str, str | None] = {}
+    for field, keys in (
+        ("throttle_status", _RAW_THROTTLE_STATUS_KEYS),
+        ("throttle_reason", _RAW_THROTTLE_REASON_KEYS),
+    ):
+        value = _first_mapping_value(smbus_telem, keys)
+        if value is _MISSING:
+            # Some tool versions expose these optional labels in normalized
+            # telemetry.  They are read as labels only when present there.
+            value = telemetry.get(field, _MISSING)
+        values[field] = None if value is _MISSING else _nullable_text(value)
+    return values
+
+
 def _extended_snapshot_row(
     root: Mapping[str, Any],
     device: Mapping[str, Any],
@@ -377,62 +467,25 @@ def _extended_snapshot_row(
 ) -> dict[str, Any]:
     telemetry = _normalized_telemetry(device)
     smbus_telem = _raw_smbus_telemetry(device)
-    if timestamp_utc is None:
-        timestamp_utc = root.get("timestamp_utc")
-    if timestamp_utc is None:
-        raise ExtendedPowerTraceError("required snapshot value 'timestamp_utc' is missing")
-    timestamp_text, _timestamp = _timestamp_value(timestamp_utc, field="timestamp_utc")
-
-    row: dict[str, Any] = {"timestamp_utc": timestamp_text}
-    for field in ("power_w", "aiclk_mhz", "asic_temp_c"):
-        source_key = _NORMALIZED_TELEMETRY_KEYS[field]
-        row[field] = _source_number_text(
-            _mapping_value(telemetry, source_key, field=f"telemetry.{source_key}"),
-            field=field,
-        )
-
-    timing_values = {
-        "timestamp_monotonic_ns": timestamp_monotonic_ns,
-        "snapshot_elapsed_ns": snapshot_elapsed_ns,
+    row: dict[str, Any] = {
+        "timestamp_utc": _snapshot_timestamp_text(root, timestamp_utc),
     }
-    for field, supplied in timing_values.items():
-        value = supplied if supplied is not None else root.get(field, _MISSING)
-        if value is _MISSING or value is None:
-            raise ExtendedPowerTraceError(f"required snapshot value {field!r} is missing")
-        row[field] = _nonnegative_integer(value, field=field)
-
-    for field in (
-        "current_a",
-        "voltage_v",
-        "board_power_w",
-        "fan_rpm",
-        "heartbeat",
-    ):
-        source_key = _NORMALIZED_TELEMETRY_KEYS[field]
-        row[field] = _source_number_text(
-            _mapping_value(telemetry, source_key, field=f"telemetry.{source_key}"),
-            field=field,
+    row.update(_snapshot_normalized_values(telemetry, ("power_w", "aiclk_mhz", "asic_temp_c")))
+    row.update(
+        _snapshot_timing_values(
+            root,
+            timestamp_monotonic_ns=timestamp_monotonic_ns,
+            snapshot_elapsed_ns=snapshot_elapsed_ns,
         )
-
-    therm_trip_count = _first_mapping_value(smbus_telem, _RAW_THERM_TRIP_KEYS)
-    if therm_trip_count is _MISSING or therm_trip_count is None:
-        raise ExtendedPowerTraceError(
-            "required snapshot value 'smbus_telem.THERM_TRIP_COUNT' is missing"
-        )
-    row["therm_trip_count"] = _source_number_text(
-        therm_trip_count, field="therm_trip_count"
     )
-
-    for field, keys in (
-        ("throttle_status", _RAW_THROTTLE_STATUS_KEYS),
-        ("throttle_reason", _RAW_THROTTLE_REASON_KEYS),
-    ):
-        value = _first_mapping_value(smbus_telem, keys)
-        if value is _MISSING:
-            # Some tool versions expose these optional labels in normalized
-            # telemetry.  They are read as labels only when present there.
-            value = telemetry.get(field, _MISSING)
-        row[field] = None if value is _MISSING else _nullable_text(value)
+    row.update(
+        _snapshot_normalized_values(
+            telemetry,
+            ("current_a", "voltage_v", "board_power_w", "fan_rpm", "heartbeat"),
+        )
+    )
+    row["therm_trip_count"] = _snapshot_therm_trip_count(smbus_telem)
+    row.update(_snapshot_throttle_values(telemetry, smbus_telem))
     return row
 
 
@@ -457,28 +510,34 @@ def parse_extended_snapshot(
     )
 
 
-def format_extended_power_trace_row(row: Mapping[str, Any]) -> str:
-    """Validate and serialize one complete extended row in column order."""
+def _validate_extended_row_columns(row: Mapping[str, Any]) -> None:
     if set(row) != set(EXTENDED_POWER_TRACE_COLUMNS):
         missing = sorted(set(EXTENDED_POWER_TRACE_COLUMNS) - set(row))
         extra = sorted(set(row) - set(EXTENDED_POWER_TRACE_COLUMNS))
         raise ExtendedPowerTraceError(
             f"extended trace row has unexpected columns (missing={missing!r}, extra={extra!r})"
         )
-    values: list[str] = []
-    for field in EXTENDED_POWER_TRACE_COLUMNS:
-        value = row.get(field)
-        if field == "timestamp_utc":
-            if value is None:
-                raise ExtendedPowerTraceError("required trace column 'timestamp_utc' is missing")
-            values.append(_timestamp_value(value, field=field)[0])
-        elif field in _EXTENDED_NULLABLE_COLUMNS:
-            values.append("" if value is None else _nullable_text(value) or "")
-        else:
-            if value is None or (isinstance(value, str) and not value.strip()):
-                raise ExtendedPowerTraceError(f"required trace column {field!r} is missing")
-            values.append(_source_number_text(value, field=field))
-    return ",".join(values)
+
+
+def _format_extended_power_trace_value(field: str, value: Any) -> str:
+    if field == "timestamp_utc":
+        if value is None:
+            raise ExtendedPowerTraceError("required trace column 'timestamp_utc' is missing")
+        return _timestamp_value(value, field=field)[0]
+    if field in _EXTENDED_NULLABLE_COLUMNS:
+        return "" if value is None else _nullable_text(value) or ""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        raise ExtendedPowerTraceError(f"required trace column {field!r} is missing")
+    return _source_number_text(value, field=field)
+
+
+def format_extended_power_trace_row(row: Mapping[str, Any]) -> str:
+    """Validate and serialize one complete extended row in column order."""
+    _validate_extended_row_columns(row)
+    return ",".join(
+        _format_extended_power_trace_value(field, row.get(field))
+        for field in EXTENDED_POWER_TRACE_COLUMNS
+    )
 
 
 def extended_telemetry_csv_row(
@@ -668,6 +727,120 @@ def _decode_extended_payload(
     return raw, raw.decode()
 
 
+def _extended_trace_bounds(
+    *,
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+    run_start: int | None,
+    run_end: int | None,
+) -> tuple[int | None, int | None]:
+    if run_start_monotonic_ns is not None and run_start is not None:
+        raise ExtendedPowerTraceError("run_start and run_start_monotonic_ns both supplied")
+    if run_end_monotonic_ns is not None and run_end is not None:
+        raise ExtendedPowerTraceError("run_end and run_end_monotonic_ns both supplied")
+    start_ns = _as_monotonic_bound(
+        run_start_monotonic_ns if run_start_monotonic_ns is not None else run_start,
+        field="run_start_monotonic_ns",
+    )
+    end_ns = _as_monotonic_bound(
+        run_end_monotonic_ns if run_end_monotonic_ns is not None else run_end,
+        field="run_end_monotonic_ns",
+    )
+    if start_ns is not None and end_ns is not None and start_ns > end_ns:
+        raise ExtendedPowerTraceError(
+            "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
+        )
+    return start_ns, end_ns
+
+
+def _read_extended_csv_rows(
+    path: Path, *, read_text_fn: Callable[[Path], str] | None
+) -> tuple[bytes, list[dict[str, Any]]]:
+    try:
+        raw, text = _decode_extended_payload(path, read_text_fn=read_text_fn)
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = tuple(reader.fieldnames or ())
+        if fieldnames != EXTENDED_POWER_TRACE_COLUMNS:
+            raise ExtendedPowerTraceError(
+                f"extended power trace has unexpected columns {fieldnames!r}"
+            )
+        return raw, [dict(row) for row in reader]
+    except ExtendedPowerTraceError:
+        raise
+    except ValueError as exc:
+        raise ExtendedPowerTraceError(str(exc)) from exc
+
+
+def _coerce_extended_trace_rows(
+    raw_rows: Sequence[Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    rows: list[dict[str, Any]] = []
+    errors: list[str] = []
+    for index, raw_row in enumerate(raw_rows):
+        try:
+            rows.append(_coerce_trace_row(raw_row, index=index))
+        except ExtendedPowerTraceError as exc:
+            errors.append(str(exc))
+    return rows, errors
+
+
+def _set_extended_timestamp_facts(
+    result: dict[str, Any], rows: Sequence[Mapping[str, Any]]
+) -> tuple[list[datetime.datetime], list[int], bool]:
+    utc_timestamps = [
+        _timestamp_value(row["timestamp_utc"], field="timestamp_utc")[1]
+        for row in rows
+    ]
+    monotonic_timestamps = [int(row["timestamp_monotonic_ns"]) for row in rows]
+    result["first_timestamp"] = utc_timestamps[0].isoformat()
+    result["last_timestamp"] = utc_timestamps[-1].isoformat()
+    result["first_timestamp_monotonic_ns"] = monotonic_timestamps[0]
+    result["last_timestamp_monotonic_ns"] = monotonic_timestamps[-1]
+    result["timestamps_parse"] = True
+    result["timestamp_utc_ordered"] = all(
+        left <= right for left, right in itertools.pairwise(utc_timestamps)
+    )
+    result["timestamp_monotonic_ordered"] = all(
+        left <= right for left, right in itertools.pairwise(monotonic_timestamps)
+    )
+    ordered = result["timestamp_utc_ordered"] and result["timestamp_monotonic_ordered"]
+    result["timestamps_ordered"] = ordered
+    if not ordered:
+        result["errors"].append("extended trace timestamps are not ordered")
+        result["error"] = result["errors"][-1]
+    return utc_timestamps, monotonic_timestamps, ordered
+
+
+def _set_extended_trace_coverage(
+    result: dict[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    monotonic_timestamps: Sequence[int],
+    *,
+    start_ns: int | None,
+    end_ns: int | None,
+    errors: Sequence[str],
+) -> None:
+    if start_ns is None:
+        start_ns = monotonic_timestamps[0]
+    if end_ns is None:
+        end_ns = monotonic_timestamps[-1]
+    result["run_start_monotonic_ns"] = start_ns
+    result["run_end_monotonic_ns"] = end_ns
+    covers_start = monotonic_timestamps[0] <= start_ns
+    covers_end = monotonic_timestamps[-1] >= end_ns
+    result["covers_run_start"] = covers_start
+    result["covers_run_end"] = covers_end
+    if start_ns < end_ns and covers_start and covers_end:
+        result.update(_aggregate_left_held(rows, start_ns=start_ns, end_ns=end_ns))
+        result["coverage_complete"] = True
+        result["valid"] = not errors
+        return
+    result["errors"].append(
+        "extended trace interval is not bounded by the usable trace rows"
+    )
+    result["error"] = result["errors"][-1]
+
+
 def read_extended_power_trace_csv(
     path: Path,
     *,
@@ -685,33 +858,16 @@ def read_extended_power_trace_csv(
         result["error"] = result["errors"][0]
         return result
     try:
-        if run_start_monotonic_ns is not None and run_start is not None:
-            raise ExtendedPowerTraceError("run_start and run_start_monotonic_ns both supplied")
-        if run_end_monotonic_ns is not None and run_end is not None:
-            raise ExtendedPowerTraceError("run_end and run_end_monotonic_ns both supplied")
-        start_ns = _as_monotonic_bound(
-            run_start_monotonic_ns if run_start_monotonic_ns is not None else run_start,
-            field="run_start_monotonic_ns",
+        start_ns, end_ns = _extended_trace_bounds(
+            run_start_monotonic_ns=run_start_monotonic_ns,
+            run_end_monotonic_ns=run_end_monotonic_ns,
+            run_start=run_start,
+            run_end=run_end,
         )
-        end_ns = _as_monotonic_bound(
-            run_end_monotonic_ns if run_end_monotonic_ns is not None else run_end,
-            field="run_end_monotonic_ns",
-        )
-        if start_ns is not None and end_ns is not None and start_ns > end_ns:
-            raise ExtendedPowerTraceError(
-                "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
-            )
         path = Path(path)
-        raw, text = _decode_extended_payload(path, read_text_fn=read_text_fn)
+        raw, raw_rows = _read_extended_csv_rows(path, read_text_fn=read_text_fn)
         result["byte_count"] = len(raw)
-        reader = csv.DictReader(io.StringIO(text))
-        fieldnames = tuple(reader.fieldnames or ())
-        if fieldnames != EXTENDED_POWER_TRACE_COLUMNS:
-            raise ExtendedPowerTraceError(
-                f"extended power trace has unexpected columns {fieldnames!r}"
-            )
-        raw_rows = [dict(row) for row in reader]
-    except (OSError, UnicodeError, ExtendedPowerTraceError, ValueError) as exc:
+    except (OSError, UnicodeError, ExtendedPowerTraceError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result
@@ -719,13 +875,7 @@ def read_extended_power_trace_csv(
     result["readable"] = True
     result["csv_row_count"] = len(raw_rows)
     result["nonempty"] = bool(raw_rows)
-    rows: list[dict[str, Any]] = []
-    errors: list[str] = []
-    for index, raw_row in enumerate(raw_rows):
-        try:
-            rows.append(_coerce_trace_row(raw_row, index=index))
-        except ExtendedPowerTraceError as exc:
-            errors.append(str(exc))
+    rows, errors = _coerce_extended_trace_rows(raw_rows)
     result["samples"] = rows
     result["sample_count"] = len(rows)
     result["valid_row_count"] = len(rows)
@@ -735,49 +885,19 @@ def read_extended_power_trace_csv(
         result["error"] = errors[0] if errors else "extended power trace has no rows"
         return result
 
-    utc_timestamps = [
-        _timestamp_value(row["timestamp_utc"], field="timestamp_utc")[1]
-        for row in rows
-    ]
-    monotonic_timestamps = [int(row["timestamp_monotonic_ns"]) for row in rows]
-    result["first_timestamp"] = utc_timestamps[0].isoformat()
-    result["last_timestamp"] = utc_timestamps[-1].isoformat()
-    result["first_timestamp_monotonic_ns"] = monotonic_timestamps[0]
-    result["last_timestamp_monotonic_ns"] = monotonic_timestamps[-1]
-    result["timestamps_parse"] = True
-    result["timestamp_utc_ordered"] = all(
-        left <= right for left, right in itertools.pairwise(utc_timestamps)
+    _utc_timestamps, monotonic_timestamps, ordered = _set_extended_timestamp_facts(
+        result, rows
     )
-    result["timestamp_monotonic_ordered"] = all(
-        left <= right for left, right in itertools.pairwise(monotonic_timestamps)
-    )
-    result["timestamps_ordered"] = (
-        result["timestamp_utc_ordered"] and result["timestamp_monotonic_ordered"]
-    )
-    if not result["timestamps_ordered"]:
-        result["errors"].append("extended trace timestamps are not ordered")
-        result["error"] = result["errors"][-1]
+    if not ordered:
         return result
-
-    if start_ns is None:
-        start_ns = monotonic_timestamps[0]
-    if end_ns is None:
-        end_ns = monotonic_timestamps[-1]
-    result["run_start_monotonic_ns"] = start_ns
-    result["run_end_monotonic_ns"] = end_ns
-    covers_start = monotonic_timestamps[0] <= start_ns
-    covers_end = monotonic_timestamps[-1] >= end_ns
-    result["covers_run_start"] = covers_start
-    result["covers_run_end"] = covers_end
-    if start_ns < end_ns and covers_start and covers_end:
-        result.update(_aggregate_left_held(rows, start_ns=start_ns, end_ns=end_ns))
-        result["coverage_complete"] = True
-        result["valid"] = not errors
-    else:
-        result["errors"].append(
-            "extended trace interval is not bounded by the usable trace rows"
-        )
-        result["error"] = result["errors"][-1]
+    _set_extended_trace_coverage(
+        result,
+        rows,
+        monotonic_timestamps,
+        start_ns=start_ns,
+        end_ns=end_ns,
+        errors=errors,
+    )
     return result
 
 
@@ -829,7 +949,7 @@ def read_extended_power_trace_snapshot(
         if not isinstance(samples, list):
             raise ExtendedPowerTraceError("extended trace sidecar samples must be an array")
         rows = [_coerce_trace_row(row, index=index) for index, row in enumerate(samples)]
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ExtendedPowerTraceError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result

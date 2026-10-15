@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -499,6 +500,108 @@ def _resolved_pci_bus_ids(node: str, resolver: Callable[[str], object]) -> set[s
         return set()
 
 
+def _snapshot_devices(snapshot: str) -> list[dict] | None:
+    """Decode and validate the device list shared by both selection contracts."""
+    try:
+        root = json.loads(snapshot)
+        devices = root["device_info"]
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not isinstance(devices, list) or not devices:
+        return None
+    if not all(isinstance(device, dict) for device in devices):
+        return None
+    return devices
+
+
+def _requested_q2_identity(
+    board_id: str | None, bus_id: str | None
+) -> tuple[str, str] | None:
+    """Normalize the paired Q2 identity, or reject an incomplete request."""
+    if not isinstance(board_id, str) or not board_id.strip():
+        return None
+    if not isinstance(bus_id, str) or not bus_id.strip():
+        return None
+    normalized_bus_id = _normalize_pci_bus_id(bus_id)
+    if normalized_bus_id is None:
+        return None
+    return board_id.strip(), normalized_bus_id
+
+
+def _q2_node_matches(
+    requested_node: str, requested_bus_id: str, resolver: Callable[[str], object]
+) -> bool:
+    if requested_node == _DEFAULT_DEVICE_NODE:
+        return True
+    requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
+    return len(requested_bus_ids) == 1 and next(iter(requested_bus_ids)) == requested_bus_id
+
+
+def _q2_board_matches(
+    devices: list[dict], requested_board_id: str, requested_bus_id: str
+) -> tuple[list[dict], list[dict], list[dict]]:
+    board_matches: list[dict] = []
+    bus_matches: list[dict] = []
+    pair_matches: list[dict] = []
+    for device in devices:
+        board_info = device.get("board_info")
+        if not isinstance(board_info, dict):
+            continue
+        candidate_board_id = board_info.get("board_id")
+        candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
+        board_matches_identity = candidate_board_id == requested_board_id
+        bus_matches_identity = candidate_bus_id == requested_bus_id
+        if board_matches_identity:
+            board_matches.append(device)
+        if bus_matches_identity:
+            bus_matches.append(device)
+        if board_matches_identity and bus_matches_identity:
+            pair_matches.append(device)
+    return board_matches, bus_matches, pair_matches
+
+
+def _select_q2_device(
+    devices: list[dict],
+    *,
+    requested_node: str,
+    resolver: Callable[[str], object],
+    requested_board_id: str,
+    requested_bus_id: str,
+) -> dict | None:
+    """Select one board after validating the explicit Q2 node identity."""
+    if not _q2_node_matches(requested_node, requested_bus_id, resolver):
+        return None
+    board_matches, bus_matches, pair_matches = _q2_board_matches(
+        devices, requested_board_id, requested_bus_id
+    )
+    if len(board_matches) != 1 or len(bus_matches) != 1 or len(pair_matches) != 1:
+        return None
+    if pair_matches[0] is not board_matches[0] or pair_matches[0] is not bus_matches[0]:
+        return None
+    return pair_matches[0]
+
+
+def _select_legacy_device(
+    devices: list[dict], *, requested_node: str, resolver: Callable[[str], object]
+) -> dict | None:
+    """Preserve legacy default-node and verified PCI selection behavior."""
+    if requested_node == _DEFAULT_DEVICE_NODE:
+        return devices[0]
+    requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
+    if len(requested_bus_ids) != 1:
+        return None
+    requested_bus_id = next(iter(requested_bus_ids))
+    matches: list[dict] = []
+    for device in devices:
+        identity = _device_bus_identity(device)
+        if identity is None or requested_bus_id not in identity:
+            continue
+        if len(identity) != 1:
+            return None
+        matches.append(device)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _device_info(
     snapshot: str,
     *,
@@ -515,79 +618,29 @@ def _device_info(
     through its verified PCI identity and must agree with the requested bus.
     The ``device_info`` array position is never used in the Q2 branch.
     """
-    try:
-        root = json.loads(snapshot)
-        devices = root["device_info"]
-    except (ValueError, KeyError, TypeError):
-        return None
-    if not isinstance(devices, list) or not devices:
-        return None
-    if not all(isinstance(device, dict) for device in devices):
+    devices = _snapshot_devices(snapshot)
+    if devices is None:
         return None
 
     # Board identity is opt-in here so the established four-column sampler
     # remains unchanged.  The extended sidecar resolves its own environment
     # identity in power_trace_extended.select_extended_board.
-    requested_board_id = board_id
-    requested_bus_id = bus_id
-    q2_identity_requested = requested_board_id is not None or requested_bus_id is not None
     requested_node = _requested_device_node()
     resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
-
-    if q2_identity_requested:
-        if not isinstance(requested_board_id, str) or not requested_board_id.strip():
+    if board_id is not None or bus_id is not None:
+        identity = _requested_q2_identity(board_id, bus_id)
+        if identity is None:
             return None
-        if not isinstance(requested_bus_id, str) or not requested_bus_id.strip():
-            return None
-        normalized_requested_bus = _normalize_pci_bus_id(requested_bus_id)
-        if normalized_requested_bus is None:
-            return None
-        if requested_node != _DEFAULT_DEVICE_NODE:
-            requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
-            if len(requested_bus_ids) != 1 or next(iter(requested_bus_ids)) != normalized_requested_bus:
-                return None
-
-        board_matches: list[dict] = []
-        bus_matches: list[dict] = []
-        pair_matches: list[dict] = []
-        for device in devices:
-            board_info = device.get("board_info")
-            if not isinstance(board_info, dict):
-                continue
-            candidate_board_id = board_info.get("board_id")
-            candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
-            if candidate_board_id == requested_board_id.strip():
-                board_matches.append(device)
-            if candidate_bus_id == normalized_requested_bus:
-                bus_matches.append(device)
-            if (
-                candidate_board_id == requested_board_id.strip()
-                and candidate_bus_id == normalized_requested_bus
-            ):
-                pair_matches.append(device)
-        if len(board_matches) != 1 or len(bus_matches) != 1 or len(pair_matches) != 1:
-            return None
-        if pair_matches[0] is not board_matches[0] or pair_matches[0] is not bus_matches[0]:
-            return None
-        return pair_matches[0]
-
-    if requested_node == _DEFAULT_DEVICE_NODE:
-        return devices[0]
-
-    requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
-    if len(requested_bus_ids) != 1:
-        return None
-    requested_bus_id = next(iter(requested_bus_ids))
-
-    matches: list[dict] = []
-    for device in devices:
-        identity = _device_bus_identity(device)
-        if identity is None or requested_bus_id not in identity:
-            continue
-        if len(identity) != 1:
-            return None
-        matches.append(device)
-    return matches[0] if len(matches) == 1 else None
+        return _select_q2_device(
+            devices,
+            requested_node=requested_node,
+            resolver=resolver,
+            requested_board_id=identity[0],
+            requested_bus_id=identity[1],
+        )
+    return _select_legacy_device(
+        devices, requested_node=requested_node, resolver=resolver
+    )
 
 
 def parse_telemetry(
@@ -922,6 +975,32 @@ def _sample_extended_loop(
         time.sleep(interval)
 
 
+def _trusted_output_roots() -> tuple[Path, ...]:
+    """Return output roots established by the host harness or test runner."""
+    roots = (
+        Path.cwd(),
+        Path(tempfile.gettempdir()),
+        Path("/out"),
+        Path(__file__).resolve().parents[3],
+    )
+    return tuple(root.resolve(strict=False) for root in roots)
+
+
+def _trusted_output_path(path: Path) -> Path:
+    """Resolve a CLI output path only when it stays in a trusted root."""
+    candidate = Path(path)
+    try:
+        resolved = candidate.resolve(strict=False)
+        if candidate.is_symlink():
+            raise ValueError("output path must not be a symbolic link")
+        trusted = _trusted_output_roots()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("output path cannot be resolved safely") from exc
+    if not any(resolved.is_relative_to(root) for root in trusted):
+        raise ValueError("output path must be beneath a trusted output directory")
+    return resolved
+
+
 def _sample_extended_forever(
     out_path: Path,
     interval: float,
@@ -929,7 +1008,8 @@ def _sample_extended_forever(
     board_id: str | None = None,
     bus_id: str | None = None,
 ) -> None:
-    with out_path.open("w", buffering=1) as handle:
+    safe_output_path = _trusted_output_path(out_path)
+    with safe_output_path.open("w", buffering=1) as handle:
         _sample_extended_loop(
             handle,
             interval,
@@ -973,6 +1053,11 @@ def main(argv: list[str] | None = None) -> None:
         # Zero turns the loop into a busy wait on the snapshot tool; negative
         # and non-finite values reach sleep and end the sampler outright.
         parser.error(f"--interval must be positive and finite, got {args.interval}")
+    if args.mode == "sample" and args.trace_schema == "extended-v1":
+        try:
+            args.out = _trusted_output_path(args.out)
+        except ValueError as exc:
+            parser.error(str(exc))
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "capture-env":
