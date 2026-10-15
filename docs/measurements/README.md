@@ -711,3 +711,9 @@ is not done.
 The reproducible board-free corpus audit classifies endpoint-only and
 intermediate AICLK traces, and separates exact covered intervals from CSV-span
 diagnostics. See [the generated Issue #122 audit](issue122-aiclk-audit.md).
+
+## Issue #127 confirmation run
+
+- `2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json` is the owner-reviewed confirmation run record.
+- `2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv` is its immutable power-trace companion.
+- The confirmation record validates execution and provenance only. It is explicitly excluded from the Issue #127 plan prediction and decision criteria; its reference deltas must not change the prediction, thresholds, or fixed run order.
