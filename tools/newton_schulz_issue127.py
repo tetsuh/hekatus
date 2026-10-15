@@ -53,8 +53,8 @@ from enodia.tt.bench.telemetry import _parse_trace_timestamp
 from tools import newton_schulz_issue88 as issue88
 
 ISSUE127_RUNNER = "tools/newton_schulz_issue127.py"
-ISSUE127_RECORD_SCHEMA = "issue127-abba-v1"
-ISSUE127_RAW_SCHEMA = "issue127-abba-raw-v1"
+ISSUE127_RECORD_SCHEMA = "issue127-abba-v2"
+ISSUE127_RAW_SCHEMA = "issue127-abba-raw-v2"
 DEVICE_ID = 0
 BATCH = 8192
 CONDITION_NUMBER = 100.0
@@ -64,14 +64,15 @@ NOMINAL_AICLK_MHZ = 1350.0
 STARTUP_HOLD_AICLK_MHZ = 800.0
 WARMUP_LAUNCHES = 4500
 RUN_TIMEOUT_SECONDS = 60.0
-ROW_DURATION_TARGET_MIN_SECONDS = 2.4
-ROW_DURATION_TARGET_MAX_SECONDS = 2.8
-ROW_DURATION_HARD_MAX_SECONDS = 3.0
 POWER_TRACE_POLL_TIMEOUT_SECONDS = 6.0
 POWER_TRACE_POLL_INTERVAL_SECONDS = 0.25
 POWER_TRACE_SNAPSHOT_PREFIX = "issue127-abba-power-snapshot"
 SAMPLER_INTERVAL_SECONDS = DEFAULT_SAMPLER_INTERVAL_SECONDS
 SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS = 2.24
+ROW_DURATION_MIN_SECONDS = SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS
+POWER_SAMPLES_PER_ROW_TARGET = 2
+RUN_BUDGET_INITIAL_OCCURRENCE_ESTIMATE_SECONDS = 6.0
+RUN_BUDGET_SETUP_MARGIN_SECONDS = 1.25
 
 # These names are intentionally the only comparison configurations in this
 # runner.  In particular, the rejected FP32-R/L32/R-in-L1 Issue #88 row is not
@@ -130,7 +131,7 @@ def comparison_rows() -> tuple[dict[str, Any], ...]:
 ISSUE127_COMPARISON_ROWS = comparison_rows()
 ISSUE127_ROW_NAMES = tuple(row["name"] for row in ISSUE127_COMPARISON_ROWS)
 ROW_BY_NAME = {row["name"]: row for row in ISSUE127_COMPARISON_ROWS}
-LAUNCHES_BY_SIZE = {16: 6500, 32: 4000}
+LAUNCHES_BY_SIZE = {16: 10000, 32: 5500}
 RUN_1_ORDER = (
     "bf16-r-L16",
     "fp32-r-L16",
@@ -213,8 +214,28 @@ _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
 _PCI_BDF_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _DEVICE_NODE_RE = re.compile(r"^/dev/tenstorrent/(?:[0-9]+|by-id/[A-Za-z0-9_.:-]+)$")
+_PATH_COMPONENT = r"[A-Za-z0-9._+@=-]+"
 _ABSOLUTE_PATH_RE = re.compile(
-    r"(?:^|(?<![A-Za-z0-9_]))(?:/[^\s,;\"'<>]+|~[^\s,;\"'<>]+|[A-Za-z]:[\\/][^\s,;\"'<>]+)"
+    rf"^(?:/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}|~/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}|"
+    rf"[A-Za-z]:[\\/](?:{_PATH_COMPONENT}[\\/])*{_PATH_COMPONENT})$"
+)
+_RECORD_PATH_FIELD_NAMES = frozenset(
+    {
+        "artifact_path",
+        "environment_path",
+        "file",
+        "path",
+        "power_trace",
+        "raw_path",
+        "result_file",
+        "result_path",
+        "source_file",
+        "source_path",
+        "trace",
+    }
+)
+_FORBIDDEN_RECORD_KEYS = frozenset(
+    {"hostname", "host_name", "worktree_path", "repository_path"}
 )
 _FORBIDDEN_ENV_KEY_PARTS = (
     "hostname",
@@ -351,21 +372,68 @@ def row_duration_guard(
     duration_seconds: float,
     row: Mapping[str, Any] | str,
 ) -> dict[str, Any]:
-    """Return the fixed 2.4--2.8 s target and hard overrun guard for one row."""
+    """Require a row to span more than one expected sampler interval.
+
+    Row duration is deliberately not capped: lower AICLK can make a valid row
+    longer. The run-level budget is the only upper bound.
+    """
     duration = float(duration_seconds)
     if not math.isfinite(duration) or duration <= 0.0:
         raise ValueError("timed row duration must be finite and positive")
     size = int((ROW_BY_NAME[row] if isinstance(row, str) else row)["size"])
+    above_sampler_gap = duration > ROW_DURATION_MIN_SECONDS
     return {
-        "target_seconds_min": ROW_DURATION_TARGET_MIN_SECONDS,
-        "target_seconds_max": ROW_DURATION_TARGET_MAX_SECONDS,
-        "hard_max_seconds": ROW_DURATION_HARD_MAX_SECONDS,
+        "target_seconds_min": ROW_DURATION_MIN_SECONDS,
+        "target_seconds_max": None,
+        "sampler_gap_seconds": SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS,
         "measured_seconds": duration,
         "launches_requested": launches_for_row(row),
         "size": size,
-        "within_target": ROW_DURATION_TARGET_MIN_SECONDS <= duration <= ROW_DURATION_TARGET_MAX_SECONDS,
-        "hard_max_pass": duration <= ROW_DURATION_HARD_MAX_SECONDS,
-        "passes": ROW_DURATION_TARGET_MIN_SECONDS <= duration <= ROW_DURATION_TARGET_MAX_SECONDS,
+        "above_sampler_gap": above_sampler_gap,
+        "within_target": above_sampler_gap,
+        "passes": above_sampler_gap,
+    }
+
+
+def project_run_budget(
+    elapsed_seconds: float,
+    completed_rows: Sequence[Mapping[str, Any]],
+    remaining_occurrences: int,
+) -> dict[str, Any]:
+    """Project completion before starting the next fixed-work occurrence."""
+    elapsed = float(elapsed_seconds)
+    remaining = int(remaining_occurrences)
+    if not math.isfinite(elapsed) or elapsed < 0.0:
+        raise ValueError("run budget elapsed time must be finite and non-negative")
+    if remaining < 0:
+        raise ValueError("run budget remaining occurrence count must be non-negative")
+    durations = []
+    for row in completed_rows:
+        value = row.get("timed_duration_seconds")
+        if value is None:
+            continue
+        duration = float(value)
+        if math.isfinite(duration) and duration > 0.0:
+            durations.append(duration)
+    observed_max = max(durations, default=0.0)
+    estimated_occurrence = max(
+        RUN_BUDGET_INITIAL_OCCURRENCE_ESTIMATE_SECONDS,
+        observed_max + RUN_BUDGET_SETUP_MARGIN_SECONDS,
+    )
+    projected_total = elapsed + remaining * estimated_occurrence
+    return {
+        "elapsed_seconds": elapsed,
+        "completed_occurrences": len(completed_rows),
+        "remaining_occurrences": remaining,
+        "observed_timed_duration_max_seconds": observed_max or None,
+        "estimated_seconds_per_remaining_occurrence": estimated_occurrence,
+        "projected_total_seconds": projected_total,
+        "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
+        "within_budget": projected_total <= RUN_TIMEOUT_SECONDS,
+        "estimation_policy": (
+            "max(initial fixed estimate, observed maximum timed row plus setup margin); "
+            "launch counts remain fixed per occurrence"
+        ),
     }
 
 
@@ -903,7 +971,7 @@ def _run_occurrence(
         )
         result["status"] = "ok" if result["duration_guard"]["passes"] else "failed"
         if result["status"] != "ok":
-            result["failure"] = "timed row duration missed the 2.4-2.8 second target"
+            result["failure"] = "timed row duration did not exceed the sampler gap"
     except Exception as exc:  # noqa: BLE001 - preserve a row-local board failure
         result["failure"] = {
             "type": type(exc).__name__,
@@ -1007,8 +1075,30 @@ def run_comparison(
         utc_now_fn=now_utc,
     )
     occurrences: list[dict[str, Any]] = []
+    budget_projections: list[dict[str, Any]] = []
     stopped_on_failure = False
+    budget_failure: dict[str, Any] | None = None
     for occurrence in plan:
+        projection = project_run_budget(
+            time_fn() - start_monotonic,
+            occurrences,
+            len(plan) - len(occurrences),
+        )
+        projection["next_order_index"] = occurrence["order_index"]
+        projection["next_occurrence_id"] = occurrence["occurrence_id"]
+        budget_projections.append(projection)
+        if not projection["within_budget"]:
+            budget_failure = {
+                "type": "TimeoutError",
+                "message": (
+                    "Issue #127 projected run completion exceeds the 60-second budget "
+                    f"before occurrence {occurrence['occurrence_id']}"
+                ),
+                "order_index": occurrence["order_index"],
+                "projection": projection,
+            }
+            stopped_on_failure = True
+            break
         config = ROW_BY_NAME[occurrence["row"]]
         matrices, _reference = _prepare_inputs(
             config,
@@ -1033,6 +1123,17 @@ def run_comparison(
             stopped_on_failure = True
             break
     end_monotonic = time_fn()
+    run_budget = {
+        "policy": (
+            "Project the fixed eight-occurrence run before each occurrence and stop "
+            "before launch when the projection exceeds 60 seconds."
+        ),
+        "projections": budget_projections,
+        "stopped_before_occurrence": (
+            budget_failure["order_index"] if budget_failure is not None else None
+        ),
+        "failure": budget_failure,
+    }
     return {
         "status": "pass"
         if len(occurrences) == len(plan)
@@ -1045,6 +1146,8 @@ def run_comparison(
         "occurrences_requested": len(plan),
         "occurrences_completed": len(occurrences),
         "stopped_on_failure": stopped_on_failure,
+        "failure": budget_failure,
+        "run_budget": run_budget,
         "run_start_monotonic": start_monotonic,
         "run_end_monotonic": end_monotonic,
         "run_duration_seconds": end_monotonic - start_monotonic,
@@ -1112,6 +1215,9 @@ def apply_final_trace_facts(
                 "trace_sha256": power_trace.get("sha256"),
                 "requested_sampler_interval_seconds": SAMPLER_INTERVAL_SECONDS,
                 "coverage_definition": EXPLICIT_FINAL_SAMPLE,
+                "power_sample_count_in_interval": 0,
+                "power_sample_target": POWER_SAMPLES_PER_ROW_TARGET,
+                "power_sample_target_met": False,
             }
             row["adjusted_p50_tflops"] = None
         return
@@ -1132,6 +1238,10 @@ def apply_final_trace_facts(
                 "coverage_definition": power_trace.get("coverage_definition"),
                 "trace_coverage_complete": power_trace.get("coverage_complete") is True,
                 "immutable_snapshot": power_trace.get("immutable_snapshot") is True,
+                "power_sample_count_in_interval": len(facts.get("segments", [])),
+                "power_sample_target": POWER_SAMPLES_PER_ROW_TARGET,
+                "power_sample_target_met": len(facts.get("segments", []))
+                >= POWER_SAMPLES_PER_ROW_TARGET,
             }
         )
         row["aiclk_interval"] = facts
@@ -1335,116 +1445,132 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-_REDACTABLE_RECORD_TEXT_KEYS = frozenset(
-    {
-        "cleanup_error",
-        "cleanup_failures",
-        "detail",
-        "details",
-        "diagnostic",
-        "error",
-        "errors",
-        "exception",
-        "failure",
-        "failures",
-        "file",
-        "message",
-        "poll_error",
-        "power_trace",
-        "reason",
-        "source_file",
-        "stderr",
-        "stdout",
-        "trace",
-        "traceback",
-    }
-)
-_PUBLIC_RECORD_CONTEXT_KEYS = frozenset(
-    {
-        "algorithm",
-        "cleanup",
-        "comparison_rows",
-        "comparison_summary",
-        "correctness",
-        "cooldown",
-        "device_close",
-        "environment",
-        "failure",
-        "input_generation",
-        "input_fingerprint",
-        "power_clock_provenance",
-        "power_trace",
-        "power_trace_facts",
-        "power_trace_provenance",
-        "preflight",
-        "provenance",
-        "raw_artifact",
-        "reference_fingerprint",
-        "run",
-        "run_timing",
-        "status_components",
-        "warmup",
-        "warmup_hold_gate",
-    }
-)
+def _record_field_path(path: tuple[str, ...]) -> str:
+    """Render a stable field path without exposing any value."""
+    return ".".join(path) if path else "<record>"
 
 
-def _redact_record_metadata(
-    value: Any, *, key: str | None = None, public_context: bool = False
+def _is_whole_absolute_path(value: str) -> bool:
+    """Recognize path-shaped strings without scanning formulas or prose."""
+    return bool(_ABSOLUTE_PATH_RE.fullmatch(value))
+
+
+def _is_known_path_field(key: str | None) -> bool:
+    return isinstance(key, str) and key.lower() in _RECORD_PATH_FIELD_NAMES
+
+
+def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, str]]:
+    """Return a safe basename replacement and an audit fact for a path field."""
+    key = field_path.rsplit(".", 1)[-1]
+    if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
+        return value, {}
+    if not _is_whole_absolute_path(value):
+        return value, {}
+    basename = Path(value).name
+    if not _SAFE_BASENAME_RE.fullmatch(basename):
+        raise ValueError(
+            f"Issue #127 record contains an unsafe path in field {field_path}"
+        )
+    return basename, {
+        "field": field_path,
+        "replacement": basename,
+        "reason": "absolute path replaced by harness-relative basename",
+    }
+
+
+def _normalize_record_paths(
+    value: Any,
+    *,
+    path: tuple[str, ...] = (),
+    replacements: list[dict[str, str]],
 ) -> Any:
-    """Redact paths in known public record contexts, including unknown children."""
+    """Copy records while changing only explicitly known artifact path fields."""
     if isinstance(value, Mapping):
-        return {
-            child_key: _redact_record_metadata(
+        normalized: dict[str, Any] = {}
+        for key, child_value in value.items():
+            if not isinstance(key, str):
+                raise TypeError("Issue #127 record has a non-string key")
+            child_path = (*path, key)
+            if key.lower() in _FORBIDDEN_RECORD_KEYS:
+                raise ValueError(
+                    f"Issue #127 record must not retain host identity field "
+                    f"{_record_field_path(child_path)}"
+                )
+            normalized[key] = _normalize_record_paths(
                 child_value,
-                key=child_key,
-                public_context=public_context or child_key in _PUBLIC_RECORD_CONTEXT_KEYS,
+                path=child_path,
+                replacements=replacements,
             )
-            for child_key, child_value in value.items()
-        }
+        return normalized
     if isinstance(value, (list, tuple)):
         return [
-            _redact_record_metadata(item, key=key, public_context=public_context)
-            for item in value
+            _normalize_record_paths(
+                item,
+                path=(*path, f"[{index}]"),
+                replacements=replacements,
+            )
+            for index, item in enumerate(value)
         ]
-    if isinstance(value, str) and (
-        public_context or key in _REDACTABLE_RECORD_TEXT_KEYS
-    ):
+    if isinstance(value, str):
+        field_path = _record_field_path(path)
+        key = path[-1] if path else None
         if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
             return value
-        return _ABSOLUTE_PATH_RE.sub("<redacted-path>", value)
+        if _is_known_path_field(key):
+            replacement, audit = _replace_known_path(value, field_path=field_path)
+            if audit:
+                replacements.append(audit)
+            return replacement
+        if _is_whole_absolute_path(value):
+            raise ValueError(
+                f"Issue #127 record contains an unsafe absolute path in field {field_path}"
+            )
+        return value
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("Issue #127 record contains a non-finite number")
     return value
 
 
-def _record_string_is_safe(value: str, *, key: str | None = None) -> bool:
-    if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
-        return True
-    if _ABSOLUTE_PATH_RE.search(value):
-        return False
-    return not any(part in value.lower() for part in ("/home/", "/workspace/", "worktree"))
-
-
-def _validate_record_safety(value: Any, *, key: str | None = None) -> None:
+def _validate_record_safety(value: Any, *, path: tuple[str, ...] = ()) -> None:
     if isinstance(value, Mapping):
         for child_key, child_value in value.items():
             if not isinstance(child_key, str):
                 raise TypeError("Issue #127 record has a non-string key")
-            if child_key.lower() in {"hostname", "host_name", "worktree_path", "repository_path"}:
-                raise ValueError("Issue #127 record must not retain host identity or worktree paths")
-            _validate_record_safety(child_value, key=child_key)
+            child_path = (*path, child_key)
+            if child_key.lower() in _FORBIDDEN_RECORD_KEYS:
+                raise ValueError(
+                    f"Issue #127 record must not retain host identity field "
+                    f"{_record_field_path(child_path)}"
+                )
+            _validate_record_safety(child_value, path=child_path)
     elif isinstance(value, (list, tuple)):
-        for item in value:
-            _validate_record_safety(item, key=key)
-    elif isinstance(value, str) and not _record_string_is_safe(value, key=key):
-        raise ValueError("Issue #127 record contains an unsafe absolute path")
+        for index, item in enumerate(value):
+            _validate_record_safety(item, path=(*path, f"[{index}]"))
+    elif isinstance(value, str):
+        key = path[-1] if path else None
+        if key == "device_node" and _DEVICE_NODE_RE.fullmatch(value):
+            return
+        if _is_whole_absolute_path(value):
+            raise ValueError(
+                f"Issue #127 record contains an unsafe absolute path in field "
+                f"{_record_field_path(path)}"
+            )
     elif isinstance(value, float) and not math.isfinite(value):
         raise ValueError("Issue #127 record contains a non-finite number")
 
 
 def _serialize_record(payload: Mapping[str, Any]) -> str:
-    redacted_payload = _redact_record_metadata(payload)
-    _validate_record_safety(redacted_payload)
-    serialized = strict_json_dumps(dict(redacted_payload), indent=2)
+    replacements: list[dict[str, str]] = []
+    normalized = _normalize_record_paths(payload, replacements=replacements)
+    if not isinstance(normalized, dict):
+        raise TypeError("Issue #127 record must be an object")
+    if replacements:
+        normalized["record_safety"] = {
+            "path_policy": "whole-string paths and known artifact path fields only",
+            "path_replacements": replacements,
+        }
+    _validate_record_safety(normalized)
+    serialized = strict_json_dumps(normalized, indent=2)
     decoded = json.loads(serialized)
     _validate_record_safety(decoded)
     return serialized
@@ -1508,6 +1634,7 @@ def build_record(
         "runner": ISSUE127_RUNNER,
         "run_id": run_id,
         "run_number": run_number,
+        "failure": run.get("failure"),
         "device_close_failed": close_failed,
         "captured_at": run_start_utc,
         "run_start": run_start_utc,
@@ -1549,6 +1676,7 @@ def build_record(
             "run_timeout_seconds": RUN_TIMEOUT_SECONDS,
             "under_60_seconds": run.get("run_under_60_seconds"),
         },
+        "run_budget": run.get("run_budget"),
         "sampler_decision": sampler,
         "power_trace": trace,
         "power_trace_provenance": {

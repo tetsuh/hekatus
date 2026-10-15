@@ -118,17 +118,78 @@ def test_issue127_orders_and_occurrence_balance_are_fixed():
 
 
 def test_issue127_launch_counts_and_duration_guard_are_explicit():
-    assert runner.launches_for_row("bf16-r-L16") == 6500
-    assert runner.launches_for_row("fp32-r-L16") == 6500
-    assert runner.launches_for_row("bf16-r-L32-r-dram") == 4000
-    assert runner.launches_for_row("fp32-r-L32-r-dram") == 4000
+    assert runner.launches_for_row("bf16-r-L16") == 10000
+    assert runner.launches_for_row("fp32-r-L16") == 10000
+    assert runner.launches_for_row("bf16-r-L32-r-dram") == 5500
+    assert runner.launches_for_row("fp32-r-L32-r-dram") == 5500
 
     passing = runner.row_duration_guard(2.7, "bf16-r-L16")
     assert passing["passes"] is True
     assert passing["within_target"] is True
-    assert runner.row_duration_guard(3.1, "bf16-r-L16")["hard_max_pass"] is False
-    assert runner.row_duration_guard(2.5, "bf16-r-L16")["passes"] is True
-    assert runner.row_duration_guard(2.3, "bf16-r-L16")["passes"] is False
+    assert passing["target_seconds_max"] is None
+    assert "hard_max_pass" not in passing
+    assert runner.row_duration_guard(3.123, "bf16-r-L32-r-dram")["passes"] is True
+    assert runner.row_duration_guard(2.3, "bf16-r-L16")["passes"] is True
+    assert runner.row_duration_guard(2.24, "bf16-r-L16")["passes"] is False
+
+
+def test_issue127_run_budget_projection_stops_before_projected_overrun():
+    within = runner.project_run_budget(
+        12.0,
+        [{"timed_duration_seconds": 4.2}],
+        remaining_occurrences=7,
+    )
+    assert within["within_budget"] is True
+    assert within["estimated_seconds_per_remaining_occurrence"] == pytest.approx(6.0)
+
+    over = runner.project_run_budget(
+        25.0,
+        [{"timed_duration_seconds": 7.0}],
+        remaining_occurrences=6,
+    )
+    assert over["within_budget"] is False
+    assert over["projected_total_seconds"] > runner.RUN_TIMEOUT_SECONDS
+
+
+def test_issue127_run_comparison_stops_before_projected_next_occurrence(monkeypatch):
+    clock_values = iter((0.0, 0.0, 10.0, 10.0))
+    occurrence_calls = []
+
+    monkeypatch.setattr(
+        runner,
+        "_prepare_inputs",
+        lambda *args, **kwargs: (object(), {}),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_sustained_warmup",
+        lambda *args, **kwargs: {"end_utc": "2026-10-12T00:00:00+00:00"},
+    )
+
+    def fake_occurrence(*args, **kwargs):
+        occurrence = args[4]
+        occurrence_calls.append(occurrence["order_index"])
+        return {
+            **occurrence,
+            "status": "ok",
+            "timed_duration_seconds": 7.0,
+        }
+
+    monkeypatch.setattr(runner, "_run_occurrence", fake_occurrence)
+    result = runner.run_comparison(
+        object(),
+        object(),
+        run_number=1,
+        run_id="run127-test",
+        time_fn=lambda: next(clock_values),
+        kernel_class=object,
+    )
+
+    assert occurrence_calls == [0]
+    assert result["status"] == "failed"
+    assert result["occurrences_completed"] == 1
+    assert result["run_budget"]["stopped_before_occurrence"] == 1
+    assert result["failure"]["order_index"] == 1
 
 
 def test_issue127_timed_bounds_and_adjusted_p50_formula():
@@ -211,6 +272,8 @@ def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
     assert row["row_time_weighted_aiclk_mhz"] == pytest.approx(1275.0)
     assert row["adjusted_p50_tflops"] == pytest.approx(16.0 * 1350.0 / 1275.0)
     assert row["aiclk_interval"]["requested_sampler_interval_seconds"] == 2.0
+    assert row["aiclk_interval"]["power_sample_count_in_interval"] == 2
+    assert row["aiclk_interval"]["power_sample_target_met"] is True
 
 
 def test_issue127_final_trace_waits_for_sample_after_run_end(tmp_path: Path):
@@ -396,34 +459,73 @@ def test_issue127_close_failure_cannot_produce_pass_record():
     assert record["device_close_failed"] is True
 
 
-def test_issue127_serialization_redacts_paths_in_public_failure_text_only():
+def test_issue127_serialization_replaces_known_path_fields_and_audits_fields():
     serialized = runner._serialize_record(
         {
             "failure": {
-                "message": "kernel failed at /home/private/worktree/file.cpp:12",
-                "trace": "/tmp/private-trace.csv",
+                "message": "the expression /abs(response_at_look) is explanatory prose",
+            },
+            "power_trace": {
+                "source_file": "/tmp/private-trace.csv",
             },
             "device_node": "/dev/tenstorrent/1",
         }
     )
-    assert "<redacted-path>" in serialized
-    assert "/home/private/worktree" not in serialized
+    decoded = json.loads(serialized)
+    assert decoded["failure"]["message"] == (
+        "the expression /abs(response_at_look) is explanatory prose"
+    )
+    assert decoded["power_trace"]["source_file"] == "private-trace.csv"
+    assert decoded["record_safety"]["path_replacements"] == [
+        {
+            "field": "power_trace.source_file",
+            "replacement": "private-trace.csv",
+            "reason": "absolute path replaced by harness-relative basename",
+        }
+    ]
     assert "/tmp/private-trace.csv" not in serialized
     assert "/dev/tenstorrent/1" in serialized
 
 
-def test_issue127_serialization_redacts_unknown_nested_public_context_keys():
-    serialized = runner._serialize_record(
-        {
-            "failure": {"details": {"path": "/home/private/failure.log"}},
-            "correctness": {"diagnostics": {"location": "/tmp/private/correctness.json"}},
-            "environment": {"device_node": "/dev/tenstorrent/1"},
-        }
+def test_issue127_serialization_rejects_unknown_absolute_path_with_field():
+    with pytest.raises(ValueError, match=r"field failure\.location"):
+        runner._serialize_record({"failure": {"location": "/tmp/private.json"}})
+
+
+def test_issue127_formula_is_byte_identical_to_issue88_and_slash_is_not_a_path():
+    issue88_record = json.loads(
+        (ROOT / "docs/measurements/2026-10-10-p150a-newton-schulz-issue88-fp32-r-final-runner-retake.json").read_text(
+            encoding="utf-8"
+        )
     )
-    assert serialized.count("<redacted-path>") == 2
-    assert "/home/private/failure.log" not in serialized
-    assert "/tmp/private/correctness.json" not in serialized
-    assert "/dev/tenstorrent/1" in serialized
+    expected = (
+        "20*log10(max(abs(response)/abs(response_at_look), 10**(floor_db/20)))"
+    )
+    definitions = []
+
+    def collect(value):
+        if isinstance(value, dict):
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+        elif isinstance(value, str) and expected in value:
+            definitions.append(value)
+
+    collect(issue88_record)
+    assert definitions
+    reference_definition = definitions[0]
+    assert all(definition == reference_definition for definition in definitions)
+    assert reference_definition.split(";", 1)[0] == expected
+    serialized = runner._serialize_record(
+        {"correctness": {"definition": reference_definition, "text": "/abs("}}
+    )
+    decoded = json.loads(serialized)
+    assert decoded["correctness"]["definition"].encode("utf-8") == reference_definition.encode(
+        "utf-8"
+    )
+    assert decoded["correctness"]["text"] == "/abs("
 
 
 def test_issue127_environment_is_complete_but_does_not_retain_host_identity_or_worktree():
@@ -459,8 +561,22 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
     assert tuple(plan["run_orders"]["run_2"]) == runner.RUN_2_ORDER
     assert plan["sampler_decision"]["requested_interval_seconds"] == 2.0
     assert plan["sampler_decision"]["shortened_interval"] is False
+    assert {
+        row["name"]: row["launches_per_occurrence"]
+        for row in plan["comparison_configurations"]
+    } == {
+        "bf16-r-L16": 10000,
+        "fp32-r-L16": 10000,
+        "bf16-r-L32-r-dram": 5500,
+        "fp32-r-L32-r-dram": 5500,
+    }
     assert plan["timing_protocol"]["startup_warmup"]["launches"] == 4500
-    assert plan["timing_protocol"]["row_duration_target_seconds"] == [2.4, 2.8]
+    assert plan["timing_protocol"]["row_duration_target_seconds"] == [2.24, None]
+    assert plan["timing_protocol"]["power_samples_per_row_target"] == 2
+    assert plan["revision_history"][-1]["selected_launches_per_occurrence"] == {
+        "L16": 10000,
+        "L32": 5500,
+    }
     assert plan["predicted_aiclk_ranges_mhz"]["basis"].endswith("predictions, not measured results.")
     for run_number, key in ((1, "run_1"), (2, "run_2")):
         planned = runner.build_occurrence_plan(run_number)
