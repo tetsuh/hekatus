@@ -1204,6 +1204,37 @@ def test_run_workload_persists_raw_bytes_and_stream_metadata(
     assert result["stderr_tail"] == "failed diagnostic\r\n"
 
 
+def test_workload_keyboard_interrupt_cleans_process_group_once_and_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProcess:
+        pid = 123
+
+        def communicate(self, *, timeout: float) -> tuple[None, None]:
+            raise KeyboardInterrupt
+
+    process = FakeProcess()
+    cleanup_calls: list[object] = []
+
+    def fake_popen(*_args: object, **kwargs: object) -> FakeProcess:
+        assert kwargs["start_new_session"] is True
+        return process
+
+    def fake_cleanup(cleanup_process: object, **_kwargs: object) -> tuple[None, None]:
+        cleanup_calls.append(cleanup_process)
+        return None, None
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(runner, "_cleanup_workload_process_group", fake_cleanup)
+
+    with pytest.raises(KeyboardInterrupt):
+        runner._run_workload_process(
+            ("fixture-runner",), {}, repo_root=Path("."), stdout=None, stderr=None
+        )
+
+    assert cleanup_calls == [process]
+
+
 def test_run_workload_timeout_keeps_available_output_in_raw_logs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1300,6 +1331,86 @@ def test_workload_start_errors_close_logs_and_preserve_error_status(
     assert result["stderr_tail"] == ""
     assert result["local_diagnostics"]["stdout"]["status"] == "saved"
     assert result["local_diagnostics"]["stderr"]["status"] == "saved"
+
+
+def test_run_one_keyboard_interrupt_stops_sampler_before_trace_closes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class FakeEvent:
+        def __init__(self) -> None:
+            self.set_calls = 0
+
+        def set(self) -> None:
+            self.set_calls += 1
+
+    class FakeThread:
+        def __init__(self, **_kwargs: object) -> None:
+            self.started = False
+            self.join_timeouts: list[float] = []
+            threads.append(self)
+
+        def start(self) -> None:
+            self.started = True
+
+        def join(self, *, timeout: float) -> None:
+            self.join_timeouts.append(timeout)
+
+        def is_alive(self) -> bool:
+            return False
+
+    events: list[FakeEvent] = []
+    threads: list[FakeThread] = []
+
+    def fake_event() -> FakeEvent:
+        event = FakeEvent()
+        events.append(event)
+        return event
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        assert stage == "pre_run"
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": 0,
+            "timestamp_monotonic_ns": 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    def cancelled_workload(*_args: object) -> dict[str, object]:
+        assert threads[0].started
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(runner.threading, "Event", fake_event)
+    monkeypatch.setattr(runner.threading, "Thread", FakeThread)
+
+    with pytest.raises(KeyboardInterrupt):
+        runner.run_one(
+            tmp_path,
+            run_id="q2-run-cancelled",
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+            image_digest="sha256:" + "a" * 64,
+            harness_commit="b" * 40,
+            kernel="Linux fixture",
+            kernel_driver_version="2.11.0",
+            workload_runner=cancelled_workload,
+            capture_fn=fake_capture,
+        )
+
+    assert len(events) == 1
+    assert events[0].set_calls == 1
+    assert len(threads) == 1
+    assert threads[0].join_timeouts == [
+        runner.SNAPSHOT_TIMEOUT_SECONDS + runner.SAMPLER_SHUTDOWN_MARGIN_SECONDS
+    ]
 
 
 def test_run_one_failed_path_output_is_local_only_and_record_survives(tmp_path: Path) -> None:

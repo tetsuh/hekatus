@@ -1545,6 +1545,9 @@ def _run_workload_process(
                 command_tuple, None, captured_stdout, captured_stderr
             ),
         )
+    except BaseException:
+        _cleanup_workload_process_group(process)
+        raise
 
     if _workload_process_group_exists(process):
         captured_stdout, captured_stderr = _cleanup_workload_process_group(
@@ -2168,27 +2171,33 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
             daemon=True,
         )
         sampler_thread.start()
-        workload_start_ns = monotonic_ns()
-        if workload_runner is None:
-            workload_result = _run_workload(
-                command,
-                workload_environment,
-                repo_root=Path(__file__).resolve().parents[1],
-                output_dir=safe_output_dir,
+        try:
+            workload_start_ns = monotonic_ns()
+            if workload_runner is None:
+                workload_result = _run_workload(
+                    command,
+                    workload_environment,
+                    repo_root=Path(__file__).resolve().parents[1],
+                    output_dir=safe_output_dir,
+                )
+            else:
+                callback_result = workload_runner(
+                    command, workload_environment, RUN_GUARD_SECONDS
+                )
+                workload_result = _normalize_workload_result(callback_result)
+                workload_result.update(
+                    _persist_workload_streams(safe_output_dir, callback_result)
+                )
+            workload_end_ns = monotonic_ns()
+        finally:
+            stop_event.set()
+            # Let an in-flight snapshot consume its full command timeout before
+            # closing the trace, with a bounded margin for stop/wake scheduling.
+            sampler_thread.join(
+                timeout=SNAPSHOT_TIMEOUT_SECONDS + SAMPLER_SHUTDOWN_MARGIN_SECONDS
             )
-        else:
-            callback_result = workload_runner(command, workload_environment, RUN_GUARD_SECONDS)
-            workload_result = _normalize_workload_result(callback_result)
-            workload_result.update(_persist_workload_streams(safe_output_dir, callback_result))
-        workload_end_ns = monotonic_ns()
-        stop_event.set()
-        # Let an in-flight snapshot consume its full command timeout before
-        # closing the trace, with a bounded margin for stop/wake scheduling.
-        sampler_thread.join(
-            timeout=SNAPSHOT_TIMEOUT_SECONDS + SAMPLER_SHUTDOWN_MARGIN_SECONDS
-        )
-        if sampler_thread.is_alive():
-            sampler_errors.append("extended sampler did not stop within its bounded join")
+            if sampler_thread.is_alive():
+                sampler_errors.append("extended sampler did not stop within its bounded join")
         post_capture = capture(stage="post_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
         post_row = _write_boundary_extended_row(
             trace_handle,
