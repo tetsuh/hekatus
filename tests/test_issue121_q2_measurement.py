@@ -971,6 +971,60 @@ def test_workload_command_pins_host_node_and_visible_device_zero() -> None:
     assert "/home/" not in " ".join(command)
 
 
+def test_run_one_binds_relative_output_to_the_caller_resolved_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    caller_cwd = tmp_path / "caller-cwd"
+    caller_cwd.mkdir()
+    monkeypatch.chdir(caller_cwd)
+    relative_output = Path("relative-output/run")
+    resolved_output = (caller_cwd / relative_output).resolve()
+    capture_counter = itertools.count()
+    workload_commands: list[tuple[str, ...]] = []
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        timestamp = next(capture_counter) * 1_000_000
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": timestamp,
+            "timestamp_monotonic_ns": timestamp + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    def fake_workload(command: tuple[str, ...], *_args: object) -> dict[str, object]:
+        workload_commands.append(command)
+        return {"returncode": 0, "status": "completed", "timed_out": False}
+
+    record = runner.run_one(
+        relative_output,
+        run_id="q2-run-relative-output",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=fake_workload,
+        capture_fn=fake_capture,
+        trace_interval_seconds=100.0,
+    )
+
+    assert len(workload_commands) == 1
+    assert workload_commands[0][1] == str(resolved_output)
+    assert resolved_output.is_dir()
+    assert (resolved_output / record["output_paths"]["calibration"]).is_file()
+    assert (resolved_output / record["output_paths"]["record"]).is_file()
+
+
 @pytest.mark.parametrize("invalid_device_id", [1, -1, 2])
 def test_workload_command_rejects_nonzero_container_visible_device(
     invalid_device_id: int,
@@ -1748,6 +1802,89 @@ def test_run_one_waits_for_a_bounded_in_flight_capture_before_post_row(
     assert record["trace"]["sampler_errors"] == []
     assert record["trace"]["usable_in_run_row_count"] == 1
     assert record["trace"]["post_row_written"] is True
+
+
+def test_run_one_revokes_a_late_sampler_before_trace_finalization(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "SNAPSHOT_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(runner, "SAMPLER_SHUTDOWN_MARGIN_SECONDS", 0.01)
+    capture_number = itertools.count()
+    in_run_started = threading.Event()
+    release_in_run = threading.Event()
+    in_run_returned = threading.Event()
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        if stage == "in_run":
+            in_run_started.set()
+            release_in_run.wait()
+            in_run_returned.set()
+        timestamp = next(capture_number) * 1_000_000
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": timestamp,
+            "timestamp_monotonic_ns": timestamp + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    def successful_workload(*_args: object) -> dict[str, object]:
+        assert in_run_started.wait(timeout=1.0)
+        return {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    try:
+        record = runner.run_one(
+            tmp_path,
+            run_id="q2-run-late-sampler",
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+            image_digest="sha256:" + "a" * 64,
+            harness_commit="b" * 40,
+            kernel="Linux fixture",
+            kernel_driver_version="2.11.0",
+            workload_runner=successful_workload,
+            capture_fn=fake_capture,
+            trace_interval_seconds=0.001,
+        )
+        assert not in_run_returned.is_set()
+        trace_before_release = (
+            tmp_path / record["output_paths"]["extended_trace"]
+        ).read_bytes()
+        captures_before_release = copy.deepcopy(record["trace"]["in_run_captures"])
+        errors_before_release = list(record["trace"]["sampler_errors"])
+        usable_rows_before_release = record["trace"]["usable_in_run_row_count"]
+    finally:
+        release_in_run.set()
+
+    assert in_run_returned.wait(timeout=1.0)
+    # The callback returns after revocation; it must not publish into the closed
+    # trace or mutate the lists that the record copied during finalization.
+    threading.Event().wait(0.02)
+    assert (
+        tmp_path / record["output_paths"]["extended_trace"]
+    ).read_bytes() == trace_before_release
+    assert record["trace"]["in_run_captures"] == captures_before_release == []
+    assert record["trace"]["sampler_errors"] == errors_before_release
+    assert record["trace"]["usable_in_run_row_count"] == usable_rows_before_release == 0
+    assert record["trace"]["post_row_written"] is True
+    assert any(
+        "did not stop within its bounded join" in error for error in errors_before_release
+    )
+    assert all("closed" not in error.casefold() for error in errors_before_release)
 
 
 def test_run_one_keeps_an_in_run_timeout_as_failed(tmp_path: Path) -> None:
