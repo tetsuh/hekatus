@@ -9,6 +9,7 @@ pre-run, in-run, and post-run snapshots all use one bounded subprocess path.
 from __future__ import annotations
 
 import argparse
+import codecs
 import datetime
 import hashlib
 import json
@@ -18,6 +19,7 @@ import re
 import subprocess
 import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -49,6 +51,9 @@ RUN_DURATION_SECONDS = 285.0
 RUN_GUARD_SECONDS = 330.0
 WORKLOAD_OUTPUT_TAIL_LINES = 40
 WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
+WORKLOAD_STDOUT_LOG_NAME = "workload-stdout.log"
+WORKLOAD_STDERR_LOG_NAME = "workload-stderr.log"
+WORKLOAD_LOG_CHUNK_BYTES = 64 * 1024
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 TRACE_INTERVAL_SECONDS = 2.0
@@ -764,6 +769,63 @@ def _build_environment(
     }
 
 
+_WORKLOAD_LINE_ENDINGS = frozenset(
+    {"\n", "\r", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"}
+)
+
+
+class _WorkloadTailCollector:
+    """Collect the existing bounded text-tail contract without buffering a log."""
+
+    def __init__(self) -> None:
+        self._decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self._lines: deque[str] = deque(maxlen=WORKLOAD_OUTPUT_TAIL_LINES)
+        self._pending = ""
+
+    def feed(self, payload: bytes) -> None:
+        self._consume(self._decoder.decode(payload, final=False))
+
+    def finish(self) -> str:
+        self._consume(self._decoder.decode(b"", final=True))
+        if self._pending:
+            self._lines.append(self._pending[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:])
+            self._pending = ""
+        tail = "".join(self._lines)
+        return tail[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:]
+
+    def _consume(self, text: str) -> None:
+        if not text:
+            return
+        self._pending += text
+        parts = self._pending.splitlines(keepends=True)
+        if parts and parts[-1][-1:] not in _WORKLOAD_LINE_ENDINGS:
+            self._pending = parts.pop()
+        else:
+            self._pending = ""
+        for line in parts:
+            self._lines.append(line[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:])
+        if len(self._pending) > WORKLOAD_OUTPUT_TAIL_MAX_CHARS:
+            self._pending = self._pending[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:]
+
+
+class _WorkloadPathDetector:
+    """Find host-specific path text while reading a raw log in chunks."""
+
+    def __init__(self) -> None:
+        self.detected = False
+        self._context = ""
+
+    def feed(self, payload: bytes) -> None:
+        if self.detected:
+            return
+        text = payload.decode("utf-8", errors="replace")
+        candidate = self._context + text
+        if _FORBIDDEN_PATH_TEXT.search(candidate):
+            self.detected = True
+            return
+        self._context = candidate[-128:]
+
+
 def _bounded_workload_output_tail(value: Any) -> tuple[str | None, str | None]:
     """Return a bounded output tail unless it contains a host-specific path."""
     text = _stdout_text(value)
@@ -822,38 +884,241 @@ def _normalize_workload_result(result: Any) -> dict[str, Any]:
     return normalized
 
 
-def _run_workload(
-    command: Sequence[str], environment: Mapping[str, str], *, repo_root: Path
+def _workload_stream_bytes(value: Any) -> bytes | None:
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, str):
+        return value.encode("utf-8")
+    if value is None:
+        return b""
+    return None
+
+
+def _stream_value(result: Any, stream: str) -> tuple[Any, bool]:
+    if isinstance(result, Mapping):
+        if stream in result:
+            return result[stream], True
+        return None, False
+    value = getattr(result, stream, None)
+    return value, hasattr(result, stream)
+
+
+def _write_workload_log(path: Path, payload: bytes) -> str:
+    """Write bytes in bounded chunks; return a record-safe write status."""
+    try:
+        with path.open("wb") as handle:
+            for offset in range(0, len(payload), WORKLOAD_LOG_CHUNK_BYTES):
+                handle.write(payload[offset : offset + WORKLOAD_LOG_CHUNK_BYTES])
+    except (OSError, TypeError, ValueError):
+        return "write_failed"
+    return "saved"
+
+
+def _inspect_workload_log(
+    path: Path, *, write_status: str
+) -> tuple[dict[str, Any], str | None, str | None]:
+    """Hash and tail a local log without putting its contents in the record."""
+    metadata = {
+        "path": path.name,
+        "byte_count": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+        "status": write_status,
+    }
+    if write_status not in {"saved", "write_failed"}:
+        return metadata, "", None
+
+    digest = hashlib.sha256()
+    byte_count = 0
+    tail_collector = _WorkloadTailCollector()
+    path_detector = _WorkloadPathDetector()
+    read_ok = False
+    try:
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(WORKLOAD_LOG_CHUNK_BYTES)
+                if not chunk:
+                    break
+                byte_count += len(chunk)
+                digest.update(chunk)
+                tail_collector.feed(chunk)
+                path_detector.feed(chunk)
+        read_ok = True
+    except (OSError, TypeError, ValueError):
+        metadata["status"] = "read_failed" if write_status == "saved" else write_status
+
+    metadata["byte_count"] = byte_count
+    metadata["sha256"] = digest.hexdigest()
+    if not read_ok:
+        return metadata, "", None
+    if path_detector.detected:
+        return metadata, None, "not_saved: path_detected"
+    return metadata, tail_collector.finish(), None
+
+
+def _workload_fields_from_logs(
+    paths: Mapping[str, Path], statuses: Mapping[str, str], *, existing_omissions: Any = None
 ) -> dict[str, Any]:
+    diagnostics: dict[str, Any] = {}
+    fields: dict[str, Any] = {"local_diagnostics": diagnostics}
+    omissions = existing_omissions if isinstance(existing_omissions, Mapping) else {}
+    omitted: dict[str, str] = {}
+    for stream in ("stdout", "stderr"):
+        metadata, tail, reason = _inspect_workload_log(
+            paths[stream], write_status=statuses[stream]
+        )
+        diagnostics[stream] = metadata
+        if reason is not None or (
+            tail == ""
+            and stream in omissions
+            and omissions[stream] == "not_saved: path_detected"
+        ):
+            omitted[stream] = reason or omissions[stream]
+        else:
+            fields[f"{stream}_tail"] = tail
+    if omitted:
+        fields["output_omissions"] = omitted
+    return fields
+
+
+def _persist_workload_streams(output_dir: Path, result: Any) -> dict[str, Any]:
+    """Persist callback-provided streams and return record-safe diagnostics."""
+    paths = {
+        "stdout": output_dir / WORKLOAD_STDOUT_LOG_NAME,
+        "stderr": output_dir / WORKLOAD_STDERR_LOG_NAME,
+    }
+    statuses: dict[str, str] = {}
+    for stream, path in paths.items():
+        value, present = _stream_value(result, stream)
+        payload = _workload_stream_bytes(value) if present else b""
+        if payload is None:
+            statuses[stream] = "unavailable"
+            continue
+        try:
+            statuses[stream] = _write_workload_log(path, payload)
+        except (OSError, TypeError, ValueError):
+            statuses[stream] = "write_failed"
+    existing_omissions = result.get("output_omissions") if isinstance(result, Mapping) else None
+    return _workload_fields_from_logs(paths, statuses, existing_omissions=existing_omissions)
+
+
+def _run_workload(
+    command: Sequence[str],
+    environment: Mapping[str, str],
+    *,
+    repo_root: Path,
+    output_dir: Path | None = None,
+) -> dict[str, Any]:
+    if output_dir is None:
+        try:
+            completed = subprocess.run(
+                tuple(command),
+                cwd=repo_root,
+                env={**os.environ, **dict(environment)},
+                capture_output=True,
+                text=False,
+                timeout=RUN_GUARD_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return _normalize_workload_result(
+                {
+                    "returncode": None,
+                    "status": "timeout",
+                    "timed_out": True,
+                    "stdout": getattr(exc, "stdout", ""),
+                    "stderr": getattr(exc, "stderr", ""),
+                }
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {
+                "returncode": None,
+                "status": type(exc).__name__,
+                "timed_out": False,
+                "stdout_tail": "",
+                "stderr_tail": "",
+            }
+        return _normalize_workload_result(completed)
+
+    paths = {
+        "stdout": output_dir / WORKLOAD_STDOUT_LOG_NAME,
+        "stderr": output_dir / WORKLOAD_STDERR_LOG_NAME,
+    }
+    handles: dict[str, Any] = {}
+    statuses: dict[str, str] = {}
+    for stream, path in paths.items():
+        try:
+            handles[stream] = path.open("wb")
+            statuses[stream] = "saved"
+        except (OSError, TypeError, ValueError):
+            statuses[stream] = "write_failed"
+
+    completed: Any = None
+    process_result: dict[str, Any]
     try:
         completed = subprocess.run(
             tuple(command),
             cwd=repo_root,
             env={**os.environ, **dict(environment)},
-            capture_output=True,
-            text=True,
+            stdout=handles.get("stdout", subprocess.DEVNULL),
+            stderr=handles.get("stderr", subprocess.DEVNULL),
+            text=False,
             timeout=RUN_GUARD_SECONDS,
             check=False,
         )
+        process_result = {
+            "returncode": getattr(completed, "returncode", None),
+            "status": "completed",
+            "timed_out": False,
+        }
     except subprocess.TimeoutExpired as exc:
-        return _normalize_workload_result(
-            {
-                "returncode": None,
-                "status": "timeout",
-                "timed_out": True,
-                "stdout": getattr(exc, "stdout", ""),
-                "stderr": getattr(exc, "stderr", ""),
-            }
-        )
+        process_result = {
+            "returncode": None,
+            "status": "timeout",
+            "timed_out": True,
+        }
+        completed = exc
     except (OSError, subprocess.SubprocessError) as exc:
-        return {
+        process_result = {
             "returncode": None,
             "status": type(exc).__name__,
             "timed_out": False,
-            "stdout_tail": "",
-            "stderr_tail": "",
         }
-    return _normalize_workload_result(completed)
+        completed = exc
+    finally:
+        for stream, handle in handles.items():
+            try:
+                handle.close()
+            except (OSError, ValueError):
+                statuses[stream] = "write_failed"
+
+    # A test seam or an alternative subprocess implementation may return
+    # captured timeout output even when file handles were supplied.  Use it
+    # only when the corresponding file is still empty; normal subprocess runs
+    # have already written the exact bytes directly to disk.
+    for stream, path in paths.items():
+        if statuses[stream] != "saved":
+            continue
+        value = getattr(completed, stream, None)
+        payload = _workload_stream_bytes(value)
+        if payload:
+            try:
+                is_empty = path.stat().st_size == 0
+            except OSError:
+                is_empty = False
+            if is_empty:
+                try:
+                    statuses[stream] = _write_workload_log(path, payload)
+                except (OSError, TypeError, ValueError):
+                    statuses[stream] = "write_failed"
+
+    process_result.update(
+        _workload_fields_from_logs(paths, statuses)
+    )
+    return process_result
 
 
 def _safe_record_value(value: Any, *, field: str = "record") -> None:
@@ -962,11 +1227,12 @@ def run_one(
                 command,
                 workload_environment,
                 repo_root=Path(__file__).resolve().parents[1],
+                output_dir=output_dir,
             )
         else:
-            workload_result = _normalize_workload_result(
-                workload_runner(command, workload_environment, RUN_GUARD_SECONDS)
-            )
+            callback_result = workload_runner(command, workload_environment, RUN_GUARD_SECONDS)
+            workload_result = _normalize_workload_result(callback_result)
+            workload_result.update(_persist_workload_streams(output_dir, callback_result))
         workload_end_ns = monotonic_ns()
         stop_event.set()
         sampler_thread.join(timeout=interval + 1.0)
@@ -999,11 +1265,9 @@ def run_one(
         run_start_ns=int(workload_start_ns),
         run_end_ns=int(workload_end_ns),
     )
-    workload = (
-        dict(workload_result)
-        if isinstance(workload_result, Mapping)
-        else _normalize_workload_result(workload_result)
-    )
+    workload = _normalize_workload_result(workload_result)
+    if isinstance(workload_result, Mapping) and "local_diagnostics" in workload_result:
+        workload["local_diagnostics"] = workload_result["local_diagnostics"]
     workload_duration = max(0.0, (int(workload_end_ns) - int(workload_start_ns)) / 1_000_000_000.0)
     trace_sample_count = max(0, sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line))
     guard_pass = workload_duration <= RUN_GUARD_SECONDS and not workload.get("timed_out", False)
@@ -1090,6 +1354,8 @@ def run_one(
             "extended_trace": trace_path.name,
             "calibration": calibration_path.name,
             "workload_result": result_name,
+            "workload_stdout": WORKLOAD_STDOUT_LOG_NAME,
+            "workload_stderr": WORKLOAD_STDERR_LOG_NAME,
         },
         "provenance": {
             "source_snapshot": "pre-run tt-smi snapshot",
@@ -1161,8 +1427,11 @@ __all__ = [
     "RUN_GUARD_SECONDS",
     "SNAPSHOT_COMMAND_TUPLE",
     "SNAPSHOT_TIMEOUT_SECONDS",
+    "WORKLOAD_LOG_CHUNK_BYTES",
     "WORKLOAD_OUTPUT_TAIL_LINES",
     "WORKLOAD_OUTPUT_TAIL_MAX_CHARS",
+    "WORKLOAD_STDERR_LOG_NAME",
+    "WORKLOAD_STDOUT_LOG_NAME",
     "SnapshotCaptureError",
     "build_calibration_payload",
     "build_workload_command",

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +12,7 @@ import pytest
 
 from tools import analyze_issue121_q2 as analysis
 from tools import issue121_q2 as runner
+from tools import issue121_q2_wrapper_probe as wrapper_probe
 
 ROOT = Path(__file__).parents[1]
 PLAN = ROOT / runner.ISSUE121_Q2_PLAN
@@ -305,6 +308,232 @@ def test_workload_output_omits_a_tail_containing_a_user_path() -> None:
     assert "/home/" not in json.dumps(result)
 
 
+def test_run_workload_persists_raw_bytes_and_stream_metadata(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stdout = b"header" + bytes((0, 255)) + b"\nlast line\n"
+    stderr = b"failed diagnostic\r\n"
+
+    def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
+        stdout_handle = kwargs["stdout"]
+        stderr_handle = kwargs["stderr"]
+        assert hasattr(stdout_handle, "write")
+        assert hasattr(stderr_handle, "write")
+        stdout_handle.write(stdout)
+        stderr_handle.write(stderr)
+        return SimpleNamespace(returncode=7, stdout=None, stderr=None)
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    result = runner._run_workload(
+        ("fixture-runner",), {}, repo_root=Path("."), output_dir=tmp_path
+    )
+
+    assert (tmp_path / runner.WORKLOAD_STDOUT_LOG_NAME).read_bytes() == stdout
+    assert (tmp_path / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == stderr
+    assert result["returncode"] == 7
+    assert result["local_diagnostics"] == {
+        "stdout": {
+            "path": runner.WORKLOAD_STDOUT_LOG_NAME,
+            "byte_count": len(stdout),
+            "sha256": hashlib.sha256(stdout).hexdigest(),
+            "status": "saved",
+        },
+        "stderr": {
+            "path": runner.WORKLOAD_STDERR_LOG_NAME,
+            "byte_count": len(stderr),
+            "sha256": hashlib.sha256(stderr).hexdigest(),
+            "status": "saved",
+        },
+    }
+    assert result["stdout_tail"] == "header\x00�\nlast line\n"
+    assert result["stderr_tail"] == "failed diagnostic\r\n"
+
+
+def test_run_workload_timeout_keeps_available_output_in_raw_logs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    stdout = b"timeout stdout\n"
+    stderr = b"timeout stderr\n"
+
+    def fake_run(*_args: object, **kwargs: object) -> None:
+        kwargs["stdout"].write(stdout)
+        kwargs["stderr"].write(stderr)
+        raise subprocess.TimeoutExpired(("fixture-runner",), 1)
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    result = runner._run_workload(
+        ("fixture-runner",), {}, repo_root=Path("."), output_dir=tmp_path
+    )
+
+    assert result["status"] == "timeout"
+    assert result["timed_out"] is True
+    assert (tmp_path / runner.WORKLOAD_STDOUT_LOG_NAME).read_bytes() == stdout
+    assert (tmp_path / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == stderr
+    assert result["local_diagnostics"]["stdout"]["byte_count"] == len(stdout)
+    assert result["local_diagnostics"]["stderr"]["sha256"] == hashlib.sha256(stderr).hexdigest()
+
+
+def test_run_one_failed_path_output_is_local_only_and_record_survives(tmp_path: Path) -> None:
+    counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        timestamp = next(counter)
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": 5.0,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": timestamp,
+            "timestamp_monotonic_ns": timestamp + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    stdout = b"failure in /home/alice/private/repository\n"
+    stderr = b"temporary output in /tmp/private\n"
+
+    def failed_workload(*_args: object) -> dict[str, object]:
+        return {
+            "returncode": 3,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-failed-output",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=failed_workload,
+        capture_fn=fake_capture,
+    )
+
+    assert record["status"] == "failed"
+    assert (tmp_path / runner.WORKLOAD_STDOUT_LOG_NAME).read_bytes() == stdout
+    assert (tmp_path / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == stderr
+    workload_result = record["workload_result"]
+    assert "stdout_tail" not in workload_result
+    assert "stderr_tail" not in workload_result
+    assert workload_result["output_omissions"] == {
+        "stdout": "not_saved: path_detected",
+        "stderr": "not_saved: path_detected",
+    }
+    assert workload_result["local_diagnostics"]["stdout"]["path"] == (
+        runner.WORKLOAD_STDOUT_LOG_NAME
+    )
+    assert workload_result["local_diagnostics"]["stderr"]["byte_count"] == len(stderr)
+    assert workload_result["local_diagnostics"]["stdout"]["sha256"] == hashlib.sha256(
+        stdout
+    ).hexdigest()
+    persisted = json.dumps(record)
+    assert "/home/" not in persisted
+    assert "/tmp/" not in persisted
+    assert str(tmp_path) not in persisted
+    assert (tmp_path / record["output_paths"]["record"]).exists()
+
+
+def test_workload_log_write_failure_is_recorded_without_raising(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "_write_workload_log", lambda *_args: "write_failed")
+    fields = runner._persist_workload_streams(
+        tmp_path, {"stdout": b"output", "stderr": b"diagnostic"}
+    )
+
+    assert fields["local_diagnostics"]["stdout"]["status"] == "write_failed"
+    assert fields["local_diagnostics"]["stderr"]["status"] == "write_failed"
+    assert fields["local_diagnostics"]["stdout"]["path"] == runner.WORKLOAD_STDOUT_LOG_NAME
+
+
+def test_resident_wrapper_probe_reconstructs_added_args_without_device() -> None:
+    vector = wrapper_probe.build_resident_docker_argv(
+        repo_root=Path("/repo"),
+        output_dir=Path("/out/q2"),
+        image="registry.example/tt@sha256:" + "a" * 64,
+        run_id="static-probe",
+        container_name="hekatus-bench-static",
+        container_timeout_seconds=330,
+        runner_args=("--condition", "newton_schulz"),
+        device_node="/dev/tenstorrent/1",
+    )
+
+    assert "--device" not in vector
+    assert "-v" in vector
+    mount_indices = [index for index, argument in enumerate(vector) if argument == "-v"]
+    assert [vector[index + 1] for index in mount_indices] == [
+        "/dev/hugepages-1G:/dev/hugepages-1G",
+        "/repo:/work",
+        "/out/q2:/out",
+    ]
+    runner_index = vector.index(wrapper_probe.RESIDENT_RUNNER)
+    assert vector[runner_index:] == (
+        wrapper_probe.RESIDENT_RUNNER,
+        "--out",
+        "/out/runner-result.json",
+        "--condition",
+        "newton_schulz",
+        "--env-json",
+        "/out/env-static-probe.json",
+        "--power-trace",
+        "power-static-probe.csv",
+    )
+
+    wrapper_source = (ROOT / "enodia/tt/bench/run_in_container.sh").read_text(encoding="utf-8")
+    assert '    -v "${OUT_DIR}:/out" \\' in wrapper_source
+    assert '  RESIDENT_ARGS+=(--env-json "${RESIDENT_ENV_JSON}")' in wrapper_source
+    assert '    --device "${DEVICE_NODE}" \\' in wrapper_source
+
+    q2_vector = wrapper_probe.build_resident_docker_argv(
+        repo_root=Path("/repo"),
+        output_dir=Path("/out/q2"),
+        image="registry.example/tt@sha256:" + "a" * 64,
+        run_id="q2-wrapper-id",
+        container_name="hekatus-bench-static",
+        container_timeout_seconds=330,
+        runner_args=(
+            "--out",
+            "/out/runner-result-q2-run-1.json",
+            "--device-id",
+            "1",
+            "--condition",
+            "newton_schulz",
+            "--calibration-json",
+            "/out/issue121-q2-calibration.json",
+            "--outer-timeout-seconds",
+            "330",
+        ),
+    )
+    q2_runner_index = q2_vector.index(wrapper_probe.RESIDENT_RUNNER)
+    assert q2_vector[q2_runner_index:] == (
+        wrapper_probe.RESIDENT_RUNNER,
+        "--out",
+        "/out/runner-result-q2-run-1.json",
+        "--device-id",
+        "1",
+        "--condition",
+        "newton_schulz",
+        "--calibration-json",
+        "/out/issue121-q2-calibration.json",
+        "--outer-timeout-seconds",
+        "330",
+        "--env-json",
+        "/out/env-q2-wrapper-id.json",
+        "--power-trace",
+        "power-q2-wrapper-id.csv",
+    )
+
+
 def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> None:
     counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
@@ -358,6 +587,15 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
         "resident record -> /out/runner-result-q2-run-1.json\n"
     )
     assert record["workload_result"]["stderr_tail"] == ""
+    assert record["workload_result"]["local_diagnostics"]["stdout"]["path"] == (
+        runner.WORKLOAD_STDOUT_LOG_NAME
+    )
+    assert record["output_paths"]["workload_stdout"] == runner.WORKLOAD_STDOUT_LOG_NAME
+    assert record["output_paths"]["workload_stderr"] == runner.WORKLOAD_STDERR_LOG_NAME
+    assert (tmp_path / runner.WORKLOAD_STDOUT_LOG_NAME).read_bytes() == (
+        b"resident record -> /out/runner-result-q2-run-1.json\n"
+    )
+    assert (tmp_path / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == b""
     assert record["workload"]["run_duration_target_seconds"] == 285.0
     assert record["workload"]["run_guard_seconds"] == 330.0
     assert record["run_timing"]["target_duration_seconds"] == 285.0
