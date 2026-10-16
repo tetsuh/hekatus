@@ -621,6 +621,70 @@ def _raw_window_from_trace(
     }
 
 
+def _redact_capture_value(value: Any) -> Any:
+    """Keep capture diagnostics record-safe without retaining host paths."""
+    if isinstance(value, Mapping):
+        return {str(key): _redact_capture_value(child) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_redact_capture_value(child) for child in value]
+    if isinstance(value, tuple):
+        return [_redact_capture_value(child) for child in value]
+    if isinstance(value, str) and _FORBIDDEN_PATH_TEXT.search(value):
+        return "<redacted-path>"
+    return value
+
+
+def _safe_capture_details(capture: Any) -> dict[str, Any]:
+    """Retain bounded capture facts while excluding host snapshot sections."""
+    if not isinstance(capture, Mapping):
+        return {
+            "stage": "in_run",
+            "status": "capture_failed",
+            "error_type": "non_mapping_capture",
+        }
+    safe_capture = _json_safe_snapshot(capture)
+    if not isinstance(safe_capture, dict):
+        return {
+            "stage": "in_run",
+            "status": "capture_failed",
+            "error_type": "invalid_capture",
+        }
+    for key in ("host_info", "processes", "cmdline"):
+        safe_capture.pop(key, None)
+    snapshot = capture.get("snapshot")
+    if isinstance(snapshot, Mapping):
+        try:
+            safe_capture["snapshot"] = _device_only_snapshot(snapshot)
+        except SnapshotCaptureError:
+            safe_capture["snapshot"] = None
+    return _redact_capture_value(safe_capture)
+
+
+def _in_run_sampler_error(capture: Any, reason: str) -> str:
+    """Build a safe diagnostic from capture status without copying output text."""
+    if isinstance(capture, Mapping):
+        status = capture.get("status", "unknown")
+        returncode = capture.get("returncode")
+    else:
+        status = "capture_failed"
+        returncode = None
+    safe_status = _redact_capture_value(str(status))
+    return (
+        f"in-run snapshot unusable: {reason}; status={safe_status!r}; "
+        f"returncode={returncode!r}"
+    )
+
+
+def _in_run_capture_failure_reason(capture: Any) -> str:
+    if not isinstance(capture, Mapping):
+        return "capture result is not an object"
+    if not _snapshot_capture_is_successful(capture):
+        return "capture command did not complete successfully"
+    if not isinstance(capture.get("snapshot"), Mapping):
+        return "snapshot is missing or invalid"
+    return "telemetry row conversion failed"
+
+
 def _append_extended_row(
     handle: Any,
     capture: Mapping[str, Any],
@@ -658,16 +722,52 @@ def _sample_extended_trace(
     captures: list[dict[str, Any]],
     errors: list[str],
     capture_fn: Callable[..., dict[str, Any]],
+    usable_rows: list[bool] | None = None,
 ) -> None:
     """Sample until the workload ends; the stop wait avoids an extra row."""
     interval = _finite_number(interval_seconds, field="trace interval", positive=True)
     while not stop_event.wait(interval):
+        capture: Any = None
+        row_written = False
         try:
             capture = capture_fn(stage="in_run")
-            captures.append(capture)
-            _append_extended_row(handle, capture, board_id=board_id, bus_id=bus_id)
+            captures.append(_safe_capture_details(capture))
+            if not isinstance(capture, Mapping) or not _snapshot_capture_is_successful(capture):
+                errors.append(
+                    _in_run_sampler_error(
+                        capture, _in_run_capture_failure_reason(capture)
+                    )
+                )
+            else:
+                row_failure_reported = False
+                try:
+                    row_written = _append_extended_row(
+                        handle, capture, board_id=board_id, bus_id=bus_id
+                    )
+                except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
+                    row_failure_reported = True
+                    errors.append(
+                        _in_run_sampler_error(
+                            capture, f"row write failed ({type(exc).__name__})"
+                        )
+                    )
+                if not row_written and not row_failure_reported:
+                    errors.append(
+                        _in_run_sampler_error(
+                            capture, _in_run_capture_failure_reason(capture)
+                        )
+                    )
         except Exception as exc:  # noqa: BLE001 - preserve an incomplete trace fact
-            errors.append(f"{type(exc).__name__}: in-run snapshot unavailable")
+            captures.append(
+                {
+                    "stage": "in_run",
+                    "status": "capture_failed",
+                    "error_type": type(exc).__name__,
+                }
+            )
+            errors.append(f"in-run snapshot capture failed: {type(exc).__name__}")
+        if usable_rows is not None:
+            usable_rows.append(row_written)
 
 
 def build_workload_command(
@@ -843,7 +943,10 @@ def _cooldown_reading(capture: Mapping[str, Any], board_id: str, bus_id: str) ->
     if not isinstance(telemetry, Mapping):
         raise SnapshotCaptureError("snapshot selected device has no telemetry")
     try:
-        power = _finite_number(telemetry["board_power"], field="telemetry.board_power")
+        # The approved cooldown observable is selected-device ASIC power.  Keep
+        # board_power in the snapshot and extended trace for reporting, but do
+        # not substitute it for telemetry.power in this gate.
+        power = _finite_number(telemetry["power"], field="telemetry.power")
         temperature = _finite_number(
             telemetry["asic_temperature"], field="telemetry.asic_temperature"
         )
@@ -1449,17 +1552,24 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     )
 
     in_run_captures: list[dict[str, Any]] = []
+    in_run_row_results: list[bool] = []
     sampler_errors: list[str] = []
     stop_event = threading.Event()
     safe_trace_path = _safe_output_path(trace_path, field="extended trace")
     with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
         trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
-        pre_row = _append_extended_row(
-            trace_handle,
-            pre_capture,
-            board_id=normalized_board,
-            bus_id=normalized_bus,
-        )
+        try:
+            pre_row = _append_extended_row(
+                trace_handle,
+                pre_capture,
+                board_id=normalized_board,
+                bus_id=normalized_bus,
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
+            pre_row = False
+            sampler_errors.append(f"pre-run telemetry row write failed: {type(exc).__name__}")
+        if not pre_row:
+            sampler_errors.append("pre-run telemetry row was not written")
         sampler_thread = threading.Thread(
             target=_sample_extended_trace,
             args=(stop_event, trace_handle),
@@ -1470,6 +1580,7 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
                 "captures": in_run_captures,
                 "errors": sampler_errors,
                 "capture_fn": capture,
+                "usable_rows": in_run_row_results,
             },
             name="issue121-q2-extended-sampler",
             daemon=True,
@@ -1493,12 +1604,21 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         if sampler_thread.is_alive():
             sampler_errors.append("extended sampler did not stop within its bounded join")
         post_capture = capture(stage="post_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
-        post_row = _append_extended_row(
-            trace_handle,
-            post_capture,
-            board_id=normalized_board,
-            bus_id=normalized_bus,
-        )
+        try:
+            post_row = _append_extended_row(
+                trace_handle,
+                post_capture,
+                board_id=normalized_board,
+                bus_id=normalized_bus,
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
+            post_row = False
+            sampler_errors.append(f"post-run telemetry row write failed: {type(exc).__name__}")
+        if not post_row:
+            sampler_errors.append("post-run telemetry row was not written")
+
+    if not any(in_run_row_results):
+        sampler_errors.append("extended sampler captured no usable in-run telemetry rows")
 
     post_path = _safe_artifact_path(
         safe_output_dir, f"post-snapshot-{safe_run_id}.json", field="post snapshot"
@@ -1551,9 +1671,11 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
             and not sampler_errors
             and pre_capture_ok
             and pre_identity_valid
+            and pre_row
             and post_capture_ok
             and post_identity_valid
             and post_row
+            and any(in_run_row_results)
         )
         else "failed"
     )
@@ -1632,6 +1754,8 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
             "sample_count": trace_sample_count,
             "pre_row_written": pre_row,
             "post_row_written": post_row,
+            "usable_in_run_row_count": sum(in_run_row_results),
+            "in_run_captures": list(in_run_captures),
             "sha256": hashlib.sha256(trace_bytes).hexdigest(),
             "sampler_interval_seconds": interval,
             "sampler_errors": list(sampler_errors),

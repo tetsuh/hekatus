@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import copy
+import datetime
 import hashlib
+import io
 import json
 import subprocess
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -81,7 +85,10 @@ def _row(
     temperature: float = 60,
 ) -> dict[str, object]:
     return {
-        "timestamp_utc": f"2026-01-01T00:00:{seconds:02d}+00:00",
+        "timestamp_utc": (
+            datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+            + datetime.timedelta(seconds=seconds)
+        ).isoformat(),
         "power_w": power,
         "aiclk_mhz": aiclk,
         "asic_temp_c": temperature,
@@ -219,10 +226,21 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "post-measurement unit-disposition remediation after all 3 runs: inspected the pinned host tt-smi 6.2.1 and tt-umd 0.9.8 source provenance without hardware access; TDC_LIMIT_MAX/limits.tdc_limit and current are established as comparable A values, and THM_LIMIT_THROTTLE is established as a degC thermal limit mapped directly to limits.therm_trip_l1_limit. Raw TDC_LIMIT_MAX and THM_LIMIT_THROTTLE values remain retained with source provenance; thresholds, criteria, and prediction are unchanged. Regenerated only analysis JSONs and this summary; no run record, trace, or snapshot changed."
         ),
     }
+    assert plan["revision_history"][5] == {
+        "revision": 6,
+        "date": "2026-10-16",
+        "change": (
+            "post-measurement cooldown wording/helper correction after audit: the cooldown power observable is selected-device telemetry.power, while telemetry.board_power remains a separately retained reporting field. The cited immutable cooldown snapshots report telemetry.power 49 W and 47 W and board_power 121 W; the historical 49/47 W pass result is unchanged, and no run record, trace, snapshot, or manual GDDR supplement was changed."
+        ),
+    }
     assert plan["unit_provenance"]["status"] == "established"
     assert plan["unit_provenance"]["comparisons"]["current_a_vs_tdc_limit"]["comparable"] is True
     assert plan["unit_provenance"]["comparisons"]["asic_temp_c_vs_thm_limit_throttle"]["comparable"] is True
     assert plan["hypotheses"]["H-TDP"]["reference_only"].startswith("Issue #118 plateau 132-135 W")
+    assert plan["cooldown"]["power_observable"] == "telemetry.power"
+    assert plan["cooldown"]["board_power_reporting"] == (
+        "telemetry.board_power is retained and reported separately; it is not a cooldown gate"
+    )
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
     assert plan["classification_policy"]["multiple_supported_known_hypotheses"] == "multiple"
@@ -244,12 +262,22 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
     observations = summary["post_hoc_observations"]
 
-    assert summary["plan"]["revision"] == 5
+    assert summary["plan"]["revision"] == 6
     assert summary["unit_provenance"]["status"] == "established"
     assert observations["status"] == "post_measurement"
     assert observations["scope"] == (
         "Post-hoc observations only; these are not preregistered hypothesis results."
     )
+    assert observations["cooldown_observable_audit"] == {
+        "status": "post_measurement",
+        "disclosure": (
+            "The audit found that the plan wording and helper named board_power for the cooldown gate, while the historical gate used selected-device telemetry.power. The cited immutable snapshots retain board_power at 121 W alongside telemetry.power at 49 W and 47 W; the historical 49/47 W pass result is unchanged."
+        ),
+        "gate_signal": "telemetry.power",
+        "reporting_signal": "telemetry.board_power",
+        "historical_result_unchanged": True,
+        "immutable_snapshots_unchanged": True,
+    }
     board = observations["board_power_plateau"]
     assert board["limit_w"] == 300.0
     assert [
@@ -1028,7 +1056,11 @@ def test_resident_wrapper_probe_reconstructs_added_args_without_device() -> None
 
 def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> None:
     counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
+    in_run_seen = threading.Event()
+
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        if stage == "in_run":
+            in_run_seen.set()
         timestamp = next(counter)
         return {
             "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
@@ -1052,6 +1084,7 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
         command: tuple[str, ...], environment: dict[str, str], timeout: float
     ) -> dict[str, object]:
         workload_calls.append((command, environment, timeout))
+        assert in_run_seen.wait(timeout=1.0)
         return {
             "returncode": 0,
             "status": "completed",
@@ -1071,9 +1104,11 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
         kernel_driver_version="2.11.0",
         workload_runner=fake_workload,
         capture_fn=fake_capture,
+        trace_interval_seconds=0.001,
     )
 
     assert record["status"] == "ok"
+    assert record["trace"]["usable_in_run_row_count"] >= 1
     assert record["workload"]["device_id"] == 1
     assert record["workload"]["container_device_id"] == 0
     assert record["workload"]["device_node"] == "/dev/tenstorrent/1"
@@ -1281,6 +1316,211 @@ def test_cooldown_gate_matches_issue127_power_temperature_rule() -> None:
     assert failing["verified"] is False
 
 
+def test_cooldown_uses_selected_device_power_not_board_power() -> None:
+    capture = {"snapshot": json.loads(_snapshot())}
+    telemetry = capture["snapshot"]["device_info"][0]["telemetry"]
+    telemetry["board_power"] = "121"
+
+    for expected_power in (49.0, 47.0):
+        telemetry["power"] = str(expected_power)
+        power, temperature, aiclk = runner._cooldown_reading(
+            capture,
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+        )
+        result = runner.evaluate_cooldown(
+            power, temperature, observed_idle_aiclk_mhz=aiclk
+        )
+
+        assert power == expected_power
+        assert result["verified"] is True
+        assert result["observed_power_w"] == expected_power
+        assert telemetry["board_power"] == "121"
+
+
+@pytest.mark.parametrize(
+    ("status", "returncode", "snapshot_mode"),
+    [
+        ("timeout", None, "missing"),
+        ("invalid_json", 0, "missing"),
+        ("command_failed", 7, "valid"),
+        ("ok", 0, "missing_current"),
+        ("ok", 0, "missing_telemetry"),
+    ],
+    ids=["timeout", "invalid-json", "nonzero-return", "missing-current", "missing-telemetry"],
+)
+def test_in_run_sampler_records_capture_failures_and_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    returncode: int | None,
+    snapshot_mode: str,
+) -> None:
+    snapshot = json.loads(_snapshot())
+    if snapshot_mode == "missing_current":
+        snapshot["device_info"][0]["telemetry"].pop("current")
+    elif snapshot_mode == "missing_telemetry":
+        snapshot["device_info"][0].pop("telemetry")
+    capture = {
+        "stage": "in_run",
+        "captured_at_utc": "2026-01-01T00:00:00+00:00",
+        "timestamp_monotonic_ns": 1,
+        "snapshot_elapsed_ns": 1,
+        "status": status,
+        "returncode": returncode,
+        "error_type": "TimeoutExpired" if status == "timeout" else None,
+        "snapshot": None if snapshot_mode == "missing" else snapshot,
+    }
+    stop_event = threading.Event()
+    captures: list[dict[str, object]] = []
+    errors: list[str] = []
+    usable_rows: list[bool] = []
+
+    def capture_once(*, stage: str) -> dict[str, object]:
+        assert stage == "in_run"
+        stop_event.set()
+        return capture
+
+    runner._sample_extended_trace(
+        stop_event,
+        io.StringIO(),
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        interval_seconds=0.001,
+        captures=captures,
+        errors=errors,
+        capture_fn=capture_once,
+        usable_rows=usable_rows,
+    )
+
+    assert usable_rows == [False]
+    assert len(captures) == 1
+    assert captures[0]["status"] == status
+    assert errors
+    assert all("/home/" not in error and "/tmp/" not in error for error in errors)
+
+
+def test_in_run_sampler_records_failed_row_conversion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop_event = threading.Event()
+    captures: list[dict[str, object]] = []
+    errors: list[str] = []
+    usable_rows: list[bool] = []
+    capture = {
+        "stage": "in_run",
+        "captured_at_utc": "2026-01-01T00:00:00+00:00",
+        "timestamp_monotonic_ns": 1,
+        "snapshot_elapsed_ns": 1,
+        "status": "ok",
+        "returncode": 0,
+        "snapshot": json.loads(_snapshot()),
+    }
+    monkeypatch.setattr(runner, "_append_extended_row", lambda *_args, **_kwargs: False)
+
+    def capture_once(*, stage: str) -> dict[str, object]:
+        stop_event.set()
+        return capture
+
+    runner._sample_extended_trace(
+        stop_event,
+        io.StringIO(),
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        interval_seconds=0.001,
+        captures=captures,
+        errors=errors,
+        capture_fn=capture_once,
+        usable_rows=usable_rows,
+    )
+
+    assert usable_rows == [False]
+    assert captures[0]["status"] == "ok"
+    assert any("row conversion failed" in error for error in errors)
+
+
+def test_run_one_requires_a_written_pre_row(
+    tmp_path: Path,
+) -> None:
+    counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
+    in_run_seen = threading.Event()
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        snapshot = json.loads(_snapshot())
+        if stage == "pre_run":
+            snapshot["device_info"][0]["telemetry"].pop("current")
+        elif stage == "in_run":
+            in_run_seen.set()
+        timestamp = next(counter)
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_ns": timestamp,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "snapshot": snapshot,
+        }
+
+    def fake_workload(*_args: object) -> dict[str, object]:
+        assert in_run_seen.wait(timeout=1.0)
+        return {"returncode": 0, "status": "completed", "timed_out": False}
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-missing-pre-row",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=fake_workload,
+        capture_fn=fake_capture,
+        trace_interval_seconds=0.001,
+    )
+
+    assert record["status"] == "failed"
+    assert record["trace"]["pre_row_written"] is False
+    assert record["trace"]["usable_in_run_row_count"] >= 1
+    assert any("pre-run telemetry row" in error for error in record["trace"]["sampler_errors"])
+
+
+@pytest.mark.parametrize(
+    ("tdc_limit", "expected_threshold"),
+    [(100.0, 90.0), (300.0, 270.0)],
+    ids=["lower-limit", "higher-limit"],
+)
+def test_tdc_onset_threshold_scales_with_source_limit(
+    tdc_limit: float,
+    expected_threshold: float,
+) -> None:
+    limits = _source_limits()
+    limits["tdc_limit"] = tdc_limit
+    result = analysis.analyze_trace(
+        _trace(current=expected_threshold),
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits=limits,
+    )
+
+    current_onset = result["onsets"]["current_tdc_threshold"]
+    assert current_onset["threshold"] == expected_threshold
+    assert result["hypotheses"]["H-TDC"]["details"]["threshold"] == expected_threshold
+
+
+def test_historical_tdc_limit_keeps_180_amp_onset_threshold() -> None:
+    result = analysis.analyze_trace(
+        _trace(current=190),
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits=_source_limits(),
+    )
+
+    assert result["onsets"]["current_tdc_threshold"]["threshold"] == 180.0
+    assert result["hypotheses"]["H-TDC"]["details"]["threshold"] == 180.0
+
+
 @pytest.mark.parametrize(
     ("trace", "expected"),
     [
@@ -1314,6 +1554,49 @@ def test_analysis_classifies_each_synthetic_hypothesis(
     assert result["causality"] == "correlation_is_not_causation"
     assert result["time_axis"]["column"] == "timestamp_monotonic_ns"
     assert result["plateau"]["coverage_complete"] is True
+
+
+def test_mapping_trace_rejects_truncated_terminal_coverage() -> None:
+    truncated = copy.deepcopy(_trace())
+    truncated["run_end_monotonic_ns"] = 300_000_000_000
+    truncated["samples"] = truncated["samples"][:-1]
+    truncated["coverage_complete"] = True
+
+    with pytest.raises(analysis.AnalysisError, match="coverage|bounded"):
+        analysis.analyze_trace(
+            truncated,
+            plateau_start_seconds=150,
+            plateau_end_seconds=285,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "timestamp_utc",
+        "snapshot_elapsed_ns",
+        "fan_rpm",
+        "heartbeat",
+        "therm_trip_count",
+        "negative_aiclk",
+    ],
+)
+def test_mapping_trace_rejects_malformed_required_fields(mutation: str) -> None:
+    malformed = copy.deepcopy(_trace())
+    row = malformed["samples"][1]
+    if mutation == "negative_aiclk":
+        row["aiclk_mhz"] = -1
+    elif mutation == "timestamp_utc":
+        row["timestamp_utc"] = "not-an-iso-timestamp"
+    else:
+        row.pop(mutation)
+
+    with pytest.raises(analysis.AnalysisError):
+        analysis.analyze_trace(
+            malformed,
+            plateau_start_seconds=150,
+            plateau_end_seconds=285,
+        )
 
 
 def test_analysis_marks_tdc_inconclusive_when_units_are_unknown() -> None:

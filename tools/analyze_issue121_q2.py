@@ -25,6 +25,7 @@ from enodia.tt.bench.power_trace_extended import (
     EXTENDED_POWER_TRACE_COLUMNS,
     EXTENDED_POWER_TRACE_SCHEMA,
     EXTENDED_POWER_TRACE_SCHEMA_VERSION,
+    read_extended_power_trace_mapping,
     read_extended_power_trace_snapshot,
 )
 
@@ -34,7 +35,6 @@ DEFAULT_PLATEAU_END_SECONDS = 285.0
 AICLK_DROP_FRACTION = 0.05
 H_TDC_LIMIT = 200.0
 H_TDC_PROXIMITY_FRACTION = 0.10
-H_TDC_ONSET_THRESHOLD = 180.0
 H_THM_LIMIT_C = 90.0
 H_THM_SHUTDOWN_C = 110.0
 H_THM_MAX_DIFFERENCE_C = 5.0
@@ -297,33 +297,20 @@ def _load_mapping_trace(
     run_start_monotonic_ns: int | None,
     run_end_monotonic_ns: int | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
-    schema = payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA)
-    version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
-    columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
-    if schema != EXTENDED_POWER_TRACE_SCHEMA or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION:
-        raise AnalysisError("extended trace schema is unsupported")
-    if tuple(columns) != EXTENDED_POWER_TRACE_COLUMNS:
-        raise AnalysisError("extended trace columns are unsupported")
-    raw_rows = payload.get("samples")
-    if not isinstance(raw_rows, list) or not raw_rows:
-        raise AnalysisError("extended trace samples must be a non-empty array")
-    rows = [
-        _row_copy(row, index)
-        for index, row in enumerate(raw_rows)
-        if isinstance(row, Mapping)
-    ]
-    if len(rows) != len(raw_rows):
-        raise AnalysisError("extended trace samples must contain objects")
-    start = (
-        run_start_monotonic_ns
-        if run_start_monotonic_ns is not None
-        else payload.get("run_start_monotonic_ns", rows[0]["timestamp_monotonic_ns"])
+    trace = read_extended_power_trace_mapping(
+        payload,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
     )
-    end = (
-        run_end_monotonic_ns
-        if run_end_monotonic_ns is not None
-        else payload.get("run_end_monotonic_ns", rows[-1]["timestamp_monotonic_ns"])
-    )
+    if trace.get("valid") is not True:
+        failures = trace.get("errors", ())
+        if isinstance(failures, (str, bytes)) or not isinstance(failures, Sequence):
+            failures = (trace.get("error", "invalid mapping"),)
+        raise AnalysisError(
+            "extended trace mapping reader rejected the source: "
+            + "; ".join(str(error) for error in failures)
+        )
+    rows = [_row_copy(row, index) for index, row in enumerate(trace["samples"])]
     source_metadata = payload.get("provenance", payload.get("source", {}))
     if not isinstance(source_metadata, Mapping):
         source_metadata = {}
@@ -331,15 +318,7 @@ def _load_mapping_trace(
     for identity_field in ("board_id", "bus_id"):
         if identity_field in payload and identity_field not in source_metadata:
             source_metadata[identity_field] = payload[identity_field]
-    reader_facts = {
-        "schema": schema,
-        "schema_version": version,
-        "columns": list(columns),
-        "run_start_monotonic_ns": _integer(start, field="run_start_monotonic_ns"),
-        "run_end_monotonic_ns": _integer(end, field="run_end_monotonic_ns"),
-        "valid": True,
-    }
-    return rows, reader_facts, dict(source_metadata)
+    return rows, trace, dict(source_metadata)
 
 
 def _load_trace_file(
@@ -1063,21 +1042,31 @@ def _build_onset_data(
     )
     tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
     tdc_limit = source_limits["tdc_limit"]
-    if tdc_units.get("comparable") is True and tdc_limit is not None:
+    tdc_onset_threshold = (
+        tdc_limit * (1.0 - H_TDC_PROXIMITY_FRACTION)
+        if (
+            tdc_units.get("comparable") is True
+            and tdc_limit is not None
+            and math.isfinite(tdc_limit)
+            and tdc_limit > 0.0
+        )
+        else None
+    )
+    if tdc_onset_threshold is not None:
         current_onset = _find_onset(
             window.rows,
             start_ns=window.run_start,
             end_ns=window.run_end,
             field="current_a",
-            predicate=lambda value: value >= H_TDC_ONSET_THRESHOLD,
+            predicate=lambda value: value >= tdc_onset_threshold,
         )
     else:
         current_onset = _unavailable_onset(
             field="current_a",
             threshold=None,
             reason=(
-                "tdc_limit is unavailable"
-                if tdc_limit is None
+                "tdc_limit is unavailable or not positive"
+                if tdc_limit is None or tdc_limit <= 0.0
                 else "TDC limit and current telemetry units are not established as comparable"
             ),
         )
@@ -1123,14 +1112,15 @@ def _build_onset_data(
         power_onset["threshold"] = tdp_onset_threshold
     if thm_onset_threshold is not None:
         temperature_onset["threshold"] = thm_onset_threshold
-    if tdc_units.get("comparable") is True:
-        current_onset["threshold"] = H_TDC_ONSET_THRESHOLD
+    if tdc_onset_threshold is not None:
+        current_onset["threshold"] = tdc_onset_threshold
     return {
         "aiclk_drop": aiclk_drop,
         "current_onset": current_onset,
         "temperature_onset": temperature_onset,
         "power_onset": power_onset,
         "aiclk_threshold": aiclk_threshold,
+        "tdc_onset_threshold": tdc_onset_threshold,
         "tdc_unit_comparable": tdc_units.get("comparable"),
         "tdc_limit_unit": tdc_units.get("limit_unit"),
         "thm_onset_threshold": thm_onset_threshold,
@@ -1362,11 +1352,7 @@ def _build_hypothesis_analysis(
             onset_pass=tdc_order_pass,
             details={
                 "signal": "current_a",
-                "threshold": (
-                    H_TDC_ONSET_THRESHOLD
-                    if onset_data["tdc_unit_comparable"] is True
-                    else None
-                ),
+                "threshold": onset_data["tdc_onset_threshold"],
                 "threshold_unit": onset_data["tdc_limit_unit"],
                 "limit": source_limits["tdc_limit"],
                 "limit_unit_comparable": onset_data["tdc_unit_comparable"],

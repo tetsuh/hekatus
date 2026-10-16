@@ -336,7 +336,9 @@
     "temperature_tolerance_c": 3,
     "power_limit_w": 52,
     "temperature_limit_c": 61.5,
-    "criterion": "latest usable idle snapshot has board power <= baseline + 5 W and ASIC temperature <= baseline + 3 degC",
+    "power_observable": "telemetry.power",
+    "board_power_reporting": "telemetry.board_power is retained and reported separately; it is not a cooldown gate",
+    "criterion": "latest usable selected-device idle snapshot has telemetry.power <= baseline + 5 W and ASIC temperature <= baseline + 3 degC; telemetry.board_power is retained and reported separately and is not a cooldown gate",
     "aiclk": "Record idle AICLK as provenance only; the expected 800 MHz idle value is not a cooldown gate.",
     "wait_cap_seconds": 600,
     "failure_policy": "Do not start the next 285-second run after the cap or an unavailable required reading."
@@ -476,6 +478,11 @@
       "revision": 5,
       "date": "2026-10-16",
       "change": "post-measurement unit-disposition remediation after all 3 runs: inspected the pinned host tt-smi 6.2.1 and tt-umd 0.9.8 source provenance without hardware access; TDC_LIMIT_MAX/limits.tdc_limit and current are established as comparable A values, and THM_LIMIT_THROTTLE is established as a degC thermal limit mapped directly to limits.therm_trip_l1_limit. Raw TDC_LIMIT_MAX and THM_LIMIT_THROTTLE values remain retained with source provenance; thresholds, criteria, and prediction are unchanged. Regenerated only analysis JSONs and this summary; no run record, trace, or snapshot changed."
+    },
+    {
+      "revision": 6,
+      "date": "2026-10-16",
+      "change": "post-measurement cooldown wording/helper correction after audit: the cooldown power observable is selected-device telemetry.power, while telemetry.board_power remains a separately retained reporting field. The cited immutable cooldown snapshots report telemetry.power 49 W and 47 W and board_power 121 W; the historical 49/47 W pass result is unchanged, and no run record, trace, snapshot, or manual GDDR supplement was changed."
     }
   ],
   "limitations": [

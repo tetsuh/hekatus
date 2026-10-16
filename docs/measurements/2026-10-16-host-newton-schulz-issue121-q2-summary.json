@@ -4,7 +4,7 @@
   "issue": "#121",
   "plan": {
     "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
-    "revision": 5,
+    "revision": 6,
     "target_seconds": 285,
     "plateau_start_seconds": 150,
     "plateau_end_seconds": 285,
@@ -580,6 +580,14 @@
   "post_hoc_observations": {
     "status": "post_measurement",
     "scope": "Post-hoc observations only; these are not preregistered hypothesis results.",
+    "cooldown_observable_audit": {
+      "status": "post_measurement",
+      "disclosure": "The audit found that the plan wording and helper named board_power for the cooldown gate, while the historical gate used selected-device telemetry.power. The cited immutable snapshots retain board_power at 121 W alongside telemetry.power at 49 W and 47 W; the historical 49/47 W pass result is unchanged.",
+      "gate_signal": "telemetry.power",
+      "reporting_signal": "telemetry.board_power",
+      "historical_result_unchanged": true,
+      "immutable_snapshots_unchanged": true
+    },
     "source": {
       "analysis_commit": "e09d4f9",
       "run_artifacts": "The committed Q2 run traces, snapshots, and analyses; no run artifact was changed.",
