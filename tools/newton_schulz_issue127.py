@@ -243,27 +243,40 @@ _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
 _PCI_BDF_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _DEVICE_NODE_RE = re.compile(r"^/dev/tenstorrent/(?:[0-9]+|by-id/[A-Za-z0-9_.:-]+)$")
-# Keep path components broad enough for real host paths, while requiring a
-# token-like first character.  The latter keeps a quotient slash followed by
-# whitespace or ``|`` (for example, ``... / ||R||``) from becoming a path;
-# spaces and non-ASCII characters remain valid inside a component.
-_PATH_COMPONENT_START = r'''(?=[^\s|])'''
-_PATH_COMPONENT = _PATH_COMPONENT_START + r'''[^/\\\x00-\x1f"'(),;:{}\[\]]+'''
-_ABSOLUTE_PATH_RE = re.compile(
-    rf"^(?:/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}[\\/]*|~/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}[\\/]*|"
-    rf"[A-Za-z]:[\\/](?:{_PATH_COMPONENT}[\\/])*{_PATH_COMPONENT}[\\/]*|"
-    rf"\\\\{_PATH_COMPONENT}(?:[\\/]+{_PATH_COMPONENT})+[\\/]*)$"
+# Path candidates deliberately allow filename punctuation and spaces.  The
+# first component must not begin with whitespace or the double-pipe marker used
+# by quotient prose, while a single ``|`` remains a valid filename character.
+# All consumers use this one candidate grammar; formula and device-node
+# exceptions are applied at the traversal sites below.
+_PATH_COMPONENT = r'''[^/\\\x00-\x1f"']+'''
+_PATH_FIRST_COMPONENT = r'''(?!(?:\s|\|\|))(?=[^/\\\x00-\x1f"'])''' + _PATH_COMPONENT
+_PATH_SEPARATOR = r'''[\\/]'''
+_PATH_BODY = rf"{_PATH_FIRST_COMPONENT}(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT})*{_PATH_SEPARATOR}*"
+_PATH_WRAPPER = rf"(?:file|path):{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_POSIX = rf"/{_PATH_BODY}"
+_PATH_HOME = rf"~{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_DRIVE = rf"[A-Za-z]:{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_UNC = (
+    rf"{_PATH_SEPARATOR}{_PATH_SEPARATOR}{_PATH_FIRST_COMPONENT}"
+    rf"(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT})+{_PATH_SEPARATOR}*"
 )
-_PATH_END = r'''(?=$|[\s'"),;:}\]])'''
-_EMBEDDED_HOST_PATH_RE = re.compile(
-    rf"""(?<![A-Za-z0-9_/:])/(?:{_PATH_COMPONENT}/)*{_PATH_COMPONENT}[\\/]*"""
-    + _PATH_END
-    + rf"""|(?<![A-Za-z0-9_~])~[\\/]+(?:{_PATH_COMPONENT}[\\/]+)*{_PATH_COMPONENT}[\\/]*"""
-    + _PATH_END
-    + rf"""|(?<![A-Za-z0-9_])[A-Za-z]:[\\/]+(?:{_PATH_COMPONENT}[\\/]+)*{_PATH_COMPONENT}[\\/]*"""
-    + _PATH_END
-    + rf"""|(?<![A-Za-z0-9_])\\\\{_PATH_COMPONENT}(?:[\\/]+{_PATH_COMPONENT})+[\\/]*"""
-    + _PATH_END
+_PATH_CANDIDATE = (
+    rf"(?:{_PATH_WRAPPER}|{_PATH_HOME}|{_PATH_DRIVE}|{_PATH_UNC}|{_PATH_POSIX})"
+)
+_PATH_CANDIDATE_RE = re.compile(
+    rf"(?:(?<![A-Za-z0-9_]){_PATH_WRAPPER}|"
+    rf"(?<![A-Za-z0-9_/:])(?:{_PATH_HOME}|{_PATH_DRIVE}|{_PATH_UNC}|{_PATH_POSIX}))",
+    re.IGNORECASE,
+)
+# Keep these private compatibility regexes for callers that used the old
+# names; path decisions themselves go through ``_PATH_CANDIDATE_RE``.
+_ABSOLUTE_PATH_RE = re.compile(rf"^{_PATH_CANDIDATE}$", re.IGNORECASE)
+_EMBEDDED_HOST_PATH_RE = _PATH_CANDIDATE_RE
+_FORMULA_SLASH_RE = re.compile(
+    r"/[A-Za-z_][A-Za-z0-9_]*\([^/\\]*\)(?=$|[\s,;:}\]])"
+)
+_FORMULA_SLASH_FRAGMENT_RE = re.compile(
+    r"/[A-Za-z_][A-Za-z0-9_]*\((?=$|[\s,;:}\]])"
 )
 _RECORD_PATH_FIELD_NAMES = frozenset(
     {
@@ -610,7 +623,9 @@ def _json_safe_scalar(value: Any) -> Any:
 
 def _environment_key_allowed(key: str) -> bool:
     lowered = key.lower()
-    return not any(part in lowered for part in _FORBIDDEN_ENV_KEY_PARTS)
+    return not any(part in lowered for part in _FORBIDDEN_ENV_KEY_PARTS) and not _contains_embedded_host_path(
+        key
+    )
 
 
 def _sanitize_environment_device_node(value: Any) -> str:
@@ -2190,27 +2205,78 @@ def _record_field_path(path: tuple[str, ...]) -> str:
     return ".".join(path) if path else "<record>"
 
 
+_PATH_KIND_NONE = "none"
+_PATH_KIND_WHOLE = "whole"
+_PATH_KIND_EMBEDDED = "embedded"
+
+
+def _formula_path_match(value: str, match: re.Match[str]) -> re.Match[str] | None:
+    """Return a slash-prefixed function expression at a candidate start."""
+    if value[match.start()] != "/":
+        return None
+    return _FORMULA_SLASH_RE.match(value, match.start()) or _FORMULA_SLASH_FRAGMENT_RE.match(
+        value, match.start()
+    )
+
+
+def _path_matches(value: str) -> list[re.Match[str]]:
+    """Return host-path candidates after the shared formula exception."""
+    matches = []
+    search_start = 0
+    while candidate := _PATH_CANDIDATE_RE.search(value, search_start):
+        formula = _formula_path_match(value, candidate)
+        if formula is not None:
+            search_start = formula.end()
+            continue
+        matches.append(candidate)
+        search_start = candidate.end()
+    return matches
+
+
+def _classify_path(value: str) -> str:
+    """Classify one string using the shared path grammar and exceptions."""
+    matches = _path_matches(value)
+    if not matches:
+        return _PATH_KIND_NONE
+    if any(match.start() == 0 and match.end() == len(value) for match in matches):
+        return _PATH_KIND_WHOLE
+    if (
+        len(value) >= 2
+        and value[0] in "'\""
+        and value[-1] == value[0]
+        and any(match.start() == 1 and match.end() == len(value) - 1 for match in matches)
+    ):
+        return _PATH_KIND_WHOLE
+    return _PATH_KIND_EMBEDDED
+
+
 def _is_whole_absolute_path(value: str) -> bool:
-    """Recognize path-shaped strings without scanning formulas or prose."""
-    return bool(_ABSOLUTE_PATH_RE.fullmatch(value))
+    """Recognize a complete host path without scanning formulas or prose."""
+    return _classify_path(value) == _PATH_KIND_WHOLE
 
 
 def _contains_embedded_host_path(value: str) -> bool:
-    """Find recognizable host-path prefixes inside diagnostic text."""
-    return _EMBEDDED_HOST_PATH_RE.search(value) is not None
+    """Find host-path candidates embedded in diagnostics or mapping keys."""
+    return bool(_path_matches(value))
 
 
 def _looks_like_absolute_path(value: str) -> bool:
     """Recognize a path value for a field whose name explicitly carries a path."""
-    return bool(
-        _is_whole_absolute_path(value)
-        or value.startswith(("/", "~/", "~\\"))
-        or (len(value) >= 3 and value[0].isalpha() and value[1] == ":" and value[2] in "\\/")
-    )
+    return _classify_path(value) != _PATH_KIND_NONE
 
 
 def _is_known_path_field(key: str | None) -> bool:
     return isinstance(key, str) and key.lower() in _RECORD_PATH_FIELD_NAMES
+
+
+def _path_basename(value: str) -> str:
+    """Extract a candidate basename without retaining its host-path prefix."""
+    matches = _path_matches(value)
+    if not matches:
+        return ""
+    token = matches[0].group()
+    token = re.sub(r"^(?:file|path):[\\/]+", "", token, flags=re.IGNORECASE)
+    return token.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
 
 
 def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, str]]:
@@ -2220,7 +2286,7 @@ def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, 
         return value, {}
     if not _looks_like_absolute_path(value):
         return value, {}
-    basename = value.rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1]
+    basename = _path_basename(value)
     replacement = basename if _SAFE_BASENAME_RE.fullmatch(basename) else REDACTED_PATH
     return replacement, {
         "field": field_path,
@@ -2231,10 +2297,21 @@ def _replace_known_path(value: str, *, field_path: str) -> tuple[str, dict[str, 
 
 def _environment_value_contains_path(value: str, *, key: str | None) -> bool:
     """Recognize embedded paths in environment values without matching formulas."""
+    if key == DEVICE_NODE_KEY and _DEVICE_NODE_RE.fullmatch(value):
+        return False
     if _contains_embedded_host_path(value):
         return True
     if isinstance(key, str) and key.lower() in _ENVIRONMENT_PATH_KEYS:
-        return bool(re.search(r"(?:^|[:;=])(?:/|~/|~\\|[A-Za-z]:[\\/])", value))
+        if _DEVICE_NODE_RE.fullmatch(value):
+            return False
+        for marker in re.finditer(r"(?:^|[:;=])(?:/|~/|~\\|[A-Za-z]:[\\/])", value):
+            path_start = marker.end() - 1
+            if value[path_start] == "/" and (
+                _FORMULA_SLASH_RE.match(value, path_start) is not None
+                or _FORMULA_SLASH_FRAGMENT_RE.match(value, path_start) is not None
+            ):
+                continue
+            return True
     return False
 
 
@@ -2248,6 +2325,11 @@ def _normalize_record_mapping(
     for key, child_value in value.items():
         if not isinstance(key, str):
             raise TypeError("Issue #127 record has a non-string key")
+        if _contains_embedded_host_path(key):
+            raise ValueError(
+                "Issue #127 record contains an unsafe path-shaped mapping key "
+                f"in field {_record_field_path((*path, '<path-key>'))}"
+            )
         child_path = (*path, key)
         if key.lower() in _FORBIDDEN_RECORD_KEYS:
             raise ValueError(
@@ -2319,6 +2401,11 @@ def _validate_record_mapping(value: Mapping[Any, Any], *, path: tuple[str, ...])
     for child_key, child_value in value.items():
         if not isinstance(child_key, str):
             raise TypeError("Issue #127 record has a non-string key")
+        if _contains_embedded_host_path(child_key):
+            raise ValueError(
+                "Issue #127 record contains an unsafe path-shaped mapping key "
+                f"in field {_record_field_path((*path, '<path-key>'))}"
+            )
         child_path = (*path, child_key)
         if child_key.lower() in _FORBIDDEN_RECORD_KEYS:
             raise ValueError(
@@ -2369,7 +2456,9 @@ def _serialize_record(payload: Mapping[str, Any]) -> str:
         raise TypeError("Issue #127 record must be an object")
     if replacements:
         normalized["record_safety"] = {
-            "path_policy": "whole-string paths and known artifact path fields only",
+            "path_policy": (
+                "shared host-path classifier; known artifact fields retain safe basenames"
+            ),
             "path_replacements": replacements,
         }
     _validate_record_safety(normalized)

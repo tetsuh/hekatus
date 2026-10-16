@@ -733,6 +733,155 @@ def test_issue127_known_path_field_keeps_basename_audit_for_unc_path():
     ]
 
 
+@pytest.mark.parametrize(
+    "value",
+    (
+        "/home/user/private(1).csv",
+        "/home/user/a[b].txt",
+        "/home/user/a{b}.txt",
+        r"C:\Users\user\private(1).csv",
+        r"C:/Users/user/private(1).csv",
+        r"\\server\share\private(1).csv",
+        "open failed for '/home/user/private(1).csv'",
+        "open failed for /home/user/private(1).csv",
+        "~/private(1).txt",
+        "file:///home/user/private.txt",
+        "file:/home/user/private.txt",
+        "path:/home/user/private.txt",
+        "/home/|user/private.txt",
+    ),
+)
+def test_issue127_adversarial_paths_are_redacted_from_environment(value: str):
+    environment = runner.sanitize_environment({"diagnostic": value})
+
+    assert environment["diagnostic"] == runner.REDACTED_PATH
+    assert value not in json.dumps(environment, ensure_ascii=False)
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "/home/user/private(1).csv",
+        "/home/user/a[b].txt",
+        "/home/user/a{b}.txt",
+        r"C:\Users\user\private(1).csv",
+        r"C:/Users/user/private(1).csv",
+        r"\\server\share\private(1).csv",
+        "open failed for '/home/user/private(1).csv'",
+        "open failed for /home/user/private(1).csv",
+        "~/private(1).txt",
+        "file:///home/user/private.txt",
+        "file:/home/user/private.txt",
+        "path:/home/user/private.txt",
+        "/home/|user/private.txt",
+    ),
+)
+def test_issue127_adversarial_paths_are_rejected_from_unknown_record_fields(value: str):
+    with pytest.raises(ValueError, match=r"field payload\.value"):
+        runner._serialize_record({"payload": {"value": value}})
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "/home/user/private(1).csv",
+        r"C:\Users\user\private(1).csv",
+        r"\\server\share\private(1).csv",
+        "file:///home/user/private.txt",
+        "file:/home/user/private.txt",
+        "path:/home/user/private.txt",
+        "/home/|user/private.txt",
+    ),
+)
+def test_issue127_adversarial_paths_in_known_fields_keep_only_safe_audit_values(value: str):
+    serialized = runner._serialize_record({"artifact_path": value})
+
+    assert value not in serialized
+    decoded = json.loads(serialized)
+    assert decoded["artifact_path"] in ("private.txt", runner.REDACTED_PATH)
+    assert decoded["record_safety"]["path_replacements"][0]["field"] == "artifact_path"
+
+
+@pytest.mark.parametrize(
+    "private_path",
+    (
+        "/home/user/private.txt",
+        r"C:\Users\user\private(1).csv",
+        r"\\server\share\private(1).csv",
+        "file:/home/user/private.txt",
+        "/home/|user/private.txt",
+    ),
+)
+def test_issue127_environment_omits_path_shaped_mapping_keys(private_path: str):
+    environment = runner.sanitize_environment(
+        {"metadata": {private_path: "failure", "status": "ok"}}
+    )
+
+    assert environment == {"metadata": {"status": "ok"}}
+    assert private_path not in json.dumps(environment, ensure_ascii=False)
+
+
+@pytest.mark.parametrize(
+    "private_path",
+    (
+        "/home/user/private.txt",
+        r"C:\Users\user\private(1).csv",
+        r"\\server\share\private(1).csv",
+        "file:/home/user/private.txt",
+        "/home/|user/private.txt",
+    ),
+)
+def test_issue127_record_rejects_path_shaped_mapping_keys_without_echoing_them(
+    private_path: str,
+):
+    payload = {"metadata": {private_path: "failure"}}
+
+    with pytest.raises(ValueError, match=r"field metadata\.<path-key>") as exc_info:
+        runner._serialize_record(payload)
+    assert private_path not in str(exc_info.value)
+    with pytest.raises(ValueError, match=r"field metadata\.<path-key>"):
+        runner._validate_record_safety(payload)
+
+
+@pytest.mark.parametrize(
+    "formula",
+    (
+        "I/||R||inf",
+        "... / ||response_reference||_F",
+        "FP32-R raw P50 / BF16-R raw P50 - 1",
+        "/abs(response_at_look)",
+    ),
+)
+def test_issue127_exact_formula_controls_remain_serializable(formula: str):
+    for field in ("formula", "path"):
+        serialized = runner._serialize_record({field: formula})
+        environment = runner.sanitize_environment({field: formula})
+
+        assert json.loads(serialized)[field] == formula
+        assert environment[field] == formula
+
+
+def test_issue127_formula_exception_does_not_hide_a_later_host_path():
+    value = "/abs(response_at_look) is explanatory prose /home/user/private.txt"
+
+    environment = runner.sanitize_environment({"diagnostic": value})
+    assert environment["diagnostic"] == runner.REDACTED_PATH
+    with pytest.raises(ValueError, match=r"field diagnostic"):
+        runner._serialize_record({"diagnostic": value})
+
+
+@pytest.mark.parametrize(
+    "device_node",
+    ("/dev/tenstorrent/0", "/dev/tenstorrent/by-id/p150a-0"),
+)
+def test_issue127_allowed_device_nodes_remain_serializable(device_node: str):
+    serialized = runner._serialize_record({"device_node": device_node})
+    environment = runner.sanitize_environment({"device_node": device_node})
+
+    assert json.loads(serialized)["device_node"] == device_node
+    assert environment["device_node"] == device_node
+
+
 def test_issue127_environment_path_lists_are_placeholdered_without_formula_false_positive():
     environment = runner.sanitize_environment(
         {
