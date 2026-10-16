@@ -19,6 +19,31 @@ DEFAULT_HUGEPAGES_SOURCE = "/dev/hugepages-1G"
 DEFAULT_DEVICE_NODE = "/dev/tenstorrent/1"
 
 
+def _rewrite_resident_argument(
+    args: Sequence[str],
+    index: int,
+    *,
+    telemetry_mode: str,
+    power_trace_name: str,
+) -> tuple[tuple[str, ...], int, bool]:
+    argument = args[index]
+    if argument == "--env-json":
+        if index + 1 >= len(args):
+            raise ValueError("--env-json requires a value")
+        return (), index + 2, False
+    if argument.startswith("--env-json="):
+        return (), index + 1, False
+    if argument == "--power-trace":
+        if index + 1 >= len(args):
+            raise ValueError("--power-trace requires a value")
+        replacement = ("--power-trace", power_trace_name) if telemetry_mode != "off" else ()
+        return replacement, index + 2, True
+    if argument.startswith("--power-trace="):
+        replacement = (f"--power-trace={power_trace_name}",) if telemetry_mode != "off" else ()
+        return replacement, index + 1, True
+    return (argument,), index + 1, False
+
+
 def _resident_runner_args(
     runner_args: Sequence[str],
     *,
@@ -36,36 +61,83 @@ def _resident_runner_args(
     has_power_trace = False
     index = 0
     while index < len(args):
-        argument = args[index]
-        if argument == "--env-json":
-            if index + 1 >= len(args):
-                raise ValueError("--env-json requires a value")
-            index += 2
-            continue
-        if argument.startswith("--env-json="):
-            index += 1
-            continue
-        if argument == "--power-trace":
-            if index + 1 >= len(args):
-                raise ValueError("--power-trace requires a value")
-            has_power_trace = True
-            if telemetry_mode != "off":
-                resident_args.extend(("--power-trace", power_trace_name))
-            index += 2
-            continue
-        if argument.startswith("--power-trace="):
-            has_power_trace = True
-            if telemetry_mode != "off":
-                resident_args.append(f"--power-trace={power_trace_name}")
-            index += 1
-            continue
-        resident_args.append(argument)
-        index += 1
+        replacement, index, has_trace = _rewrite_resident_argument(
+            args,
+            index,
+            telemetry_mode=telemetry_mode,
+            power_trace_name=power_trace_name,
+        )
+        resident_args.extend(replacement)
+        has_power_trace = has_power_trace or has_trace
 
     resident_args.extend(("--env-json", environment_name))
     if telemetry_mode != "off" and not has_power_trace:
         resident_args.extend(("--power-trace", power_trace_name))
     return tuple(resident_args)
+
+
+def _validate_resident_options(
+    run_id: str,
+    container_name: str,
+    telemetry_mode: str,
+    device_node: str,
+    container_timeout_seconds: int,
+    telemetry_interval_seconds: str,
+) -> None:
+    if not run_id or any(character in run_id for character in "\r\n"):
+        raise ValueError("run_id must be non-empty and contain no newline")
+    if not container_name or any(character in container_name for character in "\r\n"):
+        raise ValueError("container_name must be non-empty and contain no newline")
+    if telemetry_mode not in {"off", "default", "explicit"}:
+        raise ValueError("telemetry_mode must be off, default, or explicit")
+    if not device_node or any(character in device_node for character in "\r\n"):
+        raise ValueError("device_node must be non-empty and contain no newline")
+    if container_timeout_seconds <= 0:
+        raise ValueError("container_timeout_seconds must be positive")
+    if telemetry_mode == "explicit" and not telemetry_interval_seconds:
+        raise ValueError("explicit telemetry mode requires an interval")
+
+
+def _resident_docker_prefix(
+    *,
+    container_name: str,
+    hugepages_source: str,
+    resolved_repo: Path,
+    resolved_output: Path,
+    run_id: str,
+) -> list[str]:
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        container_name,
+        "-v",
+        f"{hugepages_source}:/dev/hugepages-1G",
+        "-v",
+        f"{resolved_repo}:/work",
+        "-v",
+        f"{resolved_output}:/out",
+        "-w",
+        "/work",
+        "-e",
+        "PYTHONPATH=/work",
+        "-e",
+        f"HEKATUS_TT_RUN_ID={run_id}",
+    ]
+
+
+def _append_resident_environment(
+    argv: list[str],
+    *,
+    telemetry_mode: str,
+    telemetry_interval_seconds: str,
+    runner_result_path: str,
+) -> None:
+    if telemetry_mode != "off":
+        argv.extend(("-e", f"HEKATUS_TT_TELEMETRY_MODE={telemetry_mode}"))
+        argv.extend(("-e", f"HEKATUS_TT_TELEMETRY_INTERVAL_S={telemetry_interval_seconds}"))
+    argv.extend(("-e", f"HEKATUS_TT_RESULT_PATH={runner_result_path}"))
 
 
 def build_resident_docker_argv(
@@ -91,63 +163,37 @@ def build_resident_docker_argv(
     host bind source before invoking Docker.  ``device_node`` is accepted only
     so callers can report the omitted hardware argument alongside this vector.
     """
-    if not run_id or any(character in run_id for character in "\r\n"):
-        raise ValueError("run_id must be non-empty and contain no newline")
-    if not container_name or any(character in container_name for character in "\r\n"):
-        raise ValueError("container_name must be non-empty and contain no newline")
-    if telemetry_mode not in {"off", "default", "explicit"}:
-        raise ValueError("telemetry_mode must be off, default, or explicit")
-    if not device_node or any(character in device_node for character in "\r\n"):
-        raise ValueError("device_node must be non-empty and contain no newline")
-    if container_timeout_seconds <= 0:
-        raise ValueError("container_timeout_seconds must be positive")
-    if telemetry_mode == "explicit" and not telemetry_interval_seconds:
-        raise ValueError("explicit telemetry mode requires an interval")
-
+    _validate_resident_options(
+        run_id,
+        container_name,
+        telemetry_mode,
+        device_node,
+        container_timeout_seconds,
+        telemetry_interval_seconds,
+    )
     resolved_repo = repo_root.resolve()
     resolved_output = output_dir.resolve()
-    environment_name = f"/out/env-{run_id}.json"
-    power_trace_name = f"power-{run_id}.csv"
     resident_args = _resident_runner_args(
         runner_args,
         telemetry_mode=telemetry_mode,
-        environment_name=environment_name,
-        power_trace_name=power_trace_name,
+        environment_name=f"/out/env-{run_id}.json",
+        power_trace_name=f"power-{run_id}.csv",
         runner_result_path=runner_result_path,
     )
-
-    argv = [
-        "docker",
-        "run",
-        "--rm",
-        "--name",
-        container_name,
-        "-v",
-        f"{hugepages_source}:/dev/hugepages-1G",
-        "-v",
-        f"{resolved_repo}:/work",
-        "-v",
-        f"{resolved_output}:/out",
-        "-w",
-        "/work",
-        "-e",
-        "PYTHONPATH=/work",
-        "-e",
-        f"HEKATUS_TT_RUN_ID={run_id}",
-    ]
-    if telemetry_mode != "off":
-        argv.extend(("-e", f"HEKATUS_TT_TELEMETRY_MODE={telemetry_mode}"))
-        argv.extend(("-e", f"HEKATUS_TT_TELEMETRY_INTERVAL_S={telemetry_interval_seconds}"))
-    argv.extend(("-e", f"HEKATUS_TT_RESULT_PATH={runner_result_path}"))
-    argv.extend(
-        (
-            "--entrypoint",
-            "python3",
-            image,
-            RESIDENT_RUNNER,
-            *resident_args,
-        )
+    argv = _resident_docker_prefix(
+        container_name=container_name,
+        hugepages_source=hugepages_source,
+        resolved_repo=resolved_repo,
+        resolved_output=resolved_output,
+        run_id=run_id,
     )
+    _append_resident_environment(
+        argv,
+        telemetry_mode=telemetry_mode,
+        telemetry_interval_seconds=telemetry_interval_seconds,
+        runner_result_path=runner_result_path,
+    )
+    argv.extend(("--entrypoint", "python3", image, RESIDENT_RUNNER, *resident_args))
     return tuple(argv)
 
 

@@ -17,10 +17,12 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -57,6 +59,7 @@ WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
 WORKLOAD_STDOUT_LOG_NAME = "workload-stdout.log"
 WORKLOAD_STDERR_LOG_NAME = "workload-stderr.log"
 WORKLOAD_LOG_CHUNK_BYTES = 64 * 1024
+WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 TRACE_INTERVAL_SECONDS = 2.0
@@ -159,12 +162,43 @@ def _validate_container_visible_device_id(value: Any | None = None) -> int:
     return selected
 
 
+def _trusted_output_roots() -> tuple[Path, ...]:
+    roots = (
+        Path.cwd(),
+        Path(tempfile.gettempdir()),
+        Path("/out"),
+        Path(__file__).resolve().parents[1],
+    )
+    return tuple(root.resolve(strict=False) for root in roots)
+
+
+def _safe_output_path(path: Path, *, field: str) -> Path:
+    """Resolve a host path only when it remains below a trusted output root."""
+    candidate = Path(path)
+    try:
+        resolved = candidate.resolve(strict=False)
+        if candidate.is_symlink():
+            raise Issue121Q2Error(f"{field} must not be a symbolic link")
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise Issue121Q2Error(f"{field} cannot be resolved safely") from exc
+    if not any(resolved.is_relative_to(root) for root in trusted_roots):
+        raise Issue121Q2Error(f"{field} must be beneath a trusted output directory")
+    return resolved
+
+
 def _safe_output_dir(value: Path) -> Path:
     output_dir = Path(value)
     text = str(output_dir)
     if "\n" in text or "\\" in text or ".." in output_dir.parts:
         raise Issue121Q2Error("output_dir must not contain path traversal")
+    _safe_output_path(output_dir, field="output_dir")
     return output_dir
+
+
+def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
+    safe_name = _safe_basename(name, field=field)
+    return _safe_output_path(output_dir / safe_name, field=field)
 
 
 def _safe_basename(value: str, *, field: str) -> str:
@@ -250,24 +284,9 @@ def _stdout_text(value: Any) -> str:
     return value if isinstance(value, str) else ""
 
 
-def capture_readonly_snapshot(
-    *,
-    stage: str,
-    monotonic_ns: Callable[[], int] = time.monotonic_ns,
-    utc_now: Callable[[], str] = _utc_now,
-    run_command: Callable[..., Any] | None = None,
-    timeout_seconds: float = SNAPSHOT_TIMEOUT_SECONDS,
-) -> dict[str, Any]:
-    """Capture one bounded read-only snapshot without retaining host fields.
-
-    ``run_command`` is an injection seam for board-free tests.  When omitted,
-    the exact ``tt-smi -s --snapshot_no_tty`` command is executed with no shell.
-    """
-    if not isinstance(stage, str) or not stage.strip():
-        raise Issue121Q2Error("snapshot stage must be a non-empty string")
-    timeout = _finite_number(timeout_seconds, field="snapshot timeout", positive=True)
-    start_ns = monotonic_ns()
-    command_runner = subprocess.run if run_command is None else run_command
+def _run_snapshot_command(
+    command_runner: Callable[..., Any], timeout: float
+) -> tuple[str, int | None, str, str | None]:
     stdout = ""
     returncode: int | None = None
     status = "ok"
@@ -295,8 +314,12 @@ def capture_readonly_snapshot(
     except Exception as exc:  # noqa: BLE001 - a mocked command can fail arbitrarily
         status = "command_failed"
         error_type = type(exc).__name__
-    end_ns = monotonic_ns()
+    return stdout, returncode, status, error_type
 
+
+def _parse_snapshot_output(
+    stdout: str, status: str, error_type: str | None
+) -> tuple[dict[str, Any] | None, str, str | None]:
     parsed_snapshot: dict[str, Any] | None = None
     if stdout:
         try:
@@ -312,6 +335,32 @@ def capture_readonly_snapshot(
     elif status == "ok":
         status = "empty_output"
         error_type = "empty_output"
+    return parsed_snapshot, status, error_type
+
+
+def capture_readonly_snapshot(
+    *,
+    stage: str,
+    monotonic_ns: Callable[[], int] = time.monotonic_ns,
+    utc_now: Callable[[], str] = _utc_now,
+    run_command: Callable[..., Any] | None = None,
+    timeout_seconds: float = SNAPSHOT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Capture one bounded read-only snapshot without retaining host fields.
+
+    ``run_command`` is an injection seam for board-free tests.  When omitted,
+    the exact ``tt-smi -s --snapshot_no_tty`` command is executed with no shell.
+    """
+    if not isinstance(stage, str) or not stage.strip():
+        raise Issue121Q2Error("snapshot stage must be a non-empty string")
+    timeout = _finite_number(timeout_seconds, field="snapshot timeout", positive=True)
+    start_ns = monotonic_ns()
+    command_runner = subprocess.run if run_command is None else run_command
+    stdout, returncode, status, error_type = _run_snapshot_command(command_runner, timeout)
+    end_ns = monotonic_ns()
+    parsed_snapshot, status, error_type = _parse_snapshot_output(
+        stdout, status, error_type
+    )
 
     return {
         "schema": ISSUE121_Q2_SNAPSHOT_SCHEMA,
@@ -433,6 +482,46 @@ _SNAPSHOT_LIMIT_SPECS = {
 }
 
 
+def _recognized_snapshot_limit(
+    name: str, spec: Mapping[str, Any], sources: Mapping[str, Mapping[str, Any]]
+) -> dict[str, Any]:
+    for source_name, keys in spec["sources"]:
+        source = sources.get(source_name)
+        if source is None:
+            continue
+        for key in keys:
+            if key in source:
+                return {
+                    "value": _json_safe_snapshot(source[key]),
+                    "unit": spec["unit"],
+                    "source_key": f"{source_name}.{key}",
+                    "status": "known",
+                }
+    return {
+        "value": None,
+        "unit": None,
+        "source_key": (
+            "smbus_telem.THM_LIMIT_THROTTLE" if name == "thm_limit_throttle" else None
+        ),
+        "status": "unknown",
+    }
+
+
+def _snapshot_raw_smbus(source: Mapping[str, Any]) -> dict[str, Any]:
+    recognized_names = {
+        "board_power_limit",
+        "tdc_limit_max",
+        "thm_limit_throttle",
+        "thm_limit_shutdown",
+        "asic_fmax",
+    }
+    return {
+        str(key): _json_safe_snapshot(value)
+        for key, value in source.items()
+        if str(key).casefold() in recognized_names or "limit" in str(key).casefold()
+    }
+
+
 def _extract_snapshot_limits(
     capture: Mapping[str, Any], *, board_id: str, bus_id: str
 ) -> dict[str, Any]:
@@ -447,55 +536,16 @@ def _extract_snapshot_limits(
             "raw": {},
             "raw_smbus": {},
         }
-    recognized_sources: dict[str, Mapping[str, Any]] = {}
-    for source_name in ("limits", "smbus_telem"):
-        source = device.get(source_name)
-        if isinstance(source, Mapping):
-            recognized_sources[source_name] = source
-    recognized: dict[str, Any] = {}
-    for name, spec in _SNAPSHOT_LIMIT_SPECS.items():
-        found = False
-        for source_name, keys in spec["sources"]:
-            source = recognized_sources.get(source_name)
-            if source is None:
-                continue
-            for key in keys:
-                if key not in source:
-                    continue
-                recognized[name] = {
-                    "value": _json_safe_snapshot(source[key]),
-                    "unit": spec["unit"],
-                    "source_key": f"{source_name}.{key}",
-                    "status": "known",
-                }
-                found = True
-                break
-            if found:
-                break
-        if not found:
-            recognized[name] = {
-                "value": None,
-                "unit": None,
-                "source_key": (
-                    "smbus_telem.THM_LIMIT_THROTTLE"
-                    if name == "thm_limit_throttle"
-                    else None
-                ),
-                "status": "unknown",
-            }
-    smbus = recognized_sources.get("smbus_telem", {})
-    raw_smbus = {
-        str(key): _json_safe_snapshot(value)
-        for key, value in smbus.items()
-        if str(key).casefold() in {
-            "board_power_limit",
-            "tdc_limit_max",
-            "thm_limit_throttle",
-            "thm_limit_shutdown",
-            "asic_fmax",
-        }
-        or "limit" in str(key).casefold()
+    recognized_sources = {
+        source_name: source
+        for source_name in ("limits", "smbus_telem")
+        if isinstance(source := device.get(source_name), Mapping)
     }
+    recognized = {
+        name: _recognized_snapshot_limit(name, spec, recognized_sources)
+        for name, spec in _SNAPSHOT_LIMIT_SPECS.items()
+    }
+    raw_smbus = _snapshot_raw_smbus(recognized_sources.get("smbus_telem", {}))
     return {
         "status": "available",
         "stage": capture.get("stage"),
@@ -890,12 +940,29 @@ def _bounded_workload_output_tail(value: Any) -> tuple[str | None, str | None]:
     """Return a bounded output tail unless it contains a host-specific path."""
     text = _stdout_text(value)
     if _FORBIDDEN_PATH_TEXT.search(text):
-        return None, "not_saved: path_detected"
+        return None, WORKLOAD_PATH_OMISSION_REASON
     lines = text.splitlines(keepends=True)
     tail = "".join(lines[-WORKLOAD_OUTPUT_TAIL_LINES:])
     if len(tail) > WORKLOAD_OUTPUT_TAIL_MAX_CHARS:
         tail = tail[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:]
     return tail, None
+
+
+def _workload_stream_field(
+    result: Any, stream: str, omissions: Mapping[str, Any]
+) -> tuple[str | None, str | None]:
+    if isinstance(result, Mapping):
+        if stream in result:
+            value = result[stream]
+        elif f"{stream}_tail" in result:
+            value = result[f"{stream}_tail"]
+        elif stream in omissions and omissions[stream] == WORKLOAD_PATH_OMISSION_REASON:
+            return None, omissions[stream]
+        else:
+            value = ""
+    else:
+        value = getattr(result, stream, "")
+    return _bounded_workload_output_tail(value)
 
 
 def _workload_output_fields(result: Any) -> dict[str, Any]:
@@ -905,19 +972,7 @@ def _workload_output_fields(result: Any) -> dict[str, Any]:
     fields: dict[str, Any] = {}
     omitted: dict[str, str] = {}
     for stream in ("stdout", "stderr"):
-        if isinstance(result, Mapping):
-            if stream in result:
-                value = result[stream]
-            elif f"{stream}_tail" in result:
-                value = result[f"{stream}_tail"]
-            elif stream in omissions and omissions[stream] == "not_saved: path_detected":
-                omitted[stream] = omissions[stream]
-                continue
-            else:
-                value = ""
-        else:
-            value = getattr(result, stream, "")
-        tail, reason = _bounded_workload_output_tail(value)
+        tail, reason = _workload_stream_field(result, stream, omissions)
         if reason is not None:
             omitted[stream] = reason
         else:
@@ -970,7 +1025,8 @@ def _stream_value(result: Any, stream: str) -> tuple[Any, bool]:
 def _write_workload_log(path: Path, payload: bytes) -> str:
     """Write bytes in bounded chunks; return a record-safe write status."""
     try:
-        with path.open("wb") as handle:
+        safe_path = _safe_output_path(path, field="workload log")
+        with safe_path.open("wb") as handle:
             for offset in range(0, len(payload), WORKLOAD_LOG_CHUNK_BYTES):
                 handle.write(payload[offset : offset + WORKLOAD_LOG_CHUNK_BYTES])
     except (OSError, TypeError, ValueError):
@@ -997,7 +1053,8 @@ def _inspect_workload_log(
     path_detector = _WorkloadPathDetector()
     read_ok = False
     try:
-        with path.open("rb") as handle:
+        safe_path = _safe_output_path(path, field="workload log")
+        with safe_path.open("rb") as handle:
             while True:
                 chunk = handle.read(WORKLOAD_LOG_CHUNK_BYTES)
                 if not chunk:
@@ -1015,7 +1072,7 @@ def _inspect_workload_log(
     if not read_ok:
         return metadata, "", None
     if path_detector.detected:
-        return metadata, None, "not_saved: path_detected"
+        return metadata, None, WORKLOAD_PATH_OMISSION_REASON
     return metadata, tail_collector.finish(), None
 
 
@@ -1034,7 +1091,7 @@ def _workload_fields_from_logs(
         if reason is not None or (
             tail == ""
             and stream in omissions
-            and omissions[stream] == "not_saved: path_detected"
+            and omissions[stream] == WORKLOAD_PATH_OMISSION_REASON
         ):
             omitted[stream] = reason or omissions[stream]
         else:
@@ -1047,8 +1104,12 @@ def _workload_fields_from_logs(
 def _persist_workload_streams(output_dir: Path, result: Any) -> dict[str, Any]:
     """Persist callback-provided streams and return record-safe diagnostics."""
     paths = {
-        "stdout": output_dir / WORKLOAD_STDOUT_LOG_NAME,
-        "stderr": output_dir / WORKLOAD_STDERR_LOG_NAME,
+        "stdout": _safe_artifact_path(
+            output_dir, WORKLOAD_STDOUT_LOG_NAME, field="workload stdout log"
+        ),
+        "stderr": _safe_artifact_path(
+            output_dir, WORKLOAD_STDERR_LOG_NAME, field="workload stderr log"
+        ),
     }
     statuses: dict[str, str] = {}
     for stream, path in paths.items():
@@ -1065,59 +1126,61 @@ def _persist_workload_streams(output_dir: Path, result: Any) -> dict[str, Any]:
     return _workload_fields_from_logs(paths, statuses, existing_omissions=existing_omissions)
 
 
-def _run_workload(
-    command: Sequence[str],
-    environment: Mapping[str, str],
-    *,
-    repo_root: Path,
-    output_dir: Path | None = None,
+def _run_workload_without_logs(
+    command: Sequence[str], environment: Mapping[str, str], *, repo_root: Path
 ) -> dict[str, Any]:
-    if output_dir is None:
-        try:
-            completed = subprocess.run(
-                tuple(command),
-                cwd=repo_root,
-                env={**os.environ, **dict(environment)},
-                capture_output=True,
-                text=False,
-                timeout=RUN_GUARD_SECONDS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            return _normalize_workload_result(
-                {
-                    "returncode": None,
-                    "status": "timeout",
-                    "timed_out": True,
-                    "stdout": getattr(exc, "stdout", ""),
-                    "stderr": getattr(exc, "stderr", ""),
-                }
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            return {
+    try:
+        completed = subprocess.run(
+            tuple(command),
+            cwd=repo_root,
+            env={**os.environ, **dict(environment)},
+            capture_output=True,
+            text=False,
+            timeout=RUN_GUARD_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return _normalize_workload_result(
+            {
                 "returncode": None,
-                "status": type(exc).__name__,
-                "timed_out": False,
-                "stdout_tail": "",
-                "stderr_tail": "",
+                "status": "timeout",
+                "timed_out": True,
+                "stdout": getattr(exc, "stdout", ""),
+                "stderr": getattr(exc, "stderr", ""),
             }
-        return _normalize_workload_result(completed)
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {
+            "returncode": None,
+            "status": type(exc).__name__,
+            "timed_out": False,
+            "stdout_tail": "",
+            "stderr_tail": "",
+        }
+    return _normalize_workload_result(completed)
 
-    paths = {
-        "stdout": output_dir / WORKLOAD_STDOUT_LOG_NAME,
-        "stderr": output_dir / WORKLOAD_STDERR_LOG_NAME,
-    }
+
+def _open_workload_logs(paths: Mapping[str, Path]) -> tuple[dict[str, Any], dict[str, str]]:
     handles: dict[str, Any] = {}
     statuses: dict[str, str] = {}
     for stream, path in paths.items():
         try:
-            handles[stream] = path.open("wb")
+            safe_path = _safe_output_path(path, field="workload log")
+            handles[stream] = safe_path.open("wb")
             statuses[stream] = "saved"
         except (OSError, TypeError, ValueError):
             statuses[stream] = "write_failed"
+    return handles, statuses
 
-    completed: Any = None
-    process_result: dict[str, Any]
+
+def _run_workload_with_logs(
+    command: Sequence[str],
+    environment: Mapping[str, str],
+    *,
+    repo_root: Path,
+    handles: Mapping[str, Any],
+    statuses: dict[str, str],
+) -> tuple[dict[str, Any], Any]:
     try:
         completed = subprocess.run(
             tuple(command),
@@ -1149,35 +1212,72 @@ def _run_workload(
         }
         completed = exc
     finally:
-        for stream, handle in handles.items():
-            try:
-                handle.close()
-            except (OSError, ValueError):
-                statuses[stream] = "write_failed"
+        _close_workload_logs(handles, statuses)
+    return process_result, completed
 
-    # A test seam or an alternative subprocess implementation may return
-    # captured timeout output even when file handles were supplied.  Use it
-    # only when the corresponding file is still empty; normal subprocess runs
-    # have already written the exact bytes directly to disk.
+
+def _close_workload_logs(handles: Mapping[str, Any], statuses: dict[str, str]) -> None:
+    for stream, handle in handles.items():
+        try:
+            handle.close()
+        except (OSError, ValueError):
+            statuses[stream] = "write_failed"
+
+
+def _persist_subprocess_output(
+    paths: Mapping[str, Path],
+    statuses: dict[str, str],
+    completed: Any,
+) -> None:
+    """Use returned output only when a test seam left a saved log empty."""
     for stream, path in paths.items():
         if statuses[stream] != "saved":
             continue
         value = getattr(completed, stream, None)
         payload = _workload_stream_bytes(value)
-        if payload:
-            try:
-                is_empty = path.stat().st_size == 0
-            except OSError:
-                is_empty = False
-            if is_empty:
-                try:
-                    statuses[stream] = _write_workload_log(path, payload)
-                except (OSError, TypeError, ValueError):
-                    statuses[stream] = "write_failed"
+        if not payload:
+            continue
+        try:
+            is_empty = _safe_output_path(path, field="workload log").stat().st_size == 0
+        except OSError:
+            is_empty = False
+        if not is_empty:
+            continue
+        try:
+            statuses[stream] = _write_workload_log(path, payload)
+        except (OSError, TypeError, ValueError):
+            statuses[stream] = "write_failed"
 
-    process_result.update(
-        _workload_fields_from_logs(paths, statuses)
+
+def _run_workload(
+    command: Sequence[str],
+    environment: Mapping[str, str],
+    *,
+    repo_root: Path,
+    output_dir: Path | None = None,
+) -> dict[str, Any]:
+    if output_dir is None:
+        return _run_workload_without_logs(command, environment, repo_root=repo_root)
+
+    safe_output_dir = _safe_output_path(output_dir, field="workload output directory")
+    paths = {
+        "stdout": _safe_artifact_path(
+            safe_output_dir, WORKLOAD_STDOUT_LOG_NAME, field="workload stdout log"
+        ),
+        "stderr": _safe_artifact_path(
+            safe_output_dir, WORKLOAD_STDERR_LOG_NAME, field="workload stderr log"
+        ),
+    }
+    handles, statuses = _open_workload_logs(paths)
+    process_result, completed = _run_workload_with_logs(
+        command,
+        environment,
+        repo_root=repo_root,
+        handles=handles,
+        statuses=statuses,
     )
+    _persist_subprocess_output(paths, statuses, completed)
+    process_result.update(_workload_fields_from_logs(paths, statuses))
     return process_result
 
 
@@ -1196,31 +1296,84 @@ def _safe_record_value(value: Any, *, field: str = "record") -> None:
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:
-    path.write_text(strict_json_dumps(value, indent=2) + "\n", encoding="utf-8")
+    safe_path = _safe_output_path(path, field="JSON output")
+    safe_path.write_text(strict_json_dumps(value, indent=2) + "\n", encoding="utf-8")
 
 
-def run_one(
-    output_dir: Path,
-    *,
-    run_id: str,
-    run_number: int | None = None,
-    board_id: str,
-    bus_id: str,
-    image_digest: str,
-    harness_commit: str,
-    kernel: str,
-    kernel_driver_version: str,
-    container_device_id: int | None = None,
-    trace_interval_seconds: float = TRACE_INTERVAL_SECONDS,
-    workload_runner: Callable[[Sequence[str], Mapping[str, str], float], Any] | None = None,
-    capture_fn: Callable[..., dict[str, Any]] | None = None,
-    monotonic_ns: Callable[[], int] = time.monotonic_ns,
-    utc_now: Callable[[], str] = _utc_now,
-) -> dict[str, Any]:
+@dataclass(frozen=True)
+class _RunOptions:
+    run_id: str
+    run_number: int | None
+    board_id: str
+    bus_id: str
+    image_digest: str
+    harness_commit: str
+    kernel: str
+    kernel_driver_version: str
+    container_device_id: int | None
+    trace_interval_seconds: float
+    workload_runner: Callable[[Sequence[str], Mapping[str, str], float], Any] | None
+    capture_fn: Callable[..., dict[str, Any]] | None
+    monotonic_ns: Callable[[], int]
+    utc_now: Callable[[], str]
+
+
+_RUN_OPTION_DEFAULTS = {
+    "run_number": None,
+    "container_device_id": None,
+    "trace_interval_seconds": TRACE_INTERVAL_SECONDS,
+    "workload_runner": None,
+    "capture_fn": None,
+    "monotonic_ns": time.monotonic_ns,
+    "utc_now": _utc_now,
+}
+_RUN_OPTION_REQUIRED = (
+    "run_id",
+    "board_id",
+    "bus_id",
+    "image_digest",
+    "harness_commit",
+    "kernel",
+    "kernel_driver_version",
+)
+_RUN_OPTION_NAMES = frozenset((*_RUN_OPTION_REQUIRED, *_RUN_OPTION_DEFAULTS))
+
+
+def _run_options(values: Mapping[str, Any]) -> _RunOptions:
+    unknown = set(values).difference(_RUN_OPTION_NAMES)
+    if unknown:
+        name = min(unknown)
+        raise TypeError(f"run_one() got an unexpected keyword argument {name!r}")
+    missing = [name for name in _RUN_OPTION_REQUIRED if name not in values]
+    if missing:
+        names = ", ".join(repr(name) for name in missing)
+        raise TypeError(f"run_one() missing required keyword-only arguments: {names}")
+    return _RunOptions(
+        **{name: values.get(name, default) for name, default in _RUN_OPTION_DEFAULTS.items()},
+        **{name: values[name] for name in _RUN_OPTION_REQUIRED},
+    )
+
+
+def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
+    run_id = options.run_id
+    run_number = options.run_number
+    board_id = options.board_id
+    bus_id = options.bus_id
+    image_digest = options.image_digest
+    harness_commit = options.harness_commit
+    kernel = options.kernel
+    kernel_driver_version = options.kernel_driver_version
+    container_device_id = options.container_device_id
+    trace_interval_seconds = options.trace_interval_seconds
+    workload_runner = options.workload_runner
+    capture_fn = options.capture_fn
+    monotonic_ns = options.monotonic_ns
+    utc_now = options.utc_now
     visible_device_id = _validate_container_visible_device_id(container_device_id)
     output_dir = _safe_output_dir(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    safe_output_dir = _safe_output_path(output_dir, field="output_dir")
+    safe_output_dir.mkdir(parents=True, exist_ok=True)
     safe_run_id = _safe_run_id(run_id)
     if run_number is not None and run_number not in {1, 2, 3}:
         raise Issue121Q2Error("run_number must be 1, 2, or 3")
@@ -1229,7 +1382,9 @@ def run_one(
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
 
     pre_capture = capture(stage="pre_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
-    pre_path = output_dir / f"pre-snapshot-{safe_run_id}.json"
+    pre_path = _safe_artifact_path(
+        safe_output_dir, f"pre-snapshot-{safe_run_id}.json", field="pre snapshot"
+    )
     _write_json(pre_path, pre_capture)
     environment = _build_environment(
         pre_capture,
@@ -1243,9 +1398,13 @@ def run_one(
         container_device_id=visible_device_id,
     )
 
-    calibration_path = output_dir / "issue121-q2-calibration.json"
+    calibration_path = _safe_artifact_path(
+        safe_output_dir, "issue121-q2-calibration.json", field="calibration metadata"
+    )
     _write_json(calibration_path, build_calibration_payload())
-    trace_path = output_dir / f"extended-trace-{safe_run_id}.csv"
+    trace_path = _safe_artifact_path(
+        safe_output_dir, f"extended-trace-{safe_run_id}.csv", field="extended trace"
+    )
     result_name = f"runner-result-{safe_run_id}.json"
     command = build_workload_command(
         output_dir=output_dir,
@@ -1263,7 +1422,8 @@ def run_one(
     in_run_captures: list[dict[str, Any]] = []
     sampler_errors: list[str] = []
     stop_event = threading.Event()
-    with trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
+    safe_trace_path = _safe_output_path(trace_path, field="extended trace")
+    with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
         trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
         pre_row = _append_extended_row(
             trace_handle,
@@ -1292,12 +1452,12 @@ def run_one(
                 command,
                 workload_environment,
                 repo_root=Path(__file__).resolve().parents[1],
-                output_dir=output_dir,
+                output_dir=safe_output_dir,
             )
         else:
             callback_result = workload_runner(command, workload_environment, RUN_GUARD_SECONDS)
             workload_result = _normalize_workload_result(callback_result)
-            workload_result.update(_persist_workload_streams(output_dir, callback_result))
+            workload_result.update(_persist_workload_streams(safe_output_dir, callback_result))
         workload_end_ns = monotonic_ns()
         stop_event.set()
         sampler_thread.join(timeout=interval + 1.0)
@@ -1311,10 +1471,12 @@ def run_one(
             bus_id=normalized_bus,
         )
 
-    post_path = output_dir / f"post-snapshot-{safe_run_id}.json"
+    post_path = _safe_artifact_path(
+        safe_output_dir, f"post-snapshot-{safe_run_id}.json", field="post snapshot"
+    )
     _write_json(post_path, post_capture)
     try:
-        trace_bytes = trace_path.read_bytes()
+        trace_bytes = safe_trace_path.read_bytes()
     except OSError as exc:
         raise Issue121Q2Error("extended trace could not be read after capture") from exc
     snapshot_limits = {
@@ -1334,7 +1496,7 @@ def run_one(
         ),
     }
     raw_window = _raw_window_from_trace(
-        trace_path,
+        safe_trace_path,
         run_start_ns=int(workload_start_ns),
         run_end_ns=int(workload_end_ns),
     )
@@ -1442,10 +1604,17 @@ def run_one(
             "host_identity_persisted": False,
         },
     }
-    record_path = output_dir / f"run-{safe_run_id}.json"
+    record_path = _safe_artifact_path(
+        safe_output_dir, f"run-{safe_run_id}.json", field="measurement record"
+    )
     _safe_record_value(record)
     _write_json(record_path, record)
     return record
+
+
+def run_one(output_dir: Path, **kwargs: Any) -> dict[str, Any]:
+    """Run one fixed Q2 attempt with the existing keyword-only interface."""
+    return _run_one(output_dir, _run_options(kwargs))
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1478,7 +1647,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             kernel_driver_version=args.kernel_driver_version,
             trace_interval_seconds=args.trace_interval_seconds,
         )
-    except (Issue121Q2Error, OSError, TypeError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         print(f"Issue #121 Q2 run rejected: {exc}", file=os.sys.stderr)
         return 2
     print(strict_json_dumps({"status": record["status"], "run_id": record["run_id"]}))

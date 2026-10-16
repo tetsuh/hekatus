@@ -14,7 +14,9 @@ import itertools
 import json
 import math
 import re
+import tempfile
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,7 @@ BOARD_POWER_LIMIT_W = 300.0
 H_TDP_PROXIMITY_FRACTION = 0.05
 EARLY_RAW_WINDOW_SECONDS = 10.0
 SAMPLING_CADENCE_SECONDS = 2.0
+AICLK_BASELINE_SOURCE = "limits metadata asic_fmax_mhz"
 
 SIGNAL_UNITS = {
     "power_w": "W",
@@ -78,6 +81,32 @@ _FORBIDDEN_PATH_TEXT = re.compile(
 
 class AnalysisError(ValueError):
     """Raised when an extended trace cannot be analyzed safely."""
+
+
+def _trusted_cli_roots() -> tuple[Path, ...]:
+    roots = (
+        Path.cwd(),
+        Path(tempfile.gettempdir()),
+        Path("/out"),
+        Path(__file__).resolve().parents[1],
+    )
+    return tuple(root.resolve(strict=False) for root in roots)
+
+
+def _safe_cli_path(value: str | Path, *, purpose: str, output: bool = False) -> Path:
+    """Resolve CLI paths only when they stay in a trusted project or test root."""
+    try:
+        candidate = Path(value)
+        resolved = candidate.resolve(strict=False)
+        is_symlink = candidate.is_symlink()
+        trusted_roots = _trusted_cli_roots()
+    except (OSError, RuntimeError, TypeError) as exc:
+        raise AnalysisError(f"{purpose} path cannot be resolved safely") from exc
+    if output and is_symlink:
+        raise AnalysisError(f"{purpose} path must not be a symbolic link")
+    if not any(resolved.is_relative_to(root) for root in trusted_roots):
+        raise AnalysisError(f"{purpose} path must be beneath a trusted project directory")
+    return resolved
 
 
 def _finite(value: Any, *, field: str) -> float:
@@ -143,62 +172,68 @@ def _row_copy(row: Mapping[str, Any], index: int) -> dict[str, Any]:
     return copied
 
 
-def _load_trace_source(
-    source: str | Path | Mapping[str, Any],
+def _load_mapping_trace(
+    payload: Mapping[str, Any],
     *,
     run_start_monotonic_ns: int | None,
     run_end_monotonic_ns: int | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
-    """Load one trace and return rows, reader facts, and source provenance."""
-    if isinstance(source, Mapping):
-        payload = source
-        schema = payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA)
-        version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
-        columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
-        if schema != EXTENDED_POWER_TRACE_SCHEMA or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION:
-            raise AnalysisError("extended trace schema is unsupported")
-        if tuple(columns) != EXTENDED_POWER_TRACE_COLUMNS:
-            raise AnalysisError("extended trace columns are unsupported")
-        raw_rows = payload.get("samples")
-        if not isinstance(raw_rows, list) or not raw_rows:
-            raise AnalysisError("extended trace samples must be a non-empty array")
-        rows = [_row_copy(row, index) for index, row in enumerate(raw_rows) if isinstance(row, Mapping)]
-        if len(rows) != len(raw_rows):
-            raise AnalysisError("extended trace samples must contain objects")
-        start = (
-            run_start_monotonic_ns
-            if run_start_monotonic_ns is not None
-            else payload.get("run_start_monotonic_ns", rows[0]["timestamp_monotonic_ns"])
-        )
-        end = (
-            run_end_monotonic_ns
-            if run_end_monotonic_ns is not None
-            else payload.get("run_end_monotonic_ns", rows[-1]["timestamp_monotonic_ns"])
-        )
-        source_metadata = payload.get("provenance", payload.get("source", {}))
-        if not isinstance(source_metadata, Mapping):
-            source_metadata = {}
-        source_metadata = dict(source_metadata)
-        for identity_field in ("board_id", "bus_id"):
-            if identity_field in payload and identity_field not in source_metadata:
-                source_metadata[identity_field] = payload[identity_field]
-        reader_facts = {
-            "schema": schema,
-            "schema_version": version,
-            "columns": list(columns),
-            "run_start_monotonic_ns": _integer(start, field="run_start_monotonic_ns"),
-            "run_end_monotonic_ns": _integer(end, field="run_end_monotonic_ns"),
-            "valid": True,
-        }
-        return rows, reader_facts, dict(source_metadata)
+    schema = payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA)
+    version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
+    columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
+    if schema != EXTENDED_POWER_TRACE_SCHEMA or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION:
+        raise AnalysisError("extended trace schema is unsupported")
+    if tuple(columns) != EXTENDED_POWER_TRACE_COLUMNS:
+        raise AnalysisError("extended trace columns are unsupported")
+    raw_rows = payload.get("samples")
+    if not isinstance(raw_rows, list) or not raw_rows:
+        raise AnalysisError("extended trace samples must be a non-empty array")
+    rows = [
+        _row_copy(row, index)
+        for index, row in enumerate(raw_rows)
+        if isinstance(row, Mapping)
+    ]
+    if len(rows) != len(raw_rows):
+        raise AnalysisError("extended trace samples must contain objects")
+    start = (
+        run_start_monotonic_ns
+        if run_start_monotonic_ns is not None
+        else payload.get("run_start_monotonic_ns", rows[0]["timestamp_monotonic_ns"])
+    )
+    end = (
+        run_end_monotonic_ns
+        if run_end_monotonic_ns is not None
+        else payload.get("run_end_monotonic_ns", rows[-1]["timestamp_monotonic_ns"])
+    )
+    source_metadata = payload.get("provenance", payload.get("source", {}))
+    if not isinstance(source_metadata, Mapping):
+        source_metadata = {}
+    source_metadata = dict(source_metadata)
+    for identity_field in ("board_id", "bus_id"):
+        if identity_field in payload and identity_field not in source_metadata:
+            source_metadata[identity_field] = payload[identity_field]
+    reader_facts = {
+        "schema": schema,
+        "schema_version": version,
+        "columns": list(columns),
+        "run_start_monotonic_ns": _integer(start, field="run_start_monotonic_ns"),
+        "run_end_monotonic_ns": _integer(end, field="run_end_monotonic_ns"),
+        "valid": True,
+    }
+    return rows, reader_facts, dict(source_metadata)
 
-    path = Path(source)
-    start = run_start_monotonic_ns
-    end = run_end_monotonic_ns
+
+def _load_trace_file(
+    path: Path,
+    *,
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    safe_path = _safe_cli_path(path, purpose="trace source")
     trace = read_extended_power_trace_snapshot(
-        path,
-        run_start_monotonic_ns=start,
-        run_end_monotonic_ns=end,
+        safe_path,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
     )
     if trace.get("valid") is not True:
         raise AnalysisError(
@@ -207,15 +242,36 @@ def _load_trace_source(
         )
     rows = [_row_copy(row, index) for index, row in enumerate(trace.get("samples", []))]
     try:
-        raw = path.read_bytes()
+        raw = safe_path.read_bytes()
     except OSError as exc:
         raise AnalysisError("extended trace source cannot be hashed") from exc
     source_metadata = {
-        "file": path.name,
+        "file": safe_path.name,
         "sha256": hashlib.sha256(raw).hexdigest(),
         "byte_count": len(raw),
     }
     return rows, trace, source_metadata
+
+
+def _load_trace_source(
+    source: str | Path | Mapping[str, Any],
+    *,
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Load one trace and return rows, reader facts, and source provenance."""
+    if isinstance(source, Mapping):
+        return _load_mapping_trace(
+            source,
+            run_start_monotonic_ns=run_start_monotonic_ns,
+            run_end_monotonic_ns=run_end_monotonic_ns,
+        )
+    path = _safe_cli_path(source, purpose="trace source")
+    return _load_trace_file(
+        path,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
+    )
 
 
 def _left_held_segments(
@@ -289,7 +345,7 @@ def _aggregate_signal(
     weighted = _duration_weighted_mean(segments, field)
     proximity: dict[str, Any] | None = None
     if limit is not None and weighted is not None:
-        if not math.isfinite(limit) or limit == 0.0:
+        if not math.isfinite(limit) or not limit:
             proximity = {"status": "not_evaluable", "reason": "limit is not finite or zero"}
         else:
             difference = abs(weighted - limit)
@@ -452,6 +508,64 @@ def _snapshot_limit_mappings(metadata: Mapping[str, Any]) -> list[Mapping[str, A
     return mappings
 
 
+def _coerce_limit_value(value: Any, *, field: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        return _finite(value, field=field)
+    except AnalysisError:
+        try:
+            return _finite(int(str(value).strip(), 0), field=field)
+        except (TypeError, ValueError):
+            return None
+
+
+def _apply_limit_value(
+    name: str,
+    keys: Sequence[str],
+    source: Mapping[str, Any],
+    values: dict[str, float | None],
+    provided: set[str],
+) -> None:
+    for key in keys:
+        if key not in source:
+            continue
+        value = source[key]
+        if isinstance(value, Mapping):
+            value = value.get("value")
+        values[name] = _coerce_limit_value(value, field=name)
+        if values[name] is not None:
+            provided.add(name)
+        break
+
+
+def _apply_limit_source(
+    source: Mapping[str, Any],
+    values: dict[str, float | None],
+    provided: set[str],
+    *,
+    only_unset: bool,
+) -> None:
+    for name, keys in _LIMIT_ALIASES.items():
+        if only_unset and name in provided:
+            continue
+        _apply_limit_value(name, keys, source, values, provided)
+
+
+def _direct_limit_sources(metadata: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    limits = metadata.get("limits")
+    if isinstance(limits, Mapping):
+        return [limits]
+    direct_sources: list[Mapping[str, Any]] = []
+    source_snapshot = metadata.get("source_snapshot")
+    if isinstance(source_snapshot, Mapping):
+        reported = source_snapshot.get("reported_limit_key_values")
+        if isinstance(reported, Mapping):
+            direct_sources.append(reported)
+    direct_sources.append(metadata)
+    return direct_sources
+
+
 def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float | None]:
     values: dict[str, float | None] = {
         "tdc_limit": H_TDC_LIMIT,
@@ -466,53 +580,14 @@ def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float
     if not isinstance(metadata, Mapping):
         return values
 
-    direct_sources: list[Mapping[str, Any]] = []
-    limits = metadata.get("limits")
-    if isinstance(limits, Mapping):
-        direct_sources.append(limits)
-    else:
-        source_snapshot = metadata.get("source_snapshot")
-        if isinstance(source_snapshot, Mapping):
-            reported = source_snapshot.get("reported_limit_key_values")
-            if isinstance(reported, Mapping):
-                direct_sources.append(reported)
-        direct_sources.append(metadata)
-
     # A direct limits mapping wins over the persisted pre/post fallback.  This
     # preserves explicit record metadata while still making --record useful
     # for records that only carry snapshot_limits.
     provided: set[str] = set()
-
-    def apply(source: Mapping[str, Any], *, only_unset: bool) -> None:
-        for name, keys in _LIMIT_ALIASES.items():
-            if only_unset and name in provided:
-                continue
-            for key in keys:
-                if key not in source:
-                    continue
-                value = source[key]
-                if isinstance(value, Mapping):
-                    value = value.get("value")
-                if value is None:
-                    values[name] = None
-                else:
-                    try:
-                        values[name] = _finite(value, field=name)
-                    except AnalysisError:
-                        try:
-                            values[name] = _finite(
-                                int(str(value).strip(), 0), field=name
-                            )
-                        except (AnalysisError, TypeError, ValueError):
-                            values[name] = None
-                    if values[name] is not None:
-                        provided.add(name)
-                break
-
-    for source in direct_sources:
-        apply(source, only_unset=False)
+    for source in _direct_limit_sources(metadata):
+        _apply_limit_source(source, values, provided, only_unset=False)
     for source in _snapshot_limit_mappings(metadata):
-        apply(source, only_unset=True)
+        _apply_limit_source(source, values, provided, only_unset=True)
     return values
 
 
@@ -549,17 +624,38 @@ def _hypothesis_result(
     }
 
 
-def analyze_trace(
+@dataclass(frozen=True)
+class _TraceWindow:
+    rows: list[dict[str, Any]]
+    facts: dict[str, Any]
+    source_metadata: dict[str, Any]
+    run_start: int
+    run_end: int
+    plateau_start: float
+    plateau_end: float
+    plateau_start_ns: int
+    plateau_end_ns: int
+    plateau_segments: list[tuple[Mapping[str, Any], int, int]]
+    plateau_duration_ns: int
+    expected_duration_ns: int
+
+
+@dataclass(frozen=True)
+class _HypothesisAnalysis:
+    hypotheses: dict[str, Any]
+    classification: str
+    classification_reason: str
+    onset_order: dict[str, Any]
+
+
+def _prepare_trace_window(
     source: str | Path | Mapping[str, Any],
     *,
-    run_start_monotonic_ns: int | None = None,
-    run_end_monotonic_ns: int | None = None,
-    plateau_start_seconds: float = DEFAULT_PLATEAU_START_SECONDS,
-    plateau_end_seconds: float = DEFAULT_PLATEAU_END_SECONDS,
-    provenance: Mapping[str, Any] | None = None,
-    limits: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Apply every fixed Q2 plateau and onset criterion to one trace."""
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+    plateau_start_seconds: float,
+    plateau_end_seconds: float,
+) -> _TraceWindow:
     plateau_start = _finite(plateau_start_seconds, field="plateau_start_seconds")
     plateau_end = _finite(plateau_end_seconds, field="plateau_end_seconds")
     if plateau_start < 0.0 or plateau_end <= plateau_start:
@@ -589,24 +685,38 @@ def analyze_trace(
     expected_duration_ns = plateau_end_ns - plateau_start_ns
     if plateau_duration_ns != expected_duration_ns:
         raise AnalysisError("trace has a gap in the fixed plateau interval")
-
-    signal_limits: dict[str, tuple[float | None, str | None, str | None]] = {
-        "power_w": (H_TDP_LIMIT_W, "TDP_LIMIT_MAX", "W"),
-        "board_power_w": (H_TDP_LIMIT_W, "TDP_LIMIT_MAX", "W"),
-        "aiclk_mhz": (None, None, None),
-        "current_a": (H_TDC_LIMIT, "TDC_LIMIT_MAX", "reported snapshot unit"),
-        "voltage_v": (None, None, None),
-        "asic_temp_c": (H_THM_LIMIT_C, "therm_trip_l1_limit", "degC"),
-    }
-    source_limits = _limits_from_metadata(limits)
-    signal_limits["power_w"] = (source_limits["tdp_limit_w"], "TDP_LIMIT_MAX", "W")
-    signal_limits["board_power_w"] = (
-        source_limits["board_power_limit_w"],
-        "BOARD_POWER_LIMIT",
-        "W",
+    return _TraceWindow(
+        rows=rows,
+        facts=facts,
+        source_metadata=source_metadata,
+        run_start=run_start,
+        run_end=run_end,
+        plateau_start=plateau_start,
+        plateau_end=plateau_end,
+        plateau_start_ns=plateau_start_ns,
+        plateau_end_ns=plateau_end_ns,
+        plateau_segments=plateau_segments,
+        plateau_duration_ns=plateau_duration_ns,
+        expected_duration_ns=expected_duration_ns,
     )
-    signal_limits["current_a"] = (source_limits["tdc_limit"], "TDC_LIMIT_MAX", "reported snapshot unit")
-    signal_limits["asic_temp_c"] = (source_limits["therm_trip_l1_limit_c"], "therm_trip_l1_limit", "degC")
+
+
+def _aggregate_signals(
+    plateau_segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    source_limits: Mapping[str, float | None],
+) -> dict[str, Any]:
+    signal_limits: dict[str, tuple[float | None, str | None, str | None]] = {
+        "power_w": (source_limits["tdp_limit_w"], "TDP_LIMIT_MAX", "W"),
+        "board_power_w": (source_limits["board_power_limit_w"], "BOARD_POWER_LIMIT", "W"),
+        "aiclk_mhz": (None, None, None),
+        "current_a": (source_limits["tdc_limit"], "TDC_LIMIT_MAX", "reported snapshot unit"),
+        "voltage_v": (None, None, None),
+        "asic_temp_c": (
+            source_limits["therm_trip_l1_limit_c"],
+            "therm_trip_l1_limit",
+            "degC",
+        ),
+    }
     signals: dict[str, Any] = {}
     for field in _SIGNAL_FIELDS:
         limit, limit_key, limit_unit = signal_limits[field]
@@ -617,12 +727,19 @@ def analyze_trace(
             limit_key=limit_key,
             limit_unit=limit_unit,
         )
+    return signals
 
-    onset_start_ns = run_start
-    asic_fmax = source_limits["asic_fmax_mhz"]
-    aiclk_threshold = _lower_proximity_bound(asic_fmax, AICLK_DROP_FRACTION)
-    if aiclk_threshold is None:
-        aiclk_drop = _unavailable_onset(
+
+def _aiclk_onset(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    start_ns: int,
+    end_ns: int,
+    asic_fmax: float | None,
+) -> tuple[dict[str, Any], float | None]:
+    threshold = _lower_proximity_bound(asic_fmax, AICLK_DROP_FRACTION)
+    if threshold is None:
+        onset = _unavailable_onset(
             field="aiclk_mhz",
             threshold=None,
             reason=(
@@ -630,107 +747,187 @@ def analyze_trace(
                 "AICLK drop onset is unknown"
             ),
         )
-        aiclk_drop.update(
+        onset.update(
             {
-                "baseline_source": "limits metadata asic_fmax_mhz",
+                "baseline_source": AICLK_BASELINE_SOURCE,
                 "baseline_asic_fmax_mhz": None,
             }
         )
-    else:
-        # Do not let a pre-start sample supply the first in-run AICLK segment.
-        aiclk_rows = tuple(
-            row
-            for row in rows
-            if int(row["timestamp_monotonic_ns"]) >= onset_start_ns
+        return onset, None
+    # Do not let a pre-start sample supply the first in-run AICLK segment.
+    aiclk_rows = tuple(row for row in rows if int(row["timestamp_monotonic_ns"]) >= start_ns)
+    onset = _find_onset(
+        aiclk_rows,
+        start_ns=start_ns,
+        end_ns=end_ns,
+        field="aiclk_mhz",
+        predicate=lambda value: value <= threshold,
+    )
+    onset.update(
+        {
+            "status": (
+                "observed"
+                if onset["timestamp_monotonic_ns"] is not None
+                else "not_observed"
+            ),
+            "baseline_source": AICLK_BASELINE_SOURCE,
+            "baseline_asic_fmax_mhz": asic_fmax,
+            "threshold_mhz": threshold,
+        }
+    )
+    return onset, threshold
+
+
+def _threshold_onset(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    start_ns: int,
+    end_ns: int,
+    field: str,
+    threshold: float | None,
+    unavailable_reason: str,
+    predicate: Any,
+) -> dict[str, Any]:
+    if threshold is None:
+        return _unavailable_onset(
+            field=field,
+            threshold=None,
+            reason=unavailable_reason,
         )
-        aiclk_drop = _find_onset(
-            aiclk_rows,
-            start_ns=onset_start_ns,
-            end_ns=run_end,
-            field="aiclk_mhz",
-            predicate=lambda value: value <= aiclk_threshold,
-        )
-        aiclk_drop.update(
-            {
-                "status": (
-                    "observed"
-                    if aiclk_drop["timestamp_monotonic_ns"] is not None
-                    else "not_observed"
-                ),
-                "baseline_source": "limits metadata asic_fmax_mhz",
-                "baseline_asic_fmax_mhz": asic_fmax,
-                "threshold_mhz": aiclk_threshold,
-            }
-        )
-    current_onset = _find_onset(
+    return _find_onset(
         rows,
-        start_ns=onset_start_ns,
-        end_ns=run_end,
+        start_ns=start_ns,
+        end_ns=end_ns,
+        field=field,
+        predicate=predicate,
+    )
+
+
+def _build_onset_data(
+    window: _TraceWindow, source_limits: Mapping[str, float | None]
+) -> dict[str, Any]:
+    aiclk_drop, aiclk_threshold = _aiclk_onset(
+        window.rows,
+        start_ns=window.run_start,
+        end_ns=window.run_end,
+        asic_fmax=source_limits["asic_fmax_mhz"],
+    )
+    current_onset = _find_onset(
+        window.rows,
+        start_ns=window.run_start,
+        end_ns=window.run_end,
         field="current_a",
         predicate=lambda value: value >= H_TDC_ONSET_THRESHOLD,
     )
+    therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
     thm_onset_threshold = (
-        None
-        if source_limits["therm_trip_l1_limit_c"] is None
-        else source_limits["therm_trip_l1_limit_c"] - H_THM_MAX_DIFFERENCE_C
+        None if therm_trip_limit is None else therm_trip_limit - H_THM_MAX_DIFFERENCE_C
     )
-    temperature_onset = (
-        _unavailable_onset(
-            field="asic_temp_c",
-            threshold=None,
-            reason="therm_trip_l1_limit_c is unavailable",
-        )
-        if thm_onset_threshold is None
-        else _find_onset(
-            rows,
-            start_ns=onset_start_ns,
-            end_ns=run_end,
-            field="asic_temp_c",
-            predicate=lambda value: value >= thm_onset_threshold,
-        )
+    temperature_onset = _threshold_onset(
+        window.rows,
+        start_ns=window.run_start,
+        end_ns=window.run_end,
+        field="asic_temp_c",
+        threshold=thm_onset_threshold,
+        unavailable_reason="therm_trip_l1_limit_c is unavailable",
+        predicate=lambda value: value >= thm_onset_threshold,
     )
     tdp_onset_threshold = _lower_proximity_bound(
         source_limits["tdp_limit_w"], H_TDP_PROXIMITY_FRACTION
     )
-    power_onset = (
-        _unavailable_onset(
-            field="power_w",
-            threshold=None,
-            reason="tdp_limit_w is unavailable",
-        )
-        if tdp_onset_threshold is None
-        else _find_onset(
-            rows,
-            start_ns=onset_start_ns,
-            end_ns=run_end,
-            field="power_w",
-            predicate=lambda value: value >= tdp_onset_threshold,
-        )
+    power_onset = _threshold_onset(
+        window.rows,
+        start_ns=window.run_start,
+        end_ns=window.run_end,
+        field="power_w",
+        threshold=tdp_onset_threshold,
+        unavailable_reason="tdp_limit_w is unavailable",
+        predicate=lambda value: value >= tdp_onset_threshold,
     )
-    for onset in (aiclk_drop, current_onset, temperature_onset, power_onset):
-        _add_relative_onset(onset, run_start)
+    onsets = (aiclk_drop, current_onset, temperature_onset, power_onset)
+    for onset in onsets:
+        _add_relative_onset(onset, window.run_start)
     if tdp_onset_threshold is not None:
         power_onset["threshold"] = tdp_onset_threshold
     if thm_onset_threshold is not None:
         temperature_onset["threshold"] = thm_onset_threshold
-    onsets = {
+    return {
         "aiclk_drop": aiclk_drop,
-        "current_tdc_threshold": current_onset,
-        "temperature_thm_threshold": temperature_onset,
-        "power_tdp_threshold": power_onset,
+        "current_onset": current_onset,
+        "temperature_onset": temperature_onset,
+        "power_onset": power_onset,
+        "aiclk_threshold": aiclk_threshold,
+        "thm_onset_threshold": thm_onset_threshold,
+        "tdp_onset_threshold": tdp_onset_threshold,
+        "onsets": {
+            "aiclk_drop": aiclk_drop,
+            "current_tdc_threshold": current_onset,
+            "temperature_thm_threshold": temperature_onset,
+            "power_tdp_threshold": power_onset,
+        },
     }
 
-    def order_pass(signal_onset: Mapping[str, Any]) -> bool | None:
-        signal_timestamp = signal_onset.get("timestamp_monotonic_ns")
-        clock_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
-        if clock_timestamp is None:
-            return None
-        # A known AICLK drop plus no signal onset is a failed onset criterion,
-        # not missing evidence for the hypothesis.
-        if signal_timestamp is None:
-            return False
-        return int(signal_timestamp) <= int(clock_timestamp)
 
+def _onset_order_pass(
+    signal_onset: Mapping[str, Any], aiclk_drop: Mapping[str, Any]
+) -> bool | None:
+    signal_timestamp = signal_onset.get("timestamp_monotonic_ns")
+    clock_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
+    if clock_timestamp is None:
+        return None
+    # A known AICLK drop plus no signal onset is a failed onset criterion,
+    # not missing evidence for the hypothesis.
+    if signal_timestamp is None:
+        return False
+    return int(signal_timestamp) <= int(clock_timestamp)
+
+
+def _throttle_comparison(
+    throttle_limit: float | None, thm_maximum: float | None
+) -> dict[str, Any]:
+    if throttle_limit is None:
+        return {
+            "status": "not_evaluable",
+            "knowledge_status": "unknown",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": None,
+            "limit_unit": "degC",
+            "reason": (
+                "source snapshot did not establish THM_LIMIT_THROTTLE; "
+                "no value was inferred from therm_trip_l1"
+            ),
+        }
+    if thm_maximum is None:
+        return {
+            "status": "not_evaluable",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": throttle_limit,
+            "limit_unit": "degC",
+            "reason": "ASIC temperature plateau maximum is unavailable",
+        }
+    throttle_pass = thm_maximum < throttle_limit
+    return {
+        "status": "pass" if throttle_pass else "fail",
+        "limit_key": "THM_LIMIT_THROTTLE",
+        "limit_value": throttle_limit,
+        "limit_unit": "degC",
+        "plateau_asic_temp_max_c": thm_maximum,
+        "criterion": (
+            "run plateau maximum ASIC temperature is strictly below "
+            "THM_LIMIT_THROTTLE"
+        ),
+    }
+
+
+def _hypothesis_metrics(
+    signals: Mapping[str, Any],
+    onset_data: Mapping[str, Any],
+    source_limits: Mapping[str, float | None],
+) -> dict[str, Any]:
+    aiclk_drop = onset_data["aiclk_drop"]
+    current_onset = onset_data["current_onset"]
+    temperature_onset = onset_data["temperature_onset"]
+    power_onset = onset_data["power_onset"]
     tdc_proximity = signals["current_a"]["limit_proximity"]
     tdc_plateau_pass = (
         tdc_proximity is not None
@@ -751,40 +948,9 @@ def analyze_trace(
         and thm_shutdown_limit is not None
         and thm_maximum < thm_shutdown_limit
     )
-    throttle_limit = source_limits["thm_limit_throttle"]
-    if throttle_limit is None:
-        thm_throttle_comparison: dict[str, Any] = {
-            "status": "not_evaluable",
-            "knowledge_status": "unknown",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": None,
-            "limit_unit": "degC",
-            "reason": (
-                "source snapshot did not establish THM_LIMIT_THROTTLE; "
-                "no value was inferred from therm_trip_l1"
-            ),
-        }
-    elif thm_maximum is None:
-        thm_throttle_comparison = {
-            "status": "not_evaluable",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": throttle_limit,
-            "limit_unit": "degC",
-            "reason": "ASIC temperature plateau maximum is unavailable",
-        }
-    else:
-        throttle_pass = thm_maximum < throttle_limit
-        thm_throttle_comparison = {
-            "status": "pass" if throttle_pass else "fail",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": throttle_limit,
-            "limit_unit": "degC",
-            "plateau_asic_temp_max_c": thm_maximum,
-            "criterion": (
-                "run plateau maximum ASIC temperature is strictly below "
-                "THM_LIMIT_THROTTLE"
-            ),
-        }
+    thm_throttle_comparison = _throttle_comparison(
+        source_limits["thm_limit_throttle"], thm_maximum
+    )
     tdp_signal = signals["power_w"]
     tdp_proximity = tdp_signal["limit_proximity"]
     tdp_lower_bound = _lower_proximity_bound(
@@ -801,26 +967,77 @@ def analyze_trace(
     board_power_proximity = signals["board_power_w"]["limit_proximity"]
     known_signal_onsets = (current_onset, temperature_onset, power_onset)
     aiclk_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
-    if aiclk_timestamp is None:
-        h_other_order_pass: bool | None = None
-    else:
-        h_other_order_pass = all(
+    h_other_order_pass = (
+        None
+        if aiclk_timestamp is None
+        else all(
             onset.get("timestamp_monotonic_ns") is None
             or int(onset["timestamp_monotonic_ns"]) > int(aiclk_timestamp)
             for onset in known_signal_onsets
         )
-    # H-OTHER is a fallback classification, not a fourth numeric hypothesis.
-    h_other_plateau_pass: bool | None = None
-    tdc_order_pass = order_pass(current_onset)
-    thm_order_pass = order_pass(temperature_onset)
-    tdp_order_pass = order_pass(power_onset)
-    throttle_criterion_pass = (
-        True
-        if thm_throttle_comparison["status"] == "pass"
-        else False
-        if thm_throttle_comparison["status"] == "fail"
-        else None
     )
+    tdc_order_pass = _onset_order_pass(current_onset, aiclk_drop)
+    thm_order_pass = _onset_order_pass(temperature_onset, aiclk_drop)
+    tdp_order_pass = _onset_order_pass(power_onset, aiclk_drop)
+    throttle_criterion_pass = {"pass": True, "fail": False}.get(
+        thm_throttle_comparison["status"]
+    )
+    return {
+        "aiclk_drop": aiclk_drop,
+        "current_onset": current_onset,
+        "temperature_onset": temperature_onset,
+        "power_onset": power_onset,
+        "tdc_proximity": tdc_proximity,
+        "tdc_plateau_pass": tdc_plateau_pass,
+        "thm_weighted": thm_weighted,
+        "thm_maximum": thm_maximum,
+        "therm_trip_limit": therm_trip_limit,
+        "thm_plateau_pass": thm_plateau_pass,
+        "thm_shutdown_limit": thm_shutdown_limit,
+        "thm_shutdown_pass": thm_shutdown_pass,
+        "thm_throttle_comparison": thm_throttle_comparison,
+        "tdp_signal": tdp_signal,
+        "tdp_proximity": tdp_proximity,
+        "tdp_lower_bound": tdp_lower_bound,
+        "tdp_plateau_pass": tdp_plateau_pass,
+        "board_power_proximity": board_power_proximity,
+        "known_signal_onsets": known_signal_onsets,
+        "h_other_order_pass": h_other_order_pass,
+        "tdc_order_pass": tdc_order_pass,
+        "thm_order_pass": thm_order_pass,
+        "tdp_order_pass": tdp_order_pass,
+        "throttle_criterion_pass": throttle_criterion_pass,
+    }
+
+
+def _build_hypothesis_analysis(
+    signals: Mapping[str, Any],
+    onset_data: Mapping[str, Any],
+    source_limits: Mapping[str, float | None],
+) -> _HypothesisAnalysis:
+    metrics = _hypothesis_metrics(signals, onset_data, source_limits)
+    aiclk_drop = metrics["aiclk_drop"]
+    current_onset = metrics["current_onset"]
+    temperature_onset = metrics["temperature_onset"]
+    power_onset = metrics["power_onset"]
+    tdc_plateau_pass = metrics["tdc_plateau_pass"]
+    thm_weighted = metrics["thm_weighted"]
+    therm_trip_limit = metrics["therm_trip_limit"]
+    thm_plateau_pass = metrics["thm_plateau_pass"]
+    thm_shutdown_limit = metrics["thm_shutdown_limit"]
+    thm_shutdown_pass = metrics["thm_shutdown_pass"]
+    thm_throttle_comparison = metrics["thm_throttle_comparison"]
+    tdp_signal = metrics["tdp_signal"]
+    tdp_proximity = metrics["tdp_proximity"]
+    tdp_lower_bound = metrics["tdp_lower_bound"]
+    tdp_plateau_pass = metrics["tdp_plateau_pass"]
+    board_power_proximity = metrics["board_power_proximity"]
+    known_signal_onsets = metrics["known_signal_onsets"]
+    h_other_order_pass = metrics["h_other_order_pass"]
+    tdc_order_pass = metrics["tdc_order_pass"]
+    thm_order_pass = metrics["thm_order_pass"]
+    tdp_order_pass = metrics["tdp_order_pass"]
+    throttle_criterion_pass = metrics["throttle_criterion_pass"]
     hypotheses = {
         "H-TDC": _hypothesis_result(
             plateau_pass=tdc_plateau_pass,
@@ -841,7 +1058,7 @@ def analyze_trace(
             optional_criteria={"thm_limit_throttle": throttle_criterion_pass},
             details={
                 "signal": "asic_temp_c",
-                "threshold": thm_onset_threshold,
+                "threshold": onset_data["thm_onset_threshold"],
                 "therm_trip_l1_limit_c": therm_trip_limit,
                 "therm_trip_proximity": signals["asic_temp_c"]["limit_proximity"],
                 "plateau_time_weighted_mean_c": thm_weighted,
@@ -891,7 +1108,7 @@ def analyze_trace(
             },
         ),
         "H-OTHER": _hypothesis_result(
-            plateau_pass=h_other_plateau_pass,
+            plateau_pass=None,
             onset_pass=h_other_order_pass,
             details={
                 "fallback_only_when_no_known_hypothesis_is_supported": True,
@@ -919,77 +1136,11 @@ def analyze_trace(
     else:
         classification = "H-OTHER"
         classification_reason = "no known-limit hypothesis satisfies every fixed criterion"
-
-    source_report = {
-        "schema": facts.get("schema", EXTENDED_POWER_TRACE_SCHEMA),
-        "schema_version": facts.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION),
-        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
-        "file": source_metadata.get("file") if source_metadata else None,
-        "sha256": source_metadata.get("sha256") if source_metadata else None,
-        "source_metadata": _safe_provenance(source_metadata),
-        "provenance": _safe_provenance(provenance or {}),
-    }
-    raw_window = _raw_window(rows, run_start_ns=run_start)
-    limitations = [
-        (
-            "The extended trace samples at a 2 second cadence; onset ordering "
-            "has approximately 2 second temporal resolution."
-        ),
-        "Onset timestamps are starts of left-held sample segments, not interpolated events.",
-    ]
-    if asic_fmax is None:
-        limitations.append(
-            "AICLK drop onset is not evaluable because limits metadata omitted asic_fmax_mhz."
-        )
-    return {
-        "analysis_schema": ANALYSIS_SCHEMA,
-        "status": "ok",
-        "classification": classification,
-        "classification_reason": classification_reason,
-        "causality": "correlation_is_not_causation",
-        "source": source_report,
-        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
-        "units": dict(SIGNAL_UNITS),
-        "time_axis": {
-            "column": "timestamp_monotonic_ns",
-            "semantics": "left_held_positive_duration_segments",
-            "run_start_monotonic_ns": run_start,
-            "run_end_monotonic_ns": run_end,
-            "sampling_cadence_seconds": SAMPLING_CADENCE_SECONDS,
-        },
-        "aiclk_baseline": {
-            "source": "limits metadata asic_fmax_mhz",
-            "asic_fmax_mhz": asic_fmax,
-            "drop_fraction": AICLK_DROP_FRACTION,
-            "drop_threshold_mhz": aiclk_threshold,
-            "missing_source_status": "not_evaluable" if asic_fmax is None else None,
-        },
-        "plateau": {
-            "start_seconds": plateau_start,
-            "end_seconds": plateau_end,
-            "start_monotonic_ns": plateau_start_ns,
-            "end_monotonic_ns": plateau_end_ns,
-            "duration_seconds": expected_duration_ns / 1_000_000_000.0,
-            "segment_count": len(plateau_segments),
-            "coverage_complete": plateau_duration_ns == expected_duration_ns,
-        },
-        "statistics": {
-            "aiclk_mhz": {
-                "min": signals["aiclk_mhz"]["min"],
-                "max": signals["aiclk_mhz"]["max"],
-                "time_weighted_mean": signals["aiclk_mhz"]["time_weighted_mean"],
-                "percentiles": {
-                    f"p{percentile:02d}": _duration_weighted_percentile(
-                        plateau_segments, "aiclk_mhz", percentile
-                    )
-                    for percentile in (1, 5, 50, 95, 99)
-                },
-                "percentile_definition": "duration-weighted nearest-rank over left-held segments",
-            },
-            "signals": signals,
-        },
-        "onsets": onsets,
-        "onset_order": {
+    return _HypothesisAnalysis(
+        hypotheses=hypotheses,
+        classification=classification,
+        classification_reason=classification_reason,
+        onset_order={
             "H-TDC": {
                 "signal": current_onset,
                 "aiclk_drop": aiclk_drop,
@@ -1006,12 +1157,132 @@ def analyze_trace(
                 "pass": tdp_order_pass,
             },
         },
-        "hypotheses": hypotheses,
+    )
+
+
+def _build_analysis_report(
+    window: _TraceWindow,
+    source_limits: Mapping[str, float | None],
+    signals: Mapping[str, Any],
+    onset_data: Mapping[str, Any],
+    hypothesis_analysis: _HypothesisAnalysis,
+    provenance: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    source_metadata = window.source_metadata
+    source_report = {
+        "schema": window.facts.get("schema", EXTENDED_POWER_TRACE_SCHEMA),
+        "schema_version": window.facts.get(
+            "schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION
+        ),
+        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+        "file": source_metadata.get("file") if source_metadata else None,
+        "sha256": source_metadata.get("sha256") if source_metadata else None,
+        "source_metadata": _safe_provenance(source_metadata),
+        "provenance": _safe_provenance(provenance or {}),
+    }
+    raw_window = _raw_window(window.rows, run_start_ns=window.run_start)
+    limitations = [
+        (
+            "The extended trace samples at a 2 second cadence; onset ordering "
+            "has approximately 2 second temporal resolution."
+        ),
+        "Onset timestamps are starts of left-held sample segments, not interpolated events.",
+    ]
+    if source_limits["asic_fmax_mhz"] is None:
+        limitations.append(
+            "AICLK drop onset is not evaluable because limits metadata omitted asic_fmax_mhz."
+        )
+    return {
+        "analysis_schema": ANALYSIS_SCHEMA,
+        "status": "ok",
+        "classification": hypothesis_analysis.classification,
+        "classification_reason": hypothesis_analysis.classification_reason,
+        "causality": "correlation_is_not_causation",
+        "source": source_report,
+        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+        "units": dict(SIGNAL_UNITS),
+        "time_axis": {
+            "column": "timestamp_monotonic_ns",
+            "semantics": "left_held_positive_duration_segments",
+            "run_start_monotonic_ns": window.run_start,
+            "run_end_monotonic_ns": window.run_end,
+            "sampling_cadence_seconds": SAMPLING_CADENCE_SECONDS,
+        },
+        "aiclk_baseline": {
+            "source": AICLK_BASELINE_SOURCE,
+            "asic_fmax_mhz": source_limits["asic_fmax_mhz"],
+            "drop_fraction": AICLK_DROP_FRACTION,
+            "drop_threshold_mhz": onset_data["aiclk_threshold"],
+            "missing_source_status": (
+                "not_evaluable" if source_limits["asic_fmax_mhz"] is None else None
+            ),
+        },
+        "plateau": {
+            "start_seconds": window.plateau_start,
+            "end_seconds": window.plateau_end,
+            "start_monotonic_ns": window.plateau_start_ns,
+            "end_monotonic_ns": window.plateau_end_ns,
+            "duration_seconds": window.expected_duration_ns / 1_000_000_000.0,
+            "segment_count": len(window.plateau_segments),
+            "coverage_complete": window.plateau_duration_ns == window.expected_duration_ns,
+        },
+        "statistics": {
+            "aiclk_mhz": {
+                "min": signals["aiclk_mhz"]["min"],
+                "max": signals["aiclk_mhz"]["max"],
+                "time_weighted_mean": signals["aiclk_mhz"]["time_weighted_mean"],
+                "percentiles": {
+                    f"p{percentile:02d}": _duration_weighted_percentile(
+                        window.plateau_segments, "aiclk_mhz", percentile
+                    )
+                    for percentile in (1, 5, 50, 95, 99)
+                },
+                "percentile_definition": "duration-weighted nearest-rank over left-held segments",
+            },
+            "signals": signals,
+        },
+        "onsets": onset_data["onsets"],
+        "onset_order": hypothesis_analysis.onset_order,
+        "hypotheses": hypothesis_analysis.hypotheses,
         "limits": _safe_provenance(source_limits),
         "raw_window": raw_window,
         "limitations": limitations,
-        "reader_facts": _safe_provenance(facts),
+        "reader_facts": _safe_provenance(window.facts),
     }
+
+
+def analyze_trace(
+    source: str | Path | Mapping[str, Any],
+    *,
+    run_start_monotonic_ns: int | None = None,
+    run_end_monotonic_ns: int | None = None,
+    plateau_start_seconds: float = DEFAULT_PLATEAU_START_SECONDS,
+    plateau_end_seconds: float = DEFAULT_PLATEAU_END_SECONDS,
+    provenance: Mapping[str, Any] | None = None,
+    limits: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Apply every fixed Q2 plateau and onset criterion to one trace."""
+    window = _prepare_trace_window(
+        source,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
+        plateau_start_seconds=plateau_start_seconds,
+        plateau_end_seconds=plateau_end_seconds,
+    )
+    source_limits = _limits_from_metadata(limits)
+    signals = _aggregate_signals(window.plateau_segments, source_limits)
+    onset_data = _build_onset_data(window, source_limits)
+    hypothesis_analysis = _build_hypothesis_analysis(
+        signals, onset_data, source_limits
+    )
+    return _build_analysis_report(
+        window,
+        source_limits,
+        signals,
+        onset_data,
+        hypothesis_analysis,
+        provenance,
+    )
 
 
 def analyze_extended_trace(*args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -1039,7 +1310,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         record_run_start = None
         record_run_end = None
         if args.record is not None:
-            record_payload = json.loads(args.record.read_text(encoding="utf-8"))
+            record_path = _safe_cli_path(args.record, purpose="record")
+            record_payload = json.loads(record_path.read_text(encoding="utf-8"))
             if isinstance(record_payload, Mapping):
                 provenance = {
                     "record": record_payload.get("provenance", {}),
@@ -1077,14 +1349,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             provenance=provenance,
             limits=limits,
         )
-    except (AnalysisError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         print(f"Issue #121 Q2 analysis rejected: {exc}", file=__import__("sys").stderr)
         return 2
     serialized = strict_json_dumps(result, indent=2) + "\n"
     if args.output is None:
         print(serialized, end="")
     else:
-        args.output.write_text(serialized, encoding="utf-8")
+        output_path = _safe_cli_path(args.output, purpose="analysis output", output=True)
+        output_path.write_text(serialized, encoding="utf-8")
     return 0
 
 
