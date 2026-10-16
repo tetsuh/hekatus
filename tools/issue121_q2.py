@@ -59,6 +59,7 @@ WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
 WORKLOAD_STDOUT_LOG_NAME = "workload-stdout.log"
 WORKLOAD_STDERR_LOG_NAME = "workload-stderr.log"
 WORKLOAD_LOG_CHUNK_BYTES = 64 * 1024
+WORKLOAD_LOG_FIELD = "workload log"
 WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
@@ -1025,7 +1026,7 @@ def _stream_value(result: Any, stream: str) -> tuple[Any, bool]:
 def _write_workload_log(path: Path, payload: bytes) -> str:
     """Write bytes in bounded chunks; return a record-safe write status."""
     try:
-        safe_path = _safe_output_path(path, field="workload log")
+        safe_path = _safe_output_path(path, field=WORKLOAD_LOG_FIELD)
         with safe_path.open("wb") as handle:
             for offset in range(0, len(payload), WORKLOAD_LOG_CHUNK_BYTES):
                 handle.write(payload[offset : offset + WORKLOAD_LOG_CHUNK_BYTES])
@@ -1053,7 +1054,7 @@ def _inspect_workload_log(
     path_detector = _WorkloadPathDetector()
     read_ok = False
     try:
-        safe_path = _safe_output_path(path, field="workload log")
+        safe_path = _safe_output_path(path, field=WORKLOAD_LOG_FIELD)
         with safe_path.open("rb") as handle:
             while True:
                 chunk = handle.read(WORKLOAD_LOG_CHUNK_BYTES)
@@ -1165,7 +1166,7 @@ def _open_workload_logs(paths: Mapping[str, Path]) -> tuple[dict[str, Any], dict
     statuses: dict[str, str] = {}
     for stream, path in paths.items():
         try:
-            safe_path = _safe_output_path(path, field="workload log")
+            safe_path = _safe_output_path(path, field=WORKLOAD_LOG_FIELD)
             handles[stream] = safe_path.open("wb")
             statuses[stream] = "saved"
         except (OSError, TypeError, ValueError):
@@ -1238,7 +1239,7 @@ def _persist_subprocess_output(
         if not payload:
             continue
         try:
-            is_empty = _safe_output_path(path, field="workload log").stat().st_size == 0
+            is_empty = _safe_output_path(path, field=WORKLOAD_LOG_FIELD).stat().st_size == 0
         except OSError:
             is_empty = False
         if not is_empty:
