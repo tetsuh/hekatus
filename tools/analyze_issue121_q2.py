@@ -44,6 +44,16 @@ H_TDP_PROXIMITY_FRACTION = 0.05
 EARLY_RAW_WINDOW_SECONDS = 10.0
 SAMPLING_CADENCE_SECONDS = 2.0
 AICLK_BASELINE_SOURCE = "limits metadata asic_fmax_mhz"
+_TT_SMI_NAME = "tt-smi"
+_TT_SMI_VERSION = "6.2.1"
+_TT_SMI_PACKAGE = f"{_TT_SMI_NAME}=={_TT_SMI_VERSION}"
+_TT_UMD_NAME = "tt-umd"
+_TT_UMD_VERSION = "0.9.8"
+_TT_UMD_PACKAGE = f"{_TT_UMD_NAME}=={_TT_UMD_VERSION}"
+_TT_UMD_FIRMWARE_SOURCE_FILE = (
+    "device/api/umd/device/firmware/firmware_info_provider.hpp"
+)
+_TT_SMI_BACKEND_SOURCE_FILE = "tt_smi/backend.py"
 
 SIGNAL_UNITS = {
     "power_w": "W",
@@ -63,13 +73,13 @@ UNIT_PROVENANCE = {
     "post_measurement": True,
     "packages": [
         {
-            "name": "tt-smi",
-            "version": "6.2.1",
+            "name": _TT_SMI_NAME,
+            "version": _TT_SMI_VERSION,
             "repository": "tenstorrent/tt-smi",
         },
         {
-            "name": "tt-umd",
-            "version": "0.9.8",
+            "name": _TT_UMD_NAME,
+            "version": _TT_UMD_VERSION,
             "repository": "tenstorrent/tt-umd",
         },
     ],
@@ -82,17 +92,14 @@ UNIT_PROVENANCE = {
             "reported_limit_key": "limits.tdc_limit",
             "evidence": [
                 {
-                    "package": "tt-umd==0.9.8",
-                    "source_file": (
-                        "device/api/umd/device/firmware/"
-                        "firmware_info_provider.hpp"
-                    ),
+                    "package": _TT_UMD_PACKAGE,
+                    "source_file": _TT_UMD_FIRMWARE_SOURCE_FILE,
                     "function": "tt::umd::FirmwareInfoProvider::get_tdc",
                     "finding": "The API documents TDC in amps.",
                 },
                 {
-                    "package": "tt-smi==6.2.1",
-                    "source_file": "tt_smi/backend.py",
+                    "package": _TT_SMI_PACKAGE,
+                    "source_file": _TT_SMI_BACKEND_SOURCE_FILE,
                     "function": "TTSMIBackend.get_bh_chip_telemetry",
                     "finding": (
                         "Blackhole telemetry uses the raw low 16 bits of TDC "
@@ -100,8 +107,8 @@ UNIT_PROVENANCE = {
                     ),
                 },
                 {
-                    "package": "tt-smi==6.2.1",
-                    "source_file": "tt_smi/backend.py",
+                    "package": _TT_SMI_PACKAGE,
+                    "source_file": _TT_SMI_BACKEND_SOURCE_FILE,
                     "function": "TTSMIBackend.get_bh_chip_limits",
                     "finding": (
                         "TDC_LIMIT_MAX is used directly as tdc_limit, while "
@@ -117,16 +124,13 @@ UNIT_PROVENANCE = {
             "reported_limit_key": "limits.therm_trip_l1_limit",
             "evidence": [
                 {
-                    "package": "tt-umd==0.9.8",
-                    "source_file": (
-                        "device/api/umd/device/firmware/"
-                        "firmware_info_provider.hpp"
-                    ),
+                    "package": _TT_UMD_PACKAGE,
+                    "source_file": _TT_UMD_FIRMWARE_SOURCE_FILE,
                     "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
                     "finding": "The API documents ASIC temperature in Celsius.",
                 },
                 {
-                    "package": "tt-smi==6.2.1",
+                    "package": _TT_SMI_PACKAGE,
                     "source_file": "tt_smi/constants.py",
                     "function": "TELEMETRY_TABLE_HEADER",
                     "finding": "The paired Core Temp telemetry is labeled in degrees Celsius.",
@@ -141,8 +145,8 @@ UNIT_PROVENANCE = {
             "reported_limit_key": "limits.therm_trip_l1_limit",
             "evidence": [
                 {
-                    "package": "tt-smi==6.2.1",
-                    "source_file": "tt_smi/backend.py",
+                    "package": _TT_SMI_PACKAGE,
+                    "source_file": _TT_SMI_BACKEND_SOURCE_FILE,
                     "function": "TTSMIBackend.get_bh_chip_limits",
                     "finding": (
                         "THM_LIMIT_THROTTLE is copied directly to "
@@ -150,7 +154,7 @@ UNIT_PROVENANCE = {
                     ),
                 },
                 {
-                    "package": "tt-smi==6.2.1",
+                    "package": _TT_SMI_PACKAGE,
                     "source_file": "tt_smi/constants.py",
                     "function": "TELEMETRY_TABLE_HEADER",
                     "finding": (
@@ -159,11 +163,8 @@ UNIT_PROVENANCE = {
                     ),
                 },
                 {
-                    "package": "tt-umd==0.9.8",
-                    "source_file": (
-                        "device/api/umd/device/firmware/"
-                        "firmware_info_provider.hpp"
-                    ),
+                    "package": _TT_UMD_PACKAGE,
+                    "source_file": _TT_UMD_FIRMWARE_SOURCE_FILE,
                     "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
                     "finding": "The underlying ASIC temperature API is Celsius.",
                 },
@@ -722,6 +723,21 @@ def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float
     return values
 
 
+def _metadata_unit_comparison(
+    metadata: Mapping[str, Any] | None, name: str
+) -> Mapping[str, Any] | None:
+    if not isinstance(metadata, Mapping):
+        return None
+    unit_provenance = metadata.get("unit_provenance")
+    if not isinstance(unit_provenance, Mapping):
+        return None
+    comparisons = unit_provenance.get("comparisons")
+    if not isinstance(comparisons, Mapping):
+        return None
+    candidate = comparisons.get(name)
+    return candidate if isinstance(candidate, Mapping) else None
+
+
 def _unit_comparison(
     metadata: Mapping[str, Any] | None,
     name: str,
@@ -731,15 +747,7 @@ def _unit_comparison(
     default_limit_unit: str | None = None,
 ) -> dict[str, Any]:
     """Return one explicit unit disposition without inferring unknown units."""
-    comparison: Mapping[str, Any] | None = None
-    if isinstance(metadata, Mapping):
-        unit_provenance = metadata.get("unit_provenance")
-        if isinstance(unit_provenance, Mapping):
-            comparisons = unit_provenance.get("comparisons")
-            if isinstance(comparisons, Mapping):
-                candidate = comparisons.get(name)
-                if isinstance(candidate, Mapping):
-                    comparison = candidate
+    comparison = _metadata_unit_comparison(metadata, name)
     if comparison is None:
         return {
             "status": (
