@@ -1,0 +1,3 @@
+timestamp_utc,power_w,aiclk_mhz,asic_temp_c,timestamp_monotonic_ns,snapshot_elapsed_ns,current_a,voltage_v,board_power_w,fan_rpm,heartbeat,therm_trip_count,throttle_status,throttle_reason
+2026-10-16T05:50:35.878195+00:00,49.0,800,60.7,29697883904853,243783496,67.0,0.74,120.0,2232,48446,0,,
+2026-10-16T05:50:37.499687+00:00,49.0,800,61.5,29699505440712,238519478,67.0,0.74,125.0,2242,48449,0,,
