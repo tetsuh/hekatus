@@ -1080,6 +1080,7 @@ def test_run_one_binds_relative_output_to_the_caller_resolved_directory(
     record = runner.run_one(
         relative_output,
         run_id="q2-run-relative-output",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -1123,6 +1124,7 @@ def test_run_one_rejects_nonzero_container_device_before_capture_or_workload(
         runner.run_one(
             tmp_path,
             run_id="q2-run-1",
+            run_number=1,
             board_id="fixture-board",
             bus_id="0000:01:00.0",
             image_digest="sha256:" + "a" * 64,
@@ -1133,6 +1135,67 @@ def test_run_one_rejects_nonzero_container_device_before_capture_or_workload(
             workload_runner=lambda *_args: pytest.fail("workload must not run"),
             capture_fn=lambda **_kwargs: pytest.fail("snapshot must not run"),
         )
+
+
+def test_run_one_rejects_missing_run_number_before_capture_or_workload(
+    tmp_path: Path,
+) -> None:
+    capture_calls: list[object] = []
+    workload_calls: list[object] = []
+
+    def unexpected_capture(**kwargs: object) -> dict[str, object]:
+        capture_calls.append(kwargs)
+        raise AssertionError("snapshot must not run without a run number")
+
+    def unexpected_workload(*args: object) -> dict[str, object]:
+        workload_calls.append(args)
+        raise AssertionError("workload must not run without a run number")
+
+    with pytest.raises(runner.Issue121Q2Error, match="run_number is required"):
+        runner.run_one(
+            tmp_path,
+            run_id="q2-run-unnumbered",
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+            image_digest="sha256:" + "a" * 64,
+            harness_commit="b" * 40,
+            kernel="Linux fixture",
+            kernel_driver_version="2.11.0",
+            workload_runner=unexpected_workload,
+            capture_fn=unexpected_capture,
+        )
+
+    assert capture_calls == []
+    assert workload_calls == []
+
+
+def test_q2_cli_rejects_missing_run_number_before_execution(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        runner.main(
+            [
+                "--out-dir",
+                str(tmp_path),
+                "--run-id",
+                "q2-run-cli-unnumbered",
+                "--board-id",
+                "fixture-board",
+                "--bus-id",
+                "0000:01:00.0",
+                "--image-digest",
+                "sha256:" + "a" * 64,
+                "--harness-commit",
+                "b" * 40,
+                "--kernel",
+                "Linux fixture",
+                "--kernel-driver-version",
+                "2.11.0",
+            ]
+        )
+
+    assert exc_info.value.code == 2
+    assert "the following arguments are required: --run-number" in capsys.readouterr().err
 
 
 def test_run_one_rejects_existing_output_artifacts_before_capture_or_workload(
@@ -1167,6 +1230,7 @@ def test_run_one_rejects_existing_output_artifacts_before_capture_or_workload(
         runner.run_one(
             tmp_path,
             run_id=run_id,
+            run_number=1,
             board_id="fixture-board",
             bus_id="0000:01:00.0",
             image_digest="sha256:" + "a" * 64,
@@ -1522,6 +1586,7 @@ def test_run_one_keyboard_interrupt_stops_sampler_before_trace_closes(
         runner.run_one(
             tmp_path,
             run_id="q2-run-cancelled",
+            run_number=1,
             board_id="fixture-board",
             bus_id="0000:01:00.0",
             image_digest="sha256:" + "a" * 64,
@@ -1576,6 +1641,7 @@ def test_run_one_failed_path_output_is_local_only_and_record_survives(tmp_path: 
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-failed-output",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -1743,6 +1809,7 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-1",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2072,6 +2139,7 @@ def test_run_one_waits_for_a_bounded_in_flight_capture_before_post_row(
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-late-capture",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2135,6 +2203,7 @@ def test_run_one_revokes_a_late_sampler_before_trace_finalization(
         record = runner.run_one(
             tmp_path,
             run_id="q2-run-late-sampler",
+            run_number=1,
             board_id="fixture-board",
             bus_id="0000:01:00.0",
             image_digest="sha256:" + "a" * 64,
@@ -2217,6 +2286,7 @@ def test_run_one_keeps_an_in_run_timeout_as_failed(tmp_path: Path) -> None:
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-timeout-capture",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2276,6 +2346,7 @@ def test_run_one_fails_closed_when_post_snapshot_capture_is_unusable(
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-post-failure",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2330,6 +2401,7 @@ def test_run_one_fails_closed_when_post_snapshot_identity_mismatches(
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-post-identity-mismatch",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2672,6 +2744,7 @@ def test_run_one_fails_closed_when_pre_row_is_incomplete(
     record = runner.run_one(
         tmp_path,
         run_id="q2-run-missing-pre-row",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,
@@ -2735,6 +2808,7 @@ def test_run_one_fails_closed_before_workload_on_preflight_failure(
     record = runner.run_one(
         tmp_path,
         run_id=f"q2-run-preflight-{failure}",
+        run_number=1,
         board_id="fixture-board",
         bus_id="0000:01:00.0",
         image_digest="sha256:" + "a" * 64,

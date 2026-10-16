@@ -2072,7 +2072,7 @@ def _write_json(path: Path, value: Mapping[str, Any]) -> None:
 @dataclass(frozen=True)
 class _RunOptions:
     run_id: str
-    run_number: int | None
+    run_number: int
     board_id: str
     bus_id: str
     image_digest: str
@@ -2090,7 +2090,6 @@ class _RunOptions:
 
 
 _RUN_OPTION_DEFAULTS = {
-    "run_number": None,
     "container_device_id": None,
     "trace_interval_seconds": TRACE_INTERVAL_SECONDS,
     "workload_runner": None,
@@ -2102,6 +2101,7 @@ _RUN_OPTION_DEFAULTS = {
 }
 _RUN_OPTION_REQUIRED = (
     "run_id",
+    "run_number",
     "board_id",
     "bus_id",
     "image_digest",
@@ -2112,15 +2112,26 @@ _RUN_OPTION_REQUIRED = (
 _RUN_OPTION_NAMES = frozenset((*_RUN_OPTION_REQUIRED, *_RUN_OPTION_DEFAULTS))
 
 
+def _validate_run_number(value: Any) -> int:
+    if value is None:
+        raise Issue121Q2Error("run_number is required; expected 1, 2, or 3")
+    if isinstance(value, bool) or not isinstance(value, int) or value not in {1, 2, 3}:
+        raise Issue121Q2Error("run_number must be 1, 2, or 3")
+    return value
+
+
 def _run_options(values: Mapping[str, Any]) -> _RunOptions:
     unknown = set(values).difference(_RUN_OPTION_NAMES)
     if unknown:
         name = min(unknown)
         raise TypeError(f"run_one() got an unexpected keyword argument {name!r}")
     missing = [name for name in _RUN_OPTION_REQUIRED if name not in values]
+    if "run_number" in missing or values.get("run_number") is None:
+        raise Issue121Q2Error("run_number is required; expected 1, 2, or 3")
     if missing:
         names = ", ".join(repr(name) for name in missing)
         raise TypeError(f"run_one() missing required keyword-only arguments: {names}")
+    _validate_run_number(values["run_number"])
     return _RunOptions(
         **{name: values.get(name, default) for name, default in _RUN_OPTION_DEFAULTS.items()},
         **{name: values[name] for name in _RUN_OPTION_REQUIRED},
@@ -2600,8 +2611,8 @@ def _capture_preflight(
 
 def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
+    run_number = _validate_run_number(options.run_number)
     run_id = options.run_id
-    run_number = options.run_number
     board_id = options.board_id
     bus_id = options.bus_id
     image_digest = options.image_digest
@@ -2620,8 +2631,6 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     output_dir = _safe_output_dir(output_dir)
     safe_output_dir = _safe_output_path(output_dir, field="output_dir")
     safe_run_id = _safe_run_id(run_id)
-    if run_number is not None and run_number not in {1, 2, 3}:
-        raise Issue121Q2Error("run_number must be 1, 2, or 3")
     normalized_board, normalized_bus = _safe_identity(board_id, bus_id)
     interval = _finite_number(trace_interval_seconds, field="trace_interval_seconds", positive=True)
     _reject_q2_output_collision(safe_output_dir, safe_run_id)
@@ -2942,7 +2951,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
-    parser.add_argument("--run-number", type=int, default=None)
+    parser.add_argument("--run-number", type=int, choices=(1, 2, 3), required=True)
     parser.add_argument("--board-id", required=True)
     parser.add_argument("--bus-id", required=True)
     parser.add_argument("--image-digest", required=True)
