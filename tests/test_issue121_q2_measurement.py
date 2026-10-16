@@ -148,6 +148,10 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
     assert plan["classification_policy"]["multiple_supported_known_hypotheses"] == "multiple"
+    assert plan["prediction"]["expected_classification"] == ["H-TDC", "H-OTHER"]
+    assert plan["prediction"]["expected_classification_note"] == (
+        "H-TDC or H-OTHER; H-TDP and H-THM are unsupported by the prior evidence."
+    )
     assert plan["prediction"]["hypotheses"]["H-TDP"].startswith("unsupported")
     assert plan["plateau"] == {
         "start_seconds": 150,

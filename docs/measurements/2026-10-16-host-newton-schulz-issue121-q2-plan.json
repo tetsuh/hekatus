@@ -308,7 +308,8 @@
     "power_w": [132, 135],
     "asic_temp_c": 81,
     "current_a": "indeterminate: no historical Issue #118 current trace",
-    "expected_classification": "H-OTHER",
+    "expected_classification": ["H-TDC", "H-OTHER"],
+    "expected_classification_note": "H-TDC or H-OTHER; H-TDP and H-THM are unsupported by the prior evidence.",
     "hypotheses": {
       "H-TDP": "unsupported: 132-135 W is below the 5 percent lower bound of 142.5 W for TDP_LIMIT_MAX=150 W",
       "H-THM": "unsupported: approximately 81 degC does not enter the 5 degC proximity band of therm_trip_l1=90 degC",
