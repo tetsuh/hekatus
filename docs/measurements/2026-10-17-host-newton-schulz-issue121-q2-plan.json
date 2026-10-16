@@ -1,0 +1,319 @@
+{
+  "record_schema": "issue121-q2-premeasurement-plan-v1",
+  "status": "planned",
+  "issue": "#121",
+  "runner": "tools/issue121_q2.py",
+  "analysis": "tools/analyze_issue121_q2.py",
+  "board_run": false,
+  "board_run_note": "This is a pre-measurement prediction and harness contract. No device, Docker, Podman, or tt-smi operation is performed while preparing this plan.",
+  "measurement_scope": {
+    "device_id": 1,
+    "device_node": "/dev/tenstorrent/1",
+    "runs": 3,
+    "run_duration_seconds": 300,
+    "run_duration_definition": "The fixed workload interval targets 300 seconds of sustained device work; setup and teardown are outside the interval.",
+    "run_guard_seconds": 330,
+    "run_guard_definition": "The workload subprocess timeout and harness deadline are both 330 seconds. A run that reaches the guard is failed, never extended.",
+    "workload_start_after_pre_snapshot": true,
+    "workload_end_before_post_snapshot": true,
+    "inter_run_cooldown": "Required between runs 1 and 2, and between runs 2 and 3. The cooldown is outside the 300-second workload interval and is not an excuse to extend the 330-second run guard."
+  },
+  "workload": {
+    "name": "adr-0013-108-core-newton-schulz-surrogate",
+    "adr": "ADR-0013",
+    "kernel_source": "enodia/tt/bench/newton_schulz_kernel.py",
+    "load_generator_source": "enodia/tt/bench/load_generators.py",
+    "resident_runner_source": "enodia/tt/bench/run_resident.py",
+    "worker_core_count": 108,
+    "data_independent": true,
+    "fixed_iteration_count": true,
+    "convergence_check": false,
+    "device_load_condition": "newton_schulz",
+    "state_format": "BF16",
+    "destination_format": "FP32",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "matrix_block": 8,
+    "double_buffer": true,
+    "dst_full_sync_en": true,
+    "input_memory": "l1",
+    "r_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "note": "This is the existing Issue #118 surrogate. Q2 does not introduce a second arithmetic path or claim image-quality evidence."
+  },
+  "trace": {
+    "schema": "issue-121-q2-power-trace-v1",
+    "schema_version": 1,
+    "reader_schema": "issue-121-q2-power-trace-v1",
+    "mode": "extended-v1",
+    "legacy_schema_unchanged": true,
+    "legacy_columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c",
+      "timestamp_monotonic_ns",
+      "snapshot_elapsed_ns",
+      "current_a",
+      "voltage_v",
+      "board_power_w",
+      "fan_rpm",
+      "heartbeat",
+      "therm_trip_count",
+      "throttle_status",
+      "throttle_reason"
+    ],
+    "units": {
+      "timestamp_utc": "ISO-8601 UTC",
+      "power_w": "W",
+      "aiclk_mhz": "MHz",
+      "asic_temp_c": "degC",
+      "timestamp_monotonic_ns": "ns",
+      "snapshot_elapsed_ns": "ns",
+      "current_a": "A as reported by snapshot telemetry",
+      "voltage_v": "V as reported by snapshot telemetry",
+      "board_power_w": "W",
+      "fan_rpm": "rpm",
+      "heartbeat": "snapshot counter units",
+      "therm_trip_count": "raw snapshot counter units",
+      "throttle_status": "snapshot label",
+      "throttle_reason": "snapshot label"
+    },
+    "common_time_axis": "timestamp_monotonic_ns; each row brackets one read-only tt-smi snapshot and positive-duration left-held segments are used for integration.",
+    "identity": {
+      "board_id_required": true,
+      "bus_id_required": true,
+      "identity_source": "selected device_info[].board_info in each snapshot plus the requested board_id/bus_id pair",
+      "device_node": "/dev/tenstorrent/1"
+    },
+    "snapshot_command": [
+      "tt-smi",
+      "-s",
+      "--snapshot_no_tty"
+    ],
+    "snapshot_timeout_seconds": 5,
+    "sampling_interval_seconds": 2,
+    "sampling_interval_note": "The interval is a harness sampling cadence, not an analysis time base. Pre-run, in-run, and post-run captures use the same command path."
+  },
+  "source_snapshot": {
+    "source_type": "prior_host_snapshot",
+    "source_command": [
+      "tt-smi",
+      "-s",
+      "--snapshot_no_tty"
+    ],
+    "source_note": "Limit facts below were read from the already acquired host snapshot supplied for this preparation. The snapshot is not reacquired here and tt-smi must not be run during preparation.",
+    "host_identity_persisted": false,
+    "raw_smbus_policy": "Keep raw SMBus key spelling and value spelling exactly as emitted by the snapshot. Do not assign units or derive a missing key.",
+    "reported_limit_key_values": {
+      "tdp_limit": {
+        "value": 150,
+        "unit": "W",
+        "source_key": "limits.tdp_limit",
+        "source": "prior host snapshot"
+      },
+      "board_power_limit": {
+        "value": 300,
+        "unit": "W",
+        "source_key": "limits.board_power_limit",
+        "source": "prior host snapshot"
+      },
+      "tdc_limit": {
+        "value": 200,
+        "unit": "reported snapshot unit",
+        "source_key": "limits.tdc_limit",
+        "source": "prior host snapshot"
+      },
+      "therm_trip_l1_limit": {
+        "value": 90,
+        "unit": "degC",
+        "source_key": "limits.therm_trip_l1_limit",
+        "source": "prior host snapshot"
+      },
+      "thm_shutdown_limit": {
+        "value": 110,
+        "unit": "degC",
+        "source_key": "limits.thm_limit",
+        "source": "prior host snapshot"
+      },
+      "asic_fmax": {
+        "value": 1350,
+        "unit": "MHz",
+        "source_key": "limits.asic_fmax",
+        "source": "prior host snapshot"
+      }
+    },
+    "raw_smbus_fields": {
+      "BOARD_POWER_LIMIT": {
+        "value": "0x12c",
+        "unit": "raw snapshot value",
+        "source_key": "smbus_telem.BOARD_POWER_LIMIT"
+      },
+      "TDC_LIMIT_MAX": {
+        "value": "0xc8",
+        "unit": "raw snapshot value",
+        "source_key": "smbus_telem.TDC_LIMIT_MAX"
+      },
+      "THM_LIMIT_THROTTLE": {
+        "value": null,
+        "unit": null,
+        "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
+        "status": "not established by the prior snapshot; no value is inferred"
+      }
+    }
+  },
+  "limits": {
+    "tdp_limit_w": 150,
+    "board_power_limit_w": 300,
+    "tdc_limit": 200,
+    "therm_trip_l1_limit_c": 90,
+    "thm_shutdown_limit_c": 110,
+    "asic_fmax_mhz": 1350,
+    "thm_limit_throttle": {
+      "value": null,
+      "unit": null,
+      "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
+      "required_for_control": true,
+      "status": "unknown when absent from source snapshot; analysis must report not_evaluable rather than substitute a value"
+    }
+  },
+  "plateau": {
+    "start_seconds": 150,
+    "end_seconds": 300,
+    "interval_definition": "[run_start_monotonic_ns + 150 s, run_start_monotonic_ns + 300 s); a sample at the left boundary is held until the next sample.",
+    "requires_positive_duration_segments": true,
+    "terminal_coverage_required": true
+  },
+  "statistics": {
+    "aiclk_min": "Minimum AICLK over positive-duration left-held plateau segments.",
+    "aiclk_max": "Maximum AICLK over positive-duration left-held plateau segments.",
+    "aiclk_time_weighted_mean": "Sum(value * segment_duration) / plateau_duration using timestamp_monotonic_ns; no extrapolation.",
+    "percentiles": "Duration-weighted nearest-rank percentiles over positive-duration left-held segments. p0 is the first value, p100 the last, and pXX is the first sorted value whose cumulative duration reaches XX percent of plateau duration.",
+    "reported_percentiles": ["p01", "p05", "p50", "p95", "p99"],
+    "signal_aggregates": "For power, board power, current, voltage, and ASIC temperature, report min, max, duration-weighted mean, and limit proximity where a source limit exists.",
+    "limit_proximity": "absolute(plateau_time_weighted - limit) / absolute(limit); a threshold is evaluated only when signal and limit units are comparable and the limit has source provenance.",
+    "onset_timestamp": "The start of the first left-held segment at or after run start whose value reaches the fixed onset threshold; null means no onset was observed.",
+    "onset_order": "A hypothesis passes when its signal onset is present and no later than the first AICLK drop onset. Equal timestamps are allowed."
+  },
+  "hypotheses": {
+    "correlation_warning": "A matching plateau and onset order are correlations consistent with a hypothesis, not proof of causation.",
+    "aiclk_drop": {
+      "baseline": "first valid left-held AICLK value at or before plateau start",
+      "threshold_fraction": 0.05,
+      "onset_definition": "first segment with AICLK <= baseline * (1 - 0.05)"
+    },
+    "H-TDC": {
+      "signal": "current_a",
+      "plateau_proximity": {
+        "limit": 200,
+        "unit": "reported snapshot unit",
+        "max_fraction": 0.10,
+        "criterion": "current_a plateau time-weighted mean is within 10 percent of TDC_LIMIT_MAX, with comparable units"
+      },
+      "onset": {
+        "threshold": 180,
+        "unit": "reported snapshot unit",
+        "criterion": "current onset at or above 90 percent of the TDC limit is no later than AICLK drop onset"
+      },
+      "classification": "supported only when plateau proximity and onset order pass; otherwise not_supported or inconclusive when a required value is unavailable"
+    },
+    "H-THM": {
+      "signal": "asic_temp_c",
+      "plateau_proximity": {
+        "limit": 90,
+        "unit": "degC",
+        "max_absolute_difference": 5,
+        "criterion": "ASIC temperature plateau time-weighted mean is within 5 degC of therm trip L1 and remains below THM shutdown"
+      },
+      "onset": {
+        "threshold": 85,
+        "unit": "degC",
+        "criterion": "temperature onset at therm_trip_l1 - 5 degC is no later than AICLK drop onset"
+      },
+      "control": {
+        "required": true,
+        "criterion": "a separately supplied control trace must have plateau maximum below the source-provided THM_LIMIT_THROTTLE value",
+        "missing_limit_policy": "not_evaluable; do not infer THM_LIMIT_THROTTLE from therm trip L1 or shutdown"
+      },
+      "classification": "supported only when temperature proximity, onset order, shutdown bound, and the control criterion pass"
+    },
+    "H-TDP": {
+      "signal": "power_w",
+      "reference": "Issue #118 plateau 132-135 W versus TDP 150 W",
+      "plateau_proximity": {
+        "range_w": [132, 135],
+        "limit": 150,
+        "unit": "W",
+        "max_fraction": 0.12,
+        "criterion": "power_w plateau min and max are within 132-135 W and the time-weighted mean is within 12 percent of TDP; board_power_w is reported separately against the 300 W board limit"
+      },
+      "onset": {
+        "threshold": 132,
+        "unit": "W",
+        "criterion": "power_w onset at 132 W is no later than AICLK drop onset"
+      },
+      "classification": "supported only when the Issue #118 plateau-range, TDP proximity, and onset-order criteria pass"
+    },
+    "H-OTHER": {
+      "criterion": "Fallback when no known-limit hypothesis passes, or when a measured plateau is not close to any source-proven limit.",
+      "numeric_nonproximity_threshold_fraction": 0.12,
+      "onset_order": {
+        "aiclk_drop_threshold_fraction": 0.05,
+        "criterion": "No source-proven signal onset at its fixed threshold is no later than the AICLK drop onset; report every observed onset timestamp and do not force a known-limit attribution."
+      },
+      "classification": "H-OTHER is a classification of the fixed criteria only; it is not a causal explanation."
+    }
+  },
+  "cooldown": {
+    "required_between": [
+      "run_1/run_2",
+      "run_2/run_3"
+    ],
+    "baseline_source": "run-1 pre-run snapshot for the first transition; immediately preceding run pre-run snapshot thereafter",
+    "power_baseline_w": 47,
+    "temperature_baseline_c": 58.5,
+    "power_tolerance_w": 5,
+    "temperature_tolerance_c": 3,
+    "power_limit_w": 52,
+    "temperature_limit_c": 61.5,
+    "criterion": "latest usable idle snapshot has board power <= baseline + 5 W and ASIC temperature <= baseline + 3 degC",
+    "aiclk": "Record idle AICLK as provenance only; the expected 800 MHz idle value is not a cooldown gate.",
+    "wait_cap_seconds": 600,
+    "failure_policy": "Do not start the next 300-second run after the cap or an unavailable required reading."
+  },
+  "provenance": {
+    "required_environment_fields": [
+      "board.serial",
+      "board.identity.board_id",
+      "board.identity.bus_id",
+      "firmware.bundle",
+      "kernel",
+      "kernel_driver_version",
+      "image_digest",
+      "harness_commit",
+      "device_node"
+    ],
+    "persisted_output_paths": "Basenames or container-relative /out names only; no hostname, username, worktree path, or user-specific absolute path is retained.",
+    "trace_source": "The immutable extended-v1 trace and its pre/post snapshot records are the source for every analysis fact.",
+    "revision_binding": "The harness commit is recorded before a board run and the measurement record remains bound to that revision."
+  },
+  "revision_history": [
+    {
+      "revision": 1,
+      "date": "2026-10-17",
+      "change": "Created the pre-measurement Q2 plan from the existing ADR-0013 and Issue #118 108-core surrogate, fixing device 1, three 300-second runs, the 330-second guard, extended-v1 fields, hypothesis thresholds, cooldown gate, and source-snapshot provenance."
+    }
+  ],
+  "limitations": [
+    "No board measurement is included in this preparation artifact.",
+    "The THM_LIMIT_THROTTLE value is intentionally absent when the source snapshot does not establish it; the control criterion is then not_evaluable.",
+    "The hypothesis labels describe criterion-compatible correlations only and do not establish a physical cause."
+  ]
+}
