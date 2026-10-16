@@ -5,6 +5,7 @@ header: the sampler had been embedded in the wrapper script, and its
 quoting was wrong. The parsing lives here instead, where it is exercised.
 """
 
+import io
 import json
 from pathlib import Path
 
@@ -151,6 +152,117 @@ def test_default_device_node_keeps_first_board_behavior(monkeypatch):
     monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
 
     assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-zero"
+
+
+def test_default_device_node_matches_explicit_q2_identity(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    snapshot = _two_board_snapshot()
+    resolved_nodes = []
+
+    def resolve_node(node):
+        resolved_nodes.append(node)
+        return {"0000:02:00.0"}
+
+    assert telemetry.parse_telemetry(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    ) == {"power_w": "20", "aiclk_mhz": "900", "asic_temp_c": "60"}
+    environment = telemetry.parse_environment(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    )
+    assert environment["board"]["board_id"] == "board-one"
+    assert resolved_nodes
+    assert set(resolved_nodes) == {telemetry._DEFAULT_DEVICE_NODE}
+
+
+def test_default_device_node_rejects_mismatched_explicit_q2_identity(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    snapshot = _two_board_snapshot()
+
+    def resolve_node(_node):
+        return {"0000:01:00.0"}
+
+    assert (
+        telemetry.parse_telemetry(
+            snapshot,
+            node_resolver=resolve_node,
+            board_id="board-one",
+            bus_id="0000:02:00.0",
+        )
+        is None
+    )
+    environment = telemetry.parse_environment(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    )
+    assert environment["board_snapshot_error"]
+
+
+def test_capture_environment_uses_env_identity_for_board_and_observed_telemetry(
+    monkeypatch,
+):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", " board-one ")
+    monkeypatch.setenv("HEKATUS_TT_BUS_ID", " 0000:02:00.0 ")
+
+    def run(command):
+        return _two_board_snapshot() if command == telemetry.SNAPSHOT_COMMAND else ""
+
+    resolved_nodes = []
+
+    def resolve_node(node):
+        resolved_nodes.append(node)
+        return {"0000:02:00.0"}
+
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    monkeypatch.setattr(telemetry, "_run", run)
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", resolve_node)
+    environment = telemetry.capture_environment("image", True, sampler_mode="off")
+
+    assert environment["board"]["board_id"] == "board-one"
+    assert environment["board"]["bus_id"] == "0000:02:00.0"
+    assert environment["aiclk_mhz_observed"] == [900]
+    assert resolved_nodes
+    assert set(resolved_nodes) == {telemetry._DEFAULT_DEVICE_NODE}
+
+
+@pytest.mark.parametrize(
+    ("board_id", "bus_id"),
+    [
+        ("board-one", None),
+        (None, "0000:02:00.0"),
+        ("board-one", "not-a-pci-bdf"),
+        ("", "0000:02:00.0"),
+    ],
+)
+def test_capture_environment_rejects_partial_or_malformed_identity(
+    monkeypatch, board_id, bus_id
+):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    with pytest.raises(ValueError):
+        telemetry.capture_environment("image", True, board_id=board_id, bus_id=bus_id)
 
 
 def test_unverifiable_or_ambiguous_explicit_node_is_rejected(monkeypatch):
@@ -374,6 +486,202 @@ def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
         telemetry.main(argv)
 
     assert excinfo.value.code == 2
+
+
+def test_legacy_cli_keeps_default_sampler_path_without_identity_flags(monkeypatch, tmp_path):
+    output = tmp_path / "legacy.csv"
+    calls = []
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_forever",
+        lambda path, interval: calls.append((path, interval)),
+    )
+
+    telemetry.main(["sample", "--out", str(output), "--interval", "1"])
+
+    assert calls == [(output, 1.0)]
+
+
+@pytest.mark.parametrize(
+    "identity_args",
+    [("--board-id", "fixture-board"), ("--bus-id", "0000:01:00.0")],
+    ids=["board-id", "bus-id"],
+)
+def test_legacy_cli_rejects_explicit_identity_before_output_or_sampling(
+    monkeypatch, tmp_path, identity_args
+):
+    output = tmp_path / "not-created" / "legacy.csv"
+    sample_calls = []
+    run_calls = []
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_forever",
+        lambda path, interval: sample_calls.append((path, interval)),
+    )
+    monkeypatch.setattr(telemetry, "_run", lambda command: run_calls.append(command))
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(
+            [
+                "sample",
+                "--trace-schema",
+                "legacy-v1",
+                "--out",
+                str(output),
+                *identity_args,
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert not output.parent.exists()
+    assert not output.exists()
+    assert sample_calls == []
+    assert run_calls == []
+
+
+def test_legacy_sampler_ignores_complete_identity_environment(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", "board-one")
+    monkeypatch.setenv("HEKATUS_TT_BUS_ID", "0000:02:00.0")
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _two_board_snapshot())
+    monkeypatch.setattr(telemetry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    output = io.StringIO()
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_loop(output, interval=1.0)
+
+    assert output.getvalue().splitlines() == [
+        telemetry.CSV_HEADER,
+        "2026-01-01T00:00:00+00:00,10,800,50",
+    ]
+
+
+def test_legacy_sampler_ignores_partial_identity_environment(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", "board-one")
+    monkeypatch.delenv("HEKATUS_TT_BUS_ID", raising=False)
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _two_board_snapshot())
+    monkeypatch.setattr(telemetry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    output = io.StringIO()
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_loop(output, interval=1.0)
+
+    assert output.getvalue().splitlines() == [
+        telemetry.CSV_HEADER,
+        "2026-01-01T00:00:00+00:00,10,800,50",
+    ]
+
+
+def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
+    output = tmp_path / "extended.csv"
+    calls = []
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", " env-board ")
+    monkeypatch.setenv("HEKATUS_TT_BUS_ID", " 0000:02:00.0 ")
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_extended_forever",
+        lambda path, interval, **kwargs: calls.append((path, interval, kwargs)),
+    )
+
+    telemetry.main(
+        [
+            "sample",
+            "--trace-schema",
+            "extended-v1",
+            "--out",
+            str(output),
+            "--interval",
+            "1",
+        ]
+    )
+
+    assert calls == [
+        (
+            output.resolve(),
+            1.0,
+            {"board_id": "env-board", "bus_id": "0000:02:00.0"},
+        )
+    ]
+
+
+def test_extended_sampler_rejects_missing_identity_before_truncating_output(
+    monkeypatch, tmp_path
+):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    output = tmp_path / "existing.csv"
+    original = "existing trace content\n"
+    output.write_text(original)
+    run_calls = []
+    monkeypatch.setattr(telemetry, "_run", lambda command: run_calls.append(command))
+
+    with pytest.raises(ValueError, match="requires both board_id and bus_id"):
+        telemetry._sample_extended_forever(output, interval=1.0)
+
+    assert output.read_text() == original
+    assert run_calls == []
+
+
+def test_extended_cli_rejects_missing_identity_before_creating_parent(monkeypatch, tmp_path):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    output = tmp_path / "not-created" / "extended.csv"
+    monkeypatch.setattr(telemetry, "_run", lambda _command: (_ for _ in ()).throw(AssertionError))
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(
+            [
+                "sample",
+                "--trace-schema",
+                "extended-v1",
+                "--out",
+                str(output),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert not output.parent.exists()
+    assert not output.exists()
+
+
+def test_cli_output_path_cannot_escape_trusted_roots(tmp_path):
+    outside = Path.cwd().parent / f"hekatus-sonar-output-{tmp_path.name}.csv"
+    assert not outside.exists()
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(["sample", "--trace-schema", "extended-v1", "--out", str(outside)])
+
+    assert excinfo.value.code == 2
+    assert not outside.exists()
 
 
 class _WriterThatFillsUp:
