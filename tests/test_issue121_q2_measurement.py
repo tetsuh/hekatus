@@ -18,6 +18,10 @@ ROOT = Path(__file__).parents[1]
 PLAN = ROOT / runner.ISSUE121_Q2_PLAN
 SUMMARY = ROOT / "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-summary.json"
 IMMUTABLE_RUN_ROOT = ROOT / "docs/measurements/issue121-q2/runs"
+Q2_RUN_ROOT = IMMUTABLE_RUN_ROOT / "run-1-device0"
+Q2_RUN_RECORD = Q2_RUN_ROOT / "run-q2-run-1-device0.json"
+Q2_TRACE = Q2_RUN_ROOT / "extended-trace-q2-run-1-device0.csv"
+Q2_COMMITTED_ANALYSIS = Q2_RUN_ROOT / "analysis-q2-run-1-device0.json"
 
 
 def _snapshot() -> str:
@@ -403,6 +407,35 @@ def test_regenerated_analysis_retains_unit_provenance_and_effects() -> None:
         assert throttle["status"] == "pass"
         assert throttle["limit_value"] == 90.0
         assert throttle["limit_unit"] == "degC"
+
+
+def test_record_cli_retains_established_units_and_classifications(tmp_path: Path) -> None:
+    output = tmp_path / "analysis.json"
+    assert analysis.main(
+        [
+            "--trace",
+            str(Q2_TRACE),
+            "--record",
+            str(Q2_RUN_RECORD),
+            "--output",
+            str(output),
+        ]
+    ) == 0
+
+    rerun = json.loads(output.read_text(encoding="utf-8"))
+    committed = json.loads(Q2_COMMITTED_ANALYSIS.read_text(encoding="utf-8"))
+
+    assert rerun["unit_provenance"] == committed["unit_provenance"]
+    assert rerun["statistics"]["signals"]["current_a"]["limit_proximity"] == committed[
+        "statistics"
+    ]["signals"]["current_a"]["limit_proximity"]
+    assert rerun["hypotheses"]["H-TDC"] == committed["hypotheses"]["H-TDC"]
+    assert rerun["hypotheses"]["H-THM"]["classification"] == committed["hypotheses"][
+        "H-THM"
+    ]["classification"]
+    assert rerun["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"] == committed[
+        "hypotheses"
+    ]["H-THM"]["details"]["thm_limit_throttle"]
 
 
 def test_snapshot_command_is_bounded_and_host_fields_are_not_retained(

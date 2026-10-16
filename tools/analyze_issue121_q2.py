@@ -1627,6 +1627,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 limits = {
                     "limits": environment_limits,
                     "snapshot_limits": snapshot_limits,
+                    "unit_provenance": UNIT_PROVENANCE,
                 }
                 timing = record_payload.get("run_timing")
                 if isinstance(timing, Mapping):
