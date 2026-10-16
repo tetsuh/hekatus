@@ -70,6 +70,7 @@ validate_extended_power_trace = _power_trace_extended.validate_extended_power_tr
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
 _DEFAULT_DEVICE_NODE = "/dev/tenstorrent/0"
+_EXTENDED_NODE_RESOLUTION_RETRIES = 2
 _PCI_BUS_ID_RE = re.compile(
     r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])",
     re.IGNORECASE,
@@ -520,10 +521,15 @@ def _snapshot_devices(snapshot: str) -> list[dict] | None:
 def _requested_q2_identity(
     board_id: str | None, bus_id: str | None
 ) -> tuple[str, str] | None:
-    """Resolve the paired Q2 identity, or retain legacy selection when absent."""
-    normalized_board_id, normalized_bus_id = resolve_board_identity(board_id, bus_id)
-    if normalized_board_id is None or normalized_bus_id is None:
+    """Normalize an explicitly supplied Q2 identity, or retain legacy selection."""
+    if board_id is None and bus_id is None:
         return None
+    normalized_board_id = normalize_board_id(board_id)
+    if normalized_board_id is None:
+        raise ValueError("board_id must be a non-empty string")
+    normalized_bus_id = _normalize_pci_bus_id(bus_id)
+    if normalized_bus_id is None:
+        raise ValueError("bus_id must be a valid PCI BDF")
     return normalized_board_id, normalized_bus_id
 
 
@@ -621,8 +627,9 @@ def _device_info(
         return None
 
     # Board identity is opt-in here so the established four-column sampler
-    # remains unchanged.  A supplied environment identity follows the same Q2
-    # path as explicit arguments instead of falling back to array position.
+    # remains unchanged.  Identity-aware callers resolve environment values
+    # before passing the complete pair; no-argument callers stay on legacy
+    # default-node selection.
     requested_node = _requested_device_node()
     resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
     try:
@@ -937,6 +944,40 @@ def _required_extended_identity(
     return effective_board_id, effective_bus_id
 
 
+def _extended_device_info(
+    snapshot: str,
+    *,
+    board_id: str,
+    bus_id: str,
+) -> dict | None:
+    """Resolve the extended sampler's node identity with bounded transient retries."""
+    resolved_bus_ids: set[str] | None = None
+
+    def resolve_node(node: str) -> set[str]:
+        nonlocal resolved_bus_ids
+        resolved_bus_ids = _resolved_pci_bus_ids(node, _resolve_device_node_to_pci)
+        return resolved_bus_ids
+
+    for attempt in range(_EXTENDED_NODE_RESOLUTION_RETRIES + 1):
+        resolved_bus_ids = None
+        device = _device_info(
+            snapshot,
+            node_resolver=resolve_node,
+            board_id=board_id,
+            bus_id=bus_id,
+        )
+        if device is not None:
+            return device
+        # An empty result is an unverifiable udev identity and may be transient.
+        # A non-empty result that does not match the requested bus is a mismatch
+        # and must remain fail-closed without retrying it.
+        if resolved_bus_ids:
+            return None
+        if attempt == _EXTENDED_NODE_RESOLUTION_RETRIES:
+            return None
+    return None
+
+
 def _sample_extended_loop(
     handle,
     interval: float,
@@ -972,7 +1013,7 @@ def _sample_extended_loop(
         # verified resolver also binds the requested board to the benchmark
         # process's actual device node.  A mismatch is a run-level failure,
         # not a dropped telemetry sample.
-        if _device_info(
+        if _extended_device_info(
             snapshot,
             board_id=effective_board_id,
             bus_id=effective_bus_id,
@@ -1040,7 +1081,9 @@ def _sample_extended_forever(
 ) -> None:
     effective_board_id, effective_bus_id = _required_extended_identity(board_id, bus_id)
     safe_output_path = _trusted_output_path(out_path)
-    with safe_output_path.open("w", buffering=1) as handle:
+    with safe_output_path.open(
+        "w", encoding="utf-8", newline="", buffering=1
+    ) as handle:
         _sample_extended_loop(
             handle,
             interval,

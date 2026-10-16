@@ -63,14 +63,14 @@ def _write_sidecar(path: Path, samples: list[dict[str, object]], **overrides: ob
 
 
 def test_extended_row_csv_escaping_round_trips_throttle_labels(tmp_path: Path) -> None:
-    status = "active, thermal\nstate"
-    reason = "thermal, limit\nsecondary limit"
+    status = "active, 温度\n状態"
+    reason = "熱制限, 二次\n制限"
     first = _trace_row(0, board_power_w=10.0, throttle_reason=reason)
     first["throttle_status"] = status
     second = _trace_row(2_000_000_000, board_power_w=20.0)
 
     serialized = format_extended_power_trace_row(first)
-    parsed_fields = next(csv.reader(io.StringIO(serialized)))
+    parsed_fields = next(csv.reader(io.StringIO(serialized, newline="")))
     assert len(parsed_fields) == len(EXTENDED_POWER_TRACE_COLUMNS) == 14
     assert parsed_fields[EXTENDED_POWER_TRACE_COLUMNS.index("throttle_status")] == status
     assert parsed_fields[EXTENDED_POWER_TRACE_COLUMNS.index("throttle_reason")] == reason
@@ -82,7 +82,8 @@ def test_extended_row_csv_escaping_round_trips_throttle_labels(tmp_path: Path) -
         + serialized
         + "\n"
         + format_extended_power_trace_row(second)
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     trace = read_extended_power_trace_csv(path)
 

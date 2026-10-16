@@ -155,6 +155,41 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
     assert telemetry.CSV_HEADER == ",".join(LEGACY_COLUMNS)
 
 
+def test_extended_sampler_retries_transient_node_resolution_before_writing_row(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    output = io.StringIO()
+    resolver_results = iter((set(), {"0000:01:00.0"}))
+    resolved_nodes: list[str] = []
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _snapshot())
+
+    def resolve_node(node: str) -> set[str]:
+        resolved_nodes.append(node)
+        return next(resolver_results)
+
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", resolve_node)
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_extended_loop(
+            output,
+            interval=1.0,
+            board_id="fixture-board-a",
+            bus_id="0000:01:00.0",
+            monotonic_ns=iter((100, 250)).__next__,
+            utc_now=lambda: "2026-01-01T00:00:01+00:00",
+        )
+
+    lines = output.getvalue().splitlines()
+    assert lines[0] == EXTENDED_POWER_TRACE_HEADER
+    assert next(csv.reader([lines[1]]))[4:6] == ["250", "150"]
+    assert resolved_nodes == [telemetry._DEFAULT_DEVICE_NODE] * 2
+
+
 @pytest.mark.parametrize(
     "invalid_snapshot",
     [

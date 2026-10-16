@@ -5,6 +5,7 @@ header: the sampler had been embedded in the wrapper script, and its
 quoting was wrong. The parsing lives here instead, where it is exercised.
 """
 
+import io
 import json
 from pathlib import Path
 
@@ -248,7 +249,18 @@ def test_capture_environment_uses_env_identity_for_board_and_observed_telemetry(
         ("", "0000:02:00.0"),
     ],
 )
-def test_capture_environment_rejects_partial_or_malformed_identity(board_id, bus_id):
+def test_capture_environment_rejects_partial_or_malformed_identity(
+    monkeypatch, board_id, bus_id
+):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
     with pytest.raises(ValueError):
         telemetry.capture_environment("image", True, board_id=board_id, bus_id=bus_id)
 
@@ -525,6 +537,48 @@ def test_legacy_cli_rejects_explicit_identity_before_output_or_sampling(
     assert not output.exists()
     assert sample_calls == []
     assert run_calls == []
+
+
+def test_legacy_sampler_ignores_complete_identity_environment(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", "board-one")
+    monkeypatch.setenv("HEKATUS_TT_BUS_ID", "0000:02:00.0")
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _two_board_snapshot())
+    monkeypatch.setattr(telemetry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    output = io.StringIO()
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_loop(output, interval=1.0)
+
+    assert output.getvalue().splitlines() == [
+        telemetry.CSV_HEADER,
+        "2026-01-01T00:00:00+00:00,10,800,50",
+    ]
+
+
+def test_legacy_sampler_ignores_partial_identity_environment(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", "board-one")
+    monkeypatch.delenv("HEKATUS_TT_BUS_ID", raising=False)
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _two_board_snapshot())
+    monkeypatch.setattr(telemetry, "_now", lambda: "2026-01-01T00:00:00+00:00")
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
+
+    output = io.StringIO()
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_loop(output, interval=1.0)
+
+    assert output.getvalue().splitlines() == [
+        telemetry.CSV_HEADER,
+        "2026-01-01T00:00:00+00:00,10,800,50",
+    ]
 
 
 def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):

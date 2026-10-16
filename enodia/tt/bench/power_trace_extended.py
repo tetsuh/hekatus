@@ -129,7 +129,7 @@ def _as_snapshot_object(snapshot: str | bytes | Mapping[str, Any]) -> Mapping[st
         return snapshot
     if isinstance(snapshot, bytes):
         try:
-            snapshot = snapshot.decode()
+            snapshot = snapshot.decode("utf-8")
         except UnicodeError as exc:
             raise ExtendedPowerTraceError("snapshot is not valid JSON") from exc
     if not isinstance(snapshot, str):
@@ -926,8 +926,12 @@ def _trace_result_base(*, error: str | None = None) -> dict[str, Any]:
 def _decode_extended_payload(
     path: Path, *, read_text_fn: Callable[[Path], str] | None
 ) -> tuple[bytes, str]:
-    raw = path.read_bytes() if read_text_fn is None else read_text_fn(path).encode()
-    return raw, raw.decode()
+    raw = (
+        path.read_bytes()
+        if read_text_fn is None
+        else read_text_fn(path).encode("utf-8")
+    )
+    return raw, raw.decode("utf-8")
 
 
 def _extended_trace_bounds(
@@ -964,7 +968,7 @@ def _read_extended_csv_rows(
         missing_value = object()
         extra_key = object()
         reader = csv.DictReader(
-            io.StringIO(text),
+            io.StringIO(text, newline=""),
             restval=missing_value,
             restkey=extra_key,
         )
@@ -1172,7 +1176,7 @@ def read_extended_power_trace_snapshot(
         )
     result = _trace_result_base()
     try:
-        payload = json.loads(path.read_text())
+        payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, Mapping):
             raise ExtendedPowerTraceError("extended trace sidecar must be an object")
         declared_schema = payload.get("schema")
@@ -1210,7 +1214,7 @@ def read_extended_power_trace_snapshot(
         result["error"] = str(exc)
         return result
     # Reuse CSV validation and aggregation without writing a file.
-    buffer = io.StringIO()
+    buffer = io.StringIO(newline="")
     writer = csv.DictWriter(buffer, fieldnames=EXTENDED_POWER_TRACE_COLUMNS)
     writer.writeheader()
     writer.writerows(rows)
@@ -1397,7 +1401,7 @@ def _recompute_mapping_trace(
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
         failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
 
-    buffer = io.StringIO()
+    buffer = io.StringIO(newline="")
     try:
         writer = csv.DictWriter(buffer, fieldnames=EXTENDED_POWER_TRACE_COLUMNS)
         writer.writeheader()
