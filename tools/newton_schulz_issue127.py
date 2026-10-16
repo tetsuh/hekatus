@@ -100,6 +100,14 @@ SAMPLER_INTERVAL_SECONDS = DEFAULT_SAMPLER_INTERVAL_SECONDS
 SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS = 2.24
 ROW_DURATION_MIN_SECONDS = SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS
 POWER_SAMPLES_PER_ROW_TARGET = 2
+POWER_SAMPLE_COUNT_IN_INTERVAL_DEFINITION = (
+    "samples contributing to the timed interval [start, end), including the "
+    "sample held across the interval start"
+)
+POWER_SAMPLES_STARTED_IN_INTERVAL_DEFINITION = (
+    "samples whose timestamp starts in the timed interval [start, end); the "
+    "left-held sample whose timestamp precedes the interval start is excluded"
+)
 RUN_BUDGET_INITIAL_OCCURRENCE_ESTIMATE_SECONDS = 6.0
 RUN_BUDGET_SETUP_MARGIN_SECONDS = 1.25
 
@@ -244,28 +252,53 @@ _BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
 _PCI_BDF_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
 _DEVICE_NODE_RE = re.compile(r"^/dev/tenstorrent/(?:[0-9]+|by-id/[A-Za-z0-9_.:-]+)$")
 # Path candidates deliberately allow filename punctuation and spaces.  The
-# first component must not begin with whitespace or the double-pipe marker used
-# by quotient prose, while a single ``|`` remains a valid filename character.
-# All consumers use this one candidate grammar; formula and device-node
-# exceptions are applied at the traversal sites below.
+# ordinary grammar excludes the leading whitespace and double-pipe forms used
+# by quotient prose.  A second, separator-requiring grammar covers those forms
+# when they are legal first components (and also permits quote characters in a
+# filename).  All consumers use this one candidate grammar; formula and
+# device-node exceptions are applied at the traversal sites below.
 _PATH_COMPONENT = r'''[^/\\\x00-\x1f"']+'''
+_PATH_COMPONENT_EXTENDED = r'''[^/\\\x00-\x1f]+'''
 _PATH_FIRST_COMPONENT = r'''(?!(?:\s|\|\|))(?=[^/\\\x00-\x1f"'])''' + _PATH_COMPONENT
+_PATH_FIRST_COMPONENT_EXTENDED = r'''(?=[^/\\\x00-\x1f])''' + _PATH_COMPONENT_EXTENDED
 _PATH_SEPARATOR = r'''[\\/]'''
 _PATH_BODY = rf"{_PATH_FIRST_COMPONENT}(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT})*{_PATH_SEPARATOR}*"
+_PATH_BODY_EXTENDED = (
+    rf"{_PATH_FIRST_COMPONENT_EXTENDED}{_PATH_SEPARATOR}+"
+    rf"(?:{_PATH_COMPONENT_EXTENDED}(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT_EXTENDED})*)?"
+    rf"{_PATH_SEPARATOR}*"
+)
 _PATH_WRAPPER = rf"(?:file|path):{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_WRAPPER_EXTENDED = rf"(?:file|path):{_PATH_SEPARATOR}+{_PATH_BODY_EXTENDED}"
 _PATH_POSIX = rf"/{_PATH_BODY}"
-_PATH_HOME = rf"~{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_POSIX_EXTENDED = rf"/{_PATH_BODY_EXTENDED}"
+_PATH_HOME = rf"~(?:{_PATH_COMPONENT})?{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_HOME_EXTENDED = (
+    rf"~(?:{_PATH_COMPONENT_EXTENDED})?{_PATH_SEPARATOR}+{_PATH_BODY_EXTENDED}"
+)
 _PATH_DRIVE = rf"[A-Za-z]:{_PATH_SEPARATOR}+{_PATH_BODY}"
+_PATH_DRIVE_EXTENDED = rf"[A-Za-z]:{_PATH_SEPARATOR}+{_PATH_BODY_EXTENDED}"
 _PATH_UNC = (
     rf"{_PATH_SEPARATOR}{_PATH_SEPARATOR}{_PATH_FIRST_COMPONENT}"
     rf"(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT})+{_PATH_SEPARATOR}*"
 )
+_PATH_UNC_EXTENDED = (
+    rf"{_PATH_SEPARATOR}{_PATH_SEPARATOR}{_PATH_FIRST_COMPONENT_EXTENDED}"
+    rf"(?:{_PATH_SEPARATOR}+{_PATH_COMPONENT_EXTENDED})+{_PATH_SEPARATOR}*"
+)
 _PATH_CANDIDATE = (
-    rf"(?:{_PATH_WRAPPER}|{_PATH_HOME}|{_PATH_DRIVE}|{_PATH_UNC}|{_PATH_POSIX})"
+    rf"(?:{_PATH_WRAPPER}|{_PATH_WRAPPER_EXTENDED}|"
+    rf"{_PATH_HOME}|{_PATH_HOME_EXTENDED}|"
+    rf"{_PATH_DRIVE}|{_PATH_DRIVE_EXTENDED}|"
+    rf"{_PATH_UNC}|{_PATH_UNC_EXTENDED}|"
+    rf"{_PATH_POSIX}|{_PATH_POSIX_EXTENDED})"
 )
 _PATH_CANDIDATE_RE = re.compile(
-    rf"(?:(?<![A-Za-z0-9_]){_PATH_WRAPPER}|"
-    rf"(?<![A-Za-z0-9_/:])(?:{_PATH_HOME}|{_PATH_DRIVE}|{_PATH_UNC}|{_PATH_POSIX}))",
+    rf"(?:(?<![A-Za-z0-9_])(?:{_PATH_WRAPPER}|{_PATH_WRAPPER_EXTENDED})|"
+    rf"(?<![A-Za-z0-9/])(?:{_PATH_HOME}|{_PATH_HOME_EXTENDED}|"
+    rf"{_PATH_DRIVE}|{_PATH_DRIVE_EXTENDED}|"
+    rf"{_PATH_UNC}|{_PATH_UNC_EXTENDED}|"
+    rf"{_PATH_POSIX}|{_PATH_POSIX_EXTENDED}))",
     re.IGNORECASE,
 )
 # Keep these private compatibility regexes for callers that used the old
@@ -1964,6 +1997,33 @@ def _trace_gap_metadata(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _power_samples_started_in_interval(
+    samples: Sequence[Mapping[str, Any]],
+    *,
+    start: datetime.datetime | str,
+    end: datetime.datetime | str,
+) -> int:
+    """Count trace samples whose timestamps start inside the timed interval."""
+    try:
+        start_dt = _parse_trace_timestamp(start, field="power interval start")
+        end_dt = _parse_trace_timestamp(end, field="power interval end")
+    except (TypeError, ValueError):
+        return 0
+    if start_dt >= end_dt:
+        return 0
+    count = 0
+    for sample in samples:
+        try:
+            timestamp = _parse_trace_timestamp(
+                sample.get("timestamp_utc"), field="power sample timestamp_utc"
+            )
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if start_dt <= timestamp < end_dt:
+            count += 1
+    return count
+
+
 def apply_final_trace_facts(
     comparison_rows: Sequence[dict[str, Any]],
     *,
@@ -1982,6 +2042,11 @@ def apply_final_trace_facts(
                 "requested_sampler_interval_seconds": SAMPLER_INTERVAL_SECONDS,
                 "coverage_definition": EXPLICIT_FINAL_SAMPLE,
                 "power_sample_count_in_interval": 0,
+                "power_sample_count_definition": POWER_SAMPLE_COUNT_IN_INTERVAL_DEFINITION,
+                "power_samples_started_in_interval": 0,
+                "power_samples_started_in_interval_definition": (
+                    POWER_SAMPLES_STARTED_IN_INTERVAL_DEFINITION
+                ),
                 "power_sample_target": POWER_SAMPLES_PER_ROW_TARGET,
                 "power_sample_target_met": False,
             }
@@ -1994,6 +2059,12 @@ def apply_final_trace_facts(
             end=row.get("timed_end_utc"),
             row_label=f"{row.get('occurrence_id', 'row')} AICLK interval",
         )
+        power_sample_count = len(facts.get("segments", []))
+        samples_started = _power_samples_started_in_interval(
+            samples,
+            start=row.get("timed_start_utc"),
+            end=row.get("timed_end_utc"),
+        )
         facts.update(
             {
                 "trace": power_trace.get("file"),
@@ -2004,9 +2075,14 @@ def apply_final_trace_facts(
                 "coverage_definition": power_trace.get("coverage_definition"),
                 "trace_coverage_complete": power_trace.get("coverage_complete") is True,
                 "immutable_snapshot": power_trace.get("immutable_snapshot") is True,
-                "power_sample_count_in_interval": len(facts.get("segments", [])),
+                "power_sample_count_in_interval": power_sample_count,
+                "power_sample_count_definition": POWER_SAMPLE_COUNT_IN_INTERVAL_DEFINITION,
+                "power_samples_started_in_interval": samples_started,
+                "power_samples_started_in_interval_definition": (
+                    POWER_SAMPLES_STARTED_IN_INTERVAL_DEFINITION
+                ),
                 "power_sample_target": POWER_SAMPLES_PER_ROW_TARGET,
-                "power_sample_target_met": len(facts.get("segments", []))
+                "power_sample_target_met": samples_started
                 >= POWER_SAMPLES_PER_ROW_TARGET,
             }
         )

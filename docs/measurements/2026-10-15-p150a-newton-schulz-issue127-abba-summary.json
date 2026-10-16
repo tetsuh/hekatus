@@ -1,8 +1,8 @@
 {
-  "record_schema": "issue127-abba-summary-v2",
+  "record_schema": "issue127-abba-summary-v3",
   "status": "pass",
   "issue": "#127",
-  "summary_role": "mechanical decision and clock-sensitivity summary for the two accepted measurement records",
+  "summary_role": "mechanical decision and clock-sensitivity summary for the two accepted measurement records, with an immutable-trace sampling audit for all four committed runs",
   "excluded_records": [
     "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
     "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json"
@@ -68,7 +68,8 @@
           "aiclk_mhz_min": 1187.0,
           "aiclk_mhz_max": 1331.0,
           "row_time_weighted_aiclk_mhz": 1285.475932892986,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 1,
@@ -85,7 +86,8 @@
           "aiclk_mhz_min": 1262.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1304.262630653801,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 2,
@@ -102,7 +104,8 @@
           "aiclk_mhz_min": 1250.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1298.6599176562308,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 3,
@@ -119,7 +122,8 @@
           "aiclk_mhz_min": 1250.0,
           "aiclk_mhz_max": 1312.0,
           "row_time_weighted_aiclk_mhz": 1284.6906489676953,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 4,
@@ -136,7 +140,8 @@
           "aiclk_mhz_min": 1006.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1170.4804016216447,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 5,
@@ -153,7 +158,8 @@
           "aiclk_mhz_min": 968.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1156.2847622792297,
-          "power_sample_count_in_interval": 4
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
         },
         {
           "order_index": 6,
@@ -170,7 +176,8 @@
           "aiclk_mhz_min": 956.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1124.7231383375613,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 7,
@@ -187,7 +194,8 @@
           "aiclk_mhz_min": 993.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1176.2437602338548,
-          "power_sample_count_in_interval": 4
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
         }
       ],
       "comparison_summary": [
@@ -301,7 +309,8 @@
           "aiclk_mhz_min": 1306.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1328.9806005732135,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 1,
@@ -318,7 +327,8 @@
           "aiclk_mhz_min": 1300.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1327.127680913874,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 2,
@@ -335,7 +345,8 @@
           "aiclk_mhz_min": 1287.0,
           "aiclk_mhz_max": 1343.0,
           "row_time_weighted_aiclk_mhz": 1317.716339795503,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 3,
@@ -352,7 +363,8 @@
           "aiclk_mhz_min": 1262.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1303.4104824413903,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 4,
@@ -369,7 +381,8 @@
           "aiclk_mhz_min": 987.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1152.2079619078045,
-          "power_sample_count_in_interval": 4
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
         },
         {
           "order_index": 5,
@@ -386,7 +399,8 @@
           "aiclk_mhz_min": 1018.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1177.3182615511776,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 6,
@@ -403,7 +417,8 @@
           "aiclk_mhz_min": 1006.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1167.0589174772285,
-          "power_sample_count_in_interval": 3
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
         },
         {
           "order_index": 7,
@@ -420,7 +435,8 @@
           "aiclk_mhz_min": 968.0,
           "aiclk_mhz_max": 1350.0,
           "row_time_weighted_aiclk_mhz": 1159.5153086743878,
-          "power_sample_count_in_interval": 4
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
         }
       ],
       "comparison_summary": [
@@ -1124,5 +1140,508 @@
     "all_eight_sensitivity_intervals_negative": true,
     "conclusion": "The precommitted raw P50 decision remains R-format effect. Under assumptions (a) and (b), all eight matched-occurrence sensitivity intervals remain negative. Without assumption (b), descriptive range-only information does not fully exclude a clock explanation.",
     "any_crosses_zero": false
+  },
+  "sampling_audit": {
+    "comparison_row_count": 32,
+    "power_sample_count_in_interval": {
+      "field": "power_sample_count_in_interval",
+      "definition": "samples contributing to the timed interval [start, end), including the sample held across the interval start"
+    },
+    "power_samples_started_in_interval": {
+      "field": "power_samples_started_in_interval",
+      "definition": "samples whose timestamp starts in the timed interval [start, end); the left-held sample whose timestamp precedes the interval start is excluded"
+    },
+    "sampling_target": {
+      "target_samples_per_row": 2,
+      "field": "power_samples_started_in_interval",
+      "rows_meeting_target": 32,
+      "rows_below_target": 0,
+      "minimum_started_samples": 2,
+      "maximum_started_samples": 3,
+      "result": "pass",
+      "claim": "All 32 comparison rows meet the two-samples-per-row target when only samples whose timestamps start inside the timed interval are counted."
+    },
+    "comparison_rows": [
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 0,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:38:11.562070+00:00",
+        "timed_end_utc": "2026-10-15T21:38:15.952269+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 1,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:38:18.042937+00:00",
+        "timed_end_utc": "2026-10-15T21:38:22.586823+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 2,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:38:23.644344+00:00",
+        "timed_end_utc": "2026-10-15T21:38:28.215898+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 3,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:38:29.214008+00:00",
+        "timed_end_utc": "2026-10-15T21:38:33.662816+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 4,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:38:37.368096+00:00",
+        "timed_end_utc": "2026-10-15T21:38:41.925388+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 5,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:38:49.506301+00:00",
+        "timed_end_utc": "2026-10-15T21:38:54.430619+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 6,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:38:57.992869+00:00",
+        "timed_end_utc": "2026-10-15T21:39:02.941364+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 7,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:39:06.600671+00:00",
+        "timed_end_utc": "2026-10-15T21:39:11.218200+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 0,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:43:01.670580+00:00",
+        "timed_end_utc": "2026-10-15T21:43:06.122216+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 1,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:43:08.157273+00:00",
+        "timed_end_utc": "2026-10-15T21:43:12.767070+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 2,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:43:13.823012+00:00",
+        "timed_end_utc": "2026-10-15T21:43:18.479102+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 3,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:43:19.477962+00:00",
+        "timed_end_utc": "2026-10-15T21:43:23.991068+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 4,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:43:27.663561+00:00",
+        "timed_end_utc": "2026-10-15T21:43:32.323768+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 5,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:43:38.914018+00:00",
+        "timed_end_utc": "2026-10-15T21:43:43.911583+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 6,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:43:48.541962+00:00",
+        "timed_end_utc": "2026-10-15T21:43:53.581114+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 7,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:43:57.184078+00:00",
+        "timed_end_utc": "2026-10-15T21:44:01.884775+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 0,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:45:03.424543+00:00",
+        "timed_end_utc": "2026-10-15T21:45:08.067714+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 1,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:45:09.855727+00:00",
+        "timed_end_utc": "2026-10-15T21:45:14.394716+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 2,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:45:15.445176+00:00",
+        "timed_end_utc": "2026-10-15T21:45:20.012661+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 3,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:45:21.028577+00:00",
+        "timed_end_utc": "2026-10-15T21:45:25.729456+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 4,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:45:32.002869+00:00",
+        "timed_end_utc": "2026-10-15T21:45:37.051726+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 5,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:45:40.713468+00:00",
+        "timed_end_utc": "2026-10-15T21:45:45.415434+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 6,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:45:49.065287+00:00",
+        "timed_end_utc": "2026-10-15T21:45:53.810182+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 7,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:45:57.435349+00:00",
+        "timed_end_utc": "2026-10-15T21:46:02.534137+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 0,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T22:04:29.028485+00:00",
+        "timed_end_utc": "2026-10-15T22:04:33.563619+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 1,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T22:04:35.331295+00:00",
+        "timed_end_utc": "2026-10-15T22:04:39.769194+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 2,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T22:04:40.791806+00:00",
+        "timed_end_utc": "2026-10-15T22:04:45.256715+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 3,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T22:04:46.360308+00:00",
+        "timed_end_utc": "2026-10-15T22:04:51.010904+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 4,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T22:04:57.913688+00:00",
+        "timed_end_utc": "2026-10-15T22:05:02.896966+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 5,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T22:05:07.018115+00:00",
+        "timed_end_utc": "2026-10-15T22:05:11.679696+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 6,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T22:05:16.356713+00:00",
+        "timed_end_utc": "2026-10-15T22:05:21.035155+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 7,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T22:05:25.094243+00:00",
+        "timed_end_utc": "2026-10-15T22:05:30.114436+00:00",
+        "power_samples_started_in_interval": 3
+      }
+    ]
   }
 }

@@ -351,7 +351,7 @@ def test_issue127_invalid_interval_timestamp_keeps_common_unavailable_schema(
     assert facts["semantics"] == "left_held_positive_segments"
 
 
-def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
+def test_issue127_final_trace_facts_record_source_and_started_sample_target():
     row = {
         **runner.build_occurrence_plan(1)[0],
         "timed_start_utc": "2026-10-12T00:00:01+00:00",
@@ -360,6 +360,12 @@ def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
         "timed_end_monotonic": 3.0,
         "timed_duration_seconds": 2.0,
         "raw_p50_tflops": 16.0,
+    }
+    two_started_row = {
+        **row,
+        "timed_end_utc": "2026-10-12T00:00:05+00:00",
+        "timed_end_monotonic": 5.0,
+        "timed_duration_seconds": 4.0,
     }
     trace = {
         "file": "issue127-abba-power-snapshot-run127-test-1.csv",
@@ -373,6 +379,7 @@ def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
             {"timestamp_utc": "2026-10-12T00:00:00+00:00", "power_w": "40", "aiclk_mhz": "1350", "asic_temp_c": "50"},
             {"timestamp_utc": "2026-10-12T00:00:02+00:00", "power_w": "70", "aiclk_mhz": "1200", "asic_temp_c": "51"},
             {"timestamp_utc": "2026-10-12T00:00:04+00:00", "power_w": "60", "aiclk_mhz": "1200", "asic_temp_c": "50"},
+            {"timestamp_utc": "2026-10-12T00:00:06+00:00", "power_w": "60", "aiclk_mhz": "1200", "asic_temp_c": "50"},
         ],
     }
     runner.apply_final_trace_facts([row], power_trace=trace)
@@ -382,7 +389,41 @@ def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
     assert row["adjusted_p50_tflops"] == pytest.approx(16.0 * 1350.0 / 1275.0)
     assert row["aiclk_interval"]["requested_sampler_interval_seconds"] == 2.0
     assert row["aiclk_interval"]["power_sample_count_in_interval"] == 2
-    assert row["aiclk_interval"]["power_sample_target_met"] is True
+    assert row["aiclk_interval"]["power_sample_count_definition"] == (
+        "samples contributing to the timed interval [start, end), including the "
+        "sample held across the interval start"
+    )
+    assert row["aiclk_interval"]["power_samples_started_in_interval"] == 1
+    assert row["aiclk_interval"]["power_samples_started_in_interval_definition"] == (
+        "samples whose timestamp starts in the timed interval [start, end); the "
+        "left-held sample whose timestamp precedes the interval start is excluded"
+    )
+    assert row["aiclk_interval"]["power_sample_target_met"] is False
+
+    runner.apply_final_trace_facts([two_started_row], power_trace=trace)
+
+    assert two_started_row["aiclk_interval"]["power_sample_count_in_interval"] == 3
+    assert two_started_row["aiclk_interval"]["power_samples_started_in_interval"] == 2
+    assert two_started_row["aiclk_interval"]["power_sample_target_met"] is True
+
+
+def test_issue127_started_sample_count_excludes_left_held_and_end_boundary_samples():
+    samples = [
+        {"timestamp_utc": "2026-10-12T00:00:00+00:00"},
+        {"timestamp_utc": "2026-10-12T00:00:02+00:00"},
+        {"timestamp_utc": "2026-10-12T00:00:04+00:00"},
+    ]
+
+    assert runner._power_samples_started_in_interval(
+        samples,
+        start="2026-10-12T00:00:01+00:00",
+        end="2026-10-12T00:00:04+00:00",
+    ) == 1
+    assert runner._power_samples_started_in_interval(
+        samples,
+        start="2026-10-12T00:00:02+00:00",
+        end="2026-10-12T00:00:04+00:00",
+    ) == 1
 
 
 def test_issue127_final_trace_waits_for_sample_after_run_end(tmp_path: Path):
@@ -850,6 +891,57 @@ def test_issue127_serialization_rejects_embedded_host_path_with_field():
         runner._serialize_record(
             {"failure": {"message": r"open failed for C:\\Users\\user\\private report.csv"}}
         )
+
+
+@pytest.mark.parametrize(
+    "value",
+    (
+        "error:/home/user/private.txt",
+        r"error:C:\\Users\\alice\\private.txt",
+        "/ home/user/private.txt",
+        "/||private/user/file.txt",
+        "/'private/user/file.txt",
+        "~alice/private/file.txt",
+    ),
+)
+def test_issue127_path_classifier_covers_prefixed_and_legal_first_components(value: str):
+    environment = runner.sanitize_environment(
+        {"metadata": {"diagnostic": value, value: "private"}}
+    )
+
+    assert environment["metadata"]["diagnostic"] == runner.REDACTED_PATH
+    assert list(environment["metadata"]) == ["diagnostic"]
+    assert value not in json.dumps(environment, ensure_ascii=False)
+
+    with pytest.raises(ValueError, match=r"field payload\.nested"):
+        runner._serialize_record({"payload": {"nested": [value]}})
+    with pytest.raises(ValueError, match=r"field metadata\.<path-key>") as exc_info:
+        runner._serialize_record({"metadata": {value: "failure"}})
+    assert value not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_basename"),
+    (
+        ("error:/home/user/private.txt", "private.txt"),
+        (r"error:C:\\Users\\alice\\private.txt", "private.txt"),
+        ("/ home/user/private.txt", "private.txt"),
+        ("/||private/user/file.txt", "file.txt"),
+        ("/'private/user/file.txt", "file.txt"),
+        ("~alice/private/file.txt", "file.txt"),
+    ),
+)
+def test_issue127_known_path_fields_sanitize_new_path_forms(
+    value: str, expected_basename: str
+):
+    serialized = runner._serialize_record({"nested": {"source_file": value}})
+    decoded = json.loads(serialized)
+
+    assert value not in serialized
+    assert decoded["nested"]["source_file"] == expected_basename
+    assert decoded["record_safety"]["path_replacements"][0]["field"] == (
+        "nested.source_file"
+    )
 
 
 @pytest.mark.parametrize(
