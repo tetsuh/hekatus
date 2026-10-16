@@ -143,6 +143,52 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
     assert telemetry.CSV_HEADER == ",".join(LEGACY_COLUMNS)
 
 
+@pytest.mark.parametrize(
+    "invalid_snapshot",
+    [
+        "<unavailable: tt-smi failed>",
+        "not json at all",
+        json.dumps({}),
+        json.dumps({"device_info": []}),
+        json.dumps({"device_info": [5]}),
+    ],
+)
+def test_extended_sampler_drops_transient_malformed_snapshot_before_valid_row(
+    monkeypatch: pytest.MonkeyPatch, invalid_snapshot: str
+):
+    output = io.StringIO()
+    snapshots = iter((invalid_snapshot, _snapshot()))
+    clock = iter((100, 200, 300, 450))
+    utc = iter(("2026-01-01T00:00:00+00:00", "2026-01-01T00:00:01+00:00"))
+    sleep_calls = 0
+
+    def sleep(_interval: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(telemetry, "_run", lambda _command: next(snapshots))
+    monkeypatch.setattr(telemetry.time, "sleep", sleep)
+
+    with pytest.raises(KeyboardInterrupt):
+        telemetry._sample_extended_loop(
+            output,
+            interval=1.0,
+            board_id="fixture-board-a",
+            bus_id="0000:01:00.0",
+            monotonic_ns=lambda: next(clock),
+            utc_now=lambda: next(utc),
+        )
+
+    lines = output.getvalue().splitlines()
+    assert lines[0] == EXTENDED_POWER_TRACE_HEADER
+    row = next(csv.reader([lines[1]]))
+    assert row[0] == "2026-01-01T00:00:01+00:00"
+    assert row[4:6] == ["450", "150"]
+    assert len(lines) == 2
+
+
 def test_extended_sampler_fails_when_target_board_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -194,6 +240,21 @@ def test_extended_selector_normalizes_pci_bus_ids_before_matching():
     )
 
     assert selected["board_info"]["board_id"] == "fixture-board-a"
+
+
+def test_padded_board_id_canonicalization_matches_extended_and_q2_selectors():
+    payload = json.loads(_snapshot())
+    payload["device_info"][1]["board_info"]["board_id"] = "  fixture-board-a  "
+
+    selected = select_extended_board(
+        payload, board_id=" fixture-board-a ", bus_id="0000:01:00.0"
+    )
+    reading = telemetry.parse_telemetry(
+        json.dumps(payload), board_id=" fixture-board-a ", bus_id="0000:01:00.0"
+    )
+
+    assert selected["board_info"]["board_id"] == "  fixture-board-a  "
+    assert reading == {"power_w": "11", "aiclk_mhz": "800", "asic_temp_c": "40"}
 
 
 @pytest.mark.parametrize("bus_id", ["not-a-pci-bdf", "0000:01:00.8"])

@@ -32,6 +32,11 @@ if __package__ in (None, ""):
 
 from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench import power_trace_extended as _power_trace_extended
+from enodia.tt.bench.board_identity import (
+    normalize_board_id,
+    normalize_pci_bus_id,
+    resolve_board_identity,
+)
 from enodia.tt.bench.sampler_contract import (
     COVERAGE_DEFINITIONS,
     DEFAULT_SAMPLER_INTERVAL_SECONDS,
@@ -59,6 +64,7 @@ read_extended_power_trace_csv = _power_trace_extended.read_extended_power_trace_
 read_extended_power_trace_snapshot = _power_trace_extended.read_extended_power_trace_snapshot
 read_power_trace_extended_csv = _power_trace_extended.read_power_trace_extended_csv
 select_extended_board = _power_trace_extended.select_extended_board
+is_extended_snapshot_well_formed = _power_trace_extended.is_extended_snapshot_well_formed
 validate_extended_power_trace = _power_trace_extended.validate_extended_power_trace
 
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
@@ -287,10 +293,7 @@ def _requested_device_node() -> str:
 
 
 def _normalize_pci_bus_id(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    match = _PCI_BUS_ID_RE.fullmatch(value.strip())
-    return match.group(1).lower() if match else None
+    return normalize_pci_bus_id(value)
 
 
 def _normalize_pci_bus_ids(values: object) -> set[str]:
@@ -517,15 +520,11 @@ def _snapshot_devices(snapshot: str) -> list[dict] | None:
 def _requested_q2_identity(
     board_id: str | None, bus_id: str | None
 ) -> tuple[str, str] | None:
-    """Normalize the paired Q2 identity, or reject an incomplete request."""
-    if not isinstance(board_id, str) or not board_id.strip():
+    """Resolve the paired Q2 identity, or retain legacy selection when absent."""
+    normalized_board_id, normalized_bus_id = resolve_board_identity(board_id, bus_id)
+    if normalized_board_id is None or normalized_bus_id is None:
         return None
-    if not isinstance(bus_id, str) or not bus_id.strip():
-        return None
-    normalized_bus_id = _normalize_pci_bus_id(bus_id)
-    if normalized_bus_id is None:
-        return None
-    return board_id.strip(), normalized_bus_id
+    return normalized_board_id, normalized_bus_id
 
 
 def _q2_node_matches(
@@ -547,7 +546,7 @@ def _q2_board_matches(
         board_info = device.get("board_info")
         if not isinstance(board_info, dict):
             continue
-        candidate_board_id = board_info.get("board_id")
+        candidate_board_id = normalize_board_id(board_info.get("board_id"))
         candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
         board_matches_identity = candidate_board_id == requested_board_id
         bus_matches_identity = candidate_bus_id == requested_bus_id
@@ -623,14 +622,15 @@ def _device_info(
         return None
 
     # Board identity is opt-in here so the established four-column sampler
-    # remains unchanged.  The extended sidecar resolves its own environment
-    # identity in power_trace_extended.select_extended_board.
+    # remains unchanged.  A supplied environment identity follows the same Q2
+    # path as explicit arguments instead of falling back to array position.
     requested_node = _requested_device_node()
     resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
-    if board_id is not None or bus_id is not None:
+    try:
         identity = _requested_q2_identity(board_id, bus_id)
-        if identity is None:
-            return None
+    except ValueError:
+        return None
+    if identity is not None:
         return _select_q2_device(
             devices,
             requested_node=requested_node,
@@ -870,6 +870,7 @@ def capture_environment(
     bus_id: str | None = None,
 ) -> dict:
     """Everything needed to name the environment a measurement came from."""
+    effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
     environment = {
         "captured_at": _now(),
         "image": image,
@@ -887,8 +888,8 @@ def capture_environment(
     environment.update(
         parse_environment(
             _run(SNAPSHOT_COMMAND),
-            board_id=board_id,
-            bus_id=bus_id,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
         )
     )
     run_id = os.environ.get("HEKATUS_TT_RUN_ID")
@@ -942,24 +943,35 @@ def _sample_extended_loop(
     """
     clock = time.monotonic_ns if monotonic_ns is None else monotonic_ns
     now = _now if utc_now is None else utc_now
+    try:
+        effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
+    except ValueError as exc:
+        raise ExtendedPowerTraceError(str(exc)) from exc
     handle.write(EXTENDED_POWER_TRACE_HEADER + "\n")
     while True:
         snapshot_start_ns = clock()
         snapshot = _run(SNAPSHOT_COMMAND)
         snapshot_end_ns = clock()
         snapshot_finished_utc = now()
+        if not is_extended_snapshot_well_formed(snapshot):
+            print(
+                "extended telemetry sample dropped: malformed snapshot",
+                file=sys.stderr,
+            )
+            time.sleep(interval)
+            continue
         # A missing or ambiguous target board is a run-level identity failure,
         # not a dropped telemetry sample.
         _power_trace_extended.select_extended_board(
             snapshot,
-            board_id=board_id,
-            bus_id=bus_id,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
         )
         try:
             row = extended_telemetry_csv_row(
                 snapshot,
-                board_id=board_id,
-                bus_id=bus_id,
+                board_id=effective_board_id,
+                bus_id=effective_bus_id,
                 timestamp_utc=snapshot_finished_utc,
                 timestamp_monotonic_ns=snapshot_end_ns,
                 snapshot_elapsed_ns=snapshot_end_ns - snapshot_start_ns,

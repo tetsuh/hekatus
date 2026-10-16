@@ -15,11 +15,15 @@ import io
 import itertools
 import json
 import math
-import os
-import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+from enodia.tt.bench.board_identity import (
+    normalize_board_id,
+    normalize_pci_bus_id,
+    resolve_board_identity,
+)
 
 # Keep this tuple independent of telemetry.py so the extended module can be
 # imported by telemetry.py without a circular import.  Its order is the
@@ -112,10 +116,6 @@ _RAW_THROTTLE_STATUS_KEYS = (
 )
 _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
 _MISSING = object()
-_PCI_BUS_ID_RE = re.compile(
-    r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])",
-    re.IGNORECASE,
-)
 
 
 class ExtendedPowerTraceError(ValueError):
@@ -141,27 +141,15 @@ def _as_snapshot_object(snapshot: str | bytes | Mapping[str, Any]) -> Mapping[st
     return value
 
 
-def _nonempty_text(value: Any) -> str | None:
-    if isinstance(value, str):
-        text = value.strip()
-        return text or None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    return None
-
-
 def _identity_text(value: Any, *, field: str) -> str:
-    text = _nonempty_text(value)
+    text = normalize_board_id(value)
     if text is None:
         raise ExtendedPowerTraceError(f"{field} must be a non-empty string")
     return text
 
 
 def _normalize_pci_bus_id(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    match = _PCI_BUS_ID_RE.fullmatch(value.strip())
-    return match.group(1).lower() if match else None
+    return normalize_pci_bus_id(value)
 
 
 def _required_pci_bus_id(value: Any) -> str:
@@ -183,20 +171,25 @@ def _board_entries(root: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return entries
 
 
+def is_extended_snapshot_well_formed(
+    snapshot: str | bytes | Mapping[str, Any],
+) -> bool:
+    """Return whether a snapshot has a usable object-shaped device list."""
+    try:
+        root = _as_snapshot_object(snapshot)
+        _board_entries(root)
+    except ExtendedPowerTraceError:
+        return False
+    return True
+
+
 def _requested_extended_identity(
     board_id: str | None, bus_id: str | None
 ) -> tuple[str | None, str | None]:
-    if board_id is None:
-        board_id = os.environ.get("HEKATUS_TT_BOARD_ID") or os.environ.get(
-            "HEKATUS_TT_TARGET_BOARD_ID"
-        )
-    if bus_id is None:
-        bus_id = (
-            os.environ.get("HEKATUS_TT_BUS_ID")
-            or os.environ.get("HEKATUS_TT_BOARD_BUS_ID")
-            or os.environ.get("HEKATUS_TT_TARGET_BUS_ID")
-        )
-    return board_id, bus_id
+    try:
+        return resolve_board_identity(board_id, bus_id)
+    except ValueError as exc:
+        raise ExtendedPowerTraceError(str(exc)) from exc
 
 
 def _extended_board_matches(
@@ -213,7 +206,7 @@ def _extended_board_matches(
         board_info = device.get("board_info")
         if not isinstance(board_info, Mapping):
             continue
-        candidate_board_id = _nonempty_text(board_info.get("board_id"))
+        candidate_board_id = normalize_board_id(board_info.get("board_id"))
         candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
         board_matches_identity = candidate_board_id == requested_board_id
         bus_matches_identity = candidate_bus_id == requested_bus_id
