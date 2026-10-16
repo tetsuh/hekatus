@@ -72,6 +72,11 @@ WORKLOAD_LOG_FIELD = "workload log"
 WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 COOLDOWN_POLL_INTERVAL_SECONDS = 1.0
+COOLDOWN_WAIT_CAP_EXPIRED_REASON = "cooldown wait cap expired"
+MEASUREMENT_RECORD_FIELD = "measurement record"
+COOLDOWN_GATE_FAILURE_LABEL = "cooldown gate failed"
+TRACE_SOURCE_LABEL = "extended-v1 snapshots captured by this harness"
+ANALYSIS_SOURCE_LABEL = "tools/analyze_issue121_q2.py"
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 SAMPLER_SHUTDOWN_MARGIN_SECONDS = 1.0
 TRACE_INTERVAL_SECONDS = 2.0
@@ -1172,6 +1177,76 @@ def _cooldown_gate_record(
     }
 
 
+def _validate_preceding_cooldown_baseline(
+    preceding_pre_snapshot: Any, *, board_id: str, bus_id: str
+) -> str | None:
+    try:
+        if not isinstance(preceding_pre_snapshot, Mapping):
+            raise SnapshotCaptureError("preceding cooldown baseline is unavailable")
+        _require_successful_snapshot_capture(
+            preceding_pre_snapshot, label="preceding cooldown baseline"
+        )
+        if preceding_pre_snapshot.get("stage") != "pre_run":
+            raise SnapshotCaptureError(
+                "preceding cooldown baseline must be a pre_run snapshot"
+            )
+        _selected_snapshot_identity(
+            preceding_pre_snapshot, board_id=board_id, bus_id=bus_id
+        )
+        _cooldown_reading(preceding_pre_snapshot, board_id, bus_id)
+    except Exception as exc:  # noqa: BLE001 - required evidence fails closed
+        return _redact_capture_value(str(exc))
+    return None
+
+
+def _poll_cooldown_snapshot(
+    preceding_pre_snapshot: Mapping[str, Any],
+    *,
+    capture: Callable[..., dict[str, Any]],
+    board_id: str,
+    bus_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
+    try:
+        candidate = capture(stage="cooldown")
+    except Exception as exc:  # noqa: BLE001 - poll evidence fails closed
+        return (
+            None,
+            _cooldown_capture_provenance(None),
+            f"cooldown snapshot capture failed: {type(exc).__name__}",
+        )
+    capture_provenance = _cooldown_capture_provenance(candidate)
+    try:
+        if not isinstance(candidate, Mapping):
+            raise SnapshotCaptureError("cooldown snapshot is unavailable")
+        stage = candidate.get("stage")
+        if not isinstance(stage, str) or not stage.startswith("cooldown"):
+            raise SnapshotCaptureError("cooldown snapshot must have a cooldown stage")
+        evaluation = evaluate_cooldown_transition(
+            preceding_pre_snapshot,
+            candidate,
+            board_id=board_id,
+            bus_id=bus_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - malformed evidence is rejected
+        return None, capture_provenance, _redact_capture_value(str(exc))
+    if evaluation.get("verified") is True:
+        return evaluation, capture_provenance, None
+    return evaluation, capture_provenance, "cooldown snapshot did not pass the transition gate"
+
+
+def _cooldown_sleep_error(
+    sleep_fn: Callable[[float], None], delay_seconds: float, before_sleep_ns: int,
+    monotonic_ns: Callable[[], int],
+) -> str | None:
+    try:
+        sleep_fn(delay_seconds)
+    except Exception as exc:  # noqa: BLE001 - a broken wait fails closed
+        return f"cooldown wait failed: {type(exc).__name__}"
+    if int(monotonic_ns()) <= before_sleep_ns:
+        return "cooldown monotonic clock did not advance"
+    return None
+
+
 def _run_cooldown_gate(
     *,
     run_number: int,
@@ -1192,34 +1267,22 @@ def _run_cooldown_gate(
         positive=True,
     )
     baseline_summary = _cooldown_capture_provenance(preceding_pre_snapshot)
-    try:
-        if not isinstance(preceding_pre_snapshot, Mapping):
-            raise SnapshotCaptureError("preceding cooldown baseline is unavailable")
-        _require_successful_snapshot_capture(
-            preceding_pre_snapshot, label="preceding cooldown baseline"
-        )
-        if preceding_pre_snapshot.get("stage") != "pre_run":
-            raise SnapshotCaptureError(
-                "preceding cooldown baseline must be a pre_run snapshot"
-            )
-        _selected_snapshot_identity(
-            preceding_pre_snapshot, board_id=board_id, bus_id=bus_id
-        )
-        _cooldown_reading(preceding_pre_snapshot, board_id, bus_id)
-    except Exception as exc:  # noqa: BLE001 - required evidence fails closed
-        end_utc = str(utc_now())
+    baseline_reason = _validate_preceding_cooldown_baseline(
+        preceding_pre_snapshot, board_id=board_id, bus_id=bus_id
+    )
+    if baseline_reason is not None:
         return _cooldown_gate_record(
             run_number=run_number,
             board_id=board_id,
             bus_id=bus_id,
             preceding_pre_snapshot=preceding_pre_snapshot,
             start_utc=start_utc,
-            end_utc=end_utc,
+            end_utc=str(utc_now()),
             actual_wait_seconds=0.0,
             poll_count=0,
             last_capture=baseline_summary,
             last_evaluation=None,
-            reason=_redact_capture_value(str(exc)),
+            reason=baseline_reason,
             verified=False,
         )
 
@@ -1245,59 +1308,42 @@ def _run_cooldown_gate(
                 poll_count=poll_count,
                 last_capture=last_capture,
                 last_evaluation=last_evaluation,
-                reason="cooldown wait cap expired",
+                reason=COOLDOWN_WAIT_CAP_EXPIRED_REASON,
                 verified=False,
             )
 
-        try:
-            candidate = capture(stage="cooldown")
-        except Exception as exc:  # noqa: BLE001 - poll evidence fails closed
-            candidate = None
-            last_reason = f"cooldown snapshot capture failed: {type(exc).__name__}"
+        evaluation, last_capture, poll_reason = _poll_cooldown_snapshot(
+            preceding_pre_snapshot,
+            capture=capture,
+            board_id=board_id,
+            bus_id=bus_id,
+        )
         poll_count += 1
-        last_capture = _cooldown_capture_provenance(candidate)
-        if candidate is not None:
-            try:
-                if not isinstance(candidate, Mapping):
-                    raise SnapshotCaptureError("cooldown snapshot is unavailable")
-                stage = candidate.get("stage")
-                if not isinstance(stage, str) or not stage.startswith("cooldown"):
-                    raise SnapshotCaptureError(
-                        "cooldown snapshot must have a cooldown stage"
+        if evaluation is not None:
+            last_evaluation = evaluation
+            if evaluation.get("verified") is True:
+                verified_ns = int(monotonic_ns())
+                if verified_ns < deadline_ns:
+                    elapsed_seconds = min(
+                        cap_seconds,
+                        max(0.0, (verified_ns - start_ns) / 1_000_000_000.0),
                     )
-                evaluation = evaluate_cooldown_transition(
-                    preceding_pre_snapshot,
-                    candidate,
-                    board_id=board_id,
-                    bus_id=bus_id,
-                )
-                last_evaluation = evaluation
-                if evaluation.get("verified") is True:
-                    verified_ns = int(monotonic_ns())
-                    if verified_ns < deadline_ns:
-                        elapsed_seconds = min(
-                            cap_seconds,
-                            max(0.0, (verified_ns - start_ns) / 1_000_000_000.0),
-                        )
-                        return _cooldown_gate_record(
-                            run_number=run_number,
-                            board_id=board_id,
-                            bus_id=bus_id,
-                            preceding_pre_snapshot=preceding_pre_snapshot,
-                            start_utc=start_utc,
-                            end_utc=str(utc_now()),
-                            actual_wait_seconds=elapsed_seconds,
-                            poll_count=poll_count,
-                            last_capture=last_capture,
-                            last_evaluation=evaluation,
-                            reason=None,
-                            verified=True,
-                        )
-                    last_reason = "cooldown wait cap expired"
-                else:
-                    last_reason = "cooldown snapshot did not pass the transition gate"
-            except Exception as exc:  # noqa: BLE001 - malformed evidence is rejected
-                last_reason = _redact_capture_value(str(exc))
+                    return _cooldown_gate_record(
+                        run_number=run_number,
+                        board_id=board_id,
+                        bus_id=bus_id,
+                        preceding_pre_snapshot=preceding_pre_snapshot,
+                        start_utc=start_utc,
+                        end_utc=str(utc_now()),
+                        actual_wait_seconds=elapsed_seconds,
+                        poll_count=poll_count,
+                        last_capture=last_capture,
+                        last_evaluation=evaluation,
+                        reason=None,
+                        verified=True,
+                    )
+                poll_reason = COOLDOWN_WAIT_CAP_EXPIRED_REASON
+        last_reason = poll_reason
 
         after_capture_ns = int(monotonic_ns())
         if after_capture_ns >= deadline_ns:
@@ -1316,18 +1362,18 @@ def _run_cooldown_gate(
                 poll_count=poll_count,
                 last_capture=last_capture,
                 last_evaluation=last_evaluation,
-                reason="cooldown wait cap expired",
+                reason=COOLDOWN_WAIT_CAP_EXPIRED_REASON,
                 verified=False,
             )
         remaining_seconds = (deadline_ns - after_capture_ns) / 1_000_000_000.0
         delay_seconds = min(COOLDOWN_POLL_INTERVAL_SECONDS, remaining_seconds)
         if delay_seconds <= 0.0:
-            last_reason = last_reason or "cooldown wait cap expired"
+            last_reason = last_reason or COOLDOWN_WAIT_CAP_EXPIRED_REASON
             continue
-        try:
-            sleep_fn(delay_seconds)
-        except Exception as exc:  # noqa: BLE001 - a broken wait fails closed
-            last_reason = f"cooldown wait failed: {type(exc).__name__}"
+        sleep_reason = _cooldown_sleep_error(
+            sleep_fn, delay_seconds, after_capture_ns, monotonic_ns
+        )
+        if sleep_reason is not None:
             return _cooldown_gate_record(
                 run_number=run_number,
                 board_id=board_id,
@@ -1342,26 +1388,7 @@ def _run_cooldown_gate(
                 poll_count=poll_count,
                 last_capture=last_capture,
                 last_evaluation=last_evaluation,
-                reason=last_reason,
-                verified=False,
-            )
-        after_sleep_ns = int(monotonic_ns())
-        if after_sleep_ns <= after_capture_ns:
-            return _cooldown_gate_record(
-                run_number=run_number,
-                board_id=board_id,
-                bus_id=bus_id,
-                preceding_pre_snapshot=preceding_pre_snapshot,
-                start_utc=start_utc,
-                end_utc=str(utc_now()),
-                actual_wait_seconds=min(
-                    cap_seconds,
-                    max(0.0, (after_sleep_ns - start_ns) / 1_000_000_000.0),
-                ),
-                poll_count=poll_count,
-                last_capture=last_capture,
-                last_evaluation=last_evaluation,
-                reason="cooldown monotonic clock did not advance",
+                reason=sleep_reason,
                 verified=False,
             )
 
@@ -2137,9 +2164,9 @@ def _failed_cooldown_gate_record(
     """Persist a safe failed attempt when the inter-run gate rejects evidence."""
     record_name = f"run-{safe_run_id}.json"
     record_path = _safe_artifact_path(
-        safe_output_dir, record_name, field="measurement record"
+        safe_output_dir, record_name, field=MEASUREMENT_RECORD_FIELD
     )
-    post_reason = "post-run snapshot not captured because cooldown gate failed"
+    post_reason = f"post-run snapshot not captured because {COOLDOWN_GATE_FAILURE_LABEL}"
     record: dict[str, Any] = {
         "record_schema": ISSUE121_Q2_RECORD_SCHEMA,
         "issue": "#121",
@@ -2179,11 +2206,11 @@ def _failed_cooldown_gate_record(
             "timed_out": False,
         },
         "snapshot_limits": {
-            "pre": {"status": "not_started", "reason": "cooldown gate failed"},
+            "pre": {"status": "not_started", "reason": COOLDOWN_GATE_FAILURE_LABEL},
             "post": {"status": "unavailable", "reason": post_reason},
         },
         "snapshot_identities": {
-            "pre": {"status": "not_started", "reason": "cooldown gate failed"},
+            "pre": {"status": "not_started", "reason": COOLDOWN_GATE_FAILURE_LABEL},
             "post": {"status": "unavailable", "reason": post_reason},
         },
         "raw_window": {
@@ -2201,7 +2228,7 @@ def _failed_cooldown_gate_record(
                 "status": "not_started",
                 "timestamp_monotonic_ns": None,
                 "stdout_sha256": None,
-                "identity": {"status": "not_started", "reason": "cooldown gate failed"},
+                "identity": {"status": "not_started", "reason": COOLDOWN_GATE_FAILURE_LABEL},
             },
             "post": {
                 "path": None,
@@ -2237,8 +2264,8 @@ def _failed_cooldown_gate_record(
         "output_paths": {"record": record_name},
         "provenance": {
             "source_snapshot": "preceding pre-run tt-smi snapshot supplied to cooldown gate",
-            "trace_source": "extended-v1 snapshots captured by this harness",
-            "analysis_source": "tools/analyze_issue121_q2.py",
+            "trace_source": TRACE_SOURCE_LABEL,
+            "analysis_source": ANALYSIS_SOURCE_LABEL,
             "limit_provenance": "cooldown_gate",
             "host_identity_persisted": False,
         },
@@ -2246,6 +2273,44 @@ def _failed_cooldown_gate_record(
     _safe_record_value(record)
     _write_json(record_path, record)
     return record
+
+
+def _required_cooldown_gate(
+    *,
+    run_number: int | None,
+    preceding_pre_snapshot: Any,
+    capture: Callable[..., dict[str, Any]],
+    monotonic_ns: Callable[[], int],
+    sleep_fn: Callable[[float], None],
+    utc_now: Callable[[], str],
+    board_id: str,
+    bus_id: str,
+    safe_output_dir: Path,
+    safe_run_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if run_number not in {2, 3}:
+        return None, None
+    cooldown_gate = _run_cooldown_gate(
+        run_number=run_number,
+        preceding_pre_snapshot=preceding_pre_snapshot,
+        capture=capture,
+        monotonic_ns=monotonic_ns,
+        sleep_fn=sleep_fn,
+        utc_now=utc_now,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
+    if cooldown_gate["verified"] is True:
+        return cooldown_gate, None
+    failed_record = _failed_cooldown_gate_record(
+        safe_output_dir=safe_output_dir,
+        safe_run_id=safe_run_id,
+        run_number=run_number,
+        normalized_board=board_id,
+        normalized_bus=bus_id,
+        cooldown_gate=cooldown_gate,
+    )
+    return cooldown_gate, failed_record
 
 
 def _failed_preflight_record(
@@ -2278,7 +2343,7 @@ def _failed_preflight_record(
             preflight.sampler_errors.append("pre-run trace could not be read")
     record_name = f"run-{safe_run_id}.json"
     record_path = _safe_artifact_path(
-        safe_output_dir, record_name, field="measurement record"
+        safe_output_dir, record_name, field=MEASUREMENT_RECORD_FIELD
     )
     output_paths: dict[str, Any] = {
         "record": record_name,
@@ -2392,8 +2457,8 @@ def _failed_preflight_record(
         "output_paths": output_paths,
         "provenance": {
             "source_snapshot": "pre-run tt-smi snapshot",
-            "trace_source": "extended-v1 snapshots captured by this harness",
-            "analysis_source": "tools/analyze_issue121_q2.py",
+            "trace_source": TRACE_SOURCE_LABEL,
+            "analysis_source": ANALYSIS_SOURCE_LABEL,
             "limit_provenance": "snapshot_limits.pre",
             "host_identity_persisted": False,
         },
@@ -2521,27 +2586,20 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     _reject_q2_output_collision(safe_output_dir, safe_run_id)
     safe_output_dir.mkdir(parents=True, exist_ok=True)
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
-    cooldown_gate: dict[str, Any] | None = None
-    if run_number in {2, 3}:
-        cooldown_gate = _run_cooldown_gate(
-            run_number=run_number,
-            preceding_pre_snapshot=preceding_pre_snapshot,
-            capture=capture,
-            monotonic_ns=monotonic_ns,
-            sleep_fn=sleep_fn,
-            utc_now=utc_now,
-            board_id=normalized_board,
-            bus_id=normalized_bus,
-        )
-        if cooldown_gate["verified"] is not True:
-            return _failed_cooldown_gate_record(
-                safe_output_dir=safe_output_dir,
-                safe_run_id=safe_run_id,
-                run_number=run_number,
-                normalized_board=normalized_board,
-                normalized_bus=normalized_bus,
-                cooldown_gate=cooldown_gate,
-            )
+    cooldown_gate, cooldown_failure = _required_cooldown_gate(
+        run_number=run_number,
+        preceding_pre_snapshot=preceding_pre_snapshot,
+        capture=capture,
+        monotonic_ns=monotonic_ns,
+        sleep_fn=sleep_fn,
+        utc_now=utc_now,
+        board_id=normalized_board,
+        bus_id=normalized_bus,
+        safe_output_dir=safe_output_dir,
+        safe_run_id=safe_run_id,
+    )
+    if cooldown_failure is not None:
+        return cooldown_failure
 
     preflight = _capture_preflight(
         safe_output_dir=safe_output_dir,
@@ -2820,14 +2878,14 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         },
         "provenance": {
             "source_snapshot": "pre-run tt-smi snapshot",
-            "trace_source": "extended-v1 snapshots captured by this harness",
-            "analysis_source": "tools/analyze_issue121_q2.py",
+            "trace_source": TRACE_SOURCE_LABEL,
+            "analysis_source": ANALYSIS_SOURCE_LABEL,
             "limit_provenance": "snapshot_limits.pre and snapshot_limits.post",
             "host_identity_persisted": False,
         },
     }
     record_path = _safe_artifact_path(
-        safe_output_dir, f"run-{safe_run_id}.json", field="measurement record"
+        safe_output_dir, f"run-{safe_run_id}.json", field=MEASUREMENT_RECORD_FIELD
     )
     _safe_record_value(record)
     _write_json(record_path, record)
