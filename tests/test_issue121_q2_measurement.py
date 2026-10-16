@@ -485,6 +485,9 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     assert "pre-run idle" in onset["reason"]
 
     assert [run["classification"] for run in summary["runs"]] == ["H-OTHER"] * 3
+    assert [run["hypotheses"]["H-OTHER"] for run in summary["runs"]] == [
+        "fallback"
+    ] * 3
     assert all(run["signals"]["current_a"]["unit"] == "A" for run in summary["runs"])
     assert all(
         run["signals"]["current_a"]["limit_proximity"]["limit_unit"] == "A"
@@ -744,6 +747,9 @@ def test_regenerated_analysis_retains_unit_provenance_and_effects() -> None:
         ]
         assert result["statistics"]["signals"]["current_a"]["limit_proximity"]["limit_unit"] == "A"
         assert result["hypotheses"]["H-TDC"]["classification"] == "not_supported"
+        assert result["hypotheses"]["H-OTHER"]["classification"] == "fallback"
+        assert result["hypotheses"]["H-OTHER"]["criteria"] == {}
+        assert "onset_order_pass" not in result["hypotheses"]["H-OTHER"]["details"]
         throttle = result["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]
         assert throttle["status"] == "pass"
         assert throttle["limit_value"] == 90.0
@@ -1771,6 +1777,45 @@ def test_analysis_classifies_each_synthetic_hypothesis(
     assert result["causality"] == "correlation_is_not_causation"
     assert result["time_axis"]["column"] == "timestamp_monotonic_ns"
     assert result["plateau"]["coverage_complete"] is True
+    assert result["hypotheses"]["H-OTHER"]["classification"] == (
+        "fallback" if expected == "H-OTHER" else "not_applicable"
+    )
+    assert result["hypotheses"]["H-OTHER"]["criteria"] == {}
+
+
+def test_h_other_is_fallback_when_early_known_onset_has_failed_plateau() -> None:
+    trace = copy.deepcopy(_trace(current=170))
+    trace["samples"][1]["current_a"] = 190
+
+    result = analysis.analyze_trace(
+        trace,
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits=_source_limits(),
+    )
+
+    assert result["classification"] == "H-OTHER"
+    assert result["hypotheses"]["H-TDC"]["classification"] == "not_supported"
+    assert result["hypotheses"]["H-TDC"]["criteria"] == {
+        "plateau_proximity": False,
+        "onset_order": True,
+    }
+
+    h_other = result["hypotheses"]["H-OTHER"]
+    assert h_other["classification"] == "fallback"
+    assert h_other["criteria"] == {}
+    assert "onset_order_pass" not in h_other["details"]
+    assert h_other["details"]["signal_onsets"][0]["timestamp_monotonic_ns"] == (
+        100_000_000_000
+    )
+    assert h_other["details"]["aiclk_drop_onset"]["timestamp_monotonic_ns"] == (
+        200_000_000_000
+    )
+    assert h_other["details"]["known_hypothesis_classifications"] == {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+    }
 
 
 def test_mapping_trace_rejects_truncated_terminal_coverage() -> None:
@@ -1839,6 +1884,8 @@ def test_analysis_marks_tdc_inconclusive_when_units_are_unknown() -> None:
         "onset_order": None,
     }
     assert result["classification"] == "H-OTHER"
+    assert result["hypotheses"]["H-OTHER"]["classification"] == "fallback"
+    assert result["hypotheses"]["H-OTHER"]["criteria"] == {}
 
     raw_throttle = analysis.analyze_trace(
         _trace(temperature=88),
@@ -1893,6 +1940,8 @@ def test_analysis_missing_tdp_and_thermal_limits_is_inconclusive() -> None:
     assert result["hypotheses"]["H-THM"]["criteria"]["onset_order"] is None
     assert result["hypotheses"]["H-THM"]["criteria"]["shutdown_bound"] is None
     assert result["classification"] == "H-OTHER"
+    assert result["hypotheses"]["H-OTHER"]["classification"] == "fallback"
+    assert result["hypotheses"]["H-OTHER"]["criteria"] == {}
 
 
 def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
@@ -1985,6 +2034,7 @@ def test_issue118_prediction_ignores_pre_start_idle_and_keeps_two_second_onset_r
     assert result["classification"] == "H-OTHER"
     assert result["hypotheses"]["H-TDP"]["classification"] == "not_supported"
     assert result["hypotheses"]["H-THM"]["classification"] == "not_supported"
+    assert result["hypotheses"]["H-OTHER"]["classification"] == "fallback"
     assert result["onsets"]["aiclk_drop"]["timestamp_monotonic_ns"] == 3_000_000_000
     assert result["onsets"]["aiclk_drop"]["seconds_from_run_start"] == pytest.approx(2.0)
     assert result["onsets"]["aiclk_drop"]["seconds_from_run_start"] != 0.0
@@ -2008,6 +2058,7 @@ def test_multiple_classification_is_explicit_for_multiple_supported_known_hypoth
     assert result["hypotheses"]["H-TDC"]["classification"] == "supported"
     assert result["hypotheses"]["H-THM"]["classification"] == "supported"
     assert result["hypotheses"]["H-TDP"]["classification"] == "supported"
+    assert result["hypotheses"]["H-OTHER"]["classification"] == "not_applicable"
 
 
 def test_analysis_does_not_guess_aiclk_baseline_when_fmax_is_missing() -> None:

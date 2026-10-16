@@ -833,6 +833,20 @@ def _hypothesis_result(
     }
 
 
+def _fallback_hypothesis_result(
+    *,
+    fallback_selected: bool,
+    details: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Report H-OTHER without treating observations as hypothesis criteria."""
+    return {
+        "classification": "fallback" if fallback_selected else "not_applicable",
+        "criteria": {},
+        "details": dict(details),
+        "causality": "not_applicable",
+    }
+
+
 @dataclass(frozen=True)
 class _TraceWindow:
     rows: list[dict[str, Any]]
@@ -1271,16 +1285,6 @@ def _hypothesis_metrics(
     )
     board_power_proximity = signals["board_power_w"]["limit_proximity"]
     known_signal_onsets = (current_onset, temperature_onset, power_onset)
-    aiclk_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
-    h_other_order_pass = (
-        None
-        if aiclk_timestamp is None
-        else all(
-            onset.get("timestamp_monotonic_ns") is None
-            or int(onset["timestamp_monotonic_ns"]) > int(aiclk_timestamp)
-            for onset in known_signal_onsets
-        )
-    )
     tdc_order_pass = _onset_order_pass(current_onset, aiclk_drop)
     thm_order_pass = _onset_order_pass(temperature_onset, aiclk_drop)
     tdp_order_pass = _onset_order_pass(power_onset, aiclk_drop)
@@ -1307,7 +1311,6 @@ def _hypothesis_metrics(
         "tdp_plateau_pass": tdp_plateau_pass,
         "board_power_proximity": board_power_proximity,
         "known_signal_onsets": known_signal_onsets,
-        "h_other_order_pass": h_other_order_pass,
         "tdc_order_pass": tdc_order_pass,
         "thm_order_pass": thm_order_pass,
         "tdp_order_pass": tdp_order_pass,
@@ -1341,7 +1344,6 @@ def _build_hypothesis_analysis(
     tdp_plateau_pass = metrics["tdp_plateau_pass"]
     board_power_proximity = metrics["board_power_proximity"]
     known_signal_onsets = metrics["known_signal_onsets"]
-    h_other_order_pass = metrics["h_other_order_pass"]
     tdc_order_pass = metrics["tdc_order_pass"]
     thm_order_pass = metrics["thm_order_pass"]
     tdp_order_pass = metrics["tdp_order_pass"]
@@ -1418,26 +1420,28 @@ def _build_hypothesis_analysis(
                 "onset_order_pass": tdp_order_pass,
             },
         ),
-        "H-OTHER": _hypothesis_result(
-            plateau_pass=None,
-            onset_pass=h_other_order_pass,
-            details={
-                "fallback_only_when_no_known_hypothesis_is_supported": True,
-                "signal_onsets": list(known_signal_onsets),
-                "aiclk_drop_onset": aiclk_drop,
-                "onset_order_pass": h_other_order_pass,
-            },
-        ),
-    }
-    hypotheses["H-OTHER"]["details"]["known_hypothesis_classifications"] = {
-        name: hypotheses[name]["classification"]
-        for name in ("H-TDC", "H-THM", "H-TDP")
     }
     supported = [
         name
         for name, result in hypotheses.items()
-        if name != "H-OTHER" and result["classification"] == "supported"
+        if result["classification"] == "supported"
     ]
+    hypotheses["H-OTHER"] = _fallback_hypothesis_result(
+        fallback_selected=not supported,
+        details={
+            "fallback_only_when_no_known_hypothesis_is_supported": True,
+            "fallback_selected": not supported,
+            "signal_onsets": list(known_signal_onsets),
+            "aiclk_drop_onset": aiclk_drop,
+            "observations_only": (
+                "Known signal and AICLK onsets are observations, not H-OTHER criteria."
+            ),
+        },
+    )
+    hypotheses["H-OTHER"]["details"]["known_hypothesis_classifications"] = {
+        name: hypotheses[name]["classification"]
+        for name in ("H-TDC", "H-THM", "H-TDP")
+    }
     if len(supported) == 1:
         classification = supported[0]
         classification_reason = "exactly one known-limit hypothesis satisfies all fixed criteria"

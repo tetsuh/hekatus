@@ -630,13 +630,11 @@
       "causality": "correlation_only"
     },
     "H-OTHER": {
-      "classification": "not_supported",
-      "criteria": {
-        "plateau_proximity": null,
-        "onset_order": false
-      },
+      "classification": "fallback",
+      "criteria": {},
       "details": {
         "fallback_only_when_no_known_hypothesis_is_supported": true,
+        "fallback_selected": true,
         "signal_onsets": [
           {
             "timestamp_monotonic_ns": 31035419785954,
@@ -674,14 +672,14 @@
           "baseline_asic_fmax_mhz": 1350.0,
           "threshold_mhz": 1282.5
         },
-        "onset_order_pass": false,
+        "observations_only": "Known signal and AICLK onsets are observations, not H-OTHER criteria.",
         "known_hypothesis_classifications": {
           "H-TDC": "not_supported",
           "H-THM": "not_supported",
           "H-TDP": "not_supported"
         }
       },
-      "causality": "correlation_only"
+      "causality": "not_applicable"
     }
   },
   "limits": {
