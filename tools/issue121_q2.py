@@ -58,6 +58,7 @@ WORKLOAD_OUTPUT_TAIL_LINES = 40
 WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
 WORKLOAD_STDOUT_LOG_NAME = "workload-stdout.log"
 WORKLOAD_STDERR_LOG_NAME = "workload-stderr.log"
+CALIBRATION_METADATA_NAME = "issue121-q2-calibration.json"
 WORKLOAD_LOG_CHUNK_BYTES = 64 * 1024
 WORKLOAD_LOG_FIELD = "workload log"
 WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
@@ -195,6 +196,42 @@ def _safe_output_dir(value: Path) -> Path:
 def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
     safe_name = _safe_basename(name, field=field)
     return _safe_output_path(output_dir / safe_name, field=field)
+
+
+def _q2_run_artifact_names(run_id: str) -> tuple[str, ...]:
+    """Return every fixed artifact path owned by one Q2 output directory."""
+    return (
+        f"pre-snapshot-{run_id}.json",
+        f"post-snapshot-{run_id}.json",
+        f"extended-trace-{run_id}.csv",
+        CALIBRATION_METADATA_NAME,
+        f"run-{run_id}.json",
+        f"runner-result-{run_id}.json",
+        WORKLOAD_STDOUT_LOG_NAME,
+        WORKLOAD_STDERR_LOG_NAME,
+    )
+
+
+def _reject_q2_output_collision(output_dir: Path, run_id: str) -> None:
+    """Reject existing fixed artifacts before a run can write measurement bytes."""
+    existing: list[str] = []
+    for name in _q2_run_artifact_names(run_id):
+        path = output_dir / name
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise Issue121Q2Error(
+                "Q2 output collision check failed: unable to inspect run-owned artifacts"
+            ) from exc
+        existing.append(name)
+    if existing:
+        details = {"run_id": run_id, "artifacts": existing}
+        raise Issue121Q2Error(
+            "Q2 output collision: "
+            + json.dumps(details, sort_keys=True, separators=(",", ":"))
+        )
 
 
 def _safe_basename(value: str, *, field: str) -> str:
@@ -809,7 +846,7 @@ def build_workload_command(
     output_dir: Path,
     run_id: str,
     result_name: str | None = None,
-    calibration_name: str = "issue121-q2-calibration.json",
+    calibration_name: str = CALIBRATION_METADATA_NAME,
     container_device_id: int | None = None,
 ) -> tuple[str, ...]:
     """Build the workload command for the host directory mounted as ``/out``."""
@@ -1880,12 +1917,13 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     visible_device_id = _validate_container_visible_device_id(container_device_id)
     output_dir = _safe_output_dir(output_dir)
     safe_output_dir = _safe_output_path(output_dir, field="output_dir")
-    safe_output_dir.mkdir(parents=True, exist_ok=True)
     safe_run_id = _safe_run_id(run_id)
     if run_number is not None and run_number not in {1, 2, 3}:
         raise Issue121Q2Error("run_number must be 1, 2, or 3")
     normalized_board, normalized_bus = _safe_identity(board_id, bus_id)
     interval = _finite_number(trace_interval_seconds, field="trace_interval_seconds", positive=True)
+    _reject_q2_output_collision(safe_output_dir, safe_run_id)
+    safe_output_dir.mkdir(parents=True, exist_ok=True)
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
 
     preflight = _capture_preflight(
@@ -1926,7 +1964,7 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         container_device_id=visible_device_id,
     )
     calibration_path = _safe_artifact_path(
-        safe_output_dir, "issue121-q2-calibration.json", field="calibration metadata"
+        safe_output_dir, CALIBRATION_METADATA_NAME, field="calibration metadata"
     )
     _write_json(calibration_path, build_calibration_payload())
     result_name = f"runner-result-{safe_run_id}.json"

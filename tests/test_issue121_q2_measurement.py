@@ -911,6 +911,57 @@ def test_run_one_rejects_nonzero_container_device_before_capture_or_workload(
         )
 
 
+def test_run_one_rejects_existing_output_artifacts_before_capture_or_workload(
+    tmp_path: Path,
+) -> None:
+    run_id = "q2-run-collision"
+    prior_artifacts = {
+        f"pre-snapshot-{run_id}.json": b"prior pre snapshot",
+        f"post-snapshot-{run_id}.json": b"prior post snapshot",
+        f"extended-trace-{run_id}.csv": b"prior trace",
+        "issue121-q2-calibration.json": b"prior calibration",
+        f"run-{run_id}.json": b"prior record",
+        f"runner-result-{run_id}.json": b"prior runner result",
+        runner.WORKLOAD_STDOUT_LOG_NAME: b"prior stdout",
+        runner.WORKLOAD_STDERR_LOG_NAME: b"prior stderr",
+    }
+    for name, payload in prior_artifacts.items():
+        (tmp_path / name).write_bytes(payload)
+    before = {name: (tmp_path / name).read_bytes() for name in prior_artifacts}
+    capture_calls: list[str] = []
+    workload_calls: list[object] = []
+
+    def unexpected_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        capture_calls.append(stage)
+        raise AssertionError("snapshot capture must not run after an output collision")
+
+    def unexpected_workload(*args: object) -> dict[str, object]:
+        workload_calls.append(args)
+        raise AssertionError("workload must not run after an output collision")
+
+    with pytest.raises(runner.Issue121Q2Error, match="Q2 output collision") as exc_info:
+        runner.run_one(
+            tmp_path,
+            run_id=run_id,
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+            image_digest="sha256:" + "a" * 64,
+            harness_commit="b" * 40,
+            kernel="Linux fixture",
+            kernel_driver_version="2.11.0",
+            workload_runner=unexpected_workload,
+            capture_fn=unexpected_capture,
+        )
+
+    message = str(exc_info.value)
+    assert run_id in message
+    assert str(tmp_path) not in message
+    assert all(name in message for name in prior_artifacts)
+    assert capture_calls == []
+    assert workload_calls == []
+    assert {name: (tmp_path / name).read_bytes() for name in prior_artifacts} == before
+
+
 @pytest.mark.parametrize(
     "invalid_name",
     [
