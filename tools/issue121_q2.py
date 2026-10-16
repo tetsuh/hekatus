@@ -198,6 +198,14 @@ def _safe_output_path(path: Path, *, field: str) -> Path:
     return resolved
 
 
+def _safe_input_path(value: Path, *, field: str) -> Path:
+    """Resolve an input path under the same trusted-root policy as outputs."""
+    candidate = Path(value)
+    if "\n" in str(candidate) or "\\" in str(candidate) or ".." in candidate.parts:
+        raise Issue121Q2Error(f"{field} must not contain path traversal")
+    return _safe_output_path(candidate, field=field)
+
+
 def _safe_output_dir(value: Path) -> Path:
     output_dir = Path(value)
     text = str(output_dir)
@@ -1197,6 +1205,34 @@ def _validate_preceding_cooldown_baseline(
     except Exception as exc:  # noqa: BLE001 - required evidence fails closed
         return _redact_capture_value(str(exc))
     return None
+
+
+def _load_preceding_pre_snapshot(
+    path: Path, *, board_id: str, bus_id: str
+) -> dict[str, Any]:
+    """Load one trusted, identity-bound pre-run snapshot for cooldown gating."""
+    normalized_board, normalized_bus = _safe_identity(board_id, bus_id)
+    safe_path = _safe_input_path(path, field="preceding pre-run snapshot")
+    try:
+        decoded = json.loads(safe_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise Issue121Q2Error("preceding pre-run snapshot cannot be read") from exc
+    except (json.JSONDecodeError, RecursionError, TypeError, UnicodeError) as exc:
+        raise Issue121Q2Error("preceding pre-run snapshot JSON is invalid") from exc
+    if not isinstance(decoded, Mapping):
+        raise SnapshotCaptureError("preceding pre-run snapshot JSON must be an object")
+    try:
+        capture = _safe_capture_details(decoded)
+    except (RecursionError, TypeError, ValueError) as exc:
+        raise SnapshotCaptureError("preceding pre-run snapshot object is invalid") from exc
+    if capture.get("schema") != ISSUE121_Q2_SNAPSHOT_SCHEMA:
+        raise SnapshotCaptureError("preceding pre-run snapshot schema is unsupported")
+    reason = _validate_preceding_cooldown_baseline(
+        capture, board_id=normalized_board, bus_id=normalized_bus
+    )
+    if reason is not None:
+        raise SnapshotCaptureError(f"preceding pre-run snapshot is invalid: {reason}")
+    return capture
 
 
 def _poll_cooldown_snapshot(
@@ -2958,6 +2994,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--harness-commit", required=True)
     parser.add_argument("--kernel", required=True)
     parser.add_argument("--kernel-driver-version", required=True)
+    parser.add_argument(
+        "--preceding-pre-snapshot",
+        type=Path,
+        help="trusted persisted pre-run snapshot JSON required for runs 2 and 3",
+    )
     parser.add_argument("--trace-interval-seconds", type=float, default=TRACE_INTERVAL_SECONDS)
     return parser
 
@@ -2965,6 +3006,17 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.run_number in {2, 3} and args.preceding_pre_snapshot is None:
+            raise Issue121Q2Error(
+                "preceding pre-run snapshot is required for run_number 2 or 3"
+            )
+        preceding_pre_snapshot = None
+        if args.run_number in {2, 3}:
+            preceding_pre_snapshot = _load_preceding_pre_snapshot(
+                args.preceding_pre_snapshot,
+                board_id=args.board_id,
+                bus_id=args.bus_id,
+            )
         record = run_one(
             args.out_dir,
             run_id=args.run_id,
@@ -2976,6 +3028,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             kernel=args.kernel,
             kernel_driver_version=args.kernel_driver_version,
             trace_interval_seconds=args.trace_interval_seconds,
+            preceding_pre_snapshot=preceding_pre_snapshot,
         )
     except (OSError, TypeError, ValueError) as exc:
         print(f"Issue #121 Q2 run rejected: {exc}", file=os.sys.stderr)

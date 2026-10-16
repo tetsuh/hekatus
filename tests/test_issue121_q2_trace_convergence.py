@@ -19,6 +19,7 @@ from enodia.tt.bench.power_trace_extended import (
     format_extended_power_trace_row,
     is_extended_snapshot_well_formed,
     read_extended_power_trace_csv,
+    read_extended_power_trace_mapping,
     read_extended_power_trace_snapshot,
     validate_extended_power_trace,
 )
@@ -196,6 +197,36 @@ def test_extended_validator_accepts_a_valid_reader_mapping(tmp_path: Path) -> No
 
     assert report["valid"] is True
     assert report["failures"] == []
+
+
+def test_extended_mapping_reader_accepts_explicit_schema_declarations(
+    tmp_path: Path,
+) -> None:
+    trace = read_extended_power_trace_mapping(_valid_reader_trace(tmp_path))
+
+    assert trace["valid"] is True
+    assert trace["errors"] == []
+
+
+@pytest.mark.parametrize(
+    ("missing_field", "failure"),
+    [
+        ("schema", "extended trace schema is missing or unsupported"),
+        ("schema_version", "extended trace schema_version is missing or unsupported"),
+        ("columns", "extended trace columns do not match the versioned schema"),
+    ],
+    ids=["schema", "schema-version", "columns"],
+)
+def test_extended_mapping_reader_requires_each_schema_declaration(
+    tmp_path: Path, missing_field: str, failure: str
+) -> None:
+    payload = _valid_reader_trace(tmp_path)
+    payload.pop(missing_field)
+
+    trace = read_extended_power_trace_mapping(payload)
+
+    assert trace["valid"] is False
+    assert failure in trace["errors"]
 
 
 @pytest.mark.parametrize(

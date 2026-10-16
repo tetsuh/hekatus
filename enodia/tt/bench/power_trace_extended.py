@@ -1620,18 +1620,20 @@ def _mapping_optional_summary_failures(
 
 def _mapping_schema_failures(payload: Mapping[str, Any]) -> list[str]:
     failures: list[str] = []
-    if payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA) != EXTENDED_POWER_TRACE_SCHEMA:
+    schema = payload.get("schema", _MISSING)
+    if schema is _MISSING or schema != EXTENDED_POWER_TRACE_SCHEMA:
         failures.append("extended trace schema is missing or unsupported")
-    version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
+    version = payload.get("schema_version", _MISSING)
     if (
-        not isinstance(version, int)
+        version is _MISSING
+        or not isinstance(version, int)
         or isinstance(version, bool)
         or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
     ):
         failures.append("extended trace schema_version is missing or unsupported")
-    columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
+    columns = payload.get("columns", _MISSING)
     try:
-        columns_match = tuple(columns) == EXTENDED_POWER_TRACE_COLUMNS
+        columns_match = columns is not _MISSING and tuple(columns) == EXTENDED_POWER_TRACE_COLUMNS
     except (TypeError, ValueError):
         columns_match = False
     if not columns_match:

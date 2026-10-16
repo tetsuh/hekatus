@@ -1198,6 +1198,171 @@ def test_q2_cli_rejects_missing_run_number_before_execution(
     assert "the following arguments are required: --run-number" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("run_number", [2, 3])
+def test_q2_cli_loads_preceding_snapshot_before_cooldown_and_workload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, run_number: int
+) -> None:
+    baseline_path = tmp_path / f"preceding-pre-{run_number}.json"
+    baseline_path.write_text(
+        json.dumps(_q2_snapshot_capture(stage="pre_run")), encoding="utf-8"
+    )
+    output_dir = tmp_path / f"run-{run_number}"
+    capture_stages: list[str] = []
+    workload_calls: list[object] = []
+    in_run_seen = threading.Event()
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        capture_stages.append(stage)
+        if stage == "in_run":
+            in_run_seen.set()
+        return _q2_snapshot_capture(stage=stage)
+
+    def fake_workload(*_args: object, **_kwargs: object) -> dict[str, object]:
+        workload_calls.append(True)
+        assert in_run_seen.wait(timeout=1.0)
+        return {"returncode": 0, "status": "completed", "timed_out": False}
+
+    monkeypatch.setattr(runner, "capture_readonly_snapshot", fake_capture)
+    monkeypatch.setattr(runner, "_run_workload", fake_workload)
+
+    result = runner.main(
+        [
+            "--out-dir",
+            str(output_dir),
+            "--run-id",
+            f"q2-cli-run-{run_number}",
+            "--run-number",
+            str(run_number),
+            "--board-id",
+            "fixture-board",
+            "--bus-id",
+            "0000:01:00.0",
+            "--image-digest",
+            "sha256:" + "a" * 64,
+            "--harness-commit",
+            "b" * 40,
+            "--kernel",
+            "Linux fixture",
+            "--kernel-driver-version",
+            "2.11.0",
+            "--preceding-pre-snapshot",
+            str(baseline_path),
+            "--trace-interval-seconds",
+            "0.001",
+        ]
+    )
+
+    assert result == 0
+    assert workload_calls == [True]
+    assert capture_stages[:2] == ["cooldown", "pre_run"]
+    record = json.loads(
+        (output_dir / f"run-q2-cli-run-{run_number}.json").read_text(encoding="utf-8")
+    )
+    assert record["status"] == "ok"
+    assert record["cooldown_gate"]["gate_result"] == "pass"
+    persisted = json.dumps(record)
+    assert str(tmp_path) not in persisted
+    assert "/tmp/" not in persisted
+
+
+def test_q2_cli_omitted_preceding_snapshot_fails_before_workload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    capture_calls: list[object] = []
+    workload_calls: list[object] = []
+
+    def unexpected_capture(**kwargs: object) -> dict[str, object]:
+        capture_calls.append(kwargs)
+        raise AssertionError("snapshot capture must not run without a baseline")
+
+    def unexpected_workload(*args: object, **kwargs: object) -> dict[str, object]:
+        workload_calls.append((args, kwargs))
+        raise AssertionError("workload must not run without a baseline")
+
+    monkeypatch.setattr(runner, "capture_readonly_snapshot", unexpected_capture)
+    monkeypatch.setattr(runner, "_run_workload", unexpected_workload)
+    output_dir = tmp_path / "missing-baseline"
+    assert (
+        runner.main(
+            [
+                "--out-dir",
+                str(output_dir),
+                "--run-id",
+                "q2-cli-missing-baseline",
+                "--run-number",
+                "2",
+                "--board-id",
+                "fixture-board",
+                "--bus-id",
+                "0000:01:00.0",
+                "--image-digest",
+                "sha256:" + "a" * 64,
+                "--harness-commit",
+                "b" * 40,
+                "--kernel",
+                "Linux fixture",
+                "--kernel-driver-version",
+                "2.11.0",
+            ]
+        )
+        == 2
+    )
+
+    assert not output_dir.exists()
+    assert capture_calls == []
+    assert workload_calls == []
+
+
+@pytest.mark.parametrize(
+    "baseline_contents",
+    ["not json", json.dumps({"stage": "pre_run", "status": "ok", "returncode": 0})],
+    ids=["malformed-json", "wrong-shape"],
+)
+def test_q2_cli_invalid_preceding_snapshot_rejects_before_workload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    baseline_contents: str,
+) -> None:
+    baseline_path = tmp_path / "invalid-preceding.json"
+    baseline_path.write_text(baseline_contents, encoding="utf-8")
+    workload_calls: list[object] = []
+
+    monkeypatch.setattr(
+        runner,
+        "_run_workload",
+        lambda *args, **kwargs: workload_calls.append((args, kwargs)),
+    )
+    result = runner.main(
+        [
+            "--out-dir",
+            str(tmp_path / "invalid-output"),
+            "--run-id",
+            "q2-cli-invalid-baseline",
+            "--run-number",
+            "2",
+            "--board-id",
+            "fixture-board",
+            "--bus-id",
+            "0000:01:00.0",
+            "--image-digest",
+            "sha256:" + "a" * 64,
+            "--harness-commit",
+            "b" * 40,
+            "--kernel",
+            "Linux fixture",
+            "--kernel-driver-version",
+            "2.11.0",
+            "--preceding-pre-snapshot",
+            str(baseline_path),
+        ]
+    )
+
+    assert result == 2
+    assert workload_calls == []
+    assert str(baseline_path) not in capsys.readouterr().err
+
+
 def test_run_one_rejects_existing_output_artifacts_before_capture_or_workload(
     tmp_path: Path,
 ) -> None:
