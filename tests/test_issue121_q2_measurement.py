@@ -32,6 +32,23 @@ Q2_TRACE = Q2_RUN_ROOT / "extended-trace-q2-run-1-device0.csv"
 Q2_COMMITTED_ANALYSIS = Q2_RUN_ROOT / "analysis-q2-run-1-device0.json"
 
 
+def _immutable_card_load_durations() -> list[float]:
+    durations: list[float] = []
+    for run_number in (1, 2, 3):
+        run_root = IMMUTABLE_RUN_ROOT / f"run-{run_number}-device0"
+        result = json.loads(
+            (run_root / f"runner-result-q2-run-{run_number}-device0.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        calibration = result["calibration"]
+        durations.append(
+            calibration["load_card_ticks"]
+            / (result["aiclk_mhz_load_interval_weighted"] * 1_000_000.0)
+        )
+    return durations
+
+
 def _snapshot() -> str:
     return json.dumps(
         {
@@ -241,23 +258,46 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "post-measurement convergence disclosure after audit: immutable run records retain outer workload-process durations of approximately 299.151, 298.546, and 301.473 seconds, while each immutable calibration record's card-load ticks and measured load-interval AICLK yield approximately 276.08 seconds. The 285-second value remains the preregistered calibration/workload target, was not met in measured card-load time, and no rerun was performed; the original duration definition, plateau artifacts, analysis artifacts, criteria, and prediction remain unchanged. The audit also found that fixed helper defaults of 47 W and 58.5 degC did not implement the declared dynamic cooldown baseline: evaluation now requires each preceding selected-device pre-run snapshot, whose historical baselines were 47 W/61.2 degC and 48 W/61.2 degC; both immutable transitions pass under their actual limits, and raw snapshots remain unchanged."
         ),
     }
+    assert plan["revision_history"][7] == {
+        "revision": 8,
+        "date": "2026-10-17",
+        "change": (
+            "post-measurement duration correction: revision 7 incorrectly used the "
+            "Issue #118 calibration actual_duration_aiclk_mhz (1050.9138856647014 MHz) "
+            "for every run. The corrected audit uses each immutable runner-result "
+            "aiclk_mhz_load_interval_weighted with load_card_ticks, yielding approximately "
+            "292.412, 292.681, and 294.714 seconds; all three met the 285-second "
+            "measured target and no rerun was needed. Revision 7 remains retained as "
+            "superseded audit history; the preregistered duration definition, immutable "
+            "records, analyses, H-OTHER classification, and prediction are unchanged."
+        ),
+    }
     duration_disclosure = plan["post_measurement_duration_disclosure"]
     assert duration_disclosure["target_role"] == (
-        "calibration/workload target, not a proven sustained-card-load minimum"
+        "preregistered 285-second workload target audited as measured card-load time"
     )
     assert duration_disclosure["outer_process_duration_seconds"] == [
         299.15060189,
         298.545785676,
         301.4729979,
     ]
-    assert duration_disclosure["measured_card_load_duration_seconds"] == [
-        276.0759082857602,
-        276.0759082857602,
-        276.0759082857602,
+    assert duration_disclosure["measured_card_load_duration_seconds"] == pytest.approx(
+        _immutable_card_load_durations()
+    )
+    assert duration_disclosure["measured_card_load_duration_approx_seconds"] == [
+        292.412,
+        292.681,
+        294.714,
     ]
-    assert duration_disclosure["card_load_target_met"] is False
+    assert duration_disclosure["card_load_target_met"] is True
     assert duration_disclosure["rerun_performed"] is False
     assert duration_disclosure["immutable_run_artifacts_unchanged"] is True
+    assert "aiclk_mhz_load_interval_weighted" in duration_disclosure[
+        "card_load_duration_source"
+    ]
+    assert "supersedes the stale revision 7 disclosure" in duration_disclosure[
+        "source_provenance_correction"
+    ]
     assert plan["unit_provenance"]["status"] == "established"
     assert plan["unit_provenance"]["comparisons"]["current_a_vs_tdc_limit"]["comparable"] is True
     assert plan["unit_provenance"]["comparisons"]["asic_temp_c_vs_thm_limit_throttle"]["comparable"] is True
@@ -323,7 +363,7 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
     observations = summary["post_hoc_observations"]
 
-    assert summary["plan"]["revision"] == 7
+    assert summary["plan"]["revision"] == 8
     assert summary["unit_provenance"]["status"] == "established"
     assert observations["status"] == "post_measurement"
     assert observations["scope"] == (
@@ -358,39 +398,46 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
         "immutable_snapshots_unchanged": True,
     }
     duration = observations["duration_audit"]
-    assert duration == {
-        "status": "post_measurement",
-        "target_seconds": 285.0,
-        "target_role": "calibration/workload target, not a proven sustained-card-load minimum",
-        "outer_process_duration_seconds": [299.15060189, 298.545785676, 301.4729979],
-        "measured_card_load_duration_seconds": [
-            276.0759082857602,
-            276.0759082857602,
-            276.0759082857602,
-        ],
-        "measured_card_load_duration_approx_seconds": 276.08,
-        "card_load_duration_source": (
-            "Each immutable calibration record: load_card_ticks / "
-            "(actual_duration_aiclk_mhz * 1e6), using the time-weighted load-interval AICLK."
-        ),
-        "card_load_target_met": False,
-        "rerun_performed": False,
-        "disclosure": (
-            "The outer workload-process durations were approximately 299.151, 298.546, and "
-            "301.473 seconds, but measured card-load duration was approximately 276.08 seconds "
-            "for each run. The 285-second target was not met in measured card-load time; no "
-            "rerun was performed."
-        ),
-        "interpretation_consequence": (
-            "The plateau and analysis artifacts are unchanged, but the results must not be "
-            "interpreted as proof of a 285-second sustained-card-load minimum."
-        ),
-        "immutable_run_artifacts_unchanged": True,
-    }
+    expected_durations = _immutable_card_load_durations()
+    assert duration["status"] == "post_measurement"
+    assert duration["target_seconds"] == 285.0
+    assert duration["target_role"] == (
+        "preregistered 285-second workload target audited as measured card-load time"
+    )
+    assert duration["outer_process_duration_seconds"] == [
+        299.15060189,
+        298.545785676,
+        301.4729979,
+    ]
+    assert duration["measured_card_load_duration_seconds"] == pytest.approx(
+        expected_durations
+    )
+    assert duration["measured_card_load_duration_approx_seconds"] == [
+        292.412,
+        292.681,
+        294.714,
+    ]
+    assert "aiclk_mhz_load_interval_weighted" in duration["card_load_duration_source"]
+    assert "actual_duration_aiclk_mhz" in duration["source_provenance_correction"]
+    assert duration["card_load_target_met"] is True
+    assert duration["rerun_performed"] is False
+    assert duration["disclosure"] == (
+        "The outer workload-process durations were approximately 299.151, 298.546, and "
+        "301.473 seconds; measured card-load durations were approximately 292.412, "
+        "292.681, and 294.714 seconds, respectively. All three runs met the 285-second "
+        "measured card-load target; no rerun was needed."
+    )
+    assert "Outer workload-process duration and measured card-load duration are separate" in (
+        duration["interpretation_consequence"]
+    )
+    assert duration["immutable_run_artifacts_unchanged"] is True
     assert all(
         run["outer_process_duration_seconds"] == run["duration_seconds"]
-        and run["measured_card_load_duration_seconds"] == 276.0759082857602
-        and run["card_load_target_met"] is False
+        and run["measured_card_load_duration_seconds"] == pytest.approx(
+            expected_durations[run["run_number"] - 1]
+        )
+        and run["card_load_target_met"] is True
+        and "met the 285-second measured card-load target" in run["duration_interpretation"]
         for run in summary["runs"]
     )
     board = observations["board_power_plateau"]
@@ -1701,33 +1748,29 @@ def test_in_run_sampler_records_failed_row_conversion(
     assert any("row conversion failed" in error for error in errors)
 
 
-def test_run_one_requires_a_written_pre_row(
+def test_run_one_fails_closed_when_pre_row_is_incomplete(
     tmp_path: Path,
 ) -> None:
-    counter = itertools.count(start=0, step=1_000_000)
-    in_run_seen = threading.Event()
-
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
         snapshot = json.loads(_snapshot())
-        if stage == "pre_run":
-            snapshot["device_info"][0]["telemetry"].pop("current")
-        elif stage == "in_run":
-            in_run_seen.set()
-        timestamp = next(counter)
+        assert stage == "pre_run"
+        snapshot["device_info"][0]["telemetry"].pop("current")
         return {
             "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
             "stage": stage,
             "captured_at_utc": "2026-01-01T00:00:00+00:00",
-            "timestamp_monotonic_ns": timestamp,
+            "timestamp_monotonic_ns": 1_000_000,
             "snapshot_elapsed_ns": 1,
             "status": "ok",
             "returncode": 0,
             "snapshot": snapshot,
         }
 
-    def fake_workload(*_args: object) -> dict[str, object]:
-        assert in_run_seen.wait(timeout=1.0)
-        return {"returncode": 0, "status": "completed", "timed_out": False}
+    workload_calls: list[object] = []
+
+    def fail_workload(*args: object) -> dict[str, object]:
+        workload_calls.append(args)
+        raise AssertionError("workload must not run after a failed preflight")
 
     record = runner.run_one(
         tmp_path,
@@ -1738,15 +1781,86 @@ def test_run_one_requires_a_written_pre_row(
         harness_commit="b" * 40,
         kernel="Linux fixture",
         kernel_driver_version="2.11.0",
-        workload_runner=fake_workload,
+        workload_runner=fail_workload,
         capture_fn=fake_capture,
         trace_interval_seconds=0.001,
     )
 
+    assert workload_calls == []
     assert record["status"] == "failed"
-    assert record["trace"]["pre_row_written"] is False
-    assert record["trace"]["usable_in_run_row_count"] >= 1
-    assert any("pre-run telemetry row" in error for error in record["trace"]["sampler_errors"])
+    assert record["preflight"] == {
+        "status": "failed",
+        "capture_successful": True,
+        "identity_valid": True,
+        "pre_row_written": False,
+        "reason": "pre-run telemetry row was not written",
+    }
+    assert record["workload_result"] == {
+        "status": "not_started",
+        "returncode": None,
+        "timed_out": False,
+    }
+    pre_snapshot_path = tmp_path / record["output_paths"]["pre_snapshot"]
+    assert pre_snapshot_path.exists()
+    persisted_pre = json.loads(pre_snapshot_path.read_text(encoding="utf-8"))
+    assert "host_info" not in json.dumps(persisted_pre)
+    assert "processes" not in json.dumps(persisted_pre)
+    assert not (tmp_path / "issue121-q2-calibration.json").exists()
+
+
+@pytest.mark.parametrize("failure", ["nonzero", "identity"], ids=["nonzero", "identity"])
+def test_run_one_fails_closed_before_workload_on_preflight_failure(
+    tmp_path: Path, failure: str
+) -> None:
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        assert stage == "pre_run"
+        snapshot = json.loads(_snapshot())
+        if failure == "identity":
+            snapshot["device_info"][0]["board_info"]["bus_id"] = "0000:02:00.0"
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_ns": 1_000_000,
+            "snapshot_elapsed_ns": 1,
+            "status": "command_failed" if failure == "nonzero" else "ok",
+            "returncode": 7 if failure == "nonzero" else 0,
+            "error_type": "nonzero_returncode" if failure == "nonzero" else None,
+            "snapshot": snapshot,
+        }
+
+    workload_calls: list[object] = []
+
+    def fail_workload(*args: object) -> dict[str, object]:
+        workload_calls.append(args)
+        raise AssertionError("workload must not run after a failed preflight")
+
+    record = runner.run_one(
+        tmp_path,
+        run_id=f"q2-run-preflight-{failure}",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=fail_workload,
+        capture_fn=fake_capture,
+    )
+
+    assert workload_calls == []
+    assert record["status"] == "failed"
+    assert record["preflight"]["status"] == "failed"
+    assert record["preflight"]["capture_successful"] is (failure != "nonzero")
+    assert record["preflight"]["identity_valid"] is False
+    assert record["preflight"]["pre_row_written"] is False
+    if failure == "nonzero":
+        assert "status='command_failed'" in record["preflight"]["reason"]
+        assert "returncode=7" in record["preflight"]["reason"]
+    else:
+        assert "identity" in record["preflight"]["reason"] or "board" in record["preflight"]["reason"]
+    assert (tmp_path / record["output_paths"]["pre_snapshot"]).exists()
+    assert not (tmp_path / "issue121-q2-calibration.json").exists()
 
 
 @pytest.mark.parametrize(

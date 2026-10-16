@@ -411,8 +411,13 @@ def _selected_snapshot_identity(
 
 
 def _snapshot_capture_is_successful(capture: Mapping[str, Any]) -> bool:
-    """Require the bounded command to succeed before using its snapshot."""
-    return capture.get("status") == "ok" and capture.get("returncode") == 0
+    """Require an integer zero return code before using a snapshot."""
+    return (
+        capture.get("status") == "ok"
+        and isinstance(capture.get("returncode"), int)
+        and not isinstance(capture.get("returncode"), bool)
+        and capture.get("returncode") == 0
+    )
 
 
 def _require_successful_snapshot_capture(
@@ -1597,6 +1602,165 @@ def _q2_run_is_ok(
     return workload.get("returncode") == 0 and guard_pass and all(required_evidence)
 
 
+def _failed_preflight_record(
+    *,
+    safe_output_dir: Path,
+    safe_run_id: str,
+    run_number: int | None,
+    normalized_board: str,
+    normalized_bus: str,
+    pre_capture: Mapping[str, Any],
+    pre_path: Path,
+    trace_path: Path,
+    trace_created: bool,
+    pre_row: bool,
+    pre_identity: Mapping[str, Any],
+    capture_successful: bool,
+    identity_valid: bool,
+    reason: str,
+    interval: float,
+    sampler_errors: Sequence[str],
+) -> dict[str, Any]:
+    """Persist a safe failed attempt without starting workload setup."""
+    post_reason = "post-run snapshot not captured after pre-run preflight failure"
+    post_identity = {"status": "unavailable", "reason": post_reason}
+    trace_bytes = b""
+    trace_sample_count = 0
+    trace_sha256: str | None = None
+    trace_path_value: str | None = None
+    if trace_created:
+        trace_path_value = trace_path.name
+        try:
+            trace_bytes = trace_path.read_bytes()
+            trace_sample_count = max(
+                0,
+                sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line),
+            )
+            trace_sha256 = hashlib.sha256(trace_bytes).hexdigest()
+        except (OSError, UnicodeDecodeError):
+            sampler_errors = (*sampler_errors, "pre-run trace could not be read")
+    record_name = f"run-{safe_run_id}.json"
+    record_path = _safe_artifact_path(
+        safe_output_dir, record_name, field="measurement record"
+    )
+    output_paths: dict[str, Any] = {
+        "record": record_name,
+        "pre_snapshot": pre_path.name,
+    }
+    if trace_path_value is not None:
+        output_paths["extended_trace"] = trace_path_value
+    record: dict[str, Any] = {
+        "record_schema": ISSUE121_Q2_RECORD_SCHEMA,
+        "issue": "#121",
+        "run_id": safe_run_id,
+        "run_number": run_number,
+        "status": "failed",
+        "environment": None,
+        "preflight": {
+            "status": "failed",
+            "capture_successful": capture_successful,
+            "identity_valid": identity_valid,
+            "pre_row_written": pre_row,
+            "reason": _redact_capture_value(reason),
+        },
+        "workload": {
+            "name": "adr-0013-108-core-newton-schulz-surrogate",
+            "condition": "newton_schulz",
+            "device_id": DEVICE_ID,
+            "container_device_id": CONTAINER_VISIBLE_DEVICE_ID,
+            "device_node": DEVICE_NODE,
+            "worker_core_count": 108,
+            "data_independent": True,
+            "run_duration_target_seconds": RUN_DURATION_SECONDS,
+            "run_guard_seconds": RUN_GUARD_SECONDS,
+            "started": False,
+        },
+        "run_timing": {
+            "workload_start_monotonic_ns": None,
+            "workload_end_monotonic_ns": None,
+            "workload_duration_seconds": None,
+            "target_duration_seconds": RUN_DURATION_SECONDS,
+            "guard_seconds": RUN_GUARD_SECONDS,
+            "within_guard": False,
+            "timeout_seconds": RUN_GUARD_SECONDS,
+        },
+        "workload_result": {
+            "status": "not_started",
+            "returncode": None,
+            "timed_out": False,
+        },
+        "snapshot_limits": {
+            "pre": _extract_snapshot_limits(
+                pre_capture, board_id=normalized_board, bus_id=normalized_bus
+            ),
+            "post": {"status": "unavailable", "reason": post_reason},
+        },
+        "snapshot_identities": {
+            "pre": dict(pre_identity),
+            "post": post_identity,
+        },
+        "raw_window": {
+            "start_seconds": 0.0,
+            "end_seconds": EARLY_RAW_WINDOW_SECONDS,
+            "columns": list(RAW_WINDOW_COLUMNS),
+            "rows": [],
+        },
+        "limitations": [
+            "The workload was not started because pre-run evidence failed closed.",
+        ],
+        "snapshots": {
+            "pre": {
+                "path": pre_path.name,
+                "status": pre_capture.get("status"),
+                "timestamp_monotonic_ns": pre_capture.get("timestamp_monotonic_ns"),
+                "stdout_sha256": pre_capture.get("stdout_sha256"),
+                "identity": dict(pre_identity),
+            },
+            "post": {
+                "path": None,
+                "status": "not_started",
+                "timestamp_monotonic_ns": None,
+                "stdout_sha256": None,
+                "identity": post_identity,
+            },
+            "command": list(SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": SNAPSHOT_TIMEOUT_SECONDS,
+            "read_only": True,
+        },
+        "trace": {
+            "path": trace_path_value,
+            "schema": ISSUE121_Q2_TRACE_SCHEMA,
+            "schema_version": ISSUE121_Q2_TRACE_SCHEMA_VERSION,
+            "columns": list(EXTENDED_TRACE_COLUMNS),
+            "legacy_columns_unchanged": list(LEGACY_POWER_TRACE_COLUMNS),
+            "board_id": normalized_board,
+            "bus_id": normalized_bus,
+            "timestamp_axis": "timestamp_monotonic_ns",
+            "run_start_monotonic_ns": None,
+            "run_end_monotonic_ns": None,
+            "sample_count": trace_sample_count,
+            "pre_row_written": pre_row,
+            "post_row_written": False,
+            "usable_in_run_row_count": 0,
+            "in_run_captures": [],
+            "sha256": trace_sha256,
+            "sampler_interval_seconds": interval,
+            "sampler_errors": list(_redact_capture_value(list(sampler_errors))),
+        },
+        "output_paths": output_paths,
+        "provenance": {
+            "source_snapshot": "pre-run tt-smi snapshot",
+            "trace_source": "extended-v1 snapshots captured by this harness",
+            "analysis_source": "tools/analyze_issue121_q2.py",
+            "limit_provenance": "snapshot_limits.pre",
+            "host_identity_persisted": False,
+        },
+    }
+    _safe_record_value(record)
+    _write_json(record_path, record)
+    return record
+
+
 def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
     run_id = options.run_id
@@ -1624,11 +1788,87 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     interval = _finite_number(trace_interval_seconds, field="trace_interval_seconds", positive=True)
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
 
-    pre_capture = capture(stage="pre_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
+    try:
+        raw_pre_capture = capture(
+            stage="pre_run", monotonic_ns=monotonic_ns, utc_now=utc_now
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a bounded preflight failure
+        raw_pre_capture = {
+            "stage": "pre_run",
+            "status": "capture_failed",
+            "returncode": None,
+            "error_type": type(exc).__name__,
+            "snapshot": None,
+        }
+    pre_capture = _safe_capture_details(raw_pre_capture)
+    pre_capture["stage"] = "pre_run"
     pre_path = _safe_artifact_path(
         safe_output_dir, f"pre-snapshot-{safe_run_id}.json", field="pre snapshot"
     )
     _write_json(pre_path, pre_capture)
+    trace_path = _safe_artifact_path(
+        safe_output_dir, f"extended-trace-{safe_run_id}.csv", field="extended trace"
+    )
+    safe_trace_path = _safe_output_path(trace_path, field="extended trace")
+    sampler_errors: list[str] = []
+    pre_capture_ok = _snapshot_capture_is_successful(pre_capture)
+    pre_identity: dict[str, Any] = _record_snapshot_identity(
+        pre_capture, board_id=normalized_board, bus_id=normalized_bus
+    )
+    pre_identity_valid = _snapshot_identity_is_valid(
+        pre_identity, board_id=normalized_board, bus_id=normalized_bus
+    )
+    pre_row = False
+    trace_created = False
+    preflight_reason: str | None = None
+    if not pre_capture_ok:
+        try:
+            _require_successful_snapshot_capture(pre_capture, label="pre-run")
+        except SnapshotCaptureError as exc:
+            preflight_reason = str(exc)
+    elif not pre_identity_valid:
+        preflight_reason = (
+            "pre-run snapshot identity does not match the requested board/bus: "
+            + str(pre_identity.get("reason", "identity unavailable"))
+        )
+    else:
+        try:
+            with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
+                trace_created = True
+                trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
+                pre_row = _write_boundary_extended_row(
+                    trace_handle,
+                    pre_capture,
+                    board_id=normalized_board,
+                    bus_id=normalized_bus,
+                    stage="pre-run",
+                    errors=sampler_errors,
+                )
+        except (OSError, TypeError, ValueError) as exc:
+            sampler_errors.append(f"pre-run trace setup failed: {type(exc).__name__}")
+            pre_row = False
+        if not pre_row:
+            preflight_reason = "; ".join(sampler_errors) or "pre-run telemetry row was not written"
+    if preflight_reason is not None:
+        return _failed_preflight_record(
+            safe_output_dir=safe_output_dir,
+            safe_run_id=safe_run_id,
+            run_number=run_number,
+            normalized_board=normalized_board,
+            normalized_bus=normalized_bus,
+            pre_capture=pre_capture,
+            pre_path=pre_path,
+            trace_path=trace_path,
+            trace_created=trace_created,
+            pre_row=pre_row,
+            pre_identity=pre_identity,
+            capture_successful=pre_capture_ok,
+            identity_valid=pre_identity_valid,
+            reason=preflight_reason,
+            interval=interval,
+            sampler_errors=sampler_errors,
+        )
+
     environment = _build_environment(
         pre_capture,
         board_id=normalized_board,
@@ -1640,14 +1880,10 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         snapshot_name=pre_path.name,
         container_device_id=visible_device_id,
     )
-
     calibration_path = _safe_artifact_path(
         safe_output_dir, "issue121-q2-calibration.json", field="calibration metadata"
     )
     _write_json(calibration_path, build_calibration_payload())
-    trace_path = _safe_artifact_path(
-        safe_output_dir, f"extended-trace-{safe_run_id}.csv", field="extended trace"
-    )
     result_name = f"runner-result-{safe_run_id}.json"
     command = build_workload_command(
         output_dir=output_dir,
@@ -1664,19 +1900,8 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
 
     in_run_captures: list[dict[str, Any]] = []
     in_run_row_results: list[bool] = []
-    sampler_errors: list[str] = []
     stop_event = threading.Event()
-    safe_trace_path = _safe_output_path(trace_path, field="extended trace")
-    with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
-        trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
-        pre_row = _write_boundary_extended_row(
-            trace_handle,
-            pre_capture,
-            board_id=normalized_board,
-            bus_id=normalized_bus,
-            stage="pre-run",
-            errors=sampler_errors,
-        )
+    with safe_trace_path.open("a", encoding="utf-8", newline="") as trace_handle:
         sampler_thread = threading.Thread(
             target=_sample_extended_trace,
             args=(stop_event, trace_handle),
