@@ -18,6 +18,28 @@
     "workload_end_before_post_snapshot": true,
     "inter_run_cooldown": "Required between runs 1 and 2, and between runs 2 and 3. The cooldown is outside the 285-second workload interval and is not an excuse to extend the 330-second run guard."
   },
+  "post_measurement_duration_disclosure": {
+    "status": "post_measurement",
+    "target_seconds": 285.0,
+    "target_role": "calibration/workload target, not a proven sustained-card-load minimum",
+    "outer_process_duration_seconds": [
+      299.15060189,
+      298.545785676,
+      301.4729979
+    ],
+    "measured_card_load_duration_seconds": [
+      276.0759082857602,
+      276.0759082857602,
+      276.0759082857602
+    ],
+    "measured_card_load_duration_approx_seconds": 276.08,
+    "card_load_duration_source": "Each immutable calibration record: load_card_ticks / (actual_duration_aiclk_mhz * 1e6), using the time-weighted load-interval AICLK.",
+    "card_load_target_met": false,
+    "rerun_performed": false,
+    "disclosure": "The outer workload-process durations were approximately 299.151, 298.546, and 301.473 seconds, but measured card-load duration was approximately 276.08 seconds for each run. The 285-second target was not met in measured card-load time; no rerun was performed.",
+    "interpretation_consequence": "The plateau and analysis artifacts are unchanged, but the results must not be interpreted as proof of a 285-second sustained-card-load minimum.",
+    "immutable_run_artifacts_unchanged": true
+  },
   "workload": {
     "name": "adr-0013-108-core-newton-schulz-surrogate",
     "adr": "ADR-0013",
@@ -329,19 +351,46 @@
       "run_1/run_2",
       "run_2/run_3"
     ],
-    "baseline_source": "run-1 pre-run snapshot for the first transition; immediately preceding run pre-run snapshot thereafter",
+    "baseline_source": "preceding selected-device pre-run snapshot for each transition; no fixed default is valid",
+    "dynamic_baseline_required": true,
+    "baseline_fallback_policy": "Fail closed when the preceding selected-device pre-run baseline is unavailable; no fixed fallback is permitted.",
     "power_baseline_w": 47,
     "temperature_baseline_c": 58.5,
     "power_tolerance_w": 5,
     "temperature_tolerance_c": 3,
     "power_limit_w": 52,
     "temperature_limit_c": 61.5,
+    "historical_preregistered_defaults": {
+      "power_baseline_w": 47,
+      "temperature_baseline_c": 58.5,
+      "power_limit_w": 52,
+      "temperature_limit_c": 61.5,
+      "disposition": "Retained for preregistration history only; not used for dynamic transition evaluation."
+    },
+    "recorded_transition_baselines": [
+      {
+        "transition": "run_1_to_run_2",
+        "preceding_pre_snapshot": "docs/measurements/issue121-q2/runs/run-1-device0/pre-snapshot-q2-run-1-device0.json",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 61.2,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 64.2
+      },
+      {
+        "transition": "run_2_to_run_3",
+        "preceding_pre_snapshot": "docs/measurements/issue121-q2/runs/run-2-device0/pre-snapshot-q2-run-2-device0.json",
+        "baseline_power_w": 48.0,
+        "baseline_temperature_c": 61.2,
+        "power_limit_w": 53.0,
+        "temperature_limit_c": 64.2
+      }
+    ],
     "power_observable": "telemetry.power",
     "board_power_reporting": "telemetry.board_power is retained and reported separately; it is not a cooldown gate",
-    "criterion": "latest usable selected-device idle snapshot has telemetry.power <= baseline + 5 W and ASIC temperature <= baseline + 3 degC; telemetry.board_power is retained and reported separately and is not a cooldown gate",
+    "criterion": "latest usable selected-device idle snapshot has telemetry.power <= the explicit preceding selected-device pre-run baseline + 5 W and ASIC temperature <= that baseline + 3 degC; telemetry.board_power is retained and reported separately and is not a cooldown gate",
     "aiclk": "Record idle AICLK as provenance only; the expected 800 MHz idle value is not a cooldown gate.",
     "wait_cap_seconds": 600,
-    "failure_policy": "Do not start the next 285-second run after the cap or an unavailable required reading."
+    "failure_policy": "Do not start the next targeted run after the cap or an unavailable required reading."
   },
   "unit_provenance": {
     "schema": "issue121-q2-unit-provenance-v1",
@@ -483,6 +532,11 @@
       "revision": 6,
       "date": "2026-10-16",
       "change": "post-measurement cooldown wording/helper correction after audit: the cooldown power observable is selected-device telemetry.power, while telemetry.board_power remains a separately retained reporting field. The cited immutable cooldown snapshots report telemetry.power 49 W and 47 W and board_power 121 W; the historical 49/47 W pass result is unchanged, and no run record, trace, snapshot, or manual GDDR supplement was changed."
+    },
+    {
+      "revision": 7,
+      "date": "2026-10-16",
+      "change": "post-measurement convergence disclosure after audit: immutable run records retain outer workload-process durations of approximately 299.151, 298.546, and 301.473 seconds, while each immutable calibration record's card-load ticks and measured load-interval AICLK yield approximately 276.08 seconds. The 285-second value remains the preregistered calibration/workload target, was not met in measured card-load time, and no rerun was performed; the original duration definition, plateau artifacts, analysis artifacts, criteria, and prediction remain unchanged. The audit also found that fixed helper defaults of 47 W and 58.5 degC did not implement the declared dynamic cooldown baseline: evaluation now requires each preceding selected-device pre-run snapshot, whose historical baselines were 47 W/61.2 degC and 48 W/61.2 degC; both immutable transitions pass under their actual limits, and raw snapshots remain unchanged."
     }
   ],
   "limitations": [
@@ -490,6 +544,7 @@
     "The THM_LIMIT_THROTTLE value is intentionally absent when the source snapshot does not establish it; its optional run-trace comparison is then unknown/not_evaluable.",
     "The hypothesis labels describe criterion-compatible correlations only and do not establish a physical cause.",
     "A 2 second sample cadence limits onset ordering and causality-resolution claims to approximately 2 seconds; no interpolation is performed.",
-    "When limits metadata omits asic_fmax_mhz, AICLK drop onset is unknown/not_evaluable rather than inferred as 1350 MHz."
+    "When limits metadata omits asic_fmax_mhz, AICLK drop onset is unknown/not_evaluable rather than inferred as 1350 MHz.",
+    "Outer workload-process duration includes more than measured card-load time: each run's card-load duration is approximately 276.08 seconds against the 285-second target. No rerun was performed, so the results do not prove a 285-second sustained-card-load minimum."
   ]
 }

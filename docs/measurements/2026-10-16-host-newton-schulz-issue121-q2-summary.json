@@ -4,7 +4,7 @@
   "issue": "#121",
   "plan": {
     "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
-    "revision": 6,
+    "revision": 7,
     "target_seconds": 285,
     "plateau_start_seconds": 150,
     "plateau_end_seconds": 285,
@@ -28,8 +28,12 @@
       "power_w": 49.0,
       "temperature_c": 61.4,
       "aiclk_mhz": 800.0,
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "baseline_snapshot": "docs/measurements/issue121-q2/runs/run-1-device0/pre-snapshot-q2-run-1-device0.json",
+      "baseline_power_w": 47.0,
+      "baseline_temperature_c": 61.2,
       "power_limit_w": 52.0,
-      "temperature_limit_c": 61.5,
+      "temperature_limit_c": 64.2,
       "snapshot": "docs/measurements/issue121-q2/cooldown/run-1-to-2/snapshot-0018.json"
     },
     {
@@ -39,8 +43,12 @@
       "power_w": 47.0,
       "temperature_c": 61.5,
       "aiclk_mhz": 800.0,
-      "power_limit_w": 52.0,
-      "temperature_limit_c": 61.5,
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "baseline_snapshot": "docs/measurements/issue121-q2/runs/run-2-device0/pre-snapshot-q2-run-2-device0.json",
+      "baseline_power_w": 48.0,
+      "baseline_temperature_c": 61.2,
+      "power_limit_w": 53.0,
+      "temperature_limit_c": 64.2,
       "snapshot": "docs/measurements/issue121-q2/cooldown/run-2-to-3/snapshot-0046.json"
     }
   ],
@@ -53,6 +61,10 @@
       "analysis": "docs/measurements/issue121-q2/runs/run-1-device0/analysis-q2-run-1-device0.json",
       "status": "ok",
       "duration_seconds": 299.15060189,
+      "outer_process_duration_seconds": 299.15060189,
+      "measured_card_load_duration_seconds": 276.0759082857602,
+      "card_load_target_met": false,
+      "duration_interpretation": "Outer workload-process duration was recorded, but measured card-load duration was approximately 276.08 seconds; this is not a completed 285-second sustained-card-load run.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -230,6 +242,10 @@
       "analysis": "docs/measurements/issue121-q2/runs/run-2-device0/analysis-q2-run-2-device0.json",
       "status": "ok",
       "duration_seconds": 298.545785676,
+      "outer_process_duration_seconds": 298.545785676,
+      "measured_card_load_duration_seconds": 276.0759082857602,
+      "card_load_target_met": false,
+      "duration_interpretation": "Outer workload-process duration was recorded, but measured card-load duration was approximately 276.08 seconds; this is not a completed 285-second sustained-card-load run.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -407,6 +423,10 @@
       "analysis": "docs/measurements/issue121-q2/runs/run-3-device0/analysis-q2-run-3-device0.json",
       "status": "ok",
       "duration_seconds": 301.4729979,
+      "outer_process_duration_seconds": 301.4729979,
+      "measured_card_load_duration_seconds": 276.0759082857602,
+      "card_load_target_met": false,
+      "duration_interpretation": "Outer workload-process duration was recorded, but measured card-load duration was approximately 276.08 seconds; this is not a completed 285-second sustained-card-load run.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -582,11 +602,51 @@
     "scope": "Post-hoc observations only; these are not preregistered hypothesis results.",
     "cooldown_observable_audit": {
       "status": "post_measurement",
-      "disclosure": "The audit found that the plan wording and helper named board_power for the cooldown gate, while the historical gate used selected-device telemetry.power. The cited immutable snapshots retain board_power at 121 W alongside telemetry.power at 49 W and 47 W; the historical 49/47 W pass result is unchanged.",
+      "disclosure": "The audit found that the helper silently used fixed defaults of 47 W and 58.5 degC instead of requiring the preceding selected-device pre-run snapshot. The historical transitions pass under their actual baselines: run 1 pre 47 W/61.2 degC gives limits 52 W/64.2 degC for the 49 W/61.4 degC cooldown, and run 2 pre 48 W/61.2 degC gives limits 53 W/64.2 degC for the 47 W/61.5 degC cooldown. The selected-device telemetry.power gate remains distinct from retained telemetry.board_power at 121 W; immutable snapshots and the historical pass result are unchanged.",
       "gate_signal": "telemetry.power",
       "reporting_signal": "telemetry.board_power",
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "historical_baseline_values": [
+        {
+          "transition": "run_1_to_run_2",
+          "baseline_power_w": 47.0,
+          "baseline_temperature_c": 61.2,
+          "power_limit_w": 52.0,
+          "temperature_limit_c": 64.2
+        },
+        {
+          "transition": "run_2_to_run_3",
+          "baseline_power_w": 48.0,
+          "baseline_temperature_c": 61.2,
+          "power_limit_w": 53.0,
+          "temperature_limit_c": 64.2
+        }
+      ],
       "historical_result_unchanged": true,
+      "historical_records_pass_under_actual_baselines": true,
       "immutable_snapshots_unchanged": true
+    },
+    "duration_audit": {
+      "status": "post_measurement",
+      "target_seconds": 285.0,
+      "target_role": "calibration/workload target, not a proven sustained-card-load minimum",
+      "outer_process_duration_seconds": [
+        299.15060189,
+        298.545785676,
+        301.4729979
+      ],
+      "measured_card_load_duration_seconds": [
+        276.0759082857602,
+        276.0759082857602,
+        276.0759082857602
+      ],
+      "measured_card_load_duration_approx_seconds": 276.08,
+      "card_load_duration_source": "Each immutable calibration record: load_card_ticks / (actual_duration_aiclk_mhz * 1e6), using the time-weighted load-interval AICLK.",
+      "card_load_target_met": false,
+      "rerun_performed": false,
+      "disclosure": "The outer workload-process durations were approximately 299.151, 298.546, and 301.473 seconds, but measured card-load duration was approximately 276.08 seconds for each run. The 285-second target was not met in measured card-load time; no rerun was performed.",
+      "interpretation_consequence": "The plateau and analysis artifacts are unchanged, but the results must not be interpreted as proof of a 285-second sustained-card-load minimum.",
+      "immutable_run_artifacts_unchanged": true
     },
     "source": {
       "analysis_commit": "e09d4f9",
@@ -796,7 +856,7 @@
       },
       "reason": "Exclude pre-run idle from load-onset timing.",
       "change_provenance": "Post-measurement analysis change introduced by e09d4f9 after all 3 runs.",
-      "classification_comparison": "The pre-change definition classified all three completed runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
+      "classification_comparison": "The pre-change definition classified all three runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
     },
     "unit_disposition": {
       "schema": "issue121-q2-unit-provenance-v1",
@@ -1499,7 +1559,8 @@
     "The extended trace cadence is approximately 2 seconds; onset ordering has approximately 2-second resolution.",
     "The AICLK onset is the first post-start sampled interval at or below 95% of source asic_fmax; no interpolation is performed.",
     "The measurement is the ADR-0013 108-core Newton-Schulz surrogate and is not full enodia evidence.",
-    "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here."
+    "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here.",
+    "Outer workload-process duration exceeded the measured card-load interval: each run measured approximately 276.08 seconds against the 285-second target. No rerun was performed, so the results do not prove a 285-second sustained-card-load minimum."
   ],
   "unit_provenance": {
     "schema": "issue121-q2-unit-provenance-v1",

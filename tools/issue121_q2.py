@@ -83,14 +83,8 @@ LEGACY_POWER_TRACE_COLUMNS = (
 EXTENDED_TRACE_COLUMNS = tuple(EXTENDED_POWER_TRACE_COLUMNS)
 SNAPSHOT_COMMAND_TUPLE = tuple(SNAPSHOT_COMMAND)
 
-COOLDOWN_BASELINE_POWER_W = 47.0
-COOLDOWN_BASELINE_TEMPERATURE_C = 58.5
 COOLDOWN_POWER_TOLERANCE_W = 5.0
 COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
-COOLDOWN_POWER_LIMIT_W = COOLDOWN_BASELINE_POWER_W + COOLDOWN_POWER_TOLERANCE_W
-COOLDOWN_TEMPERATURE_LIMIT_C = (
-    COOLDOWN_BASELINE_TEMPERATURE_C + COOLDOWN_TEMPERATURE_TOLERANCE_C
-)
 
 # The fixed-card-tick observation is the board-free calibration source already
 # retained by Issue #118.  It is used only to build a repeat-count plan; it is
@@ -910,13 +904,13 @@ def evaluate_cooldown(
     observed_power_w: float,
     observed_temperature_c: float,
     *,
+    baseline_power_w: float,
+    baseline_temperature_c: float,
     observed_idle_aiclk_mhz: float | None = None,
-    baseline_power_w: float = COOLDOWN_BASELINE_POWER_W,
-    baseline_temperature_c: float = COOLDOWN_BASELINE_TEMPERATURE_C,
     power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W,
     temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
 ) -> dict[str, Any]:
-    """Apply the #127 c006a70 power/temperature cooldown gate."""
+    """Apply the cooldown gate using an explicit preceding-run baseline."""
     power = _finite_number(observed_power_w, field="observed_power_w")
     temperature = _finite_number(observed_temperature_c, field="observed_temperature_c")
     baseline_power = _finite_number(baseline_power_w, field="baseline_power_w")
@@ -932,7 +926,7 @@ def evaluate_cooldown(
     power_pass = power <= power_limit
     temperature_pass = temperature <= temperature_limit
     return {
-        "baseline_source": "preceding run pre-run snapshot",
+        "baseline_source": "explicit preceding selected-device pre-run snapshot",
         "baseline_power_w": baseline_power,
         "baseline_temperature_c": baseline_temperature,
         "power_tolerance_w": power_tolerance,
@@ -972,6 +966,35 @@ def _cooldown_reading(capture: Mapping[str, Any], board_id: str, bus_id: str) ->
         raise SnapshotCaptureError(f"snapshot telemetry is missing {exc.args[0]}") from exc
     aiclk = telemetry.get("aiclk")
     return power, temperature, None if aiclk is None else _finite_number(aiclk, field="telemetry.aiclk", positive=True)
+
+
+def evaluate_cooldown_transition(
+    preceding_pre_snapshot: Mapping[str, Any],
+    cooldown_snapshot: Mapping[str, Any],
+    *,
+    board_id: str,
+    bus_id: str,
+    power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W,
+    temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
+) -> dict[str, Any]:
+    """Evaluate one transition from its selected-device pre-run baseline."""
+    if preceding_pre_snapshot.get("stage") != "pre_run":
+        raise SnapshotCaptureError("preceding cooldown baseline must be a pre_run snapshot")
+    baseline_power, baseline_temperature, _baseline_aiclk = _cooldown_reading(
+        preceding_pre_snapshot, board_id, bus_id
+    )
+    observed_power, observed_temperature, observed_aiclk = _cooldown_reading(
+        cooldown_snapshot, board_id, bus_id
+    )
+    return evaluate_cooldown(
+        observed_power,
+        observed_temperature,
+        baseline_power_w=baseline_power,
+        baseline_temperature_c=baseline_temperature,
+        observed_idle_aiclk_mhz=observed_aiclk,
+        power_tolerance_w=power_tolerance_w,
+        temperature_tolerance_c=temperature_tolerance_c,
+    )
 
 
 def _build_environment(
@@ -1890,10 +1913,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "CONTAINER_VISIBLE_DEVICE_ID",
-    "COOLDOWN_BASELINE_POWER_W",
-    "COOLDOWN_BASELINE_TEMPERATURE_C",
-    "COOLDOWN_POWER_LIMIT_W",
-    "COOLDOWN_TEMPERATURE_LIMIT_C",
+    "COOLDOWN_POWER_TOLERANCE_W",
+    "COOLDOWN_TEMPERATURE_TOLERANCE_C",
     "DEVICE_ID",
     "DEVICE_NODE",
     "EARLY_RAW_WINDOW_SECONDS",
@@ -1919,6 +1940,7 @@ __all__ = [
     "build_workload_environment",
     "capture_readonly_snapshot",
     "evaluate_cooldown",
+    "evaluate_cooldown_transition",
     "run_one",
 ]
 

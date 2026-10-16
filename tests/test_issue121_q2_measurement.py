@@ -233,6 +233,30 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "post-measurement cooldown wording/helper correction after audit: the cooldown power observable is selected-device telemetry.power, while telemetry.board_power remains a separately retained reporting field. The cited immutable cooldown snapshots report telemetry.power 49 W and 47 W and board_power 121 W; the historical 49/47 W pass result is unchanged, and no run record, trace, snapshot, or manual GDDR supplement was changed."
         ),
     }
+    assert plan["revision_history"][6] == {
+        "revision": 7,
+        "date": "2026-10-16",
+        "change": (
+            "post-measurement convergence disclosure after audit: immutable run records retain outer workload-process durations of approximately 299.151, 298.546, and 301.473 seconds, while each immutable calibration record's card-load ticks and measured load-interval AICLK yield approximately 276.08 seconds. The 285-second value remains the preregistered calibration/workload target, was not met in measured card-load time, and no rerun was performed; the original duration definition, plateau artifacts, analysis artifacts, criteria, and prediction remain unchanged. The audit also found that fixed helper defaults of 47 W and 58.5 degC did not implement the declared dynamic cooldown baseline: evaluation now requires each preceding selected-device pre-run snapshot, whose historical baselines were 47 W/61.2 degC and 48 W/61.2 degC; both immutable transitions pass under their actual limits, and raw snapshots remain unchanged."
+        ),
+    }
+    duration_disclosure = plan["post_measurement_duration_disclosure"]
+    assert duration_disclosure["target_role"] == (
+        "calibration/workload target, not a proven sustained-card-load minimum"
+    )
+    assert duration_disclosure["outer_process_duration_seconds"] == [
+        299.15060189,
+        298.545785676,
+        301.4729979,
+    ]
+    assert duration_disclosure["measured_card_load_duration_seconds"] == [
+        276.0759082857602,
+        276.0759082857602,
+        276.0759082857602,
+    ]
+    assert duration_disclosure["card_load_target_met"] is False
+    assert duration_disclosure["rerun_performed"] is False
+    assert duration_disclosure["immutable_run_artifacts_unchanged"] is True
     assert plan["unit_provenance"]["status"] == "established"
     assert plan["unit_provenance"]["comparisons"]["current_a_vs_tdc_limit"]["comparable"] is True
     assert plan["unit_provenance"]["comparisons"]["asic_temp_c_vs_thm_limit_throttle"]["comparable"] is True
@@ -241,6 +265,42 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["cooldown"]["board_power_reporting"] == (
         "telemetry.board_power is retained and reported separately; it is not a cooldown gate"
     )
+    assert plan["cooldown"]["dynamic_baseline_required"] is True
+    assert plan["cooldown"]["baseline_fallback_policy"] == (
+        "Fail closed when the preceding selected-device pre-run baseline is unavailable; "
+        "no fixed fallback is permitted."
+    )
+    assert plan["cooldown"]["historical_preregistered_defaults"] == {
+        "power_baseline_w": 47,
+        "temperature_baseline_c": 58.5,
+        "power_limit_w": 52,
+        "temperature_limit_c": 61.5,
+        "disposition": "Retained for preregistration history only; not used for dynamic transition evaluation.",
+    }
+    assert plan["cooldown"]["recorded_transition_baselines"] == [
+        {
+            "transition": "run_1_to_run_2",
+            "preceding_pre_snapshot": (
+                "docs/measurements/issue121-q2/runs/run-1-device0/"
+                "pre-snapshot-q2-run-1-device0.json"
+            ),
+            "baseline_power_w": 47.0,
+            "baseline_temperature_c": 61.2,
+            "power_limit_w": 52.0,
+            "temperature_limit_c": 64.2,
+        },
+        {
+            "transition": "run_2_to_run_3",
+            "preceding_pre_snapshot": (
+                "docs/measurements/issue121-q2/runs/run-2-device0/"
+                "pre-snapshot-q2-run-2-device0.json"
+            ),
+            "baseline_power_w": 48.0,
+            "baseline_temperature_c": 61.2,
+            "power_limit_w": 53.0,
+            "temperature_limit_c": 64.2,
+        },
+    ]
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
     assert plan["classification_policy"]["multiple_supported_known_hypotheses"] == "multiple"
@@ -262,7 +322,7 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
     observations = summary["post_hoc_observations"]
 
-    assert summary["plan"]["revision"] == 6
+    assert summary["plan"]["revision"] == 7
     assert summary["unit_provenance"]["status"] == "established"
     assert observations["status"] == "post_measurement"
     assert observations["scope"] == (
@@ -271,13 +331,67 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     assert observations["cooldown_observable_audit"] == {
         "status": "post_measurement",
         "disclosure": (
-            "The audit found that the plan wording and helper named board_power for the cooldown gate, while the historical gate used selected-device telemetry.power. The cited immutable snapshots retain board_power at 121 W alongside telemetry.power at 49 W and 47 W; the historical 49/47 W pass result is unchanged."
+            "The audit found that the helper silently used fixed defaults of 47 W and 58.5 degC instead of requiring the preceding selected-device pre-run snapshot. The historical transitions pass under their actual baselines: run 1 pre 47 W/61.2 degC gives limits 52 W/64.2 degC for the 49 W/61.4 degC cooldown, and run 2 pre 48 W/61.2 degC gives limits 53 W/64.2 degC for the 47 W/61.5 degC cooldown. The selected-device telemetry.power gate remains distinct from retained telemetry.board_power at 121 W; immutable snapshots and the historical pass result are unchanged."
         ),
         "gate_signal": "telemetry.power",
         "reporting_signal": "telemetry.board_power",
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "historical_baseline_values": [
+            {
+                "transition": "run_1_to_run_2",
+                "baseline_power_w": 47.0,
+                "baseline_temperature_c": 61.2,
+                "power_limit_w": 52.0,
+                "temperature_limit_c": 64.2,
+            },
+            {
+                "transition": "run_2_to_run_3",
+                "baseline_power_w": 48.0,
+                "baseline_temperature_c": 61.2,
+                "power_limit_w": 53.0,
+                "temperature_limit_c": 64.2,
+            },
+        ],
         "historical_result_unchanged": True,
+        "historical_records_pass_under_actual_baselines": True,
         "immutable_snapshots_unchanged": True,
     }
+    duration = observations["duration_audit"]
+    assert duration == {
+        "status": "post_measurement",
+        "target_seconds": 285.0,
+        "target_role": "calibration/workload target, not a proven sustained-card-load minimum",
+        "outer_process_duration_seconds": [299.15060189, 298.545785676, 301.4729979],
+        "measured_card_load_duration_seconds": [
+            276.0759082857602,
+            276.0759082857602,
+            276.0759082857602,
+        ],
+        "measured_card_load_duration_approx_seconds": 276.08,
+        "card_load_duration_source": (
+            "Each immutable calibration record: load_card_ticks / "
+            "(actual_duration_aiclk_mhz * 1e6), using the time-weighted load-interval AICLK."
+        ),
+        "card_load_target_met": False,
+        "rerun_performed": False,
+        "disclosure": (
+            "The outer workload-process durations were approximately 299.151, 298.546, and "
+            "301.473 seconds, but measured card-load duration was approximately 276.08 seconds "
+            "for each run. The 285-second target was not met in measured card-load time; no "
+            "rerun was performed."
+        ),
+        "interpretation_consequence": (
+            "The plateau and analysis artifacts are unchanged, but the results must not be "
+            "interpreted as proof of a 285-second sustained-card-load minimum."
+        ),
+        "immutable_run_artifacts_unchanged": True,
+    }
+    assert all(
+        run["outer_process_duration_seconds"] == run["duration_seconds"]
+        and run["measured_card_load_duration_seconds"] == 276.0759082857602
+        and run["card_load_target_met"] is False
+        for run in summary["runs"]
+    )
     board = observations["board_power_plateau"]
     assert board["limit_w"] == 300.0
     assert [
@@ -1305,9 +1419,24 @@ def test_snapshot_limits_preserve_raw_throttle_and_recognized_values() -> None:
     )
 
 
-def test_cooldown_gate_matches_issue127_power_temperature_rule() -> None:
-    passing = runner.evaluate_cooldown(52.0, 61.5, observed_idle_aiclk_mhz=800.0)
-    failing = runner.evaluate_cooldown(52.01, 61.5, observed_idle_aiclk_mhz=800.0)
+def test_cooldown_gate_requires_explicit_dynamic_baseline() -> None:
+    with pytest.raises(TypeError):
+        runner.evaluate_cooldown(52.0, 61.5, observed_idle_aiclk_mhz=800.0)
+
+    passing = runner.evaluate_cooldown(
+        52.0,
+        61.5,
+        baseline_power_w=47.0,
+        baseline_temperature_c=58.5,
+        observed_idle_aiclk_mhz=800.0,
+    )
+    failing = runner.evaluate_cooldown(
+        52.01,
+        61.5,
+        baseline_power_w=47.0,
+        baseline_temperature_c=58.5,
+        observed_idle_aiclk_mhz=800.0,
+    )
 
     assert passing["verified"] is True
     assert passing["aiclk_gate"] is False
@@ -1329,13 +1458,101 @@ def test_cooldown_uses_selected_device_power_not_board_power() -> None:
             bus_id="0000:01:00.0",
         )
         result = runner.evaluate_cooldown(
-            power, temperature, observed_idle_aiclk_mhz=aiclk
+            power,
+            temperature,
+            baseline_power_w=47.0,
+            baseline_temperature_c=58.5,
+            observed_idle_aiclk_mhz=aiclk,
         )
 
         assert power == expected_power
         assert result["verified"] is True
         assert result["observed_power_w"] == expected_power
         assert telemetry["board_power"] == "121"
+
+
+@pytest.mark.parametrize(
+    (
+        "transition",
+        "preceding_pre_path",
+        "cooldown_path",
+        "expected_baseline_power",
+        "expected_temperature_limit",
+    ),
+    [
+        (
+            "run-1-to-2",
+            IMMUTABLE_RUN_ROOT / "run-1-device0/pre-snapshot-q2-run-1-device0.json",
+            IMMUTABLE_RUN_ROOT / "../cooldown/run-1-to-2/snapshot-0018.json",
+            47.0,
+            64.2,
+        ),
+        (
+            "run-2-to-3",
+            IMMUTABLE_RUN_ROOT / "run-2-device0/pre-snapshot-q2-run-2-device0.json",
+            IMMUTABLE_RUN_ROOT / "../cooldown/run-2-to-3/snapshot-0046.json",
+            48.0,
+            64.2,
+        ),
+    ],
+)
+def test_cooldown_transition_uses_preceding_snapshot_baseline(
+    transition: str,
+    preceding_pre_path: Path,
+    cooldown_path: Path,
+    expected_baseline_power: float,
+    expected_temperature_limit: float,
+) -> None:
+    preceding_pre_snapshot = json.loads(preceding_pre_path.resolve().read_text(encoding="utf-8"))
+    cooldown_snapshot = json.loads(cooldown_path.resolve().read_text(encoding="utf-8"))
+
+    result = runner.evaluate_cooldown_transition(
+        preceding_pre_snapshot,
+        cooldown_snapshot,
+        board_id="0000040331914124",
+        bus_id="0000:09:00.0",
+    )
+
+    assert result["baseline_source"] == "explicit preceding selected-device pre-run snapshot"
+    assert result["baseline_power_w"] == expected_baseline_power
+    assert result["baseline_temperature_c"] == 61.2
+    assert result["temperature_limit_c"] == expected_temperature_limit
+    assert result["observed_idle_aiclk_mhz"] == 800.0
+    assert result["aiclk_gate"] is False
+    assert result["verified"] is True
+    assert transition in cooldown_path.as_posix()
+
+
+def test_cooldown_transition_accepts_temperature_above_fixed_default(
+) -> None:
+    preceding_pre_snapshot = json.loads(
+        (IMMUTABLE_RUN_ROOT / "run-1-device0/pre-snapshot-q2-run-1-device0.json")
+        .read_text(encoding="utf-8")
+    )
+    cooldown_snapshot = json.loads(
+        (IMMUTABLE_RUN_ROOT / "../cooldown/run-1-to-2/snapshot-0018.json")
+        .resolve()
+        .read_text(encoding="utf-8")
+    )
+    selected_device = next(
+        device
+        for device in cooldown_snapshot["snapshot"]["device_info"]
+        if device["board_info"]["bus_id"] == "0000:09:00.0"
+    )
+    selected_device["telemetry"]["asic_temperature"] = "63.0"
+
+    result = runner.evaluate_cooldown_transition(
+        preceding_pre_snapshot,
+        cooldown_snapshot,
+        board_id="0000040331914124",
+        bus_id="0000:09:00.0",
+    )
+
+    assert 61.5 < result["observed_temperature_c"] < result["temperature_limit_c"]
+    assert result["temperature_limit_c"] == 64.2
+    assert result["temperature_gate"] is True
+    assert result["verified"] is True
+    assert result["aiclk_gate"] is False
 
 
 @pytest.mark.parametrize(
