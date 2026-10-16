@@ -735,6 +735,209 @@ def _time_weighted_aiclk(
     return weighted / covered, covered, AICLK_SOURCE_LOAD_INTERVAL_TRACE
 
 
+_LEFT_HELD_SEMANTICS = "left_held_positive_segments"
+
+
+def _invalid_interval_facts(error: ValueError) -> dict[str, Any]:
+    return {
+        "available": False,
+        "coverage_complete": False,
+        "reason": "interval_timestamp_invalid",
+        "error": str(error),
+        "aiclk_mhz_min": None,
+        "aiclk_mhz_max": None,
+        "time_weighted_aiclk_mhz": None,
+        "coverage_seconds": 0.0,
+        "requested_start_utc": None,
+        "requested_end_utc": None,
+        "first_held_aiclk_mhz": None,
+        "first_held_sample_timestamp_utc": None,
+        "last_held_aiclk_mhz": None,
+        "segments": [],
+        "usable_sample_count": 0,
+        "invalid_sample_count": 0,
+        "errors": [],
+        "semantics": _LEFT_HELD_SEMANTICS,
+    }
+
+
+def _unavailable_interval_facts(
+    reason: str,
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    covered: float,
+    usable_sample_count: int,
+    invalid_sample_count: int,
+    errors: list[Any],
+) -> dict[str, Any]:
+    return {
+        "available": False,
+        "coverage_complete": False,
+        "reason": reason,
+        "aiclk_mhz_min": None,
+        "aiclk_mhz_max": None,
+        "time_weighted_aiclk_mhz": None,
+        "coverage_seconds": covered,
+        "requested_start_utc": start.isoformat(),
+        "requested_end_utc": end.isoformat(),
+        "first_held_aiclk_mhz": None,
+        "first_held_sample_timestamp_utc": None,
+        "last_held_aiclk_mhz": None,
+        "segments": [],
+        "usable_sample_count": usable_sample_count,
+        "invalid_sample_count": invalid_sample_count,
+        "errors": errors,
+        "semantics": _LEFT_HELD_SEMANTICS,
+    }
+
+
+def _interval_validation_reason(
+    timestamp_error: Any | None,
+    usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
+    timestamps: list[datetime.datetime],
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> str | None:
+    if timestamp_error is not None:
+        return "trace_timestamp_invalid"
+    if not usable_rows:
+        return "trace_has_no_usable_samples"
+    if timestamps != sorted(timestamps):
+        return "trace_timestamps_not_ordered"
+    if start >= end:
+        return "interval_is_empty_or_reversed"
+    return None
+
+
+def _interval_segment_facts(
+    segments: list[tuple[dict[str, Any], datetime.datetime, float, float]],
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+) -> list[dict[str, Any]]:
+    facts: list[dict[str, Any]] = []
+    for _sample, timestamp, aiclk, seconds in segments:
+        overlap_start = max(timestamp, start)
+        overlap_end = overlap_start + datetime.timedelta(seconds=seconds)
+        facts.append(
+            {
+                "sample_timestamp_utc": timestamp.isoformat(),
+                "overlap_start_utc": overlap_start.isoformat(),
+                "overlap_end_utc": min(end, overlap_end).isoformat(),
+                "aiclk_mhz": aiclk,
+                "overlap_seconds": seconds,
+            }
+        )
+    return facts
+
+
+def _available_interval_facts(
+    weighted: float,
+    covered: float,
+    reason: str,
+    facts_segments: list[dict[str, Any]],
+    *,
+    start: datetime.datetime,
+    end: datetime.datetime,
+    usable_sample_count: int,
+    invalid_sample_count: int,
+    errors: list[Any],
+) -> dict[str, Any]:
+    values = [segment["aiclk_mhz"] for segment in facts_segments]
+    available = bool(values)
+    return {
+        "available": available,
+        "coverage_complete": available,
+        "reason": None if available else reason,
+        "aiclk_mhz_min": min(values) if values else None,
+        "aiclk_mhz_max": max(values) if values else None,
+        "time_weighted_aiclk_mhz": weighted if available else None,
+        "coverage_seconds": covered,
+        "requested_start_utc": start.isoformat(),
+        "requested_end_utc": end.isoformat(),
+        "first_held_aiclk_mhz": values[0] if values else None,
+        "first_held_sample_timestamp_utc": (
+            facts_segments[0]["sample_timestamp_utc"] if facts_segments else None
+        ),
+        "last_held_aiclk_mhz": values[-1] if values else None,
+        "segments": facts_segments,
+        "usable_sample_count": usable_sample_count,
+        "invalid_sample_count": invalid_sample_count,
+        "errors": errors,
+        "semantics": _LEFT_HELD_SEMANTICS,
+    }
+
+
+def left_held_aiclk_interval_facts(
+    samples: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+    *,
+    start: datetime.datetime | str,
+    end: datetime.datetime | str,
+    row_label: str = "power interval",
+) -> dict[str, Any]:
+    """Evaluate one UTC interval using the shared left-held trace semantics.
+
+    The returned extrema and weighted value use only positive-duration overlaps
+    between usable trace rows and ``[start, end)``.  The interval must be
+    bounded by the immutable trace: if its first or last usable sample cannot
+    cover the requested endpoint, the weighted value and extrema are marked
+    unavailable instead of being extrapolated.  This public seam is intended
+    for runners that need per-row facts after the final snapshot is immutable.
+    """
+    try:
+        start_dt = _parse_trace_timestamp(start, field=f"{row_label} start")
+        end_dt = _parse_trace_timestamp(end, field=f"{row_label} end")
+    except ValueError as exc:
+        return _invalid_interval_facts(exc)
+
+    raw_samples = [dict(sample) for sample in samples]
+    usable_rows, errors, timestamp_error = _usable_trace_rows(
+        raw_samples, error_factory=None, row_label=row_label
+    )
+    timestamps = [timestamp for _sample, timestamp, _aiclk in usable_rows]
+    reason = _interval_validation_reason(
+        timestamp_error, usable_rows, timestamps, start_dt, end_dt
+    )
+    if reason is not None:
+        return _unavailable_interval_facts(
+            reason,
+            start=start_dt,
+            end=end_dt,
+            covered=0.0,
+            usable_sample_count=len(usable_rows),
+            invalid_sample_count=len(raw_samples) - len(usable_rows),
+            errors=errors,
+        )
+    weighted, covered, reason = _time_weighted_aiclk(
+        usable_rows, start=start_dt, end=end_dt
+    )
+    if weighted is None:
+        return _unavailable_interval_facts(
+            reason,
+            start=start_dt,
+            end=end_dt,
+            covered=covered,
+            usable_sample_count=len(usable_rows),
+            invalid_sample_count=len(raw_samples) - len(usable_rows),
+            errors=errors,
+        )
+    segments = _left_held_positive_segments(
+        usable_rows, start=start_dt, end=end_dt
+    )
+    return _available_interval_facts(
+        weighted,
+        covered,
+        reason,
+        _interval_segment_facts(segments, start=start_dt, end=end_dt),
+        start=start_dt,
+        end=end_dt,
+        usable_sample_count=len(usable_rows),
+        invalid_sample_count=len(raw_samples) - len(usable_rows),
+        errors=errors,
+    )
+
+
 def _set_positive_duration_extrema(
     trace: dict[str, Any],
     usable_rows: list[tuple[dict[str, Any], datetime.datetime, float]],
@@ -1293,6 +1496,7 @@ __all__ = [
     "extended_telemetry_csv_row",
     "format_extended_power_trace_row",
     "is_coverage_definition",
+    "left_held_aiclk_interval_facts",
     "parse_extended_power_trace",
     "parse_extended_snapshot",
     "parse_extended_telemetry",

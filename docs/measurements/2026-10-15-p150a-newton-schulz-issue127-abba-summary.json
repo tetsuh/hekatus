@@ -1,0 +1,1647 @@
+{
+  "record_schema": "issue127-abba-summary-v3",
+  "status": "pass",
+  "issue": "#127",
+  "summary_role": "mechanical decision and clock-sensitivity summary for the two accepted measurement records, with an immutable-trace sampling audit for all four committed runs",
+  "excluded_records": [
+    "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+    "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json"
+  ],
+  "plan": {
+    "file": "2026-10-12-host-newton-schulz-issue127-abba-plan.json",
+    "sha256": "cb5508cc204c385a7520d54ccd0ef874a9ac4a54d05321a3e0564f99a5ba9631",
+    "prediction_and_decision_criteria_changed": false,
+    "raw_p50_definition": "d1 is run 1 and d2 is run 2; each is 100 * (FP32-R raw P50 / BF16-R raw P50 - 1) for the matched L16/L1 pair and matched L32/R-in-DRAM pair.",
+    "adjusted_p50_is_primary": false
+  },
+  "source_records": [
+    {
+      "file": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+      "sha256": "c7a6e6ccde5943ac86e6bad5454dbea3b455917f41ae874088c0d05e627fbc07",
+      "run_number": 1,
+      "scope": "measurement-1"
+    },
+    {
+      "file": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+      "sha256": "a1b5e93633286372edad5bdce03ef39773747395eae9094ed6ddf562da1ddb5d",
+      "run_number": 2,
+      "scope": "measurement-2-rerun"
+    }
+  ],
+  "runs": [
+    {
+      "run_number": 1,
+      "scope": "measurement-1",
+      "record": {
+        "file": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "sha256": "c7a6e6ccde5943ac86e6bad5454dbea3b455917f41ae874088c0d05e627fbc07"
+      },
+      "status": "pass",
+      "run_start": "2026-10-15T21:42:51.582826+00:00",
+      "run_end": "2026-10-15T21:44:01.888260+00:00",
+      "run_duration_seconds": 70.30542148,
+      "run_timeout_seconds": 90.0,
+      "under_timeout": true,
+      "order": [
+        "bf16-r-L16",
+        "fp32-r-L16",
+        "fp32-r-L16",
+        "bf16-r-L16",
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram",
+        "fp32-r-L32-r-dram",
+        "bf16-r-L32-r-dram"
+      ],
+      "rows": [
+        {
+          "order_index": 0,
+          "row": "bf16-r-L16",
+          "occurrence": 1,
+          "occurrence_id": "bf16-r-L16#1",
+          "timed_start_utc": "2026-10-15T21:43:01.670580+00:00",
+          "timed_end_utc": "2026-10-15T21:43:06.122216+00:00",
+          "timed_duration_seconds": 4.45161977600003,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.817750005207014,
+          "adjusted_p50_tflops": 16.611717077403387,
+          "aiclk_mhz_min": 1187.0,
+          "aiclk_mhz_max": 1331.0,
+          "row_time_weighted_aiclk_mhz": 1285.475932892986,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 1,
+          "row": "fp32-r-L16",
+          "occurrence": 1,
+          "occurrence_id": "fp32-r-L16#1",
+          "timed_start_utc": "2026-10-15T21:43:08.157273+00:00",
+          "timed_end_utc": "2026-10-15T21:43:12.767070+00:00",
+          "timed_duration_seconds": 4.609780940999997,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.227014699412125,
+          "adjusted_p50_tflops": 15.760989666553444,
+          "aiclk_mhz_min": 1262.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1304.262630653801,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 2,
+          "row": "fp32-r-L16",
+          "occurrence": 2,
+          "occurrence_id": "fp32-r-L16#2",
+          "timed_start_utc": "2026-10-15T21:43:13.823012+00:00",
+          "timed_end_utc": "2026-10-15T21:43:18.479102+00:00",
+          "timed_duration_seconds": 4.65607490299999,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.044230360125551,
+          "adjusted_p50_tflops": 15.638975770364612,
+          "aiclk_mhz_min": 1250.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1298.6599176562308,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 3,
+          "row": "bf16-r-L16",
+          "occurrence": 2,
+          "occurrence_id": "bf16-r-L16#2",
+          "timed_start_utc": "2026-10-15T21:43:19.477962+00:00",
+          "timed_end_utc": "2026-10-15T21:43:23.991068+00:00",
+          "timed_duration_seconds": 4.513091965000001,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.549625692578225,
+          "adjusted_p50_tflops": 16.34011635551997,
+          "aiclk_mhz_min": 1250.0,
+          "aiclk_mhz_max": 1312.0,
+          "row_time_weighted_aiclk_mhz": 1284.6906489676953,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 4,
+          "row": "bf16-r-L32-r-dram",
+          "occurrence": 1,
+          "occurrence_id": "bf16-r-L32-r-dram#1",
+          "timed_start_utc": "2026-10-15T21:43:27.663561+00:00",
+          "timed_end_utc": "2026-10-15T21:43:32.323768+00:00",
+          "timed_duration_seconds": 4.660191693000002,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 60.48745650559327,
+          "adjusted_p50_tflops": 69.76457373350085,
+          "aiclk_mhz_min": 1006.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1170.4804016216447,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 5,
+          "row": "fp32-r-L32-r-dram",
+          "occurrence": 1,
+          "occurrence_id": "fp32-r-L32-r-dram#1",
+          "timed_start_utc": "2026-10-15T21:43:38.914018+00:00",
+          "timed_end_utc": "2026-10-15T21:43:43.911583+00:00",
+          "timed_duration_seconds": 4.997551162000036,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 56.198459876858244,
+          "adjusted_p50_tflops": 65.61352645018891,
+          "aiclk_mhz_min": 968.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1156.2847622792297,
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
+        },
+        {
+          "order_index": 6,
+          "row": "fp32-r-L32-r-dram",
+          "occurrence": 2,
+          "occurrence_id": "fp32-r-L32-r-dram#2",
+          "timed_start_utc": "2026-10-15T21:43:48.541962+00:00",
+          "timed_end_utc": "2026-10-15T21:43:53.581114+00:00",
+          "timed_duration_seconds": 5.039136602000042,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 55.85826107807305,
+          "adjusted_p50_tflops": 67.04641336610106,
+          "aiclk_mhz_min": 956.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1124.7231383375613,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 7,
+          "row": "bf16-r-L32-r-dram",
+          "occurrence": 2,
+          "occurrence_id": "bf16-r-L32-r-dram#2",
+          "timed_start_utc": "2026-10-15T21:43:57.184078+00:00",
+          "timed_end_utc": "2026-10-15T21:44:01.884775+00:00",
+          "timed_duration_seconds": 4.7006827899999735,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 59.3897096836659,
+          "adjusted_p50_tflops": 68.16283391548768,
+          "aiclk_mhz_min": 993.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1176.2437602338548,
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
+        }
+      ],
+      "comparison_summary": [
+        {
+          "row": "bf16-r-L16",
+          "occurrence_indices": [
+            0,
+            3
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 15.68368784889262,
+          "adjusted_p50_tflops": 16.47591671646168,
+          "row_time_weighted_aiclk_mhz": 1285.0832909303408,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "fp32-r-L16",
+          "occurrence_indices": [
+            1,
+            2
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 15.135622529768838,
+          "adjusted_p50_tflops": 15.699982718459028,
+          "row_time_weighted_aiclk_mhz": 1301.4612741550159,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "bf16-r-L32-r-dram",
+          "occurrence_indices": [
+            4,
+            7
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 59.938583094629585,
+          "adjusted_p50_tflops": 68.96370382449427,
+          "row_time_weighted_aiclk_mhz": 1173.3620809277497,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "fp32-r-L32-r-dram",
+          "occurrence_indices": [
+            5,
+            6
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 56.02836047746565,
+          "adjusted_p50_tflops": 66.32996990814499,
+          "row_time_weighted_aiclk_mhz": 1140.5039503083954,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        }
+      ],
+      "cooldown": {
+        "required": false,
+        "run_number": 1,
+        "cooldown_wait_seconds": null,
+        "actual_wait_seconds": null,
+        "wait_performed": false,
+        "start_utc": null,
+        "end_utc": null,
+        "start_monotonic": null,
+        "end_monotonic": null,
+        "expected_aiclk_mhz": null,
+        "environment_observed_aiclk_mhz": [
+          800
+        ],
+        "environment_observation_source": "wrapper capture-env before this run",
+        "bounds_source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds",
+        "environment_verified": true,
+        "power_trace_facts": null,
+        "power_trace_verified": false,
+        "verified": true
+      }
+    },
+    {
+      "run_number": 2,
+      "scope": "measurement-2-rerun",
+      "record": {
+        "file": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "sha256": "a1b5e93633286372edad5bdce03ef39773747395eae9094ed6ddf562da1ddb5d"
+      },
+      "status": "pass",
+      "run_start": "2026-10-15T22:04:17.512327+00:00",
+      "run_end": "2026-10-15T22:05:30.118198+00:00",
+      "run_duration_seconds": 72.6058606439999,
+      "run_timeout_seconds": 90.0,
+      "under_timeout": true,
+      "order": [
+        "fp32-r-L16",
+        "bf16-r-L16",
+        "bf16-r-L16",
+        "fp32-r-L16",
+        "fp32-r-L32-r-dram",
+        "bf16-r-L32-r-dram",
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "rows": [
+        {
+          "order_index": 0,
+          "row": "fp32-r-L16",
+          "occurrence": 1,
+          "occurrence_id": "fp32-r-L16#1",
+          "timed_start_utc": "2026-10-15T22:04:29.028485+00:00",
+          "timed_end_utc": "2026-10-15T22:04:33.563619+00:00",
+          "timed_duration_seconds": 4.535119382999937,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.578371090833862,
+          "adjusted_p50_tflops": 15.824761447649987,
+          "aiclk_mhz_min": 1306.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1328.9806005732135,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 1,
+          "row": "bf16-r-L16",
+          "occurrence": 1,
+          "occurrence_id": "bf16-r-L16#1",
+          "timed_start_utc": "2026-10-15T22:04:35.331295+00:00",
+          "timed_end_utc": "2026-10-15T22:04:39.769194+00:00",
+          "timed_duration_seconds": 4.437882782000088,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.88285413772009,
+          "adjusted_p50_tflops": 16.156586434213352,
+          "aiclk_mhz_min": 1300.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1327.127680913874,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 2,
+          "row": "bf16-r-L16",
+          "occurrence": 2,
+          "occurrence_id": "bf16-r-L16#2",
+          "timed_start_utc": "2026-10-15T22:04:40.791806+00:00",
+          "timed_end_utc": "2026-10-15T22:04:45.256715+00:00",
+          "timed_duration_seconds": 4.46489405300008,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.859082500121286,
+          "adjusted_p50_tflops": 16.247625326165664,
+          "aiclk_mhz_min": 1287.0,
+          "aiclk_mhz_max": 1343.0,
+          "row_time_weighted_aiclk_mhz": 1317.716339795503,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 3,
+          "row": "fp32-r-L16",
+          "occurrence": 2,
+          "occurrence_id": "fp32-r-L16#2",
+          "timed_start_utc": "2026-10-15T22:04:46.360308+00:00",
+          "timed_end_utc": "2026-10-15T22:04:51.010904+00:00",
+          "timed_duration_seconds": 4.650580462000107,
+          "launches_requested": 11000,
+          "launches_measured": 11000,
+          "raw_p50_tflops": 15.019924004668033,
+          "adjusted_p50_tflops": 15.556800930679659,
+          "aiclk_mhz_min": 1262.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1303.4104824413903,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 4,
+          "row": "fp32-r-L32-r-dram",
+          "occurrence": 1,
+          "occurrence_id": "fp32-r-L32-r-dram#1",
+          "timed_start_utc": "2026-10-15T22:04:57.913688+00:00",
+          "timed_end_utc": "2026-10-15T22:05:02.896966+00:00",
+          "timed_duration_seconds": 4.98326016399983,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 56.40171762098234,
+          "adjusted_p50_tflops": 66.083833219006,
+          "aiclk_mhz_min": 987.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1152.2079619078045,
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
+        },
+        {
+          "order_index": 5,
+          "row": "bf16-r-L32-r-dram",
+          "occurrence": 1,
+          "occurrence_id": "bf16-r-L32-r-dram#1",
+          "timed_start_utc": "2026-10-15T22:05:07.018115+00:00",
+          "timed_end_utc": "2026-10-15T22:05:11.679696+00:00",
+          "timed_duration_seconds": 4.661562193999998,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 60.75938915201044,
+          "adjusted_p50_tflops": 69.67119939780913,
+          "aiclk_mhz_min": 1018.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1177.3182615511776,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 6,
+          "row": "bf16-r-L32-r-dram",
+          "occurrence": 2,
+          "occurrence_id": "bf16-r-L32-r-dram#2",
+          "timed_start_utc": "2026-10-15T22:05:16.356713+00:00",
+          "timed_end_utc": "2026-10-15T22:05:21.035155+00:00",
+          "timed_duration_seconds": 4.678426771999966,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 60.38561742053282,
+          "adjusted_p50_tflops": 69.8513008185895,
+          "aiclk_mhz_min": 1006.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1167.0589174772285,
+          "power_sample_count_in_interval": 3,
+          "power_samples_started_in_interval": 2
+        },
+        {
+          "order_index": 7,
+          "row": "fp32-r-L32-r-dram",
+          "occurrence": 2,
+          "occurrence_id": "fp32-r-L32-r-dram#2",
+          "timed_start_utc": "2026-10-15T22:05:25.094243+00:00",
+          "timed_end_utc": "2026-10-15T22:05:30.114436+00:00",
+          "timed_duration_seconds": 5.020178901999998,
+          "launches_requested": 5800,
+          "launches_measured": 5800,
+          "raw_p50_tflops": 56.07083163927223,
+          "adjusted_p50_tflops": 65.28212447626612,
+          "aiclk_mhz_min": 968.0,
+          "aiclk_mhz_max": 1350.0,
+          "row_time_weighted_aiclk_mhz": 1159.5153086743878,
+          "power_sample_count_in_interval": 4,
+          "power_samples_started_in_interval": 3
+        }
+      ],
+      "comparison_summary": [
+        {
+          "row": "bf16-r-L16",
+          "occurrence_indices": [
+            1,
+            2
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 15.870968318920688,
+          "adjusted_p50_tflops": 16.202105880189507,
+          "row_time_weighted_aiclk_mhz": 1322.4220103546886,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "fp32-r-L16",
+          "occurrence_indices": [
+            0,
+            3
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 15.299147547750948,
+          "adjusted_p50_tflops": 15.690781189164824,
+          "row_time_weighted_aiclk_mhz": 1316.1955415073019,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "bf16-r-L32-r-dram",
+          "occurrence_indices": [
+            5,
+            6
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 60.572503286271626,
+          "adjusted_p50_tflops": 69.7612501081993,
+          "row_time_weighted_aiclk_mhz": 1172.1885895142032,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        },
+        {
+          "row": "fp32-r-L32-r-dram",
+          "occurrence_indices": [
+            4,
+            7
+          ],
+          "occurrence_count": 2,
+          "raw_p50_tflops": 56.236274630127284,
+          "adjusted_p50_tflops": 65.68297884763606,
+          "row_time_weighted_aiclk_mhz": 1155.8616352910963,
+          "aggregation": "arithmetic mean of the two occurrence facts; adjusted P50 is supplementary"
+        }
+      ],
+      "cooldown": {
+        "required": true,
+        "run_number": 2,
+        "cooldown_wait_seconds": 600.0,
+        "wait_cap_seconds": 600.0,
+        "actual_wait_seconds": 0.517189,
+        "wait_performed": true,
+        "start_utc": "2026-10-15T22:04:16,554847860+00:00",
+        "end_utc": "2026-10-15T22:04:17,072036759+00:00",
+        "wait_bounds": {
+          "start_utc": "2026-10-15T22:04:16,554847860+00:00",
+          "end_utc": "2026-10-15T22:04:17,072036759+00:00",
+          "source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds"
+        },
+        "start_monotonic": null,
+        "end_monotonic": null,
+        "expected_aiclk_mhz": null,
+        "environment_observed_aiclk_mhz": [
+          800
+        ],
+        "observed_idle_aiclk_mhz": 800.0,
+        "environment_observation_source": "wrapper capture-env before this run",
+        "bounds_source": "enodia/tt/bench/run_in_container.sh wrapper UTC bounds",
+        "baseline_source": "measurement-1 pre-run power trace",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5,
+        "observed_power_w": 45.0,
+        "observed_temperature_c": 53.8,
+        "gate": {
+          "baseline_source": "measurement-1 pre-run power trace",
+          "baseline_power_w": 47.0,
+          "baseline_temperature_c": 58.5,
+          "power_tolerance_w": 5.0,
+          "temperature_tolerance_c": 3.0,
+          "power_limit_w": 52.0,
+          "temperature_limit_c": 61.5,
+          "observed_power_w": 45.0,
+          "observed_temperature_c": 53.8,
+          "observed_idle_aiclk_mhz": 800.0,
+          "aiclk_gate": false,
+          "aiclk_role": "provenance_only",
+          "power_passes": true,
+          "temperature_passes": true,
+          "passes": true,
+          "result": "pass",
+          "verified": true,
+          "failure_type": null,
+          "failure_reason": null
+        },
+        "gate_result": "pass",
+        "gate_verified": true,
+        "aiclk_gate": false,
+        "aiclk_role": "provenance_only",
+        "environment_verified": true,
+        "power_trace_facts": {
+          "available": false,
+          "coverage_complete": false,
+          "reason": "load_interval_not_bounded_by_trace",
+          "aiclk_mhz_min": null,
+          "aiclk_mhz_max": null,
+          "time_weighted_aiclk_mhz": null,
+          "coverage_seconds": 0.0,
+          "requested_start_utc": "2026-10-15T22:04:16.554847+00:00",
+          "requested_end_utc": "2026-10-15T22:04:17.072036+00:00",
+          "first_held_aiclk_mhz": null,
+          "first_held_sample_timestamp_utc": null,
+          "last_held_aiclk_mhz": null,
+          "segments": [],
+          "usable_sample_count": 34,
+          "invalid_sample_count": 0,
+          "errors": [],
+          "semantics": "left_held_positive_segments",
+          "trace": "issue127-abba-power-snapshot-20261015T2204161472362304761319048Z-10.csv",
+          "trace_source": "power-20261015T2204161472362304761319048Z.csv",
+          "trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+          "trace_sha256_definition": "SHA-256 of the complete immutable per-run power CSV snapshot bytes",
+          "requested_sampler_interval_seconds": 2.0,
+          "coverage_definition": "explicit_final_sample",
+          "trace_coverage_complete": true,
+          "immutable_snapshot": true,
+          "terminal_held_aiclk_mhz": null,
+          "gate_sample": {
+            "timestamp_utc": "2026-10-15T22:04:16.821179+00:00",
+            "power_w": "45.0",
+            "aiclk_mhz": "800",
+            "asic_temp_c": "53.8"
+          },
+          "gate": {
+            "baseline_source": "measurement-1 pre-run power trace",
+            "baseline_power_w": 47.0,
+            "baseline_temperature_c": 58.5,
+            "power_tolerance_w": 5.0,
+            "temperature_tolerance_c": 3.0,
+            "power_limit_w": 52.0,
+            "temperature_limit_c": 61.5,
+            "observed_power_w": 45.0,
+            "observed_temperature_c": 53.8,
+            "observed_idle_aiclk_mhz": 800.0,
+            "aiclk_gate": false,
+            "aiclk_role": "provenance_only",
+            "power_passes": true,
+            "temperature_passes": true,
+            "passes": true,
+            "result": "pass",
+            "verified": true,
+            "failure_type": null,
+            "failure_reason": null
+          },
+          "aiclk_gate": false,
+          "aiclk_role": "provenance_only"
+        },
+        "power_trace_verified": true,
+        "verified": true
+      }
+    }
+  ],
+  "comparisons": {
+    "L16_L1": {
+      "pair": [
+        "bf16-r-L16",
+        "fp32-r-L16"
+      ],
+      "per_run": [
+        {
+          "run_number": 1,
+          "scope": "measurement-1",
+          "bf16_r_raw_p50_tflops": 15.68368784889262,
+          "fp32_r_raw_p50_tflops": 15.135622529768838,
+          "raw_p50_delta_percent": -3.494492649969938,
+          "bf16_r_adjusted_p50_tflops": 16.47591671646168,
+          "fp32_r_adjusted_p50_tflops": 15.699982718459028,
+          "adjusted_p50_delta_percent": -4.709504250087571,
+          "bf16_r_mean_row_time_weighted_aiclk_mhz": 1285.0832909303408,
+          "fp32_r_mean_row_time_weighted_aiclk_mhz": 1301.4612741550159,
+          "occurrence_deltas": [
+            {
+              "occurrence": 1,
+              "raw_p50_delta_percent": -3.734635492408378,
+              "adjusted_p50_delta_percent": -5.121249097163904,
+              "bf16_r_raw_p50_tflops": 15.817750005207014,
+              "fp32_r_raw_p50_tflops": 15.227014699412125,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1285.475932892986,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1304.262630653801
+            },
+            {
+              "occurrence": 2,
+              "raw_p50_delta_percent": -3.250208991808057,
+              "adjusted_p50_delta_percent": -4.290915498398529,
+              "bf16_r_raw_p50_tflops": 15.549625692578225,
+              "fp32_r_raw_p50_tflops": 15.044230360125551,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1284.6906489676953,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1298.6599176562308
+            }
+          ]
+        },
+        {
+          "run_number": 2,
+          "scope": "measurement-2-rerun",
+          "bf16_r_raw_p50_tflops": 15.870968318920688,
+          "fp32_r_raw_p50_tflops": 15.299147547750948,
+          "raw_p50_delta_percent": -3.6029356223214237,
+          "bf16_r_adjusted_p50_tflops": 16.202105880189507,
+          "fp32_r_adjusted_p50_tflops": 15.690781189164824,
+          "adjusted_p50_delta_percent": -3.1559150076280185,
+          "bf16_r_mean_row_time_weighted_aiclk_mhz": 1322.4220103546886,
+          "fp32_r_mean_row_time_weighted_aiclk_mhz": 1316.1955415073019,
+          "occurrence_deltas": [
+            {
+              "occurrence": 1,
+              "raw_p50_delta_percent": -1.9170549842368212,
+              "adjusted_p50_delta_percent": -2.0538062784146605,
+              "bf16_r_raw_p50_tflops": 15.88285413772009,
+              "fp32_r_raw_p50_tflops": 15.578371090833862,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1327.127680913874,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1328.9806005732135
+            },
+            {
+              "occurrence": 2,
+              "raw_p50_delta_percent": -5.291343275670801,
+              "adjusted_p50_delta_percent": -4.25184838779783,
+              "bf16_r_raw_p50_tflops": 15.859082500121286,
+              "fp32_r_raw_p50_tflops": 15.019924004668033,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1317.716339795503,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1303.4104824413903
+            }
+          ]
+        }
+      ],
+      "raw_p50_delta_percent": {
+        "run_1": -3.494492649969938,
+        "run_2": -3.6029356223214237,
+        "mean_of_two_runs": -3.548714136145681
+      },
+      "adjusted_p50_delta_percent_supplementary": {
+        "run_1": -4.709504250087571,
+        "run_2": -3.1559150076280185,
+        "mean_of_two_runs": -3.9327096288577947
+      },
+      "r_format_criterion": {
+        "threshold_mean_at_most_percent": -0.847,
+        "both_run_deltas_negative": true,
+        "mean_delta_at_most_threshold": true,
+        "passes": true
+      },
+      "clock_criterion": {
+        "half_effect_threshold_percent": 0.4235,
+        "sign_reversal": false,
+        "mean_absolute_delta_percent": 3.548714136145681,
+        "mean_absolute_below_half_effect": false,
+        "position_effect_evaluation": "not required because the sign-reversal/low-delta gate is false",
+        "passes": false
+      }
+    },
+    "L32_DRAM": {
+      "pair": [
+        "bf16-r-L32-r-dram",
+        "fp32-r-L32-r-dram"
+      ],
+      "per_run": [
+        {
+          "run_number": 1,
+          "scope": "measurement-1",
+          "bf16_r_raw_p50_tflops": 59.938583094629585,
+          "fp32_r_raw_p50_tflops": 56.02836047746565,
+          "raw_p50_delta_percent": -6.523715468866809,
+          "bf16_r_adjusted_p50_tflops": 68.96370382449427,
+          "fp32_r_adjusted_p50_tflops": 66.32996990814499,
+          "adjusted_p50_delta_percent": -3.8190145979570267,
+          "bf16_r_mean_row_time_weighted_aiclk_mhz": 1173.3620809277497,
+          "fp32_r_mean_row_time_weighted_aiclk_mhz": 1140.5039503083954,
+          "occurrence_deltas": [
+            {
+              "occurrence": 1,
+              "raw_p50_delta_percent": -7.090720748587643,
+              "adjusted_p50_delta_percent": -5.950079046091283,
+              "bf16_r_raw_p50_tflops": 60.48745650559327,
+              "fp32_r_raw_p50_tflops": 56.198459876858244,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1170.4804016216447,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1156.2847622792297
+            },
+            {
+              "occurrence": 2,
+              "raw_p50_delta_percent": -5.946229783581702,
+              "adjusted_p50_delta_percent": -1.637872848377786,
+              "bf16_r_raw_p50_tflops": 59.3897096836659,
+              "fp32_r_raw_p50_tflops": 55.85826107807305,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1176.2437602338548,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1124.7231383375613
+            }
+          ]
+        },
+        {
+          "run_number": 2,
+          "scope": "measurement-2-rerun",
+          "bf16_r_raw_p50_tflops": 60.572503286271626,
+          "fp32_r_raw_p50_tflops": 56.236274630127284,
+          "raw_p50_delta_percent": -7.15874104732126,
+          "bf16_r_adjusted_p50_tflops": 69.7612501081993,
+          "fp32_r_adjusted_p50_tflops": 65.68297884763606,
+          "adjusted_p50_delta_percent": -5.846040967210109,
+          "bf16_r_mean_row_time_weighted_aiclk_mhz": 1172.1885895142032,
+          "fp32_r_mean_row_time_weighted_aiclk_mhz": 1155.8616352910963,
+          "occurrence_deltas": [
+            {
+              "occurrence": 1,
+              "raw_p50_delta_percent": -7.172013398827781,
+              "adjusted_p50_delta_percent": -5.148994433582188,
+              "bf16_r_raw_p50_tflops": 60.75938915201044,
+              "fp32_r_raw_p50_tflops": 56.40171762098234,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1177.3182615511776,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1152.2079619078045
+            },
+            {
+              "occurrence": 2,
+              "raw_p50_delta_percent": -7.145386543308641,
+              "adjusted_p50_delta_percent": -6.541290267721656,
+              "bf16_r_raw_p50_tflops": 60.38561742053282,
+              "fp32_r_raw_p50_tflops": 56.07083163927223,
+              "bf16_r_row_time_weighted_aiclk_mhz": 1167.0589174772285,
+              "fp32_r_row_time_weighted_aiclk_mhz": 1159.5153086743878
+            }
+          ]
+        }
+      ],
+      "raw_p50_delta_percent": {
+        "run_1": -6.523715468866809,
+        "run_2": -7.15874104732126,
+        "mean_of_two_runs": -6.841228258094034
+      },
+      "adjusted_p50_delta_percent_supplementary": {
+        "run_1": -3.8190145979570267,
+        "run_2": -5.846040967210109,
+        "mean_of_two_runs": -4.8325277825835675
+      },
+      "r_format_criterion": {
+        "threshold_mean_at_most_percent": -2.341,
+        "both_run_deltas_negative": true,
+        "mean_delta_at_most_threshold": true,
+        "passes": true
+      },
+      "clock_criterion": {
+        "half_effect_threshold_percent": 1.1705,
+        "sign_reversal": false,
+        "mean_absolute_delta_percent": 6.841228258094034,
+        "mean_absolute_below_half_effect": false,
+        "position_effect_evaluation": "not required because the sign-reversal/low-delta gate is false",
+        "passes": false
+      }
+    }
+  },
+  "decision": {
+    "r_format_criterion_passes": true,
+    "clock_criterion_passes": false,
+    "conclusion": "r_format",
+    "conclusion_text": "The precommitted raw P50 decision remains R-format effect. Under assumptions (a) and (b), all eight matched-occurrence sensitivity intervals remain negative. Without assumption (b), descriptive range-only information does not fully exclude a clock explanation.",
+    "adjusted_p50_role": "supplementary only; not used for the primary conclusion",
+    "precommitted_raw_p50_decision": "R-format effect",
+    "sensitivity_intervals_under_assumptions": {
+      "assumptions": [
+        "a",
+        "b"
+      ],
+      "matched_occurrence_count": 8,
+      "all_negative": true,
+      "any_crosses_zero": false
+    },
+    "range_only_clock_limitation": "Without assumption (b), descriptive AICLK range-only information does not fully exclude a zero/clock explanation."
+  },
+  "recovery_context": {
+    "prior_failed_attempt_record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+    "prior_reset_performed": true,
+    "prior_stage1_health_probe": "pass",
+    "rerun_reset_performed": false
+  },
+  "aiclk_alignment": {
+    "definition": "The persisted per-row AICLK min/max intersections are descriptive range overlap only. They are not an AICLK-aligned effect boundary or an effect bound. Without assumption (b), range-only information cannot exclude a zero/clock explanation.",
+    "interpretation": "descriptive_range_overlap_only",
+    "assumptions": {
+      "a": {
+        "symbol": "s",
+        "range": [
+          0.0,
+          1.0
+        ],
+        "description": "Throughput clock sensitivity s is in [0, 1]; s=0 is clock-independent and s=1 is proportional to clock."
+      },
+      "b": {
+        "description": "The row's #122 left-held time-weighted AICLK represents its effective clock.",
+        "approximation": "This is an approximation because power samples are about 2.24 seconds apart and AICLK moves across the row.",
+        "sample_spacing_seconds_approx": 2.24
+      }
+    },
+    "sensitivity_method": {
+      "raw_p50_delta_percent": {
+        "s": 0.0,
+        "source": "persisted raw P50 values"
+      },
+      "adjusted_p50_delta_percent": {
+        "s": 1.0,
+        "source": "persisted time-weighted-AICLK-adjusted P50 values"
+      },
+      "sensitivity_interval_percent": "[min(raw_p50_delta_percent, adjusted_p50_delta_percent), max(raw_p50_delta_percent, adjusted_p50_delta_percent)]",
+      "crosses_zero": "sensitivity interval lower <= 0 <= upper"
+    },
+    "L16_L1": {
+      "same_range_for_all_matched_occurrences": false,
+      "matched_occurrences": [
+        {
+          "run_number": 1,
+          "occurrence": 1,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1187.0,
+            1331.0
+          ],
+          "right_range_mhz": [
+            1262.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1262.0,
+            1331.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.817750005207014,
+          "right_raw_p50_tflops": 15.227014699412125,
+          "left_adjusted_p50_tflops": 16.611717077403387,
+          "right_adjusted_p50_tflops": 15.760989666553444,
+          "raw_p50_delta_percent": -3.734635492408378,
+          "adjusted_p50_delta_percent": -5.121249097163904,
+          "left_time_weighted_aiclk_mhz": 1285.475932892986,
+          "right_time_weighted_aiclk_mhz": 1304.262630653801,
+          "sensitivity_interval_percent": [
+            -5.121249097163904,
+            -3.734635492408378
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 1,
+          "occurrence": 2,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1250.0,
+            1312.0
+          ],
+          "right_range_mhz": [
+            1250.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1250.0,
+            1312.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.549625692578225,
+          "right_raw_p50_tflops": 15.044230360125551,
+          "left_adjusted_p50_tflops": 16.34011635551997,
+          "right_adjusted_p50_tflops": 15.638975770364612,
+          "raw_p50_delta_percent": -3.250208991808057,
+          "adjusted_p50_delta_percent": -4.290915498398529,
+          "left_time_weighted_aiclk_mhz": 1284.6906489676953,
+          "right_time_weighted_aiclk_mhz": 1298.6599176562308,
+          "sensitivity_interval_percent": [
+            -4.290915498398529,
+            -3.250208991808057
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 2,
+          "occurrence": 1,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1300.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            1306.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1306.0,
+            1350.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.88285413772009,
+          "right_raw_p50_tflops": 15.578371090833862,
+          "left_adjusted_p50_tflops": 16.156586434213352,
+          "right_adjusted_p50_tflops": 15.824761447649987,
+          "raw_p50_delta_percent": -1.9170549842368212,
+          "adjusted_p50_delta_percent": -2.0538062784146605,
+          "left_time_weighted_aiclk_mhz": 1327.127680913874,
+          "right_time_weighted_aiclk_mhz": 1328.9806005732135,
+          "sensitivity_interval_percent": [
+            -2.0538062784146605,
+            -1.9170549842368212
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 2,
+          "occurrence": 2,
+          "left_row": "bf16-r-L16",
+          "right_row": "fp32-r-L16",
+          "left_range_mhz": [
+            1287.0,
+            1343.0
+          ],
+          "right_range_mhz": [
+            1262.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1287.0,
+            1343.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 15.859082500121286,
+          "right_raw_p50_tflops": 15.019924004668033,
+          "left_adjusted_p50_tflops": 16.247625326165664,
+          "right_adjusted_p50_tflops": 15.556800930679659,
+          "raw_p50_delta_percent": -5.291343275670801,
+          "adjusted_p50_delta_percent": -4.25184838779783,
+          "left_time_weighted_aiclk_mhz": 1317.716339795503,
+          "right_time_weighted_aiclk_mhz": 1303.4104824413903,
+          "sensitivity_interval_percent": [
+            -5.291343275670801,
+            -4.25184838779783
+          ],
+          "crosses_zero": false
+        }
+      ],
+      "all_sensitivity_intervals_negative": true,
+      "range_overlap_is_effect_bound": false,
+      "any_crosses_zero": false
+    },
+    "L32_DRAM": {
+      "same_range_for_all_matched_occurrences": false,
+      "matched_occurrences": [
+        {
+          "run_number": 1,
+          "occurrence": 1,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            968.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.48745650559327,
+          "right_raw_p50_tflops": 56.198459876858244,
+          "left_adjusted_p50_tflops": 69.76457373350085,
+          "right_adjusted_p50_tflops": 65.61352645018891,
+          "raw_p50_delta_percent": -7.090720748587643,
+          "adjusted_p50_delta_percent": -5.950079046091283,
+          "left_time_weighted_aiclk_mhz": 1170.4804016216447,
+          "right_time_weighted_aiclk_mhz": 1156.2847622792297,
+          "sensitivity_interval_percent": [
+            -7.090720748587643,
+            -5.950079046091283
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 1,
+          "occurrence": 2,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            993.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            956.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            993.0,
+            1350.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 59.3897096836659,
+          "right_raw_p50_tflops": 55.85826107807305,
+          "left_adjusted_p50_tflops": 68.16283391548768,
+          "right_adjusted_p50_tflops": 67.04641336610106,
+          "raw_p50_delta_percent": -5.946229783581702,
+          "adjusted_p50_delta_percent": -1.637872848377786,
+          "left_time_weighted_aiclk_mhz": 1176.2437602338548,
+          "right_time_weighted_aiclk_mhz": 1124.7231383375613,
+          "sensitivity_interval_percent": [
+            -5.946229783581702,
+            -1.637872848377786
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 2,
+          "occurrence": 1,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1018.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            987.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1018.0,
+            1350.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.75938915201044,
+          "right_raw_p50_tflops": 56.40171762098234,
+          "left_adjusted_p50_tflops": 69.67119939780913,
+          "right_adjusted_p50_tflops": 66.083833219006,
+          "raw_p50_delta_percent": -7.172013398827781,
+          "adjusted_p50_delta_percent": -5.148994433582188,
+          "left_time_weighted_aiclk_mhz": 1177.3182615511776,
+          "right_time_weighted_aiclk_mhz": 1152.2079619078045,
+          "sensitivity_interval_percent": [
+            -7.172013398827781,
+            -5.148994433582188
+          ],
+          "crosses_zero": false
+        },
+        {
+          "run_number": 2,
+          "occurrence": 2,
+          "left_row": "bf16-r-L32-r-dram",
+          "right_row": "fp32-r-L32-r-dram",
+          "left_range_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "right_range_mhz": [
+            968.0,
+            1350.0
+          ],
+          "same_range": false,
+          "descriptive_range_overlap_mhz": [
+            1006.0,
+            1350.0
+          ],
+          "range_overlap_is_effect_bound": false,
+          "left_raw_p50_tflops": 60.38561742053282,
+          "right_raw_p50_tflops": 56.07083163927223,
+          "left_adjusted_p50_tflops": 69.8513008185895,
+          "right_adjusted_p50_tflops": 65.28212447626612,
+          "raw_p50_delta_percent": -7.145386543308641,
+          "adjusted_p50_delta_percent": -6.541290267721656,
+          "left_time_weighted_aiclk_mhz": 1167.0589174772285,
+          "right_time_weighted_aiclk_mhz": 1159.5153086743878,
+          "sensitivity_interval_percent": [
+            -7.145386543308641,
+            -6.541290267721656
+          ],
+          "crosses_zero": false
+        }
+      ],
+      "all_sensitivity_intervals_negative": true,
+      "range_overlap_is_effect_bound": false,
+      "any_crosses_zero": false
+    },
+    "all_eight_sensitivity_intervals_negative": true,
+    "conclusion": "The precommitted raw P50 decision remains R-format effect. Under assumptions (a) and (b), all eight matched-occurrence sensitivity intervals remain negative. Without assumption (b), descriptive range-only information does not fully exclude a clock explanation.",
+    "any_crosses_zero": false
+  },
+  "sampling_audit": {
+    "comparison_row_count": 32,
+    "power_sample_count_in_interval": {
+      "field": "power_sample_count_in_interval",
+      "definition": "samples contributing to the timed interval [start, end), including the sample held across the interval start"
+    },
+    "power_samples_started_in_interval": {
+      "field": "power_samples_started_in_interval",
+      "definition": "samples whose timestamp starts in the timed interval [start, end); the left-held sample whose timestamp precedes the interval start is excluded"
+    },
+    "sampling_target": {
+      "target_samples_per_row": 2,
+      "field": "power_samples_started_in_interval",
+      "rows_meeting_target": 32,
+      "rows_below_target": 0,
+      "minimum_started_samples": 2,
+      "maximum_started_samples": 3,
+      "result": "pass",
+      "claim": "All 32 comparison rows meet the two-samples-per-row target when only samples whose timestamps start inside the timed interval are counted."
+    },
+    "comparison_rows": [
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 0,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:38:11.562070+00:00",
+        "timed_end_utc": "2026-10-15T21:38:15.952269+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 1,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:38:18.042937+00:00",
+        "timed_end_utc": "2026-10-15T21:38:22.586823+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 2,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:38:23.644344+00:00",
+        "timed_end_utc": "2026-10-15T21:38:28.215898+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 3,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:38:29.214008+00:00",
+        "timed_end_utc": "2026-10-15T21:38:33.662816+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 4,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:38:37.368096+00:00",
+        "timed_end_utc": "2026-10-15T21:38:41.925388+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 5,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:38:49.506301+00:00",
+        "timed_end_utc": "2026-10-15T21:38:54.430619+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 6,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:38:57.992869+00:00",
+        "timed_end_utc": "2026-10-15T21:39:02.941364+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+        "power_trace_sha256": "ed954668c6cdeae700e3a8bf9cbd42f977da34685600c107e769694b22f070f4",
+        "run_number": 1,
+        "scope": "confirmation",
+        "status": "pass",
+        "order_index": 7,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:39:06.600671+00:00",
+        "timed_end_utc": "2026-10-15T21:39:11.218200+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 0,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:43:01.670580+00:00",
+        "timed_end_utc": "2026-10-15T21:43:06.122216+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 1,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:43:08.157273+00:00",
+        "timed_end_utc": "2026-10-15T21:43:12.767070+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 2,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:43:13.823012+00:00",
+        "timed_end_utc": "2026-10-15T21:43:18.479102+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 3,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:43:19.477962+00:00",
+        "timed_end_utc": "2026-10-15T21:43:23.991068+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 4,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:43:27.663561+00:00",
+        "timed_end_utc": "2026-10-15T21:43:32.323768+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 5,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:43:38.914018+00:00",
+        "timed_end_utc": "2026-10-15T21:43:43.911583+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 6,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:43:48.541962+00:00",
+        "timed_end_utc": "2026-10-15T21:43:53.581114+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+        "power_trace_sha256": "275d84a866709e32b7c11a8961e8d0188d1bf2dc3ddcd62a6fbc336f941da56f",
+        "run_number": 1,
+        "scope": "measurement-1",
+        "status": "pass",
+        "order_index": 7,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:43:57.184078+00:00",
+        "timed_end_utc": "2026-10-15T21:44:01.884775+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 0,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:45:03.424543+00:00",
+        "timed_end_utc": "2026-10-15T21:45:08.067714+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 1,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T21:45:09.855727+00:00",
+        "timed_end_utc": "2026-10-15T21:45:14.394716+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 2,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:45:15.445176+00:00",
+        "timed_end_utc": "2026-10-15T21:45:20.012661+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 3,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T21:45:21.028577+00:00",
+        "timed_end_utc": "2026-10-15T21:45:25.729456+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 4,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:45:32.002869+00:00",
+        "timed_end_utc": "2026-10-15T21:45:37.051726+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 5,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T21:45:40.713468+00:00",
+        "timed_end_utc": "2026-10-15T21:45:45.415434+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 6,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:45:49.065287+00:00",
+        "timed_end_utc": "2026-10-15T21:45:53.810182+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+        "power_trace_sha256": "8fe53ebb0c8f84c06f79957fd55609582df34b226399562ecfa876d2312b7760",
+        "run_number": 2,
+        "scope": "measurement-2",
+        "status": "failed",
+        "order_index": 7,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T21:45:57.435349+00:00",
+        "timed_end_utc": "2026-10-15T21:46:02.534137+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 0,
+        "row": "fp32-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L16#1",
+        "timed_start_utc": "2026-10-15T22:04:29.028485+00:00",
+        "timed_end_utc": "2026-10-15T22:04:33.563619+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 1,
+        "row": "bf16-r-L16",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L16#1",
+        "timed_start_utc": "2026-10-15T22:04:35.331295+00:00",
+        "timed_end_utc": "2026-10-15T22:04:39.769194+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 2,
+        "row": "bf16-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L16#2",
+        "timed_start_utc": "2026-10-15T22:04:40.791806+00:00",
+        "timed_end_utc": "2026-10-15T22:04:45.256715+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 3,
+        "row": "fp32-r-L16",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L16#2",
+        "timed_start_utc": "2026-10-15T22:04:46.360308+00:00",
+        "timed_end_utc": "2026-10-15T22:04:51.010904+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 4,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "fp32-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T22:04:57.913688+00:00",
+        "timed_end_utc": "2026-10-15T22:05:02.896966+00:00",
+        "power_samples_started_in_interval": 3
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 5,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 1,
+        "occurrence_id": "bf16-r-L32-r-dram#1",
+        "timed_start_utc": "2026-10-15T22:05:07.018115+00:00",
+        "timed_end_utc": "2026-10-15T22:05:11.679696+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 6,
+        "row": "bf16-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "bf16-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T22:05:16.356713+00:00",
+        "timed_end_utc": "2026-10-15T22:05:21.035155+00:00",
+        "power_samples_started_in_interval": 2
+      },
+      {
+        "record": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+        "power_trace": "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+        "power_trace_sha256": "1b6fce0b3a2db887592f53e2f8ecf29a870c2718da9c7e39dd3e365932c7dd68",
+        "run_number": 2,
+        "scope": "measurement-2-rerun",
+        "status": "pass",
+        "order_index": 7,
+        "row": "fp32-r-L32-r-dram",
+        "occurrence": 2,
+        "occurrence_id": "fp32-r-L32-r-dram#2",
+        "timed_start_utc": "2026-10-15T22:05:25.094243+00:00",
+        "timed_end_utc": "2026-10-15T22:05:30.114436+00:00",
+        "power_samples_started_in_interval": 3
+      }
+    ]
+  }
+}
