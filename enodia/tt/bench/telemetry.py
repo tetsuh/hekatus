@@ -1097,7 +1097,7 @@ def _sample_forever(out_path: Path, interval: float) -> None:
         _sample_loop(handle, interval)
 
 
-def main(argv: list[str] | None = None) -> None:
+def _telemetry_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Capture board environment or sample telemetry")
     sub = parser.add_subparsers(dest="mode", required=True)
 
@@ -1121,8 +1121,12 @@ def main(argv: list[str] | None = None) -> None:
     )
     sample.add_argument("--board-id", default=None)
     sample.add_argument("--bus-id", default=None)
+    return parser
 
-    args = parser.parse_args(argv)
+
+def _validate_telemetry_arguments(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
     if args.mode == "sample" and not (math.isfinite(args.interval) and args.interval > 0):
         # Zero turns the loop into a busy wait on the snapshot tool; negative
         # and non-finite values reach sleep and end the sampler outright.
@@ -1141,34 +1145,37 @@ def main(argv: list[str] | None = None) -> None:
         and (args.board_id is not None or args.bus_id is not None)
     ):
         parser.error("legacy-v1 does not accept --board-id or --bus-id")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
 
-    if args.mode == "capture-env":
-        try:
-            if (
-                args.sampler_mode == "default"
-                and args.sampler_interval is None
-                and args.board_id is None
-                and args.bus_id is None
-            ):
-                # Keep the two-argument call compatible with board-free callers
-                # that replace capture_environment in tests.
-                environment = capture_environment(args.image, args.image_pinned)
-            else:
-                environment = capture_environment(
-                    args.image,
-                    args.image_pinned,
-                    sampler_mode=args.sampler_mode,
-                    sampler_interval=args.sampler_interval,
-                    board_id=args.board_id,
-                    bus_id=args.bus_id,
-                )
-        except ValueError as exc:
-            parser.error(str(exc))
-        args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
-        print(f"environment -> {args.out}")
-        return
 
+def _capture_environment_cli(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    try:
+        if (
+            args.sampler_mode == "default"
+            and args.sampler_interval is None
+            and args.board_id is None
+            and args.bus_id is None
+        ):
+            # Keep the two-argument call compatible with board-free callers
+            # that replace capture_environment in tests.
+            environment = capture_environment(args.image, args.image_pinned)
+        else:
+            environment = capture_environment(
+                args.image,
+                args.image_pinned,
+                sampler_mode=args.sampler_mode,
+                sampler_interval=args.sampler_interval,
+                board_id=args.board_id,
+                bus_id=args.bus_id,
+            )
+    except ValueError as exc:
+        parser.error(str(exc))
+    args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
+    print(f"environment -> {args.out}")
+
+
+def _sample_telemetry_cli(args: argparse.Namespace) -> None:
     try:
         if args.trace_schema == "extended-v1":
             _sample_extended_forever(
@@ -1183,6 +1190,18 @@ def main(argv: list[str] | None = None) -> None:
         # The wrapper terminates the sampler when the run finishes; that is
         # the normal way this ends, not a failure.
         pass
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = _telemetry_parser()
+    args = parser.parse_args(argv)
+    _validate_telemetry_arguments(parser, args)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.mode == "capture-env":
+        _capture_environment_cli(parser, args)
+        return
+    _sample_telemetry_cli(args)
 
 
 if __name__ == "__main__":

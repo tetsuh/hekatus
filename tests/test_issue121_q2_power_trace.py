@@ -136,6 +136,8 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
         "sleep",
         lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
     )
+    monotonic_ns = lambda: next(clock)
+    utc_now = lambda: next(utc)
 
     with pytest.raises(KeyboardInterrupt):
         telemetry._sample_extended_loop(
@@ -143,8 +145,8 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
             interval=1.0,
             board_id="fixture-board-a",
             bus_id="0000:01:00.0",
-            monotonic_ns=lambda: next(clock),
-            utc_now=lambda: next(utc),
+            monotonic_ns=monotonic_ns,
+            utc_now=utc_now,
         )
 
     lines = output.getvalue().splitlines()
@@ -173,6 +175,8 @@ def test_extended_sampler_retries_transient_node_resolution_before_writing_row(
         "sleep",
         lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
     )
+    monotonic_ns = iter((100, 250)).__next__
+    utc_now = lambda: "2026-01-01T00:00:01+00:00"
 
     with pytest.raises(KeyboardInterrupt):
         telemetry._sample_extended_loop(
@@ -180,8 +184,8 @@ def test_extended_sampler_retries_transient_node_resolution_before_writing_row(
             interval=1.0,
             board_id="fixture-board-a",
             bus_id="0000:01:00.0",
-            monotonic_ns=iter((100, 250)).__next__,
-            utc_now=lambda: "2026-01-01T00:00:01+00:00",
+            monotonic_ns=monotonic_ns,
+            utc_now=utc_now,
         )
 
     lines = output.getvalue().splitlines()
@@ -222,6 +226,8 @@ def test_extended_sampler_drops_transient_malformed_snapshot_before_valid_row(
         lambda _node: {"0000:01:00.0"},
     )
     monkeypatch.setattr(telemetry.time, "sleep", sleep)
+    monotonic_ns = lambda: next(clock)
+    utc_now = lambda: next(utc)
 
     with pytest.raises(KeyboardInterrupt):
         telemetry._sample_extended_loop(
@@ -229,8 +235,8 @@ def test_extended_sampler_drops_transient_malformed_snapshot_before_valid_row(
             interval=1.0,
             board_id="fixture-board-a",
             bus_id="0000:01:00.0",
-            monotonic_ns=lambda: next(clock),
-            utc_now=lambda: next(utc),
+            monotonic_ns=monotonic_ns,
+            utc_now=utc_now,
         )
 
     lines = output.getvalue().splitlines()
@@ -252,6 +258,8 @@ def test_extended_sampler_fails_when_target_board_is_missing(
         "_resolve_device_node_to_pci",
         lambda _node: {"0000:01:00.0"},
     )
+    monotonic_ns = lambda: next(clock)
+    utc_now = lambda: "2026-01-01T00:00:00+00:00"
 
     with pytest.raises(ExtendedPowerTraceError, match="board_id"):
         telemetry._sample_extended_loop(
@@ -259,8 +267,8 @@ def test_extended_sampler_fails_when_target_board_is_missing(
             interval=1.0,
             board_id="missing-board",
             bus_id="0000:01:00.0",
-            monotonic_ns=lambda: next(clock),
-            utc_now=lambda: "2026-01-01T00:00:00+00:00",
+            monotonic_ns=monotonic_ns,
+            utc_now=utc_now,
         )
 
 
@@ -277,6 +285,8 @@ def test_extended_sampler_rejects_default_node_pci_mismatch(
         return {"0000:02:00.0"}
 
     monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", resolve_node)
+    monotonic_ns = iter((100, 200)).__next__
+    utc_now = lambda: "2026-01-01T00:00:00+00:00"
 
     with pytest.raises(ExtendedPowerTraceError, match="device node"):
         telemetry._sample_extended_loop(
@@ -284,8 +294,8 @@ def test_extended_sampler_rejects_default_node_pci_mismatch(
             interval=1.0,
             board_id="fixture-board-a",
             bus_id="0000:01:00.0",
-            monotonic_ns=iter((100, 200)).__next__,
-            utc_now=lambda: "2026-01-01T00:00:00+00:00",
+            monotonic_ns=monotonic_ns,
+            utc_now=utc_now,
         )
 
     assert resolved_nodes == [telemetry._DEFAULT_DEVICE_NODE]
@@ -350,9 +360,10 @@ def test_padded_board_id_canonicalization_matches_extended_and_q2_selectors():
 
 @pytest.mark.parametrize("bus_id", ["not-a-pci-bdf", "0000:01:00.8"])
 def test_extended_selector_rejects_malformed_requested_bus_id(bus_id: str):
+    snapshot = _snapshot()
     with pytest.raises(ExtendedPowerTraceError, match="valid PCI BDF"):
         select_extended_board(
-            _snapshot(), board_id="fixture-board-a", bus_id=bus_id
+            snapshot, board_id="fixture-board-a", bus_id=bus_id
         )
 
 
@@ -376,8 +387,9 @@ def test_extended_selector_rejects_malformed_snapshot_bus_id():
 def test_extended_sampler_rejects_missing_or_mismatched_board_identity(
     board_id: str, bus_id: str
 ):
+    selection_snapshot = _snapshot()
     with pytest.raises(ExtendedPowerTraceError):
-        select_extended_board(_snapshot(), board_id=board_id, bus_id=bus_id)
+        select_extended_board(selection_snapshot, board_id=board_id, bus_id=bus_id)
 
     row = extended_telemetry_csv_row(
         _snapshot(),
@@ -575,8 +587,9 @@ def test_extended_integer_columns_keep_hex_and_reject_imprecise_float_inputs():
     assert _normalise_source_number(float((1 << 53) - 1), field="heartbeat") == (
         1 << 53
     ) - 1
+    imprecise_float = float(1 << 53)
     with pytest.raises(ExtendedPowerTraceError, match="non-negative integer"):
-        _normalise_source_number(float(1 << 53), field="heartbeat")
+        _normalise_source_number(imprecise_float, field="heartbeat")
 
 
 @pytest.mark.parametrize(

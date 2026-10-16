@@ -691,7 +691,7 @@ def _clamp_aggregate_weighted(
     )
 
 
-def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
+def _validate_aggregate_duration(result: Mapping[str, Any]) -> None:
     duration_ns = result.get("duration_ns")
     if (
         isinstance(duration_ns, bool)
@@ -704,6 +704,9 @@ def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
     )
     if duration_seconds < 0.0:
         raise ExtendedPowerTraceError("aggregate duration_seconds must be non-negative")
+
+
+def _validate_aggregate_index_fields(result: Mapping[str, Any]) -> None:
     for field in (
         "interval_start_monotonic_ns",
         "interval_end_monotonic_ns",
@@ -718,18 +721,29 @@ def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
             raise ExtendedPowerTraceError(
                 f"aggregate {field} is outside signed 64-bit range"
             )
+
+
+def _validate_aggregate_container(
+    container_name: str, container: Any
+) -> None:
+    if not isinstance(container, Mapping):
+        raise ExtendedPowerTraceError(f"aggregate {container_name} values must be an object")
+    for field, value in container.items():
+        if value is None:
+            continue
+        parsed = _checked_aggregate_float(value, field=f"{container_name}.{field}")
+        if container_name == "time_weighted_seconds" and parsed < 0.0:
+            raise ExtendedPowerTraceError(
+                f"aggregate {container_name}.{field} must be non-negative"
+            )
+
+
+def _validate_aggregate_containers(result: Mapping[str, Any]) -> None:
     for container_name in ("min", "max", "time_weighted", "time_weighted_seconds"):
-        container = result.get(container_name)
-        if not isinstance(container, Mapping):
-            raise ExtendedPowerTraceError(f"aggregate {container_name} values must be an object")
-        for field, value in container.items():
-            if value is None:
-                continue
-            parsed = _checked_aggregate_float(value, field=f"{container_name}.{field}")
-            if container_name == "time_weighted_seconds" and parsed < 0.0:
-                raise ExtendedPowerTraceError(
-                    f"aggregate {container_name}.{field} must be non-negative"
-                )
+        _validate_aggregate_container(container_name, result.get(container_name))
+
+
+def _validate_flat_aggregate_values(result: Mapping[str, Any]) -> None:
     for field, value in result.items():
         if not field.endswith(
             ("_min", "_max", "_time_weighted", "_time_weighted_seconds")
@@ -741,44 +755,58 @@ def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
         if field.endswith("_time_weighted_seconds") and parsed < 0.0:
             raise ExtendedPowerTraceError(f"aggregate {field} must be non-negative")
 
+
+def _validate_one_aggregate_field(field: str, aggregate: Any) -> None:
+    if not isinstance(aggregate, Mapping):
+        raise ExtendedPowerTraceError(f"aggregate {field} must be an object")
+    minimum = _checked_aggregate_float(aggregate.get("min"), field=f"{field}.min")
+    maximum = _checked_aggregate_float(aggregate.get("max"), field=f"{field}.max")
+    if minimum > maximum:
+        raise ExtendedPowerTraceError(f"aggregate {field} bounds are inverted")
+    weighted = aggregate.get("time_weighted")
+    if weighted is not None:
+        weighted_float = _checked_aggregate_float(
+            weighted, field=f"{field}.time_weighted"
+        )
+        _clamp_aggregate_weighted(
+            weighted_float,
+            minimum,
+            maximum,
+            field=field,
+        )
+    weighted_seconds = _checked_aggregate_float(
+        aggregate.get("time_weighted_seconds"),
+        field=f"{field}.time_weighted_seconds",
+    )
+    if weighted_seconds < 0.0:
+        raise ExtendedPowerTraceError(
+            f"aggregate {field}.time_weighted_seconds must be non-negative"
+        )
+    weighted_ns = aggregate.get("time_weighted_ns")
+    if (
+        isinstance(weighted_ns, bool)
+        or not isinstance(weighted_ns, int)
+        or not 0 <= weighted_ns <= _MAX_NONNEGATIVE_INTEGER
+    ):
+        raise ExtendedPowerTraceError(
+            f"aggregate {field}.time_weighted_ns is outside signed 64-bit range"
+        )
+
+
+def _validate_aggregate_fields(result: Mapping[str, Any]) -> None:
     aggregates = result.get("aggregates")
     if not isinstance(aggregates, Mapping):
         raise ExtendedPowerTraceError("aggregate values must be an object")
     for field, aggregate in aggregates.items():
-        if not isinstance(aggregate, Mapping):
-            raise ExtendedPowerTraceError(f"aggregate {field} must be an object")
-        minimum = _checked_aggregate_float(aggregate.get("min"), field=f"{field}.min")
-        maximum = _checked_aggregate_float(aggregate.get("max"), field=f"{field}.max")
-        if minimum > maximum:
-            raise ExtendedPowerTraceError(f"aggregate {field} bounds are inverted")
-        weighted = aggregate.get("time_weighted")
-        if weighted is not None:
-            weighted_float = _checked_aggregate_float(
-                weighted, field=f"{field}.time_weighted"
-            )
-            _clamp_aggregate_weighted(
-                weighted_float,
-                minimum,
-                maximum,
-                field=field,
-            )
-        weighted_seconds = _checked_aggregate_float(
-            aggregate.get("time_weighted_seconds"),
-            field=f"{field}.time_weighted_seconds",
-        )
-        if weighted_seconds < 0.0:
-            raise ExtendedPowerTraceError(
-                f"aggregate {field}.time_weighted_seconds must be non-negative"
-            )
-        weighted_ns = aggregate.get("time_weighted_ns")
-        if (
-            isinstance(weighted_ns, bool)
-            or not isinstance(weighted_ns, int)
-            or not 0 <= weighted_ns <= _MAX_NONNEGATIVE_INTEGER
-        ):
-            raise ExtendedPowerTraceError(
-                f"aggregate {field}.time_weighted_ns is outside signed 64-bit range"
-            )
+        _validate_one_aggregate_field(field, aggregate)
+
+
+def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
+    _validate_aggregate_duration(result)
+    _validate_aggregate_index_fields(result)
+    _validate_aggregate_containers(result)
+    _validate_flat_aggregate_values(result)
+    _validate_aggregate_fields(result)
 
 
 def _time_weighted_measurement(
@@ -819,6 +847,98 @@ def _aggregate_result_failures(result: Mapping[str, Any]) -> list[str]:
     return []
 
 
+def _aggregate_measurement_field(
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    *,
+    field: str,
+    duration_ns: int,
+) -> tuple[float | int, float | int, float | None] | None:
+    values = [row[field] for row, _start, _end in segments]
+    if not values:
+        return None
+    minimum = min(values)
+    maximum = max(values)
+    weighted = (
+        _time_weighted_measurement(
+            segments,
+            field=field,
+            duration_ns=duration_ns,
+            minimum=minimum,
+            maximum=maximum,
+        )
+        if duration_ns
+        else None
+    )
+    return minimum, maximum, weighted
+
+
+def _aggregate_measurement_fields(
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    *,
+    duration_ns: int,
+    duration_seconds: float,
+) -> tuple[
+    dict[str, Any],
+    dict[str, float | int],
+    dict[str, float | int],
+    dict[str, float],
+    dict[str, float],
+]:
+    aggregates: dict[str, Any] = {}
+    minima: dict[str, float | int] = {}
+    maxima: dict[str, float | int] = {}
+    weighted_values: dict[str, float] = {}
+    weighted_seconds: dict[str, float] = {}
+
+    for field in _EXTENDED_MEASUREMENT_COLUMNS:
+        measurement = _aggregate_measurement_field(
+            segments,
+            field=field,
+            duration_ns=duration_ns,
+        )
+        if measurement is None:
+            continue
+        minimum, maximum, weighted = measurement
+        minima[field] = minimum
+        maxima[field] = maximum
+        if weighted is not None:
+            weighted_values[field] = weighted
+            weighted_seconds[field] = duration_seconds
+        aggregates[field] = {
+            "min": minimum,
+            "max": maximum,
+            "time_weighted": weighted,
+            "time_weighted_seconds": duration_seconds,
+            "time_weighted_ns": duration_ns,
+        }
+    return aggregates, minima, maxima, weighted_values, weighted_seconds
+
+
+def _aggregate_categorical_values(
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+) -> dict[str, list[str]]:
+    categorical: dict[str, list[str]] = {}
+    for field in _EXTENDED_NULLABLE_COLUMNS:
+        values = [row[field] for row, _start, _end in segments if row[field] is not None]
+        categorical[field] = list(dict.fromkeys(values))
+    return categorical
+
+
+def _add_flat_aggregate_values(
+    result: dict[str, Any],
+    aggregates: Mapping[str, Any],
+    minima: Mapping[str, float | int],
+    maxima: Mapping[str, float | int],
+    weighted_values: Mapping[str, float],
+    weighted_seconds: Mapping[str, float],
+) -> None:
+    for field in aggregates:
+        result[f"{field}_min"] = minima[field]
+        result[f"{field}_max"] = maxima[field]
+        result[f"{field}_time_weighted"] = weighted_values.get(field)
+        result[f"{field}_time_weighted_seconds"] = weighted_seconds.get(field)
+
+
 def _aggregate_left_held(
     rows: Sequence[Mapping[str, Any]], *, start_ns: int, end_ns: int
 ) -> dict[str, Any]:
@@ -832,47 +952,17 @@ def _aggregate_left_held(
         duration_seconds = duration_ns / 1_000_000_000.0
     except OverflowError as exc:
         raise ExtendedPowerTraceError("aggregate duration_seconds is not finite") from exc
-    aggregates: dict[str, Any] = {}
-    minima: dict[str, float | int] = {}
-    maxima: dict[str, float | int] = {}
-    weighted_values: dict[str, float] = {}
-    weighted_seconds: dict[str, float] = {}
-
-    for field in _EXTENDED_MEASUREMENT_COLUMNS:
-        values = [row[field] for row, _start, _end in segments]
-        if not values:
-            continue
-        minimum = min(values)
-        maximum = max(values)
-        weighted = (
-            _time_weighted_measurement(
-                segments,
-                field=field,
-                duration_ns=duration_ns,
-                minimum=minimum,
-                maximum=maximum,
-            )
-            if duration_ns
-            else None
-        )
-        minima[field] = minimum
-        maxima[field] = maximum
-        if weighted is not None:
-            weighted_values[field] = weighted
-            weighted_seconds[field] = duration_seconds
-        aggregates[field] = {
-            "min": minimum,
-            "max": maximum,
-            "time_weighted": weighted,
-            "time_weighted_seconds": duration_seconds,
-            "time_weighted_ns": duration_ns,
-        }
-
-    categorical: dict[str, list[str]] = {}
-    for field in _EXTENDED_NULLABLE_COLUMNS:
-        values = [row[field] for row, _start, _end in segments if row[field] is not None]
-        categorical[field] = list(dict.fromkeys(values))
-
+    (
+        aggregates,
+        minima,
+        maxima,
+        weighted_values,
+        weighted_seconds,
+    ) = _aggregate_measurement_fields(
+        segments,
+        duration_ns=duration_ns,
+        duration_seconds=duration_seconds,
+    )
     result = {
         "interval_start_monotonic_ns": start_ns,
         "interval_end_monotonic_ns": end_ns,
@@ -883,14 +973,17 @@ def _aggregate_left_held(
         "max": maxima,
         "time_weighted": weighted_values,
         "time_weighted_seconds": weighted_seconds,
-        "categorical_values": categorical,
+        "categorical_values": _aggregate_categorical_values(segments),
         "segment_count": len(segments),
     }
-    for field in aggregates:
-        result[f"{field}_min"] = minima[field]
-        result[f"{field}_max"] = maxima[field]
-        result[f"{field}_time_weighted"] = weighted_values.get(field)
-        result[f"{field}_time_weighted_seconds"] = weighted_seconds.get(field)
+    _add_flat_aggregate_values(
+        result,
+        aggregates,
+        minima,
+        maxima,
+        weighted_values,
+        weighted_seconds,
+    )
     aggregate_failures = _aggregate_result_failures(result)
     if aggregate_failures:
         raise ExtendedPowerTraceError(aggregate_failures[0])
@@ -1067,7 +1160,7 @@ def _set_extended_trace_coverage(
     if start_ns < end_ns and covers_start and covers_end:
         try:
             aggregate = _aggregate_left_held(rows, start_ns=start_ns, end_ns=end_ns)
-        except (ExtendedPowerTraceError, OverflowError, TypeError, ValueError) as exc:
+        except (OverflowError, TypeError, ValueError) as exc:
             result["errors"].append(str(exc))
             result["error"] = str(exc)
             return
@@ -1129,7 +1222,7 @@ def read_extended_power_trace_csv(
         _utc_timestamps, monotonic_timestamps, ordered = _set_extended_timestamp_facts(
             result, rows
         )
-    except (ExtendedPowerTraceError, OverflowError, TypeError, ValueError) as exc:
+    except (OverflowError, TypeError, ValueError) as exc:
         result["errors"].append(str(exc))
         result["error"] = str(exc)
         return result
@@ -1202,14 +1295,7 @@ def read_extended_power_trace_snapshot(
                     f"extended trace sidecar samples[{index}] must be an object"
                 )
             rows.append(_coerce_trace_row(row, index=index))
-    except (
-        OSError,
-        UnicodeError,
-        json.JSONDecodeError,
-        ValueError,
-        TypeError,
-        ExtendedPowerTraceError,
-    ) as exc:
+    except (OSError, ValueError, TypeError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result
@@ -1271,6 +1357,86 @@ def _trace_validation_failures(trace: Mapping[str, Any]) -> list[str]:
     return failures
 
 
+def _summary_mapping_matches(
+    actual: Any,
+    expected: Mapping[Any, Any],
+    field_path: tuple[str, ...],
+) -> bool:
+    if not isinstance(actual, Mapping) or set(actual) != set(expected):
+        return False
+    return all(
+        _summary_values_match(
+            actual[key],
+            expected[key],
+            field_path=(*field_path, str(key)),
+        )
+        for key in expected
+    )
+
+
+def _summary_list_matches(
+    actual: Any,
+    expected: list[Any],
+    field_path: tuple[str, ...],
+) -> bool:
+    return (
+        isinstance(actual, list)
+        and len(actual) == len(expected)
+        and all(
+            _summary_values_match(
+                actual_value,
+                expected_value,
+                field_path=(*field_path, str(index)),
+            )
+            for index, (actual_value, expected_value) in enumerate(
+                zip(actual, expected)
+            )
+        )
+    )
+
+
+def _summary_tuple_matches(
+    actual: Any,
+    expected: tuple[Any, ...],
+    field_path: tuple[str, ...],
+) -> bool:
+    return (
+        isinstance(actual, (tuple, list))
+        and len(actual) == len(expected)
+        and all(
+            _summary_values_match(
+                actual_value,
+                expected_value,
+                field_path=(*field_path, str(index)),
+            )
+            for index, (actual_value, expected_value) in enumerate(
+                zip(actual, expected)
+            )
+        )
+    )
+
+
+def _summary_float_matches(
+    actual: Any,
+    expected: float,
+    field_path: tuple[str, ...],
+) -> bool:
+    if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+        return False
+    try:
+        actual_float = float(actual)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    if not math.isfinite(actual_float) or not math.isfinite(expected):
+        return actual_float == expected
+    if field_path and (
+        field_path[-1] == "time_weighted"
+        or field_path[-1].endswith("_time_weighted")
+    ):
+        return abs(actual_float - expected) <= math.ulp(expected)
+    return actual_float == expected
+
+
 def _summary_values_match(
     actual: Any,
     expected: Any,
@@ -1278,65 +1444,17 @@ def _summary_values_match(
     field_path: tuple[str, ...] = (),
 ) -> bool:
     if isinstance(expected, Mapping):
-        if not isinstance(actual, Mapping) or set(actual) != set(expected):
-            return False
-        return all(
-            _summary_values_match(
-                actual[key],
-                expected[key],
-                field_path=(*field_path, str(key)),
-            )
-            for key in expected
-        )
+        return _summary_mapping_matches(actual, expected, field_path)
     if isinstance(expected, list):
-        return (
-            isinstance(actual, list)
-            and len(actual) == len(expected)
-            and all(
-                _summary_values_match(
-                    actual_value,
-                    expected_value,
-                    field_path=(*field_path, str(index)),
-                )
-                for index, (actual_value, expected_value) in enumerate(
-                    zip(actual, expected)
-                )
-            )
-        )
+        return _summary_list_matches(actual, expected, field_path)
     if isinstance(expected, tuple):
-        return (
-            isinstance(actual, (tuple, list))
-            and len(actual) == len(expected)
-            and all(
-                _summary_values_match(
-                    actual_value,
-                    expected_value,
-                    field_path=(*field_path, str(index)),
-                )
-                for index, (actual_value, expected_value) in enumerate(
-                    zip(actual, expected)
-                )
-            )
-        )
+        return _summary_tuple_matches(actual, expected, field_path)
     if isinstance(expected, bool) or expected is None or isinstance(expected, str):
         return type(actual) is type(expected) and actual == expected
     if isinstance(expected, int):
         return isinstance(actual, int) and not isinstance(actual, bool) and actual == expected
     if isinstance(expected, float):
-        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
-            return False
-        try:
-            actual_float = float(actual)
-        except (TypeError, ValueError, OverflowError):
-            return False
-        if not math.isfinite(actual_float) or not math.isfinite(expected):
-            return actual_float == expected
-        if field_path and (
-            field_path[-1] == "time_weighted"
-            or field_path[-1].endswith("_time_weighted")
-        ):
-            return abs(actual_float - expected) <= math.ulp(expected)
-        return actual_float == expected
+        return _summary_float_matches(actual, expected, field_path)
     return type(actual) is type(expected) and actual == expected
 
 
@@ -1359,28 +1477,48 @@ def _mapping_summary_failures(
     return failures
 
 
-def _recompute_mapping_trace(
-    trace: Mapping[str, Any],
-) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
-    failures: list[str] = []
-    samples = trace.get("samples", _MISSING)
-    normalized_samples: list[dict[str, Any]] = []
-    if samples is _MISSING:
-        failures.append("extended trace samples are missing")
-    elif not isinstance(samples, list):
-        failures.append("extended trace samples must be an array")
-    else:
-        if not samples:
-            failures.append("extended trace samples must be non-empty")
-        for index, sample in enumerate(samples):
-            if not isinstance(sample, Mapping):
-                failures.append(f"extended trace samples[{index}] must be an object")
-                continue
-            try:
-                normalized_samples.append(_coerce_trace_row(sample, index=index))
-            except (ExtendedPowerTraceError, TypeError, ValueError) as exc:
-                failures.append(str(exc))
+def _normalise_mapping_sample(
+    sample: Any, *, index: int
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(sample, Mapping):
+        return None, f"extended trace samples[{index}] must be an object"
+    try:
+        return _coerce_trace_row(sample, index=index), None
+    except (TypeError, ValueError) as exc:
+        return None, str(exc)
 
+
+def _normalise_mapping_sample_list(
+    samples: list[Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    failures: list[str] = []
+    normalized_samples: list[dict[str, Any]] = []
+    if not samples:
+        failures.append("extended trace samples must be non-empty")
+    for index, sample in enumerate(samples):
+        normalized, failure = _normalise_mapping_sample(sample, index=index)
+        if failure is not None:
+            failures.append(failure)
+        elif normalized is not None:
+            normalized_samples.append(normalized)
+    return failures, normalized_samples
+
+
+def _normalise_mapping_samples(
+    trace: Mapping[str, Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    samples = trace.get("samples", _MISSING)
+    if samples is _MISSING:
+        return ["extended trace samples are missing"], []
+    if not isinstance(samples, list):
+        return ["extended trace samples must be an array"], []
+    return _normalise_mapping_sample_list(samples)
+
+
+def _mapping_trace_bounds(
+    trace: Mapping[str, Any],
+) -> tuple[dict[str, int | None], list[str]]:
+    failures: list[str] = []
     bounds: dict[str, int | None] = {}
     for field in ("run_start_monotonic_ns", "run_end_monotonic_ns"):
         value = trace.get(field, _MISSING)
@@ -1390,7 +1528,7 @@ def _recompute_mapping_trace(
             continue
         try:
             bound = _as_monotonic_bound(value, field=field)
-        except (ExtendedPowerTraceError, TypeError, ValueError) as exc:
+        except (TypeError, ValueError) as exc:
             failures.append(str(exc))
             bound = None
         if bound is None:
@@ -1400,7 +1538,15 @@ def _recompute_mapping_trace(
     end_ns = bounds["run_end_monotonic_ns"]
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
         failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
+    return bounds, failures
 
+
+def _reread_mapping_trace(
+    normalized_samples: Sequence[Mapping[str, Any]],
+    *,
+    start_ns: int | None,
+    end_ns: int | None,
+) -> tuple[dict[str, Any], str | None]:
     buffer = io.StringIO(newline="")
     try:
         writer = csv.DictWriter(buffer, fieldnames=EXTENDED_POWER_TRACE_COLUMNS)
@@ -1419,18 +1565,35 @@ def _recompute_mapping_trace(
         ValueError,
         OverflowError,
         OSError,
-        UnicodeError,
         csv.Error,
         RuntimeError,
     ) as exc:
         message = f"extended trace mapping could not be re-read: {exc}"
-        failures.append(message)
         recomputed = _trace_result_base(error=message)
         recomputed["errors"] = [message]
+        return recomputed, message
+    return recomputed, None
+
+
+def _recompute_mapping_trace(
+    trace: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
+    sample_failures, normalized_samples = _normalise_mapping_samples(trace)
+    bounds, bound_failures = _mapping_trace_bounds(trace)
+    failures = [*sample_failures, *bound_failures]
+    recomputed, reread_failure = _reread_mapping_trace(
+        normalized_samples,
+        start_ns=bounds["run_start_monotonic_ns"],
+        end_ns=bounds["run_end_monotonic_ns"],
+    )
+    if reread_failure is not None:
+        failures.append(reread_failure)
     return recomputed, failures, normalized_samples
 
 
-def _mapping_validation_report(payload: Mapping[str, Any]) -> dict[str, Any]:
+def _copy_mapping_trace(
+    payload: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str]]:
     try:
         trace = dict(payload)
     except (
@@ -1440,40 +1603,48 @@ def _mapping_validation_report(payload: Mapping[str, Any]) -> dict[str, Any]:
         ValueError,
         OverflowError,
         OSError,
-        UnicodeError,
         RuntimeError,
     ) as exc:
         message = f"extended trace mapping could not be copied: {exc}"
         trace = _trace_result_base(error=message)
         trace["errors"] = [message]
-        failures = [message]
-    else:
-        try:
-            failures = _trace_validation_failures(trace)
-            recomputed, recheck_failures, normalized_samples = _recompute_mapping_trace(
-                trace
+        return trace, [message]
+    return trace, []
+
+
+def _validate_mapping_trace(trace: Mapping[str, Any]) -> list[str]:
+    try:
+        failures = _trace_validation_failures(trace)
+        recomputed, recheck_failures, normalized_samples = _recompute_mapping_trace(
+            trace
+        )
+        failures.extend(recheck_failures)
+        failures.extend(_trace_validation_failures(recomputed))
+        failures.extend(
+            _mapping_summary_failures(
+                trace,
+                recomputed,
+                normalized_samples=normalized_samples,
             )
-            failures.extend(recheck_failures)
-            failures.extend(_trace_validation_failures(recomputed))
-            failures.extend(
-                _mapping_summary_failures(
-                    trace,
-                    recomputed,
-                    normalized_samples=normalized_samples,
-                )
-            )
-        except (
-            AttributeError,
-            KeyError,
-            TypeError,
-            ValueError,
-            OverflowError,
-            OSError,
-            UnicodeError,
-            csv.Error,
-            RuntimeError,
-        ) as exc:
-            failures = [f"extended trace mapping validation failed: {exc}"]
+        )
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        OSError,
+        csv.Error,
+        RuntimeError,
+    ) as exc:
+        return [f"extended trace mapping validation failed: {exc}"]
+    return failures
+
+
+def _mapping_validation_report(payload: Mapping[str, Any]) -> dict[str, Any]:
+    trace, failures = _copy_mapping_trace(payload)
+    if not failures:
+        failures = _validate_mapping_trace(trace)
     failures = list(dict.fromkeys(failures))
     return {
         "valid": not failures,
