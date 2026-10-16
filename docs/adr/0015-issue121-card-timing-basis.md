@@ -67,6 +67,7 @@ follow-ups.
 
 ## Status history
 
-- 2026-10-17: Accepted by the owner in this pull request for Issue #121 after
-  the Q1/Q4 evidence and Q2 synthetic-load record were documented; the timing
-  basis is binding without settling full-enodia AICLK or limiter causality.
+- 2026-10-17: Accepted by the owner in pull request #138 for Issue #121
+  after the Q1/Q4 evidence and Q2 synthetic-load record were documented; the
+  timing basis is binding without settling full-enodia AICLK or limiter
+  causality.
