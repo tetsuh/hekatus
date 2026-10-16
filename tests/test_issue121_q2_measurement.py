@@ -1339,6 +1339,129 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert (tmp_path / record["output_paths"]["record"]).exists()
 
 
+def test_run_one_waits_for_a_bounded_in_flight_capture_before_post_row(
+    tmp_path: Path,
+) -> None:
+    capture_number = itertools.count()
+    in_run_started = threading.Event()
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        if stage == "in_run":
+            in_run_started.set()
+            # This exceeds interval + 1 second (0.1 + 1.0) but is within
+            # SNAPSHOT_TIMEOUT_SECONDS, exercising the shutdown contract.
+            threading.Event().wait(1.25)
+        timestamp = next(capture_number) * 1_000_000
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": timestamp,
+            "timestamp_monotonic_ns": timestamp + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    def successful_workload(*_args: object) -> dict[str, object]:
+        assert in_run_started.wait(timeout=1.0)
+        return {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-late-capture",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=successful_workload,
+        capture_fn=fake_capture,
+        trace_interval_seconds=0.1,
+    )
+
+    assert record["status"] == "ok"
+    assert record["trace"]["sampler_errors"] == []
+    assert record["trace"]["usable_in_run_row_count"] == 1
+    assert record["trace"]["post_row_written"] is True
+
+
+def test_run_one_keeps_an_in_run_timeout_as_failed(tmp_path: Path) -> None:
+    capture_number = itertools.count()
+    in_run_started = threading.Event()
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        timestamp = next(capture_number) * 1_000_000
+        if stage == "in_run":
+            in_run_started.set()
+            return {
+                "stage": stage,
+                "status": "timeout",
+                "returncode": None,
+                "error_type": "TimeoutExpired",
+                "timestamp_monotonic_ns": timestamp,
+                "snapshot": None,
+            }
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": timestamp,
+            "timestamp_monotonic_ns": timestamp + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": json.loads(_snapshot()),
+        }
+
+    def successful_workload(*_args: object) -> dict[str, object]:
+        assert in_run_started.wait(timeout=1.0)
+        return {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+        }
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-timeout-capture",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=successful_workload,
+        capture_fn=fake_capture,
+        trace_interval_seconds=0.1,
+    )
+
+    assert record["status"] == "failed"
+    assert record["trace"]["usable_in_run_row_count"] == 0
+    assert any(
+        "did not complete successfully" in error
+        for error in record["trace"]["sampler_errors"]
+    )
+
+
 @pytest.mark.parametrize(
     ("post_status", "post_returncode", "post_error"),
     [

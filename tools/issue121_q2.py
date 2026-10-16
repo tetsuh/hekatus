@@ -63,6 +63,7 @@ WORKLOAD_LOG_FIELD = "workload log"
 WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
+SAMPLER_SHUTDOWN_MARGIN_SECONDS = 1.0
 TRACE_INTERVAL_SECONDS = 2.0
 EARLY_RAW_WINDOW_SECONDS = 10.0
 RAW_WINDOW_COLUMNS = (
@@ -1976,7 +1977,11 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
             workload_result.update(_persist_workload_streams(safe_output_dir, callback_result))
         workload_end_ns = monotonic_ns()
         stop_event.set()
-        sampler_thread.join(timeout=interval + 1.0)
+        # Let an in-flight snapshot consume its full command timeout before
+        # closing the trace, with a bounded margin for stop/wake scheduling.
+        sampler_thread.join(
+            timeout=SNAPSHOT_TIMEOUT_SECONDS + SAMPLER_SHUTDOWN_MARGIN_SECONDS
+        )
         if sampler_thread.is_alive():
             sampler_errors.append("extended sampler did not stop within its bounded join")
         post_capture = capture(stage="post_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
@@ -2216,6 +2221,7 @@ __all__ = [
     "RAW_WINDOW_COLUMNS",
     "RUN_DURATION_SECONDS",
     "RUN_GUARD_SECONDS",
+    "SAMPLER_SHUTDOWN_MARGIN_SECONDS",
     "SNAPSHOT_COMMAND_TUPLE",
     "SNAPSHOT_TIMEOUT_SECONDS",
     "WORKLOAD_LOG_CHUNK_BYTES",
