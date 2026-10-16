@@ -16,6 +16,7 @@ import json
 import math
 import os
 import re
+import signal
 import subprocess
 import tempfile
 import threading
@@ -54,6 +55,13 @@ DEVICE_NODE = "/dev/tenstorrent/1"
 CONTAINER_VISIBLE_DEVICE_ID = 0
 RUN_DURATION_SECONDS = 285.0
 RUN_GUARD_SECONDS = 330.0
+WORKLOAD_CLEANUP_GRACE_SECONDS = 5.0
+WORKLOAD_WRAPPER_TIMEOUT_MARGIN_SECONDS = 1.0
+WORKLOAD_WRAPPER_TIMEOUT_SECONDS = int(
+    RUN_GUARD_SECONDS
+    + WORKLOAD_CLEANUP_GRACE_SECONDS
+    + WORKLOAD_WRAPPER_TIMEOUT_MARGIN_SECONDS
+)
 WORKLOAD_OUTPUT_TAIL_LINES = 40
 WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
 WORKLOAD_STDOUT_LOG_NAME = "workload-stdout.log"
@@ -897,7 +905,10 @@ def build_workload_environment(
         # Q2 thread additionally captures the opt-in identity-bound extended
         # trace; the legacy sampler remains unchanged and is not analyzed.
         "HEKATUS_TT_TELEMETRY_MODE": "default",
-        "HEKATUS_TT_CONTAINER_TIMEOUT_S": str(int(RUN_GUARD_SECONDS)),
+        # Keep the wrapper's inner timeout after the host guard.  The workload
+        # deadline remains RUN_GUARD_SECONDS; the margin is only for the
+        # wrapper's signal/trap cleanup after that deadline expires.
+        "HEKATUS_TT_CONTAINER_TIMEOUT_S": str(WORKLOAD_WRAPPER_TIMEOUT_SECONDS),
     }
 
 
@@ -1362,38 +1373,217 @@ def _persist_workload_streams(output_dir: Path, result: Any) -> dict[str, Any]:
     return _workload_fields_from_logs(paths, statuses, existing_omissions=existing_omissions)
 
 
-def _run_workload_without_logs(
-    command: Sequence[str], environment: Mapping[str, str], *, repo_root: Path
-) -> dict[str, Any]:
+def _workload_error_result(exc: BaseException) -> dict[str, Any]:
+    return {
+        "returncode": None,
+        "status": type(exc).__name__,
+        "timed_out": False,
+        "stdout_tail": "",
+        "stderr_tail": "",
+    }
+
+
+def _workload_process_group_id(process: Any) -> int | None:
     try:
-        completed = subprocess.run(
-            tuple(command),
+        process_id = int(getattr(process, "pid", 0))
+    except (TypeError, ValueError):
+        return None
+    return process_id if process_id > 0 else None
+
+
+def _workload_process_group_exists(process: Any) -> bool:
+    process_group_id = _workload_process_group_id(process)
+    if process_group_id is None or not hasattr(os, "killpg"):
+        return False
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _signal_workload_process_group(process: Any, signum: int) -> None:
+    process_group_id = _workload_process_group_id(process)
+    if process_group_id is not None and hasattr(os, "killpg"):
+        try:
+            os.killpg(process_group_id, signum)
+            return
+        except OSError:
+            pass
+    try:
+        process.send_signal(signum)
+    except (AttributeError, OSError, ValueError):
+        pass
+
+
+def _close_workload_pipes(process: Any) -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(process, stream_name, None)
+        if stream is None:
+            continue
+        try:
+            stream.close()
+        except (OSError, ValueError):
+            pass
+
+
+def _prefer_workload_output(output: Any, previous: Any) -> Any:
+    return previous if output is None else output
+
+
+def _communicate_workload_bounded(
+    process: Any, timeout: float, stdout: Any, stderr: Any
+) -> tuple[bool, Any, Any]:
+    try:
+        captured_stdout, captured_stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        return (
+            False,
+            _prefer_workload_output(getattr(exc, "stdout", None), stdout),
+            _prefer_workload_output(getattr(exc, "stderr", None), stderr),
+        )
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False, stdout, stderr
+    return (
+        True,
+        _prefer_workload_output(captured_stdout, stdout),
+        _prefer_workload_output(captured_stderr, stderr),
+    )
+
+
+def _wait_for_workload_process_group(process: Any, timeout: float) -> bool:
+    if not _workload_process_group_exists(process):
+        return True
+    deadline = time.monotonic() + max(0.0, timeout)
+    while _workload_process_group_exists(process):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0.0:
+            return False
+        time.sleep(min(0.05, remaining))
+    return True
+
+
+def _cleanup_workload_process_group(
+    process: Any, *, stdout: Any = None, stderr: Any = None
+) -> tuple[Any, Any]:
+    """Stop a timed-out workload without waiting beyond bounded grace periods."""
+    _signal_workload_process_group(process, signal.SIGTERM)
+    communicated, stdout, stderr = _communicate_workload_bounded(
+        process, WORKLOAD_CLEANUP_GRACE_SECONDS, stdout, stderr
+    )
+    group_stopped = communicated and _wait_for_workload_process_group(
+        process, WORKLOAD_CLEANUP_GRACE_SECONDS
+    )
+    if group_stopped:
+        return stdout, stderr
+
+    _signal_workload_process_group(process, signal.SIGKILL)
+    communicated, stdout, stderr = _communicate_workload_bounded(
+        process, WORKLOAD_CLEANUP_GRACE_SECONDS, stdout, stderr
+    )
+    if not communicated:
+        _signal_workload_process_group(process, signal.SIGKILL)
+        try:
+            process.wait(timeout=WORKLOAD_CLEANUP_GRACE_SECONDS)
+        except (AttributeError, OSError, subprocess.SubprocessError, ValueError):
+            pass
+        _close_workload_pipes(process)
+    elif not _wait_for_workload_process_group(process, WORKLOAD_CLEANUP_GRACE_SECONDS):
+        _signal_workload_process_group(process, signal.SIGKILL)
+    return stdout, stderr
+
+
+def _run_workload_process(
+    command: Sequence[str],
+    environment: Mapping[str, str],
+    *,
+    repo_root: Path,
+    stdout: Any,
+    stderr: Any,
+) -> tuple[dict[str, Any], Any]:
+    try:
+        command_tuple = tuple(command)
+        process = subprocess.Popen(
+            command_tuple,
             cwd=repo_root,
             env={**os.environ, **dict(environment)},
-            capture_output=True,
+            stdout=stdout,
+            stderr=stderr,
             text=False,
-            timeout=RUN_GUARD_SECONDS,
-            check=False,
+            start_new_session=True,
         )
+    except (OSError, TypeError, ValueError, subprocess.SubprocessError) as exc:
+        return _workload_error_result(exc), exc
+
+    try:
+        captured_stdout, captured_stderr = process.communicate(timeout=RUN_GUARD_SECONDS)
     except subprocess.TimeoutExpired as exc:
-        return _normalize_workload_result(
+        captured_stdout, captured_stderr = _cleanup_workload_process_group(
+            process,
+            stdout=getattr(exc, "stdout", None),
+            stderr=getattr(exc, "stderr", None),
+        )
+        return (
             {
                 "returncode": None,
                 "status": "timeout",
                 "timed_out": True,
-                "stdout": getattr(exc, "stdout", ""),
-                "stderr": getattr(exc, "stderr", ""),
-            }
+            },
+            subprocess.CompletedProcess(
+                command_tuple, None, captured_stdout, captured_stderr
+            ),
         )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return {
-            "returncode": None,
-            "status": type(exc).__name__,
+    except (OSError, TypeError, ValueError, subprocess.SubprocessError) as exc:
+        captured_stdout, captured_stderr = _cleanup_workload_process_group(process)
+        return (
+            _workload_error_result(exc),
+            subprocess.CompletedProcess(
+                command_tuple, None, captured_stdout, captured_stderr
+            ),
+        )
+
+    if _workload_process_group_exists(process):
+        captured_stdout, captured_stderr = _cleanup_workload_process_group(
+            process, stdout=captured_stdout, stderr=captured_stderr
+        )
+    return (
+        {
+            "returncode": getattr(process, "returncode", None),
+            "status": "completed",
             "timed_out": False,
-            "stdout_tail": "",
-            "stderr_tail": "",
+        },
+        subprocess.CompletedProcess(
+            command_tuple,
+            getattr(process, "returncode", None),
+            captured_stdout,
+            captured_stderr,
+        ),
+    )
+
+
+def _run_workload_without_logs(
+    command: Sequence[str], environment: Mapping[str, str], *, repo_root: Path
+) -> dict[str, Any]:
+    process_result, completed = _run_workload_process(
+        command,
+        environment,
+        repo_root=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if process_result["status"] not in {"completed", "timeout"}:
+        return process_result
+    return _normalize_workload_result(
+        {
+            **process_result,
+            "stdout": getattr(completed, "stdout", ""),
+            "stderr": getattr(completed, "stderr", ""),
         }
-    return _normalize_workload_result(completed)
+    )
 
 
 def _open_workload_logs(paths: Mapping[str, Path]) -> tuple[dict[str, Any], dict[str, str]]:
@@ -1418,38 +1608,15 @@ def _run_workload_with_logs(
     statuses: dict[str, str],
 ) -> tuple[dict[str, Any], Any]:
     try:
-        completed = subprocess.run(
-            tuple(command),
-            cwd=repo_root,
-            env={**os.environ, **dict(environment)},
+        return _run_workload_process(
+            command,
+            environment,
+            repo_root=repo_root,
             stdout=handles.get("stdout", subprocess.DEVNULL),
             stderr=handles.get("stderr", subprocess.DEVNULL),
-            text=False,
-            timeout=RUN_GUARD_SECONDS,
-            check=False,
         )
-        process_result = {
-            "returncode": getattr(completed, "returncode", None),
-            "status": "completed",
-            "timed_out": False,
-        }
-    except subprocess.TimeoutExpired as exc:
-        process_result = {
-            "returncode": None,
-            "status": "timeout",
-            "timed_out": True,
-        }
-        completed = exc
-    except (OSError, subprocess.SubprocessError) as exc:
-        process_result = {
-            "returncode": None,
-            "status": type(exc).__name__,
-            "timed_out": False,
-        }
-        completed = exc
     finally:
         _close_workload_logs(handles, statuses)
-    return process_result, completed
 
 
 def _close_workload_logs(handles: Mapping[str, Any], statuses: dict[str, str]) -> None:
@@ -2262,11 +2429,13 @@ __all__ = [
     "SAMPLER_SHUTDOWN_MARGIN_SECONDS",
     "SNAPSHOT_COMMAND_TUPLE",
     "SNAPSHOT_TIMEOUT_SECONDS",
+    "WORKLOAD_CLEANUP_GRACE_SECONDS",
     "WORKLOAD_LOG_CHUNK_BYTES",
     "WORKLOAD_OUTPUT_TAIL_LINES",
     "WORKLOAD_OUTPUT_TAIL_MAX_CHARS",
     "WORKLOAD_STDERR_LOG_NAME",
     "WORKLOAD_STDOUT_LOG_NAME",
+    "WORKLOAD_WRAPPER_TIMEOUT_SECONDS",
     "SnapshotCaptureError",
     "build_calibration_payload",
     "build_workload_command",

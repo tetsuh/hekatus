@@ -8,8 +8,13 @@ import hashlib
 import io
 import itertools
 import json
+import os
+import signal
 import subprocess
+import sys
+import textwrap
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -163,6 +168,98 @@ def _trace(
             ),
         ],
     }
+
+
+def _workload_tree_fixture_command(pid_file: Path) -> tuple[str, ...]:
+    source = textwrap.dedent(
+        """
+        import os
+        import signal
+        import subprocess
+        import sys
+        import time
+
+        child = None
+
+        def stop(_signum, _frame):
+            if child is not None:
+                try:
+                    child.terminate()
+                except OSError:
+                    pass
+                try:
+                    child.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+            raise SystemExit(143)
+
+        signal.signal(signal.SIGTERM, stop)
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        pid_file = sys.argv[1]
+        with open(pid_file, "w", encoding="ascii") as handle:
+            handle.write(f"{child.pid}:{os.getpgid(child.pid)}")
+        print("fixture stdout", flush=True)
+        print("fixture stderr", file=sys.stderr, flush=True)
+        while True:
+            time.sleep(1)
+        """
+    )
+    return (sys.executable, "-c", source, str(pid_file))
+
+
+def _read_workload_tree_pids(pid_file: Path) -> tuple[int, int]:
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        try:
+            child_pid, process_group_id = (
+                int(value) for value in pid_file.read_text(encoding="ascii").split(":")
+            )
+            return child_pid, process_group_id
+        except (OSError, ValueError):
+            time.sleep(0.01)
+    raise AssertionError("workload fixture did not publish its child pid")
+
+
+def _workload_pid_exists(process_id: int) -> bool:
+    try:
+        os.kill(process_id, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _workload_group_exists(process_group_id: int) -> bool:
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _assert_workload_tree_gone(child_pid: int, process_group_id: int) -> None:
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        if not _workload_pid_exists(child_pid) and not _workload_group_exists(process_group_id):
+            return
+        time.sleep(0.01)
+    assert not _workload_pid_exists(child_pid)
+    assert not _workload_group_exists(process_group_id)
+
+
+def _cleanup_workload_tree(child_pid: int, process_group_id: int) -> None:
+    if process_group_id == os.getpgrp():
+        return
+    for signum in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process_group_id, signum)
+        except ProcessLookupError:
+            break
+        time.sleep(0.01)
+    try:
+        os.kill(child_pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
@@ -1007,6 +1104,10 @@ def test_workload_environment_uses_fixed_ghcr_image_name() -> None:
     )
     assert environment["HEKATUS_TT_DEVICE_NODE"] == "/dev/tenstorrent/1"
     assert environment["HEKATUS_TT_CONTAINER_DEVICE_ID"] == "0"
+    assert environment["HEKATUS_TT_CONTAINER_TIMEOUT_S"] == str(
+        runner.WORKLOAD_WRAPPER_TIMEOUT_SECONDS
+    )
+    assert int(environment["HEKATUS_TT_CONTAINER_TIMEOUT_S"]) > runner.RUN_GUARD_SECONDS
 
 
 def test_workload_output_retains_only_a_bounded_clean_tail(
@@ -1015,10 +1116,18 @@ def test_workload_output_retains_only_a_bounded_clean_tail(
     stdout = "".join(f"stdout-{index}\n" for index in range(100))
     stderr = "clean diagnostic\n"
 
-    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
-        return SimpleNamespace(returncode=1, stdout=stdout, stderr=stderr)
+    class FakeProcess:
+        pid = None
+        returncode = 1
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+        def communicate(self, *, timeout: float) -> tuple[str, str]:
+            return stdout, stderr
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        assert _kwargs["start_new_session"] is True
+        return FakeProcess()
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
     result = runner._run_workload(("fixture-runner",), {}, repo_root=Path("."))
 
     assert result["stdout_tail"] == "".join(
@@ -1053,16 +1162,23 @@ def test_run_workload_persists_raw_bytes_and_stream_metadata(
     stdout = b"header" + bytes((0, 255)) + b"\nlast line\n"
     stderr = b"failed diagnostic\r\n"
 
-    def fake_run(*_args: object, **kwargs: object) -> SimpleNamespace:
-        stdout_handle = kwargs["stdout"]
-        stderr_handle = kwargs["stderr"]
-        assert hasattr(stdout_handle, "write")
-        assert hasattr(stderr_handle, "write")
-        stdout_handle.write(stdout)
-        stderr_handle.write(stderr)
-        return SimpleNamespace(returncode=7, stdout=None, stderr=None)
+    class FakeProcess:
+        pid = None
+        returncode = 7
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+        def __init__(self, stdout_handle: object, stderr_handle: object) -> None:
+            assert hasattr(stdout_handle, "write")
+            assert hasattr(stderr_handle, "write")
+            stdout_handle.write(stdout)
+            stderr_handle.write(stderr)
+
+        def communicate(self, *, timeout: float) -> tuple[None, None]:
+            return None, None
+
+    def fake_popen(*_args: object, **kwargs: object) -> FakeProcess:
+        return FakeProcess(kwargs["stdout"], kwargs["stderr"])
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
     result = runner._run_workload(
         ("fixture-runner",), {}, repo_root=Path("."), output_dir=tmp_path
     )
@@ -1094,12 +1210,25 @@ def test_run_workload_timeout_keeps_available_output_in_raw_logs(
     stdout = b"timeout stdout\n"
     stderr = b"timeout stderr\n"
 
-    def fake_run(*_args: object, **kwargs: object) -> None:
-        kwargs["stdout"].write(stdout)
-        kwargs["stderr"].write(stderr)
-        raise subprocess.TimeoutExpired(("fixture-runner",), 1)
+    class FakeProcess:
+        pid = None
+        returncode = None
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+        def __init__(self, stdout_handle: object, stderr_handle: object) -> None:
+            stdout_handle.write(stdout)
+            stderr_handle.write(stderr)
+            self.calls = 0
+
+        def communicate(self, *, timeout: float) -> tuple[None, None]:
+            self.calls += 1
+            if self.calls == 1:
+                raise subprocess.TimeoutExpired(("fixture-runner",), timeout)
+            return None, None
+
+    def fake_popen(*_args: object, **kwargs: object) -> FakeProcess:
+        return FakeProcess(kwargs["stdout"], kwargs["stderr"])
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
     result = runner._run_workload(
         ("fixture-runner",), {}, repo_root=Path("."), output_dir=tmp_path
     )
@@ -1110,6 +1239,67 @@ def test_run_workload_timeout_keeps_available_output_in_raw_logs(
     assert (tmp_path / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == stderr
     assert result["local_diagnostics"]["stdout"]["byte_count"] == len(stdout)
     assert result["local_diagnostics"]["stderr"]["sha256"] == hashlib.sha256(stderr).hexdigest()
+
+
+@pytest.mark.parametrize("output_dir", [None, "logs"], ids=["without_logs", "with_logs"])
+def test_workload_timeout_reaps_the_subprocess_tree(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, output_dir: str | None
+) -> None:
+    monkeypatch.setattr(runner, "RUN_GUARD_SECONDS", 0.25)
+    monkeypatch.setattr(runner, "WORKLOAD_CLEANUP_GRACE_SECONDS", 1.0)
+    pid_file = tmp_path / "workload-tree-pids"
+    logs_dir = tmp_path / output_dir if output_dir is not None else None
+    if logs_dir is not None:
+        logs_dir.mkdir()
+    command = _workload_tree_fixture_command(pid_file)
+    fixture_pids: tuple[int, int] | None = None
+    try:
+        result = runner._run_workload(
+            command,
+            {},
+            repo_root=ROOT,
+            output_dir=logs_dir,
+        )
+        fixture_pids = _read_workload_tree_pids(pid_file)
+        assert result["status"] == "timeout"
+        assert result["timed_out"] is True
+        assert result["returncode"] is None
+        if logs_dir is None:
+            assert result["stdout_tail"] == "fixture stdout\n"
+            assert result["stderr_tail"] == "fixture stderr\n"
+        else:
+            assert (logs_dir / runner.WORKLOAD_STDOUT_LOG_NAME).read_bytes() == (
+                b"fixture stdout\n"
+            )
+            assert (logs_dir / runner.WORKLOAD_STDERR_LOG_NAME).read_bytes() == (
+                b"fixture stderr\n"
+            )
+            assert str(tmp_path) not in json.dumps(result)
+        _assert_workload_tree_gone(*fixture_pids)
+    finally:
+        if fixture_pids is not None:
+            _cleanup_workload_tree(*fixture_pids)
+
+
+@pytest.mark.parametrize("error", [OSError("fixture start failure"), subprocess.SubprocessError("fixture start failure")])
+def test_workload_start_errors_close_logs_and_preserve_error_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, error: BaseException
+) -> None:
+    def fake_popen(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(runner.subprocess, "Popen", fake_popen)
+    result = runner._run_workload(
+        ("fixture-runner",), {}, repo_root=ROOT, output_dir=tmp_path
+    )
+
+    assert result["status"] == type(error).__name__
+    assert result["timed_out"] is False
+    assert result["returncode"] is None
+    assert result["stdout_tail"] == ""
+    assert result["stderr_tail"] == ""
+    assert result["local_diagnostics"]["stdout"]["status"] == "saved"
+    assert result["local_diagnostics"]["stderr"]["status"] == "saved"
 
 
 def test_run_one_failed_path_output_is_local_only_and_record_survives(tmp_path: Path) -> None:
