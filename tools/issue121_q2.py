@@ -71,6 +71,7 @@ WORKLOAD_LOG_CHUNK_BYTES = 64 * 1024
 WORKLOAD_LOG_FIELD = "workload log"
 WORKLOAD_PATH_OMISSION_REASON = "not_saved: path_detected"
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
+COOLDOWN_POLL_INTERVAL_SECONDS = 1.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 SAMPLER_SHUTDOWN_MARGIN_SECONDS = 1.0
 TRACE_INTERVAL_SECONDS = 2.0
@@ -1103,6 +1104,268 @@ def evaluate_cooldown_transition(
     )
 
 
+def _cooldown_capture_provenance(capture: Any) -> dict[str, Any]:
+    """Retain only bounded, host-independent facts about one cooldown poll."""
+    if not isinstance(capture, Mapping):
+        return {
+            "status": "unavailable",
+            "reason": "capture result is not an object",
+        }
+    result: dict[str, Any] = {}
+    for key in ("stage", "status", "error_type"):
+        value = capture.get(key)
+        if value is None or isinstance(value, (str, bool, int)):
+            result[key] = _redact_capture_value(value)
+        else:
+            result[key] = type(value).__name__
+    returncode = capture.get("returncode")
+    result["returncode"] = (
+        returncode if isinstance(returncode, int) and not isinstance(returncode, bool) else None
+    )
+    timestamp = capture.get("timestamp_monotonic_ns")
+    if isinstance(timestamp, int) and not isinstance(timestamp, bool):
+        result["timestamp_monotonic_ns"] = timestamp
+    stdout_sha256 = capture.get("stdout_sha256")
+    if isinstance(stdout_sha256, str) and re.fullmatch(r"[0-9a-fA-F]{64}", stdout_sha256):
+        result["stdout_sha256"] = stdout_sha256.lower()
+    return result
+
+
+def _cooldown_gate_record(
+    *,
+    run_number: int,
+    board_id: str,
+    bus_id: str,
+    preceding_pre_snapshot: Any,
+    start_utc: str,
+    end_utc: str,
+    actual_wait_seconds: float,
+    poll_count: int,
+    last_capture: dict[str, Any] | None,
+    last_evaluation: Mapping[str, Any] | None,
+    reason: str | None,
+    verified: bool,
+) -> dict[str, Any]:
+    """Build safe provenance for the required inter-run cooldown transition."""
+    return {
+        "required": True,
+        "transition": f"run_{run_number - 1}_to_run_{run_number}",
+        "status": "passed" if verified else "failed",
+        "gate": "pass" if verified else "fail",
+        "gate_result": "pass" if verified else "fail",
+        "gate_verified": verified,
+        "verified": verified,
+        "wait_performed": poll_count > 0,
+        "cooldown_wait_seconds": actual_wait_seconds,
+        "wait_cap_seconds": COOLDOWN_WAIT_CAP_SECONDS,
+        "actual_wait_seconds": actual_wait_seconds,
+        "start_utc": start_utc,
+        "end_utc": end_utc,
+        "bounds_source": "preceding selected-device pre-run baseline plus configured tolerances",
+        "baseline_source": "explicit preceding selected-device pre-run snapshot",
+        "preceding_baseline": _cooldown_capture_provenance(preceding_pre_snapshot),
+        "selected_device": {"board_id": board_id, "bus_id": bus_id},
+        "poll_count": poll_count,
+        "last_capture": last_capture,
+        "last_evaluation": None if last_evaluation is None else dict(last_evaluation),
+        "failure_reason": reason,
+    }
+
+
+def _run_cooldown_gate(
+    *,
+    run_number: int,
+    preceding_pre_snapshot: Any,
+    capture: Callable[..., dict[str, Any]],
+    monotonic_ns: Callable[[], int],
+    sleep_fn: Callable[[float], None],
+    utc_now: Callable[[], str],
+    board_id: str,
+    bus_id: str,
+) -> dict[str, Any]:
+    """Poll a required cooldown transition before creating workload artifacts."""
+    start_ns = int(monotonic_ns())
+    start_utc = str(utc_now())
+    cap_seconds = _finite_number(
+        COOLDOWN_WAIT_CAP_SECONDS,
+        field="cooldown wait cap",
+        positive=True,
+    )
+    baseline_summary = _cooldown_capture_provenance(preceding_pre_snapshot)
+    try:
+        if not isinstance(preceding_pre_snapshot, Mapping):
+            raise SnapshotCaptureError("preceding cooldown baseline is unavailable")
+        _require_successful_snapshot_capture(
+            preceding_pre_snapshot, label="preceding cooldown baseline"
+        )
+        if preceding_pre_snapshot.get("stage") != "pre_run":
+            raise SnapshotCaptureError(
+                "preceding cooldown baseline must be a pre_run snapshot"
+            )
+        _selected_snapshot_identity(
+            preceding_pre_snapshot, board_id=board_id, bus_id=bus_id
+        )
+        _cooldown_reading(preceding_pre_snapshot, board_id, bus_id)
+    except Exception as exc:  # noqa: BLE001 - required evidence fails closed
+        end_utc = str(utc_now())
+        return _cooldown_gate_record(
+            run_number=run_number,
+            board_id=board_id,
+            bus_id=bus_id,
+            preceding_pre_snapshot=preceding_pre_snapshot,
+            start_utc=start_utc,
+            end_utc=end_utc,
+            actual_wait_seconds=0.0,
+            poll_count=0,
+            last_capture=baseline_summary,
+            last_evaluation=None,
+            reason=_redact_capture_value(str(exc)),
+            verified=False,
+        )
+
+    deadline_ns = start_ns + round(cap_seconds * 1_000_000_000.0)
+    poll_count = 0
+    last_capture: dict[str, Any] | None = None
+    last_evaluation: Mapping[str, Any] | None = None
+    last_reason: str | None = None
+    while True:
+        now_ns = int(monotonic_ns())
+        if now_ns >= deadline_ns:
+            elapsed_seconds = min(
+                cap_seconds, max(0.0, (now_ns - start_ns) / 1_000_000_000.0)
+            )
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=elapsed_seconds,
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason="cooldown wait cap expired",
+                verified=False,
+            )
+
+        try:
+            candidate = capture(stage="cooldown")
+        except Exception as exc:  # noqa: BLE001 - poll evidence fails closed
+            candidate = None
+            last_reason = f"cooldown snapshot capture failed: {type(exc).__name__}"
+        poll_count += 1
+        last_capture = _cooldown_capture_provenance(candidate)
+        if candidate is not None:
+            try:
+                if not isinstance(candidate, Mapping):
+                    raise SnapshotCaptureError("cooldown snapshot is unavailable")
+                stage = candidate.get("stage")
+                if not isinstance(stage, str) or not stage.startswith("cooldown"):
+                    raise SnapshotCaptureError(
+                        "cooldown snapshot must have a cooldown stage"
+                    )
+                evaluation = evaluate_cooldown_transition(
+                    preceding_pre_snapshot,
+                    candidate,
+                    board_id=board_id,
+                    bus_id=bus_id,
+                )
+                last_evaluation = evaluation
+                if evaluation.get("verified") is True:
+                    verified_ns = int(monotonic_ns())
+                    if verified_ns < deadline_ns:
+                        elapsed_seconds = min(
+                            cap_seconds,
+                            max(0.0, (verified_ns - start_ns) / 1_000_000_000.0),
+                        )
+                        return _cooldown_gate_record(
+                            run_number=run_number,
+                            board_id=board_id,
+                            bus_id=bus_id,
+                            preceding_pre_snapshot=preceding_pre_snapshot,
+                            start_utc=start_utc,
+                            end_utc=str(utc_now()),
+                            actual_wait_seconds=elapsed_seconds,
+                            poll_count=poll_count,
+                            last_capture=last_capture,
+                            last_evaluation=evaluation,
+                            reason=None,
+                            verified=True,
+                        )
+                    last_reason = "cooldown wait cap expired"
+                else:
+                    last_reason = "cooldown snapshot did not pass the transition gate"
+            except Exception as exc:  # noqa: BLE001 - malformed evidence is rejected
+                last_reason = _redact_capture_value(str(exc))
+
+        after_capture_ns = int(monotonic_ns())
+        if after_capture_ns >= deadline_ns:
+            elapsed_seconds = min(
+                cap_seconds,
+                max(0.0, (after_capture_ns - start_ns) / 1_000_000_000.0),
+            )
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=elapsed_seconds,
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason="cooldown wait cap expired",
+                verified=False,
+            )
+        remaining_seconds = (deadline_ns - after_capture_ns) / 1_000_000_000.0
+        delay_seconds = min(COOLDOWN_POLL_INTERVAL_SECONDS, remaining_seconds)
+        if delay_seconds <= 0.0:
+            last_reason = last_reason or "cooldown wait cap expired"
+            continue
+        try:
+            sleep_fn(delay_seconds)
+        except Exception as exc:  # noqa: BLE001 - a broken wait fails closed
+            last_reason = f"cooldown wait failed: {type(exc).__name__}"
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=min(
+                    cap_seconds,
+                    max(0.0, (int(monotonic_ns()) - start_ns) / 1_000_000_000.0),
+                ),
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason=last_reason,
+                verified=False,
+            )
+        after_sleep_ns = int(monotonic_ns())
+        if after_sleep_ns <= after_capture_ns:
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=min(
+                    cap_seconds,
+                    max(0.0, (after_sleep_ns - start_ns) / 1_000_000_000.0),
+                ),
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason="cooldown monotonic clock did not advance",
+                verified=False,
+            )
+
+
 def _build_environment(
     pre_snapshot: Mapping[str, Any],
     *,
@@ -1752,7 +2015,9 @@ class _RunOptions:
     trace_interval_seconds: float
     workload_runner: Callable[[Sequence[str], Mapping[str, str], float], Any] | None
     capture_fn: Callable[..., dict[str, Any]] | None
+    preceding_pre_snapshot: Mapping[str, Any] | None
     monotonic_ns: Callable[[], int]
+    sleep_fn: Callable[[float], None]
     utc_now: Callable[[], str]
 
 
@@ -1762,7 +2027,9 @@ _RUN_OPTION_DEFAULTS = {
     "trace_interval_seconds": TRACE_INTERVAL_SECONDS,
     "workload_runner": None,
     "capture_fn": None,
+    "preceding_pre_snapshot": None,
     "monotonic_ns": time.monotonic_ns,
+    "sleep_fn": time.sleep,
     "utc_now": _utc_now,
 }
 _RUN_OPTION_REQUIRED = (
@@ -1858,6 +2125,129 @@ class _PreflightResult:
     sampler_errors: list[str]
 
 
+def _failed_cooldown_gate_record(
+    *,
+    safe_output_dir: Path,
+    safe_run_id: str,
+    run_number: int,
+    normalized_board: str,
+    normalized_bus: str,
+    cooldown_gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist a safe failed attempt when the inter-run gate rejects evidence."""
+    record_name = f"run-{safe_run_id}.json"
+    record_path = _safe_artifact_path(
+        safe_output_dir, record_name, field="measurement record"
+    )
+    post_reason = "post-run snapshot not captured because cooldown gate failed"
+    record: dict[str, Any] = {
+        "record_schema": ISSUE121_Q2_RECORD_SCHEMA,
+        "issue": "#121",
+        "run_id": safe_run_id,
+        "run_number": run_number,
+        "status": "failed",
+        "environment": None,
+        "preflight": {
+            "status": "not_started",
+            "reason": "pre-run setup was not started after cooldown gate failure",
+        },
+        "cooldown_gate": dict(cooldown_gate),
+        "workload": {
+            "name": "adr-0013-108-core-newton-schulz-surrogate",
+            "condition": "newton_schulz",
+            "device_id": DEVICE_ID,
+            "container_device_id": CONTAINER_VISIBLE_DEVICE_ID,
+            "device_node": DEVICE_NODE,
+            "worker_core_count": 108,
+            "data_independent": True,
+            "run_duration_target_seconds": RUN_DURATION_SECONDS,
+            "run_guard_seconds": RUN_GUARD_SECONDS,
+            "started": False,
+        },
+        "run_timing": {
+            "workload_start_monotonic_ns": None,
+            "workload_end_monotonic_ns": None,
+            "workload_duration_seconds": None,
+            "target_duration_seconds": RUN_DURATION_SECONDS,
+            "guard_seconds": RUN_GUARD_SECONDS,
+            "within_guard": False,
+            "timeout_seconds": RUN_GUARD_SECONDS,
+        },
+        "workload_result": {
+            "status": "not_started",
+            "returncode": None,
+            "timed_out": False,
+        },
+        "snapshot_limits": {
+            "pre": {"status": "not_started", "reason": "cooldown gate failed"},
+            "post": {"status": "unavailable", "reason": post_reason},
+        },
+        "snapshot_identities": {
+            "pre": {"status": "not_started", "reason": "cooldown gate failed"},
+            "post": {"status": "unavailable", "reason": post_reason},
+        },
+        "raw_window": {
+            "start_seconds": 0.0,
+            "end_seconds": EARLY_RAW_WINDOW_SECONDS,
+            "columns": list(RAW_WINDOW_COLUMNS),
+            "rows": [],
+        },
+        "limitations": [
+            "The workload was not started because the cooldown gate failed closed.",
+        ],
+        "snapshots": {
+            "pre": {
+                "path": None,
+                "status": "not_started",
+                "timestamp_monotonic_ns": None,
+                "stdout_sha256": None,
+                "identity": {"status": "not_started", "reason": "cooldown gate failed"},
+            },
+            "post": {
+                "path": None,
+                "status": "not_started",
+                "timestamp_monotonic_ns": None,
+                "stdout_sha256": None,
+                "identity": {"status": "not_started", "reason": post_reason},
+            },
+            "command": list(SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": SNAPSHOT_TIMEOUT_SECONDS,
+            "read_only": True,
+        },
+        "trace": {
+            "path": None,
+            "schema": ISSUE121_Q2_TRACE_SCHEMA,
+            "schema_version": ISSUE121_Q2_TRACE_SCHEMA_VERSION,
+            "columns": list(EXTENDED_TRACE_COLUMNS),
+            "legacy_columns_unchanged": list(LEGACY_POWER_TRACE_COLUMNS),
+            "board_id": normalized_board,
+            "bus_id": normalized_bus,
+            "timestamp_axis": "timestamp_monotonic_ns",
+            "run_start_monotonic_ns": None,
+            "run_end_monotonic_ns": None,
+            "sample_count": 0,
+            "pre_row_written": False,
+            "post_row_written": False,
+            "usable_in_run_row_count": 0,
+            "in_run_captures": [],
+            "sha256": None,
+            "sampler_interval_seconds": None,
+            "sampler_errors": [],
+        },
+        "output_paths": {"record": record_name},
+        "provenance": {
+            "source_snapshot": "preceding pre-run tt-smi snapshot supplied to cooldown gate",
+            "trace_source": "extended-v1 snapshots captured by this harness",
+            "analysis_source": "tools/analyze_issue121_q2.py",
+            "limit_provenance": "cooldown_gate",
+            "host_identity_persisted": False,
+        },
+    }
+    _safe_record_value(record)
+    _write_json(record_path, record)
+    return record
+
+
 def _failed_preflight_record(
     *,
     safe_output_dir: Path,
@@ -1866,6 +2256,7 @@ def _failed_preflight_record(
     normalized_board: str,
     normalized_bus: str,
     preflight: _PreflightResult,
+    cooldown_gate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist a safe failed attempt without starting workload setup."""
     post_reason = "post-run snapshot not captured after pre-run preflight failure"
@@ -1909,6 +2300,7 @@ def _failed_preflight_record(
             "pre_row_written": preflight.pre_row,
             "reason": _redact_capture_value(preflight.reason),
         },
+        **({} if cooldown_gate is None else {"cooldown_gate": dict(cooldown_gate)}),
         "workload": {
             "name": "adr-0013-108-core-newton-schulz-surrogate",
             "condition": "newton_schulz",
@@ -2114,7 +2506,9 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     trace_interval_seconds = options.trace_interval_seconds
     workload_runner = options.workload_runner
     capture_fn = options.capture_fn
+    preceding_pre_snapshot = options.preceding_pre_snapshot
     monotonic_ns = options.monotonic_ns
+    sleep_fn = options.sleep_fn
     utc_now = options.utc_now
     visible_device_id = _validate_container_visible_device_id(container_device_id)
     output_dir = _safe_output_dir(output_dir)
@@ -2127,6 +2521,27 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     _reject_q2_output_collision(safe_output_dir, safe_run_id)
     safe_output_dir.mkdir(parents=True, exist_ok=True)
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
+    cooldown_gate: dict[str, Any] | None = None
+    if run_number in {2, 3}:
+        cooldown_gate = _run_cooldown_gate(
+            run_number=run_number,
+            preceding_pre_snapshot=preceding_pre_snapshot,
+            capture=capture,
+            monotonic_ns=monotonic_ns,
+            sleep_fn=sleep_fn,
+            utc_now=utc_now,
+            board_id=normalized_board,
+            bus_id=normalized_bus,
+        )
+        if cooldown_gate["verified"] is not True:
+            return _failed_cooldown_gate_record(
+                safe_output_dir=safe_output_dir,
+                safe_run_id=safe_run_id,
+                run_number=run_number,
+                normalized_board=normalized_board,
+                normalized_bus=normalized_bus,
+                cooldown_gate=cooldown_gate,
+            )
 
     preflight = _capture_preflight(
         safe_output_dir=safe_output_dir,
@@ -2146,6 +2561,7 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
             normalized_board=normalized_board,
             normalized_bus=normalized_bus,
             preflight=preflight,
+            cooldown_gate=cooldown_gate,
         )
     pre_capture = preflight.pre_capture
     pre_path = preflight.pre_path
@@ -2317,6 +2733,7 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         "run_number": run_number,
         "status": status,
         "environment": environment,
+        **({} if cooldown_gate is None else {"cooldown_gate": cooldown_gate}),
         "workload": {
             "name": "adr-0013-108-core-newton-schulz-surrogate",
             "condition": "newton_schulz",
@@ -2463,6 +2880,7 @@ __all__ = [
     "CONTAINER_VISIBLE_DEVICE_ID",
     "COOLDOWN_POWER_TOLERANCE_W",
     "COOLDOWN_TEMPERATURE_TOLERANCE_C",
+    "COOLDOWN_WAIT_CAP_SECONDS",
     "DEVICE_ID",
     "DEVICE_NODE",
     "EARLY_RAW_WINDOW_SECONDS",

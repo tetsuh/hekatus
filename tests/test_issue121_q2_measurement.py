@@ -102,6 +102,35 @@ def _snapshot() -> str:
     )
 
 
+def _q2_snapshot_capture(
+    *,
+    stage: str,
+    power: float = 50.0,
+    temperature: float = 60.0,
+    status: str = "ok",
+    returncode: int | None = 0,
+    snapshot: dict[str, object] | None = None,
+) -> dict[str, object]:
+    captured_snapshot = json.loads(_snapshot()) if snapshot is None else snapshot
+    telemetry = captured_snapshot["device_info"][0]["telemetry"]
+    telemetry["power"] = str(power)
+    telemetry["asic_temperature"] = str(temperature)
+    return {
+        "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+        "stage": stage,
+        "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+        "timeout_seconds": runner.SNAPSHOT_TIMEOUT_SECONDS,
+        "captured_at_utc": "2026-01-01T00:00:00+00:00",
+        "timestamp_monotonic_ns": 1,
+        "snapshot_elapsed_ns": 1,
+        "status": status,
+        "returncode": returncode,
+        "error_type": None if status == "ok" else "fixture_failure",
+        "stdout_sha256": "a" * 64,
+        "snapshot": captured_snapshot,
+    }
+
+
 def _row(
     seconds: int,
     *,
@@ -1787,6 +1816,218 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert str(tmp_path) not in persisted
     assert "--calibration-json" not in persisted
     assert (tmp_path / record["output_paths"]["record"]).exists()
+
+
+@pytest.mark.parametrize("run_number", [2, 3])
+def test_run_one_requires_preceding_baseline_before_workload(
+    tmp_path: Path, run_number: int
+) -> None:
+    capture_stages: list[str] = []
+    workload_calls: list[object] = []
+
+    def unexpected_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        capture_stages.append(stage)
+        raise AssertionError("cooldown capture must not run without a baseline")
+
+    def unexpected_workload(*_args: object) -> dict[str, object]:
+        workload_calls.append(True)
+        raise AssertionError("workload must not run without a baseline")
+
+    record = runner.run_one(
+        tmp_path,
+        run_id=f"q2-run-{run_number}-missing-baseline",
+        run_number=run_number,
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=unexpected_workload,
+        capture_fn=unexpected_capture,
+        monotonic_ns=lambda: 0,
+        sleep_fn=lambda _seconds: pytest.fail("sleep must not run without a baseline"),
+    )
+
+    assert capture_stages == []
+    assert workload_calls == []
+    assert record["status"] == "failed"
+    assert record["cooldown_gate"]["gate_result"] == "fail"
+    assert record["cooldown_gate"]["poll_count"] == 0
+    assert "unavailable" in record["cooldown_gate"]["failure_reason"]
+    assert record["workload"]["started"] is False
+    assert not (tmp_path / "issue121-q2-calibration.json").exists()
+
+
+@pytest.mark.parametrize("evidence", ["missing", "failed"], ids=["missing", "failed"])
+def test_run_one_rejects_unavailable_cooldown_evidence_before_workload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, evidence: str
+) -> None:
+    monkeypatch.setattr(runner, "COOLDOWN_WAIT_CAP_SECONDS", 1.0)
+    baseline = _q2_snapshot_capture(stage="pre_run")
+    clock = [0]
+    capture_stages: list[str] = []
+    sleep_calls: list[float] = []
+    workload_calls: list[object] = []
+
+    def monotonic_ns() -> int:
+        return clock[0]
+
+    def sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        clock[0] += round(seconds * 1_000_000_000.0)
+
+    def failed_capture(*, stage: str, **_kwargs: object) -> object:
+        capture_stages.append(stage)
+        assert stage == "cooldown"
+        if evidence == "missing":
+            return None
+        return _q2_snapshot_capture(stage=stage, status="timeout", returncode=None, snapshot=None)
+
+    def unexpected_workload(*_args: object) -> dict[str, object]:
+        workload_calls.append(True)
+        raise AssertionError("workload must not run after unavailable cooldown evidence")
+
+    record = runner.run_one(
+        tmp_path,
+        run_id=f"q2-run-2-cooldown-{evidence}",
+        run_number=2,
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=unexpected_workload,
+        capture_fn=failed_capture,
+        preceding_pre_snapshot=baseline,
+        monotonic_ns=monotonic_ns,
+        sleep_fn=sleep,
+    )
+
+    assert capture_stages == ["cooldown"]
+    assert sleep_calls == [1.0]
+    assert workload_calls == []
+    assert record["status"] == "failed"
+    assert record["cooldown_gate"]["gate_result"] == "fail"
+    assert record["cooldown_gate"]["poll_count"] == 1
+    assert record["cooldown_gate"]["failure_reason"] == "cooldown wait cap expired"
+    assert record["cooldown_gate"]["wait_cap_seconds"] == 1.0
+    assert not (tmp_path / "issue121-q2-calibration.json").exists()
+
+
+def test_run_one_does_not_start_workload_when_cooldown_cap_expires(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(runner, "COOLDOWN_WAIT_CAP_SECONDS", 2.0)
+    baseline = _q2_snapshot_capture(stage="pre_run")
+    clock = [0]
+    capture_count = 0
+    workload_calls: list[object] = []
+
+    def monotonic_ns() -> int:
+        return clock[0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += round(seconds * 1_000_000_000.0)
+
+    def nonpassing_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        nonlocal capture_count
+        capture_count += 1
+        assert stage == "cooldown"
+        return _q2_snapshot_capture(stage=stage, power=100.0, temperature=100.0)
+
+    def unexpected_workload(*_args: object) -> dict[str, object]:
+        workload_calls.append(True)
+        raise AssertionError("workload must not run after the cooldown cap")
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-2-cooldown-cap",
+        run_number=2,
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=unexpected_workload,
+        capture_fn=nonpassing_capture,
+        preceding_pre_snapshot=baseline,
+        monotonic_ns=monotonic_ns,
+        sleep_fn=sleep,
+    )
+
+    assert capture_count == 2
+    assert workload_calls == []
+    assert record["status"] == "failed"
+    assert record["cooldown_gate"]["gate_result"] == "fail"
+    assert record["cooldown_gate"]["verified"] is False
+    assert record["cooldown_gate"]["cooldown_wait_seconds"] == 2.0
+    assert record["cooldown_gate"]["failure_reason"] == "cooldown wait cap expired"
+
+
+def test_run_one_starts_workload_after_a_passing_cooldown_poll(
+    tmp_path: Path,
+) -> None:
+    baseline = _q2_snapshot_capture(stage="pre_run")
+    clock = [0]
+    cooldown_count = 0
+    capture_stages: list[str] = []
+    in_run_seen = threading.Event()
+    workload_calls: list[object] = []
+
+    def monotonic_ns() -> int:
+        return clock[0]
+
+    def sleep(seconds: float) -> None:
+        clock[0] += round(seconds * 1_000_000_000.0)
+
+    def capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        nonlocal cooldown_count
+        capture_stages.append(stage)
+        if stage == "cooldown":
+            cooldown_count += 1
+            if cooldown_count == 1:
+                return _q2_snapshot_capture(stage=stage, power=100.0, temperature=100.0)
+            return _q2_snapshot_capture(stage=stage)
+        if stage == "in_run":
+            in_run_seen.set()
+        return _q2_snapshot_capture(stage=stage)
+
+    def workload(*_args: object) -> dict[str, object]:
+        workload_calls.append(True)
+        assert in_run_seen.wait(timeout=1.0)
+        return {"returncode": 0, "status": "completed", "timed_out": False}
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-2-cooldown-pass",
+        run_number=2,
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=workload,
+        capture_fn=capture,
+        preceding_pre_snapshot=baseline,
+        monotonic_ns=monotonic_ns,
+        sleep_fn=sleep,
+        trace_interval_seconds=0.001,
+    )
+
+    assert workload_calls == [True]
+    assert capture_stages[:3] == ["cooldown", "cooldown", "pre_run"]
+    assert record["status"] == "ok"
+    assert record["cooldown_gate"]["gate_result"] == "pass"
+    assert record["cooldown_gate"]["verified"] is True
+    assert record["cooldown_gate"]["poll_count"] == 2
+    assert record["cooldown_gate"]["last_evaluation"]["aiclk_gate"] is False
+    persisted = json.dumps(record)
+    assert str(tmp_path) not in persisted
+    assert "/home/" not in persisted
 
 
 def test_run_one_waits_for_a_bounded_in_flight_capture_before_post_row(
