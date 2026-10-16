@@ -135,7 +135,11 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["board_run"] is False
     assert plan["measurement_scope"]["device_id"] == 1
     assert plan["measurement_scope"]["runs"] == 3
-    assert plan["measurement_scope"]["run_duration_seconds"] == 300
+    assert plan["measurement_scope"]["run_duration_seconds"] == 285
+    assert plan["measurement_scope"]["run_duration_definition"] == (
+        "The fixed workload interval targets 285 seconds of sustained device work; "
+        "setup and teardown are outside the interval."
+    )
     assert plan["measurement_scope"]["run_guard_seconds"] == 330
     assert plan["trace"]["mode"] == "extended-v1"
     assert plan["trace"]["legacy_columns"] == list(runner.LEGACY_POWER_TRACE_COLUMNS)
@@ -144,6 +148,24 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["source_snapshot"]["raw_smbus_fields"]["THM_LIMIT_THROTTLE"]["value"] is None
     assert plan["revision_history"][0]["revision"] == 1
     assert plan["revision_history"][0]["date"] == "2026-10-16"
+    assert plan["revision_history"][0]["change"] == (
+        "Created the pre-measurement Q2 plan from the existing ADR-0013 and Issue #118 "
+        "108-core surrogate, fixing device 1, three 300-second runs, the 330-second "
+        "guard, extended-v1 fields, hypothesis thresholds, cooldown gate, and "
+        "source-snapshot provenance."
+    )
+    assert plan["revision_history"][1] == {
+        "revision": 2,
+        "date": "2026-10-16",
+        "change": (
+            "pre-measurement change 300 -> 285 load and 150-300 -> 150-285 plateau "
+            "to fit existing 40-second margin and 330-second guard; criteria and "
+            "prediction unchanged; triggered by 8ad7ea9 preflight rejection with 0 "
+            "device frames."
+        ),
+    }
+    assert "criteria and prediction unchanged" in plan["revision_history"][1]["change"]
+    assert "330-second guard" in plan["revision_history"][1]["change"]
     assert plan["hypotheses"]["H-TDP"]["reference_only"].startswith("Issue #118 plateau 132-135 W")
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
@@ -155,7 +177,7 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["prediction"]["hypotheses"]["H-TDP"].startswith("unsupported")
     assert plan["plateau"] == {
         "start_seconds": 150,
-        "end_seconds": 300,
+        "end_seconds": 285,
         "interval_definition": plan["plateau"]["interval_definition"],
         "requires_positive_duration_segments": True,
         "terminal_coverage_required": True,
@@ -190,6 +212,10 @@ def test_workload_command_pins_output_dir_device_one_and_guard() -> None:
     assert "--device-id" in command
     assert command[command.index("--device-id") + 1] == "1"
     assert command[command.index("--outer-timeout-seconds") + 1] == "330"
+    assert runner.RUN_DURATION_SECONDS == 285.0
+    assert runner.RUN_GUARD_SECONDS == 330.0
+    calibration = runner.build_calibration_payload()
+    assert calibration["calibration"]["target_seconds"] == 285.0
     assert command[command.index("--out") + 1] == "/out/runner-result-q2-run-1.json"
     assert command[command.index("--calibration-json") + 1] == "/out/issue121-q2-calibration.json"
     assert "/out/" in " ".join(command)
@@ -284,6 +310,10 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
 
     assert record["status"] == "ok"
     assert record["workload"]["device_id"] == 1
+    assert record["workload"]["run_duration_target_seconds"] == 285.0
+    assert record["workload"]["run_guard_seconds"] == 330.0
+    assert record["run_timing"]["target_duration_seconds"] == 285.0
+    assert record["run_timing"]["guard_seconds"] == 330.0
     assert record["environment"]["board"]["serial"] == "fixture-board"
     assert record["environment"]["firmware"]["bundle"] == "19.6.0.0"
     assert record["environment"]["kernel_driver_version"] == "2.11.0"
@@ -300,6 +330,10 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert workload_calls[0][0][1] == str(tmp_path)
     assert workload_calls[0][0][1] != "/out"
     assert workload_calls[0][2] == runner.RUN_GUARD_SECONDS
+    calibration = json.loads(
+        (tmp_path / record["output_paths"]["calibration"]).read_text(encoding="utf-8")
+    )
+    assert calibration["calibration"]["target_seconds"] == 285.0
     assert (tmp_path / record["output_paths"]["calibration"]).exists()
     persisted = json.dumps(record)
     assert "hostname" not in persisted
@@ -362,7 +396,7 @@ def test_analysis_classifies_each_synthetic_hypothesis(
     result = analysis.analyze_trace(
         trace,
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits=limits,
     )
 
@@ -373,14 +407,17 @@ def test_analysis_classifies_each_synthetic_hypothesis(
 
 
 def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
-    result = analysis.analyze_trace(
-        _trace(), plateau_start_seconds=150, plateau_end_seconds=300
-    )
+    result = analysis.analyze_trace(_trace())
     aiclk = result["statistics"]["aiclk_mhz"]
 
+    assert analysis.DEFAULT_PLATEAU_END_SECONDS == 285.0
+    cli_args = analysis._parser().parse_args(["--trace", "trace.csv"])
+    assert cli_args.plateau_end_seconds == 285.0
+    assert result["plateau"]["start_seconds"] == 150.0
+    assert result["plateau"]["end_seconds"] == 285.0
     assert aiclk["min"] == 1200.0
     assert aiclk["max"] == 1350.0
-    assert aiclk["time_weighted_mean"] == pytest.approx(1250.0)
+    assert aiclk["time_weighted_mean"] == pytest.approx(1255.5555555555557)
     assert aiclk["percentiles"]["p50"] == 1200.0
     assert aiclk["percentiles"]["p95"] == 1350.0
 
@@ -420,7 +457,7 @@ def test_issue118_prediction_is_unsupported_and_keeps_two_second_onset_resolutio
     result = analysis.analyze_trace(
         _issue118_trace(),
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits=_source_limits(),
     )
 
@@ -440,7 +477,7 @@ def test_multiple_classification_is_explicit_for_multiple_supported_known_hypoth
     result = analysis.analyze_trace(
         _trace(current=190, temperature=88, power=145),
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits=_source_limits(),
     )
 
@@ -454,7 +491,7 @@ def test_analysis_does_not_guess_aiclk_baseline_when_fmax_is_missing() -> None:
     result = analysis.analyze_trace(
         _issue118_trace(),
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits={"tdp_limit_w": 150, "therm_trip_l1_limit_c": 90},
     )
 
@@ -467,7 +504,7 @@ def test_analysis_does_not_invent_missing_throttle_limit() -> None:
     result = analysis.analyze_trace(
         _trace(temperature=88),
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits={"asic_fmax_mhz": 1350},
     )
 
@@ -480,7 +517,7 @@ def test_analysis_does_not_invent_missing_throttle_limit() -> None:
     known = analysis.analyze_trace(
         _trace(temperature=88),
         plateau_start_seconds=150,
-        plateau_end_seconds=300,
+        plateau_end_seconds=285,
         limits={"asic_fmax_mhz": 1350, "thm_limit_throttle": 100},
     )
     assert known["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]["status"] == "pass"

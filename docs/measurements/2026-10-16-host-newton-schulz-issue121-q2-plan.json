@@ -10,13 +10,13 @@
     "device_id": 1,
     "device_node": "/dev/tenstorrent/1",
     "runs": 3,
-    "run_duration_seconds": 300,
-    "run_duration_definition": "The fixed workload interval targets 300 seconds of sustained device work; setup and teardown are outside the interval.",
+    "run_duration_seconds": 285,
+    "run_duration_definition": "The fixed workload interval targets 285 seconds of sustained device work; setup and teardown are outside the interval.",
     "run_guard_seconds": 330,
     "run_guard_definition": "The workload subprocess timeout and harness deadline are both 330 seconds. A run that reaches the guard is failed, never extended.",
     "workload_start_after_pre_snapshot": true,
     "workload_end_before_post_snapshot": true,
-    "inter_run_cooldown": "Required between runs 1 and 2, and between runs 2 and 3. The cooldown is outside the 300-second workload interval and is not an excuse to extend the 330-second run guard."
+    "inter_run_cooldown": "Required between runs 1 and 2, and between runs 2 and 3. The cooldown is outside the 285-second workload interval and is not an excuse to extend the 330-second run guard."
   },
   "workload": {
     "name": "adr-0013-108-core-newton-schulz-surrogate",
@@ -199,8 +199,8 @@
   },
   "plateau": {
     "start_seconds": 150,
-    "end_seconds": 300,
-    "interval_definition": "[run_start_monotonic_ns + 150 s, run_start_monotonic_ns + 300 s); a sample at the left boundary is held until the next sample.",
+    "end_seconds": 285,
+    "interval_definition": "[run_start_monotonic_ns + 150 s, run_start_monotonic_ns + 285 s); a sample at the left boundary is held until the next sample.",
     "requires_positive_duration_segments": true,
     "terminal_coverage_required": true
   },
@@ -336,7 +336,7 @@
     "criterion": "latest usable idle snapshot has board power <= baseline + 5 W and ASIC temperature <= baseline + 3 degC",
     "aiclk": "Record idle AICLK as provenance only; the expected 800 MHz idle value is not a cooldown gate.",
     "wait_cap_seconds": 600,
-    "failure_policy": "Do not start the next 300-second run after the cap or an unavailable required reading."
+    "failure_policy": "Do not start the next 285-second run after the cap or an unavailable required reading."
   },
   "provenance": {
     "required_environment_fields": [
@@ -359,6 +359,11 @@
       "revision": 1,
       "date": "2026-10-16",
       "change": "Created the pre-measurement Q2 plan from the existing ADR-0013 and Issue #118 108-core surrogate, fixing device 1, three 300-second runs, the 330-second guard, extended-v1 fields, hypothesis thresholds, cooldown gate, and source-snapshot provenance."
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-16",
+      "change": "pre-measurement change 300 -> 285 load and 150-300 -> 150-285 plateau to fit existing 40-second margin and 330-second guard; criteria and prediction unchanged; triggered by 8ad7ea9 preflight rejection with 0 device frames."
     }
   ],
   "limitations": [
