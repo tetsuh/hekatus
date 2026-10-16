@@ -1,0 +1,1666 @@
+{
+  "record_schema": "issue121-q2-measurement-summary-v1",
+  "status": "complete",
+  "issue": "#121",
+  "plan": {
+    "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
+    "revision": 9,
+    "target_seconds": 285,
+    "plateau_start_seconds": 150,
+    "plateau_end_seconds": 285,
+    "guard_seconds": 330
+  },
+  "harness_commit": "344a8f1a126b5f993f738db614e9e32fb0174089",
+  "analysis_commit": "e09d4f9",
+  "device": {
+    "host_device_id": 1,
+    "host_device_node": "/dev/tenstorrent/1",
+    "container_visible_device_id": 0,
+    "board_serial": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+  },
+  "cooldowns": [
+    {
+      "transition": "run_1_to_run_2",
+      "status": "pass",
+      "attempts": 18,
+      "power_w": 49.0,
+      "temperature_c": 61.4,
+      "aiclk_mhz": 800.0,
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "baseline_snapshot": "docs/measurements/issue121-q2/runs/run-1-device0/pre-snapshot-q2-run-1-device0.json",
+      "baseline_power_w": 47.0,
+      "baseline_temperature_c": 61.2,
+      "power_limit_w": 52.0,
+      "temperature_limit_c": 64.2,
+      "snapshot": "docs/measurements/issue121-q2/cooldown/run-1-to-2/snapshot-0018.json"
+    },
+    {
+      "transition": "run_2_to_run_3",
+      "status": "pass",
+      "attempts": 46,
+      "power_w": 47.0,
+      "temperature_c": 61.5,
+      "aiclk_mhz": 800.0,
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "baseline_snapshot": "docs/measurements/issue121-q2/runs/run-2-device0/pre-snapshot-q2-run-2-device0.json",
+      "baseline_power_w": 48.0,
+      "baseline_temperature_c": 61.2,
+      "power_limit_w": 53.0,
+      "temperature_limit_c": 64.2,
+      "snapshot": "docs/measurements/issue121-q2/cooldown/run-2-to-3/snapshot-0046.json"
+    }
+  ],
+  "runs": [
+    {
+      "run_number": 1,
+      "run_id": "q2-run-1-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-1-device0/run-q2-run-1-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-1-device0/extended-trace-q2-run-1-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-1-device0/analysis-q2-run-1-device0.json",
+      "status": "ok",
+      "duration_seconds": 299.15060189,
+      "outer_process_duration_seconds": 299.15060189,
+      "measured_card_load_duration_seconds": 292.412352680442,
+      "card_load_target_met": true,
+      "duration_interpretation": "Outer workload-process duration was approximately 299.151 seconds; measured card-load duration was approximately 292.412 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 135,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31180932579806,
+        "end_monotonic_ns": 31315932579806,
+        "duration_seconds": 135.0,
+        "segment_count": 62,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.727259794,
+        "min_mhz": 956.0,
+        "max_mhz": 1243.0,
+        "time_weighted_mean_mhz": 977.6899019327259,
+        "percentiles_mhz": {
+          "p01": 956.0,
+          "p05": 956.0,
+          "p50": 956.0,
+          "p95": 1237.0,
+          "p99": 1243.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 95.0,
+          "max": 137.0,
+          "time_weighted_mean": 129.6853717867037,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 20.314628213296288,
+            "fraction": 0.13543085475530858
+          },
+          "unit": "W"
+        },
+        "current_a": {
+          "min": 128.0,
+          "max": 180.0,
+          "time_weighted_mean": 176.51336235725185,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "A",
+            "difference": 23.48663764274815,
+            "fraction": 0.11743318821374076
+          },
+          "unit": "A"
+        },
+        "asic_temp_c": {
+          "min": 80.8,
+          "max": 83.4,
+          "time_weighted_mean": 82.86679598474963,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 7.133204015250371,
+            "fraction": 0.07925782239167078
+          },
+          "unit": "degC"
+        },
+        "board_power_w": {
+          "min": 241.0,
+          "max": 310.0,
+          "time_weighted_mean": 299.44635551097036,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.5536444890296366,
+            "fraction": 0.0018454816300987886
+          },
+          "unit": "W"
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "fallback"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31033182038537,
+            "seconds_from_run_start": 2.249458731,
+            "aiclk_mhz": 1350.0,
+            "power_w": 82.0,
+            "current_a": 96.0,
+            "asic_temp_c": 64.8
+          },
+          {
+            "timestamp_monotonic_ns": 31035419785954,
+            "seconds_from_run_start": 4.487206148,
+            "aiclk_mhz": 1343.0,
+            "power_w": 210.0,
+            "current_a": 254.0,
+            "asic_temp_c": 75.6
+          },
+          {
+            "timestamp_monotonic_ns": 31037659839600,
+            "seconds_from_run_start": 6.727259794,
+            "aiclk_mhz": 1037.0,
+            "power_w": 134.0,
+            "current_a": 180.0,
+            "asic_temp_c": 73.3
+          },
+          {
+            "timestamp_monotonic_ns": 31039900078575,
+            "seconds_from_run_start": 8.967498769,
+            "aiclk_mhz": 1043.0,
+            "power_w": 136.0,
+            "current_a": 183.0,
+            "asic_temp_c": 74.8
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4837,
+          "sha256": "2220a5125827b56fbe74fccd92dcf50a2d0aa4969eed34485324d6b902c57195",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3769,
+          "sha256": "f58db6a553c6c1647c4ba2714e5cb0b0fec7bce229513bf748f4f0ca2cfce9eb",
+          "status": "saved"
+        }
+      },
+      "measured_card_load_duration_approx_seconds": 292.412
+    },
+    {
+      "run_number": 2,
+      "run_id": "q2-run-2-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-2-device0/run-q2-run-2-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-2-device0/extended-trace-q2-run-2-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-2-device0/analysis-q2-run-2-device0.json",
+      "status": "ok",
+      "duration_seconds": 298.545785676,
+      "outer_process_duration_seconds": 298.545785676,
+      "measured_card_load_duration_seconds": 292.6818954037718,
+      "card_load_target_met": true,
+      "duration_interpretation": "Outer workload-process duration was approximately 298.546 seconds; measured card-load duration was approximately 292.682 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 134,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31564524713698,
+        "end_monotonic_ns": 31699524713698,
+        "duration_seconds": 135.0,
+        "segment_count": 61,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.719855854,
+        "min_mhz": 956.0,
+        "max_mhz": 1243.0,
+        "time_weighted_mean_mhz": 978.6524304726074,
+        "percentiles_mhz": {
+          "p01": 956.0,
+          "p05": 956.0,
+          "p50": 956.0,
+          "p95": 1243.0,
+          "p99": 1243.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 130.0,
+          "max": 139.0,
+          "time_weighted_mean": 131.08396150537038,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 18.916038494629618,
+            "fraction": 0.1261069232975308
+          },
+          "unit": "W"
+        },
+        "current_a": {
+          "min": 167.0,
+          "max": 180.0,
+          "time_weighted_mean": 178.21968185776296,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "A",
+            "difference": 21.780318142237036,
+            "fraction": 0.10890159071118517
+          },
+          "unit": "A"
+        },
+        "asic_temp_c": {
+          "min": 82.9,
+          "max": 83.8,
+          "time_weighted_mean": 83.31576916859629,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 6.68423083140371,
+            "fraction": 0.07426923146004122
+          },
+          "unit": "degC"
+        },
+        "board_power_w": {
+          "min": 288.0,
+          "max": 313.0,
+          "time_weighted_mean": 300.88188737094816,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.8818873709481636,
+            "fraction": 0.002939624569827212
+          },
+          "unit": "W"
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "fallback"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31416776968885,
+            "seconds_from_run_start": 2.252255187,
+            "aiclk_mhz": 1350.0,
+            "power_w": 81.0,
+            "current_a": 95.0,
+            "asic_temp_c": 65.2
+          },
+          {
+            "timestamp_monotonic_ns": 31419011041090,
+            "seconds_from_run_start": 4.486327392,
+            "aiclk_mhz": 1343.0,
+            "power_w": 212.0,
+            "current_a": 257.0,
+            "asic_temp_c": 76.1
+          },
+          {
+            "timestamp_monotonic_ns": 31421244569552,
+            "seconds_from_run_start": 6.719855854,
+            "aiclk_mhz": 1037.0,
+            "power_w": 135.0,
+            "current_a": 182.0,
+            "asic_temp_c": 73.2
+          },
+          {
+            "timestamp_monotonic_ns": 31423513130455,
+            "seconds_from_run_start": 8.988416757,
+            "aiclk_mhz": 1043.0,
+            "power_w": 136.0,
+            "current_a": 183.0,
+            "asic_temp_c": 74.6
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4837,
+          "sha256": "9a020a369a5ea8438cc8d1e8065058332066533c0dbfe0b415996923069d2806",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3771,
+          "sha256": "e2eff989c4bef08470681cb2eaed6076d70d6063ca136e9b660ed7c389bba8aa",
+          "status": "saved"
+        }
+      },
+      "measured_card_load_duration_approx_seconds": 292.682
+    },
+    {
+      "run_number": 3,
+      "run_id": "q2-run-3-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-3-device0/run-q2-run-3-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-3-device0/extended-trace-q2-run-3-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-3-device0/analysis-q2-run-3-device0.json",
+      "status": "ok",
+      "duration_seconds": 301.4729979,
+      "outer_process_duration_seconds": 301.4729979,
+      "measured_card_load_duration_seconds": 294.7160203126406,
+      "card_load_target_met": true,
+      "duration_interpretation": "Outer workload-process duration was approximately 301.473 seconds; measured card-load duration was approximately 294.716 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 136,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31987939902523,
+        "end_monotonic_ns": 32122939902523,
+        "duration_seconds": 135.0,
+        "segment_count": 61,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.731211923,
+        "min_mhz": 950.0,
+        "max_mhz": 1237.0,
+        "time_weighted_mean_mhz": 967.1443752217778,
+        "percentiles_mhz": {
+          "p01": 950.0,
+          "p05": 950.0,
+          "p50": 950.0,
+          "p95": 1231.0,
+          "p99": 1237.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 96.0,
+          "max": 137.0,
+          "time_weighted_mean": 128.91214016093335,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 21.087859839066653,
+            "fraction": 0.14058573226044435
+          },
+          "unit": "W"
+        },
+        "current_a": {
+          "min": 130.0,
+          "max": 180.0,
+          "time_weighted_mean": 176.33799951074073,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "A",
+            "difference": 23.66200048925927,
+            "fraction": 0.11831000244629636
+          },
+          "unit": "A"
+        },
+        "asic_temp_c": {
+          "min": 81.0,
+          "max": 83.8,
+          "time_weighted_mean": 83.27130688187926,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 6.728693118120745,
+            "fraction": 0.07476325686800828
+          },
+          "unit": "degC"
+        },
+        "board_power_w": {
+          "min": 247.0,
+          "max": 309.0,
+          "time_weighted_mean": 300.06724754488147,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.067247544881468,
+            "fraction": 0.00022415848293822667
+          },
+          "unit": "W"
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "fallback"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31840194331758,
+            "seconds_from_run_start": 2.254429235,
+            "aiclk_mhz": 1350.0,
+            "power_w": 82.0,
+            "current_a": 96.0,
+            "asic_temp_c": 64.8
+          },
+          {
+            "timestamp_monotonic_ns": 31842433136064,
+            "seconds_from_run_start": 4.493233541,
+            "aiclk_mhz": 1343.0,
+            "power_w": 210.0,
+            "current_a": 255.0,
+            "asic_temp_c": 76.1
+          },
+          {
+            "timestamp_monotonic_ns": 31844671114446,
+            "seconds_from_run_start": 6.731211923,
+            "aiclk_mhz": 1031.0,
+            "power_w": 133.0,
+            "current_a": 179.0,
+            "asic_temp_c": 73.0
+          },
+          {
+            "timestamp_monotonic_ns": 31846905046796,
+            "seconds_from_run_start": 8.965144273,
+            "aiclk_mhz": 1037.0,
+            "power_w": 134.0,
+            "current_a": 180.0,
+            "asic_temp_c": 74.2
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4835,
+          "sha256": "50298d03b110a5e0a893d2783c2d47ec42f4926191077482fbec7b8f4a355aea",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3769,
+          "sha256": "5faf115bd70401cdd7c839e869999445c0e7d785bccedf7d0d981ddfc12e746d",
+          "status": "saved"
+        }
+      },
+      "measured_card_load_duration_approx_seconds": 294.716
+    }
+  ],
+  "post_hoc_observations": {
+    "status": "post_measurement",
+    "scope": "Post-hoc observations only; these are not preregistered hypothesis results.",
+    "cooldown_observable_audit": {
+      "status": "post_measurement",
+      "disclosure": "The audit found that the helper silently used fixed defaults of 47 W and 58.5 degC instead of requiring the preceding selected-device pre-run snapshot. The historical transitions pass under their actual baselines: run 1 pre 47 W/61.2 degC gives limits 52 W/64.2 degC for the 49 W/61.4 degC cooldown, and run 2 pre 48 W/61.2 degC gives limits 53 W/64.2 degC for the 47 W/61.5 degC cooldown. The selected-device telemetry.power gate remains distinct from retained telemetry.board_power at 121 W; immutable snapshots and the historical pass result are unchanged.",
+      "gate_signal": "telemetry.power",
+      "reporting_signal": "telemetry.board_power",
+      "baseline_source": "preceding selected-device pre-run snapshot",
+      "historical_baseline_values": [
+        {
+          "transition": "run_1_to_run_2",
+          "baseline_power_w": 47.0,
+          "baseline_temperature_c": 61.2,
+          "power_limit_w": 52.0,
+          "temperature_limit_c": 64.2
+        },
+        {
+          "transition": "run_2_to_run_3",
+          "baseline_power_w": 48.0,
+          "baseline_temperature_c": 61.2,
+          "power_limit_w": 53.0,
+          "temperature_limit_c": 64.2
+        }
+      ],
+      "historical_result_unchanged": true,
+      "historical_records_pass_under_actual_baselines": true,
+      "immutable_snapshots_unchanged": true
+    },
+    "duration_audit": {
+      "status": "post_measurement",
+      "target_seconds": 285.0,
+      "target_role": "preregistered 285-second workload target audited as measured card-load time",
+      "outer_process_duration_seconds": [
+        299.15060189,
+        298.545785676,
+        301.4729979
+      ],
+      "measured_card_load_duration_seconds": [
+        292.412352680442,
+        292.6818954037718,
+        294.7160203126406
+      ],
+      "measured_card_load_duration_approx_seconds": [
+        292.412,
+        292.682,
+        294.716
+      ],
+      "card_load_duration_source": "For each run, use the immutable runner-result card_load_interval.elapsed_ticks (also recorded as card_load_interval_statistics.slowest_worker_elapsed_ticks) as the measured numerator with that run's immutable aiclk_mhz_load_interval_weighted: card_load_interval.elapsed_ticks / (aiclk_mhz_load_interval_weighted * 1e6). calibration.load_card_ticks=290132005515 is the pre-run Issue #118 calibration estimate and is not the Q2 measured duration numerator.",
+      "card_load_target_met": true,
+      "rerun_performed": false,
+      "disclosure": "The outer workload-process durations were approximately 299.151, 298.546, and 301.473 seconds; measured card-load durations were approximately 292.412, 292.682, and 294.716 seconds, respectively. All three runs exceeded the 285-second measured card-load target; no rerun was needed.",
+      "interpretation_consequence": "Outer workload-process duration and measured card-load duration are separate; the corrected measured values are the target comparison, while plateau and analysis artifacts, H-OTHER classification, and prediction are unchanged.",
+      "immutable_run_artifacts_unchanged": true,
+      "source_provenance_correction": "Revision 7's approximately 276.08-second disclosure used the Issue #118 calibration actual_duration_aiclk_mhz instead of each run's measured aiclk_mhz_load_interval_weighted; revision 8 corrected that clock source but still used calibration.load_card_ticks=290132005515 as the Q2 duration numerator. Revision 9 supersedes the revision 8 numerator disclosure by using each run's observed card_load_interval.elapsed_ticks (equal to card_load_interval_statistics.slowest_worker_elapsed_ticks) with its measured aiclk_mhz_load_interval_weighted; the observed numerators are 290132591897, 290132632600, and 290134027007, yielding approximately 292.412, 292.682, and 294.716 seconds, and outcomes/classifications are unchanged. No immutable runner, calibration, run, trace, or snapshot file changed."
+    },
+    "source": {
+      "analysis_commit": "e09d4f9",
+      "run_artifacts": "The committed Q2 run traces, snapshots, and analyses; no run artifact was changed.",
+      "unit_disposition": "Revision 5 post-measurement source inspection; no run artifact was changed."
+    },
+    "board_power_plateau": {
+      "signal": "board_power_w",
+      "limit_w": 300.0,
+      "delta_definition": "signed plateau time-weighted mean minus 300 W",
+      "runs": [
+        {
+          "run_number": 1,
+          "time_weighted_mean_w": 299.44635551097036,
+          "min_w": 241.0,
+          "max_w": 310.0,
+          "delta_from_300_w": -0.5536444890296366,
+          "absolute_difference_from_300_w": 0.5536444890296366
+        },
+        {
+          "run_number": 2,
+          "time_weighted_mean_w": 300.88188737094816,
+          "min_w": 288.0,
+          "max_w": 313.0,
+          "delta_from_300_w": 0.8818873709481636,
+          "absolute_difference_from_300_w": 0.8818873709481636
+        },
+        {
+          "run_number": 3,
+          "time_weighted_mean_w": 300.06724754488147,
+          "min_w": 247.0,
+          "max_w": 309.0,
+          "delta_from_300_w": 0.067247544881468,
+          "absolute_difference_from_300_w": 0.067247544881468
+        }
+      ]
+    },
+    "transient_at_approximately_4_5_seconds": {
+      "observation": "Each run has an approximately 4.5-second transient at about 1343 MHz, 210-212 W power, 254-257 A current, and 394-407 W board power.",
+      "runs": [
+        {
+          "run_number": 1,
+          "seconds_from_run_start": 4.487206148,
+          "aiclk_mhz": 1343.0,
+          "power_w": 210.0,
+          "current_a": 254.0,
+          "voltage_v": 0.83,
+          "board_power_w": 407.0
+        },
+        {
+          "run_number": 2,
+          "seconds_from_run_start": 4.486327392,
+          "aiclk_mhz": 1343.0,
+          "power_w": 212.0,
+          "current_a": 257.0,
+          "voltage_v": 0.83,
+          "board_power_w": 405.0
+        },
+        {
+          "run_number": 3,
+          "seconds_from_run_start": 4.493233541,
+          "aiclk_mhz": 1343.0,
+          "power_w": 210.0,
+          "current_a": 255.0,
+          "voltage_v": 0.83,
+          "board_power_w": 394.0
+        }
+      ]
+    },
+    "next_sample_at_approximately_6_7_seconds": {
+      "observation": "The next approximately 6.7-second sample is 1031-1037 MHz with 292-297 W board power.",
+      "runs": [
+        {
+          "run_number": 1,
+          "seconds_from_run_start": 6.727259794,
+          "aiclk_mhz": 1037.0,
+          "power_w": 134.0,
+          "current_a": 180.0,
+          "voltage_v": 0.74,
+          "board_power_w": 295.0
+        },
+        {
+          "run_number": 2,
+          "seconds_from_run_start": 6.719855854,
+          "aiclk_mhz": 1037.0,
+          "power_w": 135.0,
+          "current_a": 182.0,
+          "voltage_v": 0.75,
+          "board_power_w": 292.0
+        },
+        {
+          "run_number": 3,
+          "seconds_from_run_start": 6.731211923,
+          "aiclk_mhz": 1031.0,
+          "power_w": 133.0,
+          "current_a": 179.0,
+          "voltage_v": 0.74,
+          "board_power_w": 297.0
+        }
+      ]
+    },
+    "voltage_and_power_interpretation": {
+      "transient_voltage_v": 0.83,
+      "post_transient_voltage_v_range": [
+        0.73,
+        0.75
+      ],
+      "relationship": "Power is approximately voltage*current in these telemetry samples.",
+      "limitation": "This run cannot separate TDC from TDP."
+    },
+    "load_plateau_evolution": {
+      "transition_values": {
+        "aiclk_mhz_range": [
+          1031.0,
+          1037.0
+        ],
+        "asic_temp_c_range": [
+          73.0,
+          73.3
+        ]
+      },
+      "later_loaded_plateau_values": {
+        "aiclk_mhz_range": [
+          950.0,
+          962.0
+        ],
+        "asic_temp_c_observed_range": [
+          80.8,
+          83.8
+        ],
+        "asic_temp_time_weighted_mean_c_by_run": [
+          82.86679598474963,
+          83.31576916859629,
+          83.27130688187926
+        ],
+        "board_power_w_remains_near": 300.0
+      },
+      "observation": "AICLK moves from approximately 1037 MHz toward 950-962 MHz while ASIC temperature rises from low-70s transition values to approximately 83 degC; board_power remains near 300 W."
+    },
+    "raw_snapshot_limits": {
+      "THM_LIMIT_THROTTLE": {
+        "pre": [
+          "0x5a",
+          "0x5a",
+          "0x5a"
+        ],
+        "post": [
+          "0x5a",
+          "0x5a",
+          "0x5a"
+        ],
+        "unit": "degC",
+        "interpretation": "Raw snapshot value remains 0x5a; post-measurement tt-smi/tt-umd provenance establishes its semantic unit as degC through the direct therm_trip_l1 mapping. The raw value was not rewritten.",
+        "raw_unit": null,
+        "semantic_unit": "degC"
+      }
+    },
+    "device_comparison": {
+      "issue_118": {
+        "host_device_id": 0,
+        "container_visible_device_id": 0
+      },
+      "q2_measurement": {
+        "host_device_id": 1,
+        "container_visible_device_id": 0
+      },
+      "direct_comparison": false,
+      "note": "Issue #118 used device 0 whereas this Q2 measurement used host device 1/container-visible device 0; these are not directly the same device."
+    },
+    "causality_and_next_intervention": {
+      "causality": "Correlation is not causation.",
+      "requirement": "A new preregistered intervention is required to test the board-power hypothesis.",
+      "example": "Change core count/load to get board power below 300 W, then compare the resulting AICLK and thermal behavior under the preregistered intervention."
+    },
+    "aiclk_onset_definitions": {
+      "threshold": {
+        "baseline_asic_fmax_mhz": 1350.0,
+        "threshold_expression": "1350*0.95=1282.5",
+        "threshold_mhz": 1282.5
+      },
+      "before": {
+        "definition": "AICLK onset used the first left-held segment clipped at run_start whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could make onset t=0.",
+        "onset_times_seconds": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "classifications": [
+          "H-OTHER",
+          "H-OTHER",
+          "H-OTHER"
+        ]
+      },
+      "after": {
+        "definition": "AICLK onset uses the first trace sample segment whose timestamp is at or after run_start (post-start sample only), with the same 1350*0.95=1282.5 threshold.",
+        "onset_times_seconds": [
+          6.727259794,
+          6.719855854,
+          6.731211923
+        ],
+        "approximate_onset_seconds": "approximately 6.72 s per run",
+        "classifications": [
+          "H-OTHER",
+          "H-OTHER",
+          "H-OTHER"
+        ]
+      },
+      "reason": "Exclude pre-run idle from load-onset timing.",
+      "change_provenance": "Post-measurement analysis change introduced by e09d4f9 after all 3 runs.",
+      "classification_comparison": "The pre-change definition classified all three runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
+    },
+    "unit_disposition": {
+      "schema": "issue121-q2-unit-provenance-v1",
+      "status": "established",
+      "post_measurement": true,
+      "packages": [
+        {
+          "name": "tt-smi",
+          "version": "6.2.1",
+          "repository": "tenstorrent/tt-smi"
+        },
+        {
+          "name": "tt-umd",
+          "version": "0.9.8",
+          "repository": "tenstorrent/tt-umd"
+        }
+      ],
+      "comparisons": {
+        "current_a_vs_tdc_limit": {
+          "signal_unit": "A",
+          "limit_unit": "A",
+          "comparable": true,
+          "raw_limit_key": "TDC_LIMIT_MAX",
+          "reported_limit_key": "limits.tdc_limit",
+          "evidence": [
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+              "finding": "The API documents TDC in amps."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_telemetry",
+              "finding": "Blackhole telemetry uses the raw low 16 bits of TDC for current without a unit conversion."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_limits",
+              "finding": "TDC_LIMIT_MAX is used directly as tdc_limit, while the telemetry table labels the paired current as A."
+            }
+          ]
+        },
+        "asic_temp_c_vs_therm_trip_l1_limit": {
+          "signal_unit": "degC",
+          "limit_unit": "degC",
+          "comparable": true,
+          "reported_limit_key": "limits.therm_trip_l1_limit",
+          "evidence": [
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+              "finding": "The API documents ASIC temperature in Celsius."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/constants.py",
+              "function": "TELEMETRY_TABLE_HEADER",
+              "finding": "The paired Core Temp telemetry is labeled in degrees Celsius."
+            }
+          ]
+        },
+        "asic_temp_c_vs_thm_limit_throttle": {
+          "signal_unit": "degC",
+          "limit_unit": "degC",
+          "comparable": true,
+          "raw_limit_key": "THM_LIMIT_THROTTLE",
+          "reported_limit_key": "limits.therm_trip_l1_limit",
+          "evidence": [
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_limits",
+              "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit; no conversion is applied."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/constants.py",
+              "function": "TELEMETRY_TABLE_HEADER",
+              "finding": "Core Temp is labeled in degrees Celsius and is shown with the thermal throttle/temperature limit."
+            },
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+              "finding": "The underlying ASIC temperature API is Celsius."
+            }
+          ]
+        }
+      }
+    },
+    "gddr_fan_observation": {
+      "status": "post_measurement",
+      "source_record": "docs/measurements/issue121-q2/2026-10-16-post-hoc-gddr-fan-observation.json",
+      "scope": "Idle observation and derived comparisons only; not preregistered Q2 criteria or a workload result.",
+      "idle_snapshot": {
+        "acquired_at_utc": "2026-10-16T13:13:52Z",
+        "raw_reported_time": "2026-10-16T22:13:53.012165",
+        "raw_reported_time_status": "Unnormalized source field; the operator-stated acquired_at_utc is authoritative.",
+        "raw_snapshot_basename": "raw-tt-smi-snapshot-20261016T131352Z.json",
+        "provenance": "Manual idle read performed outside the Q2 harness; only sanitized board and telemetry fields are retained.",
+        "boards": [
+          {
+            "device": 0,
+            "serial": "000004033191411c",
+            "pci_bus_id": "0000:06:00.0",
+            "firmware_bundle": "19.6.0.0",
+            "asic_temperature_raw": "0x34b67a",
+            "asic_temperature_c": 52.7,
+            "gddr_words": {
+              "GDDR_0_1_TEMP": "0x36363234",
+              "GDDR_2_3_TEMP": "0x32343432",
+              "GDDR_4_5_TEMP": "0x30323638",
+              "GDDR_6_7_TEMP": "0x34342e30"
+            },
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 52,
+                "top_c": 50
+              },
+              "GDDR_1": {
+                "bottom_c": 54,
+                "top_c": 54
+              },
+              "GDDR_2": {
+                "bottom_c": 50,
+                "top_c": 52
+              },
+              "GDDR_3": {
+                "bottom_c": 52,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 50,
+                "top_c": 48
+              },
+              "GDDR_6": {
+                "bottom_c": 48,
+                "top_c": 46
+              },
+              "GDDR_7": {
+                "bottom_c": 52,
+                "top_c": 52
+              }
+            },
+            "max_gddr_temp_raw": "0x38",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_raw": "0x2a",
+            "fan_target_percent": 42,
+            "fan_speed_percent": 42,
+            "fan_rpm_raw": "0x80c",
+            "fan_rpm": 2060
+          },
+          {
+            "device": 1,
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "firmware_bundle": "19.6.0.0",
+            "asic_temperature_raw": "0x2f43f2",
+            "asic_temperature_c": 47.3,
+            "gddr_words": {
+              "GDDR_0_1_TEMP": "0x42424042",
+              "GDDR_2_3_TEMP": "0x48482828",
+              "GDDR_4_5_TEMP": "0x44442e2c",
+              "GDDR_6_7_TEMP": "0x42462a28"
+            },
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 40,
+                "top_c": 40
+              },
+              "GDDR_3": {
+                "bottom_c": 72,
+                "top_c": 72
+              },
+              "GDDR_4": {
+                "bottom_c": 44,
+                "top_c": 46
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_6": {
+                "bottom_c": 40,
+                "top_c": 42
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 66
+              }
+            },
+            "max_gddr_temp_raw": "0x48",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_raw": "0x46",
+            "fan_target_percent": 70,
+            "fan_speed_percent": 70,
+            "fan_rpm_raw": "0xd96",
+            "fan_rpm": 3478
+          }
+        ]
+      },
+      "q2_device_1_snapshot_comparison": {
+        "identity": {
+          "serial": "0000040331914124",
+          "pci_bus_id": "0000:09:00.0",
+          "selection": "device_info[].board_info.bus_id"
+        },
+        "run_pre_post": [
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-1-device0/post-snapshot-q2-run-1-device0.json",
+            "stage": "post_run",
+            "captured_at_utc": "2026-10-16T06:17:48.323483+00:00",
+            "asic_temperature_c": 75.3,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 70,
+                "top_c": 70
+              },
+              "GDDR_4": {
+                "bottom_c": 64,
+                "top_c": 68
+              },
+              "GDDR_5": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_6": {
+                "bottom_c": 64,
+                "top_c": 66
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 68
+              }
+            },
+            "max_gddr_temp_raw": "0x46",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 66,
+            "fan_rpm": 3609
+          },
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-1-device0/pre-snapshot-q2-run-1-device0.json",
+            "stage": "pre_run",
+            "captured_at_utc": "2026-10-16T06:12:48.925839+00:00",
+            "asic_temperature_c": 61.2,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 50,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp_raw": "0x3c",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 47,
+            "fan_rpm": 2242
+          },
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-2-device0/post-snapshot-q2-run-2-device0.json",
+            "stage": "post_run",
+            "captured_at_utc": "2026-10-16T06:24:11.301287+00:00",
+            "asic_temperature_c": 75.8,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 66,
+                "top_c": 68
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_6": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_7": {
+                "bottom_c": 68,
+                "top_c": 66
+              }
+            },
+            "max_gddr_temp_raw": "0x44",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 68,
+            "fan_rpm": 3809
+          },
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-2-device0/pre-snapshot-q2-run-2-device0.json",
+            "stage": "pre_run",
+            "captured_at_utc": "2026-10-16T06:19:12.517890+00:00",
+            "asic_temperature_c": 61.2,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_7": {
+                "bottom_c": 58,
+                "top_c": 54
+              }
+            },
+            "max_gddr_temp_raw": "0x42",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 57,
+            "fan_rpm": 2681
+          },
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-3-device0/post-snapshot-q2-run-3-device0.json",
+            "stage": "post_run",
+            "captured_at_utc": "2026-10-16T06:31:17.644842+00:00",
+            "asic_temperature_c": 75.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 68,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 72,
+                "top_c": 72
+              },
+              "GDDR_4": {
+                "bottom_c": 66,
+                "top_c": 70
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_6": {
+                "bottom_c": 70,
+                "top_c": 70
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 66
+              }
+            },
+            "max_gddr_temp_raw": "0x48",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 70,
+            "fan_rpm": 3582
+          },
+          {
+            "source": "docs/measurements/issue121-q2/runs/run-3-device0/pre-snapshot-q2-run-3-device0.json",
+            "stage": "pre_run",
+            "captured_at_utc": "2026-10-16T06:26:15.933061+00:00",
+            "asic_temperature_c": 61.1,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 60,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp_raw": "0x44",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 61,
+            "fan_rpm": 2909
+          }
+        ],
+        "cooldown": [
+          {
+            "source": "docs/measurements/issue121-q2/cooldown/run-1-to-2/snapshot-0018.json",
+            "stage": "cooldown_before_run_2",
+            "captured_at_utc": "2026-10-16T06:18:57.899022+00:00",
+            "asic_temperature_c": 61.4,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 68
+              }
+            },
+            "max_gddr_temp_raw": "0x46",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 66,
+            "fan_rpm": 3200
+          },
+          {
+            "source": "docs/measurements/issue121-q2/cooldown/run-2-to-3/snapshot-0046.json",
+            "stage": "cooldown_before_run_3",
+            "captured_at_utc": "2026-10-16T06:26:06.297797+00:00",
+            "asic_temperature_c": 61.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 60,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp_raw": "0x44",
+            "max_gddr_temp_unit": "unknown",
+            "fan_speed_percent": 61,
+            "fan_rpm": 2909
+          }
+        ],
+        "all_existing_q2_run_snapshot_count": 14,
+        "all_existing_q2_cooldown_snapshot_count": 2,
+        "comparison_note": "The supplemental record retains raw words and decoded channel bytes for every existing Q2 run pre/post snapshot and both cooldown snapshots; MAX_GDDR_TEMP remains raw-only with unknown unit."
+      },
+      "issue_118_comparison": {
+        "records": [
+          "docs/measurements/2026-10-11-p150a-issue118-control-500000-adr0005.json",
+          "docs/measurements/2026-10-11-p150a-issue118-dram-500000-adr0005.json",
+          "docs/measurements/2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
+        ],
+        "gddr_temperature_status": "absent",
+        "finding": "Issue #118 has no GDDR temperature fields in the committed records.",
+        "device_assignment": "Issue #118 used device 0 while Q2 used device 1; the idle comparison is across different boards.",
+        "thermal_limitation": "The differing board thermal state means the AICLK difference cannot be attributed to run conditions alone.",
+        "board_thermal_confound": {
+          "issue_118_device_0": {
+            "pci_bus_id": "0000:06:00.0",
+            "asic_temperature_c": 52.7,
+            "fan_target_percent": 42,
+            "fan_rpm": 2060
+          },
+          "q2_device_1": {
+            "pci_bus_id": "0000:09:00.0",
+            "asic_temperature_c": 47.3,
+            "fan_target_percent": 70,
+            "fan_rpm": 3478
+          },
+          "statement": "Issue #118 used device 0 while Q2 used device 1. These are different boards with different idle thermal and fan states, so the AICLK comparison is confounded and cannot be attributed to run conditions alone."
+        }
+      },
+      "interpretation": [
+        "Any apparent fan-control/GDDR-temperature relationship is speculation, not proof: the inspected source establishes field decoding but does not establish fan-control causality from GDDR temperature.",
+        "The device-0 Issue #118 versus device-1 Q2 comparison is a board-thermal confound; the idle observation cannot establish why their run behavior differs."
+      ],
+      "source_provenance": [
+        {
+          "package": "tt-smi==6.2.1",
+          "source_file": "tt_smi/backend.py",
+          "names": [
+            "TTSMIBackend.get_smbus_board_info",
+            "TTSMIBackend.get_bh_chip_telemetry"
+          ],
+          "finding": "Raw telemetry words are emitted as hexadecimal; ASIC temperature is decoded as signed 16.16 and FAN_RPM low 16 bits are displayed as RPM."
+        },
+        {
+          "package": "tt-smi==6.2.1",
+          "source_file": "tt_smi/utils.py",
+          "names": [
+            "convert_signed_16_16_to_float"
+          ],
+          "finding": "ASIC temperature conversion divides signed fixed-point values by 65536."
+        },
+        {
+          "package": "tt-smi==6.2.1",
+          "source_file": "tt_smi/constants.py",
+          "names": [
+            "TELEMETRY_TABLE_HEADER"
+          ],
+          "finding": "The displayed fan telemetry is labeled RPM."
+        },
+        {
+          "package": "tt-umd==0.9.8",
+          "source_file": "device/firmware/firmware_info_provider.cpp",
+          "names": [
+            "decode_gddr_module_telemetry",
+            "FirmwareInfoProvider::get_dram_telemetry",
+            "FirmwareInfoProvider::get_current_max_dram_temperature",
+            "FirmwareInfoProvider::get_fan_speed",
+            "FirmwareInfoProvider::get_fan_rpm"
+          ],
+          "finding": "GDDR pair-word byte order and fan scalar/two-fan conditions are established; MAX_GDDR_TEMP remains unit/packing unknown."
+        },
+        {
+          "package": "tt-umd==0.9.8",
+          "source_file": "device/api/umd/device/types/gddr_telemetry.hpp",
+          "names": [
+            "GddrModuleTelemetry::dram_temperature_top/bottom"
+          ],
+          "finding": "Per-die GDDR temperatures are Celsius."
+        },
+        {
+          "package": "tt-umd==0.9.8",
+          "source_file": "device/api/umd/device/types/telemetry.hpp",
+          "names": [
+            "TelemetryTag::FAN_SPEED",
+            "TelemetryTag::FAN_RPM",
+            "TelemetryTag::GDDR_0_1_TEMP through TelemetryTag::MAX_GDDR_TEMP"
+          ],
+          "finding": "The relevant telemetry tags are enumerated; source establishes GDDR pair-word bit positions and fan field semantics, but MAX_GDDR_TEMP unit and packing remain unknown."
+        }
+      ],
+      "limitations": [
+        "MAX_GDDR_TEMP unit and packing are unknown; raw hexadecimal values are retained without conversion.",
+        "The operator-supplied idle snapshot is a single observation acquired outside the Q2 harness and is not a workload measurement.",
+        "The different device-0/device-1 boards and their thermal state confound direct attribution of AICLK behavior.",
+        "The source inspection does not establish a causal fan-control relationship with GDDR temperature."
+      ],
+      "source_status": "Operator-supplied sanitized snapshot; local source inspection only.",
+      "source_inspection_scope": "Local tt-smi 6.2.1 and tt-umd 0.9.8 source inspection only; no hardware access was used for this post-hoc update."
+    }
+  },
+  "prediction": {
+    "expected_classification": [
+      "H-TDC",
+      "H-OTHER"
+    ],
+    "excluded_by_prior_evidence": [
+      "H-TDP",
+      "H-THM"
+    ],
+    "actual_classifications": [
+      "H-OTHER",
+      "H-OTHER",
+      "H-OTHER"
+    ],
+    "outcome": "matched",
+    "comparison": "All three runs classified H-OTHER; H-TDP and H-THM were not supported, while current evidence made H-TDC not_supported under the fixed criteria."
+  },
+  "causality": "correlation_is_not_causation",
+  "limitations": [
+    "The extended trace cadence is approximately 2 seconds; onset ordering has approximately 2-second resolution.",
+    "The AICLK onset is the first post-start sampled interval at or below 95% of source asic_fmax; no interpolation is performed.",
+    "The measurement is the ADR-0013 108-core Newton-Schulz surrogate and is not full enodia evidence.",
+    "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here.",
+    "Outer workload-process duration includes setup and teardown beyond measured card-load time: measured card-load durations were approximately 292.412, 292.682, and 294.716 seconds against the 285-second target, so all three runs exceeded the measured target. The earlier approximately 276.08-second disclosure used the wrong calibration clock source and was corrected in revision 8; revision 9 corrected the remaining calibration numerator to the observed per-run elapsed ticks, and no rerun was performed."
+  ],
+  "unit_provenance": {
+    "schema": "issue121-q2-unit-provenance-v1",
+    "status": "established",
+    "post_measurement": true,
+    "packages": [
+      {
+        "name": "tt-smi",
+        "version": "6.2.1",
+        "repository": "tenstorrent/tt-smi"
+      },
+      {
+        "name": "tt-umd",
+        "version": "0.9.8",
+        "repository": "tenstorrent/tt-umd"
+      }
+    ],
+    "comparisons": {
+      "current_a_vs_tdc_limit": {
+        "signal_unit": "A",
+        "limit_unit": "A",
+        "comparable": true,
+        "raw_limit_key": "TDC_LIMIT_MAX",
+        "reported_limit_key": "limits.tdc_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+            "finding": "The API documents TDC in amps."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Blackhole telemetry uses the raw low 16 bits of TDC for current without a unit conversion."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "TDC_LIMIT_MAX is used directly as tdc_limit, while the telemetry table labels the paired current as A."
+          }
+        ]
+      },
+      "asic_temp_c_vs_therm_trip_l1_limit": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The API documents ASIC temperature in Celsius."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "The paired Core Temp telemetry is labeled in degrees Celsius."
+          }
+        ]
+      },
+      "asic_temp_c_vs_thm_limit_throttle": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "raw_limit_key": "THM_LIMIT_THROTTLE",
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit; no conversion is applied."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "Core Temp is labeled in degrees Celsius and is shown with the thermal throttle/temperature limit."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The underlying ASIC temperature API is Celsius."
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,363 @@
+{
+  "record_schema": "issue121-q2-measurement-v1",
+  "issue": "#121",
+  "run_id": "q2-run-3-device0",
+  "run_number": 3,
+  "status": "ok",
+  "environment": {
+    "board": {
+      "serial": "0000040331914124",
+      "board_type": "p150a",
+      "identity": {
+        "board_id": "0000040331914124",
+        "bus_id": "0000:09:00.0"
+      }
+    },
+    "firmware": {
+      "bundle": "19.6.0.0"
+    },
+    "kernel": "6.8.0-138-generic",
+    "kernel_driver_version": "2.11.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+    "harness_commit": "344a8f1a126b5f993f738db614e9e32fb0174089",
+    "device_id": 1,
+    "device_node": "/dev/tenstorrent/1",
+    "container_device_id": 0,
+    "pre_snapshot": "pre-snapshot-q2-run-3-device0.json"
+  },
+  "workload": {
+    "name": "adr-0013-108-core-newton-schulz-surrogate",
+    "condition": "newton_schulz",
+    "device_id": 1,
+    "container_device_id": 0,
+    "device_node": "/dev/tenstorrent/1",
+    "worker_core_count": 108,
+    "data_independent": true,
+    "run_duration_target_seconds": 285.0,
+    "run_guard_seconds": 330.0,
+    "wrapper": "enodia/tt/bench/run_in_container.sh",
+    "runner": "enodia/tt/bench/run_resident.py",
+    "result_path": "runner-result-q2-run-3-device0.json",
+    "calibration_path": "issue121-q2-calibration.json"
+  },
+  "run_timing": {
+    "workload_start_monotonic_ns": 31837939902523,
+    "workload_end_monotonic_ns": 32139412900423,
+    "workload_duration_seconds": 301.4729979,
+    "target_duration_seconds": 285.0,
+    "guard_seconds": 330.0,
+    "within_guard": true,
+    "timeout_seconds": 330.0
+  },
+  "workload_result": {
+    "returncode": 0,
+    "status": "completed",
+    "timed_out": false,
+    "output_omissions": {
+      "stdout": "not_saved: path_detected",
+      "stderr": "not_saved: path_detected"
+    },
+    "local_diagnostics": {
+      "stdout": {
+        "path": "workload-stdout.log",
+        "byte_count": 4835,
+        "sha256": "50298d03b110a5e0a893d2783c2d47ec42f4926191077482fbec7b8f4a355aea",
+        "status": "saved"
+      },
+      "stderr": {
+        "path": "workload-stderr.log",
+        "byte_count": 3769,
+        "sha256": "5faf115bd70401cdd7c839e869999445c0e7d785bccedf7d0d981ddfc12e746d",
+        "status": "saved"
+      }
+    }
+  },
+  "snapshot_limits": {
+    "pre": {
+      "status": "available",
+      "stage": "pre_run",
+      "recognized": {
+        "tdp_limit_w": {
+          "value": "150",
+          "unit": "W",
+          "source_key": "limits.tdp_limit",
+          "status": "known"
+        },
+        "board_power_limit_w": {
+          "value": "300",
+          "unit": "W",
+          "source_key": "limits.board_power_limit",
+          "status": "known"
+        },
+        "tdc_limit": {
+          "value": "200",
+          "unit": "reported snapshot unit",
+          "source_key": "limits.tdc_limit",
+          "status": "known"
+        },
+        "therm_trip_l1_limit_c": {
+          "value": "90",
+          "unit": "degC",
+          "source_key": "limits.therm_trip_l1_limit",
+          "status": "known"
+        },
+        "thm_shutdown_limit_c": {
+          "value": "110",
+          "unit": "degC",
+          "source_key": "limits.thm_limit",
+          "status": "known"
+        },
+        "asic_fmax_mhz": {
+          "value": "1350",
+          "unit": "MHz",
+          "source_key": "limits.asic_fmax",
+          "status": "known"
+        },
+        "thm_limit_throttle": {
+          "value": "0x5a",
+          "unit": "degC",
+          "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
+          "status": "known"
+        }
+      },
+      "raw": {
+        "VDD_LIMITS": "0x38402bc",
+        "THM_LIMIT_SHUTDOWN": "0x6e",
+        "BOARD_POWER_LIMIT": "0x12c",
+        "TDC_LIMIT_MAX": "0xc8",
+        "THM_LIMIT_THROTTLE": "0x5a",
+        "AICLK_LIMIT_MAX": "0x546",
+        "TDP_LIMIT_MAX": "0x96"
+      },
+      "raw_smbus": {
+        "VDD_LIMITS": "0x38402bc",
+        "THM_LIMIT_SHUTDOWN": "0x6e",
+        "BOARD_POWER_LIMIT": "0x12c",
+        "TDC_LIMIT_MAX": "0xc8",
+        "THM_LIMIT_THROTTLE": "0x5a",
+        "AICLK_LIMIT_MAX": "0x546",
+        "TDP_LIMIT_MAX": "0x96"
+      },
+      "THM_LIMIT_THROTTLE": "0x5a"
+    },
+    "post": {
+      "status": "available",
+      "stage": "post_run",
+      "recognized": {
+        "tdp_limit_w": {
+          "value": "150",
+          "unit": "W",
+          "source_key": "limits.tdp_limit",
+          "status": "known"
+        },
+        "board_power_limit_w": {
+          "value": "300",
+          "unit": "W",
+          "source_key": "limits.board_power_limit",
+          "status": "known"
+        },
+        "tdc_limit": {
+          "value": "200",
+          "unit": "reported snapshot unit",
+          "source_key": "limits.tdc_limit",
+          "status": "known"
+        },
+        "therm_trip_l1_limit_c": {
+          "value": "90",
+          "unit": "degC",
+          "source_key": "limits.therm_trip_l1_limit",
+          "status": "known"
+        },
+        "thm_shutdown_limit_c": {
+          "value": "110",
+          "unit": "degC",
+          "source_key": "limits.thm_limit",
+          "status": "known"
+        },
+        "asic_fmax_mhz": {
+          "value": "1350",
+          "unit": "MHz",
+          "source_key": "limits.asic_fmax",
+          "status": "known"
+        },
+        "thm_limit_throttle": {
+          "value": "0x5a",
+          "unit": "degC",
+          "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
+          "status": "known"
+        }
+      },
+      "raw": {
+        "VDD_LIMITS": "0x38402bc",
+        "THM_LIMIT_SHUTDOWN": "0x6e",
+        "BOARD_POWER_LIMIT": "0x12c",
+        "TDC_LIMIT_MAX": "0xc8",
+        "THM_LIMIT_THROTTLE": "0x5a",
+        "AICLK_LIMIT_MAX": "0x546",
+        "TDP_LIMIT_MAX": "0x96"
+      },
+      "raw_smbus": {
+        "VDD_LIMITS": "0x38402bc",
+        "THM_LIMIT_SHUTDOWN": "0x6e",
+        "BOARD_POWER_LIMIT": "0x12c",
+        "TDC_LIMIT_MAX": "0xc8",
+        "THM_LIMIT_THROTTLE": "0x5a",
+        "AICLK_LIMIT_MAX": "0x546",
+        "TDP_LIMIT_MAX": "0x96"
+      },
+      "THM_LIMIT_THROTTLE": "0x5a"
+    }
+  },
+  "snapshot_identities": {
+    "pre": {
+      "status": "selected",
+      "serial": "0000040331914124",
+      "board_id": "0000040331914124",
+      "bus_id": "0000:09:00.0"
+    },
+    "post": {
+      "status": "selected",
+      "serial": "0000040331914124",
+      "board_id": "0000040331914124",
+      "bus_id": "0000:09:00.0"
+    }
+  },
+  "raw_window": {
+    "start_seconds": 0.0,
+    "end_seconds": 10.0,
+    "columns": [
+      "timestamp_monotonic_ns",
+      "seconds_from_run_start",
+      "aiclk_mhz",
+      "power_w",
+      "current_a",
+      "asic_temp_c"
+    ],
+    "rows": [
+      {
+        "timestamp_monotonic_ns": 31840194331758,
+        "seconds_from_run_start": 2.254429235,
+        "aiclk_mhz": 1350.0,
+        "power_w": 82.0,
+        "current_a": 96.0,
+        "asic_temp_c": 64.8
+      },
+      {
+        "timestamp_monotonic_ns": 31842433136064,
+        "seconds_from_run_start": 4.493233541,
+        "aiclk_mhz": 1343.0,
+        "power_w": 210.0,
+        "current_a": 255.0,
+        "asic_temp_c": 76.1
+      },
+      {
+        "timestamp_monotonic_ns": 31844671114446,
+        "seconds_from_run_start": 6.731211923,
+        "aiclk_mhz": 1031.0,
+        "power_w": 133.0,
+        "current_a": 179.0,
+        "asic_temp_c": 73.0
+      },
+      {
+        "timestamp_monotonic_ns": 31846905046796,
+        "seconds_from_run_start": 8.965144273,
+        "aiclk_mhz": 1037.0,
+        "power_w": 134.0,
+        "current_a": 180.0,
+        "asic_temp_c": 74.2
+      }
+    ]
+  },
+  "limitations": [
+    "The extended trace samples at a 2 second cadence; onset ordering has approximately 2 second temporal resolution.",
+    "Raw window rows are sample values; no onset interpolation is performed."
+  ],
+  "snapshots": {
+    "pre": {
+      "path": "pre-snapshot-q2-run-3-device0.json",
+      "status": "ok",
+      "timestamp_monotonic_ns": 31837938758921,
+      "stdout_sha256": "37d98b3d0fc1b023a7d36f5774286c27f3eeb21c9af30ef75cb1175794eaf9d6",
+      "identity": {
+        "status": "selected",
+        "serial": "0000040331914124",
+        "board_id": "0000040331914124",
+        "bus_id": "0000:09:00.0"
+      }
+    },
+    "post": {
+      "path": "post-snapshot-q2-run-3-device0.json",
+      "status": "ok",
+      "timestamp_monotonic_ns": 32139650597946,
+      "stdout_sha256": "614682ec3cebe80984b7270d28371a01a255195d6df751f55522981bd6dfd55b",
+      "identity": {
+        "status": "selected",
+        "serial": "0000040331914124",
+        "board_id": "0000040331914124",
+        "bus_id": "0000:09:00.0"
+      }
+    },
+    "command": [
+      "tt-smi",
+      "-s",
+      "--snapshot_no_tty"
+    ],
+    "timeout_seconds": 5.0,
+    "read_only": true
+  },
+  "trace": {
+    "path": "extended-trace-q2-run-3-device0.csv",
+    "schema": "issue-121-q2-power-trace-v1",
+    "schema_version": 1,
+    "columns": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c",
+      "timestamp_monotonic_ns",
+      "snapshot_elapsed_ns",
+      "current_a",
+      "voltage_v",
+      "board_power_w",
+      "fan_rpm",
+      "heartbeat",
+      "therm_trip_count",
+      "throttle_status",
+      "throttle_reason"
+    ],
+    "legacy_columns_unchanged": [
+      "timestamp_utc",
+      "power_w",
+      "aiclk_mhz",
+      "asic_temp_c"
+    ],
+    "board_id": "0000040331914124",
+    "bus_id": "0000:09:00.0",
+    "timestamp_axis": "timestamp_monotonic_ns",
+    "run_start_monotonic_ns": 31837939902523,
+    "run_end_monotonic_ns": 32139412900423,
+    "sample_count": 136,
+    "pre_row_written": true,
+    "post_row_written": true,
+    "sha256": "0c0f3487841380b1c95993c0d927d69fe090d6b4cbd0b5503085a847add9efe7",
+    "sampler_interval_seconds": 2.0,
+    "sampler_errors": []
+  },
+  "output_paths": {
+    "record": "run-q2-run-3-device0.json",
+    "pre_snapshot": "pre-snapshot-q2-run-3-device0.json",
+    "post_snapshot": "post-snapshot-q2-run-3-device0.json",
+    "extended_trace": "extended-trace-q2-run-3-device0.csv",
+    "calibration": "issue121-q2-calibration.json",
+    "workload_result": "runner-result-q2-run-3-device0.json",
+    "workload_stdout": "workload-stdout.log",
+    "workload_stderr": "workload-stderr.log"
+  },
+  "provenance": {
+    "source_snapshot": "pre-run tt-smi snapshot",
+    "trace_source": "extended-v1 snapshots captured by this harness",
+    "analysis_source": "tools/analyze_issue121_q2.py",
+    "limit_provenance": "snapshot_limits.pre and snapshot_limits.post",
+    "host_identity_persisted": false
+  }
+}

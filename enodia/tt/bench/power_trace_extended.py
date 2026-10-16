@@ -118,6 +118,9 @@ _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
 _MAX_NONNEGATIVE_INTEGER = (1 << 63) - 1
 _MAX_EXACT_FLOAT_INTEGER = (1 << 53) - 1
 _MISSING = object()
+_TRACE_BOUNDS_ORDER_ERROR = (
+    "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
+)
 
 
 class ExtendedPowerTraceError(ValueError):
@@ -1047,9 +1050,7 @@ def _extended_trace_bounds(
         field="run_end_monotonic_ns",
     )
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
-        raise ExtendedPowerTraceError(
-            "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
-        )
+        raise ExtendedPowerTraceError(_TRACE_BOUNDS_ORDER_ERROR)
     return start_ns, end_ns
 
 
@@ -1538,7 +1539,7 @@ def _mapping_trace_bounds(
     start_ns = bounds["run_start_monotonic_ns"]
     end_ns = bounds["run_end_monotonic_ns"]
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
-        failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
+        failures.append(_TRACE_BOUNDS_ORDER_ERROR)
     return bounds, failures
 
 
@@ -1590,6 +1591,175 @@ def _recompute_mapping_trace(
     if reread_failure is not None:
         failures.append(reread_failure)
     return recomputed, failures, normalized_samples
+
+
+def _mapping_optional_summary_failures(
+    declared: Mapping[str, Any],
+    recomputed: Mapping[str, Any],
+) -> list[str]:
+    """Check only summaries supplied by a raw mapping source.
+
+    A mapping source is allowed to contain just schema, bounds, and samples,
+    like the JSON reader's source sidecar.  When it does provide reader flags
+    or aggregates, those declarations are checked rather than trusted.
+    """
+    failures: list[str] = []
+    for field, actual in declared.items():
+        if field in _MAPPING_RECHECK_IGNORED_FIELDS or field == "samples":
+            continue
+        if field not in recomputed:
+            continue
+        if not _summary_values_match(
+            actual,
+            recomputed[field],
+            field_path=(str(field),),
+        ):
+            failures.append(f"extended trace summary {field} does not match the reader")
+    return failures
+
+
+def _mapping_schema_failures(payload: Mapping[str, Any]) -> list[str]:
+    failures: list[str] = []
+    schema = payload.get("schema", _MISSING)
+    if schema is _MISSING or schema != EXTENDED_POWER_TRACE_SCHEMA:
+        failures.append("extended trace schema is missing or unsupported")
+    version = payload.get("schema_version", _MISSING)
+    if (
+        version is _MISSING
+        or not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
+    ):
+        failures.append("extended trace schema_version is missing or unsupported")
+    columns = payload.get("columns", _MISSING)
+    try:
+        columns_match = columns is not _MISSING and tuple(columns) == EXTENDED_POWER_TRACE_COLUMNS
+    except (TypeError, ValueError):
+        columns_match = False
+    if not columns_match:
+        failures.append("extended trace columns do not match the versioned schema")
+    return failures
+
+
+def _mapping_samples(
+    payload: Mapping[str, Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    raw_samples = payload.get("samples", _MISSING)
+    if raw_samples is _MISSING:
+        return ["extended trace samples are missing"], []
+    if not isinstance(raw_samples, list):
+        return ["extended trace samples must be an array"], []
+    return _normalise_mapping_sample_list(raw_samples)
+
+
+def _mapping_bound(
+    payload: Mapping[str, Any],
+    normalized_samples: Sequence[Mapping[str, Any]],
+    *,
+    field: str,
+    supplied: int | None,
+) -> tuple[int | None, list[str]]:
+    value = supplied if supplied is not None else payload.get(field, _MISSING)
+    if value is _MISSING:
+        if normalized_samples:
+            value = (
+                normalized_samples[0]["timestamp_monotonic_ns"]
+                if field == "run_start_monotonic_ns"
+                else normalized_samples[-1]["timestamp_monotonic_ns"]
+            )
+        else:
+            return None, [f"extended trace {field} is missing"]
+    if value is None:
+        return None, [f"extended trace {field} is missing"]
+    try:
+        return _as_monotonic_bound(value, field=field), []
+    except (TypeError, ValueError) as exc:
+        return None, [str(exc)]
+
+
+def _mapping_bounds(
+    payload: Mapping[str, Any],
+    normalized_samples: Sequence[Mapping[str, Any]],
+    *,
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+) -> tuple[dict[str, int | None], list[str]]:
+    bounds: dict[str, int | None] = {}
+    failures: list[str] = []
+    for field, supplied in (
+        ("run_start_monotonic_ns", run_start_monotonic_ns),
+        ("run_end_monotonic_ns", run_end_monotonic_ns),
+    ):
+        bound, bound_failures = _mapping_bound(
+            payload,
+            normalized_samples,
+            field=field,
+            supplied=supplied,
+        )
+        bounds[field] = bound
+        failures.extend(bound_failures)
+    start_ns = bounds["run_start_monotonic_ns"]
+    end_ns = bounds["run_end_monotonic_ns"]
+    if start_ns is not None and end_ns is not None and start_ns > end_ns:
+        failures.append(_TRACE_BOUNDS_ORDER_ERROR)
+    return bounds, failures
+
+
+def _invalid_mapping_result(
+    trace: dict[str, Any], failures: Sequence[str]
+) -> dict[str, Any]:
+    unique_failures = list(dict.fromkeys(failures))
+    trace["schema"] = EXTENDED_POWER_TRACE_SCHEMA
+    trace["schema_version"] = EXTENDED_POWER_TRACE_SCHEMA_VERSION
+    trace["columns"] = list(EXTENDED_POWER_TRACE_COLUMNS)
+    if unique_failures:
+        trace["valid"] = False
+        trace["errors"] = list(
+            dict.fromkeys([*trace.get("errors", []), *unique_failures])
+        )
+        trace["error"] = trace["errors"][0]
+    return trace
+
+
+def read_extended_power_trace_mapping(
+    payload: Mapping[str, Any],
+    *,
+    run_start_monotonic_ns: int | None = None,
+    run_end_monotonic_ns: int | None = None,
+) -> dict[str, Any]:
+    """Read a raw extended-trace mapping through the versioned reader.
+
+    The samples are normalized, serialized through the same CSV reader used by
+    file and JSON sources, and then re-aggregated.  Missing bounds retain the
+    source reader's default of the first and last normalized sample; explicit
+    bounds still have to be covered by those samples.  Any precomputed reader
+    fields supplied by the mapping are checked, while the returned samples and
+    coverage always come from the re-read result.
+    """
+    if not isinstance(payload, Mapping):
+        return _invalid_mapping_result(
+            _trace_result_base(), ["extended trace mapping must be an object"]
+        )
+    failures = _mapping_schema_failures(payload)
+    sample_failures, normalized_samples = _mapping_samples(payload)
+    failures.extend(sample_failures)
+    bounds, bound_failures = _mapping_bounds(
+        payload,
+        normalized_samples,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
+    )
+    failures.extend(bound_failures)
+    recomputed, reread_failure = _reread_mapping_trace(
+        normalized_samples,
+        start_ns=bounds["run_start_monotonic_ns"],
+        end_ns=bounds["run_end_monotonic_ns"],
+    )
+    if reread_failure is not None:
+        failures.append(reread_failure)
+    failures.extend(_trace_validation_failures(recomputed))
+    failures.extend(_mapping_optional_summary_failures(payload, recomputed))
+    return _invalid_mapping_result(recomputed, failures)
 
 
 def _copy_mapping_trace(
@@ -1703,6 +1873,7 @@ __all__ = [
     "parse_power_trace_extended",
     "read_extended_power_trace",
     "read_extended_power_trace_csv",
+    "read_extended_power_trace_mapping",
     "read_extended_power_trace_snapshot",
     "read_power_trace_extended_csv",
     "select_extended_board",

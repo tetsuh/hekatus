@@ -1,0 +1,31 @@
+{
+  "schema": "issue121-q2-calibration-v1",
+  "source": "Issue #118 board-free calibration reference",
+  "workload": "adr-0013-108-core-newton-schulz-surrogate",
+  "calibration": {
+    "condition": "newton_schulz",
+    "duration_seconds": 60.0,
+    "achieved_throughput": 606.704754341449,
+    "throughput_unit": "repeats_per_card_second",
+    "repeat_count": 130390,
+    "watcher_enabled": false,
+    "source": "watcher_off_calibration",
+    "target_seconds": 285.0,
+    "safety_factor": 1.0,
+    "throughput_reference_aiclk_mhz": 1350,
+    "throughput_reference_aiclk_source": "fixed_reference_1350_mhz",
+    "throughput_unit_definition": "load repeats per 1.35e9 card-clock ticks (historical unit name repeats_per_card_second); convert those ticks to real seconds with the observed load-interval AICLK",
+    "load_card_ticks": 290132005515,
+    "load_measurement_repeat_count": 130390,
+    "load_interval_aiclk_mhz": 1050.9138856647014,
+    "load_interval_aiclk_min_mhz": 1018.0,
+    "load_interval_aiclk_source": "load_interval_trace_samples",
+    "load_interval_aiclk_selection": "time_weighted_load_interval",
+    "predicted_load_time_aiclk_mhz": 1018.0,
+    "predicted_load_time_aiclk_source": "in_run_minimum",
+    "predicted_load_time_aiclk_selection": "in_run_minimum",
+    "actual_duration_aiclk_mhz": 1050.9138856647014,
+    "actual_duration_aiclk_source": "load_interval_trace_samples",
+    "actual_duration_aiclk_selection": "time_weighted_load_interval"
+  }
+}
