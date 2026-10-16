@@ -681,7 +681,10 @@ EOF
   }
 
   COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
-  COOLDOWN_START_NS="$(issue127_timestamp_to_ns "${COOLDOWN_START_UTC}")"
+  if ! COOLDOWN_START_NS="$(issue127_timestamp_to_ns "${COOLDOWN_START_UTC}")"; then
+    echo "Issue #127 cooldown start timestamp could not be parsed; refusing to start cooldown gate" >&2
+    exit 2
+  fi
   COOLDOWN_CAP_NS="$(awk -v start="${COOLDOWN_START_NS}" -v cap="${COOLDOWN_CAP_S}" \
     'BEGIN { printf "%.0f", start + cap * 1000000000 }')"
   COOLDOWN_GATE_PASSED=0

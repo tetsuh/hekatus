@@ -616,8 +616,9 @@ def test_issue127_run2_args_require_explicit_passing_verified_gate():
         ],
         ["--cooldown-gate-result", "fail", "--cooldown-gate-verified"],
     ):
+        args = parser.parse_args(base_args + extra_args)
         with pytest.raises(SystemExit):
-            runner._validate_args(parser, parser.parse_args(base_args + extra_args))
+            runner._validate_args(parser, args)
 
     runner._validate_args(
         parser,
@@ -1377,6 +1378,7 @@ case "${2:-}" in
         printf '%s\n' "${timestamp},47,800,58.5"
       } > "${out}.tmp"
       mv "${out}.tmp" "$out"
+      /bin/sleep 0.05
     done
     ;;
 esac
@@ -1387,6 +1389,7 @@ esac
     (bindir / "docker").write_text(
         """#!/bin/sh
 set -eu
+printf '%s\n' "${1:-}" >> "${DOCKER_CALLS:-${DOCKER_ARGS}.calls}"
 printf '%s\n' "$@" > "${DOCKER_ARGS:?}"
 exit 0
 """,
@@ -1404,6 +1407,56 @@ exec "$@"
     )
     (bindir / "timeout").chmod(stat.S_IRWXU)
     return bindir
+
+
+def test_issue127_wrapper_fails_closed_when_cooldown_start_timestamp_cannot_be_parsed(
+    tmp_path: Path,
+):
+    bindir = _fake_wrapper_tools(tmp_path)
+    (bindir / "date").write_text(
+        """#!/bin/sh
+set -eu
+if [ "${2:-}" = "--iso-8601=ns" ]; then
+  printf '%s\n' 'not-a-timestamp'
+else
+  printf '%s\n' '2026-10-12T00:00:00.000000000+00:00'
+fi
+""",
+        encoding="utf-8",
+    )
+    (bindir / "date").chmod(stat.S_IRWXU)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    docker_args = tmp_path / "docker-args"
+    docker_history = tmp_path / "docker-calls"
+    completed = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(tmp_path / "unparsed-start"),
+            "--",
+            "--run-number",
+            "2",
+            "--cooldown-wait-seconds",
+            "0.1",
+        ],
+        cwd=tmp_path / "repo",
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(docker_args),
+            "DOCKER_CALLS": str(docker_history),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 2
+    assert "cooldown start timestamp could not be parsed" in completed.stderr
+    assert docker_history.read_text(encoding="utf-8").splitlines() == ["kill"]
 
 
 def test_issue127_wrapper_runs_cooldown_before_docker_timeout_window(tmp_path: Path):
@@ -1436,6 +1489,7 @@ case "${2:-}" in
         printf '%s\\n' "${timestamp},40,1350,50"
       } > "${out}.tmp"
       mv "${out}.tmp" "$out"
+      /bin/sleep 0.05
     done
     ;;
 esac
@@ -1586,6 +1640,7 @@ esac
     shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
     shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
     docker_args = tmp_path / "docker-args"
+    docker_history = tmp_path / "docker-calls"
     output_dir = tmp_path / "stale-sample"
     completed = subprocess.run(
         [
@@ -1602,6 +1657,7 @@ esac
             **os.environ,
             "PATH": f"{bindir}:{os.environ['PATH']}",
             "DOCKER_ARGS": str(docker_args),
+            "DOCKER_CALLS": str(docker_history),
             "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
             "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
         },
@@ -1612,9 +1668,12 @@ esac
     )
     assert completed.returncode == 1
     assert "cooldown gate failure" in completed.stderr
-    docker_calls = docker_args.read_text(encoding="utf-8").splitlines()
-    assert docker_calls[0] == "kill"
-    assert "run" not in docker_calls
+    docker_args_tokens = docker_args.read_text(encoding="utf-8").splitlines()
+    assert docker_args_tokens[0] == "kill"
+    docker_call_history = docker_history.read_text(encoding="utf-8").splitlines()
+    assert docker_call_history
+    assert all(call == "kill" for call in docker_call_history)
+    assert "run" not in docker_call_history
     failures = list(output_dir.glob("cooldown-gate-failure-*.json"))
     assert len(failures) == 1
     failure = json.loads(failures[0].read_text(encoding="utf-8"))
@@ -1662,6 +1721,7 @@ case "${2:-}" in
         printf '%s\\n' "${timestamp},80,800,70"
       } > "${out}.tmp"
       mv "${out}.tmp" "$out"
+      /bin/sleep 0.05
     done
     ;;
 esac
@@ -1674,6 +1734,7 @@ esac
     shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
     shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
     docker_args = tmp_path / "docker-args"
+    docker_history = tmp_path / "docker-calls"
     output_dir = tmp_path / "rejected-at-cap"
     command = [
         str(copied_wrapper),
@@ -1698,6 +1759,7 @@ esac
             **os.environ,
             "PATH": f"{bindir}:{os.environ['PATH']}",
             "DOCKER_ARGS": str(docker_args),
+            "DOCKER_CALLS": str(docker_history),
             "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
             "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
         },
@@ -1711,6 +1773,10 @@ esac
     assert "measurement was not started" in completed.stderr
     assert docker_args.exists()
     assert docker_args.read_text(encoding="utf-8").splitlines()[0] == "kill"
+    docker_call_history = docker_history.read_text(encoding="utf-8").splitlines()
+    assert docker_call_history
+    assert all(call == "kill" for call in docker_call_history)
+    assert "run" not in docker_call_history
     failures = list(output_dir.glob("cooldown-gate-failure-*.json"))
     assert len(failures) == 1
     failure = json.loads(failures[0].read_text(encoding="utf-8"))
