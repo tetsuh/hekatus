@@ -6,6 +6,7 @@ import copy
 import datetime
 import hashlib
 import io
+import itertools
 import json
 import subprocess
 import threading
@@ -1175,7 +1176,7 @@ def test_resident_wrapper_probe_reconstructs_added_args_without_device() -> None
 
 
 def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> None:
-    counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
+    counter = itertools.count(start=0, step=1_000_000)
     in_run_seen = threading.Event()
 
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
@@ -1664,7 +1665,7 @@ def test_in_run_sampler_records_failed_row_conversion(
 def test_run_one_requires_a_written_pre_row(
     tmp_path: Path,
 ) -> None:
-    counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
+    counter = itertools.count(start=0, step=1_000_000)
     in_run_seen = threading.Event()
 
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
