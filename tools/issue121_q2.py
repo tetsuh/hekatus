@@ -1247,6 +1247,83 @@ def _cooldown_sleep_error(
     return None
 
 
+def _cooldown_poll_step(
+    preceding_pre_snapshot: Mapping[str, Any],
+    *,
+    capture: Callable[..., dict[str, Any]],
+    monotonic_ns: Callable[[], int],
+    sleep_fn: Callable[[float], None],
+    board_id: str,
+    bus_id: str,
+    start_ns: int,
+    deadline_ns: int,
+    cap_seconds: float,
+) -> dict[str, Any]:
+    evaluation, capture_provenance, poll_reason = _poll_cooldown_snapshot(
+        preceding_pre_snapshot,
+        capture=capture,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
+    if evaluation is not None and evaluation.get("verified") is True:
+        verified_ns = int(monotonic_ns())
+        if verified_ns < deadline_ns:
+            return {
+                "status": "passed",
+                "capture": capture_provenance,
+                "evaluation": evaluation,
+                "actual_wait_seconds": min(
+                    cap_seconds,
+                    max(0.0, (verified_ns - start_ns) / 1_000_000_000.0),
+                ),
+                "reason": None,
+            }
+        poll_reason = COOLDOWN_WAIT_CAP_EXPIRED_REASON
+    after_capture_ns = int(monotonic_ns())
+    if after_capture_ns >= deadline_ns:
+        return {
+            "status": "failed",
+            "capture": capture_provenance,
+            "evaluation": evaluation,
+            "actual_wait_seconds": min(
+                cap_seconds,
+                max(0.0, (after_capture_ns - start_ns) / 1_000_000_000.0),
+            ),
+            "reason": COOLDOWN_WAIT_CAP_EXPIRED_REASON,
+        }
+    remaining_seconds = (deadline_ns - after_capture_ns) / 1_000_000_000.0
+    delay_seconds = min(COOLDOWN_POLL_INTERVAL_SECONDS, remaining_seconds)
+    if delay_seconds <= 0.0:
+        return {
+            "status": "continue",
+            "capture": capture_provenance,
+            "evaluation": evaluation,
+            "actual_wait_seconds": 0.0,
+            "reason": poll_reason,
+        }
+    sleep_reason = _cooldown_sleep_error(
+        sleep_fn, delay_seconds, after_capture_ns, monotonic_ns
+    )
+    if sleep_reason is not None:
+        return {
+            "status": "failed",
+            "capture": capture_provenance,
+            "evaluation": evaluation,
+            "actual_wait_seconds": min(
+                cap_seconds,
+                max(0.0, (int(monotonic_ns()) - start_ns) / 1_000_000_000.0),
+            ),
+            "reason": sleep_reason,
+        }
+    return {
+        "status": "continue",
+        "capture": capture_provenance,
+        "evaluation": evaluation,
+        "actual_wait_seconds": 0.0,
+        "reason": poll_reason,
+    }
+
+
 def _run_cooldown_gate(
     *,
     run_number: int,
@@ -1290,90 +1367,9 @@ def _run_cooldown_gate(
     poll_count = 0
     last_capture: dict[str, Any] | None = None
     last_evaluation: Mapping[str, Any] | None = None
-    last_reason: str | None = None
     while True:
         now_ns = int(monotonic_ns())
         if now_ns >= deadline_ns:
-            elapsed_seconds = min(
-                cap_seconds, max(0.0, (now_ns - start_ns) / 1_000_000_000.0)
-            )
-            return _cooldown_gate_record(
-                run_number=run_number,
-                board_id=board_id,
-                bus_id=bus_id,
-                preceding_pre_snapshot=preceding_pre_snapshot,
-                start_utc=start_utc,
-                end_utc=str(utc_now()),
-                actual_wait_seconds=elapsed_seconds,
-                poll_count=poll_count,
-                last_capture=last_capture,
-                last_evaluation=last_evaluation,
-                reason=COOLDOWN_WAIT_CAP_EXPIRED_REASON,
-                verified=False,
-            )
-
-        evaluation, last_capture, poll_reason = _poll_cooldown_snapshot(
-            preceding_pre_snapshot,
-            capture=capture,
-            board_id=board_id,
-            bus_id=bus_id,
-        )
-        poll_count += 1
-        if evaluation is not None:
-            last_evaluation = evaluation
-            if evaluation.get("verified") is True:
-                verified_ns = int(monotonic_ns())
-                if verified_ns < deadline_ns:
-                    elapsed_seconds = min(
-                        cap_seconds,
-                        max(0.0, (verified_ns - start_ns) / 1_000_000_000.0),
-                    )
-                    return _cooldown_gate_record(
-                        run_number=run_number,
-                        board_id=board_id,
-                        bus_id=bus_id,
-                        preceding_pre_snapshot=preceding_pre_snapshot,
-                        start_utc=start_utc,
-                        end_utc=str(utc_now()),
-                        actual_wait_seconds=elapsed_seconds,
-                        poll_count=poll_count,
-                        last_capture=last_capture,
-                        last_evaluation=evaluation,
-                        reason=None,
-                        verified=True,
-                    )
-                poll_reason = COOLDOWN_WAIT_CAP_EXPIRED_REASON
-        last_reason = poll_reason
-
-        after_capture_ns = int(monotonic_ns())
-        if after_capture_ns >= deadline_ns:
-            elapsed_seconds = min(
-                cap_seconds,
-                max(0.0, (after_capture_ns - start_ns) / 1_000_000_000.0),
-            )
-            return _cooldown_gate_record(
-                run_number=run_number,
-                board_id=board_id,
-                bus_id=bus_id,
-                preceding_pre_snapshot=preceding_pre_snapshot,
-                start_utc=start_utc,
-                end_utc=str(utc_now()),
-                actual_wait_seconds=elapsed_seconds,
-                poll_count=poll_count,
-                last_capture=last_capture,
-                last_evaluation=last_evaluation,
-                reason=COOLDOWN_WAIT_CAP_EXPIRED_REASON,
-                verified=False,
-            )
-        remaining_seconds = (deadline_ns - after_capture_ns) / 1_000_000_000.0
-        delay_seconds = min(COOLDOWN_POLL_INTERVAL_SECONDS, remaining_seconds)
-        if delay_seconds <= 0.0:
-            last_reason = last_reason or COOLDOWN_WAIT_CAP_EXPIRED_REASON
-            continue
-        sleep_reason = _cooldown_sleep_error(
-            sleep_fn, delay_seconds, after_capture_ns, monotonic_ns
-        )
-        if sleep_reason is not None:
             return _cooldown_gate_record(
                 run_number=run_number,
                 board_id=board_id,
@@ -1383,12 +1379,57 @@ def _run_cooldown_gate(
                 end_utc=str(utc_now()),
                 actual_wait_seconds=min(
                     cap_seconds,
-                    max(0.0, (int(monotonic_ns()) - start_ns) / 1_000_000_000.0),
+                    max(0.0, (now_ns - start_ns) / 1_000_000_000.0),
                 ),
                 poll_count=poll_count,
                 last_capture=last_capture,
                 last_evaluation=last_evaluation,
-                reason=sleep_reason,
+                reason=COOLDOWN_WAIT_CAP_EXPIRED_REASON,
+                verified=False,
+            )
+        step = _cooldown_poll_step(
+            preceding_pre_snapshot,
+            capture=capture,
+            monotonic_ns=monotonic_ns,
+            sleep_fn=sleep_fn,
+            board_id=board_id,
+            bus_id=bus_id,
+            start_ns=start_ns,
+            deadline_ns=deadline_ns,
+            cap_seconds=cap_seconds,
+        )
+        poll_count += 1
+        last_capture = step["capture"]
+        if step["evaluation"] is not None:
+            last_evaluation = step["evaluation"]
+        if step["status"] == "passed":
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=step["actual_wait_seconds"],
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason=None,
+                verified=True,
+            )
+        if step["status"] == "failed":
+            return _cooldown_gate_record(
+                run_number=run_number,
+                board_id=board_id,
+                bus_id=bus_id,
+                preceding_pre_snapshot=preceding_pre_snapshot,
+                start_utc=start_utc,
+                end_utc=str(utc_now()),
+                actual_wait_seconds=step["actual_wait_seconds"],
+                poll_count=poll_count,
+                last_capture=last_capture,
+                last_evaluation=last_evaluation,
+                reason=step["reason"],
                 verified=False,
             )
 
