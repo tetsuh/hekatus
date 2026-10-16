@@ -221,10 +221,12 @@ contains its SHA-256, sampler coverage, host monotonic interval, and in-run
 AICLK trace. The host-load condition (c) implementation is retained as a #120
 starting point, but it cannot produce #118 evidence; non-calibration host runs
 are rejected. See [Issue #120](https://github.com/tetsuh/hekatus/issues/120).
-Broader AICLK
-transition and conversion audits belong to
-[Issue #121](https://github.com/tetsuh/hekatus/issues/121) and
-[Issue #122](https://github.com/tetsuh/hekatus/issues/122).
+The Issue #121 Q1/Q2 timing and budget conclusions are recorded in
+[`docs/budget.md`](../budget.md) and [`docs/design.md`](../design.md); the
+binding timing basis is [ADR-0015](../adr/0015-issue121-card-timing-basis.md).
+The separate conversion audit remains in
+[Issue #122](https://github.com/tetsuh/hekatus/issues/122). Full-enodia
+sustained AICLK and limiter confirmation remain the #136 and #137 follow-ups.
 
 Two earlier artifacts are excluded from this evidence set: the Newton-Schulz
 run at `ece5d09a34304b1182ab3a74cdc7a8055bf36631` was killed by the 600-second
