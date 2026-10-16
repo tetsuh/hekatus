@@ -4,7 +4,7 @@
   "issue": "#121",
   "plan": {
     "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
-    "revision": 4,
+    "revision": 5,
     "target_seconds": 285,
     "plateau_start_seconds": 150,
     "plateau_end_seconds": 285,
@@ -108,7 +108,8 @@
             "limit_unit": "W",
             "difference": 20.314628213296288,
             "fraction": 0.13543085475530858
-          }
+          },
+          "unit": "W"
         },
         "current_a": {
           "min": 128.0,
@@ -118,10 +119,11 @@
             "status": "available",
             "limit_key": "TDC_LIMIT_MAX",
             "limit_value": 200.0,
-            "limit_unit": "reported snapshot unit",
+            "limit_unit": "A",
             "difference": 23.48663764274815,
             "fraction": 0.11743318821374076
-          }
+          },
+          "unit": "A"
         },
         "asic_temp_c": {
           "min": 80.8,
@@ -134,7 +136,8 @@
             "limit_unit": "degC",
             "difference": 7.133204015250371,
             "fraction": 0.07925782239167078
-          }
+          },
+          "unit": "degC"
         },
         "board_power_w": {
           "min": 241.0,
@@ -147,7 +150,8 @@
             "limit_unit": "W",
             "difference": 0.5536444890296366,
             "fraction": 0.0018454816300987886
-          }
+          },
+          "unit": "W"
         }
       },
       "hypotheses": {
@@ -281,7 +285,8 @@
             "limit_unit": "W",
             "difference": 18.916038494629618,
             "fraction": 0.1261069232975308
-          }
+          },
+          "unit": "W"
         },
         "current_a": {
           "min": 167.0,
@@ -291,10 +296,11 @@
             "status": "available",
             "limit_key": "TDC_LIMIT_MAX",
             "limit_value": 200.0,
-            "limit_unit": "reported snapshot unit",
+            "limit_unit": "A",
             "difference": 21.780318142237036,
             "fraction": 0.10890159071118517
-          }
+          },
+          "unit": "A"
         },
         "asic_temp_c": {
           "min": 82.9,
@@ -307,7 +313,8 @@
             "limit_unit": "degC",
             "difference": 6.68423083140371,
             "fraction": 0.07426923146004122
-          }
+          },
+          "unit": "degC"
         },
         "board_power_w": {
           "min": 288.0,
@@ -320,7 +327,8 @@
             "limit_unit": "W",
             "difference": 0.8818873709481636,
             "fraction": 0.002939624569827212
-          }
+          },
+          "unit": "W"
         }
       },
       "hypotheses": {
@@ -454,7 +462,8 @@
             "limit_unit": "W",
             "difference": 21.087859839066653,
             "fraction": 0.14058573226044435
-          }
+          },
+          "unit": "W"
         },
         "current_a": {
           "min": 130.0,
@@ -464,10 +473,11 @@
             "status": "available",
             "limit_key": "TDC_LIMIT_MAX",
             "limit_value": 200.0,
-            "limit_unit": "reported snapshot unit",
+            "limit_unit": "A",
             "difference": 23.66200048925927,
             "fraction": 0.11831000244629636
-          }
+          },
+          "unit": "A"
         },
         "asic_temp_c": {
           "min": 81.0,
@@ -480,7 +490,8 @@
             "limit_unit": "degC",
             "difference": 6.728693118120745,
             "fraction": 0.07476325686800828
-          }
+          },
+          "unit": "degC"
         },
         "board_power_w": {
           "min": 247.0,
@@ -493,7 +504,8 @@
             "limit_unit": "W",
             "difference": 0.067247544881468,
             "fraction": 0.00022415848293822667
-          }
+          },
+          "unit": "W"
         }
       },
       "hypotheses": {
@@ -570,7 +582,8 @@
     "scope": "Post-hoc observations only; these are not preregistered hypothesis results.",
     "source": {
       "analysis_commit": "e09d4f9",
-      "run_artifacts": "The committed Q2 run traces, snapshots, and analyses; no run artifact was changed."
+      "run_artifacts": "The committed Q2 run traces, snapshots, and analyses; no run artifact was changed.",
+      "unit_disposition": "Revision 5 post-measurement source inspection; no run artifact was changed."
     },
     "board_power_plateau": {
       "signal": "board_power_w",
@@ -669,18 +682,33 @@
     },
     "voltage_and_power_interpretation": {
       "transient_voltage_v": 0.83,
-      "post_transient_voltage_v_range": [0.73, 0.75],
+      "post_transient_voltage_v_range": [
+        0.73,
+        0.75
+      ],
       "relationship": "Power is approximately voltage*current in these telemetry samples.",
       "limitation": "This run cannot separate TDC from TDP."
     },
     "load_plateau_evolution": {
       "transition_values": {
-        "aiclk_mhz_range": [1031.0, 1037.0],
-        "asic_temp_c_range": [73.0, 73.3]
+        "aiclk_mhz_range": [
+          1031.0,
+          1037.0
+        ],
+        "asic_temp_c_range": [
+          73.0,
+          73.3
+        ]
       },
       "later_loaded_plateau_values": {
-        "aiclk_mhz_range": [950.0, 962.0],
-        "asic_temp_c_observed_range": [80.8, 83.8],
+        "aiclk_mhz_range": [
+          950.0,
+          962.0
+        ],
+        "asic_temp_c_observed_range": [
+          80.8,
+          83.8
+        ],
         "asic_temp_time_weighted_mean_c_by_run": [
           82.86679598474963,
           83.31576916859629,
@@ -692,10 +720,20 @@
     },
     "raw_snapshot_limits": {
       "THM_LIMIT_THROTTLE": {
-        "pre": ["0x5a", "0x5a", "0x5a"],
-        "post": ["0x5a", "0x5a", "0x5a"],
-        "unit": null,
-        "interpretation": "Raw snapshot value only; no unit is inferred."
+        "pre": [
+          "0x5a",
+          "0x5a",
+          "0x5a"
+        ],
+        "post": [
+          "0x5a",
+          "0x5a",
+          "0x5a"
+        ],
+        "unit": "degC",
+        "interpretation": "Raw snapshot value remains 0x5a; post-measurement tt-smi/tt-umd provenance establishes its semantic unit as degC through the direct therm_trip_l1 mapping. The raw value was not rewritten.",
+        "raw_unit": null,
+        "semantic_unit": "degC"
       }
     },
     "device_comparison": {
@@ -723,18 +761,127 @@
       },
       "before": {
         "definition": "AICLK onset used the first left-held segment clipped at run_start whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could make onset t=0.",
-        "onset_times_seconds": [0.0, 0.0, 0.0],
-        "classifications": ["H-OTHER", "H-OTHER", "H-OTHER"]
+        "onset_times_seconds": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "classifications": [
+          "H-OTHER",
+          "H-OTHER",
+          "H-OTHER"
+        ]
       },
       "after": {
         "definition": "AICLK onset uses the first trace sample segment whose timestamp is at or after run_start (post-start sample only), with the same 1350*0.95=1282.5 threshold.",
-        "onset_times_seconds": [6.727259794, 6.719855854, 6.731211923],
+        "onset_times_seconds": [
+          6.727259794,
+          6.719855854,
+          6.731211923
+        ],
         "approximate_onset_seconds": "approximately 6.72 s per run",
-        "classifications": ["H-OTHER", "H-OTHER", "H-OTHER"]
+        "classifications": [
+          "H-OTHER",
+          "H-OTHER",
+          "H-OTHER"
+        ]
       },
       "reason": "Exclude pre-run idle from load-onset timing.",
       "change_provenance": "Post-measurement analysis change introduced by e09d4f9 after all 3 runs.",
       "classification_comparison": "The pre-change definition classified all three completed runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
+    },
+    "unit_disposition": {
+      "schema": "issue121-q2-unit-provenance-v1",
+      "status": "established",
+      "post_measurement": true,
+      "packages": [
+        {
+          "name": "tt-smi",
+          "version": "6.2.1",
+          "repository": "tenstorrent/tt-smi"
+        },
+        {
+          "name": "tt-umd",
+          "version": "0.9.8",
+          "repository": "tenstorrent/tt-umd"
+        }
+      ],
+      "comparisons": {
+        "current_a_vs_tdc_limit": {
+          "signal_unit": "A",
+          "limit_unit": "A",
+          "comparable": true,
+          "raw_limit_key": "TDC_LIMIT_MAX",
+          "reported_limit_key": "limits.tdc_limit",
+          "evidence": [
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+              "finding": "The API documents TDC in amps."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_telemetry",
+              "finding": "Blackhole telemetry uses the raw low 16 bits of TDC for current without a unit conversion."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_limits",
+              "finding": "TDC_LIMIT_MAX is used directly as tdc_limit, while the telemetry table labels the paired current as A."
+            }
+          ]
+        },
+        "asic_temp_c_vs_therm_trip_l1_limit": {
+          "signal_unit": "degC",
+          "limit_unit": "degC",
+          "comparable": true,
+          "reported_limit_key": "limits.therm_trip_l1_limit",
+          "evidence": [
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+              "finding": "The API documents ASIC temperature in Celsius."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/constants.py",
+              "function": "TELEMETRY_TABLE_HEADER",
+              "finding": "The paired Core Temp telemetry is labeled in degrees Celsius."
+            }
+          ]
+        },
+        "asic_temp_c_vs_thm_limit_throttle": {
+          "signal_unit": "degC",
+          "limit_unit": "degC",
+          "comparable": true,
+          "raw_limit_key": "THM_LIMIT_THROTTLE",
+          "reported_limit_key": "limits.therm_trip_l1_limit",
+          "evidence": [
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/backend.py",
+              "function": "TTSMIBackend.get_bh_chip_limits",
+              "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit; no conversion is applied."
+            },
+            {
+              "package": "tt-smi==6.2.1",
+              "source_file": "tt_smi/constants.py",
+              "function": "TELEMETRY_TABLE_HEADER",
+              "finding": "Core Temp is labeled in degrees Celsius and is shown with the thermal throttle/temperature limit."
+            },
+            {
+              "package": "tt-umd==0.9.8",
+              "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+              "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+              "finding": "The underlying ASIC temperature API is Celsius."
+            }
+          ]
+        }
+      }
     }
   },
   "prediction": {
@@ -760,5 +907,98 @@
     "The AICLK onset is the first post-start sampled interval at or below 95% of source asic_fmax; no interpolation is performed.",
     "The measurement is the ADR-0013 108-core Newton-Schulz surrogate and is not full enodia evidence.",
     "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here."
-  ]
+  ],
+  "unit_provenance": {
+    "schema": "issue121-q2-unit-provenance-v1",
+    "status": "established",
+    "post_measurement": true,
+    "packages": [
+      {
+        "name": "tt-smi",
+        "version": "6.2.1",
+        "repository": "tenstorrent/tt-smi"
+      },
+      {
+        "name": "tt-umd",
+        "version": "0.9.8",
+        "repository": "tenstorrent/tt-umd"
+      }
+    ],
+    "comparisons": {
+      "current_a_vs_tdc_limit": {
+        "signal_unit": "A",
+        "limit_unit": "A",
+        "comparable": true,
+        "raw_limit_key": "TDC_LIMIT_MAX",
+        "reported_limit_key": "limits.tdc_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+            "finding": "The API documents TDC in amps."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Blackhole telemetry uses the raw low 16 bits of TDC for current without a unit conversion."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "TDC_LIMIT_MAX is used directly as tdc_limit, while the telemetry table labels the paired current as A."
+          }
+        ]
+      },
+      "asic_temp_c_vs_therm_trip_l1_limit": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The API documents ASIC temperature in Celsius."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "The paired Core Temp telemetry is labeled in degrees Celsius."
+          }
+        ]
+      },
+      "asic_temp_c_vs_thm_limit_throttle": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "raw_limit_key": "THM_LIMIT_THROTTLE",
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit; no conversion is applied."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "Core Temp is labeled in degrees Celsius and is shown with the thermal throttle/temperature limit."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The underlying ASIC temperature API is Celsius."
+          }
+        ]
+      }
+    }
+  }
 }

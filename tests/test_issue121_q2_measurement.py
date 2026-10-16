@@ -150,7 +150,15 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["trace"]["legacy_columns"] == list(runner.LEGACY_POWER_TRACE_COLUMNS)
     assert plan["trace"]["columns"] == list(runner.EXTENDED_TRACE_COLUMNS)
     assert plan["source_snapshot"]["source_type"] == "prior_host_snapshot"
+    assert plan["source_snapshot"]["reported_limit_key_values"]["tdc_limit"]["unit"] == "A"
+    assert plan["source_snapshot"]["raw_smbus_fields"]["TDC_LIMIT_MAX"]["semantic_unit"] == "A"
     assert plan["source_snapshot"]["raw_smbus_fields"]["THM_LIMIT_THROTTLE"]["value"] is None
+    assert plan["source_snapshot"]["raw_smbus_fields"]["THM_LIMIT_THROTTLE"]["unit"] == (
+        "raw snapshot value"
+    )
+    assert plan["source_snapshot"]["raw_smbus_fields"]["THM_LIMIT_THROTTLE"]["semantic_unit"] == (
+        "degC"
+    )
     assert plan["revision_history"][0]["revision"] == 1
     assert plan["revision_history"][0]["date"] == "2026-10-16"
     assert plan["revision_history"][0]["change"] == (
@@ -197,6 +205,16 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert "330-second guard" in plan["revision_history"][1]["change"]
     assert "device_id: 1" in plan["revision_history"][2]["change"]
     assert "visible device_id 0" in plan["revision_history"][2]["change"]
+    assert plan["revision_history"][4] == {
+        "revision": 5,
+        "date": "2026-10-16",
+        "change": (
+            "post-measurement unit-disposition remediation after all 3 runs: inspected the pinned host tt-smi 6.2.1 and tt-umd 0.9.8 source provenance without hardware access; TDC_LIMIT_MAX/limits.tdc_limit and current are established as comparable A values, and THM_LIMIT_THROTTLE is established as a degC thermal limit mapped directly to limits.therm_trip_l1_limit. Raw TDC_LIMIT_MAX and THM_LIMIT_THROTTLE values remain retained with source provenance; thresholds, criteria, and prediction are unchanged. Regenerated only analysis JSONs and this summary; no run record, trace, or snapshot changed."
+        ),
+    }
+    assert plan["unit_provenance"]["status"] == "established"
+    assert plan["unit_provenance"]["comparisons"]["current_a_vs_tdc_limit"]["comparable"] is True
+    assert plan["unit_provenance"]["comparisons"]["asic_temp_c_vs_thm_limit_throttle"]["comparable"] is True
     assert plan["hypotheses"]["H-TDP"]["reference_only"].startswith("Issue #118 plateau 132-135 W")
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
@@ -219,7 +237,8 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
     observations = summary["post_hoc_observations"]
 
-    assert summary["plan"]["revision"] == 4
+    assert summary["plan"]["revision"] == 5
+    assert summary["unit_provenance"]["status"] == "established"
     assert observations["status"] == "post_measurement"
     assert observations["scope"] == (
         "Post-hoc observations only; these are not preregistered hypothesis results."
@@ -279,9 +298,14 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     raw_throttle = observations["raw_snapshot_limits"]["THM_LIMIT_THROTTLE"]
     assert raw_throttle["pre"] == ["0x5a", "0x5a", "0x5a"]
     assert raw_throttle["post"] == ["0x5a", "0x5a", "0x5a"]
-    assert raw_throttle["unit"] is None
-    assert "no unit is inferred" in raw_throttle["interpretation"]
+    assert raw_throttle["unit"] == "degC"
+    assert raw_throttle["raw_unit"] is None
+    assert raw_throttle["semantic_unit"] == "degC"
+    assert "Raw snapshot value remains 0x5a" in raw_throttle["interpretation"]
 
+    assert observations["unit_disposition"]["status"] == "established"
+    assert observations["unit_disposition"]["comparisons"]["current_a_vs_tdc_limit"]["limit_unit"] == "A"
+    assert observations["unit_disposition"]["comparisons"]["asic_temp_c_vs_thm_limit_throttle"]["limit_unit"] == "degC"
     assert observations["device_comparison"]["direct_comparison"] is False
     assert observations["device_comparison"]["issue_118"]["host_device_id"] == 0
     assert observations["device_comparison"]["q2_measurement"]["host_device_id"] == 1
@@ -312,6 +336,11 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     assert "pre-run idle" in onset["reason"]
 
     assert [run["classification"] for run in summary["runs"]] == ["H-OTHER"] * 3
+    assert all(run["signals"]["current_a"]["unit"] == "A" for run in summary["runs"])
+    assert all(
+        run["signals"]["current_a"]["limit_proximity"]["limit_unit"] == "A"
+        for run in summary["runs"]
+    )
     assert summary["prediction"] == {
         "expected_classification": ["H-TDC", "H-OTHER"],
         "excluded_by_prior_evidence": ["H-TDP", "H-THM"],
@@ -323,18 +352,22 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
         ),
     }
 
-    tracked = subprocess.run(
-        ["git", "ls-files", "--", "docs/measurements/issue121-q2/runs"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
+    tracked = [
+        path
+        for path in subprocess.run(
+            ["git", "ls-files", "--", "docs/measurements/issue121-q2/runs"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if "/analysis-" not in path
+    ]
     assert tracked
     actual = {
         path.relative_to(ROOT).as_posix()
         for path in IMMUTABLE_RUN_ROOT.rglob("*")
-        if path.is_file()
+        if path.is_file() and "/analysis-" not in path.relative_to(ROOT).as_posix()
     }
     assert actual == set(tracked)
     for relative in tracked:
@@ -345,6 +378,31 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
             capture_output=True,
         ).stdout
         assert (ROOT / relative).read_bytes() == expected
+
+
+def test_regenerated_analysis_retains_unit_provenance_and_effects() -> None:
+    for run in json.loads(SUMMARY.read_text(encoding="utf-8"))["runs"]:
+        result = json.loads((ROOT / run["analysis"]).read_text(encoding="utf-8"))
+        provenance = result["unit_provenance"]
+        assert provenance["status"] == "established"
+        assert provenance["packages"] == [
+            {
+                "name": "tt-smi",
+                "version": "6.2.1",
+                "repository": "tenstorrent/tt-smi",
+            },
+            {
+                "name": "tt-umd",
+                "version": "0.9.8",
+                "repository": "tenstorrent/tt-umd",
+            },
+        ]
+        assert result["statistics"]["signals"]["current_a"]["limit_proximity"]["limit_unit"] == "A"
+        assert result["hypotheses"]["H-TDC"]["classification"] == "not_supported"
+        throttle = result["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]
+        assert throttle["status"] == "pass"
+        assert throttle["limit_value"] == 90.0
+        assert throttle["limit_unit"] == "degC"
 
 
 def test_snapshot_command_is_bounded_and_host_fields_are_not_retained(
@@ -894,6 +952,7 @@ def test_analysis_classifies_each_synthetic_hypothesis(
         "tdp_limit_w": 150,
         "board_power_limit_w": 300,
         "asic_fmax_mhz": 1350,
+        "unit_provenance": analysis.UNIT_PROVENANCE,
     }
     result = analysis.analyze_trace(
         trace,
@@ -906,6 +965,41 @@ def test_analysis_classifies_each_synthetic_hypothesis(
     assert result["causality"] == "correlation_is_not_causation"
     assert result["time_axis"]["column"] == "timestamp_monotonic_ns"
     assert result["plateau"]["coverage_complete"] is True
+
+
+def test_analysis_marks_tdc_inconclusive_when_units_are_unknown() -> None:
+    result = analysis.analyze_trace(
+        _trace(current=190),
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits={
+            "tdc_limit": 200,
+            "therm_trip_l1_limit_c": 90,
+            "thm_shutdown_limit_c": 110,
+            "asic_fmax_mhz": 1350,
+        },
+    )
+
+    proximity = result["statistics"]["signals"]["current_a"]["limit_proximity"]
+    assert proximity["status"] == "not_evaluable"
+    assert proximity["limit_value"] == 200.0
+    assert result["onsets"]["current_tdc_threshold"]["status"] == "not_evaluable"
+    assert result["hypotheses"]["H-TDC"]["classification"] == "inconclusive"
+    assert result["hypotheses"]["H-TDC"]["criteria"] == {
+        "plateau_proximity": None,
+        "onset_order": None,
+    }
+    assert result["classification"] == "H-OTHER"
+
+    raw_throttle = analysis.analyze_trace(
+        _trace(temperature=88),
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits={"asic_fmax_mhz": 1350, "thm_limit_throttle": "0x5a"},
+    )["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]
+    assert raw_throttle["status"] == "not_evaluable"
+    assert raw_throttle["limit_value"] == 90.0
+    assert raw_throttle["limit_unit"] is None
 
 
 def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
@@ -975,7 +1069,7 @@ def _issue118_trace() -> dict[str, object]:
     }
 
 
-def _source_limits() -> dict[str, float]:
+def _source_limits() -> dict[str, object]:
     return {
         "tdc_limit": 200,
         "therm_trip_l1_limit_c": 90,
@@ -983,6 +1077,7 @@ def _source_limits() -> dict[str, float]:
         "tdp_limit_w": 150,
         "board_power_limit_w": 300,
         "asic_fmax_mhz": 1350,
+        "unit_provenance": analysis.UNIT_PROVENANCE,
     }
 
 
@@ -1053,6 +1148,10 @@ def test_analysis_does_not_invent_missing_throttle_limit() -> None:
         _trace(temperature=88),
         plateau_start_seconds=150,
         plateau_end_seconds=285,
-        limits={"asic_fmax_mhz": 1350, "thm_limit_throttle": 100},
+        limits={
+            "asic_fmax_mhz": 1350,
+            "thm_limit_throttle": 100,
+            "unit_provenance": analysis.UNIT_PROVENANCE,
+        },
     )
     assert known["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]["status"] == "pass"

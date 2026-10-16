@@ -255,8 +255,8 @@
     "power_w": "W",
     "board_power_w": "W",
     "aiclk_mhz": "MHz",
-    "current_a": "A as reported by snapshot telemetry",
-    "voltage_v": "V as reported by snapshot telemetry",
+    "current_a": "A",
+    "voltage_v": "V",
     "asic_temp_c": "degC"
   },
   "time_axis": {
@@ -336,7 +336,7 @@
         "limit_proximity": null
       },
       "current_a": {
-        "unit": "A as reported by snapshot telemetry",
+        "unit": "A",
         "min": 130.0,
         "max": 180.0,
         "time_weighted_mean": 176.33799951074073,
@@ -345,13 +345,13 @@
           "status": "available",
           "limit_key": "TDC_LIMIT_MAX",
           "limit_value": 200.0,
-          "limit_unit": "reported snapshot unit",
+          "limit_unit": "A",
           "difference": 23.66200048925927,
           "fraction": 0.11831000244629636
         }
       },
       "voltage_v": {
-        "unit": "V as reported by snapshot telemetry",
+        "unit": "V",
         "min": 0.73,
         "max": 0.8,
         "time_weighted_mean": 0.7340318236101482,
@@ -392,7 +392,8 @@
       "seconds_from_run_start": 4.493233541,
       "field": "current_a",
       "value": 255.0,
-      "segment_end_monotonic_ns": 31844671114446
+      "segment_end_monotonic_ns": 31844671114446,
+      "threshold": 180.0
     },
     "temperature_thm_threshold": {
       "timestamp_monotonic_ns": null,
@@ -418,7 +419,8 @@
         "seconds_from_run_start": 4.493233541,
         "field": "current_a",
         "value": 255.0,
-        "segment_end_monotonic_ns": 31844671114446
+        "segment_end_monotonic_ns": 31844671114446,
+        "threshold": 180.0
       },
       "aiclk_drop": {
         "timestamp_monotonic_ns": 31844671114446,
@@ -488,13 +490,16 @@
       "details": {
         "signal": "current_a",
         "threshold": 180.0,
+        "threshold_unit": "A",
         "limit": 200.0,
+        "limit_unit_comparable": true,
         "signal_onset": {
           "timestamp_monotonic_ns": 31842433136064,
           "seconds_from_run_start": 4.493233541,
           "field": "current_a",
           "value": 255.0,
-          "segment_end_monotonic_ns": 31844671114446
+          "segment_end_monotonic_ns": 31844671114446,
+          "threshold": 180.0
         },
         "aiclk_drop_onset": {
           "timestamp_monotonic_ns": 31844671114446,
@@ -638,7 +643,8 @@
             "seconds_from_run_start": 4.493233541,
             "field": "current_a",
             "value": 255.0,
-            "segment_end_monotonic_ns": 31844671114446
+            "segment_end_monotonic_ns": 31844671114446,
+            "threshold": 180.0
           },
           {
             "timestamp_monotonic_ns": null,
@@ -686,6 +692,102 @@
     "board_power_limit_w": 300.0,
     "thm_limit_throttle": 90.0,
     "asic_fmax_mhz": 1350.0
+  },
+  "unit_provenance": {
+    "schema": "issue121-q2-unit-provenance-v1",
+    "status": "established",
+    "post_measurement": true,
+    "packages": [
+      {
+        "name": "tt-smi",
+        "version": "6.2.1",
+        "repository": "tenstorrent/tt-smi"
+      },
+      {
+        "name": "tt-umd",
+        "version": "0.9.8",
+        "repository": "tenstorrent/tt-umd"
+      }
+    ],
+    "comparisons": {
+      "current_a_vs_tdc_limit": {
+        "signal_unit": "A",
+        "limit_unit": "A",
+        "comparable": true,
+        "raw_limit_key": "TDC_LIMIT_MAX",
+        "reported_limit_key": "limits.tdc_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+            "finding": "The API documents TDC in amps."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Blackhole telemetry uses the raw low 16 bits of TDC for current without a unit conversion."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "TDC_LIMIT_MAX is used directly as tdc_limit, while the telemetry table labels the paired current as A."
+          }
+        ],
+        "status": "established"
+      },
+      "asic_temp_c_vs_therm_trip_l1_limit": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The API documents ASIC temperature in Celsius."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "The paired Core Temp telemetry is labeled in degrees Celsius."
+          }
+        ],
+        "status": "established"
+      },
+      "asic_temp_c_vs_thm_limit_throttle": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "raw_limit_key": "THM_LIMIT_THROTTLE",
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "evidence": [
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit; no conversion is applied."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "Core Temp is labeled in degrees Celsius and is shown with the thermal throttle/temperature limit."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The underlying ASIC temperature API is Celsius."
+          }
+        ],
+        "status": "established"
+      }
+    }
   },
   "raw_window": {
     "start_seconds": 0.0,

@@ -49,9 +49,127 @@ SIGNAL_UNITS = {
     "power_w": "W",
     "board_power_w": "W",
     "aiclk_mhz": "MHz",
-    "current_a": "A as reported by snapshot telemetry",
-    "voltage_v": "V as reported by snapshot telemetry",
+    "current_a": "A",
+    "voltage_v": "V",
     "asic_temp_c": "degC",
+}
+
+# This is post-measurement provenance.  It does not change the preregistered
+# thresholds; it establishes the semantic units used when regenerating the
+# analysis artifacts from the immutable Q2 records.
+UNIT_PROVENANCE = {
+    "schema": "issue121-q2-unit-provenance-v1",
+    "status": "established",
+    "post_measurement": True,
+    "packages": [
+        {
+            "name": "tt-smi",
+            "version": "6.2.1",
+            "repository": "tenstorrent/tt-smi",
+        },
+        {
+            "name": "tt-umd",
+            "version": "0.9.8",
+            "repository": "tenstorrent/tt-umd",
+        },
+    ],
+    "comparisons": {
+        "current_a_vs_tdc_limit": {
+            "signal_unit": "A",
+            "limit_unit": "A",
+            "comparable": True,
+            "raw_limit_key": "TDC_LIMIT_MAX",
+            "reported_limit_key": "limits.tdc_limit",
+            "evidence": [
+                {
+                    "package": "tt-umd==0.9.8",
+                    "source_file": (
+                        "device/api/umd/device/firmware/"
+                        "firmware_info_provider.hpp"
+                    ),
+                    "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+                    "finding": "The API documents TDC in amps.",
+                },
+                {
+                    "package": "tt-smi==6.2.1",
+                    "source_file": "tt_smi/backend.py",
+                    "function": "TTSMIBackend.get_bh_chip_telemetry",
+                    "finding": (
+                        "Blackhole telemetry uses the raw low 16 bits of TDC "
+                        "for current without a unit conversion."
+                    ),
+                },
+                {
+                    "package": "tt-smi==6.2.1",
+                    "source_file": "tt_smi/backend.py",
+                    "function": "TTSMIBackend.get_bh_chip_limits",
+                    "finding": (
+                        "TDC_LIMIT_MAX is used directly as tdc_limit, while "
+                        "the telemetry table labels the paired current as A."
+                    ),
+                },
+            ],
+        },
+        "asic_temp_c_vs_therm_trip_l1_limit": {
+            "signal_unit": "degC",
+            "limit_unit": "degC",
+            "comparable": True,
+            "reported_limit_key": "limits.therm_trip_l1_limit",
+            "evidence": [
+                {
+                    "package": "tt-umd==0.9.8",
+                    "source_file": (
+                        "device/api/umd/device/firmware/"
+                        "firmware_info_provider.hpp"
+                    ),
+                    "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+                    "finding": "The API documents ASIC temperature in Celsius.",
+                },
+                {
+                    "package": "tt-smi==6.2.1",
+                    "source_file": "tt_smi/constants.py",
+                    "function": "TELEMETRY_TABLE_HEADER",
+                    "finding": "The paired Core Temp telemetry is labeled in degrees Celsius.",
+                },
+            ],
+        },
+        "asic_temp_c_vs_thm_limit_throttle": {
+            "signal_unit": "degC",
+            "limit_unit": "degC",
+            "comparable": True,
+            "raw_limit_key": "THM_LIMIT_THROTTLE",
+            "reported_limit_key": "limits.therm_trip_l1_limit",
+            "evidence": [
+                {
+                    "package": "tt-smi==6.2.1",
+                    "source_file": "tt_smi/backend.py",
+                    "function": "TTSMIBackend.get_bh_chip_limits",
+                    "finding": (
+                        "THM_LIMIT_THROTTLE is copied directly to "
+                        "therm_trip_l1_limit; no conversion is applied."
+                    ),
+                },
+                {
+                    "package": "tt-smi==6.2.1",
+                    "source_file": "tt_smi/constants.py",
+                    "function": "TELEMETRY_TABLE_HEADER",
+                    "finding": (
+                        "Core Temp is labeled in degrees Celsius and is shown "
+                        "with the thermal throttle/temperature limit."
+                    ),
+                },
+                {
+                    "package": "tt-umd==0.9.8",
+                    "source_file": (
+                        "device/api/umd/device/firmware/"
+                        "firmware_info_provider.hpp"
+                    ),
+                    "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+                    "finding": "The underlying ASIC temperature API is Celsius.",
+                },
+            ],
+        },
+    },
 }
 _SIGNAL_FIELDS = tuple(SIGNAL_UNITS)
 _RAW_WINDOW_FIELDS = (
@@ -338,6 +456,7 @@ def _aggregate_signal(
     limit: float | None = None,
     limit_key: str | None = None,
     limit_unit: str | None = None,
+    limit_comparable: bool | None = True,
 ) -> dict[str, Any]:
     values = [float(row[field]) for row, _start, _end in segments]
     minimum = min(values) if values else None
@@ -345,7 +464,15 @@ def _aggregate_signal(
     weighted = _duration_weighted_mean(segments, field)
     proximity: dict[str, Any] | None = None
     if limit is not None and weighted is not None:
-        if not math.isfinite(limit) or not limit:
+        if limit_comparable is not True:
+            proximity = {
+                "status": "not_evaluable",
+                "limit_key": limit_key,
+                "limit_value": limit,
+                "limit_unit": limit_unit,
+                "reason": "signal and limit units are not established as comparable",
+            }
+        elif not math.isfinite(limit) or not limit:
             proximity = {"status": "not_evaluable", "reason": "limit is not finite or zero"}
         else:
             difference = abs(weighted - limit)
@@ -363,7 +490,11 @@ def _aggregate_signal(
             "limit_key": limit_key,
             "limit_value": limit,
             "limit_unit": limit_unit,
-            "reason": "signal or source-proven limit is unavailable",
+            "reason": (
+                "signal or source-proven limit is unavailable"
+                if limit_comparable is True
+                else "signal and limit units are not established as comparable"
+            ),
         }
     return {
         "unit": SIGNAL_UNITS[field],
@@ -591,6 +722,95 @@ def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float
     return values
 
 
+def _unit_comparison(
+    metadata: Mapping[str, Any] | None,
+    name: str,
+    *,
+    default_comparable: bool | None = None,
+    default_signal_unit: str | None = None,
+    default_limit_unit: str | None = None,
+) -> dict[str, Any]:
+    """Return one explicit unit disposition without inferring unknown units."""
+    comparison: Mapping[str, Any] | None = None
+    if isinstance(metadata, Mapping):
+        unit_provenance = metadata.get("unit_provenance")
+        if isinstance(unit_provenance, Mapping):
+            comparisons = unit_provenance.get("comparisons")
+            if isinstance(comparisons, Mapping):
+                candidate = comparisons.get(name)
+                if isinstance(candidate, Mapping):
+                    comparison = candidate
+    if comparison is None:
+        return {
+            "status": (
+                "established_by_signal_name"
+                if default_comparable is True
+                else "unknown"
+            ),
+            "comparable": default_comparable,
+            "signal_unit": default_signal_unit,
+            "limit_unit": default_limit_unit,
+            "evidence": [],
+        }
+    comparable = comparison.get("comparable")
+    if not isinstance(comparable, bool):
+        comparable = None
+    result = _safe_provenance(comparison)
+    if not isinstance(result, dict):
+        result = {}
+    result.update(
+        {
+            "status": "established" if comparable is True else "unknown",
+            "comparable": comparable,
+            "signal_unit": comparison.get("signal_unit", default_signal_unit),
+            "limit_unit": comparison.get("limit_unit", default_limit_unit),
+            "evidence": _safe_provenance(comparison.get("evidence", [])),
+        }
+    )
+    return result
+
+
+def _unit_dispositions(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return all unit dispositions used by the Q2 criteria."""
+    explicit = metadata.get("unit_provenance") if isinstance(metadata, Mapping) else None
+    if isinstance(explicit, Mapping):
+        provenance = _safe_provenance(explicit)
+    else:
+        provenance = {
+            "schema": "issue121-q2-unit-provenance-v1",
+            "status": "unknown",
+            "post_measurement": False,
+            "comparisons": {},
+        }
+    comparisons = provenance.setdefault("comparisons", {})
+    comparisons["current_a_vs_tdc_limit"] = _unit_comparison(
+        metadata,
+        "current_a_vs_tdc_limit",
+        default_signal_unit="A",
+        default_limit_unit=None,
+    )
+    comparisons["asic_temp_c_vs_therm_trip_l1_limit"] = _unit_comparison(
+        metadata,
+        "asic_temp_c_vs_therm_trip_l1_limit",
+        default_comparable=True,
+        default_signal_unit="degC",
+        default_limit_unit="degC",
+    )
+    comparisons["asic_temp_c_vs_thm_limit_throttle"] = _unit_comparison(
+        metadata,
+        "asic_temp_c_vs_thm_limit_throttle",
+        default_signal_unit="degC",
+        default_limit_unit=None,
+    )
+    if not any(
+        comparison.get("comparable") is True
+        for comparison in comparisons.values()
+        if isinstance(comparison, Mapping)
+    ):
+        provenance["status"] = "unknown"
+    return provenance
+
+
 def _hypothesis_result(
     *,
     plateau_pass: bool | None,
@@ -704,28 +924,45 @@ def _prepare_trace_window(
 def _aggregate_signals(
     plateau_segments: Sequence[tuple[Mapping[str, Any], int, int]],
     source_limits: Mapping[str, float | None],
+    unit_dispositions: Mapping[str, Any],
 ) -> dict[str, Any]:
-    signal_limits: dict[str, tuple[float | None, str | None, str | None]] = {
-        "power_w": (source_limits["tdp_limit_w"], "TDP_LIMIT_MAX", "W"),
-        "board_power_w": (source_limits["board_power_limit_w"], "BOARD_POWER_LIMIT", "W"),
-        "aiclk_mhz": (None, None, None),
-        "current_a": (source_limits["tdc_limit"], "TDC_LIMIT_MAX", "reported snapshot unit"),
-        "voltage_v": (None, None, None),
+    tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
+    therm_trip_units = unit_dispositions["comparisons"][
+        "asic_temp_c_vs_therm_trip_l1_limit"
+    ]
+    signal_limits: dict[str, tuple[float | None, str | None, str | None, bool | None]] = {
+        "power_w": (source_limits["tdp_limit_w"], "TDP_LIMIT_MAX", "W", True),
+        "board_power_w": (
+            source_limits["board_power_limit_w"],
+            "BOARD_POWER_LIMIT",
+            "W",
+            True,
+        ),
+        "aiclk_mhz": (None, None, None, True),
+        "current_a": (
+            source_limits["tdc_limit"],
+            "TDC_LIMIT_MAX",
+            tdc_units.get("limit_unit"),
+            tdc_units.get("comparable"),
+        ),
+        "voltage_v": (None, None, None, True),
         "asic_temp_c": (
             source_limits["therm_trip_l1_limit_c"],
             "therm_trip_l1_limit",
-            "degC",
+            therm_trip_units.get("limit_unit", "degC"),
+            therm_trip_units.get("comparable"),
         ),
     }
     signals: dict[str, Any] = {}
     for field in _SIGNAL_FIELDS:
-        limit, limit_key, limit_unit = signal_limits[field]
+        limit, limit_key, limit_unit, limit_comparable = signal_limits[field]
         signals[field] = _aggregate_signal(
             plateau_segments,
             field=field,
             limit=limit,
             limit_key=limit_key,
             limit_unit=limit_unit,
+            limit_comparable=limit_comparable,
         )
     return signals
 
@@ -804,7 +1041,9 @@ def _threshold_onset(
 
 
 def _build_onset_data(
-    window: _TraceWindow, source_limits: Mapping[str, float | None]
+    window: _TraceWindow,
+    source_limits: Mapping[str, float | None],
+    unit_dispositions: Mapping[str, Any],
 ) -> dict[str, Any]:
     aiclk_drop, aiclk_threshold = _aiclk_onset(
         window.rows,
@@ -812,13 +1051,24 @@ def _build_onset_data(
         end_ns=window.run_end,
         asic_fmax=source_limits["asic_fmax_mhz"],
     )
-    current_onset = _find_onset(
-        window.rows,
-        start_ns=window.run_start,
-        end_ns=window.run_end,
-        field="current_a",
-        predicate=lambda value: value >= H_TDC_ONSET_THRESHOLD,
-    )
+    tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
+    if tdc_units.get("comparable") is True:
+        current_onset = _find_onset(
+            window.rows,
+            start_ns=window.run_start,
+            end_ns=window.run_end,
+            field="current_a",
+            predicate=lambda value: value >= H_TDC_ONSET_THRESHOLD,
+        )
+    else:
+        current_onset = _unavailable_onset(
+            field="current_a",
+            threshold=None,
+            reason=(
+                "TDC limit and current telemetry units are not established as "
+                "comparable"
+            ),
+        )
     therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
     thm_onset_threshold = (
         None if therm_trip_limit is None else therm_trip_limit - H_THM_MAX_DIFFERENCE_C
@@ -851,12 +1101,16 @@ def _build_onset_data(
         power_onset["threshold"] = tdp_onset_threshold
     if thm_onset_threshold is not None:
         temperature_onset["threshold"] = thm_onset_threshold
+    if tdc_units.get("comparable") is True:
+        current_onset["threshold"] = H_TDC_ONSET_THRESHOLD
     return {
         "aiclk_drop": aiclk_drop,
         "current_onset": current_onset,
         "temperature_onset": temperature_onset,
         "power_onset": power_onset,
         "aiclk_threshold": aiclk_threshold,
+        "tdc_unit_comparable": tdc_units.get("comparable"),
+        "tdc_limit_unit": tdc_units.get("limit_unit"),
         "thm_onset_threshold": thm_onset_threshold,
         "tdp_onset_threshold": tdp_onset_threshold,
         "onsets": {
@@ -873,6 +1127,8 @@ def _onset_order_pass(
 ) -> bool | None:
     signal_timestamp = signal_onset.get("timestamp_monotonic_ns")
     clock_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
+    if signal_onset.get("status") == "not_evaluable":
+        return None
     if clock_timestamp is None:
         return None
     # A known AICLK drop plus no signal onset is a failed onset criterion,
@@ -883,7 +1139,9 @@ def _onset_order_pass(
 
 
 def _throttle_comparison(
-    throttle_limit: float | None, thm_maximum: float | None
+    throttle_limit: float | None,
+    thm_maximum: float | None,
+    unit_disposition: Mapping[str, Any],
 ) -> dict[str, Any]:
     if throttle_limit is None:
         return {
@@ -891,10 +1149,22 @@ def _throttle_comparison(
             "knowledge_status": "unknown",
             "limit_key": "THM_LIMIT_THROTTLE",
             "limit_value": None,
-            "limit_unit": "degC",
+            "limit_unit": None,
             "reason": (
                 "source snapshot did not establish THM_LIMIT_THROTTLE; "
                 "no value was inferred from therm_trip_l1"
+            ),
+        }
+    if unit_disposition.get("comparable") is not True:
+        return {
+            "status": "not_evaluable",
+            "knowledge_status": "unknown",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": throttle_limit,
+            "limit_unit": unit_disposition.get("limit_unit"),
+            "reason": (
+                "THM_LIMIT_THROTTLE raw value is retained, but its unit is not "
+                "established as comparable to ASIC temperature"
             ),
         }
     if thm_maximum is None:
@@ -902,7 +1172,7 @@ def _throttle_comparison(
             "status": "not_evaluable",
             "limit_key": "THM_LIMIT_THROTTLE",
             "limit_value": throttle_limit,
-            "limit_unit": "degC",
+            "limit_unit": unit_disposition.get("limit_unit", "degC"),
             "reason": "ASIC temperature plateau maximum is unavailable",
         }
     throttle_pass = thm_maximum < throttle_limit
@@ -910,7 +1180,7 @@ def _throttle_comparison(
         "status": "pass" if throttle_pass else "fail",
         "limit_key": "THM_LIMIT_THROTTLE",
         "limit_value": throttle_limit,
-        "limit_unit": "degC",
+        "limit_unit": unit_disposition.get("limit_unit", "degC"),
         "plateau_asic_temp_max_c": thm_maximum,
         "criterion": (
             "run plateau maximum ASIC temperature is strictly below "
@@ -923,17 +1193,22 @@ def _hypothesis_metrics(
     signals: Mapping[str, Any],
     onset_data: Mapping[str, Any],
     source_limits: Mapping[str, float | None],
+    unit_dispositions: Mapping[str, Any],
 ) -> dict[str, Any]:
     aiclk_drop = onset_data["aiclk_drop"]
     current_onset = onset_data["current_onset"]
     temperature_onset = onset_data["temperature_onset"]
     power_onset = onset_data["power_onset"]
     tdc_proximity = signals["current_a"]["limit_proximity"]
-    tdc_plateau_pass = (
-        tdc_proximity is not None
-        and tdc_proximity.get("status") == "available"
-        and tdc_proximity["fraction"] <= H_TDC_PROXIMITY_FRACTION
-    )
+    tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
+    if tdc_units.get("comparable") is not True:
+        tdc_plateau_pass = None
+    else:
+        tdc_plateau_pass = (
+            tdc_proximity is not None
+            and tdc_proximity.get("status") == "available"
+            and tdc_proximity["fraction"] <= H_TDC_PROXIMITY_FRACTION
+        )
     thm_weighted = signals["asic_temp_c"]["time_weighted_mean"]
     thm_maximum = signals["asic_temp_c"]["max"]
     therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
@@ -949,7 +1224,9 @@ def _hypothesis_metrics(
         and thm_maximum < thm_shutdown_limit
     )
     thm_throttle_comparison = _throttle_comparison(
-        source_limits["thm_limit_throttle"], thm_maximum
+        source_limits["thm_limit_throttle"],
+        thm_maximum,
+        unit_dispositions["comparisons"]["asic_temp_c_vs_thm_limit_throttle"],
     )
     tdp_signal = signals["power_w"]
     tdp_proximity = tdp_signal["limit_proximity"]
@@ -1014,8 +1291,11 @@ def _build_hypothesis_analysis(
     signals: Mapping[str, Any],
     onset_data: Mapping[str, Any],
     source_limits: Mapping[str, float | None],
+    unit_dispositions: Mapping[str, Any],
 ) -> _HypothesisAnalysis:
-    metrics = _hypothesis_metrics(signals, onset_data, source_limits)
+    metrics = _hypothesis_metrics(
+        signals, onset_data, source_limits, unit_dispositions
+    )
     aiclk_drop = metrics["aiclk_drop"]
     current_onset = metrics["current_onset"]
     temperature_onset = metrics["temperature_onset"]
@@ -1044,8 +1324,14 @@ def _build_hypothesis_analysis(
             onset_pass=tdc_order_pass,
             details={
                 "signal": "current_a",
-                "threshold": H_TDC_ONSET_THRESHOLD,
+                "threshold": (
+                    H_TDC_ONSET_THRESHOLD
+                    if onset_data["tdc_unit_comparable"] is True
+                    else None
+                ),
+                "threshold_unit": onset_data["tdc_limit_unit"],
                 "limit": source_limits["tdc_limit"],
+                "limit_unit_comparable": onset_data["tdc_unit_comparable"],
                 "signal_onset": current_onset,
                 "aiclk_drop_onset": aiclk_drop,
                 "onset_order_pass": tdc_order_pass,
@@ -1167,6 +1453,7 @@ def _build_analysis_report(
     onset_data: Mapping[str, Any],
     hypothesis_analysis: _HypothesisAnalysis,
     provenance: Mapping[str, Any] | None,
+    unit_dispositions: Mapping[str, Any],
 ) -> dict[str, Any]:
     source_metadata = window.source_metadata
     source_report = {
@@ -1245,6 +1532,7 @@ def _build_analysis_report(
         "onset_order": hypothesis_analysis.onset_order,
         "hypotheses": hypothesis_analysis.hypotheses,
         "limits": _safe_provenance(source_limits),
+        "unit_provenance": _safe_provenance(unit_dispositions),
         "raw_window": raw_window,
         "limitations": limitations,
         "reader_facts": _safe_provenance(window.facts),
@@ -1270,10 +1558,13 @@ def analyze_trace(
         plateau_end_seconds=plateau_end_seconds,
     )
     source_limits = _limits_from_metadata(limits)
-    signals = _aggregate_signals(window.plateau_segments, source_limits)
-    onset_data = _build_onset_data(window, source_limits)
+    unit_dispositions = _unit_dispositions(limits)
+    signals = _aggregate_signals(
+        window.plateau_segments, source_limits, unit_dispositions
+    )
+    onset_data = _build_onset_data(window, source_limits, unit_dispositions)
     hypothesis_analysis = _build_hypothesis_analysis(
-        signals, onset_data, source_limits
+        signals, onset_data, source_limits, unit_dispositions
     )
     return _build_analysis_report(
         window,
@@ -1282,6 +1573,7 @@ def analyze_trace(
         onset_data,
         hypothesis_analysis,
         provenance,
+        unit_dispositions,
     )
 
 
@@ -1365,6 +1657,7 @@ __all__ = [
     "ANALYSIS_SCHEMA",
     "DEFAULT_PLATEAU_END_SECONDS",
     "DEFAULT_PLATEAU_START_SECONDS",
+    "UNIT_PROVENANCE",
     "AnalysisError",
     "analyze_extended_trace",
     "analyze_trace",

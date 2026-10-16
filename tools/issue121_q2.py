@@ -443,7 +443,7 @@ _SNAPSHOT_LIMIT_SPECS = {
         ),
     },
     "tdc_limit": {
-        "unit": "reported snapshot unit",
+        "unit": "A",
         "sources": (
             ("limits", ("tdc_limit", "TDC_LIMIT_MAX")),
             ("smbus_telem", ("TDC_LIMIT_MAX", "tdc_limit")),

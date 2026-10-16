@@ -140,9 +140,9 @@
       },
       "tdc_limit": {
         "value": 200,
-        "unit": "reported snapshot unit",
+        "unit": "A",
         "source_key": "limits.tdc_limit",
-        "source": "prior host snapshot"
+        "source": "prior host snapshot; unit established post-measurement in revision 5"
       },
       "therm_trip_l1_limit": {
         "value": 90,
@@ -172,13 +172,15 @@
       "TDC_LIMIT_MAX": {
         "value": "0xc8",
         "unit": "raw snapshot value",
+        "semantic_unit": "A",
         "source_key": "smbus_telem.TDC_LIMIT_MAX"
       },
       "THM_LIMIT_THROTTLE": {
         "value": null,
-        "unit": null,
+        "unit": "raw snapshot value",
+        "semantic_unit": "degC",
         "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
-        "status": "not established by the prior snapshot; no value is inferred"
+        "status": "not established by the prior snapshot; no value is inferred; semantic unit established post-measurement in revision 5"
       }
     }
   },
@@ -191,10 +193,10 @@
     "asic_fmax_mhz": 1350,
     "thm_limit_throttle": {
       "value": null,
-      "unit": null,
+      "unit": "degC",
       "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
       "required_for_comparison": false,
-      "status": "unknown when absent from source snapshot; analysis must report unknown/not_evaluable rather than substitute a value"
+      "status": "unknown when absent from source snapshot; semantic unit established post-measurement in revision 5; analysis must report unknown/not_evaluable rather than substitute a value"
     }
   },
   "plateau": {
@@ -228,13 +230,13 @@
       "signal": "current_a",
       "plateau_proximity": {
         "limit": 200,
-        "unit": "reported snapshot unit",
+        "unit": "A",
         "max_fraction": 0.10,
         "criterion": "current_a plateau time-weighted mean is within 10 percent of TDC_LIMIT_MAX, with comparable units"
       },
       "onset": {
         "threshold": 180,
-        "unit": "reported snapshot unit",
+        "unit": "A",
         "criterion": "current onset at or above 90 percent of the TDC limit is no later than AICLK drop onset"
       },
       "classification": "supported only when plateau proximity and onset order pass; otherwise not_supported or inconclusive when a required value is unavailable"
@@ -254,6 +256,7 @@
       },
       "thm_limit_throttle": {
         "required": false,
+        "unit": "degC",
         "criterion": "when present in the pre/post source snapshots, compare the run plateau maximum ASIC temperature with THM_LIMIT_THROTTLE and retain the comparison as provenance",
         "missing_limit_policy": "unknown/not_evaluable; do not infer THM_LIMIT_THROTTLE from therm_trip_l1 or shutdown",
         "classification_role": "reported optional comparison, not a replacement for therm_trip_l1, shutdown, or onset criteria"
@@ -338,6 +341,100 @@
     "wait_cap_seconds": 600,
     "failure_policy": "Do not start the next 285-second run after the cap or an unavailable required reading."
   },
+  "unit_provenance": {
+    "schema": "issue121-q2-unit-provenance-v1",
+    "status": "established",
+    "post_measurement": true,
+    "packages": [
+      {
+        "name": "tt-smi",
+        "version": "6.2.1",
+        "repository": "tenstorrent/tt-smi"
+      },
+      {
+        "name": "tt-umd",
+        "version": "0.9.8",
+        "repository": "tenstorrent/tt-umd"
+      }
+    ],
+    "source_note": "The disposition was established after measurement from the pinned host environment and inspected pinned-image UMD source; raw snapshot values remain unchanged.",
+    "comparisons": {
+      "current_a_vs_tdc_limit": {
+        "signal_unit": "A",
+        "limit_unit": "A",
+        "comparable": true,
+        "raw_limit_key": "TDC_LIMIT_MAX",
+        "reported_limit_key": "limits.tdc_limit",
+        "source_functions": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_tdc",
+            "finding": "The API documents TDC in amps."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Raw TDC low 16 bits are emitted as current without conversion."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "Raw TDC_LIMIT_MAX is emitted as tdc_limit without conversion."
+          }
+        ]
+      },
+      "asic_temp_c_vs_therm_trip_l1_limit": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "source_functions": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The API documents ASIC temperature in Celsius."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "Core Temp is labeled in degrees Celsius."
+          }
+        ]
+      },
+      "asic_temp_c_vs_thm_limit_throttle": {
+        "signal_unit": "degC",
+        "limit_unit": "degC",
+        "comparable": true,
+        "raw_limit_key": "THM_LIMIT_THROTTLE",
+        "reported_limit_key": "limits.therm_trip_l1_limit",
+        "source_functions": [
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_limits",
+            "finding": "THM_LIMIT_THROTTLE is copied directly to therm_trip_l1_limit."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "function": "TELEMETRY_TABLE_HEADER",
+            "finding": "Core Temp is labeled in degrees Celsius with the thermal throttle limit."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "tt::umd::FirmwareInfoProvider::get_asic_temperature",
+            "finding": "The underlying ASIC temperature API is Celsius."
+          }
+        ]
+      }
+    }
+  },
   "provenance": {
     "required_environment_fields": [
       "board.serial",
@@ -374,6 +471,11 @@
       "revision": 4,
       "date": "2026-10-16",
       "change": "post-measurement analysis change introduced by e09d4f9 after all 3 runs; before: AICLK onset used the first left-held segment clipped at run_start whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could make onset t=0; after: AICLK onset uses the first trace sample segment whose timestamp is at or after run_start (post-start sample only), with the same 1350*0.95=1282.5 threshold; reason: exclude pre-run idle from load-onset timing. The pre-change definition classified all three completed runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
+    },
+    {
+      "revision": 5,
+      "date": "2026-10-16",
+      "change": "post-measurement unit-disposition remediation after all 3 runs: inspected the pinned host tt-smi 6.2.1 and tt-umd 0.9.8 source provenance without hardware access; TDC_LIMIT_MAX/limits.tdc_limit and current are established as comparable A values, and THM_LIMIT_THROTTLE is established as a degC thermal limit mapped directly to limits.therm_trip_l1_limit. Raw TDC_LIMIT_MAX and THM_LIMIT_THROTTLE values remain retained with source provenance; thresholds, criteria, and prediction are unchanged. Regenerated only analysis JSONs and this summary; no run record, trace, or snapshot changed."
     }
   ],
   "limitations": [
