@@ -36,13 +36,11 @@ H_TDC_ONSET_THRESHOLD = 180.0
 H_THM_LIMIT_C = 90.0
 H_THM_SHUTDOWN_C = 110.0
 H_THM_MAX_DIFFERENCE_C = 5.0
-H_THM_ONSET_THRESHOLD_C = 85.0
 H_TDP_LIMIT_W = 150.0
 BOARD_POWER_LIMIT_W = 300.0
-H_TDP_PLATEAU_RANGE_W = (132.0, 135.0)
-H_TDP_PROXIMITY_FRACTION = 0.12
-H_TDP_ONSET_THRESHOLD_W = 132.0
-H_OTHER_NONPROXIMITY_FRACTION = 0.12
+H_TDP_PROXIMITY_FRACTION = 0.05
+EARLY_RAW_WINDOW_SECONDS = 10.0
+SAMPLING_CADENCE_SECONDS = 2.0
 
 SIGNAL_UNITS = {
     "power_w": "W",
@@ -53,6 +51,14 @@ SIGNAL_UNITS = {
     "asic_temp_c": "degC",
 }
 _SIGNAL_FIELDS = tuple(SIGNAL_UNITS)
+_RAW_WINDOW_FIELDS = (
+    "timestamp_monotonic_ns",
+    "seconds_from_run_start",
+    "aiclk_mhz",
+    "power_w",
+    "current_a",
+    "asic_temp_c",
+)
 _FORBIDDEN_KEYS = frozenset(
     {
         "hostname",
@@ -313,16 +319,6 @@ def _aggregate_signal(
     }
 
 
-def _value_at_or_before(rows: Sequence[Mapping[str, Any]], timestamp_ns: int, field: str) -> float | None:
-    candidate: float | None = None
-    for row in rows:
-        if int(row["timestamp_monotonic_ns"]) <= timestamp_ns:
-            candidate = float(row[field])
-        else:
-            break
-    return candidate
-
-
 def _find_onset(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -358,6 +354,104 @@ def _add_relative_onset(onset: dict[str, Any], run_start_ns: int) -> dict[str, A
     return onset
 
 
+def _unavailable_onset(
+    *, field: str, reason: str, threshold: float | None = None
+) -> dict[str, Any]:
+    """Represent a source-dependent onset that cannot be evaluated."""
+    return {
+        "status": "not_evaluable",
+        "timestamp_monotonic_ns": None,
+        "seconds_from_run_start": None,
+        "field": field,
+        "value": None,
+        "threshold": threshold,
+        "segment_end_monotonic_ns": None,
+        "reason": reason,
+    }
+
+
+def _lower_proximity_bound(limit: float | None, fraction: float) -> float | None:
+    if limit is None or not math.isfinite(limit) or limit <= 0.0:
+        return None
+    return limit * (1.0 - fraction)
+
+
+def _raw_window(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    run_start_ns: int,
+    duration_seconds: float = EARLY_RAW_WINDOW_SECONDS,
+) -> dict[str, Any]:
+    """Return the raw signal rows in the first fixed seconds of the run."""
+    end_ns = run_start_ns + round(duration_seconds * 1_000_000_000.0)
+    raw_rows: list[dict[str, Any]] = []
+    for row in rows:
+        timestamp = int(row["timestamp_monotonic_ns"])
+        if timestamp < run_start_ns or timestamp > end_ns:
+            continue
+        raw_rows.append(
+            {
+                "timestamp_monotonic_ns": timestamp,
+                "seconds_from_run_start": (timestamp - run_start_ns) / 1_000_000_000.0,
+                "aiclk_mhz": float(row["aiclk_mhz"]),
+                "power_w": float(row["power_w"]),
+                "current_a": float(row["current_a"]),
+                "asic_temp_c": float(row["asic_temp_c"]),
+            }
+        )
+    return {
+        "start_seconds": 0.0,
+        "end_seconds": duration_seconds,
+        "columns": list(_RAW_WINDOW_FIELDS),
+        "rows": raw_rows,
+    }
+
+
+_LIMIT_ALIASES = {
+    "tdc_limit": ("tdc_limit", "tdc_limit_value", "TDC_LIMIT_MAX"),
+    "therm_trip_l1_limit_c": (
+        "therm_trip_l1_limit_c",
+        "therm_trip_l1_limit",
+        "THERM_TRIP_L1_LIMIT",
+    ),
+    "thm_shutdown_limit_c": (
+        "thm_shutdown_limit_c",
+        "thm_shutdown_limit",
+        "thm_limit",
+        "THM_LIMIT_SHUTDOWN",
+    ),
+    "tdp_limit_w": ("tdp_limit_w", "tdp_limit", "TDP_LIMIT_MAX"),
+    "board_power_limit_w": (
+        "board_power_limit_w",
+        "board_power_limit",
+        "BOARD_POWER_LIMIT",
+    ),
+    "thm_limit_throttle": ("thm_limit_throttle", "THM_LIMIT_THROTTLE"),
+    "asic_fmax_mhz": ("asic_fmax_mhz", "asic_fmax", "ASIC_FMAX"),
+}
+
+
+def _snapshot_limit_mappings(metadata: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return persisted pre/post limit maps without inventing absent values."""
+    snapshot_limits = metadata.get("snapshot_limits")
+    if not isinstance(snapshot_limits, Mapping):
+        return []
+    mappings: list[Mapping[str, Any]] = []
+    for stage in ("pre", "post"):
+        stage_limits = snapshot_limits.get(stage)
+        if not isinstance(stage_limits, Mapping):
+            continue
+        recognized = stage_limits.get("recognized")
+        if isinstance(recognized, Mapping):
+            mappings.append(recognized)
+        for raw_name in ("raw", "raw_smbus", "raw_smbus_fields"):
+            raw = stage_limits.get(raw_name)
+            if isinstance(raw, Mapping):
+                mappings.append(raw)
+        mappings.append(stage_limits)
+    return mappings
+
+
 def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float | None]:
     values: dict[str, float | None] = {
         "tdc_limit": H_TDC_LIMIT,
@@ -366,114 +460,87 @@ def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float
         "tdp_limit_w": H_TDP_LIMIT_W,
         "board_power_limit_w": BOARD_POWER_LIMIT_W,
         "thm_limit_throttle": None,
+        # AICLK's baseline is source metadata, never a guessed default.
+        "asic_fmax_mhz": None,
     }
     if not isinstance(metadata, Mapping):
         return values
+
+    direct_sources: list[Mapping[str, Any]] = []
     limits = metadata.get("limits")
-    if not isinstance(limits, Mapping):
+    if isinstance(limits, Mapping):
+        direct_sources.append(limits)
+    else:
         source_snapshot = metadata.get("source_snapshot")
         if isinstance(source_snapshot, Mapping):
-            limits = source_snapshot.get("reported_limit_key_values", {})
-        else:
-            limits = metadata
-    aliases = {
-        "tdc_limit": ("tdc_limit", "tdc_limit_value"),
-        "therm_trip_l1_limit_c": ("therm_trip_l1_limit_c", "therm_trip_l1_limit"),
-        "thm_shutdown_limit_c": ("thm_shutdown_limit_c", "thm_shutdown_limit"),
-        "tdp_limit_w": ("tdp_limit_w", "tdp_limit"),
-        "board_power_limit_w": ("board_power_limit_w", "board_power_limit"),
-        "thm_limit_throttle": ("thm_limit_throttle", "THM_LIMIT_THROTTLE"),
-    }
-    for name, keys in aliases.items():
-        for key in keys:
-            if key not in limits:
+            reported = source_snapshot.get("reported_limit_key_values")
+            if isinstance(reported, Mapping):
+                direct_sources.append(reported)
+        direct_sources.append(metadata)
+
+    # A direct limits mapping wins over the persisted pre/post fallback.  This
+    # preserves explicit record metadata while still making --record useful
+    # for records that only carry snapshot_limits.
+    provided: set[str] = set()
+
+    def apply(source: Mapping[str, Any], *, only_unset: bool) -> None:
+        for name, keys in _LIMIT_ALIASES.items():
+            if only_unset and name in provided:
                 continue
-            value = limits[key]
-            if isinstance(value, Mapping):
-                value = value.get("value")
-            if value is None:
-                values[name] = None
-            else:
-                try:
-                    values[name] = _finite(value, field=name)
-                except AnalysisError:
+            for key in keys:
+                if key not in source:
+                    continue
+                value = source[key]
+                if isinstance(value, Mapping):
+                    value = value.get("value")
+                if value is None:
                     values[name] = None
-            break
+                else:
+                    try:
+                        values[name] = _finite(value, field=name)
+                    except AnalysisError:
+                        try:
+                            values[name] = _finite(
+                                int(str(value).strip(), 0), field=name
+                            )
+                        except (AnalysisError, TypeError, ValueError):
+                            values[name] = None
+                    if values[name] is not None:
+                        provided.add(name)
+                break
+
+    for source in direct_sources:
+        apply(source, only_unset=False)
+    for source in _snapshot_limit_mappings(metadata):
+        apply(source, only_unset=True)
     return values
-
-
-def _control_criterion(
-    control_source: str | Path | Mapping[str, Any] | None,
-    *,
-    limits: Mapping[str, float | None],
-    plateau_start_seconds: float,
-    plateau_end_seconds: float,
-) -> dict[str, Any]:
-    throttle_limit = limits.get("thm_limit_throttle")
-    if throttle_limit is None and isinstance(control_source, Mapping):
-        throttle_limit = _limits_from_metadata(control_source).get("thm_limit_throttle")
-    if throttle_limit is None:
-        return {
-            "status": "not_evaluable",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": None,
-            "reason": "source snapshot did not establish THM_LIMIT_THROTTLE; no value was inferred",
-        }
-    if control_source is None:
-        return {
-            "status": "not_evaluable",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": throttle_limit,
-            "reason": "control trace was not supplied",
-        }
-    try:
-        rows, facts, _source = _load_trace_source(
-            control_source,
-            run_start_monotonic_ns=None,
-            run_end_monotonic_ns=None,
-        )
-        run_start = int(facts["run_start_monotonic_ns"])
-        start = run_start + int(plateau_start_seconds * 1_000_000_000)
-        end = run_start + int(plateau_end_seconds * 1_000_000_000)
-        segments = _left_held_segments(rows, start_ns=start, end_ns=end)
-        aggregate = _aggregate_signal(segments, field="asic_temp_c")
-        maximum = aggregate["max"]
-        passed = maximum is not None and maximum < throttle_limit
-        return {
-            "status": "pass" if passed else "fail",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": throttle_limit,
-            "limit_unit": "degC",
-            "control_plateau_asic_temp_max_c": maximum,
-            "criterion": "control plateau maximum ASIC temperature is strictly below THM_LIMIT_THROTTLE",
-        }
-    except AnalysisError as exc:
-        return {
-            "status": "not_evaluable",
-            "limit_key": "THM_LIMIT_THROTTLE",
-            "limit_value": throttle_limit,
-            "reason": str(exc),
-        }
 
 
 def _hypothesis_result(
     *,
     plateau_pass: bool | None,
     onset_pass: bool | None,
-    control_pass: bool | None = True,
     details: Mapping[str, Any],
+    optional_criteria: Mapping[str, bool | None] | None = None,
+    shutdown_pass: bool | None = None,
 ) -> dict[str, Any]:
-    criteria = {
+    criteria: dict[str, bool | None] = {
         "plateau_proximity": plateau_pass,
         "onset_order": onset_pass,
-        "control": control_pass,
     }
-    if any(value is None for value in criteria.values()):
-        classification = "inconclusive"
-    elif all(criteria.values()):
-        classification = "supported"
-    else:
+    if shutdown_pass is not None:
+        criteria["shutdown_bound"] = shutdown_pass
+    if optional_criteria:
+        criteria.update(optional_criteria)
+    required = tuple(criteria[key] for key in ("plateau_proximity", "onset_order"))
+    if shutdown_pass is not None:
+        required += (shutdown_pass,)
+    if any(value is False for value in required):
         classification = "not_supported"
+    elif any(value is None for value in required):
+        classification = "inconclusive"
+    else:
+        classification = "supported"
     return {
         "classification": classification,
         "criteria": criteria,
@@ -491,7 +558,6 @@ def analyze_trace(
     plateau_end_seconds: float = DEFAULT_PLATEAU_END_SECONDS,
     provenance: Mapping[str, Any] | None = None,
     limits: Mapping[str, Any] | None = None,
-    control_trace: str | Path | Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Apply every fixed Q2 plateau and onset criterion to one trace."""
     plateau_start = _finite(plateau_start_seconds, field="plateau_start_seconds")
@@ -552,18 +618,44 @@ def analyze_trace(
             limit_unit=limit_unit,
         )
 
-    baseline_aiclk = _value_at_or_before(rows, plateau_start_ns, "aiclk_mhz")
     onset_start_ns = run_start
-    aiclk_drop = _find_onset(
-        rows,
-        start_ns=onset_start_ns,
-        end_ns=run_end,
-        field="aiclk_mhz",
-        predicate=(
-            lambda value: baseline_aiclk is not None
-            and value <= baseline_aiclk * (1.0 - AICLK_DROP_FRACTION)
-        ),
-    )
+    asic_fmax = source_limits["asic_fmax_mhz"]
+    aiclk_threshold = _lower_proximity_bound(asic_fmax, AICLK_DROP_FRACTION)
+    if aiclk_threshold is None:
+        aiclk_drop = _unavailable_onset(
+            field="aiclk_mhz",
+            threshold=None,
+            reason=(
+                "limits metadata did not establish asic_fmax_mhz; "
+                "AICLK drop onset is unknown"
+            ),
+        )
+        aiclk_drop.update(
+            {
+                "baseline_source": "limits metadata asic_fmax_mhz",
+                "baseline_asic_fmax_mhz": None,
+            }
+        )
+    else:
+        aiclk_drop = _find_onset(
+            rows,
+            start_ns=onset_start_ns,
+            end_ns=run_end,
+            field="aiclk_mhz",
+            predicate=lambda value: value <= aiclk_threshold,
+        )
+        aiclk_drop.update(
+            {
+                "status": (
+                    "observed"
+                    if aiclk_drop["timestamp_monotonic_ns"] is not None
+                    else "not_observed"
+                ),
+                "baseline_source": "limits metadata asic_fmax_mhz",
+                "baseline_asic_fmax_mhz": asic_fmax,
+                "threshold_mhz": aiclk_threshold,
+            }
+        )
     current_onset = _find_onset(
         rows,
         start_ns=onset_start_ns,
@@ -571,22 +663,50 @@ def analyze_trace(
         field="current_a",
         predicate=lambda value: value >= H_TDC_ONSET_THRESHOLD,
     )
-    temperature_onset = _find_onset(
-        rows,
-        start_ns=onset_start_ns,
-        end_ns=run_end,
-        field="asic_temp_c",
-        predicate=lambda value: value >= H_THM_ONSET_THRESHOLD_C,
+    thm_onset_threshold = (
+        None
+        if source_limits["therm_trip_l1_limit_c"] is None
+        else source_limits["therm_trip_l1_limit_c"] - H_THM_MAX_DIFFERENCE_C
     )
-    power_onset = _find_onset(
-        rows,
-        start_ns=onset_start_ns,
-        end_ns=run_end,
-        field="power_w",
-        predicate=lambda value: value >= H_TDP_ONSET_THRESHOLD_W,
+    temperature_onset = (
+        _unavailable_onset(
+            field="asic_temp_c",
+            threshold=None,
+            reason="therm_trip_l1_limit_c is unavailable",
+        )
+        if thm_onset_threshold is None
+        else _find_onset(
+            rows,
+            start_ns=onset_start_ns,
+            end_ns=run_end,
+            field="asic_temp_c",
+            predicate=lambda value: value >= thm_onset_threshold,
+        )
+    )
+    tdp_onset_threshold = _lower_proximity_bound(
+        source_limits["tdp_limit_w"], H_TDP_PROXIMITY_FRACTION
+    )
+    power_onset = (
+        _unavailable_onset(
+            field="power_w",
+            threshold=None,
+            reason="tdp_limit_w is unavailable",
+        )
+        if tdp_onset_threshold is None
+        else _find_onset(
+            rows,
+            start_ns=onset_start_ns,
+            end_ns=run_end,
+            field="power_w",
+            predicate=lambda value: value >= tdp_onset_threshold,
+        )
     )
     for onset in (aiclk_drop, current_onset, temperature_onset, power_onset):
         _add_relative_onset(onset, run_start)
+    if tdp_onset_threshold is not None:
+        power_onset["threshold"] = tdp_onset_threshold
+    if thm_onset_threshold is not None:
+        temperature_onset["threshold"] = thm_onset_threshold
     onsets = {
         "aiclk_drop": aiclk_drop,
         "current_tdc_threshold": current_onset,
@@ -597,8 +717,12 @@ def analyze_trace(
     def order_pass(signal_onset: Mapping[str, Any]) -> bool | None:
         signal_timestamp = signal_onset.get("timestamp_monotonic_ns")
         clock_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
-        if signal_timestamp is None or clock_timestamp is None:
+        if clock_timestamp is None:
             return None
+        # A known AICLK drop plus no signal onset is a failed onset criterion,
+        # not missing evidence for the hypothesis.
+        if signal_timestamp is None:
+            return False
         return int(signal_timestamp) <= int(clock_timestamp)
 
     tdc_proximity = signals["current_a"]["limit_proximity"]
@@ -609,33 +733,66 @@ def analyze_trace(
     )
     thm_weighted = signals["asic_temp_c"]["time_weighted_mean"]
     thm_maximum = signals["asic_temp_c"]["max"]
+    therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
     thm_plateau_pass = (
         thm_weighted is not None
-        and abs(thm_weighted - H_THM_LIMIT_C) <= H_THM_MAX_DIFFERENCE_C
-        and thm_maximum is not None
-        and thm_maximum < H_THM_SHUTDOWN_C
+        and therm_trip_limit is not None
+        and abs(thm_weighted - therm_trip_limit) <= H_THM_MAX_DIFFERENCE_C
     )
+    thm_shutdown_limit = source_limits["thm_shutdown_limit_c"]
+    thm_shutdown_pass = (
+        thm_maximum is not None
+        and thm_shutdown_limit is not None
+        and thm_maximum < thm_shutdown_limit
+    )
+    throttle_limit = source_limits["thm_limit_throttle"]
+    if throttle_limit is None:
+        thm_throttle_comparison: dict[str, Any] = {
+            "status": "not_evaluable",
+            "knowledge_status": "unknown",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": None,
+            "limit_unit": "degC",
+            "reason": (
+                "source snapshot did not establish THM_LIMIT_THROTTLE; "
+                "no value was inferred from therm_trip_l1"
+            ),
+        }
+    elif thm_maximum is None:
+        thm_throttle_comparison = {
+            "status": "not_evaluable",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": throttle_limit,
+            "limit_unit": "degC",
+            "reason": "ASIC temperature plateau maximum is unavailable",
+        }
+    else:
+        throttle_pass = thm_maximum < throttle_limit
+        thm_throttle_comparison = {
+            "status": "pass" if throttle_pass else "fail",
+            "limit_key": "THM_LIMIT_THROTTLE",
+            "limit_value": throttle_limit,
+            "limit_unit": "degC",
+            "plateau_asic_temp_max_c": thm_maximum,
+            "criterion": (
+                "run plateau maximum ASIC temperature is strictly below "
+                "THM_LIMIT_THROTTLE"
+            ),
+        }
     tdp_signal = signals["power_w"]
     tdp_proximity = tdp_signal["limit_proximity"]
+    tdp_lower_bound = _lower_proximity_bound(
+        source_limits["tdp_limit_w"], H_TDP_PROXIMITY_FRACTION
+    )
     tdp_plateau_pass = (
-        tdp_signal["min"] is not None
-        and tdp_signal["max"] is not None
-        and H_TDP_PLATEAU_RANGE_W[0] <= tdp_signal["min"] <= H_TDP_PLATEAU_RANGE_W[1]
-        and H_TDP_PLATEAU_RANGE_W[0] <= tdp_signal["max"] <= H_TDP_PLATEAU_RANGE_W[1]
+        tdp_signal["time_weighted_mean"] is not None
+        and tdp_lower_bound is not None
+        and tdp_signal["time_weighted_mean"] >= tdp_lower_bound
         and tdp_proximity is not None
         and tdp_proximity.get("status") == "available"
         and tdp_proximity["fraction"] <= H_TDP_PROXIMITY_FRACTION
     )
-    known_proximities = (
-        tdc_proximity,
-        signals["asic_temp_c"]["limit_proximity"],
-        tdp_proximity,
-    )
-    h_other_plateau_pass: bool | None = (
-        None
-        if any(proximity is None or proximity.get("status") != "available" for proximity in known_proximities)
-        else all(proximity["fraction"] > H_OTHER_NONPROXIMITY_FRACTION for proximity in known_proximities)
-    )
+    board_power_proximity = signals["board_power_w"]["limit_proximity"]
     known_signal_onsets = (current_onset, temperature_onset, power_onset)
     aiclk_timestamp = aiclk_drop.get("timestamp_monotonic_ns")
     if aiclk_timestamp is None:
@@ -646,18 +803,18 @@ def analyze_trace(
             or int(onset["timestamp_monotonic_ns"]) > int(aiclk_timestamp)
             for onset in known_signal_onsets
         )
-    control = _control_criterion(
-        control_trace,
-        limits=source_limits,
-        plateau_start_seconds=plateau_start,
-        plateau_end_seconds=plateau_end,
-    )
-    control_pass: bool | None = (
-        True if control["status"] == "pass" else None if control["status"] == "not_evaluable" else False
-    )
+    # H-OTHER is a fallback classification, not a fourth numeric hypothesis.
+    h_other_plateau_pass: bool | None = None
     tdc_order_pass = order_pass(current_onset)
     thm_order_pass = order_pass(temperature_onset)
     tdp_order_pass = order_pass(power_onset)
+    throttle_criterion_pass = (
+        True
+        if thm_throttle_comparison["status"] == "pass"
+        else False
+        if thm_throttle_comparison["status"] == "fail"
+        else None
+    )
     hypotheses = {
         "H-TDC": _hypothesis_result(
             plateau_pass=tdc_plateau_pass,
@@ -674,16 +831,24 @@ def analyze_trace(
         "H-THM": _hypothesis_result(
             plateau_pass=thm_plateau_pass,
             onset_pass=thm_order_pass,
-            control_pass=control_pass,
+            shutdown_pass=thm_shutdown_pass,
+            optional_criteria={"thm_limit_throttle": throttle_criterion_pass},
             details={
                 "signal": "asic_temp_c",
-                "threshold": H_THM_ONSET_THRESHOLD_C,
-                "therm_trip_l1_limit_c": source_limits["therm_trip_l1_limit_c"],
-                "thm_shutdown_limit_c": source_limits["thm_shutdown_limit_c"],
+                "threshold": thm_onset_threshold,
+                "therm_trip_l1_limit_c": therm_trip_limit,
+                "therm_trip_proximity": signals["asic_temp_c"]["limit_proximity"],
+                "plateau_time_weighted_mean_c": thm_weighted,
+                "thm_shutdown_limit_c": thm_shutdown_limit,
                 "signal_onset": temperature_onset,
                 "aiclk_drop_onset": aiclk_drop,
                 "onset_order_pass": thm_order_pass,
-                "control": control,
+                "shutdown_bound_pass": thm_shutdown_pass,
+                "thm_limit_throttle": thm_throttle_comparison,
+                "criteria_note": (
+                    "THM_LIMIT_THROTTLE is reported as an optional snapshot-limit "
+                    "comparison and does not replace therm_trip_l1/shutdown criteria"
+                ),
             },
         ),
         "H-TDP": _hypothesis_result(
@@ -691,10 +856,29 @@ def analyze_trace(
             onset_pass=tdp_order_pass,
             details={
                 "signal": "power_w",
-                "plateau_range_w": list(H_TDP_PLATEAU_RANGE_W),
                 "limit_w": source_limits["tdp_limit_w"],
-                "reference": "Issue #118 plateau 132-135 W versus TDP 150 W",
+                "tdp_limit_proximity": tdp_proximity,
+                "plateau_time_weighted_mean_w": tdp_signal["time_weighted_mean"],
+                "proximity_fraction": H_TDP_PROXIMITY_FRACTION,
+                "lower_bound_w": tdp_lower_bound,
+                "criterion": (
+                    "power_w plateau time-weighted mean is at least "
+                    "TDP_LIMIT_MAX * (1 - 0.05) and within 5 percent of "
+                    "TDP_LIMIT_MAX; its onset is no later than AICLK drop onset"
+                ),
+                "reference": "Issue #118 plateau 132-135 W versus TDP 150 W (prediction/reference only)",
                 "board_power_signal": "board_power_w",
+                "board_power_limit_w": source_limits["board_power_limit_w"],
+                "board_power_proximity_fraction": H_TDP_PROXIMITY_FRACTION,
+                "board_power_proximity": board_power_proximity,
+                "board_power_plateau_time_weighted_mean_w": signals["board_power_w"][
+                    "time_weighted_mean"
+                ],
+                "board_power_criterion": (
+                    "report board_power_w plateau proximity to BOARD_POWER_LIMIT "
+                    "using the same 5 percent limit-near form; this is not the "
+                    "H-TDP signal criterion"
+                ),
                 "signal_onset": power_onset,
                 "aiclk_drop_onset": aiclk_drop,
                 "onset_order_pass": tdp_order_pass,
@@ -704,12 +888,16 @@ def analyze_trace(
             plateau_pass=h_other_plateau_pass,
             onset_pass=h_other_order_pass,
             details={
-                "numeric_nonproximity_threshold_fraction": H_OTHER_NONPROXIMITY_FRACTION,
+                "fallback_only_when_no_known_hypothesis_is_supported": True,
                 "signal_onsets": list(known_signal_onsets),
                 "aiclk_drop_onset": aiclk_drop,
                 "onset_order_pass": h_other_order_pass,
             },
         ),
+    }
+    hypotheses["H-OTHER"]["details"]["known_hypothesis_classifications"] = {
+        name: hypotheses[name]["classification"]
+        for name in ("H-TDC", "H-THM", "H-TDP")
     }
     supported = [
         name
@@ -720,7 +908,7 @@ def analyze_trace(
         classification = supported[0]
         classification_reason = "exactly one known-limit hypothesis satisfies all fixed criteria"
     elif len(supported) > 1:
-        classification = "H-OTHER"
+        classification = "multiple"
         classification_reason = "more than one known-limit hypothesis satisfies the fixed criteria"
     else:
         classification = "H-OTHER"
@@ -735,6 +923,18 @@ def analyze_trace(
         "source_metadata": _safe_provenance(source_metadata),
         "provenance": _safe_provenance(provenance or {}),
     }
+    raw_window = _raw_window(rows, run_start_ns=run_start)
+    limitations = [
+        (
+            "The extended trace samples at a 2 second cadence; onset ordering "
+            "has approximately 2 second temporal resolution."
+        ),
+        "Onset timestamps are starts of left-held sample segments, not interpolated events.",
+    ]
+    if asic_fmax is None:
+        limitations.append(
+            "AICLK drop onset is not evaluable because limits metadata omitted asic_fmax_mhz."
+        )
     return {
         "analysis_schema": ANALYSIS_SCHEMA,
         "status": "ok",
@@ -749,6 +949,14 @@ def analyze_trace(
             "semantics": "left_held_positive_duration_segments",
             "run_start_monotonic_ns": run_start,
             "run_end_monotonic_ns": run_end,
+            "sampling_cadence_seconds": SAMPLING_CADENCE_SECONDS,
+        },
+        "aiclk_baseline": {
+            "source": "limits metadata asic_fmax_mhz",
+            "asic_fmax_mhz": asic_fmax,
+            "drop_fraction": AICLK_DROP_FRACTION,
+            "drop_threshold_mhz": aiclk_threshold,
+            "missing_source_status": "not_evaluable" if asic_fmax is None else None,
         },
         "plateau": {
             "start_seconds": plateau_start,
@@ -794,6 +1002,8 @@ def analyze_trace(
         },
         "hypotheses": hypotheses,
         "limits": _safe_provenance(source_limits),
+        "raw_window": raw_window,
+        "limitations": limitations,
         "reader_facts": _safe_provenance(facts),
     }
 
@@ -807,7 +1017,6 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--trace", type=Path, required=True)
     parser.add_argument("--record", type=Path, default=None)
-    parser.add_argument("--control-trace", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--run-start-monotonic-ns", type=int, default=None)
     parser.add_argument("--run-end-monotonic-ns", type=int, default=None)
@@ -830,10 +1039,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "record": record_payload.get("provenance", {}),
                     "trace": record_payload.get("trace", {}),
                     "environment": record_payload.get("environment", {}),
+                    "snapshot_limits": record_payload.get("snapshot_limits", {}),
                 }
                 environment = record_payload.get("environment")
-                if isinstance(environment, Mapping):
-                    limits = environment.get("limits")
+                environment_limits = (
+                    environment.get("limits") if isinstance(environment, Mapping) else None
+                )
+                snapshot_limits = record_payload.get("snapshot_limits")
+                limits = {
+                    "limits": environment_limits,
+                    "snapshot_limits": snapshot_limits,
+                }
                 timing = record_payload.get("run_timing")
                 if isinstance(timing, Mapping):
                     record_run_start = timing.get("workload_start_monotonic_ns")
@@ -854,7 +1070,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             plateau_end_seconds=args.plateau_end_seconds,
             provenance=provenance,
             limits=limits,
-            control_trace=args.control_trace,
         )
     except (AnalysisError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
         print(f"Issue #121 Q2 analysis rejected: {exc}", file=__import__("sys").stderr)

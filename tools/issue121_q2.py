@@ -28,12 +28,13 @@ from enodia.tt.bench.power_trace_extended import (
     EXTENDED_POWER_TRACE_COLUMNS,
     EXTENDED_POWER_TRACE_SCHEMA,
     extended_telemetry_csv_row,
+    read_extended_power_trace_csv,
     select_extended_board,
 )
 from enodia.tt.bench.run_binding import validate_run_id
 from enodia.tt.bench.telemetry import SNAPSHOT_COMMAND
 
-ISSUE121_Q2_PLAN = "docs/measurements/2026-10-17-host-newton-schulz-issue121-q2-plan.json"
+ISSUE121_Q2_PLAN = "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json"
 ISSUE121_Q2_RECORD_SCHEMA = "issue121-q2-measurement-v1"
 ISSUE121_Q2_SNAPSHOT_SCHEMA = "issue121-q2-tt-smi-snapshot-v1"
 ISSUE121_Q2_TRACE_SCHEMA = EXTENDED_POWER_TRACE_SCHEMA
@@ -46,6 +47,15 @@ RUN_GUARD_SECONDS = 330.0
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 TRACE_INTERVAL_SECONDS = 2.0
+EARLY_RAW_WINDOW_SECONDS = 10.0
+RAW_WINDOW_COLUMNS = (
+    "timestamp_monotonic_ns",
+    "seconds_from_run_start",
+    "aiclk_mhz",
+    "power_w",
+    "current_a",
+    "asic_temp_c",
+)
 
 LEGACY_POWER_TRACE_COLUMNS = (
     "timestamp_utc",
@@ -284,6 +294,171 @@ def _snapshot_device(capture: Mapping[str, Any], board_id: str, bus_id: str) -> 
         return select_extended_board(snapshot, board_id=board_id, bus_id=bus_id)
     except ValueError as exc:
         raise SnapshotCaptureError(str(exc)) from exc
+
+
+_SNAPSHOT_LIMIT_SPECS = {
+    "tdp_limit_w": {
+        "unit": "W",
+        "sources": (
+            ("limits", ("tdp_limit_w", "tdp_limit", "TDP_LIMIT_MAX")),
+            ("smbus_telem", ("TDP_LIMIT_MAX", "tdp_limit")),
+        ),
+    },
+    "board_power_limit_w": {
+        "unit": "W",
+        "sources": (
+            ("limits", ("board_power_limit_w", "board_power_limit", "BOARD_POWER_LIMIT")),
+            ("smbus_telem", ("BOARD_POWER_LIMIT", "board_power_limit")),
+        ),
+    },
+    "tdc_limit": {
+        "unit": "reported snapshot unit",
+        "sources": (
+            ("limits", ("tdc_limit", "TDC_LIMIT_MAX")),
+            ("smbus_telem", ("TDC_LIMIT_MAX", "tdc_limit")),
+        ),
+    },
+    "therm_trip_l1_limit_c": {
+        "unit": "degC",
+        "sources": (
+            ("limits", ("therm_trip_l1_limit_c", "therm_trip_l1_limit")),
+            ("smbus_telem", ("THERM_TRIP_L1_LIMIT", "therm_trip_l1_limit")),
+        ),
+    },
+    "thm_shutdown_limit_c": {
+        "unit": "degC",
+        "sources": (
+            (
+                "limits",
+                ("thm_shutdown_limit_c", "thm_shutdown_limit", "thm_limit", "THM_LIMIT_SHUTDOWN"),
+            ),
+            ("smbus_telem", ("THM_LIMIT_SHUTDOWN", "thm_shutdown_limit")),
+        ),
+    },
+    "asic_fmax_mhz": {
+        "unit": "MHz",
+        "sources": (
+            ("limits", ("asic_fmax_mhz", "asic_fmax", "ASIC_FMAX")),
+            ("smbus_telem", ("ASIC_FMAX", "asic_fmax")),
+        ),
+    },
+    "thm_limit_throttle": {
+        "unit": "degC",
+        "sources": (
+            ("smbus_telem", ("THM_LIMIT_THROTTLE", "thm_limit_throttle")),
+            ("limits", ("THM_LIMIT_THROTTLE", "thm_limit_throttle")),
+        ),
+    },
+}
+
+
+def _extract_snapshot_limits(
+    capture: Mapping[str, Any], *, board_id: str, bus_id: str
+) -> dict[str, Any]:
+    """Persist raw pre/post limit facts without deriving absent values."""
+    try:
+        device = _snapshot_device(capture, board_id, bus_id)
+    except SnapshotCaptureError as exc:
+        return {
+            "status": "unavailable",
+            "reason": str(exc),
+            "recognized": {},
+            "raw": {},
+            "raw_smbus": {},
+        }
+    recognized_sources: dict[str, Mapping[str, Any]] = {}
+    for source_name in ("limits", "smbus_telem"):
+        source = device.get(source_name)
+        if isinstance(source, Mapping):
+            recognized_sources[source_name] = source
+    recognized: dict[str, Any] = {}
+    for name, spec in _SNAPSHOT_LIMIT_SPECS.items():
+        found = False
+        for source_name, keys in spec["sources"]:
+            source = recognized_sources.get(source_name)
+            if source is None:
+                continue
+            for key in keys:
+                if key not in source:
+                    continue
+                recognized[name] = {
+                    "value": _json_safe_snapshot(source[key]),
+                    "unit": spec["unit"],
+                    "source_key": f"{source_name}.{key}",
+                    "status": "known",
+                }
+                found = True
+                break
+            if found:
+                break
+        if not found:
+            recognized[name] = {
+                "value": None,
+                "unit": None,
+                "source_key": (
+                    "smbus_telem.THM_LIMIT_THROTTLE"
+                    if name == "thm_limit_throttle"
+                    else None
+                ),
+                "status": "unknown",
+            }
+    smbus = recognized_sources.get("smbus_telem", {})
+    raw_smbus = {
+        str(key): _json_safe_snapshot(value)
+        for key, value in smbus.items()
+        if str(key).casefold() in {
+            "board_power_limit",
+            "tdc_limit_max",
+            "thm_limit_throttle",
+            "thm_limit_shutdown",
+            "asic_fmax",
+        }
+        or "limit" in str(key).casefold()
+    }
+    return {
+        "status": "available",
+        "stage": capture.get("stage"),
+        "recognized": recognized,
+        # Keep both names discoverable: raw is the record-facing spelling;
+        # raw_smbus names the source section explicitly.
+        "raw": raw_smbus,
+        "raw_smbus": raw_smbus,
+        "THM_LIMIT_THROTTLE": raw_smbus.get(
+            "THM_LIMIT_THROTTLE", raw_smbus.get("thm_limit_throttle")
+        ),
+    }
+
+
+def _raw_window_from_trace(
+    trace_path: Path, *, run_start_ns: int, run_end_ns: int
+) -> dict[str, Any]:
+    """Extract the first ten seconds from the persisted trace rows."""
+    trace = read_extended_power_trace_csv(trace_path)
+    rows: list[dict[str, Any]] = []
+    end_ns = min(
+        run_end_ns,
+        run_start_ns + round(EARLY_RAW_WINDOW_SECONDS * 1_000_000_000.0),
+    )
+    for row in trace.get("samples", []):
+        timestamp = row.get("timestamp_monotonic_ns")
+        if not isinstance(timestamp, int) or not run_start_ns <= timestamp <= end_ns:
+            continue
+        rows.append(
+            {
+                "timestamp_monotonic_ns": timestamp,
+                "seconds_from_run_start": (timestamp - run_start_ns) / 1_000_000_000.0,
+                "aiclk_mhz": float(row["aiclk_mhz"]),
+                "power_w": float(row["power_w"]),
+                "current_a": float(row["current_a"]),
+                "asic_temp_c": float(row["asic_temp_c"]),
+            }
+        )
+    return {
+        "start_seconds": 0.0,
+        "end_seconds": EARLY_RAW_WINDOW_SECONDS,
+        "columns": list(RAW_WINDOW_COLUMNS),
+        "rows": rows,
+    }
 
 
 def _append_extended_row(
@@ -726,6 +901,19 @@ def run_one(
         trace_bytes = trace_path.read_bytes()
     except OSError as exc:
         raise Issue121Q2Error("extended trace could not be read after capture") from exc
+    snapshot_limits = {
+        "pre": _extract_snapshot_limits(
+            pre_capture, board_id=normalized_board, bus_id=normalized_bus
+        ),
+        "post": _extract_snapshot_limits(
+            post_capture, board_id=normalized_board, bus_id=normalized_bus
+        ),
+    }
+    raw_window = _raw_window_from_trace(
+        trace_path,
+        run_start_ns=int(workload_start_ns),
+        run_end_ns=int(workload_end_ns),
+    )
     workload = _normalize_workload_result(workload_result)
     workload_duration = max(0.0, (int(workload_end_ns) - int(workload_start_ns)) / 1_000_000_000.0)
     trace_sample_count = max(0, sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line))
@@ -762,6 +950,15 @@ def run_one(
             "timeout_seconds": RUN_GUARD_SECONDS,
         },
         "workload_result": workload,
+        "snapshot_limits": snapshot_limits,
+        "raw_window": raw_window,
+        "limitations": [
+            (
+                "The extended trace samples at a 2 second cadence; onset ordering "
+                "has approximately 2 second temporal resolution."
+            ),
+            "Raw window rows are sample values; no onset interpolation is performed.",
+        ],
         "snapshots": {
             "pre": {
                 "path": pre_path.name,
@@ -809,6 +1006,7 @@ def run_one(
             "source_snapshot": "pre-run tt-smi snapshot",
             "trace_source": "extended-v1 snapshots captured by this harness",
             "analysis_source": "tools/analyze_issue121_q2.py",
+            "limit_provenance": "snapshot_limits.pre and snapshot_limits.post",
             "host_identity_persisted": False,
         },
     }
@@ -862,11 +1060,13 @@ __all__ = [
     "COOLDOWN_TEMPERATURE_LIMIT_C",
     "DEVICE_ID",
     "DEVICE_NODE",
+    "EARLY_RAW_WINDOW_SECONDS",
     "EXTENDED_TRACE_COLUMNS",
     "ISSUE121_Q2_PLAN",
     "ISSUE121_Q2_RECORD_SCHEMA",
     "ISSUE121_Q2_TRACE_SCHEMA",
     "LEGACY_POWER_TRACE_COLUMNS",
+    "RAW_WINDOW_COLUMNS",
     "RUN_DURATION_SECONDS",
     "RUN_GUARD_SECONDS",
     "SNAPSHOT_COMMAND_TUPLE",

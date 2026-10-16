@@ -142,7 +142,13 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
     assert plan["trace"]["columns"] == list(runner.EXTENDED_TRACE_COLUMNS)
     assert plan["source_snapshot"]["source_type"] == "prior_host_snapshot"
     assert plan["source_snapshot"]["raw_smbus_fields"]["THM_LIMIT_THROTTLE"]["value"] is None
-    assert plan["hypotheses"]["H-TDP"]["reference"].startswith("Issue #118 plateau 132-135 W")
+    assert plan["revision_history"][0]["revision"] == 1
+    assert plan["revision_history"][0]["date"] == "2026-10-16"
+    assert plan["hypotheses"]["H-TDP"]["reference_only"].startswith("Issue #118 plateau 132-135 W")
+    assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
+    assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
+    assert plan["classification_policy"]["multiple_supported_known_hypotheses"] == "multiple"
+    assert plan["prediction"]["hypotheses"]["H-TDP"].startswith("unsupported")
     assert plan["plateau"] == {
         "start_seconds": 150,
         "end_seconds": 300,
@@ -232,6 +238,9 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert record["environment"]["harness_commit"] == "b" * 40
     assert record["trace"]["board_id"] == "fixture-board"
     assert record["trace"]["bus_id"] == "0000:01:00.0"
+    assert record["snapshot_limits"]["pre"]["recognized"]["asic_fmax_mhz"]["value"] == "1350"
+    assert record["snapshot_limits"]["pre"]["THM_LIMIT_THROTTLE"] is None
+    assert record["raw_window"]["columns"] == list(runner.RAW_WINDOW_COLUMNS)
     assert record["snapshots"]["pre"]["path"].startswith("pre-snapshot-")
     assert record["snapshots"]["post"]["path"].startswith("post-snapshot-")
     assert len(workload_calls) == 1
@@ -241,6 +250,23 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert "username" not in persisted
     assert "/home/" not in persisted
     assert (tmp_path / record["output_paths"]["record"]).exists()
+
+
+def test_snapshot_limits_preserve_raw_throttle_and_recognized_values() -> None:
+    snapshot = json.loads(_snapshot())
+    snapshot["device_info"][0]["smbus_telem"]["THM_LIMIT_THROTTLE"] = "0x5a"
+    captured = {"stage": "post_run", "snapshot": snapshot}
+
+    limits = runner._extract_snapshot_limits(
+        captured, board_id="fixture-board", bus_id="0000:01:00.0"
+    )
+
+    assert limits["THM_LIMIT_THROTTLE"] == "0x5a"
+    assert limits["raw"]["THM_LIMIT_THROTTLE"] == "0x5a"
+    assert limits["recognized"]["thm_limit_throttle"]["value"] == "0x5a"
+    assert limits["recognized"]["thm_limit_throttle"]["source_key"] == (
+        "smbus_telem.THM_LIMIT_THROTTLE"
+    )
 
 
 def test_cooldown_gate_matches_issue127_power_temperature_rule() -> None:
@@ -259,7 +285,7 @@ def test_cooldown_gate_matches_issue127_power_temperature_rule() -> None:
     [
         (_trace(current=190), "H-TDC"),
         (_trace(temperature=88), "H-THM"),
-        (_trace(power=133), "H-TDP"),
+        (_trace(power=145), "H-TDP"),
         (_trace(), "H-OTHER"),
     ],
     ids=["tdc", "thm", "tdp", "other"],
@@ -267,14 +293,19 @@ def test_cooldown_gate_matches_issue127_power_temperature_rule() -> None:
 def test_analysis_classifies_each_synthetic_hypothesis(
     trace: dict[str, object], expected: str
 ) -> None:
-    control = _trace(temperature=70)
-    limits = {"thm_limit_throttle": 75}
+    limits = {
+        "tdc_limit": 200,
+        "therm_trip_l1_limit_c": 90,
+        "thm_shutdown_limit_c": 110,
+        "tdp_limit_w": 150,
+        "board_power_limit_w": 300,
+        "asic_fmax_mhz": 1350,
+    }
     result = analysis.analyze_trace(
         trace,
         plateau_start_seconds=150,
         plateau_end_seconds=300,
         limits=limits,
-        control_trace=control,
     )
 
     assert result["classification"] == expected
@@ -296,14 +327,102 @@ def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
     assert aiclk["percentiles"]["p95"] == 1350.0
 
 
+def _issue118_trace() -> dict[str, object]:
+    samples = [
+        _row(
+            seconds,
+            aiclk=1350 if seconds == 0 else 1200,
+            power=133,
+            board_power=285,
+            current=50,
+            temperature=81,
+        )
+        for seconds in range(0, 301, 2)
+    ]
+    return {
+        "schema": runner.ISSUE121_Q2_TRACE_SCHEMA,
+        "schema_version": 1,
+        "columns": list(runner.EXTENDED_TRACE_COLUMNS),
+        "samples": samples,
+    }
+
+
+def _source_limits() -> dict[str, float]:
+    return {
+        "tdc_limit": 200,
+        "therm_trip_l1_limit_c": 90,
+        "thm_shutdown_limit_c": 110,
+        "tdp_limit_w": 150,
+        "board_power_limit_w": 300,
+        "asic_fmax_mhz": 1350,
+    }
+
+
+def test_issue118_prediction_is_unsupported_and_keeps_two_second_onset_resolution() -> None:
+    result = analysis.analyze_trace(
+        _issue118_trace(),
+        plateau_start_seconds=150,
+        plateau_end_seconds=300,
+        limits=_source_limits(),
+    )
+
+    assert result["classification"] == "H-OTHER"
+    assert result["hypotheses"]["H-TDP"]["classification"] == "not_supported"
+    assert result["hypotheses"]["H-THM"]["classification"] == "not_supported"
+    assert result["onsets"]["aiclk_drop"]["timestamp_monotonic_ns"] == 2_000_000_000
+    assert result["raw_window"]["rows"][0]["seconds_from_run_start"] == 0.0
+    assert len(result["raw_window"]["rows"]) == 6
+    assert any("approximately 2 second" in item for item in result["limitations"])
+    board = result["statistics"]["signals"]["board_power_w"]["limit_proximity"]
+    assert board["limit_key"] == "BOARD_POWER_LIMIT"
+    assert board["fraction"] == pytest.approx(0.05)
+
+
+def test_multiple_classification_is_explicit_for_multiple_supported_known_hypotheses() -> None:
+    result = analysis.analyze_trace(
+        _trace(current=190, temperature=88, power=145),
+        plateau_start_seconds=150,
+        plateau_end_seconds=300,
+        limits=_source_limits(),
+    )
+
+    assert result["classification"] == "multiple"
+    assert result["hypotheses"]["H-TDC"]["classification"] == "supported"
+    assert result["hypotheses"]["H-THM"]["classification"] == "supported"
+    assert result["hypotheses"]["H-TDP"]["classification"] == "supported"
+
+
+def test_analysis_does_not_guess_aiclk_baseline_when_fmax_is_missing() -> None:
+    result = analysis.analyze_trace(
+        _issue118_trace(),
+        plateau_start_seconds=150,
+        plateau_end_seconds=300,
+        limits={"tdp_limit_w": 150, "therm_trip_l1_limit_c": 90},
+    )
+
+    assert result["aiclk_baseline"]["asic_fmax_mhz"] is None
+    assert result["onsets"]["aiclk_drop"]["status"] == "not_evaluable"
+    assert result["onsets"]["aiclk_drop"]["timestamp_monotonic_ns"] is None
+
+
 def test_analysis_does_not_invent_missing_throttle_limit() -> None:
     result = analysis.analyze_trace(
         _trace(temperature=88),
         plateau_start_seconds=150,
         plateau_end_seconds=300,
+        limits={"asic_fmax_mhz": 1350},
     )
 
-    control = result["hypotheses"]["H-THM"]["details"]["control"]
-    assert control["status"] == "not_evaluable"
-    assert control["limit_value"] is None
-    assert result["hypotheses"]["H-THM"]["classification"] == "inconclusive"
+    comparison = result["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]
+    assert comparison["status"] == "not_evaluable"
+    assert comparison["knowledge_status"] == "unknown"
+    assert comparison["limit_value"] is None
+    assert result["hypotheses"]["H-THM"]["classification"] == "supported"
+
+    known = analysis.analyze_trace(
+        _trace(temperature=88),
+        plateau_start_seconds=150,
+        plateau_end_seconds=300,
+        limits={"asic_fmax_mhz": 1350, "thm_limit_throttle": 100},
+    )
+    assert known["hypotheses"]["H-THM"]["details"]["thm_limit_throttle"]["status"] == "pass"

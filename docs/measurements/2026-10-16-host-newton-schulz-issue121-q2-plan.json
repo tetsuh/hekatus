@@ -100,7 +100,20 @@
     ],
     "snapshot_timeout_seconds": 5,
     "sampling_interval_seconds": 2,
-    "sampling_interval_note": "The interval is a harness sampling cadence, not an analysis time base. Pre-run, in-run, and post-run captures use the same command path."
+    "sampling_interval_note": "The interval is a harness sampling cadence, not an analysis time base. Pre-run, in-run, and post-run captures use the same command path.",
+    "raw_window": {
+      "start_seconds": 0,
+      "end_seconds": 10,
+      "columns": [
+        "timestamp_monotonic_ns",
+        "seconds_from_run_start",
+        "aiclk_mhz",
+        "power_w",
+        "current_a",
+        "asic_temp_c"
+      ],
+      "source": "raw trace rows from run_start_monotonic_ns through the first 10 seconds"
+    }
   },
   "source_snapshot": {
     "source_type": "prior_host_snapshot",
@@ -180,8 +193,8 @@
       "value": null,
       "unit": null,
       "source_key": "smbus_telem.THM_LIMIT_THROTTLE",
-      "required_for_control": true,
-      "status": "unknown when absent from source snapshot; analysis must report not_evaluable rather than substitute a value"
+      "required_for_comparison": false,
+      "status": "unknown when absent from source snapshot; analysis must report unknown/not_evaluable rather than substitute a value"
     }
   },
   "plateau": {
@@ -199,15 +212,17 @@
     "reported_percentiles": ["p01", "p05", "p50", "p95", "p99"],
     "signal_aggregates": "For power, board power, current, voltage, and ASIC temperature, report min, max, duration-weighted mean, and limit proximity where a source limit exists.",
     "limit_proximity": "absolute(plateau_time_weighted - limit) / absolute(limit); a threshold is evaluated only when signal and limit units are comparable and the limit has source provenance.",
-    "onset_timestamp": "The start of the first left-held segment at or after run start whose value reaches the fixed onset threshold; null means no onset was observed.",
+    "onset_timestamp": "The start of the first left-held segment at or after run start whose value reaches the hypothesis's source-specific onset threshold; null means no onset was observed.",
     "onset_order": "A hypothesis passes when its signal onset is present and no later than the first AICLK drop onset. Equal timestamps are allowed."
   },
   "hypotheses": {
     "correlation_warning": "A matching plateau and onset order are correlations consistent with a hypothesis, not proof of causation.",
     "aiclk_drop": {
-      "baseline": "first valid left-held AICLK value at or before plateau start",
+      "baseline": "source snapshot limits.asic_fmax (1350 MHz); never infer a baseline from the plateau trace",
+      "baseline_source": "source_snapshot.reported_limit_key_values.asic_fmax",
+      "baseline_value_mhz": 1350,
       "threshold_fraction": 0.05,
-      "onset_definition": "first segment with AICLK <= baseline * (1 - 0.05)"
+      "onset_definition": "from run_start_monotonic_ns, first left-held segment with AICLK <= asic_fmax * (1 - 0.05)"
     },
     "H-TDC": {
       "signal": "current_a",
@@ -233,44 +248,78 @@
         "criterion": "ASIC temperature plateau time-weighted mean is within 5 degC of therm trip L1 and remains below THM shutdown"
       },
       "onset": {
-        "threshold": 85,
+        "threshold": "therm_trip_l1_limit_c - 5",
         "unit": "degC",
         "criterion": "temperature onset at therm_trip_l1 - 5 degC is no later than AICLK drop onset"
       },
-      "control": {
-        "required": true,
-        "criterion": "a separately supplied control trace must have plateau maximum below the source-provided THM_LIMIT_THROTTLE value",
-        "missing_limit_policy": "not_evaluable; do not infer THM_LIMIT_THROTTLE from therm trip L1 or shutdown"
+      "thm_limit_throttle": {
+        "required": false,
+        "criterion": "when present in the pre/post source snapshots, compare the run plateau maximum ASIC temperature with THM_LIMIT_THROTTLE and retain the comparison as provenance",
+        "missing_limit_policy": "unknown/not_evaluable; do not infer THM_LIMIT_THROTTLE from therm_trip_l1 or shutdown",
+        "classification_role": "reported optional comparison, not a replacement for therm_trip_l1, shutdown, or onset criteria"
       },
-      "classification": "supported only when temperature proximity, onset order, shutdown bound, and the control criterion pass"
+      "classification": "supported only when temperature proximity, onset order, and shutdown bound pass"
     },
     "H-TDP": {
       "signal": "power_w",
       "reference": "Issue #118 plateau 132-135 W versus TDP 150 W",
       "plateau_proximity": {
-        "range_w": [132, 135],
         "limit": 150,
+        "limit_key": "TDP_LIMIT_MAX",
         "unit": "W",
-        "max_fraction": 0.12,
-        "criterion": "power_w plateau min and max are within 132-135 W and the time-weighted mean is within 12 percent of TDP; board_power_w is reported separately against the 300 W board limit"
+        "max_fraction": 0.05,
+        "lower_bound_formula": "TDP_LIMIT_MAX * (1 - 0.05)",
+        "lower_bound_at_150_w": 142.5,
+        "criterion": "power_w plateau time-weighted mean is at least TDP_LIMIT_MAX * (1 - 0.05) and within 5 percent of TDP_LIMIT_MAX"
       },
       "onset": {
-        "threshold": 132,
+        "threshold_formula": "TDP_LIMIT_MAX * (1 - 0.05)",
+        "threshold_at_150_w": 142.5,
         "unit": "W",
-        "criterion": "power_w onset at 132 W is no later than AICLK drop onset"
+        "criterion": "power_w reaches the 5 percent lower-bound onset no later than AICLK drop onset"
       },
-      "classification": "supported only when the Issue #118 plateau-range, TDP proximity, and onset-order criteria pass"
+      "board_power_reporting": {
+        "signal": "board_power_w",
+        "limit": 300,
+        "limit_key": "BOARD_POWER_LIMIT",
+        "unit": "W",
+        "max_fraction": 0.05,
+        "criterion": "report board_power_w plateau proximity to BOARD_POWER_LIMIT using the same 5 percent limit-near form; this is reporting only and is not the H-TDP signal criterion"
+      },
+      "reference_only": "Issue #118 plateau 132-135 W remains a prediction/reference and is not an H-TDP support criterion",
+      "classification": "supported only when the TDP proximity and onset-order criteria pass"
     },
     "H-OTHER": {
-      "criterion": "Fallback when no known-limit hypothesis passes, or when a measured plateau is not close to any source-proven limit.",
-      "numeric_nonproximity_threshold_fraction": 0.12,
+      "criterion": "Fallback only when none of H-TDC, H-THM, and H-TDP is supported; it is not a fourth numeric hypothesis.",
       "onset_order": {
         "aiclk_drop_threshold_fraction": 0.05,
-        "criterion": "No source-proven signal onset at its fixed threshold is no later than the AICLK drop onset; report every observed onset timestamp and do not force a known-limit attribution."
+        "criterion": "Report every observed onset timestamp and do not force a known-limit attribution when no known hypothesis is supported."
       },
-      "classification": "H-OTHER is a classification of the fixed criteria only; it is not a causal explanation."
+      "classification": "H-OTHER is a fallback classification only; it is not a causal explanation."
     }
   },
+  "classification_policy": {
+    "one_supported_known_hypothesis": "use that hypothesis label",
+    "multiple_supported_known_hypotheses": "multiple",
+    "no_supported_known_hypotheses": "H-OTHER"
+  },
+  "prediction": {
+    "source": "Issue #118 observed plateau/reference",
+    "power_w": [132, 135],
+    "asic_temp_c": 81,
+    "current_a": "indeterminate: no historical Issue #118 current trace",
+    "expected_classification": "H-OTHER",
+    "hypotheses": {
+      "H-TDP": "unsupported: 132-135 W is below the 5 percent lower bound of 142.5 W for TDP_LIMIT_MAX=150 W",
+      "H-THM": "unsupported: approximately 81 degC does not enter the 5 degC proximity band of therm_trip_l1=90 degC",
+      "H-TDC": "indeterminate: historical current evidence is absent; the Q2 run determines it"
+    }
+  },
+  "prediction_mismatch_policy": [
+    "If H-TDP is supported, investigate the difference between the Issue #118 132-135 W condition and the Q2 source-limit/onset evidence before revising the hypothesis.",
+    "If H-THM is supported near the predicted 81 degC, audit therm_trip_l1 provenance and the trace limits before revising the prediction.",
+    "If H-TDC is supported, retain the current trace and compare it with the absent Issue #118 current evidence rather than treating the prediction as a prior measurement."
+  ],
   "cooldown": {
     "required_between": [
       "run_1/run_2",
@@ -307,13 +356,15 @@
   "revision_history": [
     {
       "revision": 1,
-      "date": "2026-10-17",
+      "date": "2026-10-16",
       "change": "Created the pre-measurement Q2 plan from the existing ADR-0013 and Issue #118 108-core surrogate, fixing device 1, three 300-second runs, the 330-second guard, extended-v1 fields, hypothesis thresholds, cooldown gate, and source-snapshot provenance."
     }
   ],
   "limitations": [
     "No board measurement is included in this preparation artifact.",
-    "The THM_LIMIT_THROTTLE value is intentionally absent when the source snapshot does not establish it; the control criterion is then not_evaluable.",
-    "The hypothesis labels describe criterion-compatible correlations only and do not establish a physical cause."
+    "The THM_LIMIT_THROTTLE value is intentionally absent when the source snapshot does not establish it; its optional run-trace comparison is then unknown/not_evaluable.",
+    "The hypothesis labels describe criterion-compatible correlations only and do not establish a physical cause.",
+    "A 2 second sample cadence limits onset ordering and causality-resolution claims to approximately 2 seconds; no interpolation is performed.",
+    "When limits metadata omits asic_fmax_mhz, AICLK drop onset is unknown/not_evaluable rather than inferred as 1350 MHz."
   ]
 }
