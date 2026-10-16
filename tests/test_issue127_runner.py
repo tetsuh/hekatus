@@ -775,14 +775,26 @@ def test_issue127_cooldown_proof_rejects_passing_metadata_without_an_in_window_t
     )
 
 
-def test_issue127_close_failure_cannot_produce_pass_record():
+@pytest.mark.parametrize("close_failure", ("device", "occurrence"))
+def test_issue127_close_failure_cannot_produce_pass_record(close_failure):
     environment = runner.sanitize_environment(_environment())
     rows = []
+    cleanup_result = {"status": "ok"}
+    if close_failure == "occurrence":
+        class RaisingKernel:
+            def close(self):
+                raise RuntimeError("occurrence close failed")
+
+        runner._close_occurrence_kernel(cleanup_result, RaisingKernel())
+        assert cleanup_result == {
+            "status": "failed",
+            "cleanup_failures": ["RuntimeError"],
+        }
     for row in runner.build_occurrence_plan(1):
         measured = dict(row)
         measured.update(
             {
-                "status": "ok",
+                "status": cleanup_result["status"],
                 "raw_p50_tflops": 16.0,
                 "adjusted_p50_tflops": 16.0,
                 "row_time_weighted_aiclk_mhz": 1350.0,
@@ -794,6 +806,8 @@ def test_issue127_close_failure_cannot_produce_pass_record():
                 },
             }
         )
+        if close_failure == "occurrence":
+            measured["cleanup_failures"] = cleanup_result["cleanup_failures"]
         rows.append(measured)
     record = runner.build_record(
         run={
@@ -809,7 +823,7 @@ def test_issue127_close_failure_cannot_produce_pass_record():
             "run_start_monotonic": 0.0,
             "run_end_monotonic": 20.0,
             "input_generation": {},
-            "device_close_failed": True,
+            "device_close_failed": close_failure == "device",
         },
         run_number=1,
         run_id="run127-test",
@@ -834,7 +848,9 @@ def test_issue127_close_failure_cannot_produce_pass_record():
         },
     )
     assert record["status"] == "failed"
-    assert record["device_close_failed"] is True
+    assert record["device_close_failed"] is (close_failure == "device")
+    if close_failure == "occurrence":
+        assert record["comparison_rows"][0]["cleanup_failures"] == ["RuntimeError"]
     assert record["run_timing"]["run_timeout_seconds"] == 90.0
     assert record["run_timing"]["under_timeout"] is True
     assert record["run_timeout_policy"]["approval_date"] == "2026-10-16"

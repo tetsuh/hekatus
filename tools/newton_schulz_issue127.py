@@ -1638,6 +1638,7 @@ def _close_occurrence_kernel(result: dict[str, Any], kernel: Any | None) -> None
         kernel.close()
     except Exception as exc:  # noqa: BLE001 - preserve cleanup failure
         result.setdefault("cleanup_failures", []).append(type(exc).__name__)
+        result["status"] = "failed"
 
 
 def _run_occurrence(
