@@ -1,0 +1,320 @@
+{
+  "record_schema": "issue127-abba-plan-v2",
+  "status": "planned",
+  "issue": "#127",
+  "runner": "tools/newton_schulz_issue127.py",
+  "board_run": false,
+  "board_run_note": "This is a pre-board prediction and harness contract. It contains no device, Docker-device, reset, health-probe, or ttnn result.",
+  "measurement_scope": "One owner-authorized confirmation run followed by two owner-authorized measurement runs of four configurations, with two occurrences of every configuration in each fixed order.",
+  "controls": {
+    "batch": 8192,
+    "iterations": 12,
+    "condition_number": 100.0,
+    "seed": 6300,
+    "initial_value": "I/||R||inf",
+    "state_format": "BF16",
+    "destination_format": "FP32",
+    "math_fidelity": "HiFi3",
+    "fuse_s": true,
+    "matrix_block": 8,
+    "double_buffer": true,
+    "dst_full_sync_en": true,
+    "input_memory": "l1",
+    "x0_memory": "l1",
+    "output_memory": "dram",
+    "kernel_source": "existing Newton-Schulz kernel; unchanged by Issue #127"
+  },
+  "comparison_configurations": [
+    {
+      "name": "bf16-r-L16",
+      "label": "A",
+      "variant": "bf16",
+      "r_format": "BF16",
+      "matrix_size": 16,
+      "r_memory": "l1",
+      "launches_per_occurrence": 11000,
+      "expected_timed_duration_seconds": [4.48, 5.0],
+      "predicted_raw_p50_tflops": 16.33,
+      "predicted_row_time_weighted_aiclk_mhz": 1350.0,
+      "predicted_adjusted_p50_tflops": 16.33
+    },
+    {
+      "name": "fp32-r-L16",
+      "label": "B",
+      "variant": "fp32-r",
+      "r_format": "FP32",
+      "matrix_size": 16,
+      "r_memory": "l1",
+      "launches_per_occurrence": 11000,
+      "expected_timed_duration_seconds": [4.48, 5.0],
+      "predicted_raw_p50_tflops": 16.05,
+      "predicted_row_time_weighted_aiclk_mhz": 1350.0,
+      "predicted_adjusted_p50_tflops": 16.05
+    },
+    {
+      "name": "bf16-r-L32-r-dram",
+      "label": "C",
+      "variant": "bf16",
+      "r_format": "BF16",
+      "matrix_size": 32,
+      "r_memory": "dram",
+      "launches_per_occurrence": 5800,
+      "expected_timed_duration_seconds": [4.48, 5.0],
+      "predicted_raw_p50_tflops": 78.13,
+      "predicted_row_time_weighted_aiclk_mhz": 1350.0,
+      "predicted_adjusted_p50_tflops": 78.13
+    },
+    {
+      "name": "fp32-r-L32-r-dram",
+      "label": "D",
+      "variant": "fp32-r",
+      "r_format": "FP32",
+      "matrix_size": 32,
+      "r_memory": "dram",
+      "launches_per_occurrence": 5800,
+      "expected_timed_duration_seconds": [4.48, 5.0],
+      "predicted_raw_p50_tflops": 74.47,
+      "predicted_row_time_weighted_aiclk_mhz": 1350.0,
+      "predicted_adjusted_p50_tflops": 74.47
+    }
+  ],
+  "run_orders": {
+    "run_1": [
+      "bf16-r-L16",
+      "fp32-r-L16",
+      "fp32-r-L16",
+      "bf16-r-L16",
+      "bf16-r-L32-r-dram",
+      "fp32-r-L32-r-dram",
+      "fp32-r-L32-r-dram",
+      "bf16-r-L32-r-dram"
+    ],
+    "run_2": [
+      "fp32-r-L16",
+      "bf16-r-L16",
+      "bf16-r-L16",
+      "fp32-r-L16",
+      "fp32-r-L32-r-dram",
+      "bf16-r-L32-r-dram",
+      "bf16-r-L32-r-dram",
+      "fp32-r-L32-r-dram"
+    ],
+    "occurrence_policy": "Each configuration occurs exactly twice; occurrence and zero-based order_index are persisted for every measured row."
+  },
+  "predicted_aiclk_ranges_mhz": {
+    "basis": "Pre-board prediction from #121's 2-second / 1243 MHz and 35-second / 1068 MHz observations; these ranges are predictions, not measured results.",
+    "run_1": [
+      {"order_index": 0, "row": "bf16-r-L16", "range_mhz": [1200, 1243]},
+      {"order_index": 1, "row": "fp32-r-L16", "range_mhz": [1180, 1230]},
+      {"order_index": 2, "row": "fp32-r-L16", "range_mhz": [1160, 1210]},
+      {"order_index": 3, "row": "bf16-r-L16", "range_mhz": [1140, 1190]},
+      {"order_index": 4, "row": "bf16-r-L32-r-dram", "range_mhz": [1120, 1170]},
+      {"order_index": 5, "row": "fp32-r-L32-r-dram", "range_mhz": [1100, 1150]},
+      {"order_index": 6, "row": "fp32-r-L32-r-dram", "range_mhz": [1080, 1130]},
+      {"order_index": 7, "row": "bf16-r-L32-r-dram", "range_mhz": [1068, 1115]}
+    ],
+    "run_2": [
+      {"order_index": 0, "row": "fp32-r-L16", "range_mhz": [1200, 1243]},
+      {"order_index": 1, "row": "bf16-r-L16", "range_mhz": [1180, 1230]},
+      {"order_index": 2, "row": "bf16-r-L16", "range_mhz": [1160, 1210]},
+      {"order_index": 3, "row": "fp32-r-L16", "range_mhz": [1140, 1190]},
+      {"order_index": 4, "row": "fp32-r-L32-r-dram", "range_mhz": [1120, 1170]},
+      {"order_index": 5, "row": "bf16-r-L32-r-dram", "range_mhz": [1100, 1150]},
+      {"order_index": 6, "row": "bf16-r-L32-r-dram", "range_mhz": [1080, 1130]},
+      {"order_index": 7, "row": "fp32-r-L32-r-dram", "range_mhz": [1068, 1115]}
+    ]
+  },
+  "timing_protocol": {
+    "correctness_launches": "One synchronized correctness launch per occurrence, downloaded and excluded from timed samples.",
+    "occurrence_warmup": "One synchronized occurrence warm-up per occurrence, excluded from timed samples.",
+    "startup_warmup": {
+      "configuration": "bf16-r-L32-r-dram",
+      "launches": 4500,
+      "purpose": "Sustained BF16-R/L32/R-in-DRAM work before the first measured occurrence."
+    },
+    "first_measured_row_gate": "The first measured row starts only after the startup 800-MHz hold has ended; the final immutable trace must show a left-held AICLK above 800 MHz at that row start.",
+    "row_timestamps": "Every timed interval stores host UTC ISO timestamps immediately before and after the timed launches plus host monotonic bounds.",
+    "row_duration_target_seconds": [2.24, null],
+    "power_samples_per_row_target": 2,
+    "power_samples_per_row_target_seconds": 4.48,
+    "measurement_interval_scope": "run_start/run_end/run_duration cover device measurement only; the wrapper cooldown is outside the Docker timeout and outside this interval.",
+    "row_duration_guard_rationale": "The per-row upper bound is removed. A row must be strictly longer than the approximately 2.24-second observed sampler gap; the selected 11000/5800 launch counts target at least 4.48 seconds so two trace samples are expected across sampler phases, while the run-level guard remains the only upper limit.",
+    "run_timeout_seconds": 60.0,
+    "approved_run_timeout": {
+      "run_timeout_seconds": 90.0,
+      "docker_timeout_seconds": 90.0,
+      "approval_date": "2026-10-16",
+      "approval": "owner-approved exception",
+      "targets": [
+        {"scope": "confirmation", "run_number": 1},
+        {"scope": "measurement-1", "run_number": 1},
+        {"scope": "measurement-2", "run_number": 2},
+        {"scope": "measurement-2-rerun", "run_number": 2}
+      ],
+      "required_cli": "--run-scope <approved target> --run-timeout-seconds 90",
+      "default_unchanged_seconds": 60.0
+    },
+    "run_budget_guard": "Use the default 60-second budget unless the explicit owner-approved scope and --run-timeout-seconds 90 are supplied; for the four approved targets, project completion before each remaining occurrence and stop before launch when the projection exceeds the effective timeout.",
+    "timeout_policy": "The dedicated runner and Docker wrapper default to 60 seconds. Only the four targets in approved_run_timeout may explicitly use 90 seconds; no other timeout override is accepted."
+  },
+  "sampler_decision": {
+    "mode": "default",
+    "interval_seconds": 2.0,
+    "requested_interval_seconds": 2.0,
+    "shortened_interval": false,
+    "sampler_contract": "sampler_contract.py permits explicit 0.1-3600.0 seconds and default 2.0 seconds.",
+    "wrapper_behavior": "run_in_container.sh selects default 2.0 seconds.",
+    "telemetry_behavior": "telemetry.py calls tt-smi -s --snapshot_no_tty once per sample and then sleeps.",
+    "sample_before_sleep": true,
+    "committed_evidence": "Issue #104 has committed evidence for default 2.0 seconds and explicit 5.0 seconds only.",
+    "short_interval_evidence": "There is no committed evidence that 0.5 seconds or less does not perturb this measurement.",
+    "selection_reason": "Use the current default 2.0-second sampler and do not shorten it to 0.5 seconds.",
+    "expected_observed_timestamp_gap_seconds": 2.24,
+    "gap_recording": "The final immutable trace records successive UTC timestamp gaps and their median/min/max; UTC is used for trace alignment and monotonic is auxiliary."
+  },
+  "cooldown": {
+    "run_1": "No inter-run cooldown metadata is required.",
+    "run_2": {
+      "planned_wait_seconds": null,
+      "wait_cap_seconds": 600.0,
+      "required_cli": ["--run-scope", "measurement-2-rerun", "--run-timeout-seconds", "90"],
+      "required_wait": "run_in_container.sh starts the sampler and polls outside the effective 90-second Docker timeout until the latest usable sample is at or below the measurement-1 pre-run baseline plus the fixed power/temperature tolerances; it refuses to start the measurement when the 600-second cap is reached, then passes wrapper-owned UTC bounds and the gate observations to the runner.",
+      "baseline": {
+        "source": "measurement-1 pre-run power trace",
+        "power_w": 47.0,
+        "asic_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5
+      },
+      "environment_gate": "AICLK is recorded as provenance only; idle 800 MHz is expected and is not a cooldown success condition.",
+      "record_fields": ["cooldown_wait_seconds", "wait_cap_seconds", "actual_wait_seconds", "wait_performed", "start_utc", "end_utc", "bounds_source", "baseline_source", "baseline_power_w", "baseline_temperature_c", "power_tolerance_w", "temperature_tolerance_c", "power_limit_w", "temperature_limit_c", "observed_power_w", "observed_temperature_c", "observed_idle_aiclk_mhz", "aiclk_gate", "gate", "gate_result", "gate_verified", "power_trace_facts", "power_trace_verified", "verified"]
+    }
+  },
+  "metrics": {
+    "raw_p50": "flops_per_launch divided by the P50 of that occurrence's synchronized timed launches; correctness and warm-up are excluded.",
+    "adjusted_p50": "raw_p50_tflops * 1350 / row_time_weighted_aiclk_mhz; supplementary only and based on the assumption that processing capability is proportional to AICLK.",
+    "final_trace_coverage_definition": "explicit_final_sample: the final immutable trace must contain a usable sample at or after run_end; the runner polls until this is true and records the actual coverage definition.",
+    "aiclk_interval_semantics": "Re-evaluate each UTC row interval from the final immutable trace with shared positive-duration left-held segments. Include the sample held at interval start; require bounded terminal coverage; do not extrapolate.",
+    "aiclk_provenance": "Each row stores trace source basename, trace SHA-256, requested sampler interval, coverage definition, and coverage result. Missing terminal coverage yields unavailable AICLK and no fabricated adjusted value."
+  },
+  "decision_criteria": {
+    "delta_definition": "d1 is run 1 and d2 is run 2; each is 100 * (FP32-R raw P50 / BF16-R raw P50 - 1) for the matched L16/L1 pair and matched L32/R-in-DRAM pair.",
+    "r_format_hypothesis": {
+      "criterion": "For both runs and both pairs, each d is negative and the mean of the two run deltas is at least as negative as half the #88 effect.",
+      "thresholds_percent": {
+        "L16_mean_at_most": -0.847,
+        "L32_DRAM_mean_at_most": -2.341
+      }
+    },
+    "clock_hypothesis": {
+      "criterion": "The run deltas reverse sign, or the mean absolute delta is below half the corresponding #88 effect, and the run-to-run position effect reaches its fixed threshold in a direction consistent with lower row-time-weighted AICLK.",
+      "half_effect_thresholds_percent": {
+        "L16": 0.4235,
+        "L32_DRAM": 1.1705
+      },
+      "position_effect_thresholds_percent": {
+        "L16": 0.4235,
+        "L32_DRAM": 1.1705
+      },
+      "aiclk_direction": "The lower-AICLK occurrence must have the lower raw P50 in the corresponding order position; adjusted P50 cannot establish the primary conclusion."
+    },
+    "inconclusive": "If neither the R-format criterion nor the clock criterion is met, report inconclusive.",
+    "adjusted_p50_is_primary": false
+  },
+  "environment_requirements": {
+    "required": ["board serial", "firmware bundle", "kernel driver version", "digest-pinned image", "harness commit", "harness_dirty=false"],
+    "forbidden": ["hostname", "user-specific absolute path", "worktree path"],
+    "device_node": "A standard /dev/tenstorrent node may be retained; other paths are rejected or redacted.",
+    "historical_records": "Existing Issue #88 JSON/CSV records are immutable and are not rewritten."
+  },
+  "revision_history": [
+    {
+      "revision": 1,
+      "date": "2026-10-12",
+      "change": "Created the pre-board counterbalanced ABBA prediction and fixed sampler contract.",
+      "selected_launches_per_occurrence": {
+        "L16": 6500,
+        "L32": 4000
+      }
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-15",
+      "change": "Removed the per-row upper bound, retained the sampler-gap lower bound, added the projected 60-second run guard, and increased fixed launch counts to target two power samples per row.",
+      "evidence": "retry2 measured 33.239954 seconds for five rows; linear eight-row scaling is 53.183926 seconds before the count increase. At 2.24 seconds per sampler gap, two samples target 4.48 seconds per row. The selected counts target approximately 4.0-4.6 seconds per row and retain margin for setup and AICLK drift under the 60-second run guard.",
+      "selected_launches_per_occurrence": {
+        "L16": 10000,
+        "L32": 5500
+      }
+    },
+    {
+      "revision": 3,
+      "date": "2026-10-16",
+      "change": "Raised the fixed counts again so retry2-scaled row durations reach the two-sample target, and tightened path safety for embedded host paths in diagnostics and environment path lists.",
+      "evidence": "Retry2 measured mean L16 duration 2.670758619 seconds at 6500 launches and L32 duration 3.122895673 seconds at 4000 launches. Scaling to 11000/5800 predicts 4.520 seconds and 4.528 seconds respectively; the four-L16/four-L32 timed total is about 36.19 seconds. Adding the observed 5-row non-timed budget of 19.434 seconds and 1.25 seconds per three additional occurrence setup margins gives about 59.38 seconds, below the 60-second guard; AICLK drift can still stop the run before a projected overrun.",
+      "selected_launches_per_occurrence": {
+        "L16": 11000,
+        "L32": 5800
+      }
+    },
+    {
+      "revision": 4,
+      "date": "2026-10-16",
+      "change": "Recorded the owner's approved 90-second run and Docker timeout exception for exactly one confirmation target and the two production measurement targets; the default remains 60 seconds and launch counts are unchanged.",
+      "approval": {
+        "approval_date": "2026-10-16",
+        "run_timeout_seconds": 90.0,
+        "docker_timeout_seconds": 90.0,
+        "targets": [
+          {"scope": "confirmation", "run_number": 1},
+          {"scope": "measurement-1", "run_number": 1},
+          {"scope": "measurement-2", "run_number": 2}
+        ],
+        "default_run_timeout_seconds": 60.0,
+        "launch_counts_changed": false
+      },
+      "selected_launches_per_occurrence": {
+        "L16": 11000,
+        "L32": 5800
+      }
+    },
+    {
+      "revision": 5,
+      "date": "2026-10-16",
+      "change": "Added the owner-approved measurement-2-rerun scope after the prior measurement-2 run failed because its impossible 1350-MHz cooldown gate was used; the gate is corrected to idle power and ASIC temperature, while prediction and decision criteria remain unchanged.",
+      "approval": {
+        "approval_date": "2026-10-16",
+        "run_timeout_seconds": 90.0,
+        "docker_timeout_seconds": 90.0,
+        "scope": "measurement-2-rerun",
+        "run_number": 2,
+        "approval": "owner-approved fourth target, separate from revision 4's three targets"
+      },
+      "cooldown_correction": {
+        "prior_run_failure": "The prior measurement-2 cooldown trace remained at idle 800 MHz, so the 1350-MHz success condition could not pass.",
+        "baseline_source": "measurement-1 pre-run power trace",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 58.5,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 61.5,
+        "wait_cap_seconds": 600.0,
+        "observed_idle_aiclk_mhz": 800.0,
+        "aiclk_gate": false,
+        "prediction_and_decision_criteria_changed": false
+      },
+      "selected_launches_per_occurrence": {
+        "L16": 11000,
+        "L32": 5800
+      }
+    }
+  ],
+  "limitations": [
+    "No board measurements are present until the owner authorizes the two runs.",
+    "The four configuration summaries are derived from two occurrence rows each; raw P50 occurrence values remain the primary evidence.",
+    "The adjusted P50 is a clock-proportional auxiliary diagnostic, not a replacement for raw order-swap comparison."
+  ]
+}

@@ -24,6 +24,7 @@ IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RESIDENT_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_resident.py"
 MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
+ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
 # The returned path is the only representation used by runner classifiers and
@@ -187,6 +188,17 @@ validate_decimal_timeout() {
 
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
+ISSUE127_RUNNER=0
+ISSUE127_DEFAULT_TIMEOUT_S="60"
+ISSUE127_APPROVED_TIMEOUT_S="90"
+ISSUE127_COOLDOWN_WAIT_CAP_S="600"
+ISSUE127_COOLDOWN_BASELINE_SOURCE="measurement-1 pre-run power trace"
+ISSUE127_COOLDOWN_BASELINE_POWER_W="47.0"
+ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C="58.5"
+ISSUE127_COOLDOWN_POWER_TOLERANCE_W="5.0"
+ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C="3.0"
+ISSUE127_COOLDOWN_POWER_LIMIT_W="52.0"
+ISSUE127_COOLDOWN_TEMPERATURE_LIMIT_C="61.5"
 RESIDENT_TIMEOUT_CAP_S="600"
 RESIDENT_CONDITION="unloaded"
 RESIDENT_REQUESTED_TIMEOUT=""
@@ -248,6 +260,177 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PA
     echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
     exit 2
   fi
+elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
+  # Issue #127 defaults to a 60-second run budget.  Only the explicit owner-
+  # approved scope plus --run-timeout-seconds 90 may raise the Docker timeout.
+  ISSUE127_RUNNER=1
+  if [[ "${TELEMETRY_MODE}" == "off" ]]; then
+    echo "Issue #127 requires telemetry sampler mode default or explicit; sampler-off runs are rejected" >&2
+    exit 2
+  fi
+  ISSUE127_RUN_NUMBER=""
+  ISSUE127_COOLDOWN_SECONDS=""
+  ISSUE127_EXPECTED_AICLK=""
+  ISSUE127_RUN_TIMEOUT_SECONDS=""
+  ISSUE127_RUN_SCOPE=""
+  ISSUE127_COOLDOWN_BOUNDS_SUPPLIED=0
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --run-number)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-number requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_NUMBER="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-number=*)
+        ISSUE127_RUN_NUMBER="${argument#--run-number=}"
+        ;;
+      --run-timeout-seconds)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-timeout-seconds requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+          echo "Issue #127 run timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_TIMEOUT_SECONDS="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-timeout-seconds=*)
+        if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+          echo "Issue #127 run timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_TIMEOUT_SECONDS="${argument#--run-timeout-seconds=}"
+        ;;
+      --run-scope)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--run-scope requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+          echo "Issue #127 run scope may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_SCOPE="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --run-scope=*)
+        if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+          echo "Issue #127 run scope may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE127_RUN_SCOPE="${argument#--run-scope=}"
+        ;;
+      --cooldown-wait-seconds)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--cooldown-wait-seconds requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_COOLDOWN_SECONDS="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --cooldown-wait-seconds=*)
+        ISSUE127_COOLDOWN_SECONDS="${argument#--cooldown-wait-seconds=}"
+        ;;
+      --expected-aiclk-mhz)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--expected-aiclk-mhz requires a value" >&2
+          exit 2
+        fi
+        ISSUE127_EXPECTED_AICLK="${RUNNER_ARGS[$((ISSUE127_ARGUMENT_INDEX + 1))]}"
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --expected-aiclk-mhz=*)
+        ISSUE127_EXPECTED_AICLK="${argument#--expected-aiclk-mhz=}"
+        ;;
+      --cooldown-start-utc|--cooldown-end-utc|--cooldown-start-utc=*|--cooldown-end-utc=*)
+        ISSUE127_COOLDOWN_BOUNDS_SUPPLIED=1
+        ;;
+    esac
+    ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+  done
+  if [[ "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
+    if [[ -n "${ISSUE127_COOLDOWN_SECONDS}" ]]; then
+      if [[ ! "${ISSUE127_COOLDOWN_SECONDS}" =~ ^[0-9]+([.][0-9]+)?$ \
+            || "${ISSUE127_COOLDOWN_SECONDS}" =~ ^0+([.]0+)?$ ]]; then
+        echo "Issue #127 run 2 requires a positive numeric cooldown wait" >&2
+        exit 2
+      fi
+      if ! awk -v value="${ISSUE127_COOLDOWN_SECONDS}" \
+          'BEGIN { exit !(value > 0 && value <= 600) }'; then
+        echo "Issue #127 cooldown wait must be at most 600 seconds" >&2
+        exit 2
+      fi
+    fi
+    # AICLK is accepted only as legacy provenance input.  The corrected gate
+    # below never compares it with a target value.
+    if [[ "${ISSUE127_COOLDOWN_BOUNDS_SUPPLIED}" == "1" ]]; then
+      echo "Issue #127 cooldown UTC bounds are wrapper-owned" >&2
+      exit 2
+    fi
+  elif [[ "${ISSUE127_RUN_NUMBER}" != "1" ]]; then
+    echo "Issue #127 requires --run-number 1 or 2" >&2
+    exit 2
+  fi
+  ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_DEFAULT_TIMEOUT_S}"
+  if [[ -z "${ISSUE127_RUN_TIMEOUT_SECONDS}" && -n "${ISSUE127_RUN_SCOPE}" ]]; then
+    echo "Issue #127 approved run scope requires --run-timeout-seconds 90" >&2
+    exit 2
+  fi
+  if [[ -n "${ISSUE127_RUN_TIMEOUT_SECONDS}" ]]; then
+    if [[ ! "${ISSUE127_RUN_TIMEOUT_SECONDS}" =~ ^90([.]0+)?$ ]]; then
+      if [[ "${ISSUE127_RUN_TIMEOUT_SECONDS}" =~ ^60([.]0+)?$ && -z "${ISSUE127_RUN_SCOPE}" ]]; then
+        ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_DEFAULT_TIMEOUT_S}"
+      else
+        echo "Issue #127 permits 90 seconds only for an approved run scope" >&2
+        exit 2
+      fi
+    else
+      case "${ISSUE127_RUN_SCOPE}" in
+        confirmation|measurement-1)
+          if [[ "${ISSUE127_RUN_NUMBER}" != "1" ]]; then
+            echo "Issue #127 run scope ${ISSUE127_RUN_SCOPE} requires --run-number 1" >&2
+            exit 2
+          fi
+          ;;
+        measurement-2|measurement-2-rerun)
+          if [[ "${ISSUE127_RUN_NUMBER}" != "2" ]]; then
+            echo "Issue #127 run scope ${ISSUE127_RUN_SCOPE} requires --run-number 2" >&2
+            exit 2
+          fi
+          ;;
+        *)
+          echo "Issue #127 run scope is not an approved target" >&2
+          exit 2
+          ;;
+      esac
+      ISSUE127_EFFECTIVE_TIMEOUT_S="${ISSUE127_APPROVED_TIMEOUT_S}"
+    fi
+  elif [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+    echo "Issue #127 approved run scope requires --run-timeout-seconds 90" >&2
+    exit 2
+  fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "0" ]]; then
+    CONTAINER_TIMEOUT_S="${ISSUE127_EFFECTIVE_TIMEOUT_S}"
+  else
+    validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
+    if [[ "${CONTAINER_TIMEOUT_S}" != "${ISSUE127_EFFECTIVE_TIMEOUT_S}" ]]; then
+      echo "Issue #127 container timeout must match the approved run timeout" >&2
+      exit 2
+    fi
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "2"
 else
   # Non-resident wrapper users retain their historical timeout range, but the
   # input is still bounded before GNU timeout or any shell arithmetic sees it.
@@ -405,6 +588,207 @@ if [[ "${TELEMETRY_MODE}" != "off" ]]; then
   SAMPLER_PID=$!
 fi
 
+# Issue #127 run 2 cooldown is deliberately outside the Docker timeout.  The
+# sampler is already running.  Wait for an idle power/temperature sample rather
+# than requiring the card to return to a particular AICLK; AICLK is provenance
+# only.  A lower cap can be selected by board-free wrapper tests, but production
+# can never exceed the fixed 600-second cap.
+if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
+  COOLDOWN_CAP_S="${HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS:-${ISSUE127_COOLDOWN_WAIT_CAP_S}}"
+  if [[ ! "${COOLDOWN_CAP_S}" =~ ^[0-9]+([.][0-9]+)?$ ]] \
+        || ! awk -v value="${COOLDOWN_CAP_S}" \
+          'BEGIN { exit !(value > 0 && value <= 600) }'; then
+    echo "Issue #127 cooldown wait cap must be positive and at most 600 seconds" >&2
+    exit 2
+  fi
+
+  issue127_latest_sample() {
+    if [[ ! -f "${POWER_CSV}" ]]; then
+      return 0
+    fi
+    LC_ALL=C awk -F, '
+      NR == 1 { next }
+      NF >= 4 \
+        && $2 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
+        && $3 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
+        && $4 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ {
+          timestamp = $1
+          power = $2
+          aiclk = $3
+          temperature = $4
+          found = 1
+        }
+      END {
+        if (found) {
+          printf "%.17g|%.17g|%.17g|%s\n", power, aiclk, temperature, timestamp
+        }
+      }
+    ' "${POWER_CSV}" 2>/dev/null
+  }
+
+  issue127_timestamp_is_safe() {
+    [[ "${1}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{1,9}|,[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$ ]]
+  }
+
+  issue127_timestamp_to_ns() {
+    local timestamp="${1}"
+    local parsed
+    if ! issue127_timestamp_is_safe "${timestamp}"; then
+      return 1
+    fi
+    if ! parsed="$(date -u --date="${timestamp}" +%s%N 2>/dev/null)" \
+      || [[ ! "${parsed}" =~ ^-?[0-9]{1,19}$ ]]; then
+      return 1
+    fi
+    printf '%s\n' "${parsed}"
+  }
+
+  issue127_write_cooldown_failure() {
+    local failure_path="${OUT_DIR}/cooldown-gate-failure-${RUN_ID}.json"
+    local run_scope_json="null"
+    if [[ -n "${ISSUE127_RUN_SCOPE}" ]]; then
+      run_scope_json="\"${ISSUE127_RUN_SCOPE}\""
+    fi
+    cat > "${failure_path}" <<EOF
+{
+  "issue": "#127",
+  "run_number": 2,
+  "run_scope": ${run_scope_json},
+  "status": "failed",
+  "failure_type": "cooldown_gate_failure",
+  "measurement_started": false,
+  "baseline_source": "${ISSUE127_COOLDOWN_BASELINE_SOURCE}",
+  "baseline_power_w": ${ISSUE127_COOLDOWN_BASELINE_POWER_W},
+  "baseline_temperature_c": ${ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C},
+  "power_tolerance_w": ${ISSUE127_COOLDOWN_POWER_TOLERANCE_W},
+  "temperature_tolerance_c": ${ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C},
+  "power_limit_w": ${ISSUE127_COOLDOWN_POWER_LIMIT_W},
+  "temperature_limit_c": ${ISSUE127_COOLDOWN_TEMPERATURE_LIMIT_C},
+  "wait_cap_seconds": 600.0,
+  "wait_performed": true,
+  "wait_start_utc": "${COOLDOWN_START_UTC}",
+  "wait_end_utc": "${COOLDOWN_END_UTC}",
+  "actual_wait_seconds": ${COOLDOWN_ACTUAL_WAIT_SECONDS},
+  "gate_result": "fail",
+  "gate_verified": false,
+  "aiclk_role": "provenance_only",
+  "observed_power_w": ${COOLDOWN_OBSERVED_POWER_W:-null},
+  "observed_temperature_c": ${COOLDOWN_OBSERVED_TEMPERATURE_C:-null},
+  "observed_idle_aiclk_mhz": ${COOLDOWN_OBSERVED_AICLK_MHZ:-null},
+  "observed_sample_timestamp_utc": ${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON}
+}
+EOF
+  }
+
+  COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
+  if ! COOLDOWN_START_NS="$(issue127_timestamp_to_ns "${COOLDOWN_START_UTC}")"; then
+    echo "Issue #127 cooldown start timestamp could not be parsed; refusing to start cooldown gate" >&2
+    exit 2
+  fi
+  COOLDOWN_CAP_NS="$(awk -v start="${COOLDOWN_START_NS}" -v cap="${COOLDOWN_CAP_S}" \
+    'BEGIN { printf "%.0f", start + cap * 1000000000 }')"
+  COOLDOWN_GATE_PASSED=0
+  COOLDOWN_GATE_REASON="cooldown gate did not pass before the wait cap"
+  COOLDOWN_OBSERVED_POWER_W=""
+  COOLDOWN_OBSERVED_TEMPERATURE_C=""
+  COOLDOWN_OBSERVED_AICLK_MHZ=""
+  COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC=""
+  COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="null"
+  while :; do
+    COOLDOWN_NOW_NS="$(date +%s%N)"
+    if [[ "${COOLDOWN_NOW_NS}" -ge "${COOLDOWN_CAP_NS}" ]]; then
+      break
+    fi
+    COOLDOWN_SAMPLE="$(issue127_latest_sample)"
+    if [[ -n "${COOLDOWN_SAMPLE}" ]]; then
+      IFS='|' read -r COOLDOWN_OBSERVED_POWER_W COOLDOWN_OBSERVED_AICLK_MHZ \
+        COOLDOWN_OBSERVED_TEMPERATURE_C COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC \
+        <<< "${COOLDOWN_SAMPLE}"
+      COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="null"
+      if issue127_timestamp_is_safe "${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}"; then
+        # The strict ISO shape contains no JSON-significant characters beyond
+        # the quotes added here, so malformed CSV data cannot escape the record.
+        COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="\"${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}\""
+      fi
+      if ! COOLDOWN_SAMPLE_TIMESTAMP_NS="$(issue127_timestamp_to_ns \
+          "${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}")"; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp was malformed"
+      elif [[ "${COOLDOWN_SAMPLE_TIMESTAMP_NS}" -lt "${COOLDOWN_START_NS}" ]]; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp predates cooldown start"
+      elif [[ "${COOLDOWN_SAMPLE_TIMESTAMP_NS}" -gt "${COOLDOWN_NOW_NS}" ]]; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp is after the current wait time"
+      elif awk -v power="${COOLDOWN_OBSERVED_POWER_W}" \
+          -v temperature="${COOLDOWN_OBSERVED_TEMPERATURE_C}" \
+          'BEGIN { exit !(power <= 52.0 && temperature <= 61.5) }'; then
+        COOLDOWN_GATE_PASSED=1
+        break
+      else
+        COOLDOWN_GATE_REASON="observed power/temperature exceeded the cooldown gate"
+      fi
+    fi
+    if ! kill -0 "${SAMPLER_PID}" 2>/dev/null; then
+      COOLDOWN_GATE_REASON="telemetry sampler exited before the cooldown gate passed"
+      break
+    fi
+    COOLDOWN_REMAINING_S="$(awk -v deadline="${COOLDOWN_CAP_NS}" -v now="${COOLDOWN_NOW_NS}" \
+      'BEGIN { remaining = (deadline - now) / 1000000000; printf "%.6f", remaining }')"
+    if ! awk -v remaining="${COOLDOWN_REMAINING_S}" \
+        'BEGIN { exit !(remaining > 0) }'; then
+      break
+    fi
+    COOLDOWN_SLEEP_S="$(awk -v remaining="${COOLDOWN_REMAINING_S}" \
+      'BEGIN { print (remaining < 0.25 ? remaining : 0.25) }')"
+    sleep "${COOLDOWN_SLEEP_S}"
+  done
+  COOLDOWN_END_NS="$(date +%s%N)"
+  COOLDOWN_END_UTC="$(date -u --iso-8601=ns)"
+  COOLDOWN_ACTUAL_WAIT_SECONDS="$(awk -v start="${COOLDOWN_START_NS}" -v end="${COOLDOWN_END_NS}" \
+    'BEGIN { printf "%.9f", (end - start) / 1000000000 }')"
+  if [[ "${COOLDOWN_GATE_PASSED}" != "1" ]]; then
+    issue127_write_cooldown_failure
+    echo "Issue #127 cooldown gate failure: ${COOLDOWN_GATE_REASON}; measurement was not started" >&2
+    echo "Issue #127 cooldown gate failure record -> ${OUT_DIR}/cooldown-gate-failure-${RUN_ID}.json" >&2
+    exit 1
+  fi
+  # Replace the historical requested-duration argument with the fixed contract
+  # cap so the runner persists one unambiguous 600-second wait bound.
+  ISSUE127_FILTERED_ARGS=()
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --cooldown-wait-seconds)
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --cooldown-wait-seconds=*)
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        ISSUE127_FILTERED_ARGS+=("${argument}")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  RUNNER_ARGS=("${ISSUE127_FILTERED_ARGS[@]}")
+  RUNNER_ARGS+=(
+    --cooldown-wait-seconds "${ISSUE127_COOLDOWN_WAIT_CAP_S}"
+    --cooldown-start-utc "${COOLDOWN_START_UTC}"
+    --cooldown-end-utc "${COOLDOWN_END_UTC}"
+    --cooldown-baseline-source "${ISSUE127_COOLDOWN_BASELINE_SOURCE}"
+    --cooldown-baseline-power-w "${ISSUE127_COOLDOWN_BASELINE_POWER_W}"
+    --cooldown-baseline-temperature-c "${ISSUE127_COOLDOWN_BASELINE_TEMPERATURE_C}"
+    --cooldown-power-tolerance-w "${ISSUE127_COOLDOWN_POWER_TOLERANCE_W}"
+    --cooldown-temperature-tolerance-c "${ISSUE127_COOLDOWN_TEMPERATURE_TOLERANCE_C}"
+    --cooldown-observed-power-w "${COOLDOWN_OBSERVED_POWER_W}"
+    --cooldown-observed-temperature-c "${COOLDOWN_OBSERVED_TEMPERATURE_C}"
+    --cooldown-observed-aiclk-mhz "${COOLDOWN_OBSERVED_AICLK_MHZ}"
+    --cooldown-gate-result pass
+    --cooldown-gate-verified
+  )
+fi
+
 # Runner arguments are passed as separate arguments, never interpolated into
 # a shell string. The default runner also receives the sibling power trace
 # path, so its JSON record names the same provenance that the wrapper writes.
@@ -488,6 +872,63 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
     RESIDENT_ARGS+=(--power-trace "${RESIDENT_POWER_TRACE}")
   fi
   RUNNER_ARGS=("${RESIDENT_ARGS[@]}")
+fi
+if [[ "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
+  # The generic custom-runner branch remains the execution path, but pass the
+  # wrapper-owned sibling artifacts explicitly so run binding is visible in
+  # the runner CLI and board-free tests can verify the seam.
+  ISSUE127_ARGS=()
+  HAS_ENV_JSON_ARG=0
+  HAS_POWER_TRACE_ARG=0
+  ISSUE127_ARGUMENT_INDEX=0
+  while [[ "${ISSUE127_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE127_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --env-json)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--env-json requires a value" >&2
+          exit 2
+        fi
+        HAS_ENV_JSON_ARG=1
+        ISSUE127_ARGS+=("--env-json" "/out/$(basename "${ENV_JSON}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --env-json=*)
+        HAS_ENV_JSON_ARG=1
+        ISSUE127_ARGS+=("--env-json=/out/$(basename "${ENV_JSON}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --power-trace)
+        if [[ "${ISSUE127_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--power-trace requires a value" >&2
+          exit 2
+        fi
+        HAS_POWER_TRACE_ARG=1
+        ISSUE127_ARGS+=("--power-trace" "/out/$(basename "${POWER_CSV}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --power-trace=*)
+        HAS_POWER_TRACE_ARG=1
+        ISSUE127_ARGS+=("--power-trace=/out/$(basename "${POWER_CSV}")")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        ISSUE127_ARGS+=("${argument}")
+        ISSUE127_ARGUMENT_INDEX=$((ISSUE127_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  if [[ "${HAS_ENV_JSON_ARG}" == "0" ]]; then
+    ISSUE127_ARGS+=(--env-json "/out/$(basename "${ENV_JSON}")")
+  fi
+  if [[ "${TELEMETRY_MODE}" != "off" && "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+    ISSUE127_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+  fi
+  RUNNER_ARGS=("${ISSUE127_ARGS[@]}")
 fi
 # `timeout` is inside the wrapper, so losing an SSH session cannot leave the
 # Docker client or the board-side container unbounded.
