@@ -17,6 +17,9 @@ from tools import issue121_q2_wrapper_probe as wrapper_probe
 ROOT = Path(__file__).parents[1]
 PLAN = ROOT / runner.ISSUE121_Q2_PLAN
 SUMMARY = ROOT / "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-summary.json"
+GDDR_FAN_SUPPLEMENT = ROOT / (
+    "docs/measurements/issue121-q2/2026-10-16-post-hoc-gddr-fan-observation.json"
+)
 IMMUTABLE_RUN_ROOT = ROOT / "docs/measurements/issue121-q2/runs"
 Q2_RUN_ROOT = IMMUTABLE_RUN_ROOT / "run-1-device0"
 Q2_RUN_RECORD = Q2_RUN_ROOT / "run-q2-run-1-device0.json"
@@ -382,6 +385,122 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
             capture_output=True,
         ).stdout
         assert (ROOT / relative).read_bytes() == expected
+
+
+def test_gddr_fan_supplement_is_complete_and_sanitized() -> None:
+    record = json.loads(GDDR_FAN_SUPPLEMENT.read_text(encoding="utf-8"))
+    acquisition = record["acquisition"]
+
+    assert record["record_schema"] == "issue121-q2-post-hoc-gddr-fan-observation-v1"
+    assert acquisition["docker_ps_before_snapshot"] == {
+        "command": ["docker", "ps"],
+        "running_containers": 0,
+        "status": "empty",
+    }
+    assert acquisition["snapshot_command"] == ["tt-smi", "-s", "--snapshot_no_tty"]
+    assert acquisition["boards_captured"] == 2
+    assert record["environment"]["tt_smi_version"] == "6.2.1"
+    assert record["environment"]["tt_umd_version"] == "0.9.8"
+    assert record["environment"]["firmware_bundle"] == "19.6.0.0"
+    assert record["environment"]["kernel_driver"] == "TT-KMD 2.11.0"
+
+    boards = {board["pci_bus_id"]: board for board in record["boards"]}
+    assert set(boards) == {"0000:06:00.0", "0000:09:00.0"}
+    assert boards["0000:06:00.0"]["snapshot_fields"]["fan_rpm"] == {
+        "raw": "0x80c",
+        "value_rpm": 2060,
+        "unit": "rpm",
+    }
+    assert boards["0000:09:00.0"]["snapshot_fields"]["fan_speed"] == {
+        "raw": "0x46",
+        "value_percent": 70,
+        "unit": "percent",
+    }
+    assert boards["0000:09:00.0"]["snapshot_fields"]["max_gddr_temp"] == {
+        "raw": "0x48",
+        "value": None,
+        "unit": "unknown",
+    }
+    assert len(
+        boards["0000:09:00.0"]["snapshot_fields"]["gddr_words"]
+    ) == 4
+    assert len(
+        boards["0000:09:00.0"]["snapshot_fields"]["gddr_words"]["GDDR_0_1_TEMP"][
+            "channels_c"
+        ]
+    ) == 2
+
+    provenance = record["source_provenance"]
+    assert provenance["packages"] == [
+        {
+            "name": "tt-smi",
+            "version": "6.2.1",
+            "repository": "tenstorrent/tt-smi",
+            "source_files": ["tt_smi/backend.py", "tt_smi/constants.py", "tt_smi/utils.py"],
+        },
+        {
+            "name": "tt-umd",
+            "version": "0.9.8",
+            "repository": "tenstorrent/tt-umd",
+            "source_files": [
+                "device/api/umd/device/types/telemetry.hpp",
+                "device/api/umd/device/types/gddr_telemetry.hpp",
+                "device/api/umd/device/firmware/firmware_info_provider.hpp",
+                "device/api/umd/device/firmware/firmware_telemetry_mapping.hpp",
+                "device/firmware/firmware_info_provider.cpp",
+            ],
+            "source_kind": "equivalent repository source for the installed wheel",
+        },
+    ]
+    assert provenance["fields"]["GDDR_x_y_TEMP"]["unit"] == "degC"
+    assert provenance["fields"]["GDDR_x_y_TEMP"]["packing"].startswith(
+        "Two modules share each 32-bit word"
+    )
+    assert provenance["fields"]["MAX_GDDR_TEMP"]["unit"] == "unknown"
+    assert provenance["fields"]["MAX_GDDR_TEMP"]["packing"] == "unknown"
+
+    comparison = record["derived_comparison"]
+    assert comparison["q2_run_snapshots"]["source_count"] == 14
+    assert comparison["cooldown_snapshots"]["source_count"] == 2
+    all_snapshots = (
+        comparison["q2_run_snapshots"]["records"]
+        + comparison["cooldown_snapshots"]["records"]
+    )
+    assert all(snapshot["board"]["pci_bus_id"] == "0000:09:00.0" for snapshot in all_snapshots)
+    assert all(set(snapshot["raw"]) == {
+        "ASIC_TEMPERATURE",
+        "GDDR_0_1_TEMP",
+        "GDDR_2_3_TEMP",
+        "GDDR_4_5_TEMP",
+        "GDDR_6_7_TEMP",
+        "MAX_GDDR_TEMP",
+        "FAN_SPEED",
+        "FAN_RPM",
+    } for snapshot in all_snapshots)
+    assert comparison["issue_118_gddr_temperature"]["status"] == "absent"
+
+    encoded = json.dumps(record)
+    assert "host_info" not in encoded
+    assert "processes" not in encoded
+    assert "/home/" not in encoded
+    assert "/root/" not in encoded
+    assert all(
+        snapshot["source"].startswith("docs/")
+        for snapshot in all_snapshots
+    )
+
+    summary_observation = json.loads(SUMMARY.read_text(encoding="utf-8"))[
+        "post_hoc_observations"
+    ]["gddr_fan_observation"]
+    assert summary_observation["idle_snapshot"]["docker_ps_status"] == "empty"
+    assert len(summary_observation["idle_snapshot"]["boards"]) == 2
+    assert len(summary_observation["q2_device_1_snapshot_comparison"]["run_pre_post"]) == 6
+    assert len(summary_observation["q2_device_1_snapshot_comparison"]["cooldown"]) == 2
+    assert summary_observation["issue_118_comparison"]["gddr_temperature_status"] == "absent"
+    assert "cannot be attributed to run conditions alone" in summary_observation[
+        "issue_118_comparison"
+    ]["thermal_limitation"]
+    assert "speculation" in summary_observation["interpretation"][0]
 
 
 def test_regenerated_analysis_retains_unit_provenance_and_effects() -> None:

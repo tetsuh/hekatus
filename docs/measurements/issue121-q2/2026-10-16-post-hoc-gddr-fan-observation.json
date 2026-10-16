@@ -1,0 +1,1579 @@
+{
+  "record_schema": "issue121-q2-post-hoc-gddr-fan-observation-v1",
+  "status": "complete",
+  "issue": "#121",
+  "observation_type": "post_measurement_supplement",
+  "acquisition": {
+    "captured_at_utc": "2026-10-16T13:03:24.508450Z",
+    "docker_ps_before_snapshot": {
+      "command": [
+        "docker",
+        "ps"
+      ],
+      "running_containers": 0,
+      "status": "empty"
+    },
+    "snapshot_command": [
+      "tt-smi",
+      "-s",
+      "--snapshot_no_tty"
+    ],
+    "snapshot_returncode": 0,
+    "boards_captured": 2,
+    "raw_output_sha256": "96ce5274797ecec18a382c9d42b8f359ee79c233fd4cf694aab26d0f06f9f94a",
+    "raw_output_policy": "Only sanitized fields are committed; host identity and process details are omitted."
+  },
+  "environment": {
+    "tt_smi_version": "6.2.1",
+    "tt_umd_version": "0.9.8",
+    "pyluwen_version": "0.9.0",
+    "firmware_bundle": "19.6.0.0",
+    "kernel": "6.8.0-138-generic",
+    "kernel_driver": "TT-KMD 2.11.0"
+  },
+  "boards": [
+    {
+      "device_index": 0,
+      "serial": "000004033191411c",
+      "pci_bus_id": "0000:06:00.0",
+      "board_type": "p150a",
+      "firmware": {
+        "bundle": "19.6.0.0",
+        "gddr": "2.12",
+        "cm": "0.28.0.0",
+        "dm_app": "0.22.0.0",
+        "dm_bl": "0.0.0.0",
+        "eth": "0.0.0"
+      },
+      "snapshot_fields": {
+        "asic_temperature": {
+          "raw": "0x36403a",
+          "value_c": 54.3,
+          "unit": "degC"
+        },
+        "gddr_words": {
+          "GDDR_0_1_TEMP": {
+            "raw": "0x36363234",
+            "channels_c": {
+              "GDDR_0": {
+                "bottom_c": 52,
+                "top_c": 50
+              },
+              "GDDR_1": {
+                "bottom_c": 54,
+                "top_c": 54
+              }
+            }
+          },
+          "GDDR_2_3_TEMP": {
+            "raw": "0x32343432",
+            "channels_c": {
+              "GDDR_2": {
+                "bottom_c": 50,
+                "top_c": 52
+              },
+              "GDDR_3": {
+                "bottom_c": 52,
+                "top_c": 50
+              }
+            }
+          },
+          "GDDR_4_5_TEMP": {
+            "raw": "0x30323638",
+            "channels_c": {
+              "GDDR_4": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 50,
+                "top_c": 48
+              }
+            }
+          },
+          "GDDR_6_7_TEMP": {
+            "raw": "0x34343234",
+            "channels_c": {
+              "GDDR_6": {
+                "bottom_c": 52,
+                "top_c": 50
+              },
+              "GDDR_7": {
+                "bottom_c": 52,
+                "top_c": 52
+              }
+            }
+          }
+        },
+        "max_gddr_temp": {
+          "raw": "0x38",
+          "value": null,
+          "unit": "unknown"
+        },
+        "fan_speed": {
+          "raw": "0x2a",
+          "value_percent": 42,
+          "unit": "percent"
+        },
+        "fan_rpm": {
+          "raw": "0x80c",
+          "value_rpm": 2060,
+          "unit": "rpm"
+        }
+      },
+      "reported_telemetry": {
+        "asic_temperature_c": 54.3,
+        "fan_rpm": 2060
+      }
+    },
+    {
+      "device_index": 1,
+      "serial": "0000040331914124",
+      "pci_bus_id": "0000:09:00.0",
+      "board_type": "p150a",
+      "firmware": {
+        "bundle": "19.6.0.0",
+        "gddr": "2.12",
+        "cm": "0.28.0.0",
+        "dm_app": "0.22.0.0",
+        "dm_bl": "0.0.0.0",
+        "eth": "0.0.0"
+      },
+      "snapshot_fields": {
+        "asic_temperature": {
+          "raw": "0x30ace2",
+          "value_c": 48.7,
+          "unit": "degC"
+        },
+        "gddr_words": {
+          "GDDR_0_1_TEMP": {
+            "raw": "0x42424042",
+            "channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              }
+            }
+          },
+          "GDDR_2_3_TEMP": {
+            "raw": "0x48484244",
+            "channels_c": {
+              "GDDR_2": {
+                "bottom_c": 68,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 72,
+                "top_c": 72
+              }
+            }
+          },
+          "GDDR_4_5_TEMP": {
+            "raw": "0x44442e2c",
+            "channels_c": {
+              "GDDR_4": {
+                "bottom_c": 44,
+                "top_c": 46
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              }
+            }
+          },
+          "GDDR_6_7_TEMP": {
+            "raw": "0x42462a28",
+            "channels_c": {
+              "GDDR_6": {
+                "bottom_c": 40,
+                "top_c": 42
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 66
+              }
+            }
+          }
+        },
+        "max_gddr_temp": {
+          "raw": "0x48",
+          "value": null,
+          "unit": "unknown"
+        },
+        "fan_speed": {
+          "raw": "0x46",
+          "value_percent": 70,
+          "unit": "percent"
+        },
+        "fan_rpm": {
+          "raw": "0xd96",
+          "value_rpm": 3478,
+          "unit": "rpm"
+        }
+      },
+      "reported_telemetry": {
+        "asic_temperature_c": 48.7,
+        "fan_rpm": 3478
+      }
+    }
+  ],
+  "source_provenance": {
+    "status": "established_for_asic_gddr_channels_and_fans; max_gddr_temp_unit_unknown",
+    "source_note": "tt-smi 6.2.1 source was inspected from the installed package. The installed tt-umd 0.9.8 wheel exposes the telemetry enum/type stubs; the unit and packing implementation was checked in the equivalent repository UMD source used by the pinned tt-metal environment. No source statement establishes a unit or packing for MAX_GDDR_TEMP, so its raw value is retained without conversion.",
+    "packages": [
+      {
+        "name": "tt-smi",
+        "version": "6.2.1",
+        "repository": "tenstorrent/tt-smi",
+        "source_files": [
+          "tt_smi/backend.py",
+          "tt_smi/constants.py",
+          "tt_smi/utils.py"
+        ]
+      },
+      {
+        "name": "tt-umd",
+        "version": "0.9.8",
+        "repository": "tenstorrent/tt-umd",
+        "source_files": [
+          "device/api/umd/device/types/telemetry.hpp",
+          "device/api/umd/device/types/gddr_telemetry.hpp",
+          "device/api/umd/device/firmware/firmware_info_provider.hpp",
+          "device/api/umd/device/firmware/firmware_telemetry_mapping.hpp",
+          "device/firmware/firmware_info_provider.cpp"
+        ],
+        "source_kind": "equivalent repository source for the installed wheel"
+      }
+    ],
+    "fields": {
+      "ASIC_TEMPERATURE": {
+        "unit": "degC",
+        "raw_encoding": "signed s16.16 fixed point",
+        "packing": "32-bit scalar; no byte-packed channel layout",
+        "evidence": [
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/utils.py",
+            "function": "convert_signed_16_16_to_float",
+            "finding": "Converts the raw word from signed 16.16 by dividing by 65536."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Applies the signed 16.16 conversion for Blackhole ASIC temperature."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/firmware/firmware_info_provider.cpp",
+            "function": "FirmwareInfoProvider::get_asic_temperature",
+            "finding": "Reads the ASIC temperature through the Celsius-valued firmware feature."
+          }
+        ]
+      },
+      "GDDR_x_y_TEMP": {
+        "unit": "degC",
+        "raw_encoding": "two 8-bit temperatures per module half-word",
+        "packing": "Two modules share each 32-bit word: even module bits [7:0] bottom and [15:8] top; odd module bits [23:16] bottom and [31:24] top.",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/firmware/firmware_info_provider.cpp",
+            "function": "decode_gddr_module_telemetry",
+            "finding": "Extracts bottom/top temperatures from the four byte positions described above."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/types/gddr_telemetry.hpp",
+            "constant": "GddrModuleTelemetry::dram_temperature_top/bottom",
+            "finding": "Documents both per-die temperatures in Celsius."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/types/telemetry.hpp",
+            "constant": "TelemetryTag::GDDR_0_1_TEMP through TelemetryTag::GDDR_6_7_TEMP",
+            "finding": "Defines the four consecutive packed telemetry tags."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_smbus_board_info",
+            "finding": "Serializes each telemetry tag as its raw hexadecimal value."
+          }
+        ]
+      },
+      "MAX_GDDR_TEMP": {
+        "unit": "unknown",
+        "raw_encoding": "unknown",
+        "packing": "unknown",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/firmware/firmware_info_provider.cpp",
+            "function": "FirmwareInfoProvider::get_current_max_dram_temperature",
+            "finding": "Reads FirmwareFeature::MAX_GDDR_TEMP as an identity scalar but does not document a unit or packing."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_telemetry_mapping.hpp",
+            "constant": "FirmwareFeature::MAX_GDDR_TEMP",
+            "finding": "Names the feature but does not establish its semantic unit."
+          }
+        ],
+        "policy": "Retain MAX_GDDR_TEMP raw hexadecimal values; do not infer Celsius or byte order."
+      },
+      "FAN_SPEED": {
+        "unit": "percent",
+        "raw_encoding": "identity scalar",
+        "packing": "No multi-fan packing is established for the Blackhole target-speed field.",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "FirmwareInfoProvider::get_fan_speed",
+            "finding": "Documents targeted fan speed as a percentage from 0 to 100."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/firmware/firmware_info_provider.cpp",
+            "function": "FirmwareInfoProvider::get_fan_speed",
+            "finding": "Reads the feature as an identity scalar."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/types/telemetry.hpp",
+            "constant": "TelemetryTag::FAN_SPEED",
+            "finding": "Defines the target-speed telemetry tag."
+          }
+        ]
+      },
+      "FAN_RPM": {
+        "unit": "rpm",
+        "raw_encoding": "identity scalar",
+        "packing": "Blackhole returns one scalar. The source packs two values only for Wormhole firmware >= 19.10; the observed p150a firmware is Blackhole 19.6.0.0.",
+        "evidence": [
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/api/umd/device/firmware/firmware_info_provider.hpp",
+            "function": "FirmwareInfoProvider::get_fan_rpm",
+            "finding": "Documents actual fan speed in RPM."
+          },
+          {
+            "package": "tt-umd==0.9.8",
+            "source_file": "device/firmware/firmware_info_provider.cpp",
+            "function": "FirmwareInfoProvider::get_fan_rpm",
+            "finding": "Uses a scalar for Blackhole and applies two-half packing only to the specified Wormhole path."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/backend.py",
+            "function": "TTSMIBackend.get_bh_chip_telemetry",
+            "finding": "Uses the raw FAN_RPM low 16 bits for the displayed RPM field."
+          },
+          {
+            "package": "tt-smi==6.2.1",
+            "source_file": "tt_smi/constants.py",
+            "constant": "TELEMETRY_TABLE_HEADER",
+            "finding": "Labels the displayed fan field as Fan Speed (RPM)."
+          }
+        ]
+      }
+    }
+  },
+  "derived_comparison": {
+    "selection": {
+      "board_role": "device_1",
+      "selection_key": "snapshot.device_info[].board_info.bus_id",
+      "selection_value": "0000:09:00.0",
+      "serial": "0000040331914124",
+      "raw_fields": [
+        "ASIC_TEMPERATURE",
+        "GDDR_0_1_TEMP",
+        "GDDR_2_3_TEMP",
+        "GDDR_4_5_TEMP",
+        "GDDR_6_7_TEMP",
+        "MAX_GDDR_TEMP",
+        "FAN_SPEED",
+        "FAN_RPM"
+      ],
+      "decoded_units": {
+        "ASIC_TEMPERATURE": "degC",
+        "GDDR_x_y_TEMP": "degC per die byte",
+        "MAX_GDDR_TEMP": "unknown",
+        "FAN_SPEED": "percent",
+        "FAN_RPM": "rpm"
+      }
+    },
+    "q2_run_snapshots": {
+      "source_count": 14,
+      "records": [
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-approved/post-snapshot-q2-run-1-approved.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T05:39:32.067448+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d7e22",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x3c3c3a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8b8"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2232,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-approved/pre-snapshot-q2-run-1-approved.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T05:39:30.401949+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d1bb2",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x3c3c3a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3634",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.1,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_4": {
+                "bottom_c": 52,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-device0/post-snapshot-q2-run-1-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T06:17:48.323483+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x4b55e2",
+            "GDDR_0_1_TEMP": "0x40404040",
+            "GDDR_2_3_TEMP": "0x46464242",
+            "GDDR_4_5_TEMP": "0x42424440",
+            "GDDR_6_7_TEMP": "0x44464240",
+            "MAX_GDDR_TEMP": "0x46",
+            "FAN_SPEED": "0x42",
+            "FAN_RPM": "0xe19"
+          },
+          "decoded": {
+            "asic_temperature_c": 75.3,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 70,
+                "top_c": 70
+              },
+              "GDDR_4": {
+                "bottom_c": 64,
+                "top_c": 68
+              },
+              "GDDR_5": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_6": {
+                "bottom_c": 64,
+                "top_c": 66
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 68
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 66,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 3609,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-device0/pre-snapshot-q2-run-1-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T06:12:48.925839+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d3c82",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x32323a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.2,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 50,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-diagnostic/post-snapshot-q2-run-1-diagnostic.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T05:50:37.499687+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d7e22",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x32323a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 50,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-diagnostic/pre-snapshot-q2-run-1-diagnostic.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T05:50:35.878195+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3cb942",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x3c3c3a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8b8"
+          },
+          "decoded": {
+            "asic_temperature_c": 60.7,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2232,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-final/post-snapshot-q2-run-1-final.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T06:05:51.021479+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d5d52",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x32323a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8b8"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.4,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 50,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2232,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1-final/pre-snapshot-q2-run-1-final.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T06:05:49.465239+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d1bb2",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x32323a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3632",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.1,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 50,
+                "top_c": 50
+              },
+              "GDDR_4": {
+                "bottom_c": 50,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1/post-snapshot-q2-run-1.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T05:33:41.029315+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3cfae2",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x3c3c3a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3634",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.0,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_4": {
+                "bottom_c": 52,
+                "top_c": 54
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-1/pre-snapshot-q2-run-1.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T05:33:39.966716+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3cfae2",
+            "GDDR_0_1_TEMP": "0x3a383a38",
+            "GDDR_2_3_TEMP": "0x3c3c3a3a",
+            "GDDR_4_5_TEMP": "0x3c3a3c38",
+            "GDDR_6_7_TEMP": "0x3a3c3a38",
+            "MAX_GDDR_TEMP": "0x3c",
+            "FAN_SPEED": "0x2f",
+            "FAN_RPM": "0x8c2"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.0,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_2": {
+                "bottom_c": 58,
+                "top_c": 58
+              },
+              "GDDR_3": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_4": {
+                "bottom_c": 56,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 58
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 47,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2242,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-2-device0/post-snapshot-q2-run-2-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T06:24:11.301287+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x4bd922",
+            "GDDR_0_1_TEMP": "0x42424242",
+            "GDDR_2_3_TEMP": "0x44444242",
+            "GDDR_4_5_TEMP": "0x44444442",
+            "GDDR_6_7_TEMP": "0x42444242",
+            "MAX_GDDR_TEMP": "0x44",
+            "FAN_SPEED": "0x44",
+            "FAN_RPM": "0xee1"
+          },
+          "decoded": {
+            "asic_temperature_c": 75.8,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 66,
+                "top_c": 68
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_6": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_7": {
+                "bottom_c": 68,
+                "top_c": 66
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 68,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 3809,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-2-device0/pre-snapshot-q2-run-2-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T06:19:12.517890+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d3c82",
+            "GDDR_0_1_TEMP": "0x38384040",
+            "GDDR_2_3_TEMP": "0x38384242",
+            "GDDR_4_5_TEMP": "0x3c3a3c3a",
+            "GDDR_6_7_TEMP": "0x363a3838",
+            "MAX_GDDR_TEMP": "0x42",
+            "FAN_SPEED": "0x39",
+            "FAN_RPM": "0xa79"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.2,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_7": {
+                "bottom_c": 58,
+                "top_c": 54
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 57,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2681,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-3-device0/post-snapshot-q2-run-3-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "post_run",
+          "captured_at_utc": "2026-10-16T06:31:17.644842+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x4b76b2",
+            "GDDR_0_1_TEMP": "0x42424042",
+            "GDDR_2_3_TEMP": "0x48484244",
+            "GDDR_4_5_TEMP": "0x44444642",
+            "GDDR_6_7_TEMP": "0x42464646",
+            "MAX_GDDR_TEMP": "0x48",
+            "FAN_SPEED": "0x46",
+            "FAN_RPM": "0xdfe"
+          },
+          "decoded": {
+            "asic_temperature_c": 75.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 66,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 68,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 72,
+                "top_c": 72
+              },
+              "GDDR_4": {
+                "bottom_c": 66,
+                "top_c": 70
+              },
+              "GDDR_5": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_6": {
+                "bottom_c": 70,
+                "top_c": 70
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 66
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 70,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 3582,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/runs/run-3-device0/pre-snapshot-q2-run-3-device0.json",
+          "source_kind": "q2_run_snapshot",
+          "stage": "pre_run",
+          "captured_at_utc": "2026-10-16T06:26:15.933061+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d1bb2",
+            "GDDR_0_1_TEMP": "0x42423a3c",
+            "GDDR_2_3_TEMP": "0x44443638",
+            "GDDR_4_5_TEMP": "0x3c3c3c3a",
+            "GDDR_6_7_TEMP": "0x3a3c3c3a",
+            "MAX_GDDR_TEMP": "0x44",
+            "FAN_SPEED": "0x3d",
+            "FAN_RPM": "0xb5d"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.1,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 60,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 61,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2909,
+              "unit": "rpm"
+            }
+          }
+        }
+      ]
+    },
+    "cooldown_snapshots": {
+      "source_count": 2,
+      "records": [
+        {
+          "source": "docs/measurements/issue121-q2/cooldown/run-1-to-2/snapshot-0018.json",
+          "source_kind": "q2_cooldown_snapshot",
+          "stage": "cooldown_before_run_2",
+          "captured_at_utc": "2026-10-16T06:18:57.899022+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d5d52",
+            "GDDR_0_1_TEMP": "0x38384040",
+            "GDDR_2_3_TEMP": "0x38384242",
+            "GDDR_4_5_TEMP": "0x3c3a3c3a",
+            "GDDR_6_7_TEMP": "0x44463838",
+            "MAX_GDDR_TEMP": "0x46",
+            "FAN_SPEED": "0x42",
+            "FAN_RPM": "0xc80"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.4,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 64,
+                "top_c": 64
+              },
+              "GDDR_1": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_2": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_3": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 56,
+                "top_c": 56
+              },
+              "GDDR_7": {
+                "bottom_c": 70,
+                "top_c": 68
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 66,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 3200,
+              "unit": "rpm"
+            }
+          }
+        },
+        {
+          "source": "docs/measurements/issue121-q2/cooldown/run-2-to-3/snapshot-0046.json",
+          "source_kind": "q2_cooldown_snapshot",
+          "stage": "cooldown_before_run_3",
+          "captured_at_utc": "2026-10-16T06:26:06.297797+00:00",
+          "board": {
+            "serial": "0000040331914124",
+            "pci_bus_id": "0000:09:00.0",
+            "board_type": "p150a"
+          },
+          "raw": {
+            "ASIC_TEMPERATURE": "0x3d7e22",
+            "GDDR_0_1_TEMP": "0x42423a3c",
+            "GDDR_2_3_TEMP": "0x44443638",
+            "GDDR_4_5_TEMP": "0x3c3c3c3a",
+            "GDDR_6_7_TEMP": "0x3a3c3c3a",
+            "MAX_GDDR_TEMP": "0x44",
+            "FAN_SPEED": "0x3d",
+            "FAN_RPM": "0xb5d"
+          },
+          "decoded": {
+            "asic_temperature_c": 61.5,
+            "gddr_channels_c": {
+              "GDDR_0": {
+                "bottom_c": 60,
+                "top_c": 58
+              },
+              "GDDR_1": {
+                "bottom_c": 66,
+                "top_c": 66
+              },
+              "GDDR_2": {
+                "bottom_c": 56,
+                "top_c": 54
+              },
+              "GDDR_3": {
+                "bottom_c": 68,
+                "top_c": 68
+              },
+              "GDDR_4": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_5": {
+                "bottom_c": 60,
+                "top_c": 60
+              },
+              "GDDR_6": {
+                "bottom_c": 58,
+                "top_c": 60
+              },
+              "GDDR_7": {
+                "bottom_c": 60,
+                "top_c": 58
+              }
+            },
+            "max_gddr_temp": {
+              "value": null,
+              "unit": "unknown",
+              "raw_only": true
+            },
+            "fan_speed": {
+              "value_percent": 61,
+              "unit": "percent"
+            },
+            "fan_rpm": {
+              "value_rpm": 2909,
+              "unit": "rpm"
+            }
+          }
+        }
+      ]
+    },
+    "issue_118_gddr_temperature": {
+      "status": "absent",
+      "source_records": [
+        "docs/measurements/2026-10-11-p150a-issue118-control-500000-adr0005.json",
+        "docs/measurements/2026-10-11-p150a-issue118-dram-500000-adr0005.json",
+        "docs/measurements/2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
+      ],
+      "searched_fields": [
+        "GDDR_0_1_TEMP",
+        "GDDR_2_3_TEMP",
+        "GDDR_4_5_TEMP",
+        "GDDR_6_7_TEMP",
+        "MAX_GDDR_TEMP"
+      ],
+      "finding": "Issue #118 records do not retain GDDR channel or maximum temperature fields."
+    }
+  },
+  "limitations": [
+    "MAX_GDDR_TEMP unit and packing are unknown in the inspected source; only raw hexadecimal values are retained.",
+    "The snapshot is a single idle observation after docker ps reported no running containers; it is not a workload measurement.",
+    "The source inspection does not establish a causal fan-control relationship with GDDR temperature."
+  ]
+}
