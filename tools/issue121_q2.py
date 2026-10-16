@@ -1602,6 +1602,22 @@ def _q2_run_is_ok(
     return workload.get("returncode") == 0 and guard_pass and all(required_evidence)
 
 
+@dataclass
+class _PreflightResult:
+    pre_capture: dict[str, Any]
+    pre_path: Path
+    trace_path: Path
+    safe_trace_path: Path
+    pre_identity: dict[str, Any]
+    capture_successful: bool
+    identity_valid: bool
+    pre_row: bool
+    trace_created: bool
+    reason: str | None
+    interval: float
+    sampler_errors: list[str]
+
+
 def _failed_preflight_record(
     *,
     safe_output_dir: Path,
@@ -1609,17 +1625,7 @@ def _failed_preflight_record(
     run_number: int | None,
     normalized_board: str,
     normalized_bus: str,
-    pre_capture: Mapping[str, Any],
-    pre_path: Path,
-    trace_path: Path,
-    trace_created: bool,
-    pre_row: bool,
-    pre_identity: Mapping[str, Any],
-    capture_successful: bool,
-    identity_valid: bool,
-    reason: str,
-    interval: float,
-    sampler_errors: Sequence[str],
+    preflight: _PreflightResult,
 ) -> dict[str, Any]:
     """Persist a safe failed attempt without starting workload setup."""
     post_reason = "post-run snapshot not captured after pre-run preflight failure"
@@ -1628,24 +1634,24 @@ def _failed_preflight_record(
     trace_sample_count = 0
     trace_sha256: str | None = None
     trace_path_value: str | None = None
-    if trace_created:
-        trace_path_value = trace_path.name
+    if preflight.trace_created:
+        trace_path_value = preflight.trace_path.name
         try:
-            trace_bytes = trace_path.read_bytes()
+            trace_bytes = preflight.trace_path.read_bytes()
             trace_sample_count = max(
                 0,
                 sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line),
             )
             trace_sha256 = hashlib.sha256(trace_bytes).hexdigest()
         except (OSError, UnicodeDecodeError):
-            sampler_errors = (*sampler_errors, "pre-run trace could not be read")
+            preflight.sampler_errors.append("pre-run trace could not be read")
     record_name = f"run-{safe_run_id}.json"
     record_path = _safe_artifact_path(
         safe_output_dir, record_name, field="measurement record"
     )
     output_paths: dict[str, Any] = {
         "record": record_name,
-        "pre_snapshot": pre_path.name,
+        "pre_snapshot": preflight.pre_path.name,
     }
     if trace_path_value is not None:
         output_paths["extended_trace"] = trace_path_value
@@ -1658,10 +1664,10 @@ def _failed_preflight_record(
         "environment": None,
         "preflight": {
             "status": "failed",
-            "capture_successful": capture_successful,
-            "identity_valid": identity_valid,
-            "pre_row_written": pre_row,
-            "reason": _redact_capture_value(reason),
+            "capture_successful": preflight.capture_successful,
+            "identity_valid": preflight.identity_valid,
+            "pre_row_written": preflight.pre_row,
+            "reason": _redact_capture_value(preflight.reason),
         },
         "workload": {
             "name": "adr-0013-108-core-newton-schulz-surrogate",
@@ -1691,12 +1697,12 @@ def _failed_preflight_record(
         },
         "snapshot_limits": {
             "pre": _extract_snapshot_limits(
-                pre_capture, board_id=normalized_board, bus_id=normalized_bus
+                preflight.pre_capture, board_id=normalized_board, bus_id=normalized_bus
             ),
             "post": {"status": "unavailable", "reason": post_reason},
         },
         "snapshot_identities": {
-            "pre": dict(pre_identity),
+            "pre": dict(preflight.pre_identity),
             "post": post_identity,
         },
         "raw_window": {
@@ -1710,11 +1716,13 @@ def _failed_preflight_record(
         ],
         "snapshots": {
             "pre": {
-                "path": pre_path.name,
-                "status": pre_capture.get("status"),
-                "timestamp_monotonic_ns": pre_capture.get("timestamp_monotonic_ns"),
-                "stdout_sha256": pre_capture.get("stdout_sha256"),
-                "identity": dict(pre_identity),
+                "path": preflight.pre_path.name,
+                "status": preflight.pre_capture.get("status"),
+                "timestamp_monotonic_ns": preflight.pre_capture.get(
+                    "timestamp_monotonic_ns"
+                ),
+                "stdout_sha256": preflight.pre_capture.get("stdout_sha256"),
+                "identity": dict(preflight.pre_identity),
             },
             "post": {
                 "path": None,
@@ -1739,13 +1747,15 @@ def _failed_preflight_record(
             "run_start_monotonic_ns": None,
             "run_end_monotonic_ns": None,
             "sample_count": trace_sample_count,
-            "pre_row_written": pre_row,
+            "pre_row_written": preflight.pre_row,
             "post_row_written": False,
             "usable_in_run_row_count": 0,
             "in_run_captures": [],
             "sha256": trace_sha256,
-            "sampler_interval_seconds": interval,
-            "sampler_errors": list(_redact_capture_value(list(sampler_errors))),
+            "sampler_interval_seconds": preflight.interval,
+            "sampler_errors": list(
+                _redact_capture_value(list(preflight.sampler_errors))
+            ),
         },
         "output_paths": output_paths,
         "provenance": {
@@ -1759,6 +1769,95 @@ def _failed_preflight_record(
     _safe_record_value(record)
     _write_json(record_path, record)
     return record
+
+
+def _capture_preflight(
+    *,
+    safe_output_dir: Path,
+    safe_run_id: str,
+    capture: Callable[..., dict[str, Any]],
+    monotonic_ns: Callable[[], int],
+    utc_now: Callable[[], str],
+    normalized_board: str,
+    normalized_bus: str,
+    interval: float,
+) -> _PreflightResult:
+    """Capture and validate pre-run evidence before creating workload setup."""
+    try:
+        raw_pre_capture = capture(
+            stage="pre_run", monotonic_ns=monotonic_ns, utc_now=utc_now
+        )
+    except Exception as exc:  # noqa: BLE001 - persist a bounded preflight failure
+        raw_pre_capture = {
+            "stage": "pre_run",
+            "status": "capture_failed",
+            "returncode": None,
+            "error_type": type(exc).__name__,
+            "snapshot": None,
+        }
+    pre_capture = _safe_capture_details(raw_pre_capture)
+    pre_capture["stage"] = "pre_run"
+    pre_path = _safe_artifact_path(
+        safe_output_dir, f"pre-snapshot-{safe_run_id}.json", field="pre snapshot"
+    )
+    _write_json(pre_path, pre_capture)
+    trace_path = _safe_artifact_path(
+        safe_output_dir, f"extended-trace-{safe_run_id}.csv", field="extended trace"
+    )
+    safe_trace_path = _safe_output_path(trace_path, field="extended trace")
+    sampler_errors: list[str] = []
+    capture_successful = _snapshot_capture_is_successful(pre_capture)
+    pre_identity = _record_snapshot_identity(
+        pre_capture, board_id=normalized_board, bus_id=normalized_bus
+    )
+    identity_valid = _snapshot_identity_is_valid(
+        pre_identity, board_id=normalized_board, bus_id=normalized_bus
+    )
+    pre_row = False
+    trace_created = False
+    reason: str | None = None
+    if not capture_successful:
+        try:
+            _require_successful_snapshot_capture(pre_capture, label="pre-run")
+        except SnapshotCaptureError as exc:
+            reason = str(exc)
+    elif not identity_valid:
+        reason = (
+            "pre-run snapshot identity does not match the requested board/bus: "
+            + str(pre_identity.get("reason", "identity unavailable"))
+        )
+    else:
+        try:
+            with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
+                trace_created = True
+                trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
+                pre_row = _write_boundary_extended_row(
+                    trace_handle,
+                    pre_capture,
+                    board_id=normalized_board,
+                    bus_id=normalized_bus,
+                    stage="pre-run",
+                    errors=sampler_errors,
+                )
+        except (OSError, TypeError, ValueError) as exc:
+            sampler_errors.append(f"pre-run trace setup failed: {type(exc).__name__}")
+            pre_row = False
+        if not pre_row:
+            reason = "; ".join(sampler_errors) or "pre-run telemetry row was not written"
+    return _PreflightResult(
+        pre_capture=pre_capture,
+        pre_path=pre_path,
+        trace_path=trace_path,
+        safe_trace_path=safe_trace_path,
+        pre_identity=pre_identity,
+        capture_successful=capture_successful,
+        identity_valid=identity_valid,
+        pre_row=pre_row,
+        trace_created=trace_created,
+        reason=reason,
+        interval=interval,
+        sampler_errors=sampler_errors,
+    )
 
 
 def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
@@ -1788,86 +1887,31 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     interval = _finite_number(trace_interval_seconds, field="trace_interval_seconds", positive=True)
     capture = capture_readonly_snapshot if capture_fn is None else capture_fn
 
-    try:
-        raw_pre_capture = capture(
-            stage="pre_run", monotonic_ns=monotonic_ns, utc_now=utc_now
-        )
-    except Exception as exc:  # noqa: BLE001 - persist a bounded preflight failure
-        raw_pre_capture = {
-            "stage": "pre_run",
-            "status": "capture_failed",
-            "returncode": None,
-            "error_type": type(exc).__name__,
-            "snapshot": None,
-        }
-    pre_capture = _safe_capture_details(raw_pre_capture)
-    pre_capture["stage"] = "pre_run"
-    pre_path = _safe_artifact_path(
-        safe_output_dir, f"pre-snapshot-{safe_run_id}.json", field="pre snapshot"
+    preflight = _capture_preflight(
+        safe_output_dir=safe_output_dir,
+        safe_run_id=safe_run_id,
+        capture=capture,
+        monotonic_ns=monotonic_ns,
+        utc_now=utc_now,
+        normalized_board=normalized_board,
+        normalized_bus=normalized_bus,
+        interval=interval,
     )
-    _write_json(pre_path, pre_capture)
-    trace_path = _safe_artifact_path(
-        safe_output_dir, f"extended-trace-{safe_run_id}.csv", field="extended trace"
-    )
-    safe_trace_path = _safe_output_path(trace_path, field="extended trace")
-    sampler_errors: list[str] = []
-    pre_capture_ok = _snapshot_capture_is_successful(pre_capture)
-    pre_identity: dict[str, Any] = _record_snapshot_identity(
-        pre_capture, board_id=normalized_board, bus_id=normalized_bus
-    )
-    pre_identity_valid = _snapshot_identity_is_valid(
-        pre_identity, board_id=normalized_board, bus_id=normalized_bus
-    )
-    pre_row = False
-    trace_created = False
-    preflight_reason: str | None = None
-    if not pre_capture_ok:
-        try:
-            _require_successful_snapshot_capture(pre_capture, label="pre-run")
-        except SnapshotCaptureError as exc:
-            preflight_reason = str(exc)
-    elif not pre_identity_valid:
-        preflight_reason = (
-            "pre-run snapshot identity does not match the requested board/bus: "
-            + str(pre_identity.get("reason", "identity unavailable"))
-        )
-    else:
-        try:
-            with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
-                trace_created = True
-                trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
-                pre_row = _write_boundary_extended_row(
-                    trace_handle,
-                    pre_capture,
-                    board_id=normalized_board,
-                    bus_id=normalized_bus,
-                    stage="pre-run",
-                    errors=sampler_errors,
-                )
-        except (OSError, TypeError, ValueError) as exc:
-            sampler_errors.append(f"pre-run trace setup failed: {type(exc).__name__}")
-            pre_row = False
-        if not pre_row:
-            preflight_reason = "; ".join(sampler_errors) or "pre-run telemetry row was not written"
-    if preflight_reason is not None:
+    if preflight.reason is not None:
         return _failed_preflight_record(
             safe_output_dir=safe_output_dir,
             safe_run_id=safe_run_id,
             run_number=run_number,
             normalized_board=normalized_board,
             normalized_bus=normalized_bus,
-            pre_capture=pre_capture,
-            pre_path=pre_path,
-            trace_path=trace_path,
-            trace_created=trace_created,
-            pre_row=pre_row,
-            pre_identity=pre_identity,
-            capture_successful=pre_capture_ok,
-            identity_valid=pre_identity_valid,
-            reason=preflight_reason,
-            interval=interval,
-            sampler_errors=sampler_errors,
+            preflight=preflight,
         )
+    pre_capture = preflight.pre_capture
+    pre_path = preflight.pre_path
+    trace_path = preflight.trace_path
+    safe_trace_path = preflight.safe_trace_path
+    sampler_errors = preflight.sampler_errors
+    pre_row = preflight.pre_row
 
     environment = _build_environment(
         pre_capture,
