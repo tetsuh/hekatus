@@ -612,6 +612,7 @@ if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
         && $2 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
         && $3 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ \
         && $4 ~ /^[+-]?[0-9]+([.][0-9]*)?([eE][+-]?[0-9]+)?$/ {
+          timestamp = $1
           power = $2
           aiclk = $3
           temperature = $4
@@ -619,10 +620,27 @@ if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
         }
       END {
         if (found) {
-          printf "%.17g|%.17g|%.17g\n", power, aiclk, temperature
+          printf "%.17g|%.17g|%.17g|%s\n", power, aiclk, temperature, timestamp
         }
       }
     ' "${POWER_CSV}" 2>/dev/null
+  }
+
+  issue127_timestamp_is_safe() {
+    [[ "${1}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{1,9}|,[0-9]{1,9})?(Z|[+-]([01][0-9]|2[0-3]):[0-5][0-9])$ ]]
+  }
+
+  issue127_timestamp_to_ns() {
+    local timestamp="${1}"
+    local parsed
+    if ! issue127_timestamp_is_safe "${timestamp}"; then
+      return 1
+    fi
+    if ! parsed="$(date -u --date="${timestamp}" +%s%N 2>/dev/null)" \
+      || [[ ! "${parsed}" =~ ^-?[0-9]{1,19}$ ]]; then
+      return 1
+    fi
+    printf '%s\n' "${parsed}"
   }
 
   issue127_write_cooldown_failure() {
@@ -656,13 +674,14 @@ if [[ "${ISSUE127_RUNNER}" == "1" && "${ISSUE127_RUN_NUMBER}" == "2" ]]; then
   "aiclk_role": "provenance_only",
   "observed_power_w": ${COOLDOWN_OBSERVED_POWER_W:-null},
   "observed_temperature_c": ${COOLDOWN_OBSERVED_TEMPERATURE_C:-null},
-  "observed_idle_aiclk_mhz": ${COOLDOWN_OBSERVED_AICLK_MHZ:-null}
+  "observed_idle_aiclk_mhz": ${COOLDOWN_OBSERVED_AICLK_MHZ:-null},
+  "observed_sample_timestamp_utc": ${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON}
 }
 EOF
   }
 
   COOLDOWN_START_UTC="$(date -u --iso-8601=ns)"
-  COOLDOWN_START_NS="$(date +%s%N)"
+  COOLDOWN_START_NS="$(issue127_timestamp_to_ns "${COOLDOWN_START_UTC}")"
   COOLDOWN_CAP_NS="$(awk -v start="${COOLDOWN_START_NS}" -v cap="${COOLDOWN_CAP_S}" \
     'BEGIN { printf "%.0f", start + cap * 1000000000 }')"
   COOLDOWN_GATE_PASSED=0
@@ -670,6 +689,8 @@ EOF
   COOLDOWN_OBSERVED_POWER_W=""
   COOLDOWN_OBSERVED_TEMPERATURE_C=""
   COOLDOWN_OBSERVED_AICLK_MHZ=""
+  COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC=""
+  COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="null"
   while :; do
     COOLDOWN_NOW_NS="$(date +%s%N)"
     if [[ "${COOLDOWN_NOW_NS}" -ge "${COOLDOWN_CAP_NS}" ]]; then
@@ -678,14 +699,29 @@ EOF
     COOLDOWN_SAMPLE="$(issue127_latest_sample)"
     if [[ -n "${COOLDOWN_SAMPLE}" ]]; then
       IFS='|' read -r COOLDOWN_OBSERVED_POWER_W COOLDOWN_OBSERVED_AICLK_MHZ \
-        COOLDOWN_OBSERVED_TEMPERATURE_C <<< "${COOLDOWN_SAMPLE}"
-      if awk -v power="${COOLDOWN_OBSERVED_POWER_W}" \
+        COOLDOWN_OBSERVED_TEMPERATURE_C COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC \
+        <<< "${COOLDOWN_SAMPLE}"
+      COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="null"
+      if issue127_timestamp_is_safe "${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}"; then
+        # The strict ISO shape contains no JSON-significant characters beyond
+        # the quotes added here, so malformed CSV data cannot escape the record.
+        COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_JSON="\"${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}\""
+      fi
+      if ! COOLDOWN_SAMPLE_TIMESTAMP_NS="$(issue127_timestamp_to_ns \
+          "${COOLDOWN_OBSERVED_SAMPLE_TIMESTAMP_UTC}")"; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp was malformed"
+      elif [[ "${COOLDOWN_SAMPLE_TIMESTAMP_NS}" -lt "${COOLDOWN_START_NS}" ]]; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp predates cooldown start"
+      elif [[ "${COOLDOWN_SAMPLE_TIMESTAMP_NS}" -gt "${COOLDOWN_NOW_NS}" ]]; then
+        COOLDOWN_GATE_REASON="cooldown sample timestamp is after the current wait time"
+      elif awk -v power="${COOLDOWN_OBSERVED_POWER_W}" \
           -v temperature="${COOLDOWN_OBSERVED_TEMPERATURE_C}" \
           'BEGIN { exit !(power <= 52.0 && temperature <= 61.5) }'; then
         COOLDOWN_GATE_PASSED=1
         break
+      else
+        COOLDOWN_GATE_REASON="observed power/temperature exceeded the cooldown gate"
       fi
-      COOLDOWN_GATE_REASON="observed power/temperature exceeded the cooldown gate"
     fi
     if ! kill -0 "${SAMPLER_PID}" 2>/dev/null; then
       COOLDOWN_GATE_REASON="telemetry sampler exited before the cooldown gate passed"

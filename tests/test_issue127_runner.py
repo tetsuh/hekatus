@@ -1117,10 +1117,15 @@ case "${2:-}" in
       if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
       shift
     done
-    printf '%s\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
-    printf '%s\n' '2026-10-12T00:00:00+00:00,47,800,58.5' >> "$out"
     trap 'exit 0' TERM INT
-    while :; do sleep 1; done
+    while :; do
+      timestamp="$(date -u '+%Y-%m-%dT%H:%M:%S.%N%:z')"
+      {
+        printf '%s\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c'
+        printf '%s\n' "${timestamp},47,800,58.5"
+      } > "${out}.tmp"
+      mv "${out}.tmp" "$out"
+    done
     ;;
 esac
 """,
@@ -1171,10 +1176,15 @@ case "${2:-}" in
       if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
       shift
     done
-    printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
-    printf '%s\\n' '2026-10-12T00:00:00+00:00,40,1350,50' >> "$out"
     trap 'exit 0' TERM INT
-    while :; do :; done
+    while :; do
+      timestamp="$(date -u '+%Y-%m-%dT%H:%M:%S.%N%:z')"
+      {
+        printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c'
+        printf '%s\\n' "${timestamp},40,1350,50"
+      } > "${out}.tmp"
+      mv "${out}.tmp" "$out"
+    done
     ;;
 esac
 """,
@@ -1289,6 +1299,80 @@ exec "$@"
     assert events.read_text(encoding="utf-8").splitlines() == events_seen
 
 
+def test_issue127_wrapper_rejects_stale_usable_sample_before_docker(tmp_path: Path):
+    bindir = _fake_wrapper_tools(tmp_path)
+    (bindir / "python3").write_text(
+        """#!/bin/sh
+set -eu
+case "${2:-}" in
+  capture-env)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\\n' '{"fake": true}' > "$out"
+    ;;
+  sample)
+    out=""
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
+      shift
+    done
+    printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
+    printf '%s\\n' '1970-01-01T00:00:00+00:00,40,1350,50' >> "$out"
+    trap 'exit 0' TERM INT
+    while :; do sleep 1; done
+    ;;
+esac
+""",
+        encoding="utf-8",
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "enodia/tt/bench/run_in_container.sh", copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    docker_args = tmp_path / "docker-args"
+    output_dir = tmp_path / "stale-sample"
+    completed = subprocess.run(
+        [
+            str(copied_wrapper),
+            str(output_dir),
+            "--",
+            "--run-number",
+            "2",
+            "--cooldown-wait-seconds",
+            "0.1",
+        ],
+        cwd=tmp_path / "repo",
+        env={
+            **os.environ,
+            "PATH": f"{bindir}:{os.environ['PATH']}",
+            "DOCKER_ARGS": str(docker_args),
+            "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
+            "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == 1
+    assert "cooldown gate failure" in completed.stderr
+    docker_calls = docker_args.read_text(encoding="utf-8").splitlines()
+    assert docker_calls[0] == "kill"
+    assert "run" not in docker_calls
+    failures = list(output_dir.glob("cooldown-gate-failure-*.json"))
+    assert len(failures) == 1
+    failure = json.loads(failures[0].read_text(encoding="utf-8"))
+    assert failure["measurement_started"] is False
+    assert failure["observed_sample_timestamp_utc"] == "1970-01-01T00:00:00+00:00"
+    assert failure["observed_power_w"] == 40.0
+    assert failure["observed_temperature_c"] == 50.0
+    assert failure["observed_idle_aiclk_mhz"] == 1350.0
+
+
 @pytest.mark.parametrize(
     ("run_scope", "expected_run_scope"),
     (
@@ -1318,10 +1402,15 @@ case "${2:-}" in
       if [ "$1" = --out ]; then out="$2"; shift 2; continue; fi
       shift
     done
-    printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c' > "$out"
-    printf '%s\\n' '2026-10-12T00:00:00+00:00,80,800,70' >> "$out"
     trap 'exit 0' TERM INT
-    while :; do sleep 1; done
+    while :; do
+      timestamp="$(date -u '+%Y-%m-%dT%H:%M:%S.%N%:z')"
+      {
+        printf '%s\\n' 'timestamp_utc,power_w,aiclk_mhz,asic_temp_c'
+        printf '%s\\n' "${timestamp},80,800,70"
+      } > "${out}.tmp"
+      mv "${out}.tmp" "$out"
+    done
     ;;
 esac
 """,
@@ -1358,7 +1447,7 @@ esac
             "PATH": f"{bindir}:{os.environ['PATH']}",
             "DOCKER_ARGS": str(docker_args),
             "HEKATUS_TT_RUNNER": "tools/newton_schulz_issue127.py",
-            "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.01",
+            "HEKATUS_TT_ISSUE127_COOLDOWN_CAP_SECONDS": "0.2",
         },
         capture_output=True,
         text=True,
