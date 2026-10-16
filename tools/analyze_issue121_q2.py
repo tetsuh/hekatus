@@ -700,11 +700,13 @@ def _direct_limit_sources(metadata: Mapping[str, Any]) -> list[Mapping[str, Any]
 
 def _limits_from_metadata(metadata: Mapping[str, Any] | None) -> dict[str, float | None]:
     values: dict[str, float | None] = {
-        "tdc_limit": H_TDC_LIMIT,
-        "therm_trip_l1_limit_c": H_THM_LIMIT_C,
-        "thm_shutdown_limit_c": H_THM_SHUTDOWN_C,
-        "tdp_limit_w": H_TDP_LIMIT_W,
-        "board_power_limit_w": BOARD_POWER_LIMIT_W,
+        # Every comparison limit must come from source metadata.  The fixed
+        # plan thresholds are used by the criteria, not as telemetry defaults.
+        "tdc_limit": None,
+        "therm_trip_l1_limit_c": None,
+        "thm_shutdown_limit_c": None,
+        "tdp_limit_w": None,
+        "board_power_limit_w": None,
         "thm_limit_throttle": None,
         # AICLK's baseline is source metadata, never a guessed default.
         "asic_fmax_mhz": None,
@@ -800,7 +802,6 @@ def _unit_dispositions(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     comparisons["asic_temp_c_vs_therm_trip_l1_limit"] = _unit_comparison(
         metadata,
         "asic_temp_c_vs_therm_trip_l1_limit",
-        default_comparable=True,
         default_signal_unit="degC",
         default_limit_unit="degC",
     )
@@ -826,17 +827,18 @@ def _hypothesis_result(
     details: Mapping[str, Any],
     optional_criteria: Mapping[str, bool | None] | None = None,
     shutdown_pass: bool | None = None,
+    include_shutdown: bool = False,
 ) -> dict[str, Any]:
     criteria: dict[str, bool | None] = {
         "plateau_proximity": plateau_pass,
         "onset_order": onset_pass,
     }
-    if shutdown_pass is not None:
+    if include_shutdown:
         criteria["shutdown_bound"] = shutdown_pass
     if optional_criteria:
         criteria.update(optional_criteria)
     required = tuple(criteria[key] for key in ("plateau_proximity", "onset_order"))
-    if shutdown_pass is not None:
+    if include_shutdown:
         required += (shutdown_pass,)
     if any(value is False for value in required):
         classification = "not_supported"
@@ -1060,7 +1062,8 @@ def _build_onset_data(
         asic_fmax=source_limits["asic_fmax_mhz"],
     )
     tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
-    if tdc_units.get("comparable") is True:
+    tdc_limit = source_limits["tdc_limit"]
+    if tdc_units.get("comparable") is True and tdc_limit is not None:
         current_onset = _find_onset(
             window.rows,
             start_ns=window.run_start,
@@ -1073,13 +1076,20 @@ def _build_onset_data(
             field="current_a",
             threshold=None,
             reason=(
-                "TDC limit and current telemetry units are not established as "
-                "comparable"
+                "tdc_limit is unavailable"
+                if tdc_limit is None
+                else "TDC limit and current telemetry units are not established as comparable"
             ),
         )
+    therm_trip_units = unit_dispositions["comparisons"][
+        "asic_temp_c_vs_therm_trip_l1_limit"
+    ]
     therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
+    therm_trip_comparable = therm_trip_units.get("comparable") is True
     thm_onset_threshold = (
-        None if therm_trip_limit is None else therm_trip_limit - H_THM_MAX_DIFFERENCE_C
+        therm_trip_limit - H_THM_MAX_DIFFERENCE_C
+        if therm_trip_limit is not None and therm_trip_comparable
+        else None
     )
     temperature_onset = _threshold_onset(
         window.rows,
@@ -1087,7 +1097,11 @@ def _build_onset_data(
         end_ns=window.run_end,
         field="asic_temp_c",
         threshold=thm_onset_threshold,
-        unavailable_reason="therm_trip_l1_limit_c is unavailable",
+        unavailable_reason=(
+            "therm_trip_l1_limit_c is unavailable"
+            if therm_trip_limit is None
+            else "ASIC temperature and therm_trip_l1_limit_c units are not established as comparable"
+        ),
         predicate=lambda value: value >= thm_onset_threshold,
     )
     tdp_onset_threshold = _lower_proximity_bound(
@@ -1209,7 +1223,10 @@ def _hypothesis_metrics(
     power_onset = onset_data["power_onset"]
     tdc_proximity = signals["current_a"]["limit_proximity"]
     tdc_units = unit_dispositions["comparisons"]["current_a_vs_tdc_limit"]
-    if tdc_units.get("comparable") is not True:
+    if (
+        tdc_units.get("comparable") is not True
+        or source_limits["tdc_limit"] is None
+    ):
         tdc_plateau_pass = None
     else:
         tdc_plateau_pass = (
@@ -1220,16 +1237,25 @@ def _hypothesis_metrics(
     thm_weighted = signals["asic_temp_c"]["time_weighted_mean"]
     thm_maximum = signals["asic_temp_c"]["max"]
     therm_trip_limit = source_limits["therm_trip_l1_limit_c"]
+    therm_trip_comparable = (
+        unit_dispositions["comparisons"]["asic_temp_c_vs_therm_trip_l1_limit"].get(
+            "comparable"
+        )
+        is True
+    )
     thm_plateau_pass = (
-        thm_weighted is not None
-        and therm_trip_limit is not None
-        and abs(thm_weighted - therm_trip_limit) <= H_THM_MAX_DIFFERENCE_C
+        None
+        if therm_trip_limit is None or not therm_trip_comparable
+        else (
+            thm_weighted is not None
+            and abs(thm_weighted - therm_trip_limit) <= H_THM_MAX_DIFFERENCE_C
+        )
     )
     thm_shutdown_limit = source_limits["thm_shutdown_limit_c"]
     thm_shutdown_pass = (
-        thm_maximum is not None
-        and thm_shutdown_limit is not None
-        and thm_maximum < thm_shutdown_limit
+        None
+        if thm_shutdown_limit is None or not therm_trip_comparable
+        else thm_maximum is not None and thm_maximum < thm_shutdown_limit
     )
     thm_throttle_comparison = _throttle_comparison(
         source_limits["thm_limit_throttle"],
@@ -1242,12 +1268,16 @@ def _hypothesis_metrics(
         source_limits["tdp_limit_w"], H_TDP_PROXIMITY_FRACTION
     )
     tdp_plateau_pass = (
-        tdp_signal["time_weighted_mean"] is not None
-        and tdp_lower_bound is not None
-        and tdp_signal["time_weighted_mean"] >= tdp_lower_bound
-        and tdp_proximity is not None
-        and tdp_proximity.get("status") == "available"
-        and tdp_proximity["fraction"] <= H_TDP_PROXIMITY_FRACTION
+        None
+        if source_limits["tdp_limit_w"] is None
+        else (
+            tdp_signal["time_weighted_mean"] is not None
+            and tdp_lower_bound is not None
+            and tdp_signal["time_weighted_mean"] >= tdp_lower_bound
+            and tdp_proximity is not None
+            and tdp_proximity.get("status") == "available"
+            and tdp_proximity["fraction"] <= H_TDP_PROXIMITY_FRACTION
+        )
     )
     board_power_proximity = signals["board_power_w"]["limit_proximity"]
     known_signal_onsets = (current_onset, temperature_onset, power_onset)
@@ -1349,6 +1379,7 @@ def _build_hypothesis_analysis(
             plateau_pass=thm_plateau_pass,
             onset_pass=thm_order_pass,
             shutdown_pass=thm_shutdown_pass,
+            include_shutdown=True,
             optional_criteria={"thm_limit_throttle": throttle_criterion_pass},
             details={
                 "signal": "asic_temp_c",

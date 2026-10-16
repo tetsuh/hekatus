@@ -1136,6 +1136,123 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert (tmp_path / record["output_paths"]["record"]).exists()
 
 
+@pytest.mark.parametrize(
+    ("post_status", "post_returncode", "post_error"),
+    [
+        ("timeout", None, "TimeoutExpired"),
+        ("command_failed", 7, "nonzero_returncode"),
+        ("invalid_json", 0, "invalid_snapshot"),
+    ],
+    ids=["timeout", "nonzero", "invalid"],
+)
+def test_run_one_fails_closed_when_post_snapshot_capture_is_unusable(
+    tmp_path: Path,
+    post_status: str,
+    post_returncode: int | None,
+    post_error: str,
+) -> None:
+    capture_number = 0
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        nonlocal capture_number
+        capture_number += 1
+        is_post = stage == "post_run"
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": 5.0,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": capture_number * 1_000_000,
+            "timestamp_monotonic_ns": capture_number * 1_000_000 + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": post_status if is_post else "ok",
+            "returncode": post_returncode if is_post else 0,
+            "error_type": post_error if is_post else None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": None if is_post else json.loads(_snapshot()),
+        }
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-post-failure",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=lambda *_args: {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+        },
+        capture_fn=fake_capture,
+        trace_interval_seconds=100.0,
+    )
+
+    assert record["status"] == "failed"
+    assert record["snapshots"]["post"]["status"] == post_status
+    assert record["snapshots"]["post"]["identity"]["status"] == "unavailable"
+    assert post_status in record["snapshots"]["post"]["identity"]["reason"]
+    assert record["snapshot_identities"]["post"]["status"] == "unavailable"
+    assert record["snapshot_limits"]["post"]["status"] == "unavailable"
+    assert record["trace"]["post_row_written"] is False
+
+
+def test_run_one_fails_closed_when_post_snapshot_identity_mismatches(
+    tmp_path: Path,
+) -> None:
+    capture_number = 0
+
+    def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
+        nonlocal capture_number
+        capture_number += 1
+        snapshot = json.loads(_snapshot())
+        if stage == "post_run":
+            snapshot["device_info"][0]["board_info"]["bus_id"] = "0000:02:00.0"
+        return {
+            "schema": runner.ISSUE121_Q2_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "command": list(runner.SNAPSHOT_COMMAND_TUPLE),
+            "timeout_seconds": 5.0,
+            "captured_at_utc": "2026-01-01T00:00:00+00:00",
+            "timestamp_monotonic_start_ns": capture_number * 1_000_000,
+            "timestamp_monotonic_ns": capture_number * 1_000_000 + 1,
+            "snapshot_elapsed_ns": 1,
+            "status": "ok",
+            "returncode": 0,
+            "error_type": None,
+            "stdout_sha256": "a" * 64,
+            "snapshot": snapshot,
+        }
+
+    record = runner.run_one(
+        tmp_path,
+        run_id="q2-run-post-identity-mismatch",
+        board_id="fixture-board",
+        bus_id="0000:01:00.0",
+        image_digest="sha256:" + "a" * 64,
+        harness_commit="b" * 40,
+        kernel="Linux fixture",
+        kernel_driver_version="2.11.0",
+        workload_runner=lambda *_args: {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+        },
+        capture_fn=fake_capture,
+        trace_interval_seconds=100.0,
+    )
+
+    assert record["status"] == "failed"
+    assert record["snapshots"]["post"]["status"] == "ok"
+    assert record["snapshots"]["post"]["identity"]["status"] == "unavailable"
+    assert "bus_id" in record["snapshots"]["post"]["identity"]["reason"]
+    assert record["snapshot_identities"]["post"]["status"] == "unavailable"
+    assert record["trace"]["post_row_written"] is False
+
+
 def test_snapshot_limits_preserve_raw_throttle_and_recognized_values() -> None:
     snapshot = json.loads(_snapshot())
     snapshot["device_info"][0]["smbus_telem"]["THM_LIMIT_THROTTLE"] = "0x5a"
@@ -1232,6 +1349,50 @@ def test_analysis_marks_tdc_inconclusive_when_units_are_unknown() -> None:
     assert raw_throttle["status"] == "not_evaluable"
     assert raw_throttle["limit_value"] == 90.0
     assert raw_throttle["limit_unit"] is None
+
+
+def test_analysis_missing_tdp_and_thermal_limits_is_inconclusive() -> None:
+    result = analysis.analyze_trace(
+        _trace(power=145, temperature=88),
+        plateau_start_seconds=150,
+        plateau_end_seconds=285,
+        limits={"asic_fmax_mhz": 1350},
+    )
+
+    assert result["limits"] == {
+        "tdc_limit": None,
+        "therm_trip_l1_limit_c": None,
+        "thm_shutdown_limit_c": None,
+        "tdp_limit_w": None,
+        "board_power_limit_w": None,
+        "thm_limit_throttle": None,
+        "asic_fmax_mhz": 1350.0,
+    }
+    assert result["statistics"]["signals"]["power_w"]["limit_proximity"] == {
+        "status": "not_evaluable",
+        "limit_key": "TDP_LIMIT_MAX",
+        "limit_value": None,
+        "limit_unit": "W",
+        "reason": "signal or source-proven limit is unavailable",
+    }
+    assert result["statistics"]["signals"]["asic_temp_c"]["limit_proximity"][
+        "status"
+    ] == "not_evaluable"
+    assert result["statistics"]["signals"]["asic_temp_c"]["limit_proximity"][
+        "limit_value"
+    ] is None
+    assert result["onsets"]["power_tdp_threshold"]["status"] == "not_evaluable"
+    assert result["onsets"]["temperature_thm_threshold"]["status"] == "not_evaluable"
+    assert result["hypotheses"]["H-TDP"]["classification"] == "inconclusive"
+    assert result["hypotheses"]["H-TDP"]["criteria"] == {
+        "plateau_proximity": None,
+        "onset_order": None,
+    }
+    assert result["hypotheses"]["H-THM"]["classification"] == "inconclusive"
+    assert result["hypotheses"]["H-THM"]["criteria"]["plateau_proximity"] is None
+    assert result["hypotheses"]["H-THM"]["criteria"]["onset_order"] is None
+    assert result["hypotheses"]["H-THM"]["criteria"]["shutdown_bound"] is None
+    assert result["classification"] == "H-OTHER"
 
 
 def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
@@ -1374,7 +1535,7 @@ def test_analysis_does_not_invent_missing_throttle_limit() -> None:
     assert comparison["status"] == "not_evaluable"
     assert comparison["knowledge_status"] == "unknown"
     assert comparison["limit_value"] is None
-    assert result["hypotheses"]["H-THM"]["classification"] == "supported"
+    assert result["hypotheses"]["H-THM"]["classification"] == "inconclusive"
 
     known = analysis.analyze_trace(
         _trace(temperature=88),

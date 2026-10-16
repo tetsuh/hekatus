@@ -404,6 +404,8 @@ def _selected_snapshot_identity(
     )
     if serial is None:
         raise SnapshotCaptureError("selected snapshot device has no board serial")
+    if serial != normalized_board:
+        raise SnapshotCaptureError("selected snapshot board serial does not match board_id")
     selected_bus = normalize_pci_bus_id(board_info.get("bus_id"))
     if selected_bus != normalized_bus:
         raise SnapshotCaptureError("selected snapshot device has an unexpected PCI bus")
@@ -414,10 +416,23 @@ def _selected_snapshot_identity(
     }
 
 
+def _snapshot_capture_is_successful(capture: Mapping[str, Any]) -> bool:
+    """Require the bounded command to succeed before using its snapshot."""
+    return capture.get("status") == "ok" and capture.get("returncode") == 0
+
+
 def _record_snapshot_identity(
     capture: Mapping[str, Any], *, board_id: str, bus_id: str
 ) -> dict[str, Any]:
-    """Record selected snapshot identity without hiding an unavailable post-read."""
+    """Record selected snapshot identity without hiding an unavailable read."""
+    if not _snapshot_capture_is_successful(capture):
+        return {
+            "status": "unavailable",
+            "reason": (
+                f"snapshot capture status is {capture.get('status')!r} "
+                f"with returncode {capture.get('returncode')!r}"
+            ),
+        }
     try:
         return {
             "status": "selected",
@@ -425,6 +440,19 @@ def _record_snapshot_identity(
         }
     except SnapshotCaptureError as exc:
         return {"status": "unavailable", "reason": str(exc)}
+
+
+def _snapshot_identity_is_valid(
+    identity: Mapping[str, Any], *, board_id: str, bus_id: str
+) -> bool:
+    """Require a selected identity to match the board targeted by this run."""
+    if identity.get("status") != "selected":
+        return False
+    return (
+        normalize_board_id(identity.get("serial")) == board_id
+        and normalize_board_id(identity.get("board_id")) == board_id
+        and normalize_pci_bus_id(identity.get("bus_id")) == bus_id
+    )
 
 
 _SNAPSHOT_LIMIT_SPECS = {
@@ -1507,7 +1535,28 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     workload_duration = max(0.0, (int(workload_end_ns) - int(workload_start_ns)) / 1_000_000_000.0)
     trace_sample_count = max(0, sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line))
     guard_pass = workload_duration <= RUN_GUARD_SECONDS and not workload.get("timed_out", False)
-    status = "ok" if workload.get("returncode") == 0 and guard_pass and not sampler_errors else "failed"
+    pre_identity_valid = _snapshot_identity_is_valid(
+        snapshot_identities["pre"], board_id=normalized_board, bus_id=normalized_bus
+    )
+    post_capture_ok = _snapshot_capture_is_successful(post_capture)
+    post_identity_valid = _snapshot_identity_is_valid(
+        snapshot_identities["post"], board_id=normalized_board, bus_id=normalized_bus
+    )
+    pre_capture_ok = _snapshot_capture_is_successful(pre_capture)
+    status = (
+        "ok"
+        if (
+            workload.get("returncode") == 0
+            and guard_pass
+            and not sampler_errors
+            and pre_capture_ok
+            and pre_identity_valid
+            and post_capture_ok
+            and post_identity_valid
+            and post_row
+        )
+        else "failed"
+    )
     record: dict[str, Any] = {
         "record_schema": ISSUE121_Q2_RECORD_SCHEMA,
         "issue": "#121",
