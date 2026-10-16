@@ -1180,6 +1180,8 @@ def read_extended_power_trace_snapshot(
         if (
             declared_schema != schema
             or declared_schema != EXTENDED_POWER_TRACE_SCHEMA
+            or not isinstance(declared_version, int)
+            or isinstance(declared_version, bool)
             or declared_version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
         ):
             raise ExtendedPowerTraceError("extended trace sidecar schema is not supported")
@@ -1223,18 +1225,26 @@ def read_extended_power_trace_snapshot(
     )
 
 
-def validate_extended_power_trace(
-    trace_or_path: Mapping[str, Any] | Path,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    """Return a structured validation report for an extended trace."""
-    if isinstance(trace_or_path, Mapping):
-        trace = dict(trace_or_path)
-    else:
-        trace = read_extended_power_trace_snapshot(trace_or_path, **kwargs)
+_MAPPING_RECHECK_IGNORED_FIELDS = frozenset({
+    "byte_count",
+    "error",
+    "schema",
+    "schema_version",
+    "columns",
+})
+
+
+def _trace_validation_failures(trace: Mapping[str, Any]) -> list[str]:
     failures: list[str] = []
     if trace.get("schema") != EXTENDED_POWER_TRACE_SCHEMA:
         failures.append("extended trace schema is missing or unsupported")
+    schema_version = trace.get("schema_version")
+    if (
+        not isinstance(schema_version, int)
+        or isinstance(schema_version, bool)
+        or schema_version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
+    ):
+        failures.append("extended trace schema_version is missing or unsupported")
     if trace.get("columns") != list(EXTENDED_POWER_TRACE_COLUMNS):
         failures.append("extended trace columns do not match the versioned schema")
     for field in (
@@ -1248,8 +1258,239 @@ def validate_extended_power_trace(
             failures.append(f"extended trace {field} check failed")
     if trace.get("invalid_row_count", 0) != 0:
         failures.append("extended trace contains invalid rows")
-    failures.extend(str(error) for error in trace.get("errors", ()))
+    errors = trace.get("errors", ())
+    if isinstance(errors, (str, bytes)) or not isinstance(errors, Sequence):
+        failures.append("extended trace errors must be an array")
+    else:
+        failures.extend(str(error) for error in errors)
     failures.extend(_aggregate_result_failures(trace))
+    return failures
+
+
+def _summary_values_match(
+    actual: Any,
+    expected: Any,
+    *,
+    field_path: tuple[str, ...] = (),
+) -> bool:
+    if isinstance(expected, Mapping):
+        if not isinstance(actual, Mapping) or set(actual) != set(expected):
+            return False
+        return all(
+            _summary_values_match(
+                actual[key],
+                expected[key],
+                field_path=(*field_path, str(key)),
+            )
+            for key in expected
+        )
+    if isinstance(expected, list):
+        return (
+            isinstance(actual, list)
+            and len(actual) == len(expected)
+            and all(
+                _summary_values_match(
+                    actual_value,
+                    expected_value,
+                    field_path=(*field_path, str(index)),
+                )
+                for index, (actual_value, expected_value) in enumerate(
+                    zip(actual, expected)
+                )
+            )
+        )
+    if isinstance(expected, tuple):
+        return (
+            isinstance(actual, (tuple, list))
+            and len(actual) == len(expected)
+            and all(
+                _summary_values_match(
+                    actual_value,
+                    expected_value,
+                    field_path=(*field_path, str(index)),
+                )
+                for index, (actual_value, expected_value) in enumerate(
+                    zip(actual, expected)
+                )
+            )
+        )
+    if isinstance(expected, bool) or expected is None or isinstance(expected, str):
+        return type(actual) is type(expected) and actual == expected
+    if isinstance(expected, int):
+        return isinstance(actual, int) and not isinstance(actual, bool) and actual == expected
+    if isinstance(expected, float):
+        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+            return False
+        try:
+            actual_float = float(actual)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if not math.isfinite(actual_float) or not math.isfinite(expected):
+            return actual_float == expected
+        if field_path and (
+            field_path[-1] == "time_weighted"
+            or field_path[-1].endswith("_time_weighted")
+        ):
+            return abs(actual_float - expected) <= math.ulp(expected)
+        return actual_float == expected
+    return type(actual) is type(expected) and actual == expected
+
+
+def _mapping_summary_failures(
+    declared: Mapping[str, Any],
+    recomputed: Mapping[str, Any],
+    *,
+    normalized_samples: Sequence[Mapping[str, Any]],
+) -> list[str]:
+    expected_summary = dict(recomputed)
+    expected_summary["samples"] = list(normalized_samples)
+    failures: list[str] = []
+    for field, expected in expected_summary.items():
+        if field in _MAPPING_RECHECK_IGNORED_FIELDS:
+            continue
+        if field not in declared:
+            failures.append(f"extended trace summary {field} is missing")
+        elif not _summary_values_match(declared[field], expected):
+            failures.append(f"extended trace summary {field} does not match the reader")
+    return failures
+
+
+def _recompute_mapping_trace(
+    trace: Mapping[str, Any],
+) -> tuple[dict[str, Any], list[str], list[dict[str, Any]]]:
+    failures: list[str] = []
+    samples = trace.get("samples", _MISSING)
+    normalized_samples: list[dict[str, Any]] = []
+    if samples is _MISSING:
+        failures.append("extended trace samples are missing")
+    elif not isinstance(samples, list):
+        failures.append("extended trace samples must be an array")
+    else:
+        if not samples:
+            failures.append("extended trace samples must be non-empty")
+        for index, sample in enumerate(samples):
+            if not isinstance(sample, Mapping):
+                failures.append(f"extended trace samples[{index}] must be an object")
+                continue
+            try:
+                normalized_samples.append(_coerce_trace_row(sample, index=index))
+            except (ExtendedPowerTraceError, TypeError, ValueError) as exc:
+                failures.append(str(exc))
+
+    bounds: dict[str, int | None] = {}
+    for field in ("run_start_monotonic_ns", "run_end_monotonic_ns"):
+        value = trace.get(field, _MISSING)
+        if value is _MISSING:
+            failures.append(f"extended trace {field} is missing")
+            bounds[field] = None
+            continue
+        try:
+            bound = _as_monotonic_bound(value, field=field)
+        except (ExtendedPowerTraceError, TypeError, ValueError) as exc:
+            failures.append(str(exc))
+            bound = None
+        if bound is None:
+            failures.append(f"extended trace {field} is missing")
+        bounds[field] = bound
+    start_ns = bounds["run_start_monotonic_ns"]
+    end_ns = bounds["run_end_monotonic_ns"]
+    if start_ns is not None and end_ns is not None and start_ns > end_ns:
+        failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
+
+    buffer = io.StringIO()
+    try:
+        writer = csv.DictWriter(buffer, fieldnames=EXTENDED_POWER_TRACE_COLUMNS)
+        writer.writeheader()
+        writer.writerows(normalized_samples)
+        recomputed = read_extended_power_trace_csv(
+            Path("<mapping>"),
+            run_start_monotonic_ns=start_ns,
+            run_end_monotonic_ns=end_ns,
+            read_text_fn=lambda _path: buffer.getvalue(),
+        )
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        OSError,
+        UnicodeError,
+        csv.Error,
+        RuntimeError,
+    ) as exc:
+        message = f"extended trace mapping could not be re-read: {exc}"
+        failures.append(message)
+        recomputed = _trace_result_base(error=message)
+        recomputed["errors"] = [message]
+    return recomputed, failures, normalized_samples
+
+
+def _mapping_validation_report(payload: Mapping[str, Any]) -> dict[str, Any]:
+    try:
+        trace = dict(payload)
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        OSError,
+        UnicodeError,
+        RuntimeError,
+    ) as exc:
+        message = f"extended trace mapping could not be copied: {exc}"
+        trace = _trace_result_base(error=message)
+        trace["errors"] = [message]
+        failures = [message]
+    else:
+        try:
+            failures = _trace_validation_failures(trace)
+            recomputed, recheck_failures, normalized_samples = _recompute_mapping_trace(
+                trace
+            )
+            failures.extend(recheck_failures)
+            failures.extend(_trace_validation_failures(recomputed))
+            failures.extend(
+                _mapping_summary_failures(
+                    trace,
+                    recomputed,
+                    normalized_samples=normalized_samples,
+                )
+            )
+        except (
+            AttributeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            OverflowError,
+            OSError,
+            UnicodeError,
+            csv.Error,
+            RuntimeError,
+        ) as exc:
+            failures = [f"extended trace mapping validation failed: {exc}"]
+    failures = list(dict.fromkeys(failures))
+    return {
+        "valid": not failures,
+        "schema": EXTENDED_POWER_TRACE_SCHEMA,
+        "schema_version": EXTENDED_POWER_TRACE_SCHEMA_VERSION,
+        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+        "failures": failures,
+        "trace": trace,
+        "aggregates": trace.get("aggregates", {}),
+    }
+
+
+def validate_extended_power_trace(
+    trace_or_path: Mapping[str, Any] | Path,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Return a structured validation report for an extended trace."""
+    if isinstance(trace_or_path, Mapping):
+        return _mapping_validation_report(trace_or_path)
+    trace = read_extended_power_trace_snapshot(trace_or_path, **kwargs)
+    failures = _trace_validation_failures(trace)
     failures = list(dict.fromkeys(failures))
     return {
         "valid": not failures,

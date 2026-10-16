@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import json
@@ -141,6 +142,86 @@ def test_extended_json_sidecar_reader_aggregates_left_held_samples(tmp_path: Pat
     assert board_power["time_weighted"] == pytest.approx(29.5)
 
 
+def _valid_reader_trace(tmp_path: Path) -> dict[str, object]:
+    path = tmp_path / "mapping.csv"
+    path.write_text(
+        EXTENDED_POWER_TRACE_HEADER
+        + "\n"
+        + format_extended_power_trace_row(_trace_row(0, board_power_w=10.0))
+        + "\n"
+        + format_extended_power_trace_row(
+            _trace_row(2_000_000_000, board_power_w=20.0)
+        )
+        + "\n"
+    )
+    return read_extended_power_trace_csv(path)
+
+
+def test_extended_validator_accepts_a_valid_reader_mapping(tmp_path: Path) -> None:
+    trace = _valid_reader_trace(tmp_path)
+
+    report = validate_extended_power_trace(trace)
+
+    assert report["valid"] is True
+    assert report["failures"] == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "sample_required_field",
+        "sample_nan",
+        "samples_empty",
+        "sample_count",
+        "timestamp_reverse",
+        "run_end_beyond_last",
+        "aggregates_missing",
+        "aggregate_value",
+        "duration_ns",
+    ],
+    ids=[
+        "sample-required-field",
+        "sample-nan",
+        "samples-empty",
+        "sample-count",
+        "timestamp-reverse",
+        "run-end-beyond-last",
+        "aggregates-missing",
+        "aggregate-value",
+        "duration-ns",
+    ],
+)
+def test_extended_validator_rechecks_mapping_samples_and_summary(
+    tmp_path: Path, mutation: str
+) -> None:
+    trace = copy.deepcopy(_valid_reader_trace(tmp_path))
+    if mutation == "sample_required_field":
+        trace["samples"][0].pop("board_power_w")
+    elif mutation == "sample_nan":
+        trace["samples"][0]["board_power_w"] = math.nan
+    elif mutation == "samples_empty":
+        trace["samples"] = []
+    elif mutation == "sample_count":
+        trace["sample_count"] += 1
+    elif mutation == "timestamp_reverse":
+        trace["samples"].reverse()
+    elif mutation == "run_end_beyond_last":
+        trace["run_end_monotonic_ns"] = 3_000_000_000
+    elif mutation == "aggregates_missing":
+        trace["aggregates"].pop("board_power_w")
+    elif mutation == "aggregate_value":
+        trace["aggregates"]["board_power_w"]["min"] = 99.0
+    elif mutation == "duration_ns":
+        trace["duration_ns"] += 1
+    else:
+        raise AssertionError(f"unknown mutation {mutation}")
+
+    report = validate_extended_power_trace(trace)
+
+    assert report["valid"] is False
+    assert report["failures"]
+
+
 def test_extended_reader_rejects_out_of_range_monotonic_timestamp_without_escaping(
     tmp_path: Path,
 ) -> None:
@@ -220,6 +301,23 @@ def test_extended_json_sidecar_reader_rejects_invalid_payload(
         assert "schema is not supported" in trace["error"]
     else:
         assert "board_power_w" in trace["error"]
+
+
+def test_extended_json_sidecar_rejects_boolean_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "boolean-version.json"
+    _write_sidecar(
+        path,
+        [_trace_row(0, board_power_w=10.0)],
+        schema_version=True,
+    )
+
+    trace = read_extended_power_trace_snapshot(path)
+    report = validate_extended_power_trace(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert report["valid"] is False
+    assert report["failures"]
 
 
 def test_extended_json_sidecar_reader_rejects_over_limit_integer_token(
