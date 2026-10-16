@@ -267,6 +267,44 @@ def test_workload_environment_uses_fixed_ghcr_image_name() -> None:
     )
 
 
+def test_workload_output_retains_only_a_bounded_clean_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stdout = "".join(f"stdout-{index}\n" for index in range(100))
+    stderr = "clean diagnostic\n"
+
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(runner.subprocess, "run", fake_run)
+    result = runner._run_workload(("fixture-runner",), {}, repo_root=Path("."))
+
+    assert result["stdout_tail"] == "".join(
+        f"stdout-{index}\n"
+        for index in range(100 - runner.WORKLOAD_OUTPUT_TAIL_LINES, 100)
+    )
+    assert result["stderr_tail"] == stderr
+    assert "output_omissions" not in result
+    assert len(result["stdout_tail"]) <= runner.WORKLOAD_OUTPUT_TAIL_MAX_CHARS
+
+
+def test_workload_output_omits_a_tail_containing_a_user_path() -> None:
+    result = runner._normalize_workload_result(
+        {
+            "returncode": 1,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": "failure in /home/alice/private/repository\n" + "safe\n" * 100,
+            "stderr": "clean diagnostic\n",
+        }
+    )
+
+    assert "stdout_tail" not in result
+    assert result["output_omissions"] == {"stdout": "not_saved: path_detected"}
+    assert result["stderr_tail"] == "clean diagnostic\n"
+    assert "/home/" not in json.dumps(result)
+
+
 def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> None:
     counter = iter((0, 1_000_000, 2_000_000, 3_000_000))
     def fake_capture(*, stage: str, **_kwargs: object) -> dict[str, object]:
@@ -293,7 +331,13 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
         command: tuple[str, ...], environment: dict[str, str], timeout: float
     ) -> dict[str, object]:
         workload_calls.append((command, environment, timeout))
-        return {"returncode": 0, "status": "completed", "timed_out": False}
+        return {
+            "returncode": 0,
+            "status": "completed",
+            "timed_out": False,
+            "stdout": "resident record -> /out/runner-result-q2-run-1.json\n",
+            "stderr": "",
+        }
 
     record = runner.run_one(
         tmp_path,
@@ -310,6 +354,10 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
 
     assert record["status"] == "ok"
     assert record["workload"]["device_id"] == 1
+    assert record["workload_result"]["stdout_tail"] == (
+        "resident record -> /out/runner-result-q2-run-1.json\n"
+    )
+    assert record["workload_result"]["stderr_tail"] == ""
     assert record["workload"]["run_duration_target_seconds"] == 285.0
     assert record["workload"]["run_guard_seconds"] == 330.0
     assert record["run_timing"]["target_duration_seconds"] == 285.0

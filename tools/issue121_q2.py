@@ -47,6 +47,8 @@ DEVICE_ID = 1
 DEVICE_NODE = "/dev/tenstorrent/1"
 RUN_DURATION_SECONDS = 285.0
 RUN_GUARD_SECONDS = 330.0
+WORKLOAD_OUTPUT_TAIL_LINES = 40
+WORKLOAD_OUTPUT_TAIL_MAX_CHARS = 8_192
 COOLDOWN_WAIT_CAP_SECONDS = 600.0
 SNAPSHOT_TIMEOUT_SECONDS = 5.0
 TRACE_INTERVAL_SECONDS = 2.0
@@ -103,7 +105,7 @@ _FORBIDDEN_KEYS = frozenset(
     }
 )
 _FORBIDDEN_PATH_TEXT = re.compile(
-    r"(?:^|[\s'\"(])(?:/home/|/Users/|/root/|/tmp/|~[/\\]|[A-Za-z]:[\\/])"
+    r"(?<![A-Za-z0-9])(?:/home/|/Users/|/root/|/tmp/|~[/\\]|[A-Za-z]:[\\/])"
 )
 
 
@@ -762,18 +764,62 @@ def _build_environment(
     }
 
 
+def _bounded_workload_output_tail(value: Any) -> tuple[str | None, str | None]:
+    """Return a bounded output tail unless it contains a host-specific path."""
+    text = _stdout_text(value)
+    if _FORBIDDEN_PATH_TEXT.search(text):
+        return None, "not_saved: path_detected"
+    lines = text.splitlines(keepends=True)
+    tail = "".join(lines[-WORKLOAD_OUTPUT_TAIL_LINES:])
+    if len(tail) > WORKLOAD_OUTPUT_TAIL_MAX_CHARS:
+        tail = tail[-WORKLOAD_OUTPUT_TAIL_MAX_CHARS:]
+    return tail, None
+
+
+def _workload_output_fields(result: Any) -> dict[str, Any]:
+    """Retain only safe bounded tails from one workload process result."""
+    existing_omissions = result.get("output_omissions") if isinstance(result, Mapping) else None
+    omissions = existing_omissions if isinstance(existing_omissions, Mapping) else {}
+    fields: dict[str, Any] = {}
+    omitted: dict[str, str] = {}
+    for stream in ("stdout", "stderr"):
+        if isinstance(result, Mapping):
+            if stream in result:
+                value = result[stream]
+            elif f"{stream}_tail" in result:
+                value = result[f"{stream}_tail"]
+            elif stream in omissions and omissions[stream] == "not_saved: path_detected":
+                omitted[stream] = omissions[stream]
+                continue
+            else:
+                value = ""
+        else:
+            value = getattr(result, stream, "")
+        tail, reason = _bounded_workload_output_tail(value)
+        if reason is not None:
+            omitted[stream] = reason
+        else:
+            fields[f"{stream}_tail"] = tail
+    if omitted:
+        fields["output_omissions"] = omitted
+    return fields
+
+
 def _normalize_workload_result(result: Any) -> dict[str, Any]:
     if isinstance(result, Mapping):
-        return {
+        normalized = {
             "returncode": result.get("returncode"),
             "status": str(result.get("status", "completed")),
             "timed_out": bool(result.get("timed_out", False)),
         }
-    return {
-        "returncode": getattr(result, "returncode", result if isinstance(result, int) else None),
-        "status": "completed",
-        "timed_out": False,
-    }
+    else:
+        normalized = {
+            "returncode": getattr(result, "returncode", result if isinstance(result, int) else None),
+            "status": "completed",
+            "timed_out": False,
+        }
+    normalized.update(_workload_output_fields(result))
+    return normalized
 
 
 def _run_workload(
@@ -789,10 +835,24 @@ def _run_workload(
             timeout=RUN_GUARD_SECONDS,
             check=False,
         )
-    except subprocess.TimeoutExpired:
-        return {"returncode": None, "status": "timeout", "timed_out": True}
+    except subprocess.TimeoutExpired as exc:
+        return _normalize_workload_result(
+            {
+                "returncode": None,
+                "status": "timeout",
+                "timed_out": True,
+                "stdout": getattr(exc, "stdout", ""),
+                "stderr": getattr(exc, "stderr", ""),
+            }
+        )
     except (OSError, subprocess.SubprocessError) as exc:
-        return {"returncode": None, "status": type(exc).__name__, "timed_out": False}
+        return {
+            "returncode": None,
+            "status": type(exc).__name__,
+            "timed_out": False,
+            "stdout_tail": "",
+            "stderr_tail": "",
+        }
     return _normalize_workload_result(completed)
 
 
@@ -939,7 +999,11 @@ def run_one(
         run_start_ns=int(workload_start_ns),
         run_end_ns=int(workload_end_ns),
     )
-    workload = _normalize_workload_result(workload_result)
+    workload = (
+        dict(workload_result)
+        if isinstance(workload_result, Mapping)
+        else _normalize_workload_result(workload_result)
+    )
     workload_duration = max(0.0, (int(workload_end_ns) - int(workload_start_ns)) / 1_000_000_000.0)
     trace_sample_count = max(0, sum(1 for line in trace_bytes.decode("utf-8").splitlines()[1:] if line))
     guard_pass = workload_duration <= RUN_GUARD_SECONDS and not workload.get("timed_out", False)
@@ -1097,6 +1161,8 @@ __all__ = [
     "RUN_GUARD_SECONDS",
     "SNAPSHOT_COMMAND_TUPLE",
     "SNAPSHOT_TIMEOUT_SECONDS",
+    "WORKLOAD_OUTPUT_TAIL_LINES",
+    "WORKLOAD_OUTPUT_TAIL_MAX_CHARS",
     "SnapshotCaptureError",
     "build_calibration_payload",
     "build_workload_command",
