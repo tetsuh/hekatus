@@ -115,6 +115,7 @@ _RAW_THROTTLE_STATUS_KEYS = (
     "throttle",
 )
 _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
+_MAX_NONNEGATIVE_INTEGER = (1 << 63) - 1
 _MISSING = object()
 
 
@@ -343,7 +344,7 @@ def _nonnegative_integer(value: Any, *, field: str) -> int:
         parsed = _integer_from_text(value, field=field)
     else:
         raise _invalid_nonnegative_integer(field)
-    if parsed < 0:
+    if not 0 <= parsed <= _MAX_NONNEGATIVE_INTEGER:
         raise _invalid_nonnegative_integer(field)
     return parsed
 
@@ -644,12 +645,156 @@ def _left_held_segments(
     return segments
 
 
+def _checked_aggregate_float(value: Any, *, field: str) -> float:
+    if isinstance(value, bool):
+        raise ExtendedPowerTraceError(f"aggregate {field} must be finite")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ExtendedPowerTraceError(f"aggregate {field} must be finite") from exc
+    if not math.isfinite(parsed):
+        raise ExtendedPowerTraceError(f"aggregate {field} must be finite")
+    return parsed
+
+
+def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
+    duration_ns = result.get("duration_ns")
+    if (
+        isinstance(duration_ns, bool)
+        or not isinstance(duration_ns, int)
+        or not 0 <= duration_ns <= _MAX_NONNEGATIVE_INTEGER
+    ):
+        raise ExtendedPowerTraceError("aggregate duration_ns is outside signed 64-bit range")
+    duration_seconds = _checked_aggregate_float(
+        result.get("duration_seconds"), field="duration_seconds"
+    )
+    if duration_seconds < 0.0:
+        raise ExtendedPowerTraceError("aggregate duration_seconds must be non-negative")
+    for field in (
+        "interval_start_monotonic_ns",
+        "interval_end_monotonic_ns",
+        "segment_count",
+    ):
+        value = result.get(field)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 0 <= value <= _MAX_NONNEGATIVE_INTEGER
+        ):
+            raise ExtendedPowerTraceError(
+                f"aggregate {field} is outside signed 64-bit range"
+            )
+    for container_name in ("min", "max", "time_weighted", "time_weighted_seconds"):
+        container = result.get(container_name)
+        if not isinstance(container, Mapping):
+            raise ExtendedPowerTraceError(f"aggregate {container_name} values must be an object")
+        for field, value in container.items():
+            if value is None:
+                continue
+            parsed = _checked_aggregate_float(value, field=f"{container_name}.{field}")
+            if container_name == "time_weighted_seconds" and parsed < 0.0:
+                raise ExtendedPowerTraceError(
+                    f"aggregate {container_name}.{field} must be non-negative"
+                )
+    for field, value in result.items():
+        if not field.endswith(
+            ("_min", "_max", "_time_weighted", "_time_weighted_seconds")
+        ):
+            continue
+        if value is None:
+            continue
+        parsed = _checked_aggregate_float(value, field=field)
+        if field.endswith("_time_weighted_seconds") and parsed < 0.0:
+            raise ExtendedPowerTraceError(f"aggregate {field} must be non-negative")
+
+    aggregates = result.get("aggregates")
+    if not isinstance(aggregates, Mapping):
+        raise ExtendedPowerTraceError("aggregate values must be an object")
+    for field, aggregate in aggregates.items():
+        if not isinstance(aggregate, Mapping):
+            raise ExtendedPowerTraceError(f"aggregate {field} must be an object")
+        minimum = _checked_aggregate_float(aggregate.get("min"), field=f"{field}.min")
+        maximum = _checked_aggregate_float(aggregate.get("max"), field=f"{field}.max")
+        if minimum > maximum:
+            raise ExtendedPowerTraceError(f"aggregate {field} bounds are inverted")
+        weighted = aggregate.get("time_weighted")
+        if weighted is not None:
+            weighted_float = _checked_aggregate_float(
+                weighted, field=f"{field}.time_weighted"
+            )
+            if not minimum <= weighted_float <= maximum:
+                raise ExtendedPowerTraceError(
+                    f"aggregate {field}.time_weighted is outside its bounds"
+                )
+        weighted_seconds = _checked_aggregate_float(
+            aggregate.get("time_weighted_seconds"),
+            field=f"{field}.time_weighted_seconds",
+        )
+        if weighted_seconds < 0.0:
+            raise ExtendedPowerTraceError(
+                f"aggregate {field}.time_weighted_seconds must be non-negative"
+            )
+        weighted_ns = aggregate.get("time_weighted_ns")
+        if (
+            isinstance(weighted_ns, bool)
+            or not isinstance(weighted_ns, int)
+            or not 0 <= weighted_ns <= _MAX_NONNEGATIVE_INTEGER
+        ):
+            raise ExtendedPowerTraceError(
+                f"aggregate {field}.time_weighted_ns is outside signed 64-bit range"
+            )
+
+
+def _time_weighted_measurement(
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    *,
+    field: str,
+    duration_ns: int,
+    minimum: Any,
+    maximum: Any,
+) -> float:
+    """Compute a duration-weighted value without multiplying by huge durations."""
+    try:
+        weighted = math.fsum(
+            float(row[field]) * ((end - start) / duration_ns)
+            for row, start, end in segments
+        )
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ExtendedPowerTraceError(
+            f"aggregate {field}.time_weighted is not finite"
+        ) from exc
+    if not math.isfinite(weighted):
+        raise ExtendedPowerTraceError(f"aggregate {field}.time_weighted is not finite")
+    minimum_float = _checked_aggregate_float(minimum, field=f"{field}.min")
+    maximum_float = _checked_aggregate_float(maximum, field=f"{field}.max")
+    if not minimum_float <= weighted <= maximum_float:
+        raise ExtendedPowerTraceError(
+            f"aggregate {field}.time_weighted is outside its bounds"
+        )
+    return weighted
+
+
+def _aggregate_result_failures(result: Mapping[str, Any]) -> list[str]:
+    try:
+        _validate_aggregate_result(result)
+    except ExtendedPowerTraceError as exc:
+        return [str(exc)]
+    return []
+
+
 def _aggregate_left_held(
     rows: Sequence[Mapping[str, Any]], *, start_ns: int, end_ns: int
 ) -> dict[str, Any]:
     segments = _left_held_segments(rows, start_ns=start_ns, end_ns=end_ns)
     duration_ns = sum(end - start for _row, start, end in segments)
-    duration_seconds = duration_ns / 1_000_000_000.0
+    if duration_ns > _MAX_NONNEGATIVE_INTEGER:
+        raise ExtendedPowerTraceError(
+            "aggregate duration_ns is outside signed 64-bit range"
+        )
+    try:
+        duration_seconds = duration_ns / 1_000_000_000.0
+    except OverflowError as exc:
+        raise ExtendedPowerTraceError("aggregate duration_seconds is not finite") from exc
     aggregates: dict[str, Any] = {}
     minima: dict[str, float | int] = {}
     maxima: dict[str, float | int] = {}
@@ -663,8 +808,13 @@ def _aggregate_left_held(
         minimum = min(values)
         maximum = max(values)
         weighted = (
-            sum(float(row[field]) * (end - start) for row, start, end in segments)
-            / duration_ns
+            _time_weighted_measurement(
+                segments,
+                field=field,
+                duration_ns=duration_ns,
+                minimum=minimum,
+                maximum=maximum,
+            )
             if duration_ns
             else None
         )
@@ -704,6 +854,9 @@ def _aggregate_left_held(
         result[f"{field}_max"] = maxima[field]
         result[f"{field}_time_weighted"] = weighted_values.get(field)
         result[f"{field}_time_weighted_seconds"] = weighted_seconds.get(field)
+    aggregate_failures = _aggregate_result_failures(result)
+    if aggregate_failures:
+        raise ExtendedPowerTraceError(aggregate_failures[0])
     return result
 
 
@@ -844,7 +997,13 @@ def _set_extended_trace_coverage(
     result["covers_run_start"] = covers_start
     result["covers_run_end"] = covers_end
     if start_ns < end_ns and covers_start and covers_end:
-        result.update(_aggregate_left_held(rows, start_ns=start_ns, end_ns=end_ns))
+        try:
+            aggregate = _aggregate_left_held(rows, start_ns=start_ns, end_ns=end_ns)
+        except (ExtendedPowerTraceError, OverflowError, TypeError, ValueError) as exc:
+            result["errors"].append(str(exc))
+            result["error"] = str(exc)
+            return
+        result.update(aggregate)
         result["coverage_complete"] = True
         result["valid"] = not errors
         return
@@ -898,9 +1057,14 @@ def read_extended_power_trace_csv(
         result["error"] = errors[0] if errors else "extended power trace has no rows"
         return result
 
-    _utc_timestamps, monotonic_timestamps, ordered = _set_extended_timestamp_facts(
-        result, rows
-    )
+    try:
+        _utc_timestamps, monotonic_timestamps, ordered = _set_extended_timestamp_facts(
+            result, rows
+        )
+    except (ExtendedPowerTraceError, OverflowError, TypeError, ValueError) as exc:
+        result["errors"].append(str(exc))
+        result["error"] = str(exc)
+        return result
     if not ordered:
         return result
     _set_extended_trace_coverage(
@@ -1008,6 +1172,7 @@ def validate_extended_power_trace(
     if trace.get("invalid_row_count", 0) != 0:
         failures.append("extended trace contains invalid rows")
     failures.extend(str(error) for error in trace.get("errors", ()))
+    failures.extend(_aggregate_result_failures(trace))
     failures = list(dict.fromkeys(failures))
     return {
         "valid": not failures,

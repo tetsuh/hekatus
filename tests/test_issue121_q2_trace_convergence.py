@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from enodia.tt.bench.power_trace_extended import (
     format_extended_power_trace_row,
     read_extended_power_trace_csv,
     read_extended_power_trace_snapshot,
+    validate_extended_power_trace,
 )
 
 
@@ -113,6 +115,65 @@ def test_extended_json_sidecar_reader_aggregates_left_held_samples(tmp_path: Pat
     assert board_power["min"] == 10.0
     assert board_power["max"] == 36.0
     assert board_power["time_weighted"] == pytest.approx(29.5)
+
+
+def test_extended_reader_rejects_out_of_range_monotonic_timestamp_without_escaping(
+    tmp_path: Path,
+) -> None:
+    row = _trace_row(0, board_power_w=1e308)
+    fields = next(csv.reader(io.StringIO(format_extended_power_trace_row(row))))
+    fields[EXTENDED_POWER_TRACE_COLUMNS.index("timestamp_monotonic_ns")] = str(1 << 63)
+    buffer = io.StringIO()
+    csv.writer(buffer, lineterminator="").writerow(fields)
+    path = tmp_path / "out-of-range.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + buffer.getvalue() + "\n")
+
+    trace = read_extended_power_trace_csv(path)
+
+    assert trace["valid"] is False
+    assert trace["invalid_row_count"] == 1
+    assert "non-negative integer" in trace["error"]
+    assert validate_extended_power_trace(trace)["valid"] is False
+
+
+def test_extended_reader_keeps_extreme_finite_power_time_weighted(tmp_path: Path) -> None:
+    path = tmp_path / "extreme-power.csv"
+    path.write_text(
+        EXTENDED_POWER_TRACE_HEADER
+        + "\n"
+        + format_extended_power_trace_row(_trace_row(0, board_power_w=1e308))
+        + "\n"
+        + format_extended_power_trace_row(_trace_row(2_000_000_000, board_power_w=1e308))
+        + "\n"
+    )
+
+    trace = read_extended_power_trace_csv(
+        path, run_start_monotonic_ns=0, run_end_monotonic_ns=2_000_000_000
+    )
+
+    assert trace["valid"] is True
+    weighted = trace["aggregates"]["board_power_w"]["time_weighted"]
+    assert math.isfinite(weighted)
+    assert weighted == pytest.approx(1e308)
+
+
+def test_extended_validator_rejects_a_nonfinite_aggregate(tmp_path: Path) -> None:
+    path = tmp_path / "finite.csv"
+    path.write_text(
+        EXTENDED_POWER_TRACE_HEADER
+        + "\n"
+        + format_extended_power_trace_row(_trace_row(0, board_power_w=10.0))
+        + "\n"
+        + format_extended_power_trace_row(_trace_row(2_000_000_000, board_power_w=20.0))
+        + "\n"
+    )
+    trace = read_extended_power_trace_csv(path)
+    trace["aggregates"]["board_power_w"]["time_weighted"] = math.inf
+
+    report = validate_extended_power_trace(trace)
+
+    assert report["valid"] is False
+    assert any("finite" in failure for failure in report["failures"])
 
 
 @pytest.mark.parametrize("failure", ("schema", "malformed_sample"))

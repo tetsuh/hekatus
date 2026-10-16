@@ -479,6 +479,16 @@ def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
 def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
     output = tmp_path / "extended.csv"
     calls = []
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("HEKATUS_TT_BOARD_ID", " env-board ")
+    monkeypatch.setenv("HEKATUS_TT_BUS_ID", " 0000:02:00.0 ")
     monkeypatch.setattr(
         telemetry,
         "_sample_extended_forever",
@@ -497,7 +507,65 @@ def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
         ]
     )
 
-    assert calls == [(output.resolve(), 1.0, {"board_id": None, "bus_id": None})]
+    assert calls == [
+        (
+            output.resolve(),
+            1.0,
+            {"board_id": "env-board", "bus_id": "0000:02:00.0"},
+        )
+    ]
+
+
+def test_extended_sampler_rejects_missing_identity_before_truncating_output(
+    monkeypatch, tmp_path
+):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    output = tmp_path / "existing.csv"
+    original = "existing trace content\n"
+    output.write_text(original)
+    run_calls = []
+    monkeypatch.setattr(telemetry, "_run", lambda command: run_calls.append(command))
+
+    with pytest.raises(ValueError, match="requires both board_id and bus_id"):
+        telemetry._sample_extended_forever(output, interval=1.0)
+
+    assert output.read_text() == original
+    assert run_calls == []
+
+
+def test_extended_cli_rejects_missing_identity_before_creating_parent(monkeypatch, tmp_path):
+    for name in (
+        "HEKATUS_TT_BOARD_ID",
+        "HEKATUS_TT_TARGET_BOARD_ID",
+        "HEKATUS_TT_BUS_ID",
+        "HEKATUS_TT_BOARD_BUS_ID",
+        "HEKATUS_TT_TARGET_BUS_ID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    output = tmp_path / "not-created" / "extended.csv"
+    monkeypatch.setattr(telemetry, "_run", lambda _command: (_ for _ in ()).throw(AssertionError))
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(
+            [
+                "sample",
+                "--trace-schema",
+                "extended-v1",
+                "--out",
+                str(output),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert not output.parent.exists()
+    assert not output.exists()
 
 
 def test_cli_output_path_cannot_escape_trusted_roots(tmp_path):

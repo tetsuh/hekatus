@@ -925,6 +925,16 @@ def _sample_loop(handle, interval: float) -> None:
         time.sleep(interval)
 
 
+def _required_extended_identity(
+    board_id: str | None, bus_id: str | None
+) -> tuple[str, str]:
+    """Resolve the complete identity required by the extended sampler."""
+    effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
+    if effective_board_id is None or effective_bus_id is None:
+        raise ValueError("extended-v1 requires both board_id and bus_id")
+    return effective_board_id, effective_bus_id
+
+
 def _sample_extended_loop(
     handle,
     interval: float,
@@ -940,12 +950,9 @@ def _sample_extended_loop(
     one ``tt-smi`` call, while the UTC value is captured after that call just
     as the legacy sampler captures its row timestamp.
     """
+    effective_board_id, effective_bus_id = _required_extended_identity(board_id, bus_id)
     clock = time.monotonic_ns if monotonic_ns is None else monotonic_ns
     now = _now if utc_now is None else utc_now
-    try:
-        effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
-    except ValueError as exc:
-        raise ExtendedPowerTraceError(str(exc)) from exc
     handle.write(EXTENDED_POWER_TRACE_HEADER + "\n")
     while True:
         snapshot_start_ns = clock()
@@ -1029,13 +1036,14 @@ def _sample_extended_forever(
     board_id: str | None = None,
     bus_id: str | None = None,
 ) -> None:
+    effective_board_id, effective_bus_id = _required_extended_identity(board_id, bus_id)
     safe_output_path = _trusted_output_path(out_path)
     with safe_output_path.open("w", buffering=1) as handle:
         _sample_extended_loop(
             handle,
             interval,
-            board_id=board_id,
-            bus_id=bus_id,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
         )
 
 
@@ -1076,6 +1084,9 @@ def main(argv: list[str] | None = None) -> None:
         parser.error(f"--interval must be positive and finite, got {args.interval}")
     if args.mode == "sample" and args.trace_schema == "extended-v1":
         try:
+            args.board_id, args.bus_id = _required_extended_identity(
+                args.board_id, args.bus_id
+            )
             args.out = _trusted_output_path(args.out)
         except ValueError as exc:
             parser.error(str(exc))
