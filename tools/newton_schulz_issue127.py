@@ -1107,12 +1107,15 @@ def validate_cooldown_metadata(
 
 
 def _cooldown_trace_sample(
-    samples: Sequence[Mapping[str, Any]], *, end_utc: Any
+    samples: Sequence[Mapping[str, Any]], *, start_utc: Any, end_utc: Any
 ) -> dict[str, Any] | None:
-    """Return the newest usable cooldown sample at or before the gate end."""
+    """Return the newest usable cooldown sample within the gate bounds."""
     try:
+        start = _parse_trace_timestamp(start_utc, field="cooldown start_utc")
         end = _parse_trace_timestamp(end_utc, field="cooldown end_utc")
     except (TypeError, ValueError):
+        return None
+    if end < start:
         return None
     candidates: list[tuple[datetime.datetime, Mapping[str, Any]]] = []
     for sample in samples:
@@ -1124,7 +1127,7 @@ def _cooldown_trace_sample(
             )
         except (TypeError, ValueError):
             continue
-        if timestamp <= end:
+        if start <= timestamp <= end:
             power = _finite_cooldown_value(sample.get("power_w"))
             temperature = _finite_cooldown_value(sample.get("asic_temp_c"))
             if power is not None and temperature is not None:
@@ -1158,19 +1161,66 @@ def verify_cooldown_power_trace(
             end=metadata.get("end_utc"),
             row_label="run 2 cooldown AICLK interval",
         )
-        trace_sample = _cooldown_trace_sample(samples, end_utc=metadata.get("end_utc"))
-    observed_power = metadata.get("observed_power_w")
-    observed_temperature = metadata.get("observed_temperature_c")
+        trace_sample = _cooldown_trace_sample(
+            samples,
+            start_utc=metadata.get("start_utc"),
+            end_utc=metadata.get("end_utc"),
+        )
+    trace_power = (
+        _finite_cooldown_value(trace_sample.get("power_w"))
+        if trace_sample is not None
+        else None
+    )
+    trace_temperature = (
+        _finite_cooldown_value(trace_sample.get("asic_temp_c"))
+        if trace_sample is not None
+        else None
+    )
+    metadata_mismatches: dict[str, dict[str, Any]] = {}
+    for metadata_field, trace_value in (
+        ("observed_power_w", trace_power),
+        ("observed_temperature_c", trace_temperature),
+    ):
+        metadata_value = metadata.get(metadata_field)
+        if metadata_value is None or trace_sample is None:
+            continue
+        normalized_metadata_value = _finite_cooldown_value(metadata_value)
+        if normalized_metadata_value is None or trace_value is None or not _same_float(
+            normalized_metadata_value, trace_value
+        ):
+            metadata_mismatches[metadata_field] = {
+                "metadata_value": normalized_metadata_value,
+                "trace_value": trace_value,
+                "metadata_value_finite": normalized_metadata_value is not None,
+                "trace_value_finite": trace_value is not None,
+            }
+    metadata_observation_match = trace_sample is not None and not metadata_mismatches
+    gate_observation = {
+        "source": "immutable_trace" if trace_sample is not None else None,
+        "sample_available": trace_sample is not None,
+        "sample_bounds": {
+            "start_utc": metadata.get("start_utc"),
+            "end_utc": metadata.get("end_utc"),
+            "inclusive": True,
+        },
+        "metadata_observation_match": metadata_observation_match,
+        "metadata_observation_mismatch": metadata_mismatches or None,
+        "reason": (
+            None
+            if trace_sample is not None and not metadata_mismatches
+            else (
+                "metadata_observation_mismatch"
+                if metadata_mismatches
+                else "no_usable_trace_sample_within_cooldown_bounds"
+            )
+        ),
+    }
     observed_aiclk = metadata.get("observed_idle_aiclk_mhz")
-    if observed_power is None and trace_sample is not None:
-        observed_power = trace_sample.get("power_w")
-    if observed_temperature is None and trace_sample is not None:
-        observed_temperature = trace_sample.get("asic_temp_c")
     if observed_aiclk is None and trace_sample is not None:
         observed_aiclk = trace_sample.get("aiclk_mhz")
     gate = evaluate_cooldown_gate(
-        observed_power,
-        observed_temperature,
+        trace_power,
+        trace_temperature,
         baseline_power_w=metadata.get("baseline_power_w"),
         baseline_temperature_c=metadata.get("baseline_temperature_c"),
         power_tolerance_w=metadata.get("power_tolerance_w"),
@@ -1178,6 +1228,14 @@ def verify_cooldown_power_trace(
         observed_idle_aiclk_mhz=observed_aiclk,
     )
     gate["baseline_source"] = metadata.get("baseline_source")
+    gate["observed_power_source"] = "immutable_trace" if trace_sample is not None else None
+    gate["observed_temperature_source"] = (
+        "immutable_trace" if trace_sample is not None else None
+    )
+    gate["metadata_observation_match"] = metadata_observation_match
+    gate["metadata_observation_mismatch"] = metadata_mismatches or None
+    if not metadata_observation_match:
+        gate["verified"] = False
     facts.update(
         {
             "trace": power_trace.get("file"),
@@ -1190,6 +1248,10 @@ def verify_cooldown_power_trace(
             "immutable_snapshot": power_trace.get("immutable_snapshot") is True,
             "terminal_held_aiclk_mhz": facts.get("last_held_aiclk_mhz"),
             "gate_sample": trace_sample,
+            "gate_observation": gate_observation,
+            "gate_observation_source": gate_observation["source"],
+            "metadata_observation_match": metadata_observation_match,
+            "metadata_observation_mismatch": metadata_mismatches or None,
             "gate": gate,
             "aiclk_gate": False,
             "aiclk_role": "provenance_only",
@@ -1199,6 +1261,7 @@ def verify_cooldown_power_trace(
     # not part of the cooldown gate: an idle 800-MHz observation is valid.
     verified = (
         gate["passes"]
+        and metadata_observation_match
         and facts.get("trace_coverage_complete") is True
         and facts.get("immutable_snapshot") is True
     )

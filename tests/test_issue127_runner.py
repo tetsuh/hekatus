@@ -550,6 +550,75 @@ def test_issue127_cooldown_proof_uses_power_temperature_gate_and_keeps_idle_cloc
     assert unbounded["verified"] is True
 
 
+def test_issue127_cooldown_proof_rejects_metadata_that_overrides_a_failing_trace_sample():
+    environment = runner.sanitize_environment(_environment(observed=[800]))
+    runner.validate_harness_environment(environment, run_id="run127-test")
+    metadata = runner.build_cooldown_metadata(
+        run_number=2,
+        wait_seconds=3.0,
+        expected_aiclk_mhz=1350.0,
+        environment=environment,
+        start_utc="2026-10-12T00:00:00.500000+00:00",
+        end_utc="2026-10-12T00:00:03.500000+00:00",
+        wait_performed=True,
+        observed_power_w=47.0,
+        observed_temperature_c=58.5,
+    )
+    trace = _cooldown_trace()
+    trace["samples"][2] = {
+        "timestamp_utc": "2026-10-12T00:00:02+00:00",
+        "power_w": "70",
+        "aiclk_mhz": "800",
+        "asic_temp_c": "75",
+    }
+
+    verified = runner.verify_cooldown_power_trace(metadata, power_trace=trace)
+
+    assert verified["observed_power_w"] == 70.0
+    assert verified["observed_temperature_c"] == 75.0
+    assert verified["power_trace_facts"]["gate_sample"]["power_w"] == "70"
+    assert verified["power_trace_facts"]["gate"]["passes"] is False
+    assert verified["gate_verified"] is False
+    assert verified["power_trace_verified"] is False
+    assert verified["verified"] is False
+    assert verified["power_trace_facts"]["gate_observation_source"] == "immutable_trace"
+    assert set(verified["power_trace_facts"]["metadata_observation_mismatch"]) == {
+        "observed_power_w",
+        "observed_temperature_c",
+    }
+
+
+def test_issue127_cooldown_proof_rejects_passing_metadata_without_an_in_window_trace_sample():
+    environment = runner.sanitize_environment(_environment(observed=[800]))
+    runner.validate_harness_environment(environment, run_id="run127-test")
+    metadata = runner.build_cooldown_metadata(
+        run_number=2,
+        wait_seconds=3.0,
+        expected_aiclk_mhz=1350.0,
+        environment=environment,
+        start_utc="2026-10-12T00:00:00.500000+00:00",
+        end_utc="2026-10-12T00:00:03.500000+00:00",
+        wait_performed=True,
+        observed_power_w=47.0,
+        observed_temperature_c=58.5,
+    )
+    trace = _cooldown_trace()
+    trace["samples"] = [trace["samples"][0], trace["samples"][3]]
+
+    verified = runner.verify_cooldown_power_trace(metadata, power_trace=trace)
+
+    assert verified["power_trace_facts"]["gate_sample"] is None
+    assert verified["power_trace_facts"]["gate"]["passes"] is False
+    assert verified["power_trace_facts"]["gate"]["result"] == "fail"
+    assert verified["gate_verified"] is False
+    assert verified["power_trace_verified"] is False
+    assert verified["verified"] is False
+    assert (
+        verified["power_trace_facts"]["gate_observation"]["reason"]
+        == "no_usable_trace_sample_within_cooldown_bounds"
+    )
+
+
 def test_issue127_close_failure_cannot_produce_pass_record():
     environment = runner.sanitize_environment(_environment())
     rows = []
