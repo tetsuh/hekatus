@@ -167,8 +167,19 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "device frames."
         ),
     }
+    assert plan["revision_history"][2] == {
+        "revision": 3,
+        "date": "2026-10-16",
+        "change": (
+            "Clarified that device_id: 1 is the host device-node number while the "
+            "single-device container opens visible device_id 0; hypothesis criteria "
+            "and prediction unchanged."
+        ),
+    }
     assert "criteria and prediction unchanged" in plan["revision_history"][1]["change"]
     assert "330-second guard" in plan["revision_history"][1]["change"]
+    assert "device_id: 1" in plan["revision_history"][2]["change"]
+    assert "visible device_id 0" in plan["revision_history"][2]["change"]
     assert plan["hypotheses"]["H-TDP"]["reference_only"].startswith("Issue #118 plateau 132-135 W")
     assert plan["hypotheses"]["H-TDP"]["plateau_proximity"]["lower_bound_at_150_w"] == 142.5
     assert "numeric_nonproximity_threshold_fraction" not in plan["hypotheses"]["H-OTHER"]
@@ -207,13 +218,16 @@ def test_snapshot_command_is_bounded_and_host_fields_are_not_retained(
     assert capture["snapshot"]["device_info"][0]["smbus_telem"]["TDC_LIMIT_MAX"] == "0xc8"
 
 
-def test_workload_command_pins_output_dir_device_one_and_guard() -> None:
+def test_workload_command_pins_host_node_and_visible_device_zero() -> None:
     output_dir = Path("out/q2-run-1")
     command = runner.build_workload_command(output_dir=output_dir, run_id="q2-run-1")
 
+    assert runner.DEVICE_ID == 1
+    assert runner.DEVICE_NODE == "/dev/tenstorrent/1"
+    assert runner.CONTAINER_VISIBLE_DEVICE_ID == 0
     assert command[1] == str(output_dir)
     assert "--device-id" in command
-    assert command[command.index("--device-id") + 1] == "1"
+    assert command[command.index("--device-id") + 1] == "0"
     assert command[command.index("--outer-timeout-seconds") + 1] == "330"
     assert runner.RUN_DURATION_SECONDS == 285.0
     assert runner.RUN_GUARD_SECONDS == 330.0
@@ -223,6 +237,43 @@ def test_workload_command_pins_output_dir_device_one_and_guard() -> None:
     assert command[command.index("--calibration-json") + 1] == "/out/issue121-q2-calibration.json"
     assert "/out/" in " ".join(command)
     assert "/home/" not in " ".join(command)
+
+
+@pytest.mark.parametrize("invalid_device_id", [1, -1, 2])
+def test_workload_command_rejects_nonzero_container_visible_device(
+    invalid_device_id: int,
+) -> None:
+    with pytest.raises(runner.Issue121Q2Error, match="container-visible device_id must be 0"):
+        runner.build_workload_command(
+            output_dir=Path("out/q2-run-1"),
+            run_id="q2-run-1",
+            container_device_id=invalid_device_id,
+        )
+    with pytest.raises(runner.Issue121Q2Error, match="container-visible device_id must be 0"):
+        runner.build_workload_environment(
+            run_id="q2-run-1",
+            image_digest="sha256:" + "a" * 64,
+            container_device_id=invalid_device_id,
+        )
+
+
+def test_run_one_rejects_nonzero_container_device_before_capture_or_workload(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(runner.Issue121Q2Error, match="container-visible device_id must be 0"):
+        runner.run_one(
+            tmp_path,
+            run_id="q2-run-1",
+            board_id="fixture-board",
+            bus_id="0000:01:00.0",
+            image_digest="sha256:" + "a" * 64,
+            harness_commit="b" * 40,
+            kernel="Linux fixture",
+            kernel_driver_version="2.11.0",
+            container_device_id=1,
+            workload_runner=lambda *_args: pytest.fail("workload must not run"),
+            capture_fn=lambda **_kwargs: pytest.fail("snapshot must not run"),
+        )
 
 
 @pytest.mark.parametrize(
@@ -268,6 +319,8 @@ def test_workload_environment_uses_fixed_ghcr_image_name() -> None:
     assert environment["HEKATUS_TT_IMAGE"] == (
         "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@" + digest
     )
+    assert environment["HEKATUS_TT_DEVICE_NODE"] == "/dev/tenstorrent/1"
+    assert environment["HEKATUS_TT_CONTAINER_DEVICE_ID"] == "0"
 
 
 def test_workload_output_retains_only_a_bounded_clean_tail(
@@ -505,7 +558,7 @@ def test_resident_wrapper_probe_reconstructs_added_args_without_device() -> None
             "--out",
             "/out/runner-result-q2-run-1.json",
             "--device-id",
-            "1",
+            "0",
             "--condition",
             "newton_schulz",
             "--calibration-json",
@@ -520,7 +573,7 @@ def test_resident_wrapper_probe_reconstructs_added_args_without_device() -> None
         "--out",
         "/out/runner-result-q2-run-1.json",
         "--device-id",
-        "1",
+        "0",
         "--condition",
         "newton_schulz",
         "--calibration-json",
@@ -583,6 +636,8 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
 
     assert record["status"] == "ok"
     assert record["workload"]["device_id"] == 1
+    assert record["workload"]["container_device_id"] == 0
+    assert record["workload"]["device_node"] == "/dev/tenstorrent/1"
     assert record["workload_result"]["stdout_tail"] == (
         "resident record -> /out/runner-result-q2-run-1.json\n"
     )
@@ -601,6 +656,10 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert record["run_timing"]["target_duration_seconds"] == 285.0
     assert record["run_timing"]["guard_seconds"] == 330.0
     assert record["environment"]["board"]["serial"] == "fixture-board"
+    assert record["environment"]["board"]["identity"]["bus_id"] == "0000:01:00.0"
+    assert record["environment"]["device_id"] == 1
+    assert record["environment"]["device_node"] == "/dev/tenstorrent/1"
+    assert record["environment"]["container_device_id"] == 0
     assert record["environment"]["firmware"]["bundle"] == "19.6.0.0"
     assert record["environment"]["kernel_driver_version"] == "2.11.0"
     assert record["environment"]["image_digest"] == "sha256:" + "a" * 64
@@ -611,8 +670,16 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert record["snapshot_limits"]["pre"]["THM_LIMIT_THROTTLE"] is None
     assert record["raw_window"]["columns"] == list(runner.RAW_WINDOW_COLUMNS)
     assert record["snapshots"]["pre"]["path"].startswith("pre-snapshot-")
+    assert record["snapshots"]["pre"]["identity"]["serial"] == "fixture-board"
+    assert record["snapshots"]["pre"]["identity"]["bus_id"] == "0000:01:00.0"
     assert record["snapshots"]["post"]["path"].startswith("post-snapshot-")
+    assert record["snapshots"]["post"]["identity"]["serial"] == "fixture-board"
+    assert record["snapshots"]["post"]["identity"]["bus_id"] == "0000:01:00.0"
+    assert record["snapshot_identities"]["post"]["bus_id"] == "0000:01:00.0"
     assert len(workload_calls) == 1
+    assert workload_calls[0][0][workload_calls[0][0].index("--device-id") + 1] == "0"
+    assert workload_calls[0][1]["HEKATUS_TT_DEVICE_NODE"] == "/dev/tenstorrent/1"
+    assert workload_calls[0][1]["HEKATUS_TT_CONTAINER_DEVICE_ID"] == "0"
     assert workload_calls[0][0][1] == str(tmp_path)
     assert workload_calls[0][0][1] != "/out"
     assert workload_calls[0][2] == runner.RUN_GUARD_SECONDS

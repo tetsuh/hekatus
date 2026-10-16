@@ -45,8 +45,11 @@ ISSUE121_Q2_IMAGE_NAME = (
     "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64"
 )
 
+# The plan's device_id identifies the host device-node number.  A single
+# device bind is visible as device_id 0 inside the resident container.
 DEVICE_ID = 1
 DEVICE_NODE = "/dev/tenstorrent/1"
+CONTAINER_VISIBLE_DEVICE_ID = 0
 RUN_DURATION_SECONDS = 285.0
 RUN_GUARD_SECONDS = 330.0
 WORKLOAD_OUTPUT_TAIL_LINES = 40
@@ -144,6 +147,16 @@ def _safe_run_id(value: str) -> str:
         return validate_run_id(value)
     except ValueError as exc:
         raise Issue121Q2Error(str(exc)) from exc
+
+
+def _validate_container_visible_device_id(value: Any | None = None) -> int:
+    """Require the sole device bind to remain visible as device 0."""
+    if CONTAINER_VISIBLE_DEVICE_ID != 0:
+        raise Issue121Q2Error("Q2 container-visible device_id must be configured as 0")
+    selected = CONTAINER_VISIBLE_DEVICE_ID if value is None else value
+    if isinstance(selected, bool) or not isinstance(selected, int) or selected != 0:
+        raise Issue121Q2Error("Q2 container-visible device_id must be 0")
+    return selected
 
 
 def _safe_output_dir(value: Path) -> Path:
@@ -325,6 +338,43 @@ def _snapshot_device(capture: Mapping[str, Any], board_id: str, bus_id: str) -> 
         return select_extended_board(snapshot, board_id=board_id, bus_id=bus_id)
     except ValueError as exc:
         raise SnapshotCaptureError(str(exc)) from exc
+
+
+def _selected_snapshot_identity(
+    capture: Mapping[str, Any], *, board_id: str, bus_id: str
+) -> dict[str, str]:
+    """Return safe serial and PCI identity for the explicitly selected board."""
+    normalized_board, normalized_bus = _safe_identity(board_id, bus_id)
+    device = _snapshot_device(capture, normalized_board, normalized_bus)
+    board_info = device.get("board_info")
+    if not isinstance(board_info, Mapping):
+        raise SnapshotCaptureError("selected snapshot device has no board_info")
+    serial = normalize_board_id(board_info.get("serial")) or normalize_board_id(
+        board_info.get("board_id")
+    )
+    if serial is None:
+        raise SnapshotCaptureError("selected snapshot device has no board serial")
+    selected_bus = normalize_pci_bus_id(board_info.get("bus_id"))
+    if selected_bus != normalized_bus:
+        raise SnapshotCaptureError("selected snapshot device has an unexpected PCI bus")
+    return {
+        "serial": serial,
+        "board_id": normalized_board,
+        "bus_id": normalized_bus,
+    }
+
+
+def _record_snapshot_identity(
+    capture: Mapping[str, Any], *, board_id: str, bus_id: str
+) -> dict[str, Any]:
+    """Record selected snapshot identity without hiding an unavailable post-read."""
+    try:
+        return {
+            "status": "selected",
+            **_selected_snapshot_identity(capture, board_id=board_id, bus_id=bus_id),
+        }
+    except SnapshotCaptureError as exc:
+        return {"status": "unavailable", "reason": str(exc)}
 
 
 _SNAPSHOT_LIMIT_SPECS = {
@@ -547,8 +597,10 @@ def build_workload_command(
     run_id: str,
     result_name: str | None = None,
     calibration_name: str = "issue121-q2-calibration.json",
+    container_device_id: int | None = None,
 ) -> tuple[str, ...]:
     """Build the workload command for the host directory mounted as ``/out``."""
+    visible_device_id = _validate_container_visible_device_id(container_device_id)
     output_dir = _safe_output_dir(output_dir)
     safe_run_id = _safe_run_id(run_id)
     if result_name is None:
@@ -562,7 +614,7 @@ def build_workload_command(
         "--out",
         f"/out/{result_name}",
         "--device-id",
-        str(DEVICE_ID),
+        str(visible_device_id),
         "--condition",
         "newton_schulz",
         "--calibration-json",
@@ -577,8 +629,10 @@ def build_workload_environment(
     run_id: str,
     image_digest: str,
     device_node: str = DEVICE_NODE,
+    container_device_id: int | None = None,
 ) -> dict[str, str]:
     """Return wrapper environment values without retaining a host path."""
+    visible_device_id = _validate_container_visible_device_id(container_device_id)
     safe_run_id = _safe_run_id(run_id)
     digest = _safe_digest(image_digest)
     if device_node != DEVICE_NODE:
@@ -588,6 +642,7 @@ def build_workload_environment(
         "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
         "HEKATUS_TT_IMAGE": f"{ISSUE121_Q2_IMAGE_NAME}@{digest}",
         "HEKATUS_TT_DEVICE_NODE": device_node,
+        "HEKATUS_TT_CONTAINER_DEVICE_ID": str(visible_device_id),
         # The existing resident runner requires sampler-on provenance.  The
         # Q2 thread additionally captures the opt-in identity-bound extended
         # trace; the legacy sampler remains unchanged and is not analyzed.
@@ -729,17 +784,17 @@ def _build_environment(
     kernel: str,
     kernel_driver_version: str,
     snapshot_name: str,
+    container_device_id: int | None = None,
 ) -> dict[str, Any]:
+    visible_device_id = _validate_container_visible_device_id(container_device_id)
     normalized_board, normalized_bus = _safe_identity(board_id, bus_id)
     device = _snapshot_device(pre_snapshot, normalized_board, normalized_bus)
+    selected_identity = _selected_snapshot_identity(
+        pre_snapshot, board_id=normalized_board, bus_id=normalized_bus
+    )
     board_info = device.get("board_info")
     if not isinstance(board_info, Mapping):
         raise SnapshotCaptureError("selected snapshot device has no board_info")
-    serial = normalize_board_id(board_info.get("serial")) or normalize_board_id(
-        board_info.get("board_id")
-    )
-    if serial is None:
-        raise SnapshotCaptureError("selected snapshot device has no board serial")
     firmwares = device.get("firmwares")
     if not isinstance(firmwares, Mapping):
         raise SnapshotCaptureError("selected snapshot device has no firmware metadata")
@@ -755,16 +810,21 @@ def _build_environment(
         raise Issue121Q2Error("snapshot_name must be a basename")
     return {
         "board": {
-            "serial": serial,
+            "serial": selected_identity["serial"],
             "board_type": board_info.get("board_type"),
-            "identity": {"board_id": normalized_board, "bus_id": normalized_bus},
+            "identity": {
+                "board_id": selected_identity["board_id"],
+                "bus_id": selected_identity["bus_id"],
+            },
         },
         "firmware": {"bundle": str(firmware_bundle)},
         "kernel": kernel.strip(),
         "kernel_driver_version": kernel_driver_version.strip(),
         "image_digest": _safe_digest(image_digest),
         "harness_commit": _safe_commit(harness_commit),
+        "device_id": DEVICE_ID,
         "device_node": DEVICE_NODE,
+        "container_device_id": visible_device_id,
         "pre_snapshot": safe_snapshot_name,
     }
 
@@ -1150,6 +1210,7 @@ def run_one(
     harness_commit: str,
     kernel: str,
     kernel_driver_version: str,
+    container_device_id: int | None = None,
     trace_interval_seconds: float = TRACE_INTERVAL_SECONDS,
     workload_runner: Callable[[Sequence[str], Mapping[str, str], float], Any] | None = None,
     capture_fn: Callable[..., dict[str, Any]] | None = None,
@@ -1157,6 +1218,7 @@ def run_one(
     utc_now: Callable[[], str] = _utc_now,
 ) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
+    visible_device_id = _validate_container_visible_device_id(container_device_id)
     output_dir = _safe_output_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     safe_run_id = _safe_run_id(run_id)
@@ -1178,6 +1240,7 @@ def run_one(
         kernel=kernel,
         kernel_driver_version=kernel_driver_version,
         snapshot_name=pre_path.name,
+        container_device_id=visible_device_id,
     )
 
     calibration_path = output_dir / "issue121-q2-calibration.json"
@@ -1189,10 +1252,12 @@ def run_one(
         run_id=safe_run_id,
         result_name=result_name,
         calibration_name=calibration_path.name,
+        container_device_id=visible_device_id,
     )
     workload_environment = build_workload_environment(
         run_id=safe_run_id,
         image_digest=image_digest,
+        container_device_id=visible_device_id,
     )
 
     in_run_captures: list[dict[str, Any]] = []
@@ -1260,6 +1325,14 @@ def run_one(
             post_capture, board_id=normalized_board, bus_id=normalized_bus
         ),
     }
+    snapshot_identities = {
+        "pre": _record_snapshot_identity(
+            pre_capture, board_id=normalized_board, bus_id=normalized_bus
+        ),
+        "post": _record_snapshot_identity(
+            post_capture, board_id=normalized_board, bus_id=normalized_bus
+        ),
+    }
     raw_window = _raw_window_from_trace(
         trace_path,
         run_start_ns=int(workload_start_ns),
@@ -1283,6 +1356,7 @@ def run_one(
             "name": "adr-0013-108-core-newton-schulz-surrogate",
             "condition": "newton_schulz",
             "device_id": DEVICE_ID,
+            "container_device_id": visible_device_id,
             "device_node": DEVICE_NODE,
             "worker_core_count": 108,
             "data_independent": True,
@@ -1304,6 +1378,7 @@ def run_one(
         },
         "workload_result": workload,
         "snapshot_limits": snapshot_limits,
+        "snapshot_identities": snapshot_identities,
         "raw_window": raw_window,
         "limitations": [
             (
@@ -1318,12 +1393,14 @@ def run_one(
                 "status": pre_capture.get("status"),
                 "timestamp_monotonic_ns": pre_capture.get("timestamp_monotonic_ns"),
                 "stdout_sha256": pre_capture.get("stdout_sha256"),
+                "identity": snapshot_identities["pre"],
             },
             "post": {
                 "path": post_path.name,
                 "status": post_capture.get("status"),
                 "timestamp_monotonic_ns": post_capture.get("timestamp_monotonic_ns"),
                 "stdout_sha256": post_capture.get("stdout_sha256"),
+                "identity": snapshot_identities["post"],
             },
             "command": list(SNAPSHOT_COMMAND_TUPLE),
             "timeout_seconds": SNAPSHOT_TIMEOUT_SECONDS,
@@ -1409,6 +1486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
+    "CONTAINER_VISIBLE_DEVICE_ID",
     "COOLDOWN_BASELINE_POWER_W",
     "COOLDOWN_BASELINE_TEMPERATURE_C",
     "COOLDOWN_POWER_LIMIT_W",

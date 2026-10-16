@@ -364,6 +364,11 @@
       "revision": 2,
       "date": "2026-10-16",
       "change": "pre-measurement change 300 -> 285 load and 150-300 -> 150-285 plateau to fit existing 40-second margin and 330-second guard; criteria and prediction unchanged; triggered by 8ad7ea9 preflight rejection with 0 device frames."
+    },
+    {
+      "revision": 3,
+      "date": "2026-10-16",
+      "change": "Clarified that device_id: 1 is the host device-node number while the single-device container opens visible device_id 0; hypothesis criteria and prediction unchanged."
     }
   ],
   "limitations": [
