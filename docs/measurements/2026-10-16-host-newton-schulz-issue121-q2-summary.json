@@ -4,7 +4,7 @@
   "issue": "#121",
   "plan": {
     "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
-    "revision": 8,
+    "revision": 9,
     "target_seconds": 285,
     "plateau_start_seconds": 150,
     "plateau_end_seconds": 285,
@@ -62,9 +62,9 @@
       "status": "ok",
       "duration_seconds": 299.15060189,
       "outer_process_duration_seconds": 299.15060189,
-      "measured_card_load_duration_seconds": 292.4117616908566,
+      "measured_card_load_duration_seconds": 292.412352680442,
       "card_load_target_met": true,
-      "duration_interpretation": "Outer workload-process duration was approximately 299.151 seconds; measured card-load duration was approximately 292.412 seconds from this run's measured load-interval AICLK, and it met the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "duration_interpretation": "Outer workload-process duration was approximately 299.151 seconds; measured card-load duration was approximately 292.412 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -244,9 +244,9 @@
       "status": "ok",
       "duration_seconds": 298.545785676,
       "outer_process_duration_seconds": 298.545785676,
-      "measured_card_load_duration_seconds": 292.6812628088626,
+      "measured_card_load_duration_seconds": 292.6818954037718,
       "card_load_target_met": true,
-      "duration_interpretation": "Outer workload-process duration was approximately 298.546 seconds; measured card-load duration was approximately 292.681 seconds from this run's measured load-interval AICLK, and it met the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "duration_interpretation": "Outer workload-process duration was approximately 298.546 seconds; measured card-load duration was approximately 292.682 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -415,7 +415,7 @@
           "status": "saved"
         }
       },
-      "measured_card_load_duration_approx_seconds": 292.681
+      "measured_card_load_duration_approx_seconds": 292.682
     },
     {
       "run_number": 3,
@@ -426,9 +426,9 @@
       "status": "ok",
       "duration_seconds": 301.4729979,
       "outer_process_duration_seconds": 301.4729979,
-      "measured_card_load_duration_seconds": 294.71396689586805,
+      "measured_card_load_duration_seconds": 294.7160203126406,
       "card_load_target_met": true,
-      "duration_interpretation": "Outer workload-process duration was approximately 301.473 seconds; measured card-load duration was approximately 294.714 seconds from this run's measured load-interval AICLK, and it met the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
+      "duration_interpretation": "Outer workload-process duration was approximately 301.473 seconds; measured card-load duration was approximately 294.716 seconds from this run's observed card-load elapsed ticks and measured load-interval AICLK, and it exceeded the 285-second measured card-load target. The two durations are reported separately; no rerun was needed.",
       "target_seconds": 285.0,
       "guard_seconds": 330.0,
       "within_guard": true,
@@ -597,7 +597,7 @@
           "status": "saved"
         }
       },
-      "measured_card_load_duration_approx_seconds": 294.714
+      "measured_card_load_duration_approx_seconds": 294.716
     }
   ],
   "post_hoc_observations": {
@@ -639,22 +639,22 @@
         301.4729979
       ],
       "measured_card_load_duration_seconds": [
-        292.4117616908566,
-        292.6812628088626,
-        294.71396689586805
+        292.412352680442,
+        292.6818954037718,
+        294.7160203126406
       ],
       "measured_card_load_duration_approx_seconds": [
         292.412,
-        292.681,
-        294.714
+        292.682,
+        294.716
       ],
-      "card_load_duration_source": "For each run, use immutable runner-result aiclk_mhz_load_interval_weighted with that run's immutable calibration load_card_ticks: load_card_ticks / (aiclk_mhz_load_interval_weighted * 1e6). The calibration actual_duration_aiclk_mhz=1050.9138856647014 MHz is the Issue #118 reference-clock field, not the measured Q2 run clock source.",
+      "card_load_duration_source": "For each run, use the immutable runner-result card_load_interval.elapsed_ticks (also recorded as card_load_interval_statistics.slowest_worker_elapsed_ticks) as the measured numerator with that run's immutable aiclk_mhz_load_interval_weighted: card_load_interval.elapsed_ticks / (aiclk_mhz_load_interval_weighted * 1e6). calibration.load_card_ticks=290132005515 is the pre-run Issue #118 calibration estimate and is not the Q2 measured duration numerator.",
       "card_load_target_met": true,
       "rerun_performed": false,
-      "disclosure": "The outer workload-process durations were approximately 299.151, 298.546, and 301.473 seconds; measured card-load durations were approximately 292.412, 292.681, and 294.714 seconds, respectively. All three runs met the 285-second measured card-load target; no rerun was needed.",
+      "disclosure": "The outer workload-process durations were approximately 299.151, 298.546, and 301.473 seconds; measured card-load durations were approximately 292.412, 292.682, and 294.716 seconds, respectively. All three runs exceeded the 285-second measured card-load target; no rerun was needed.",
       "interpretation_consequence": "Outer workload-process duration and measured card-load duration are separate; the corrected measured values are the target comparison, while plateau and analysis artifacts, H-OTHER classification, and prediction are unchanged.",
       "immutable_run_artifacts_unchanged": true,
-      "source_provenance_correction": "Revision 7's approximately 276.08-second disclosure used the Issue #118 calibration actual_duration_aiclk_mhz instead of each run's measured aiclk_mhz_load_interval_weighted; revision 8 supersedes the stale revision 7 disclosure without changing any immutable record or the preregistered duration definition."
+      "source_provenance_correction": "Revision 7's approximately 276.08-second disclosure used the Issue #118 calibration actual_duration_aiclk_mhz instead of each run's measured aiclk_mhz_load_interval_weighted; revision 8 corrected that clock source but still used calibration.load_card_ticks=290132005515 as the Q2 duration numerator. Revision 9 supersedes the revision 8 numerator disclosure by using each run's observed card_load_interval.elapsed_ticks (equal to card_load_interval_statistics.slowest_worker_elapsed_ticks) with its measured aiclk_mhz_load_interval_weighted; the observed numerators are 290132591897, 290132632600, and 290134027007, yielding approximately 292.412, 292.682, and 294.716 seconds, and outcomes/classifications are unchanged. No immutable runner, calibration, run, trace, or snapshot file changed."
     },
     "source": {
       "analysis_commit": "e09d4f9",
@@ -1568,7 +1568,7 @@
     "The AICLK onset is the first post-start sampled interval at or below 95% of source asic_fmax; no interpolation is performed.",
     "The measurement is the ADR-0013 108-core Newton-Schulz surrogate and is not full enodia evidence.",
     "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here.",
-    "Outer workload-process duration includes setup and teardown beyond measured card-load time: measured card-load durations were approximately 292.412, 292.681, and 294.714 seconds against the 285-second target, so all three runs met the measured target. The earlier approximately 276.08-second disclosure used the wrong calibration clock source and was corrected in revision 8; no rerun was performed."
+    "Outer workload-process duration includes setup and teardown beyond measured card-load time: measured card-load durations were approximately 292.412, 292.682, and 294.716 seconds against the 285-second target, so all three runs exceeded the measured target. The earlier approximately 276.08-second disclosure used the wrong calibration clock source and was corrected in revision 8; revision 9 corrected the remaining calibration numerator to the observed per-run elapsed ticks, and no rerun was performed."
   ],
   "unit_provenance": {
     "schema": "issue121-q2-unit-provenance-v1",

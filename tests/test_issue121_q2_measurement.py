@@ -46,9 +46,13 @@ def _immutable_card_load_durations() -> list[float]:
                 encoding="utf-8"
             )
         )
-        calibration = result["calibration"]
+        card_load_interval = result["card_load_interval"]
+        card_load_statistics = result["card_load_interval_statistics"]
+        assert card_load_interval["elapsed_ticks"] == card_load_statistics[
+            "slowest_worker_elapsed_ticks"
+        ]
         durations.append(
-            calibration["load_card_ticks"]
+            card_load_interval["elapsed_ticks"]
             / (result["aiclk_mhz_load_interval_weighted"] * 1_000_000.0)
         )
     return durations
@@ -369,6 +373,23 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "records, analyses, H-OTHER classification, and prediction are unchanged."
         ),
     }
+    assert plan["revision_history"][8] == {
+        "revision": 9,
+        "date": "2026-10-17",
+        "change": (
+            "post-measurement duration numerator correction: revision 8 still used "
+            "calibration.load_card_ticks=290132005515, a pre-run Issue #118 "
+            "calibration estimate, as the Q2 duration numerator. The corrected audit "
+            "uses each immutable runner-result's observed card_load_interval.elapsed_ticks "
+            "(equal to card_load_interval_statistics.slowest_worker_elapsed_ticks) with "
+            "that run's aiclk_mhz_load_interval_weighted; the observed numerators are "
+            "290132591897, 290132632600, and 290134027007, yielding approximately "
+            "292.412, 292.682, and 294.716 seconds. All three exceeded the 285-second "
+            "measured target; outcomes/classifications are unchanged and no rerun was "
+            "needed. Revision 8 remains retained as superseded audit history; no "
+            "immutable runner, calibration, run, trace, or snapshot file changed."
+        ),
+    }
     duration_disclosure = plan["post_measurement_duration_disclosure"]
     assert duration_disclosure["target_role"] == (
         "preregistered 285-second workload target audited as measured card-load time"
@@ -378,21 +399,36 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
         298.545785676,
         301.4729979,
     ]
+    expected_durations = [
+        292.412352680442,
+        292.6818954037718,
+        294.7160203126406,
+    ]
+    assert _immutable_card_load_durations() == pytest.approx(expected_durations)
     assert duration_disclosure["measured_card_load_duration_seconds"] == pytest.approx(
-        _immutable_card_load_durations()
+        expected_durations
     )
     assert duration_disclosure["measured_card_load_duration_approx_seconds"] == [
         292.412,
-        292.681,
-        294.714,
+        292.682,
+        294.716,
     ]
     assert duration_disclosure["card_load_target_met"] is True
     assert duration_disclosure["rerun_performed"] is False
     assert duration_disclosure["immutable_run_artifacts_unchanged"] is True
-    assert "aiclk_mhz_load_interval_weighted" in duration_disclosure[
+    assert "card_load_interval.elapsed_ticks" in duration_disclosure[
         "card_load_duration_source"
     ]
-    assert "supersedes the stale revision 7 disclosure" in duration_disclosure[
+    assert "card_load_interval_statistics.slowest_worker_elapsed_ticks" in duration_disclosure[
+        "card_load_duration_source"
+    ]
+    assert "calibration.load_card_ticks=290132005515" in duration_disclosure[
+        "card_load_duration_source"
+    ]
+    assert "not the Q2 measured duration numerator" in duration_disclosure[
+        "card_load_duration_source"
+    ]
+    assert "Revision 9 supersedes the revision 8 numerator disclosure" in duration_disclosure[
         "source_provenance_correction"
     ]
     assert plan["unit_provenance"]["status"] == "established"
@@ -460,7 +496,7 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
     observations = summary["post_hoc_observations"]
 
-    assert summary["plan"]["revision"] == 8
+    assert summary["plan"]["revision"] == 9
     assert summary["unit_provenance"]["status"] == "established"
     assert observations["status"] == "post_measurement"
     assert observations["scope"] == (
@@ -511,17 +547,25 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
     )
     assert duration["measured_card_load_duration_approx_seconds"] == [
         292.412,
-        292.681,
-        294.714,
+        292.682,
+        294.716,
     ]
-    assert "aiclk_mhz_load_interval_weighted" in duration["card_load_duration_source"]
+    assert "card_load_interval.elapsed_ticks" in duration["card_load_duration_source"]
+    assert "card_load_interval_statistics.slowest_worker_elapsed_ticks" in duration[
+        "card_load_duration_source"
+    ]
+    assert "calibration.load_card_ticks=290132005515" in duration["card_load_duration_source"]
+    assert "not the Q2 measured duration numerator" in duration["card_load_duration_source"]
     assert "actual_duration_aiclk_mhz" in duration["source_provenance_correction"]
+    assert "Revision 9 supersedes the revision 8 numerator disclosure" in duration[
+        "source_provenance_correction"
+    ]
     assert duration["card_load_target_met"] is True
     assert duration["rerun_performed"] is False
     assert duration["disclosure"] == (
         "The outer workload-process durations were approximately 299.151, 298.546, and "
         "301.473 seconds; measured card-load durations were approximately 292.412, "
-        "292.681, and 294.714 seconds, respectively. All three runs met the 285-second "
+        "292.682, and 294.716 seconds, respectively. All three runs exceeded the 285-second "
         "measured card-load target; no rerun was needed."
     )
     assert "Outer workload-process duration and measured card-load duration are separate" in (
@@ -534,7 +578,7 @@ def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
             expected_durations[run["run_number"] - 1]
         )
         and run["card_load_target_met"] is True
-        and "met the 285-second measured card-load target" in run["duration_interpretation"]
+        and "exceeded the 285-second measured card-load target" in run["duration_interpretation"]
         for run in summary["runs"]
     )
     board = observations["board_power_plateau"]
