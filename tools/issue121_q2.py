@@ -39,6 +39,9 @@ ISSUE121_Q2_RECORD_SCHEMA = "issue121-q2-measurement-v1"
 ISSUE121_Q2_SNAPSHOT_SCHEMA = "issue121-q2-tt-smi-snapshot-v1"
 ISSUE121_Q2_TRACE_SCHEMA = EXTENDED_POWER_TRACE_SCHEMA
 ISSUE121_Q2_TRACE_SCHEMA_VERSION = 1
+ISSUE121_Q2_IMAGE_NAME = (
+    "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64"
+)
 
 DEVICE_ID = 1
 DEVICE_NODE = "/dev/tenstorrent/1"
@@ -134,6 +137,27 @@ def _safe_run_id(value: str) -> str:
         return validate_run_id(value)
     except ValueError as exc:
         raise Issue121Q2Error(str(exc)) from exc
+
+
+def _safe_output_dir(value: Path) -> Path:
+    output_dir = Path(value)
+    text = str(output_dir)
+    if "\n" in text or "\\" in text or ".." in output_dir.parts:
+        raise Issue121Q2Error("output_dir must not contain path traversal")
+    return output_dir
+
+
+def _safe_basename(value: str, *, field: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value in {".", ".."}
+        or Path(value).name != value
+        or "/" in value
+        or "\\" in value
+    ):
+        raise Issue121Q2Error(f"{field} must be a basename")
+    return value
 
 
 def _safe_identity(board_id: str, bus_id: str) -> tuple[str, str]:
@@ -512,21 +536,21 @@ def _sample_extended_trace(
 
 def build_workload_command(
     *,
+    output_dir: Path,
     run_id: str,
     result_name: str | None = None,
     calibration_name: str = "issue121-q2-calibration.json",
 ) -> tuple[str, ...]:
-    """Build the fixed workload command using only repository/container paths."""
+    """Build the workload command for the host directory mounted as ``/out``."""
+    output_dir = _safe_output_dir(output_dir)
     safe_run_id = _safe_run_id(run_id)
     if result_name is None:
         result_name = f"runner-result-{safe_run_id}.json"
-    if Path(result_name).name != result_name:
-        raise Issue121Q2Error("result_name must be a basename")
-    if Path(calibration_name).name != calibration_name:
-        raise Issue121Q2Error("calibration_name must be a basename")
+    result_name = _safe_basename(result_name, field="result_name")
+    calibration_name = _safe_basename(calibration_name, field="calibration_name")
     return (
         "enodia/tt/bench/run_in_container.sh",
-        "/out",
+        str(output_dir),
         "--",
         "--out",
         f"/out/{result_name}",
@@ -555,7 +579,7 @@ def build_workload_environment(
     return {
         "HEKATUS_TT_RUN_ID": safe_run_id,
         "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
-        "HEKATUS_TT_IMAGE": f"tenstorrent/tt-metal@{digest}",
+        "HEKATUS_TT_IMAGE": f"{ISSUE121_Q2_IMAGE_NAME}@{digest}",
         "HEKATUS_TT_DEVICE_NODE": device_node,
         # The existing resident runner requires sampler-on provenance.  The
         # Q2 thread additionally captures the opt-in identity-bound extended
@@ -808,7 +832,7 @@ def run_one(
     utc_now: Callable[[], str] = _utc_now,
 ) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
-    output_dir = Path(output_dir)
+    output_dir = _safe_output_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     safe_run_id = _safe_run_id(run_id)
     if run_number is not None and run_number not in {1, 2, 3}:
@@ -836,6 +860,7 @@ def run_one(
     trace_path = output_dir / f"extended-trace-{safe_run_id}.csv"
     result_name = f"runner-result-{safe_run_id}.json"
     command = build_workload_command(
+        output_dir=output_dir,
         run_id=safe_run_id,
         result_name=result_name,
         calibration_name=calibration_path.name,
@@ -1062,6 +1087,7 @@ __all__ = [
     "DEVICE_NODE",
     "EARLY_RAW_WINDOW_SECONDS",
     "EXTENDED_TRACE_COLUMNS",
+    "ISSUE121_Q2_IMAGE_NAME",
     "ISSUE121_Q2_PLAN",
     "ISSUE121_Q2_RECORD_SCHEMA",
     "ISSUE121_Q2_TRACE_SCHEMA",

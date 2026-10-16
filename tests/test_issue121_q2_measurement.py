@@ -182,14 +182,63 @@ def test_snapshot_command_is_bounded_and_host_fields_are_not_retained(
     assert capture["snapshot"]["device_info"][0]["smbus_telem"]["TDC_LIMIT_MAX"] == "0xc8"
 
 
-def test_workload_command_pins_device_one_and_guard() -> None:
-    command = runner.build_workload_command(run_id="q2-run-1")
+def test_workload_command_pins_output_dir_device_one_and_guard() -> None:
+    output_dir = Path("out/q2-run-1")
+    command = runner.build_workload_command(output_dir=output_dir, run_id="q2-run-1")
 
+    assert command[1] == str(output_dir)
     assert "--device-id" in command
     assert command[command.index("--device-id") + 1] == "1"
     assert command[command.index("--outer-timeout-seconds") + 1] == "330"
+    assert command[command.index("--out") + 1] == "/out/runner-result-q2-run-1.json"
+    assert command[command.index("--calibration-json") + 1] == "/out/issue121-q2-calibration.json"
     assert "/out/" in " ".join(command)
     assert "/home/" not in " ".join(command)
+
+
+@pytest.mark.parametrize(
+    "invalid_name",
+    [
+        ".",
+        "..",
+        "../runner-result.json",
+        "nested/runner-result.json",
+        "nested\\runner-result.json",
+    ],
+)
+def test_workload_command_rejects_artifact_path_traversal(invalid_name: str) -> None:
+    with pytest.raises(runner.Issue121Q2Error, match="basename"):
+        runner.build_workload_command(
+            output_dir=Path("out/q2-run-1"),
+            run_id="q2-run-1",
+            result_name=invalid_name,
+        )
+    with pytest.raises(runner.Issue121Q2Error, match="basename"):
+        runner.build_workload_command(
+            output_dir=Path("out/q2-run-1"),
+            run_id="q2-run-1",
+            calibration_name=invalid_name,
+        )
+
+
+@pytest.mark.parametrize("invalid_output_dir", [Path(".."), Path("out/../q2-run-1")])
+def test_workload_command_rejects_output_dir_path_traversal(
+    invalid_output_dir: Path,
+) -> None:
+    with pytest.raises(runner.Issue121Q2Error, match="path traversal"):
+        runner.build_workload_command(output_dir=invalid_output_dir, run_id="q2-run-1")
+
+
+def test_workload_environment_uses_fixed_ghcr_image_name() -> None:
+    digest = "sha256:" + "a" * 64
+    environment = runner.build_workload_environment(
+        run_id="q2-run-1",
+        image_digest=digest,
+    )
+
+    assert environment["HEKATUS_TT_IMAGE"] == (
+        "ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04-release-amd64@" + digest
+    )
 
 
 def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> None:
@@ -248,11 +297,16 @@ def test_run_one_persists_pre_post_snapshots_and_provenance(tmp_path: Path) -> N
     assert record["snapshots"]["pre"]["path"].startswith("pre-snapshot-")
     assert record["snapshots"]["post"]["path"].startswith("post-snapshot-")
     assert len(workload_calls) == 1
+    assert workload_calls[0][0][1] == str(tmp_path)
+    assert workload_calls[0][0][1] != "/out"
     assert workload_calls[0][2] == runner.RUN_GUARD_SECONDS
+    assert (tmp_path / record["output_paths"]["calibration"]).exists()
     persisted = json.dumps(record)
     assert "hostname" not in persisted
     assert "username" not in persisted
     assert "/home/" not in persisted
+    assert str(tmp_path) not in persisted
+    assert "--calibration-json" not in persisted
     assert (tmp_path / record["output_paths"]["record"]).exists()
 
 
