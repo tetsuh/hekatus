@@ -4,29 +4,17 @@
   "issue": "#121",
   "observation_type": "post_measurement_supplement",
   "acquisition": {
-    "captured_at_utc": "2026-10-16T13:03:24.508450Z",
-    "docker_ps_before_snapshot": {
-      "command": [
-        "docker",
-        "ps"
-      ],
-      "running_containers": 0,
-      "status": "empty"
-    },
-    "snapshot_command": [
-      "tt-smi",
-      "-s",
-      "--snapshot_no_tty"
-    ],
-    "snapshot_returncode": 0,
-    "boards_captured": 2,
-    "raw_output_sha256": "96ce5274797ecec18a382c9d42b8f359ee79c233fd4cf694aab26d0f06f9f94a",
-    "raw_output_policy": "Only sanitized fields are committed; host identity and process details are omitted."
+    "acquired_at_utc": "2026-10-16T13:13:52Z",
+    "raw_reported_time": "2026-10-16T22:13:53.012165",
+    "raw_reported_time_status": "Unnormalized source field; the operator-stated acquired_at_utc is authoritative.",
+    "raw_snapshot_basename": "raw-tt-smi-snapshot-20261016T131352Z.json",
+    "raw_snapshot_status": "Operator-supplied raw snapshot is intentionally uncommitted; only sanitized fields are retained here.",
+    "provenance": "Manual idle read performed outside the Q2 harness; only sanitized board and telemetry fields are retained.",
+    "boards_captured": 2
   },
   "environment": {
     "tt_smi_version": "6.2.1",
     "tt_umd_version": "0.9.8",
-    "pyluwen_version": "0.9.0",
     "firmware_bundle": "19.6.0.0",
     "kernel": "6.8.0-138-generic",
     "kernel_driver": "TT-KMD 2.11.0"
@@ -47,8 +35,8 @@
       },
       "snapshot_fields": {
         "asic_temperature": {
-          "raw": "0x36403a",
-          "value_c": 54.3,
+          "raw": "0x34b67a",
+          "value_c": 52.7,
           "unit": "degC"
         },
         "gddr_words": {
@@ -92,11 +80,11 @@
             }
           },
           "GDDR_6_7_TEMP": {
-            "raw": "0x34343234",
+            "raw": "0x34342e30",
             "channels_c": {
               "GDDR_6": {
-                "bottom_c": 52,
-                "top_c": 50
+                "bottom_c": 48,
+                "top_c": 46
               },
               "GDDR_7": {
                 "bottom_c": 52,
@@ -113,16 +101,18 @@
         "fan_speed": {
           "raw": "0x2a",
           "value_percent": 42,
-          "unit": "percent"
+          "unit": "percent",
+          "meaning": "firmware target fan speed"
         },
         "fan_rpm": {
           "raw": "0x80c",
           "value_rpm": 2060,
-          "unit": "rpm"
+          "unit": "rpm",
+          "meaning": "reported actual fan speed"
         }
       },
       "reported_telemetry": {
-        "asic_temperature_c": 54.3,
+        "asic_temperature_c": 52.7,
         "fan_rpm": 2060
       }
     },
@@ -141,8 +131,8 @@
       },
       "snapshot_fields": {
         "asic_temperature": {
-          "raw": "0x30ace2",
-          "value_c": 48.7,
+          "raw": "0x2f43f2",
+          "value_c": 47.3,
           "unit": "degC"
         },
         "gddr_words": {
@@ -160,11 +150,11 @@
             }
           },
           "GDDR_2_3_TEMP": {
-            "raw": "0x48484244",
+            "raw": "0x48482828",
             "channels_c": {
               "GDDR_2": {
-                "bottom_c": 68,
-                "top_c": 66
+                "bottom_c": 40,
+                "top_c": 40
               },
               "GDDR_3": {
                 "bottom_c": 72,
@@ -207,23 +197,25 @@
         "fan_speed": {
           "raw": "0x46",
           "value_percent": 70,
-          "unit": "percent"
+          "unit": "percent",
+          "meaning": "firmware target fan speed"
         },
         "fan_rpm": {
           "raw": "0xd96",
           "value_rpm": 3478,
-          "unit": "rpm"
+          "unit": "rpm",
+          "meaning": "reported actual fan speed"
         }
       },
       "reported_telemetry": {
-        "asic_temperature_c": 48.7,
+        "asic_temperature_c": 47.3,
         "fan_rpm": 3478
       }
     }
   ],
   "source_provenance": {
     "status": "established_for_asic_gddr_channels_and_fans; max_gddr_temp_unit_unknown",
-    "source_note": "tt-smi 6.2.1 source was inspected from the installed package. The installed tt-umd 0.9.8 wheel exposes the telemetry enum/type stubs; the unit and packing implementation was checked in the equivalent repository UMD source used by the pinned tt-metal environment. No source statement establishes a unit or packing for MAX_GDDR_TEMP, so its raw value is retained without conversion.",
+    "source_note": "Board-free local source inspection only: tt-smi 6.2.1 source and tt-umd 0.9.8 API/UMD source were checked for field decoding. No hardware access was used for this record update. GDDR_x_y_TEMP units and numeric-word bit positions are source-established; MAX_GDDR_TEMP has no source-established unit or packing, so its raw value is retained without conversion.",
     "packages": [
       {
         "name": "tt-smi",
@@ -304,7 +296,8 @@
             "function": "TTSMIBackend.get_smbus_board_info",
             "finding": "Serializes each telemetry tag as its raw hexadecimal value."
           }
-        ]
+        ],
+        "byte_order": "External byte order is unknown; source establishes bit positions within the numeric 32-bit telemetry word."
       },
       "MAX_GDDR_TEMP": {
         "unit": "unknown",
@@ -324,7 +317,8 @@
             "finding": "Names the feature but does not establish its semantic unit."
           }
         ],
-        "policy": "Retain MAX_GDDR_TEMP raw hexadecimal values; do not infer Celsius or byte order."
+        "policy": "Retain MAX_GDDR_TEMP raw hexadecimal values; do not infer Celsius or byte order.",
+        "byte_order": "unknown"
       },
       "FAN_SPEED": {
         "unit": "percent",
@@ -349,7 +343,8 @@
             "constant": "TelemetryTag::FAN_SPEED",
             "finding": "Defines the target-speed telemetry tag."
           }
-        ]
+        ],
+        "byte_order": "unknown; source establishes an identity scalar, not an external byte order"
       },
       "FAN_RPM": {
         "unit": "rpm",
@@ -380,9 +375,11 @@
             "constant": "TELEMETRY_TABLE_HEADER",
             "finding": "Labels the displayed fan field as Fan Speed (RPM)."
           }
-        ]
+        ],
+        "byte_order": "unknown; source establishes Blackhole scalar behavior, not an external byte order"
       }
-    }
+    },
+    "verification_scope": "Local source inspection only; no hardware, board, container, or harness command was run for this update."
   },
   "derived_comparison": {
     "selection": {
@@ -1568,12 +1565,12 @@
         "GDDR_6_7_TEMP",
         "MAX_GDDR_TEMP"
       ],
-      "finding": "Issue #118 records do not retain GDDR channel or maximum temperature fields."
+      "finding": "Issue #118 has no GDDR temperature fields in the committed records."
     }
   },
   "limitations": [
     "MAX_GDDR_TEMP unit and packing are unknown in the inspected source; only raw hexadecimal values are retained.",
-    "The snapshot is a single idle observation after docker ps reported no running containers; it is not a workload measurement.",
-    "The source inspection does not establish a causal fan-control relationship with GDDR temperature."
+    "The operator-supplied snapshot is a single idle observation acquired outside the Q2 harness; it is not a workload measurement.",
+    "The source inspection and this observation do not establish a causal fan-control relationship with GDDR temperature."
   ]
 }

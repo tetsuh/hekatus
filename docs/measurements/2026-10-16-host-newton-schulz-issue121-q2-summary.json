@@ -888,14 +888,25 @@
       "source_record": "docs/measurements/issue121-q2/2026-10-16-post-hoc-gddr-fan-observation.json",
       "scope": "Idle observation and derived comparisons only; not preregistered Q2 criteria or a workload result.",
       "idle_snapshot": {
-        "captured_at_utc": "2026-10-16T13:03:24.508450Z",
-        "docker_ps_status": "empty",
+        "acquired_at_utc": "2026-10-16T13:13:52Z",
+        "raw_reported_time": "2026-10-16T22:13:53.012165",
+        "raw_reported_time_status": "Unnormalized source field; the operator-stated acquired_at_utc is authoritative.",
+        "raw_snapshot_basename": "raw-tt-smi-snapshot-20261016T131352Z.json",
+        "provenance": "Manual idle read performed outside the Q2 harness; only sanitized board and telemetry fields are retained.",
         "boards": [
           {
             "device": 0,
             "serial": "000004033191411c",
             "pci_bus_id": "0000:06:00.0",
-            "asic_temperature_c": 54.3,
+            "firmware_bundle": "19.6.0.0",
+            "asic_temperature_raw": "0x34b67a",
+            "asic_temperature_c": 52.7,
+            "gddr_words": {
+              "GDDR_0_1_TEMP": "0x36363234",
+              "GDDR_2_3_TEMP": "0x32343432",
+              "GDDR_4_5_TEMP": "0x30323638",
+              "GDDR_6_7_TEMP": "0x34342e30"
+            },
             "gddr_channels_c": {
               "GDDR_0": {
                 "bottom_c": 52,
@@ -922,8 +933,8 @@
                 "top_c": 48
               },
               "GDDR_6": {
-                "bottom_c": 52,
-                "top_c": 50
+                "bottom_c": 48,
+                "top_c": 46
               },
               "GDDR_7": {
                 "bottom_c": 52,
@@ -932,14 +943,25 @@
             },
             "max_gddr_temp_raw": "0x38",
             "max_gddr_temp_unit": "unknown",
+            "fan_speed_raw": "0x2a",
+            "fan_target_percent": 42,
             "fan_speed_percent": 42,
+            "fan_rpm_raw": "0x80c",
             "fan_rpm": 2060
           },
           {
             "device": 1,
             "serial": "0000040331914124",
             "pci_bus_id": "0000:09:00.0",
-            "asic_temperature_c": 48.7,
+            "firmware_bundle": "19.6.0.0",
+            "asic_temperature_raw": "0x2f43f2",
+            "asic_temperature_c": 47.3,
+            "gddr_words": {
+              "GDDR_0_1_TEMP": "0x42424042",
+              "GDDR_2_3_TEMP": "0x48482828",
+              "GDDR_4_5_TEMP": "0x44442e2c",
+              "GDDR_6_7_TEMP": "0x42462a28"
+            },
             "gddr_channels_c": {
               "GDDR_0": {
                 "bottom_c": 66,
@@ -950,8 +972,8 @@
                 "top_c": 66
               },
               "GDDR_2": {
-                "bottom_c": 68,
-                "top_c": 66
+                "bottom_c": 40,
+                "top_c": 40
               },
               "GDDR_3": {
                 "bottom_c": 72,
@@ -976,7 +998,10 @@
             },
             "max_gddr_temp_raw": "0x48",
             "max_gddr_temp_unit": "unknown",
+            "fan_speed_raw": "0x46",
+            "fan_target_percent": 70,
             "fan_speed_percent": 70,
+            "fan_rpm_raw": "0xd96",
             "fan_rpm": 3478
           }
         ]
@@ -1354,13 +1379,28 @@
           "docs/measurements/2026-10-11-p150a-issue118-newton-schulz-500000-adr0005.json"
         ],
         "gddr_temperature_status": "absent",
-        "finding": "The existing Issue #118 records contain no GDDR channel or maximum temperature fields.",
-        "device_assignment": "Issue #118 used device 0 while Q2 used device 1.",
-        "thermal_limitation": "The differing board thermal state means the AICLK difference cannot be attributed to run conditions alone."
+        "finding": "Issue #118 has no GDDR temperature fields in the committed records.",
+        "device_assignment": "Issue #118 used device 0 while Q2 used device 1; the idle comparison is across different boards.",
+        "thermal_limitation": "The differing board thermal state means the AICLK difference cannot be attributed to run conditions alone.",
+        "board_thermal_confound": {
+          "issue_118_device_0": {
+            "pci_bus_id": "0000:06:00.0",
+            "asic_temperature_c": 52.7,
+            "fan_target_percent": 42,
+            "fan_rpm": 2060
+          },
+          "q2_device_1": {
+            "pci_bus_id": "0000:09:00.0",
+            "asic_temperature_c": 47.3,
+            "fan_target_percent": 70,
+            "fan_rpm": 3478
+          },
+          "statement": "Issue #118 used device 0 while Q2 used device 1. These are different boards with different idle thermal and fan states, so the AICLK comparison is confounded and cannot be attributed to run conditions alone."
+        }
       },
       "interpretation": [
-        "Any apparent fan-control/GDDR-temperature relationship is speculation; the inspected firmware source establishes field decoding but does not establish a fan-control causal relationship.",
-        "The idle board comparison is descriptive and does not establish causality for the AICLK observations."
+        "Any apparent fan-control/GDDR-temperature relationship is speculation, not proof: the inspected source establishes field decoding but does not establish fan-control causality from GDDR temperature.",
+        "The device-0 Issue #118 versus device-1 Q2 comparison is a board-thermal confound; the idle observation cannot establish why their run behavior differs."
       ],
       "source_provenance": [
         {
@@ -1416,13 +1456,17 @@
             "TelemetryTag::FAN_RPM",
             "TelemetryTag::GDDR_0_1_TEMP through TelemetryTag::MAX_GDDR_TEMP"
           ],
-          "finding": "The relevant telemetry tags are enumerated; names alone do not establish MAX_GDDR_TEMP units."
+          "finding": "The relevant telemetry tags are enumerated; source establishes GDDR pair-word bit positions and fan field semantics, but MAX_GDDR_TEMP unit and packing remain unknown."
         }
       ],
       "limitations": [
         "MAX_GDDR_TEMP unit and packing are unknown; raw hexadecimal values are retained without conversion.",
-        "The single idle snapshot was taken after docker ps reported no running containers and did not start a workload."
-      ]
+        "The operator-supplied idle snapshot is a single observation acquired outside the Q2 harness and is not a workload measurement.",
+        "The different device-0/device-1 boards and their thermal state confound direct attribution of AICLK behavior.",
+        "The source inspection does not establish a causal fan-control relationship with GDDR temperature."
+      ],
+      "source_status": "Operator-supplied sanitized snapshot; local source inspection only.",
+      "source_inspection_scope": "Local tt-smi 6.2.1 and tt-umd 0.9.8 source inspection only; no hardware access was used for this post-hoc update."
     }
   },
   "prediction": {

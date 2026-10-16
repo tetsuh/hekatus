@@ -392,43 +392,83 @@ def test_gddr_fan_supplement_is_complete_and_sanitized() -> None:
     acquisition = record["acquisition"]
 
     assert record["record_schema"] == "issue121-q2-post-hoc-gddr-fan-observation-v1"
-    assert acquisition["docker_ps_before_snapshot"] == {
-        "command": ["docker", "ps"],
-        "running_containers": 0,
-        "status": "empty",
-    }
-    assert acquisition["snapshot_command"] == ["tt-smi", "-s", "--snapshot_no_tty"]
+    assert acquisition["acquired_at_utc"] == "2026-10-16T13:13:52Z"
+    assert acquisition["raw_reported_time"] == "2026-10-16T22:13:53.012165"
+    assert acquisition["raw_snapshot_basename"] == (
+        "raw-tt-smi-snapshot-20261016T131352Z.json"
+    )
+    assert "outside the Q2 harness" in acquisition["provenance"]
     assert acquisition["boards_captured"] == 2
-    assert record["environment"]["tt_smi_version"] == "6.2.1"
-    assert record["environment"]["tt_umd_version"] == "0.9.8"
-    assert record["environment"]["firmware_bundle"] == "19.6.0.0"
-    assert record["environment"]["kernel_driver"] == "TT-KMD 2.11.0"
+    assert record["environment"] == {
+        "tt_smi_version": "6.2.1",
+        "tt_umd_version": "0.9.8",
+        "firmware_bundle": "19.6.0.0",
+        "kernel": "6.8.0-138-generic",
+        "kernel_driver": "TT-KMD 2.11.0",
+    }
 
     boards = {board["pci_bus_id"]: board for board in record["boards"]}
     assert set(boards) == {"0000:06:00.0", "0000:09:00.0"}
-    assert boards["0000:06:00.0"]["snapshot_fields"]["fan_rpm"] == {
-        "raw": "0x80c",
-        "value_rpm": 2060,
-        "unit": "rpm",
+    board_zero_fields = boards["0000:06:00.0"]["snapshot_fields"]
+    board_one_fields = boards["0000:09:00.0"]["snapshot_fields"]
+    assert board_zero_fields["asic_temperature"] == {
+        "raw": "0x34b67a",
+        "value_c": 52.7,
+        "unit": "degC",
     }
-    assert boards["0000:09:00.0"]["snapshot_fields"]["fan_speed"] == {
-        "raw": "0x46",
-        "value_percent": 70,
-        "unit": "percent",
+    assert board_one_fields["asic_temperature"] == {
+        "raw": "0x2f43f2",
+        "value_c": 47.3,
+        "unit": "degC",
     }
-    assert boards["0000:09:00.0"]["snapshot_fields"]["max_gddr_temp"] == {
+    assert board_zero_fields["gddr_words"]["GDDR_6_7_TEMP"] == {
+        "raw": "0x34342e30",
+        "channels_c": {
+            "GDDR_6": {"bottom_c": 48, "top_c": 46},
+            "GDDR_7": {"bottom_c": 52, "top_c": 52},
+        },
+    }
+    assert board_one_fields["gddr_words"]["GDDR_2_3_TEMP"] == {
+        "raw": "0x48482828",
+        "channels_c": {
+            "GDDR_2": {"bottom_c": 40, "top_c": 40},
+            "GDDR_3": {"bottom_c": 72, "top_c": 72},
+        },
+    }
+    assert board_zero_fields["max_gddr_temp"] == {
+        "raw": "0x38",
+        "value": None,
+        "unit": "unknown",
+    }
+    assert board_one_fields["max_gddr_temp"] == {
         "raw": "0x48",
         "value": None,
         "unit": "unknown",
     }
-    assert len(
-        boards["0000:09:00.0"]["snapshot_fields"]["gddr_words"]
-    ) == 4
-    assert len(
-        boards["0000:09:00.0"]["snapshot_fields"]["gddr_words"]["GDDR_0_1_TEMP"][
-            "channels_c"
-        ]
-    ) == 2
+    assert board_zero_fields["fan_speed"] == {
+        "raw": "0x2a",
+        "value_percent": 42,
+        "unit": "percent",
+        "meaning": "firmware target fan speed",
+    }
+    assert board_one_fields["fan_speed"] == {
+        "raw": "0x46",
+        "value_percent": 70,
+        "unit": "percent",
+        "meaning": "firmware target fan speed",
+    }
+    assert board_zero_fields["fan_rpm"] == {
+        "raw": "0x80c",
+        "value_rpm": 2060,
+        "unit": "rpm",
+        "meaning": "reported actual fan speed",
+    }
+    assert board_one_fields["fan_rpm"] == {
+        "raw": "0xd96",
+        "value_rpm": 3478,
+        "unit": "rpm",
+        "meaning": "reported actual fan speed",
+    }
 
     provenance = record["source_provenance"]
     assert provenance["packages"] == [
@@ -452,12 +492,17 @@ def test_gddr_fan_supplement_is_complete_and_sanitized() -> None:
             "source_kind": "equivalent repository source for the installed wheel",
         },
     ]
+    assert provenance["verification_scope"].startswith("Local source inspection only")
     assert provenance["fields"]["GDDR_x_y_TEMP"]["unit"] == "degC"
     assert provenance["fields"]["GDDR_x_y_TEMP"]["packing"].startswith(
         "Two modules share each 32-bit word"
     )
+    assert "bit positions" in provenance["fields"]["GDDR_x_y_TEMP"]["byte_order"]
     assert provenance["fields"]["MAX_GDDR_TEMP"]["unit"] == "unknown"
     assert provenance["fields"]["MAX_GDDR_TEMP"]["packing"] == "unknown"
+    assert provenance["fields"]["MAX_GDDR_TEMP"]["byte_order"] == "unknown"
+    assert provenance["fields"]["FAN_SPEED"]["unit"] == "percent"
+    assert provenance["fields"]["FAN_RPM"]["unit"] == "rpm"
 
     comparison = record["derived_comparison"]
     assert comparison["q2_run_snapshots"]["source_count"] == 14
@@ -466,40 +511,75 @@ def test_gddr_fan_supplement_is_complete_and_sanitized() -> None:
         comparison["q2_run_snapshots"]["records"]
         + comparison["cooldown_snapshots"]["records"]
     )
-    assert all(snapshot["board"]["pci_bus_id"] == "0000:09:00.0" for snapshot in all_snapshots)
-    assert all(set(snapshot["raw"]) == {
-        "ASIC_TEMPERATURE",
-        "GDDR_0_1_TEMP",
-        "GDDR_2_3_TEMP",
-        "GDDR_4_5_TEMP",
-        "GDDR_6_7_TEMP",
-        "MAX_GDDR_TEMP",
-        "FAN_SPEED",
-        "FAN_RPM",
-    } for snapshot in all_snapshots)
-    assert comparison["issue_118_gddr_temperature"]["status"] == "absent"
-
-    encoded = json.dumps(record)
-    assert "host_info" not in encoded
-    assert "processes" not in encoded
-    assert "/home/" not in encoded
-    assert "/root/" not in encoded
     assert all(
-        snapshot["source"].startswith("docs/")
+        snapshot["board"]["pci_bus_id"] == "0000:09:00.0"
         for snapshot in all_snapshots
     )
+    assert all(
+        set(snapshot["raw"]) == {
+            "ASIC_TEMPERATURE",
+            "GDDR_0_1_TEMP",
+            "GDDR_2_3_TEMP",
+            "GDDR_4_5_TEMP",
+            "GDDR_6_7_TEMP",
+            "MAX_GDDR_TEMP",
+            "FAN_SPEED",
+            "FAN_RPM",
+        }
+        for snapshot in all_snapshots
+    )
+    assert comparison["issue_118_gddr_temperature"]["status"] == "absent"
+    assert "no GDDR temperature fields" in comparison[
+        "issue_118_gddr_temperature"
+    ]["finding"]
+
+    encoded = json.dumps(record)
+    for forbidden in (
+        "host_info",
+        "processes",
+        "cmdline",
+        "hostname",
+        "Memory",
+        "Platform",
+        "Python",
+        "docker_ps",
+        "snapshot_command",
+        "/home/",
+        "/root/",
+    ):
+        assert forbidden not in encoded
+    assert all(snapshot["source"].startswith("docs/") for snapshot in all_snapshots)
 
     summary_observation = json.loads(SUMMARY.read_text(encoding="utf-8"))[
         "post_hoc_observations"
     ]["gddr_fan_observation"]
-    assert summary_observation["idle_snapshot"]["docker_ps_status"] == "empty"
-    assert len(summary_observation["idle_snapshot"]["boards"]) == 2
+    idle_snapshot = summary_observation["idle_snapshot"]
+    assert idle_snapshot["acquired_at_utc"] == "2026-10-16T13:13:52Z"
+    assert idle_snapshot["raw_reported_time"] == "2026-10-16T22:13:53.012165"
+    assert "outside the Q2 harness" in idle_snapshot["provenance"]
+    assert len(idle_snapshot["boards"]) == 2
+    summary_boards = {board["pci_bus_id"]: board for board in idle_snapshot["boards"]}
+    for pci_bus_id, board in boards.items():
+        fields = board["snapshot_fields"]
+        assert summary_boards[pci_bus_id]["asic_temperature_c"] == fields[
+            "asic_temperature"
+        ]["value_c"]
+        assert summary_boards[pci_bus_id]["gddr_words"] == {
+            name: value["raw"] for name, value in fields["gddr_words"].items()
+        }
+        assert summary_boards[pci_bus_id]["fan_target_percent"] == fields[
+            "fan_speed"
+        ]["value_percent"]
+        assert summary_boards[pci_bus_id]["fan_rpm"] == fields["fan_rpm"]["value_rpm"]
     assert len(summary_observation["q2_device_1_snapshot_comparison"]["run_pre_post"]) == 6
     assert len(summary_observation["q2_device_1_snapshot_comparison"]["cooldown"]) == 2
-    assert summary_observation["issue_118_comparison"]["gddr_temperature_status"] == "absent"
-    assert "cannot be attributed to run conditions alone" in summary_observation[
-        "issue_118_comparison"
-    ]["thermal_limitation"]
+    issue_118 = summary_observation["issue_118_comparison"]
+    assert issue_118["gddr_temperature_status"] == "absent"
+    assert "no GDDR temperature fields" in issue_118["finding"]
+    assert "cannot be attributed to run conditions alone" in issue_118[
+        "thermal_limitation"
+    ]
+    assert "confounded" in issue_118["board_thermal_confound"]["statement"]
     assert "speculation" in summary_observation["interpretation"][0]
 
 
