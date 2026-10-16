@@ -21,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -30,6 +31,12 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench import power_trace_extended as _power_trace_extended
+from enodia.tt.bench.board_identity import (
+    normalize_board_id,
+    normalize_pci_bus_id,
+    resolve_board_identity,
+)
 from enodia.tt.bench.sampler_contract import (
     COVERAGE_DEFINITIONS,
     DEFAULT_SAMPLER_INTERVAL_SECONDS,
@@ -39,14 +46,47 @@ from enodia.tt.bench.sampler_contract import (
     normalize_sampler_metadata,
 )
 
+EXTENDED_POWER_TRACE_COLUMNS = _power_trace_extended.EXTENDED_POWER_TRACE_COLUMNS
+EXTENDED_POWER_TRACE_HEADER = _power_trace_extended.EXTENDED_POWER_TRACE_HEADER
+EXTENDED_POWER_TRACE_SCHEMA = _power_trace_extended.EXTENDED_POWER_TRACE_SCHEMA
+EXTENDED_POWER_TRACE_SCHEMA_VERSION = _power_trace_extended.EXTENDED_POWER_TRACE_SCHEMA_VERSION
+ExtendedPowerTraceError = _power_trace_extended.ExtendedPowerTraceError
+extended_csv_row = _power_trace_extended.extended_csv_row
+extended_power_trace_header = _power_trace_extended.extended_power_trace_header
+extended_telemetry_csv_row = _power_trace_extended.extended_telemetry_csv_row
+format_extended_power_trace_row = _power_trace_extended.format_extended_power_trace_row
+parse_extended_power_trace = _power_trace_extended.parse_extended_power_trace
+parse_extended_snapshot = _power_trace_extended.parse_extended_snapshot
+parse_extended_telemetry = _power_trace_extended.parse_extended_telemetry
+parse_power_trace_extended = _power_trace_extended.parse_power_trace_extended
+read_extended_power_trace = _power_trace_extended.read_extended_power_trace
+read_extended_power_trace_csv = _power_trace_extended.read_extended_power_trace_csv
+read_extended_power_trace_snapshot = _power_trace_extended.read_extended_power_trace_snapshot
+read_power_trace_extended_csv = _power_trace_extended.read_power_trace_extended_csv
+select_extended_board = _power_trace_extended.select_extended_board
+is_extended_snapshot_well_formed = _power_trace_extended.is_extended_snapshot_well_formed
+validate_extended_power_trace = _power_trace_extended.validate_extended_power_trace
+
 SNAPSHOT_COMMAND = ("tt-smi", "-s", "--snapshot_no_tty")
 CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c"
 _DEFAULT_DEVICE_NODE = "/dev/tenstorrent/0"
+_EXTENDED_NODE_RESOLUTION_RETRIES = 2
 _PCI_BUS_ID_RE = re.compile(
     r"(?<![0-9a-f])([0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7])(?![0-9a-f])",
     re.IGNORECASE,
 )
 _BOARD_BUS_ID_KEYS = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+_SMBUS_LIMIT_KEYS = (
+    "VDD_LIMITS",
+    "BOARD_POWER_LIMIT",
+    "TDC_LIMIT_MAX",
+    "THM_LIMIT_THROTTLE",
+    "THM_LIMIT_SHUTDOWN",
+    "AICLK_LIMIT_MAX",
+    "TDP_LIMIT_MAX",
+    "AICLK_ARB_MIN",
+    "AICLK_ARB_MAX",
+)
 _BLACKHOLE_BY_ID_RE = re.compile(r"^blackhole-[0-9A-Za-z][0-9A-Za-z._-]*$")
 
 POWER_TRACE_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
@@ -254,10 +294,7 @@ def _requested_device_node() -> str:
 
 
 def _normalize_pci_bus_id(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    match = _PCI_BUS_ID_RE.fullmatch(value.strip())
-    return match.group(1).lower() if match else None
+    return normalize_pci_bus_id(value)
 
 
 def _normalize_pci_bus_ids(values: object) -> set[str]:
@@ -467,38 +504,96 @@ def _resolved_pci_bus_ids(node: str, resolver: Callable[[str], object]) -> set[s
         return set()
 
 
-def _device_info(
-    snapshot: str,
-    *,
-    node_resolver: Callable[[str], object] | None = None,
-) -> dict | None:
-    """Select the board addressed by ``HEKATUS_TT_DEVICE_NODE``.
-
-    With no explicit node, the historical first-device behavior remains the
-    default for ``/dev/tenstorrent/0``.  A non-default node is accepted only
-    when a verified by-id link resolves it to exactly one PCI bus id and that
-    id identifies exactly one snapshot entry.  Numeric node indexes and
-    snapshot list positions are never used as physical-board identity.
-    """
+def _snapshot_devices(snapshot: str) -> list[dict] | None:
+    """Decode and validate the device list shared by both selection contracts."""
     try:
-        devices = json.loads(snapshot)["device_info"]
+        root = json.loads(snapshot)
+        devices = root["device_info"]
     except (ValueError, KeyError, TypeError):
         return None
     if not isinstance(devices, list) or not devices:
         return None
     if not all(isinstance(device, dict) for device in devices):
         return None
+    return devices
 
-    requested_node = _requested_device_node()
+
+def _requested_q2_identity(
+    board_id: str | None, bus_id: str | None
+) -> tuple[str, str] | None:
+    """Normalize an explicitly supplied Q2 identity, or retain legacy selection."""
+    if board_id is None and bus_id is None:
+        return None
+    normalized_board_id = normalize_board_id(board_id)
+    if normalized_board_id is None:
+        raise ValueError("board_id must be a non-empty string")
+    normalized_bus_id = _normalize_pci_bus_id(bus_id)
+    if normalized_bus_id is None:
+        raise ValueError("bus_id must be a valid PCI BDF")
+    return normalized_board_id, normalized_bus_id
+
+
+def _q2_node_matches(
+    requested_node: str, requested_bus_id: str, resolver: Callable[[str], object]
+) -> bool:
+    requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
+    return len(requested_bus_ids) == 1 and next(iter(requested_bus_ids)) == requested_bus_id
+
+
+def _q2_board_matches(
+    devices: list[dict], requested_board_id: str, requested_bus_id: str
+) -> tuple[list[dict], list[dict], list[dict]]:
+    board_matches: list[dict] = []
+    bus_matches: list[dict] = []
+    pair_matches: list[dict] = []
+    for device in devices:
+        board_info = device.get("board_info")
+        if not isinstance(board_info, dict):
+            continue
+        candidate_board_id = normalize_board_id(board_info.get("board_id"))
+        candidate_bus_id = _normalize_pci_bus_id(board_info.get("bus_id"))
+        board_matches_identity = candidate_board_id == requested_board_id
+        bus_matches_identity = candidate_bus_id == requested_bus_id
+        if board_matches_identity:
+            board_matches.append(device)
+        if bus_matches_identity:
+            bus_matches.append(device)
+        if board_matches_identity and bus_matches_identity:
+            pair_matches.append(device)
+    return board_matches, bus_matches, pair_matches
+
+
+def _select_q2_device(
+    devices: list[dict],
+    *,
+    requested_node: str,
+    resolver: Callable[[str], object],
+    requested_board_id: str,
+    requested_bus_id: str,
+) -> dict | None:
+    """Select one board after validating the explicit Q2 node identity."""
+    if not _q2_node_matches(requested_node, requested_bus_id, resolver):
+        return None
+    board_matches, bus_matches, pair_matches = _q2_board_matches(
+        devices, requested_board_id, requested_bus_id
+    )
+    if len(board_matches) != 1 or len(bus_matches) != 1 or len(pair_matches) != 1:
+        return None
+    if pair_matches[0] is not board_matches[0] or pair_matches[0] is not bus_matches[0]:
+        return None
+    return pair_matches[0]
+
+
+def _select_legacy_device(
+    devices: list[dict], *, requested_node: str, resolver: Callable[[str], object]
+) -> dict | None:
+    """Preserve legacy default-node and verified PCI selection behavior."""
     if requested_node == _DEFAULT_DEVICE_NODE:
         return devices[0]
-
-    resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
     requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
     if len(requested_bus_ids) != 1:
         return None
     requested_bus_id = next(iter(requested_bus_ids))
-
     matches: list[dict] = []
     for device in devices:
         identity = _device_bus_identity(device)
@@ -510,13 +605,64 @@ def _device_info(
     return matches[0] if len(matches) == 1 else None
 
 
+def _device_info(
+    snapshot: str,
+    *,
+    node_resolver: Callable[[str], object] | None = None,
+    board_id: str | None = None,
+    bus_id: str | None = None,
+) -> dict | None:
+    """Select a board while retaining the device-node/PCI contract.
+
+    Legacy callers that do not supply a Q2 identity retain the historical
+    default-node behavior.  Once either Q2 identity is requested, both
+    ``board_info.board_id`` and ``board_info.bus_id`` are required and must
+    identify exactly one entry.  The selected device node, including the
+    default node, is resolved through its verified PCI identity and must agree
+    with the requested bus.  The ``device_info`` array position is never used
+    in the Q2 branch.
+    """
+    devices = _snapshot_devices(snapshot)
+    if devices is None:
+        return None
+
+    # Board identity is opt-in here so the established four-column sampler
+    # remains unchanged.  Identity-aware callers resolve environment values
+    # before passing the complete pair; no-argument callers stay on legacy
+    # default-node selection.
+    requested_node = _requested_device_node()
+    resolver = _resolve_device_node_to_pci if node_resolver is None else node_resolver
+    try:
+        identity = _requested_q2_identity(board_id, bus_id)
+    except ValueError:
+        return None
+    if identity is not None:
+        return _select_q2_device(
+            devices,
+            requested_node=requested_node,
+            resolver=resolver,
+            requested_board_id=identity[0],
+            requested_bus_id=identity[1],
+        )
+    return _select_legacy_device(
+        devices, requested_node=requested_node, resolver=resolver
+    )
+
+
 def parse_telemetry(
     snapshot: str,
     *,
     node_resolver: Callable[[str], object] | None = None,
+    board_id: str | None = None,
+    bus_id: str | None = None,
 ) -> dict[str, str] | None:
     """Extract one finite sampled reading from the requested board."""
-    device = _device_info(snapshot, node_resolver=node_resolver)
+    device = _device_info(
+        snapshot,
+        node_resolver=node_resolver,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
     if device is None:
         return None
     try:
@@ -539,9 +685,16 @@ def telemetry_csv_row(
     *,
     timestamp: str,
     node_resolver: Callable[[str], object] | None = None,
+    board_id: str | None = None,
+    bus_id: str | None = None,
 ) -> str | None:
     """One finite CSV row from the requested board, or None if unusable."""
-    reading = parse_telemetry(snapshot, node_resolver=node_resolver)
+    reading = parse_telemetry(
+        snapshot,
+        node_resolver=node_resolver,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
     if reading is None:
         return None
     return f"{timestamp},{reading['power_w']},{reading['aiclk_mhz']},{reading['asic_temp_c']}"
@@ -551,9 +704,26 @@ def parse_environment(
     snapshot: str,
     *,
     node_resolver: Callable[[str], object] | None = None,
+    board_id: str | None = None,
+    bus_id: str | None = None,
 ) -> dict:
-    """The board identity that every result has to carry with it."""
-    device = _device_info(snapshot, node_resolver=node_resolver)
+    """Return board provenance without retaining host snapshot sections.
+
+    ``host_info`` and ``processes`` are deliberately not copied.  The
+    ``host_sw_vers`` mapping is a tool-provided provenance value and is retained
+    when present; SMBus telemetry and the sibling limits object are retained as
+    raw objects so this layer does not assert a unit conversion.
+    """
+    try:
+        snapshot_object = json.loads(snapshot)
+    except (TypeError, ValueError):
+        snapshot_object = None
+    device = _device_info(
+        snapshot,
+        node_resolver=node_resolver,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
     if device is None:
         return {
             "board_snapshot_error": "no verifiable device information in the snapshot",
@@ -567,7 +737,34 @@ def parse_environment(
         "limits": device.get("limits"),
         "device_node": _requested_device_node(),
     }
-    reading = parse_telemetry(snapshot, node_resolver=node_resolver)
+    host_sw_vers = (
+        snapshot_object.get("host_sw_vers") if isinstance(snapshot_object, dict) else None
+    )
+    if isinstance(host_sw_vers, Mapping):
+        # This is a tool-provided mapping.  Retain that mapping as-is; host_info
+        # and processes are intentionally not part of the environment record.
+        environment["host_sw_vers"] = host_sw_vers
+
+    smbus_telem = device.get("smbus_telem")
+    if isinstance(smbus_telem, Mapping):
+        # SMBus telemetry and limits are sibling objects in the snapshot. Keep
+        # the raw SMBus object and an explicit raw limit subset without deriving
+        # values or asserting units.
+        environment["smbus_telem"] = smbus_telem
+        smbus_limits = {
+            key: smbus_telem[key]
+            for key in _SMBUS_LIMIT_KEYS
+            if key in smbus_telem
+        }
+        if smbus_limits:
+            environment["smbus_telem_limits"] = smbus_limits
+
+    reading = parse_telemetry(
+        snapshot,
+        node_resolver=node_resolver,
+        board_id=board_id,
+        bus_id=bus_id,
+    )
     if reading is not None:
         observed = _finite_integer(
             reading["aiclk_mhz"], field="aiclk_mhz", positive=True
@@ -677,8 +874,11 @@ def capture_environment(
     *,
     sampler_mode: str = "default",
     sampler_interval: float | None = None,
+    board_id: str | None = None,
+    bus_id: str | None = None,
 ) -> dict:
     """Everything needed to name the environment a measurement came from."""
+    effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
     environment = {
         "captured_at": _now(),
         "image": image,
@@ -693,7 +893,13 @@ def capture_environment(
         ).strip(),
     }
     environment.update(harness_identity())
-    environment.update(parse_environment(_run(SNAPSHOT_COMMAND)))
+    environment.update(
+        parse_environment(
+            _run(SNAPSHOT_COMMAND),
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
+        )
+    )
     run_id = os.environ.get("HEKATUS_TT_RUN_ID")
     if run_id:
         # The outer wrapper creates this identity once and exports it to both
@@ -728,12 +934,170 @@ def _sample_loop(handle, interval: float) -> None:
         time.sleep(interval)
 
 
+def _required_extended_identity(
+    board_id: str | None, bus_id: str | None
+) -> tuple[str, str]:
+    """Resolve the complete identity required by the extended sampler."""
+    effective_board_id, effective_bus_id = resolve_board_identity(board_id, bus_id)
+    if effective_board_id is None or effective_bus_id is None:
+        raise ValueError("extended-v1 requires both board_id and bus_id")
+    return effective_board_id, effective_bus_id
+
+
+def _extended_device_info(
+    snapshot: str,
+    *,
+    board_id: str,
+    bus_id: str,
+) -> dict | None:
+    """Resolve the extended sampler's node identity with bounded transient retries."""
+    resolved_bus_ids: set[str] | None = None
+
+    def resolve_node(node: str) -> set[str]:
+        nonlocal resolved_bus_ids
+        resolved_bus_ids = _resolved_pci_bus_ids(node, _resolve_device_node_to_pci)
+        return resolved_bus_ids
+
+    for attempt in range(_EXTENDED_NODE_RESOLUTION_RETRIES + 1):
+        resolved_bus_ids = None
+        device = _device_info(
+            snapshot,
+            node_resolver=resolve_node,
+            board_id=board_id,
+            bus_id=bus_id,
+        )
+        if device is not None:
+            return device
+        # An empty result is an unverifiable udev identity and may be transient.
+        # A non-empty result that does not match the requested bus is a mismatch
+        # and must remain fail-closed without retrying it.
+        if resolved_bus_ids:
+            return None
+        if attempt == _EXTENDED_NODE_RESOLUTION_RETRIES:
+            return None
+    return None
+
+
+def _sample_extended_loop(
+    handle,
+    interval: float,
+    *,
+    board_id: str | None = None,
+    bus_id: str | None = None,
+    monotonic_ns: Callable[[], int] | None = None,
+    utc_now: Callable[[], str] | None = None,
+) -> None:
+    """Sample the opt-in sidecar without changing the legacy sampler.
+
+    Each row has one snapshot window.  The monotonic values bracket exactly
+    one ``tt-smi`` call, while the UTC value is captured after that call just
+    as the legacy sampler captures its row timestamp.
+    """
+    effective_board_id, effective_bus_id = _required_extended_identity(board_id, bus_id)
+    clock = time.monotonic_ns if monotonic_ns is None else monotonic_ns
+    now = _now if utc_now is None else utc_now
+    handle.write(EXTENDED_POWER_TRACE_HEADER + "\n")
+    while True:
+        snapshot_start_ns = clock()
+        snapshot = _run(SNAPSHOT_COMMAND)
+        snapshot_end_ns = clock()
+        snapshot_finished_utc = now()
+        if not is_extended_snapshot_well_formed(snapshot):
+            print(
+                "extended telemetry sample dropped: malformed snapshot",
+                file=sys.stderr,
+            )
+            time.sleep(interval)
+            continue
+        # The extended selector validates snapshot identities, while this
+        # verified resolver also binds the requested board to the benchmark
+        # process's actual device node.  A mismatch is a run-level failure,
+        # not a dropped telemetry sample.
+        if _extended_device_info(
+            snapshot,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
+        ) is None:
+            raise ExtendedPowerTraceError(
+                "benchmark device node does not match requested board_id/bus_id"
+            )
+        _power_trace_extended.select_extended_board(
+            snapshot,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
+        )
+        try:
+            row = extended_telemetry_csv_row(
+                snapshot,
+                board_id=effective_board_id,
+                bus_id=effective_bus_id,
+                timestamp_utc=snapshot_finished_utc,
+                timestamp_monotonic_ns=snapshot_end_ns,
+                snapshot_elapsed_ns=snapshot_end_ns - snapshot_start_ns,
+            )
+        except Exception as exc:  # noqa: BLE001 - one lost row beats a lost trace
+            print(
+                f"extended telemetry sample failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
+            row = None
+        if row is not None:
+            handle.write(row + "\n")
+        time.sleep(interval)
+
+
+def _trusted_output_roots() -> tuple[Path, ...]:
+    """Return output roots established by the host harness or test runner."""
+    roots = (
+        Path.cwd(),
+        Path(tempfile.gettempdir()),
+        Path("/out"),
+        Path(__file__).resolve().parents[3],
+    )
+    return tuple(root.resolve(strict=False) for root in roots)
+
+
+def _trusted_output_path(path: Path) -> Path:
+    """Resolve a CLI output path only when it stays in a trusted root."""
+    candidate = Path(path)
+    try:
+        resolved = candidate.resolve(strict=False)
+        if candidate.is_symlink():
+            raise ValueError("output path must not be a symbolic link")
+        trusted = _trusted_output_roots()
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("output path cannot be resolved safely") from exc
+    if not any(resolved.is_relative_to(root) for root in trusted):
+        raise ValueError("output path must be beneath a trusted output directory")
+    return resolved
+
+
+def _sample_extended_forever(
+    out_path: Path,
+    interval: float,
+    *,
+    board_id: str | None = None,
+    bus_id: str | None = None,
+) -> None:
+    effective_board_id, effective_bus_id = _required_extended_identity(board_id, bus_id)
+    safe_output_path = _trusted_output_path(out_path)
+    with safe_output_path.open(
+        "w", encoding="utf-8", newline="", buffering=1
+    ) as handle:
+        _sample_extended_loop(
+            handle,
+            interval,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
+        )
+
+
 def _sample_forever(out_path: Path, interval: float) -> None:
     with out_path.open("w", buffering=1) as handle:
         _sample_loop(handle, interval)
 
 
-def main(argv: list[str] | None = None) -> None:
+def _telemetry_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Capture board environment or sample telemetry")
     sub = parser.add_subparsers(dest="mode", required=True)
 
@@ -743,43 +1107,101 @@ def main(argv: list[str] | None = None) -> None:
     capture.add_argument("--image-pinned", action="store_true")
     capture.add_argument("--sampler-mode", choices=SAMPLER_MODES, default="default")
     capture.add_argument("--sampler-interval", type=float, default=None)
+    capture.add_argument("--board-id", default=None)
+    capture.add_argument("--bus-id", default=None)
 
     sample = sub.add_parser("sample", help="append telemetry rows until terminated")
     sample.add_argument("--out", type=Path, required=True)
     sample.add_argument("--interval", type=float, default=DEFAULT_SAMPLER_INTERVAL_SECONDS)
+    sample.add_argument(
+        "--trace-schema",
+        choices=("legacy-v1", "extended-v1"),
+        default="legacy-v1",
+        help="select the opt-in extended sidecar schema without changing legacy-v1",
+    )
+    sample.add_argument("--board-id", default=None)
+    sample.add_argument("--bus-id", default=None)
+    return parser
 
-    args = parser.parse_args(argv)
+
+def _validate_telemetry_arguments(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
     if args.mode == "sample" and not (math.isfinite(args.interval) and args.interval > 0):
         # Zero turns the loop into a busy wait on the snapshot tool; negative
         # and non-finite values reach sleep and end the sampler outright.
         parser.error(f"--interval must be positive and finite, got {args.interval}")
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-
-    if args.mode == "capture-env":
+    if args.mode == "sample" and args.trace_schema == "extended-v1":
         try:
-            if args.sampler_mode == "default" and args.sampler_interval is None:
-                # Keep the two-argument call compatible with board-free callers
-                # that replace capture_environment in tests.
-                environment = capture_environment(args.image, args.image_pinned)
-            else:
-                environment = capture_environment(
-                    args.image,
-                    args.image_pinned,
-                    sampler_mode=args.sampler_mode,
-                    sampler_interval=args.sampler_interval,
-                )
+            args.board_id, args.bus_id = _required_extended_identity(
+                args.board_id, args.bus_id
+            )
+            args.out = _trusted_output_path(args.out)
         except ValueError as exc:
             parser.error(str(exc))
-        args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
-        print(f"environment -> {args.out}")
-        return
+    if (
+        args.mode == "sample"
+        and args.trace_schema == "legacy-v1"
+        and (args.board_id is not None or args.bus_id is not None)
+    ):
+        parser.error("legacy-v1 does not accept --board-id or --bus-id")
 
+
+def _capture_environment_cli(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
     try:
-        _sample_forever(args.out, args.interval)
+        if (
+            args.sampler_mode == "default"
+            and args.sampler_interval is None
+            and args.board_id is None
+            and args.bus_id is None
+        ):
+            # Keep the two-argument call compatible with board-free callers
+            # that replace capture_environment in tests.
+            environment = capture_environment(args.image, args.image_pinned)
+        else:
+            environment = capture_environment(
+                args.image,
+                args.image_pinned,
+                sampler_mode=args.sampler_mode,
+                sampler_interval=args.sampler_interval,
+                board_id=args.board_id,
+                bus_id=args.bus_id,
+            )
+    except ValueError as exc:
+        parser.error(str(exc))
+    args.out.write_text(strict_json_dumps(environment, indent=2) + "\n")
+    print(f"environment -> {args.out}")
+
+
+def _sample_telemetry_cli(args: argparse.Namespace) -> None:
+    try:
+        if args.trace_schema == "extended-v1":
+            _sample_extended_forever(
+                args.out,
+                args.interval,
+                board_id=args.board_id,
+                bus_id=args.bus_id,
+            )
+        else:
+            _sample_forever(args.out, args.interval)
     except KeyboardInterrupt:
         # The wrapper terminates the sampler when the run finishes; that is
         # the normal way this ends, not a failure.
         pass
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = _telemetry_parser()
+    args = parser.parse_args(argv)
+    _validate_telemetry_arguments(parser, args)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.mode == "capture-env":
+        _capture_environment_cli(parser, args)
+        return
+    _sample_telemetry_cli(args)
 
 
 if __name__ == "__main__":
