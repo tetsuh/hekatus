@@ -1,0 +1,592 @@
+{
+  "record_schema": "issue121-q2-measurement-summary-v1",
+  "status": "complete",
+  "issue": "#121",
+  "plan": {
+    "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
+    "revision": 3,
+    "target_seconds": 285,
+    "plateau_start_seconds": 150,
+    "plateau_end_seconds": 285,
+    "guard_seconds": 330
+  },
+  "harness_commit": "344a8f1a126b5f993f738db614e9e32fb0174089",
+  "analysis_commit": "e09d4f9",
+  "device": {
+    "host_device_id": 1,
+    "host_device_node": "/dev/tenstorrent/1",
+    "container_visible_device_id": 0,
+    "board_serial": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621"
+  },
+  "cooldowns": [
+    {
+      "transition": "run_1_to_run_2",
+      "status": "pass",
+      "attempts": 18,
+      "power_w": 49.0,
+      "temperature_c": 61.4,
+      "aiclk_mhz": 800.0,
+      "power_limit_w": 52.0,
+      "temperature_limit_c": 61.5,
+      "snapshot": "docs/measurements/issue121-q2/cooldown/run-1-to-2/snapshot-0018.json"
+    },
+    {
+      "transition": "run_2_to_run_3",
+      "status": "pass",
+      "attempts": 46,
+      "power_w": 47.0,
+      "temperature_c": 61.5,
+      "aiclk_mhz": 800.0,
+      "power_limit_w": 52.0,
+      "temperature_limit_c": 61.5,
+      "snapshot": "docs/measurements/issue121-q2/cooldown/run-2-to-3/snapshot-0046.json"
+    }
+  ],
+  "runs": [
+    {
+      "run_number": 1,
+      "run_id": "q2-run-1-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-1-device0/run-q2-run-1-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-1-device0/extended-trace-q2-run-1-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-1-device0/analysis-q2-run-1-device0.json",
+      "status": "ok",
+      "duration_seconds": 299.15060189,
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 135,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31180932579806,
+        "end_monotonic_ns": 31315932579806,
+        "duration_seconds": 135.0,
+        "segment_count": 62,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.727259794,
+        "min_mhz": 956.0,
+        "max_mhz": 1243.0,
+        "time_weighted_mean_mhz": 977.6899019327259,
+        "percentiles_mhz": {
+          "p01": 956.0,
+          "p05": 956.0,
+          "p50": 956.0,
+          "p95": 1237.0,
+          "p99": 1243.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 95.0,
+          "max": 137.0,
+          "time_weighted_mean": 129.6853717867037,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 20.314628213296288,
+            "fraction": 0.13543085475530858
+          }
+        },
+        "current_a": {
+          "min": 128.0,
+          "max": 180.0,
+          "time_weighted_mean": 176.51336235725185,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "reported snapshot unit",
+            "difference": 23.48663764274815,
+            "fraction": 0.11743318821374076
+          }
+        },
+        "asic_temp_c": {
+          "min": 80.8,
+          "max": 83.4,
+          "time_weighted_mean": 82.86679598474963,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 7.133204015250371,
+            "fraction": 0.07925782239167078
+          }
+        },
+        "board_power_w": {
+          "min": 241.0,
+          "max": 310.0,
+          "time_weighted_mean": 299.44635551097036,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.5536444890296366,
+            "fraction": 0.0018454816300987886
+          }
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "not_supported"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31033182038537,
+            "seconds_from_run_start": 2.249458731,
+            "aiclk_mhz": 1350.0,
+            "power_w": 82.0,
+            "current_a": 96.0,
+            "asic_temp_c": 64.8
+          },
+          {
+            "timestamp_monotonic_ns": 31035419785954,
+            "seconds_from_run_start": 4.487206148,
+            "aiclk_mhz": 1343.0,
+            "power_w": 210.0,
+            "current_a": 254.0,
+            "asic_temp_c": 75.6
+          },
+          {
+            "timestamp_monotonic_ns": 31037659839600,
+            "seconds_from_run_start": 6.727259794,
+            "aiclk_mhz": 1037.0,
+            "power_w": 134.0,
+            "current_a": 180.0,
+            "asic_temp_c": 73.3
+          },
+          {
+            "timestamp_monotonic_ns": 31039900078575,
+            "seconds_from_run_start": 8.967498769,
+            "aiclk_mhz": 1043.0,
+            "power_w": 136.0,
+            "current_a": 183.0,
+            "asic_temp_c": 74.8
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4837,
+          "sha256": "2220a5125827b56fbe74fccd92dcf50a2d0aa4969eed34485324d6b902c57195",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3769,
+          "sha256": "f58db6a553c6c1647c4ba2714e5cb0b0fec7bce229513bf748f4f0ca2cfce9eb",
+          "status": "saved"
+        }
+      }
+    },
+    {
+      "run_number": 2,
+      "run_id": "q2-run-2-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-2-device0/run-q2-run-2-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-2-device0/extended-trace-q2-run-2-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-2-device0/analysis-q2-run-2-device0.json",
+      "status": "ok",
+      "duration_seconds": 298.545785676,
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 134,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31564524713698,
+        "end_monotonic_ns": 31699524713698,
+        "duration_seconds": 135.0,
+        "segment_count": 61,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.719855854,
+        "min_mhz": 956.0,
+        "max_mhz": 1243.0,
+        "time_weighted_mean_mhz": 978.6524304726074,
+        "percentiles_mhz": {
+          "p01": 956.0,
+          "p05": 956.0,
+          "p50": 956.0,
+          "p95": 1243.0,
+          "p99": 1243.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 130.0,
+          "max": 139.0,
+          "time_weighted_mean": 131.08396150537038,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 18.916038494629618,
+            "fraction": 0.1261069232975308
+          }
+        },
+        "current_a": {
+          "min": 167.0,
+          "max": 180.0,
+          "time_weighted_mean": 178.21968185776296,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "reported snapshot unit",
+            "difference": 21.780318142237036,
+            "fraction": 0.10890159071118517
+          }
+        },
+        "asic_temp_c": {
+          "min": 82.9,
+          "max": 83.8,
+          "time_weighted_mean": 83.31576916859629,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 6.68423083140371,
+            "fraction": 0.07426923146004122
+          }
+        },
+        "board_power_w": {
+          "min": 288.0,
+          "max": 313.0,
+          "time_weighted_mean": 300.88188737094816,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.8818873709481636,
+            "fraction": 0.002939624569827212
+          }
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "not_supported"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31416776968885,
+            "seconds_from_run_start": 2.252255187,
+            "aiclk_mhz": 1350.0,
+            "power_w": 81.0,
+            "current_a": 95.0,
+            "asic_temp_c": 65.2
+          },
+          {
+            "timestamp_monotonic_ns": 31419011041090,
+            "seconds_from_run_start": 4.486327392,
+            "aiclk_mhz": 1343.0,
+            "power_w": 212.0,
+            "current_a": 257.0,
+            "asic_temp_c": 76.1
+          },
+          {
+            "timestamp_monotonic_ns": 31421244569552,
+            "seconds_from_run_start": 6.719855854,
+            "aiclk_mhz": 1037.0,
+            "power_w": 135.0,
+            "current_a": 182.0,
+            "asic_temp_c": 73.2
+          },
+          {
+            "timestamp_monotonic_ns": 31423513130455,
+            "seconds_from_run_start": 8.988416757,
+            "aiclk_mhz": 1043.0,
+            "power_w": 136.0,
+            "current_a": 183.0,
+            "asic_temp_c": 74.6
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4837,
+          "sha256": "9a020a369a5ea8438cc8d1e8065058332066533c0dbfe0b415996923069d2806",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3771,
+          "sha256": "e2eff989c4bef08470681cb2eaed6076d70d6063ca136e9b660ed7c389bba8aa",
+          "status": "saved"
+        }
+      }
+    },
+    {
+      "run_number": 3,
+      "run_id": "q2-run-3-device0",
+      "record": "docs/measurements/issue121-q2/runs/run-3-device0/run-q2-run-3-device0.json",
+      "extended_trace": "docs/measurements/issue121-q2/runs/run-3-device0/extended-trace-q2-run-3-device0.csv",
+      "analysis": "docs/measurements/issue121-q2/runs/run-3-device0/analysis-q2-run-3-device0.json",
+      "status": "ok",
+      "duration_seconds": 301.4729979,
+      "target_seconds": 285.0,
+      "guard_seconds": 330.0,
+      "within_guard": true,
+      "trace_sample_count": 136,
+      "sampler_errors": [],
+      "snapshot_identity": {
+        "pre": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        },
+        "post": {
+          "status": "selected",
+          "serial": "0000040331914124",
+          "board_id": "0000040331914124",
+          "bus_id": "0000:09:00.0"
+        }
+      },
+      "plateau": {
+        "start_seconds": 150.0,
+        "end_seconds": 285.0,
+        "start_monotonic_ns": 31987939902523,
+        "end_monotonic_ns": 32122939902523,
+        "duration_seconds": 135.0,
+        "segment_count": 61,
+        "coverage_complete": true
+      },
+      "aiclk": {
+        "baseline_mhz": 1350.0,
+        "drop_threshold_mhz": 1282.5,
+        "drop_onset_seconds": 6.731211923,
+        "min_mhz": 950.0,
+        "max_mhz": 1237.0,
+        "time_weighted_mean_mhz": 967.1443752217778,
+        "percentiles_mhz": {
+          "p01": 950.0,
+          "p05": 950.0,
+          "p50": 950.0,
+          "p95": 1231.0,
+          "p99": 1237.0
+        }
+      },
+      "signals": {
+        "power_w": {
+          "min": 96.0,
+          "max": 137.0,
+          "time_weighted_mean": 128.91214016093335,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDP_LIMIT_MAX",
+            "limit_value": 150.0,
+            "limit_unit": "W",
+            "difference": 21.087859839066653,
+            "fraction": 0.14058573226044435
+          }
+        },
+        "current_a": {
+          "min": 130.0,
+          "max": 180.0,
+          "time_weighted_mean": 176.33799951074073,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "TDC_LIMIT_MAX",
+            "limit_value": 200.0,
+            "limit_unit": "reported snapshot unit",
+            "difference": 23.66200048925927,
+            "fraction": 0.11831000244629636
+          }
+        },
+        "asic_temp_c": {
+          "min": 81.0,
+          "max": 83.8,
+          "time_weighted_mean": 83.27130688187926,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "therm_trip_l1_limit",
+            "limit_value": 90.0,
+            "limit_unit": "degC",
+            "difference": 6.728693118120745,
+            "fraction": 0.07476325686800828
+          }
+        },
+        "board_power_w": {
+          "min": 247.0,
+          "max": 309.0,
+          "time_weighted_mean": 300.06724754488147,
+          "limit_proximity": {
+            "status": "available",
+            "limit_key": "BOARD_POWER_LIMIT",
+            "limit_value": 300.0,
+            "limit_unit": "W",
+            "difference": 0.067247544881468,
+            "fraction": 0.00022415848293822667
+          }
+        }
+      },
+      "hypotheses": {
+        "H-TDC": "not_supported",
+        "H-THM": "not_supported",
+        "H-TDP": "not_supported",
+        "H-OTHER": "not_supported"
+      },
+      "classification": "H-OTHER",
+      "early_raw_window": {
+        "start_seconds": 0.0,
+        "end_seconds": 10.0,
+        "columns": [
+          "timestamp_monotonic_ns",
+          "seconds_from_run_start",
+          "aiclk_mhz",
+          "power_w",
+          "current_a",
+          "asic_temp_c"
+        ],
+        "rows": [
+          {
+            "timestamp_monotonic_ns": 31840194331758,
+            "seconds_from_run_start": 2.254429235,
+            "aiclk_mhz": 1350.0,
+            "power_w": 82.0,
+            "current_a": 96.0,
+            "asic_temp_c": 64.8
+          },
+          {
+            "timestamp_monotonic_ns": 31842433136064,
+            "seconds_from_run_start": 4.493233541,
+            "aiclk_mhz": 1343.0,
+            "power_w": 210.0,
+            "current_a": 255.0,
+            "asic_temp_c": 76.1
+          },
+          {
+            "timestamp_monotonic_ns": 31844671114446,
+            "seconds_from_run_start": 6.731211923,
+            "aiclk_mhz": 1031.0,
+            "power_w": 133.0,
+            "current_a": 179.0,
+            "asic_temp_c": 73.0
+          },
+          {
+            "timestamp_monotonic_ns": 31846905046796,
+            "seconds_from_run_start": 8.965144273,
+            "aiclk_mhz": 1037.0,
+            "power_w": 134.0,
+            "current_a": 180.0,
+            "asic_temp_c": 74.2
+          }
+        ]
+      },
+      "workload_local_diagnostics": {
+        "stdout": {
+          "path": "workload-stdout.log",
+          "byte_count": 4835,
+          "sha256": "50298d03b110a5e0a893d2783c2d47ec42f4926191077482fbec7b8f4a355aea",
+          "status": "saved"
+        },
+        "stderr": {
+          "path": "workload-stderr.log",
+          "byte_count": 3769,
+          "sha256": "5faf115bd70401cdd7c839e869999445c0e7d785bccedf7d0d981ddfc12e746d",
+          "status": "saved"
+        }
+      }
+    }
+  ],
+  "prediction": {
+    "expected_classification": [
+      "H-TDC",
+      "H-OTHER"
+    ],
+    "excluded_by_prior_evidence": [
+      "H-TDP",
+      "H-THM"
+    ],
+    "actual_classifications": [
+      "H-OTHER",
+      "H-OTHER",
+      "H-OTHER"
+    ],
+    "outcome": "matched",
+    "comparison": "All three runs classified H-OTHER; H-TDP and H-THM were not supported, while current evidence made H-TDC not_supported under the fixed criteria."
+  },
+  "causality": "correlation_is_not_causation",
+  "limitations": [
+    "The extended trace cadence is approximately 2 seconds; onset ordering has approximately 2-second resolution.",
+    "The AICLK onset is the first post-start sampled interval at or below 95% of source asic_fmax; no interpolation is performed.",
+    "The measurement is the ADR-0013 108-core Newton-Schulz surrogate and is not full enodia evidence.",
+    "Raw workload stdout/stderr remain local under ignored out/ directories; only byte counts and SHA-256 metadata are recorded here."
+  ]
+}
