@@ -17,6 +17,7 @@ from enodia.tt.bench.power_trace_extended import (
     EXTENDED_POWER_TRACE_SCHEMA,
     EXTENDED_POWER_TRACE_SCHEMA_VERSION,
     format_extended_power_trace_row,
+    is_extended_snapshot_well_formed,
     read_extended_power_trace_csv,
     read_extended_power_trace_snapshot,
     validate_extended_power_trace,
@@ -62,9 +63,14 @@ def _write_sidecar(path: Path, samples: list[dict[str, object]], **overrides: ob
     path.write_text(json.dumps(payload))
 
 
+def _deep_invalid_json() -> str:
+    depth = 100_000
+    return "[" * depth + "0" + "]" * depth
+
+
 def test_extended_row_csv_escaping_round_trips_throttle_labels(tmp_path: Path) -> None:
-    status = "active, 温度\n状態"
-    reason = "熱制限, 二次\n制限"
+    status = 'active, "温度"\r\n状態'
+    reason = '熱制限, "二次"\r制限'
     first = _trace_row(0, board_power_w=10.0, throttle_reason=reason)
     first["throttle_status"] = status
     second = _trace_row(2_000_000_000, board_power_w=20.0)
@@ -114,6 +120,31 @@ def test_extended_csv_reader_rejects_non_complete_physical_records(
     assert trace["valid"] is False
     assert trace["errors"] == [trace["error"]]
     assert "physical field count" in trace["error"]
+
+
+@pytest.mark.parametrize(
+    "malformed_label",
+    ['"1"00', '"unterminated'],
+    ids=["closing-quote-followed-by-text", "unterminated-quote"],
+)
+def test_extended_csv_reader_rejects_malformed_quoting(
+    tmp_path: Path, malformed_label: str
+) -> None:
+    fields = next(
+        csv.reader(
+            io.StringIO(format_extended_power_trace_row(_trace_row(0, board_power_w=10.0)))
+        )
+    )
+    fields[-2] = malformed_label
+    path = tmp_path / "malformed-quoting.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + ",".join(fields) + "\n")
+
+    trace = read_extended_power_trace_csv(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert trace["errors"] == [trace["error"]]
+    assert validate_extended_power_trace(trace)["valid"] is False
 
 
 def test_extended_json_sidecar_reader_aggregates_left_held_samples(tmp_path: Path) -> None:
@@ -319,6 +350,30 @@ def test_extended_json_sidecar_rejects_boolean_schema_version(tmp_path: Path) ->
     assert trace["valid"] is False
     assert report["valid"] is False
     assert report["failures"]
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [_deep_invalid_json(), _deep_invalid_json().encode("utf-8")],
+    ids=["str", "bytes"],
+)
+def test_extended_snapshot_predicate_rejects_recursion_depth(snapshot: str | bytes) -> None:
+    assert is_extended_snapshot_well_formed(snapshot) is False
+
+
+def test_extended_json_path_reader_and_validator_reject_recursion_depth(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deep.json"
+    path.write_text(_deep_invalid_json(), encoding="utf-8")
+
+    trace = read_extended_power_trace_snapshot(path)
+    report = validate_extended_power_trace(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert trace["errors"] == [trace["error"]]
+    assert report["valid"] is False
 
 
 def test_extended_json_sidecar_reader_rejects_over_limit_integer_token(

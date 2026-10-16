@@ -86,6 +86,11 @@ def _snapshot(*, throttle: bool = False) -> str:
     )
 
 
+def _deep_invalid_json() -> str:
+    depth = 100_000
+    return "[" * depth + "0" + "]" * depth
+
+
 def _row(
     *,
     timestamp: int,
@@ -202,6 +207,7 @@ def test_extended_sampler_retries_transient_node_resolution_before_writing_row(
         json.dumps({}),
         json.dumps({"device_info": []}),
         json.dumps({"device_info": [5]}),
+        _deep_invalid_json(),
     ],
 )
 def test_extended_sampler_drops_transient_malformed_snapshot_before_valid_row(

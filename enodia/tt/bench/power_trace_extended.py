@@ -136,7 +136,7 @@ def _as_snapshot_object(snapshot: str | bytes | Mapping[str, Any]) -> Mapping[st
         raise ExtendedPowerTraceError("snapshot must be a JSON object")
     try:
         value = json.loads(snapshot)
-    except (TypeError, ValueError) as exc:
+    except (RecursionError, TypeError, ValueError) as exc:
         raise ExtendedPowerTraceError("snapshot is not valid JSON") from exc
     if not isinstance(value, Mapping):
         raise ExtendedPowerTraceError("snapshot must be a JSON object")
@@ -1064,6 +1064,7 @@ def _read_extended_csv_rows(
             io.StringIO(text, newline=""),
             restval=missing_value,
             restkey=extra_key,
+            strict=True,
         )
         fieldnames = tuple(reader.fieldnames or ())
         if fieldnames != EXTENDED_POWER_TRACE_COLUMNS:
@@ -1295,7 +1296,7 @@ def read_extended_power_trace_snapshot(
                     f"extended trace sidecar samples[{index}] must be an object"
                 )
             rows.append(_coerce_trace_row(row, index=index))
-    except (OSError, ValueError, TypeError) as exc:
+    except (OSError, RecursionError, ValueError, TypeError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result
