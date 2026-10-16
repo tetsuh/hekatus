@@ -123,6 +123,11 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
     clock = iter((100, 250))
     utc = iter(("2026-01-01T00:00:01+00:00",))
     monkeypatch.setattr(telemetry, "_run", lambda _command: _snapshot())
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda _node: {"0000:01:00.0"},
+    )
     monkeypatch.setattr(telemetry.time, "sleep", lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt))
 
     with pytest.raises(KeyboardInterrupt):
@@ -169,6 +174,11 @@ def test_extended_sampler_drops_transient_malformed_snapshot_before_valid_row(
             raise KeyboardInterrupt
 
     monkeypatch.setattr(telemetry, "_run", lambda _command: next(snapshots))
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda _node: {"0000:01:00.0"},
+    )
     monkeypatch.setattr(telemetry.time, "sleep", sleep)
 
     with pytest.raises(KeyboardInterrupt):
@@ -195,6 +205,11 @@ def test_extended_sampler_fails_when_target_board_is_missing(
     output = io.StringIO()
     clock = iter((100, 200))
     monkeypatch.setattr(telemetry, "_run", lambda _command: _snapshot())
+    monkeypatch.setattr(
+        telemetry,
+        "_resolve_device_node_to_pci",
+        lambda _node: {"0000:01:00.0"},
+    )
 
     with pytest.raises(ExtendedPowerTraceError, match="board_id"):
         telemetry._sample_extended_loop(
@@ -207,6 +222,34 @@ def test_extended_sampler_fails_when_target_board_is_missing(
         )
 
 
+def test_extended_sampler_rejects_default_node_pci_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    output = io.StringIO()
+    resolved_nodes: list[str] = []
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    monkeypatch.setattr(telemetry, "_run", lambda _command: _snapshot())
+
+    def resolve_node(node: str) -> set[str]:
+        resolved_nodes.append(node)
+        return {"0000:02:00.0"}
+
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", resolve_node)
+
+    with pytest.raises(ExtendedPowerTraceError, match="device node"):
+        telemetry._sample_extended_loop(
+            output,
+            interval=1.0,
+            board_id="fixture-board-a",
+            bus_id="0000:01:00.0",
+            monotonic_ns=iter((100, 200)).__next__,
+            utc_now=lambda: "2026-01-01T00:00:00+00:00",
+        )
+
+    assert resolved_nodes == [telemetry._DEFAULT_DEVICE_NODE]
+    assert output.getvalue().splitlines() == [EXTENDED_POWER_TRACE_HEADER]
+
+
 def test_extended_sampler_selects_board_identity_not_device_info_position():
     snapshot = _snapshot()
 
@@ -215,7 +258,10 @@ def test_extended_sampler_selects_board_identity_not_device_info_position():
     )
     assert selected["board_info"]["board_id"] == "fixture-board-a"
     assert telemetry.parse_telemetry(
-        snapshot, board_id="fixture-board-a", bus_id="0000:01:00.0"
+        snapshot,
+        node_resolver=lambda _node: {"0000:01:00.0"},
+        board_id="fixture-board-a",
+        bus_id="0000:01:00.0",
     ) == {"power_w": "11", "aiclk_mhz": "800", "asic_temp_c": "40"}
 
     assert (
@@ -250,7 +296,10 @@ def test_padded_board_id_canonicalization_matches_extended_and_q2_selectors():
         payload, board_id=" fixture-board-a ", bus_id="0000:01:00.0"
     )
     reading = telemetry.parse_telemetry(
-        json.dumps(payload), board_id=" fixture-board-a ", bus_id="0000:01:00.0"
+        json.dumps(payload),
+        node_resolver=lambda _node: {"0000:01:00.0"},
+        board_id=" fixture-board-a ",
+        bus_id="0000:01:00.0",
     )
 
     assert selected["board_info"]["board_id"] == "  fixture-board-a  "
@@ -493,13 +542,20 @@ def test_legacy_power_trace_columns_and_row_are_unchanged():
     assert telemetry.POWER_TRACE_COLUMNS == LEGACY_COLUMNS
     assert telemetry.CSV_HEADER == ",".join(LEGACY_COLUMNS)
     assert telemetry.telemetry_csv_row(
-        _snapshot(), timestamp="2026-01-01T00:00:00+00:00", board_id="fixture-board-a", bus_id="0000:01:00.0"
+        _snapshot(),
+        timestamp="2026-01-01T00:00:00+00:00",
+        node_resolver=lambda _node: {"0000:01:00.0"},
+        board_id="fixture-board-a",
+        bus_id="0000:01:00.0",
     ) == "2026-01-01T00:00:00+00:00,11,800,40"
 
 
 def test_environment_keeps_raw_hierarchy_without_host_snapshot_sections():
     environment = telemetry.parse_environment(
-        _snapshot(), board_id="fixture-board-b", bus_id="0000:02:00.0"
+        _snapshot(),
+        node_resolver=lambda _node: {"0000:02:00.0"},
+        board_id="fixture-board-b",
+        bus_id="0000:02:00.0",
     )
     assert environment["host_sw_vers"] == {
         "tt_smi": "fixture-version",

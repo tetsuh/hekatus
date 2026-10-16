@@ -153,6 +153,57 @@ def test_default_device_node_keeps_first_board_behavior(monkeypatch):
     assert telemetry.parse_environment(_two_board_snapshot())["board"]["board_id"] == "board-zero"
 
 
+def test_default_device_node_matches_explicit_q2_identity(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    snapshot = _two_board_snapshot()
+    resolved_nodes = []
+
+    def resolve_node(node):
+        resolved_nodes.append(node)
+        return {"0000:02:00.0"}
+
+    assert telemetry.parse_telemetry(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    ) == {"power_w": "20", "aiclk_mhz": "900", "asic_temp_c": "60"}
+    environment = telemetry.parse_environment(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    )
+    assert environment["board"]["board_id"] == "board-one"
+    assert resolved_nodes
+    assert set(resolved_nodes) == {telemetry._DEFAULT_DEVICE_NODE}
+
+
+def test_default_device_node_rejects_mismatched_explicit_q2_identity(monkeypatch):
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
+    snapshot = _two_board_snapshot()
+
+    def resolve_node(_node):
+        return {"0000:01:00.0"}
+
+    assert (
+        telemetry.parse_telemetry(
+            snapshot,
+            node_resolver=resolve_node,
+            board_id="board-one",
+            bus_id="0000:02:00.0",
+        )
+        is None
+    )
+    environment = telemetry.parse_environment(
+        snapshot,
+        node_resolver=resolve_node,
+        board_id="board-one",
+        bus_id="0000:02:00.0",
+    )
+    assert environment["board_snapshot_error"]
+
+
 def test_capture_environment_uses_env_identity_for_board_and_observed_telemetry(
     monkeypatch,
 ):
@@ -170,12 +221,22 @@ def test_capture_environment_uses_env_identity_for_board_and_observed_telemetry(
     def run(command):
         return _two_board_snapshot() if command == telemetry.SNAPSHOT_COMMAND else ""
 
+    resolved_nodes = []
+
+    def resolve_node(node):
+        resolved_nodes.append(node)
+        return {"0000:02:00.0"}
+
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
     monkeypatch.setattr(telemetry, "_run", run)
+    monkeypatch.setattr(telemetry, "_resolve_device_node_to_pci", resolve_node)
     environment = telemetry.capture_environment("image", True, sampler_mode="off")
 
     assert environment["board"]["board_id"] == "board-one"
     assert environment["board"]["bus_id"] == "0000:02:00.0"
     assert environment["aiclk_mhz_observed"] == [900]
+    assert resolved_nodes
+    assert set(resolved_nodes) == {telemetry._DEFAULT_DEVICE_NODE}
 
 
 @pytest.mark.parametrize(

@@ -530,8 +530,6 @@ def _requested_q2_identity(
 def _q2_node_matches(
     requested_node: str, requested_bus_id: str, resolver: Callable[[str], object]
 ) -> bool:
-    if requested_node == _DEFAULT_DEVICE_NODE:
-        return True
     requested_bus_ids = _resolved_pci_bus_ids(requested_node, resolver)
     return len(requested_bus_ids) == 1 and next(iter(requested_bus_ids)) == requested_bus_id
 
@@ -613,9 +611,10 @@ def _device_info(
     Legacy callers that do not supply a Q2 identity retain the historical
     default-node behavior.  Once either Q2 identity is requested, both
     ``board_info.board_id`` and ``board_info.bus_id`` are required and must
-    identify exactly one entry.  A non-default device node is still resolved
-    through its verified PCI identity and must agree with the requested bus.
-    The ``device_info`` array position is never used in the Q2 branch.
+    identify exactly one entry.  The selected device node, including the
+    default node, is resolved through its verified PCI identity and must agree
+    with the requested bus.  The ``device_info`` array position is never used
+    in the Q2 branch.
     """
     devices = _snapshot_devices(snapshot)
     if devices is None:
@@ -960,8 +959,18 @@ def _sample_extended_loop(
             )
             time.sleep(interval)
             continue
-        # A missing or ambiguous target board is a run-level identity failure,
+        # The extended selector validates snapshot identities, while this
+        # verified resolver also binds the requested board to the benchmark
+        # process's actual device node.  A mismatch is a run-level failure,
         # not a dropped telemetry sample.
+        if _device_info(
+            snapshot,
+            board_id=effective_board_id,
+            bus_id=effective_bus_id,
+        ) is None:
+            raise ExtendedPowerTraceError(
+                "benchmark device node does not match requested board_id/bus_id"
+            )
         _power_trace_extended.select_extended_board(
             snapshot,
             board_id=effective_board_id,
