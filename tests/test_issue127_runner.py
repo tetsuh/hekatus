@@ -528,6 +528,10 @@ def test_issue127_cooldown_proof_uses_power_temperature_gate_and_keeps_idle_cloc
         start_utc="2026-10-12T00:00:00.500000+00:00",
         end_utc="2026-10-12T00:00:03.500000+00:00",
         wait_performed=True,
+        observed_power_w=50.0,
+        observed_temperature_c=51.0,
+        gate_result="pass",
+        gate_verified=True,
     )
     verified = runner.verify_cooldown_power_trace(
         metadata, power_trace=_cooldown_trace()
@@ -548,6 +552,117 @@ def test_issue127_cooldown_proof_uses_power_temperature_gate_and_keeps_idle_cloc
     assert unbounded["power_trace_verified"] is True
     assert unbounded["power_trace_facts"]["coverage_complete"] is False
     assert unbounded["verified"] is True
+
+
+def test_issue127_run2_args_require_explicit_passing_verified_gate():
+    parser = runner._build_parser()
+    base_args = [
+        "--run-number",
+        "2",
+        "--cooldown-start-utc",
+        "2026-10-12T00:00:00+00:00",
+        "--cooldown-end-utc",
+        "2026-10-12T00:00:03+00:00",
+    ]
+    for extra_args in (
+        [],
+        ["--cooldown-gate-result", "pass"],
+        [
+            "--cooldown-gate-result",
+            "pass",
+            "--no-cooldown-gate-verified",
+        ],
+        ["--cooldown-gate-result", "fail", "--cooldown-gate-verified"],
+    ):
+        with pytest.raises(SystemExit):
+            runner._validate_args(parser, parser.parse_args(base_args + extra_args))
+
+    runner._validate_args(
+        parser,
+        parser.parse_args(
+            base_args
+            + ["--cooldown-gate-result", "pass", "--cooldown-gate-verified"]
+        ),
+    )
+
+
+def test_issue127_cooldown_proof_requires_finite_wrapper_observations():
+    environment = runner.sanitize_environment(_environment(observed=[800]))
+    metadata = runner.build_cooldown_metadata(
+        run_number=2,
+        wait_seconds=3.0,
+        expected_aiclk_mhz=1350.0,
+        environment=environment,
+        start_utc="2026-10-12T00:00:00.500000+00:00",
+        end_utc="2026-10-12T00:00:03.500000+00:00",
+        wait_performed=True,
+        observed_power_w=50.0,
+        observed_temperature_c=51.0,
+        gate_result="pass",
+        gate_verified=True,
+    )
+    metadata.pop("observed_power_w")
+    metadata["observed_temperature_c"] = float("nan")
+
+    verified = runner.verify_cooldown_power_trace(
+        metadata, power_trace=_cooldown_trace()
+    )
+
+    assert verified["power_trace_facts"]["gate"]["wrapper_gate_proof"] is True
+    assert verified["power_trace_facts"]["metadata_observation_match"] is False
+    assert set(verified["power_trace_facts"]["metadata_observation_mismatch"]) == {
+        "observed_power_w",
+        "observed_temperature_c",
+    }
+    assert verified["gate_verified"] is False
+    assert verified["power_trace_verified"] is False
+    assert verified["verified"] is False
+
+
+@pytest.mark.parametrize(
+    ("gate_result", "gate_verified"),
+    (
+        ("pending", True),
+        ("pass", False),
+        (None, True),
+        ("pass", None),
+    ),
+)
+def test_issue127_cooldown_proof_requires_passing_wrapper_gate_proof(
+    gate_result: str | None, gate_verified: bool | None
+):
+    environment = runner.sanitize_environment(_environment(observed=[800]))
+    metadata = runner.build_cooldown_metadata(
+        run_number=2,
+        wait_seconds=3.0,
+        expected_aiclk_mhz=1350.0,
+        environment=environment,
+        start_utc="2026-10-12T00:00:00.500000+00:00",
+        end_utc="2026-10-12T00:00:03.500000+00:00",
+        wait_performed=True,
+        observed_power_w=50.0,
+        observed_temperature_c=51.0,
+        gate_result="pass",
+        gate_verified=True,
+    )
+    if gate_result is None:
+        metadata.pop("gate_result")
+    else:
+        metadata["gate_result"] = gate_result
+    if gate_verified is None:
+        metadata.pop("gate_verified")
+    else:
+        metadata["gate_verified"] = gate_verified
+
+    verified = runner.verify_cooldown_power_trace(
+        metadata, power_trace=_cooldown_trace()
+    )
+
+    assert verified["power_trace_facts"]["metadata_observation_match"] is True
+    assert verified["power_trace_facts"]["gate"]["wrapper_gate_proof"] is False
+    assert verified["gate_verified"] is False
+    assert verified["power_trace_verified"] is False
+    assert verified["verified"] is False
 
 
 def test_issue127_cooldown_proof_rejects_metadata_that_overrides_a_failing_trace_sample():

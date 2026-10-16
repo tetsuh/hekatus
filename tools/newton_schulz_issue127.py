@@ -1176,15 +1176,25 @@ def verify_cooldown_power_trace(
         if trace_sample is not None
         else None
     )
+    wrapper_observations = {
+        "observed_power_w": _finite_cooldown_value(metadata.get("observed_power_w")),
+        "observed_temperature_c": _finite_cooldown_value(
+            metadata.get("observed_temperature_c")
+        ),
+    }
+    wrapper_gate_result = metadata.get("gate_result")
+    wrapper_gate_verified = metadata.get("gate_verified")
+    wrapper_gate_proof = (
+        wrapper_gate_result == "pass" and wrapper_gate_verified is True
+    )
     metadata_mismatches: dict[str, dict[str, Any]] = {}
     for metadata_field, trace_value in (
         ("observed_power_w", trace_power),
         ("observed_temperature_c", trace_temperature),
     ):
-        metadata_value = metadata.get(metadata_field)
-        if metadata_value is None or trace_sample is None:
+        normalized_metadata_value = wrapper_observations[metadata_field]
+        if trace_sample is None:
             continue
-        normalized_metadata_value = _finite_cooldown_value(metadata_value)
         if normalized_metadata_value is None or trace_value is None or not _same_float(
             normalized_metadata_value, trace_value
         ):
@@ -1194,7 +1204,16 @@ def verify_cooldown_power_trace(
                 "metadata_value_finite": normalized_metadata_value is not None,
                 "trace_value_finite": trace_value is not None,
             }
-    metadata_observation_match = trace_sample is not None and not metadata_mismatches
+    trace_is_immutable = power_trace.get("immutable_snapshot") is True
+    wrapper_observations_finite = all(
+        value is not None for value in wrapper_observations.values()
+    )
+    metadata_observation_match = (
+        trace_sample is not None
+        and trace_is_immutable
+        and wrapper_observations_finite
+        and not metadata_mismatches
+    )
     gate_observation = {
         "source": "immutable_trace" if trace_sample is not None else None,
         "sample_available": trace_sample is not None,
@@ -1203,15 +1222,26 @@ def verify_cooldown_power_trace(
             "end_utc": metadata.get("end_utc"),
             "inclusive": True,
         },
+        "wrapper_gate_result": wrapper_gate_result,
+        "wrapper_gate_verified": wrapper_gate_verified,
+        "wrapper_gate_proof": wrapper_gate_proof,
         "metadata_observation_match": metadata_observation_match,
         "metadata_observation_mismatch": metadata_mismatches or None,
         "reason": (
             None
-            if trace_sample is not None and not metadata_mismatches
+            if trace_sample is not None
+            and trace_is_immutable
+            and not metadata_mismatches
+            and wrapper_observations_finite
+            and wrapper_gate_proof
             else (
-                "metadata_observation_mismatch"
-                if metadata_mismatches
-                else "no_usable_trace_sample_within_cooldown_bounds"
+                "wrapper_gate_proof_missing"
+                if not wrapper_gate_proof
+                else (
+                    "metadata_observation_mismatch"
+                    if metadata_mismatches
+                    else "no_usable_trace_sample_within_cooldown_bounds"
+                )
             )
         ),
     }
@@ -1232,9 +1262,12 @@ def verify_cooldown_power_trace(
     gate["observed_temperature_source"] = (
         "immutable_trace" if trace_sample is not None else None
     )
+    gate["wrapper_gate_result"] = wrapper_gate_result
+    gate["wrapper_gate_verified"] = wrapper_gate_verified
+    gate["wrapper_gate_proof"] = wrapper_gate_proof
     gate["metadata_observation_match"] = metadata_observation_match
     gate["metadata_observation_mismatch"] = metadata_mismatches or None
-    if not metadata_observation_match:
+    if not metadata_observation_match or not wrapper_gate_proof:
         gate["verified"] = False
     facts.update(
         {
@@ -1261,6 +1294,7 @@ def verify_cooldown_power_trace(
     # not part of the cooldown gate: an idle 800-MHz observation is valid.
     verified = (
         gate["passes"]
+        and wrapper_gate_proof
         and metadata_observation_match
         and facts.get("trace_coverage_complete") is True
         and facts.get("immutable_snapshot") is True
@@ -2771,8 +2805,10 @@ def _validate_run2_args(parser: argparse.ArgumentParser, args: argparse.Namespac
         parser.error("run 2 cooldown wait must be positive and at most 600 seconds")
     if args.cooldown_start_utc is None or args.cooldown_end_utc is None:
         parser.error("run 2 requires wrapper-provided cooldown UTC bounds")
-    if args.cooldown_gate_verified is False:
-        parser.error("run 2 cannot start with an unverified cooldown gate")
+    if args.cooldown_gate_verified is not True:
+        parser.error("run 2 requires an explicitly verified cooldown gate")
+    if args.cooldown_gate_result != "pass":
+        parser.error("run 2 requires a passing cooldown gate result")
 
 
 def _validate_no_run2_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
