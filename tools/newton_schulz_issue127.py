@@ -22,6 +22,7 @@ import re
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +115,32 @@ POWER_SAMPLES_STARTED_IN_INTERVAL_DEFINITION = (
 )
 RUN_BUDGET_INITIAL_OCCURRENCE_ESTIMATE_SECONDS = 6.0
 RUN_BUDGET_SETUP_MARGIN_SECONDS = 1.25
+
+
+@dataclass(frozen=True)
+class CooldownMetadataParameters:
+    """Inputs supplied by the wrapper when building cooldown metadata."""
+
+    run_number: int
+    wait_seconds: float | None
+    expected_aiclk_mhz: float | None
+    environment: Mapping[str, Any]
+    start_utc: str | None = None
+    end_utc: str | None = None
+    start_monotonic: float | None = None
+    end_monotonic: float | None = None
+    wait_performed: bool = False
+    baseline_source: str = COOLDOWN_BASELINE_SOURCE
+    baseline_power_w: float = COOLDOWN_BASELINE_POWER_W
+    baseline_temperature_c: float = COOLDOWN_BASELINE_ASIC_TEMPERATURE_C
+    power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W
+    temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C
+    observed_power_w: float | None = None
+    observed_temperature_c: float | None = None
+    observed_idle_aiclk_mhz: float | None = None
+    gate_result: str | None = None
+    gate_verified: bool | None = None
+
 
 # These names are intentionally the only comparison configurations in this
 # runner.  In particular, the rejected FP32-R/L32/R-in-L1 Issue #88 row is not
@@ -252,9 +279,13 @@ _SAFE_BASENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 _IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
-_BOARD_ID_RE = re.compile(r"^(?:[0-9]{8,24}|board-[A-Za-z0-9_-]{1,48})$")
+_BOARD_ID_RE = re.compile(
+    r"^(?:\d{8,24}|board-[\w-]{1,48})$", re.ASCII
+)
 _PCI_BDF_RE = re.compile(r"^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$", re.IGNORECASE)
-_DEVICE_NODE_RE = re.compile(r"^/dev/tenstorrent/(?:[0-9]+|by-id/[A-Za-z0-9_.:-]+)$")
+_DEVICE_NODE_RE = re.compile(
+    r"^/dev/tenstorrent/(?:\d+|by-id/[\w.:-]+)$", re.ASCII
+)
 # Path candidates deliberately allow filename punctuation and spaces.  The
 # ordinary grammar excludes the leading whitespace and double-pipe forms used
 # by quotient prose.  A second, separator-requiring grammar covers those forms
@@ -310,10 +341,10 @@ _PATH_CANDIDATE_RE = re.compile(
 _ABSOLUTE_PATH_RE = re.compile(rf"^{_PATH_CANDIDATE}$", re.IGNORECASE)
 _EMBEDDED_HOST_PATH_RE = _PATH_CANDIDATE_RE
 _FORMULA_SLASH_RE = re.compile(
-    r"/[A-Za-z_][A-Za-z0-9_]*\([^/\\]*\)(?=$|[\s,;:}\]])"
+    r"/[A-Za-z_]\w*\([^/\\]*\)(?=$|[\s,;:}\]])", re.ASCII
 )
 _FORMULA_SLASH_FRAGMENT_RE = re.compile(
-    r"/[A-Za-z_][A-Za-z0-9_]*\((?=$|[\s,;:}\]])"
+    r"/[A-Za-z_]\w*\((?=$|[\s,;:}\]])", re.ASCII
 )
 # These exact formula definitions are emitted by the unchanged timing and
 # Issue #88 metric producers.  Equality is intentionally whole-string only:
@@ -475,7 +506,7 @@ def validate_occurrence_plan(
         raise ValueError("Issue #127 requires exactly eight measured occurrences per run")
     _validate_occurrence_prefix(planned, run_number=run_number)
     counts = collections.Counter(row.get("row", row.get("name")) for row in planned)
-    if counts != collections.Counter({name: 2 for name in ISSUE127_ROW_NAMES}):
+    if counts != collections.Counter(dict.fromkeys(ISSUE127_ROW_NAMES, 2)):
         raise ValueError("Issue #127 requires two occurrences of every configuration")
 
 
@@ -903,28 +934,29 @@ def evaluate_cooldown_gate(
 
 
 def build_cooldown_metadata(
-    *,
-    run_number: int,
-    wait_seconds: float | None,
-    expected_aiclk_mhz: float | None,
-    environment: Mapping[str, Any],
-    start_utc: str | None = None,
-    end_utc: str | None = None,
-    start_monotonic: float | None = None,
-    end_monotonic: float | None = None,
-    wait_performed: bool = False,
-    baseline_source: str = COOLDOWN_BASELINE_SOURCE,
-    baseline_power_w: float = COOLDOWN_BASELINE_POWER_W,
-    baseline_temperature_c: float = COOLDOWN_BASELINE_ASIC_TEMPERATURE_C,
-    power_tolerance_w: float = COOLDOWN_POWER_TOLERANCE_W,
-    temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
-    observed_power_w: float | None = None,
-    observed_temperature_c: float | None = None,
-    observed_idle_aiclk_mhz: float | None = None,
-    gate_result: str | None = None,
-    gate_verified: bool | None = None,
+    params: CooldownMetadataParameters,
 ) -> dict[str, Any]:
     """Build cooldown metadata supplied by the wrapper before measurement."""
+    run_number = params.run_number
+    wait_seconds = params.wait_seconds
+    expected_aiclk_mhz = params.expected_aiclk_mhz
+    environment = params.environment
+    start_utc = params.start_utc
+    end_utc = params.end_utc
+    start_monotonic = params.start_monotonic
+    end_monotonic = params.end_monotonic
+    wait_performed = params.wait_performed
+    baseline_source = params.baseline_source
+    baseline_power_w = params.baseline_power_w
+    baseline_temperature_c = params.baseline_temperature_c
+    power_tolerance_w = params.power_tolerance_w
+    temperature_tolerance_c = params.temperature_tolerance_c
+    observed_power_w = params.observed_power_w
+    observed_temperature_c = params.observed_temperature_c
+    observed_idle_aiclk_mhz = params.observed_idle_aiclk_mhz
+    gate_result = params.gate_result
+    gate_verified = params.gate_verified
+
     observed = environment.get("aiclk_mhz_observed")
     observed_values = list(observed) if isinstance(observed, list) else None
     if observed_idle_aiclk_mhz is None and observed_values:
@@ -1186,84 +1218,164 @@ def _cooldown_trace_sample(
     return dict(max(candidates, key=lambda item: item[0])[1])
 
 
-def verify_cooldown_power_trace(
-    metadata: dict[str, Any], *, power_trace: Mapping[str, Any]
-) -> dict[str, Any]:
-    """Verify power/temperature readiness from the final immutable trace."""
-    if metadata.get("run_number") != 2:
-        metadata["power_trace_verified"] = False
-        metadata["verified"] = metadata.get("environment_verified") is True
-        return metadata
+def _cooldown_trace_facts(
+    metadata: Mapping[str, Any], power_trace: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     samples = power_trace.get("samples")
     if not isinstance(samples, list):
-        facts: dict[str, Any] = {
-            "available": False,
-            "coverage_complete": False,
-            "reason": "immutable_trace_samples_unavailable",
-            "segments": [],
-        }
-        trace_sample = None
-    else:
-        facts = left_held_aiclk_interval_facts(
-            samples,
-            start=metadata.get("start_utc"),
-            end=metadata.get("end_utc"),
-            row_label="run 2 cooldown AICLK interval",
+        return (
+            {
+                "available": False,
+                "coverage_complete": False,
+                "reason": "immutable_trace_samples_unavailable",
+                "segments": [],
+            },
+            None,
         )
-        trace_sample = _cooldown_trace_sample(
+    facts = left_held_aiclk_interval_facts(
+        samples,
+        start=metadata.get("start_utc"),
+        end=metadata.get("end_utc"),
+        row_label="run 2 cooldown AICLK interval",
+    )
+    return (
+        facts,
+        _cooldown_trace_sample(
             samples,
             start_utc=metadata.get("start_utc"),
             end_utc=metadata.get("end_utc"),
-        )
-    trace_power = (
-        _finite_cooldown_value(trace_sample.get("power_w"))
-        if trace_sample is not None
-        else None
+        ),
     )
-    trace_temperature = (
-        _finite_cooldown_value(trace_sample.get("asic_temp_c"))
-        if trace_sample is not None
-        else None
+
+
+def _cooldown_trace_observations(
+    trace_sample: Mapping[str, Any] | None,
+) -> tuple[float | None, float | None]:
+    if trace_sample is None:
+        return None, None
+    return (
+        _finite_cooldown_value(trace_sample.get("power_w")),
+        _finite_cooldown_value(trace_sample.get("asic_temp_c")),
     )
-    wrapper_observations = {
+
+
+def _cooldown_wrapper_observations(
+    metadata: Mapping[str, Any],
+) -> dict[str, float | None]:
+    return {
         "observed_power_w": _finite_cooldown_value(metadata.get("observed_power_w")),
         "observed_temperature_c": _finite_cooldown_value(
             metadata.get("observed_temperature_c")
         ),
     }
-    wrapper_gate_result = metadata.get("gate_result")
-    wrapper_gate_verified = metadata.get("gate_verified")
-    wrapper_gate_proof = (
-        wrapper_gate_result == "pass" and wrapper_gate_verified is True
-    )
-    metadata_mismatches: dict[str, dict[str, Any]] = {}
+
+
+def _cooldown_metadata_mismatches(
+    wrapper_observations: Mapping[str, float | None],
+    trace_sample: Mapping[str, Any] | None,
+    trace_power: float | None,
+    trace_temperature: float | None,
+) -> dict[str, dict[str, Any]]:
+    if trace_sample is None:
+        return {}
+    mismatches: dict[str, dict[str, Any]] = {}
     for metadata_field, trace_value in (
         ("observed_power_w", trace_power),
         ("observed_temperature_c", trace_temperature),
     ):
         normalized_metadata_value = wrapper_observations[metadata_field]
-        if trace_sample is None:
-            continue
         if normalized_metadata_value is None or trace_value is None or not _same_float(
             normalized_metadata_value, trace_value
         ):
-            metadata_mismatches[metadata_field] = {
+            mismatches[metadata_field] = {
                 "metadata_value": normalized_metadata_value,
                 "trace_value": trace_value,
                 "metadata_value_finite": normalized_metadata_value is not None,
                 "trace_value_finite": trace_value is not None,
             }
-    trace_is_immutable = power_trace.get("immutable_snapshot") is True
-    wrapper_observations_finite = all(
-        value is not None for value in wrapper_observations.values()
-    )
-    metadata_observation_match = (
+    return mismatches
+
+
+def _cooldown_wrapper_gate_proof(
+    wrapper_gate_result: Any, wrapper_gate_verified: Any
+) -> bool:
+    return wrapper_gate_result == "pass" and wrapper_gate_verified is True
+
+
+def _cooldown_metadata_observation_match(
+    trace_sample: Mapping[str, Any] | None,
+    trace_is_immutable: bool,
+    wrapper_observations_finite: bool,
+    metadata_mismatches: Mapping[str, Any],
+) -> bool:
+    return (
         trace_sample is not None
         and trace_is_immutable
         and wrapper_observations_finite
         and not metadata_mismatches
     )
-    gate_observation = {
+
+
+def _cooldown_observed_aiclk(
+    metadata: Mapping[str, Any], trace_sample: Mapping[str, Any] | None
+) -> Any:
+    observed_aiclk = metadata.get("observed_idle_aiclk_mhz")
+    if observed_aiclk is None and trace_sample is not None:
+        observed_aiclk = trace_sample.get("aiclk_mhz")
+    return observed_aiclk
+
+
+def _cooldown_gate_observation_reason(
+    metadata_mismatches: Mapping[str, Any],
+    wrapper_gate_proof: bool,
+    metadata_observation_match: bool,
+) -> str | None:
+    if not wrapper_gate_proof:
+        return "wrapper_gate_proof_missing"
+    if metadata_mismatches:
+        return "metadata_observation_mismatch"
+    if metadata_observation_match:
+        return None
+    return "no_usable_trace_sample_within_cooldown_bounds"
+
+
+def _apply_cooldown_gate_proof(
+    gate: dict[str, Any],
+    metadata_observation_match: bool,
+    wrapper_gate_proof: bool,
+) -> None:
+    gate["verified"] = bool(
+        gate["verified"] and metadata_observation_match and wrapper_gate_proof
+    )
+
+
+def _cooldown_trace_verified(
+    gate: Mapping[str, Any],
+    wrapper_gate_proof: bool,
+    metadata_observation_match: bool,
+    facts: Mapping[str, Any],
+) -> bool:
+    return (
+        gate["passes"]
+        and wrapper_gate_proof
+        and metadata_observation_match
+        and facts.get("trace_coverage_complete") is True
+        and facts.get("immutable_snapshot") is True
+    )
+
+
+def _cooldown_gate_observation(
+    metadata: Mapping[str, Any],
+    trace_sample: Mapping[str, Any] | None,
+    wrapper_gate_result: Any,
+    wrapper_gate_verified: Any,
+    metadata_observation_match: bool,
+    metadata_mismatches: Mapping[str, Any],
+) -> dict[str, Any]:
+    wrapper_gate_proof = _cooldown_wrapper_gate_proof(
+        wrapper_gate_result, wrapper_gate_verified
+    )
+    return {
         "source": "immutable_trace" if trace_sample is not None else None,
         "sample_available": trace_sample is not None,
         "sample_bounds": {
@@ -1276,27 +1388,55 @@ def verify_cooldown_power_trace(
         "wrapper_gate_proof": wrapper_gate_proof,
         "metadata_observation_match": metadata_observation_match,
         "metadata_observation_mismatch": metadata_mismatches or None,
-        "reason": (
-            None
-            if trace_sample is not None
-            and trace_is_immutable
-            and not metadata_mismatches
-            and wrapper_observations_finite
-            and wrapper_gate_proof
-            else (
-                "wrapper_gate_proof_missing"
-                if not wrapper_gate_proof
-                else (
-                    "metadata_observation_mismatch"
-                    if metadata_mismatches
-                    else "no_usable_trace_sample_within_cooldown_bounds"
-                )
-            )
+        "reason": _cooldown_gate_observation_reason(
+            metadata_mismatches,
+            wrapper_gate_proof,
+            metadata_observation_match,
         ),
     }
-    observed_aiclk = metadata.get("observed_idle_aiclk_mhz")
-    if observed_aiclk is None and trace_sample is not None:
-        observed_aiclk = trace_sample.get("aiclk_mhz")
+
+
+def verify_cooldown_power_trace(
+    metadata: dict[str, Any], *, power_trace: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Verify power/temperature readiness from the final immutable trace."""
+    if metadata.get("run_number") != 2:
+        metadata["power_trace_verified"] = False
+        metadata["verified"] = metadata.get("environment_verified") is True
+        return metadata
+    facts, trace_sample = _cooldown_trace_facts(metadata, power_trace)
+    trace_power, trace_temperature = _cooldown_trace_observations(trace_sample)
+    wrapper_observations = _cooldown_wrapper_observations(metadata)
+    wrapper_gate_result = metadata.get("gate_result")
+    wrapper_gate_verified = metadata.get("gate_verified")
+    wrapper_gate_proof = _cooldown_wrapper_gate_proof(
+        wrapper_gate_result, wrapper_gate_verified
+    )
+    metadata_mismatches = _cooldown_metadata_mismatches(
+        wrapper_observations,
+        trace_sample,
+        trace_power,
+        trace_temperature,
+    )
+    trace_is_immutable = power_trace.get("immutable_snapshot") is True
+    wrapper_observations_finite = all(
+        value is not None for value in wrapper_observations.values()
+    )
+    metadata_observation_match = _cooldown_metadata_observation_match(
+        trace_sample,
+        trace_is_immutable,
+        wrapper_observations_finite,
+        metadata_mismatches,
+    )
+    gate_observation = _cooldown_gate_observation(
+        metadata,
+        trace_sample,
+        wrapper_gate_result,
+        wrapper_gate_verified,
+        metadata_observation_match,
+        metadata_mismatches,
+    )
+    observed_aiclk = _cooldown_observed_aiclk(metadata, trace_sample)
     gate = evaluate_cooldown_gate(
         trace_power,
         trace_temperature,
@@ -1316,8 +1456,9 @@ def verify_cooldown_power_trace(
     gate["wrapper_gate_proof"] = wrapper_gate_proof
     gate["metadata_observation_match"] = metadata_observation_match
     gate["metadata_observation_mismatch"] = metadata_mismatches or None
-    if not metadata_observation_match or not wrapper_gate_proof:
-        gate["verified"] = False
+    _apply_cooldown_gate_proof(
+        gate, metadata_observation_match, wrapper_gate_proof
+    )
     facts.update(
         {
             "trace": power_trace.get("file"),
@@ -1341,12 +1482,8 @@ def verify_cooldown_power_trace(
     )
     # AICLK interval facts are retained as provenance.  They are deliberately
     # not part of the cooldown gate: an idle 800-MHz observation is valid.
-    verified = (
-        gate["passes"]
-        and wrapper_gate_proof
-        and metadata_observation_match
-        and facts.get("trace_coverage_complete") is True
-        and facts.get("immutable_snapshot") is True
+    verified = _cooldown_trace_verified(
+        gate, wrapper_gate_proof, metadata_observation_match, facts
     )
     metadata["observed_power_w"] = gate["observed_power_w"]
     metadata["observed_temperature_c"] = gate["observed_temperature_c"]
@@ -2302,6 +2439,48 @@ def _complete_final_power_trace(
     return trace
 
 
+def _final_power_trace_source(
+    output_dir: Path, *, run_id: str, power_path: Path
+) -> Path:
+    source = output_dir / run_artifact_name(prefix="power-", suffix=".csv", run_id=run_id)
+    if power_path.name != source.name or power_path.parent.resolve() != output_dir.resolve():
+        raise ValueError("power trace path is not the current run artifact")
+    return source
+
+
+def _read_final_power_trace_if_available(
+    source: Path,
+    output_dir: Path,
+    *,
+    run_id: str,
+    run_start: str,
+    run_end: str,
+    snapshot_number: int,
+) -> dict[str, Any] | None:
+    if not source.exists():
+        return None
+    try:
+        return _read_final_power_snapshot(
+            source,
+            output_dir,
+            run_id=run_id,
+            run_start=run_start,
+            run_end=run_end,
+            snapshot_number=snapshot_number,
+        )
+    except (OSError, ValueError):
+        return None
+
+
+def _final_power_trace_timeout(
+    last_trace: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if last_trace is None:
+        raise TimeoutError("no usable immutable Issue #127 power trace was captured")
+    last_trace["poll_complete"] = False
+    return last_trace
+
+
 def _capture_final_power_trace(
     output_dir: Path,
     *,
@@ -2313,37 +2492,30 @@ def _capture_final_power_trace(
     sleep_fn: Callable[[float], None],
 ) -> dict[str, Any]:
     """Snapshot and read the wrapper CSV until the shared coverage gate passes."""
-    source = output_dir / run_artifact_name(prefix="power-", suffix=".csv", run_id=run_id)
-    if power_path.name != source.name or power_path.parent.resolve() != output_dir.resolve():
-        raise ValueError("power trace path is not the current run artifact")
+    source = _final_power_trace_source(
+        output_dir, run_id=run_id, power_path=power_path
+    )
     deadline = monotonic_fn() + POWER_TRACE_POLL_TIMEOUT_SECONDS
     snapshot_number = 1
     last_trace: dict[str, Any] | None = None
     while True:
-        if source.exists():
-            try:
-                trace = _read_final_power_snapshot(
-                    source,
-                    output_dir,
-                    run_id=run_id,
-                    run_start=run_start,
-                    run_end=run_end,
-                    snapshot_number=snapshot_number,
+        trace = _read_final_power_trace_if_available(
+            source,
+            output_dir,
+            run_id=run_id,
+            run_start=run_start,
+            run_end=run_end,
+            snapshot_number=snapshot_number,
+        )
+        if trace is not None:
+            snapshot_number += 1
+            last_trace = trace
+            if trace.get("coverage_complete") is True:
+                return _complete_final_power_trace(
+                    trace, samples=trace.get("samples", [])
                 )
-            except (OSError, ValueError):
-                pass
-            else:
-                snapshot_number += 1
-                last_trace = trace
-                if trace.get("coverage_complete") is True:
-                    return _complete_final_power_trace(
-                        trace, samples=trace.get("samples", [])
-                    )
         if monotonic_fn() >= deadline:
-            if last_trace is None:
-                raise TimeoutError("no usable immutable Issue #127 power trace was captured")
-            last_trace["poll_complete"] = False
-            return last_trace
+            return _final_power_trace_timeout(last_trace)
         sleep_fn(POWER_TRACE_POLL_INTERVAL_SECONDS)
 
 
@@ -2966,23 +3138,25 @@ def main(
         cooldown_start_utc = args.cooldown_start_utc if args.run_number == 2 else None
         cooldown_end_utc = args.cooldown_end_utc if args.run_number == 2 else None
         cooldown = build_cooldown_metadata(
-            run_number=args.run_number,
-            wait_seconds=args.cooldown_wait_seconds,
-            expected_aiclk_mhz=args.expected_aiclk_mhz,
-            environment=environment,
-            start_utc=cooldown_start_utc,
-            end_utc=cooldown_end_utc,
-            wait_performed=args.run_number == 2,
-            baseline_source=args.cooldown_baseline_source,
-            baseline_power_w=args.cooldown_baseline_power_w,
-            baseline_temperature_c=args.cooldown_baseline_temperature_c,
-            power_tolerance_w=args.cooldown_power_tolerance_w,
-            temperature_tolerance_c=args.cooldown_temperature_tolerance_c,
-            observed_power_w=args.cooldown_observed_power_w,
-            observed_temperature_c=args.cooldown_observed_temperature_c,
-            observed_idle_aiclk_mhz=args.cooldown_observed_aiclk_mhz,
-            gate_result=args.cooldown_gate_result,
-            gate_verified=args.cooldown_gate_verified,
+            CooldownMetadataParameters(
+                run_number=args.run_number,
+                wait_seconds=args.cooldown_wait_seconds,
+                expected_aiclk_mhz=args.expected_aiclk_mhz,
+                environment=environment,
+                start_utc=cooldown_start_utc,
+                end_utc=cooldown_end_utc,
+                wait_performed=args.run_number == 2,
+                baseline_source=args.cooldown_baseline_source,
+                baseline_power_w=args.cooldown_baseline_power_w,
+                baseline_temperature_c=args.cooldown_baseline_temperature_c,
+                power_tolerance_w=args.cooldown_power_tolerance_w,
+                temperature_tolerance_c=args.cooldown_temperature_tolerance_c,
+                observed_power_w=args.cooldown_observed_power_w,
+                observed_temperature_c=args.cooldown_observed_temperature_c,
+                observed_idle_aiclk_mhz=args.cooldown_observed_aiclk_mhz,
+                gate_result=args.cooldown_gate_result,
+                gate_verified=args.cooldown_gate_verified,
+            )
         )
         measurement_start_utc = _timestamp(now_utc(), field="run_start")
         measurement_start_monotonic = monotonic()

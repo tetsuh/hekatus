@@ -528,15 +528,17 @@ def test_issue127_cooldown_metadata_requires_wait_and_keeps_pre_cooldown_aiclk_p
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=30.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00+00:00",
-        end_utc="2026-10-12T00:00:30+00:00",
-        start_monotonic=10.0,
-        end_monotonic=40.0,
-        wait_performed=True,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=30.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00+00:00",
+            end_utc="2026-10-12T00:00:30+00:00",
+            start_monotonic=10.0,
+            end_monotonic=40.0,
+            wait_performed=True,
+        )
     )
     assert metadata["environment_verified"] is True
     assert metadata["environment_observed_aiclk_mhz"] == [800]
@@ -589,17 +591,19 @@ def test_issue127_cooldown_proof_uses_power_temperature_gate_and_keeps_idle_cloc
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=3.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00.500000+00:00",
-        end_utc="2026-10-12T00:00:03.500000+00:00",
-        wait_performed=True,
-        observed_power_w=50.0,
-        observed_temperature_c=51.0,
-        gate_result="pass",
-        gate_verified=True,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=3.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00.500000+00:00",
+            end_utc="2026-10-12T00:00:03.500000+00:00",
+            wait_performed=True,
+            observed_power_w=50.0,
+            observed_temperature_c=51.0,
+            gate_result="pass",
+            gate_verified=True,
+        )
     )
     verified = runner.verify_cooldown_power_trace(
         metadata, power_trace=_cooldown_trace()
@@ -658,17 +662,19 @@ def test_issue127_run2_args_require_explicit_passing_verified_gate():
 def test_issue127_cooldown_proof_requires_finite_wrapper_observations():
     environment = runner.sanitize_environment(_environment(observed=[800]))
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=3.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00.500000+00:00",
-        end_utc="2026-10-12T00:00:03.500000+00:00",
-        wait_performed=True,
-        observed_power_w=50.0,
-        observed_temperature_c=51.0,
-        gate_result="pass",
-        gate_verified=True,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=3.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00.500000+00:00",
+            end_utc="2026-10-12T00:00:03.500000+00:00",
+            wait_performed=True,
+            observed_power_w=50.0,
+            observed_temperature_c=51.0,
+            gate_result="pass",
+            gate_verified=True,
+        )
     )
     metadata.pop("observed_power_w")
     metadata["observed_temperature_c"] = float("nan")
@@ -702,17 +708,19 @@ def test_issue127_cooldown_proof_requires_passing_wrapper_gate_proof(
 ):
     environment = runner.sanitize_environment(_environment(observed=[800]))
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=3.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00.500000+00:00",
-        end_utc="2026-10-12T00:00:03.500000+00:00",
-        wait_performed=True,
-        observed_power_w=50.0,
-        observed_temperature_c=51.0,
-        gate_result="pass",
-        gate_verified=True,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=3.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00.500000+00:00",
+            end_utc="2026-10-12T00:00:03.500000+00:00",
+            wait_performed=True,
+            observed_power_w=50.0,
+            observed_temperature_c=51.0,
+            gate_result="pass",
+            gate_verified=True,
+        )
     )
     if gate_result is None:
         metadata.pop("gate_result")
@@ -738,15 +746,17 @@ def test_issue127_cooldown_proof_rejects_metadata_that_overrides_a_failing_trace
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=3.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00.500000+00:00",
-        end_utc="2026-10-12T00:00:03.500000+00:00",
-        wait_performed=True,
-        observed_power_w=47.0,
-        observed_temperature_c=58.5,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=3.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00.500000+00:00",
+            end_utc="2026-10-12T00:00:03.500000+00:00",
+            wait_performed=True,
+            observed_power_w=47.0,
+            observed_temperature_c=58.5,
+        )
     )
     trace = _cooldown_trace()
     trace["samples"][2] = {
@@ -776,15 +786,17 @@ def test_issue127_cooldown_proof_rejects_passing_metadata_without_an_in_window_t
     environment = runner.sanitize_environment(_environment(observed=[800]))
     runner.validate_harness_environment(environment, run_id="run127-test")
     metadata = runner.build_cooldown_metadata(
-        run_number=2,
-        wait_seconds=3.0,
-        expected_aiclk_mhz=1350.0,
-        environment=environment,
-        start_utc="2026-10-12T00:00:00.500000+00:00",
-        end_utc="2026-10-12T00:00:03.500000+00:00",
-        wait_performed=True,
-        observed_power_w=47.0,
-        observed_temperature_c=58.5,
+        runner.CooldownMetadataParameters(
+            run_number=2,
+            wait_seconds=3.0,
+            expected_aiclk_mhz=1350.0,
+            environment=environment,
+            start_utc="2026-10-12T00:00:00.500000+00:00",
+            end_utc="2026-10-12T00:00:03.500000+00:00",
+            wait_performed=True,
+            observed_power_w=47.0,
+            observed_temperature_c=58.5,
+        )
     )
     trace = _cooldown_trace()
     trace["samples"] = [trace["samples"][0], trace["samples"][3]]
@@ -857,10 +869,12 @@ def test_issue127_close_failure_cannot_produce_pass_record(close_failure):
         run_id="run127-test",
         environment=environment,
         cooldown=runner.build_cooldown_metadata(
-            run_number=1,
-            wait_seconds=None,
-            expected_aiclk_mhz=None,
-            environment=environment,
+            runner.CooldownMetadataParameters(
+                run_number=1,
+                wait_seconds=None,
+                expected_aiclk_mhz=None,
+                environment=environment,
+            )
         ),
         run_start_utc="2026-10-12T00:00:00+00:00",
         run_end_utc="2026-10-12T00:01:00+00:00",
@@ -1228,6 +1242,27 @@ def test_issue127_allowed_device_nodes_remain_serializable(device_node: str):
 
     assert json.loads(serialized)["device_node"] == device_node
     assert environment["device_node"] == device_node
+
+
+@pytest.mark.parametrize(
+    ("board_id", "device_node"),
+    (
+        ("１２３４５６７８", "/dev/tenstorrent/１２３"),
+        ("board-p150a-é", "/dev/tenstorrent/by-id/p150a-é"),
+    ),
+)
+def test_issue127_board_and_device_identifiers_remain_ascii_only(
+    board_id: str, device_node: str
+):
+    assert runner._BOARD_ID_RE.fullmatch(board_id) is None
+    assert runner._DEVICE_NODE_RE.fullmatch(device_node) is None
+
+
+def test_issue127_non_ascii_formula_like_token_remains_a_path_candidate():
+    value = "/response_é(value)"
+
+    assert runner._FORMULA_SLASH_RE.fullmatch(value) is None
+    assert runner._classify_path(value) == runner._PATH_KIND_WHOLE
 
 
 def test_issue127_environment_path_lists_are_placeholdered_without_formula_false_positive():
