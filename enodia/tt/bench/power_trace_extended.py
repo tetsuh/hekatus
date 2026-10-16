@@ -961,13 +961,40 @@ def _read_extended_csv_rows(
 ) -> tuple[bytes, list[dict[str, Any]]]:
     try:
         raw, text = _decode_extended_payload(path, read_text_fn=read_text_fn)
-        reader = csv.DictReader(io.StringIO(text))
+        missing_value = object()
+        extra_key = object()
+        reader = csv.DictReader(
+            io.StringIO(text),
+            restval=missing_value,
+            restkey=extra_key,
+        )
         fieldnames = tuple(reader.fieldnames or ())
         if fieldnames != EXTENDED_POWER_TRACE_COLUMNS:
             raise ExtendedPowerTraceError(
                 f"extended power trace has unexpected columns {fieldnames!r}"
             )
-        return raw, [dict(row) for row in reader]
+        rows: list[dict[str, Any]] = []
+        expected_field_count = len(EXTENDED_POWER_TRACE_COLUMNS)
+        for index, row in enumerate(reader):
+            if extra_key in row:
+                field_count = expected_field_count + len(row[extra_key])
+                raise ExtendedPowerTraceError(
+                    f"extended power trace row {index} has invalid physical field count "
+                    f"(expected {expected_field_count}, got {field_count})"
+                )
+            missing_fields = [
+                field
+                for field in EXTENDED_POWER_TRACE_COLUMNS
+                if row[field] is missing_value
+            ]
+            if missing_fields:
+                field_count = expected_field_count - len(missing_fields)
+                raise ExtendedPowerTraceError(
+                    f"extended power trace row {index} has invalid physical field count "
+                    f"(expected {expected_field_count}, got {field_count})"
+                )
+            rows.append(dict(row))
+        return raw, rows
     except ExtendedPowerTraceError:
         raise
     except (csv.Error, ValueError) as exc:
@@ -1169,7 +1196,14 @@ def read_extended_power_trace_snapshot(
                     f"extended trace sidecar samples[{index}] must be an object"
                 )
             rows.append(_coerce_trace_row(row, index=index))
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ExtendedPowerTraceError) as exc:
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+        TypeError,
+        ExtendedPowerTraceError,
+    ) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result

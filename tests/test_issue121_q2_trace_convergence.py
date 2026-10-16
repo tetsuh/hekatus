@@ -90,6 +90,30 @@ def test_extended_row_csv_escaping_round_trips_throttle_labels(tmp_path: Path) -
     assert trace["samples"][0]["throttle_reason"] == reason
 
 
+@pytest.mark.parametrize("field_count", (12, 13, 15))
+def test_extended_csv_reader_rejects_non_complete_physical_records(
+    tmp_path: Path, field_count: int
+) -> None:
+    serialized = format_extended_power_trace_row(_trace_row(0, board_power_w=10.0))
+    fields = next(csv.reader(io.StringIO(serialized)))
+    if field_count < len(EXTENDED_POWER_TRACE_COLUMNS):
+        fields = fields[:field_count]
+    else:
+        fields.append("unexpected-extra-field")
+    buffer = io.StringIO()
+    csv.writer(buffer, lineterminator="").writerow(fields)
+
+    path = tmp_path / f"width-{field_count}.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + buffer.getvalue() + "\n")
+
+    trace = read_extended_power_trace_csv(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert trace["errors"] == [trace["error"]]
+    assert "physical field count" in trace["error"]
+
+
 def test_extended_json_sidecar_reader_aggregates_left_held_samples(tmp_path: Path) -> None:
     path = tmp_path / "extended.json"
     _write_sidecar(
@@ -196,3 +220,35 @@ def test_extended_json_sidecar_reader_rejects_invalid_payload(
         assert "schema is not supported" in trace["error"]
     else:
         assert "board_power_w" in trace["error"]
+
+
+def test_extended_json_sidecar_reader_rejects_over_limit_integer_token(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "over-limit-integer.json"
+    payload = {
+        "schema": EXTENDED_POWER_TRACE_SCHEMA,
+        "schema_version": EXTENDED_POWER_TRACE_SCHEMA_VERSION,
+        "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+        "samples": [_trace_row(0, board_power_w=10.0)],
+    }
+    serialized = json.dumps(payload)
+    oversized_integer = "1" * 4301
+    needle = '"timestamp_monotonic_ns": 0'
+    assert needle in serialized
+    path.write_text(
+        serialized.replace(
+            needle,
+            f'"timestamp_monotonic_ns": {oversized_integer}',
+            1,
+        )
+    )
+
+    trace = read_extended_power_trace_snapshot(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert trace["errors"] == [trace["error"]]
+
+    report = validate_extended_power_trace(path)
+    assert report["valid"] is False
