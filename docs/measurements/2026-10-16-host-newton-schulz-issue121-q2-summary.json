@@ -4,7 +4,7 @@
   "issue": "#121",
   "plan": {
     "path": "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-plan.json",
-    "revision": 3,
+    "revision": 4,
     "target_seconds": 285,
     "plateau_start_seconds": 150,
     "plateau_end_seconds": 285,
@@ -565,6 +565,178 @@
       }
     }
   ],
+  "post_hoc_observations": {
+    "status": "post_measurement",
+    "scope": "Post-hoc observations only; these are not preregistered hypothesis results.",
+    "source": {
+      "analysis_commit": "e09d4f9",
+      "run_artifacts": "The committed Q2 run traces, snapshots, and analyses; no run artifact was changed."
+    },
+    "board_power_plateau": {
+      "signal": "board_power_w",
+      "limit_w": 300.0,
+      "delta_definition": "signed plateau time-weighted mean minus 300 W",
+      "runs": [
+        {
+          "run_number": 1,
+          "time_weighted_mean_w": 299.44635551097036,
+          "min_w": 241.0,
+          "max_w": 310.0,
+          "delta_from_300_w": -0.5536444890296366,
+          "absolute_difference_from_300_w": 0.5536444890296366
+        },
+        {
+          "run_number": 2,
+          "time_weighted_mean_w": 300.88188737094816,
+          "min_w": 288.0,
+          "max_w": 313.0,
+          "delta_from_300_w": 0.8818873709481636,
+          "absolute_difference_from_300_w": 0.8818873709481636
+        },
+        {
+          "run_number": 3,
+          "time_weighted_mean_w": 300.06724754488147,
+          "min_w": 247.0,
+          "max_w": 309.0,
+          "delta_from_300_w": 0.067247544881468,
+          "absolute_difference_from_300_w": 0.067247544881468
+        }
+      ]
+    },
+    "transient_at_approximately_4_5_seconds": {
+      "observation": "Each run has an approximately 4.5-second transient at about 1343 MHz, 210-212 W power, 254-257 A current, and 394-407 W board power.",
+      "runs": [
+        {
+          "run_number": 1,
+          "seconds_from_run_start": 4.487206148,
+          "aiclk_mhz": 1343.0,
+          "power_w": 210.0,
+          "current_a": 254.0,
+          "voltage_v": 0.83,
+          "board_power_w": 407.0
+        },
+        {
+          "run_number": 2,
+          "seconds_from_run_start": 4.486327392,
+          "aiclk_mhz": 1343.0,
+          "power_w": 212.0,
+          "current_a": 257.0,
+          "voltage_v": 0.83,
+          "board_power_w": 405.0
+        },
+        {
+          "run_number": 3,
+          "seconds_from_run_start": 4.493233541,
+          "aiclk_mhz": 1343.0,
+          "power_w": 210.0,
+          "current_a": 255.0,
+          "voltage_v": 0.83,
+          "board_power_w": 394.0
+        }
+      ]
+    },
+    "next_sample_at_approximately_6_7_seconds": {
+      "observation": "The next approximately 6.7-second sample is 1031-1037 MHz with 292-297 W board power.",
+      "runs": [
+        {
+          "run_number": 1,
+          "seconds_from_run_start": 6.727259794,
+          "aiclk_mhz": 1037.0,
+          "power_w": 134.0,
+          "current_a": 180.0,
+          "voltage_v": 0.74,
+          "board_power_w": 295.0
+        },
+        {
+          "run_number": 2,
+          "seconds_from_run_start": 6.719855854,
+          "aiclk_mhz": 1037.0,
+          "power_w": 135.0,
+          "current_a": 182.0,
+          "voltage_v": 0.75,
+          "board_power_w": 292.0
+        },
+        {
+          "run_number": 3,
+          "seconds_from_run_start": 6.731211923,
+          "aiclk_mhz": 1031.0,
+          "power_w": 133.0,
+          "current_a": 179.0,
+          "voltage_v": 0.74,
+          "board_power_w": 297.0
+        }
+      ]
+    },
+    "voltage_and_power_interpretation": {
+      "transient_voltage_v": 0.83,
+      "post_transient_voltage_v_range": [0.73, 0.75],
+      "relationship": "Power is approximately voltage*current in these telemetry samples.",
+      "limitation": "This run cannot separate TDC from TDP."
+    },
+    "load_plateau_evolution": {
+      "transition_values": {
+        "aiclk_mhz_range": [1031.0, 1037.0],
+        "asic_temp_c_range": [73.0, 73.3]
+      },
+      "later_loaded_plateau_values": {
+        "aiclk_mhz_range": [950.0, 962.0],
+        "asic_temp_c_observed_range": [80.8, 83.8],
+        "asic_temp_time_weighted_mean_c_by_run": [
+          82.86679598474963,
+          83.31576916859629,
+          83.27130688187926
+        ],
+        "board_power_w_remains_near": 300.0
+      },
+      "observation": "AICLK moves from approximately 1037 MHz toward 950-962 MHz while ASIC temperature rises from low-70s transition values to approximately 83 degC; board_power remains near 300 W."
+    },
+    "raw_snapshot_limits": {
+      "THM_LIMIT_THROTTLE": {
+        "pre": ["0x5a", "0x5a", "0x5a"],
+        "post": ["0x5a", "0x5a", "0x5a"],
+        "unit": null,
+        "interpretation": "Raw snapshot value only; no unit is inferred."
+      }
+    },
+    "device_comparison": {
+      "issue_118": {
+        "host_device_id": 0,
+        "container_visible_device_id": 0
+      },
+      "q2_measurement": {
+        "host_device_id": 1,
+        "container_visible_device_id": 0
+      },
+      "direct_comparison": false,
+      "note": "Issue #118 used device 0 whereas this Q2 measurement used host device 1/container-visible device 0; these are not directly the same device."
+    },
+    "causality_and_next_intervention": {
+      "causality": "Correlation is not causation.",
+      "requirement": "A new preregistered intervention is required to test the board-power hypothesis.",
+      "example": "Change core count/load to get board power below 300 W, then compare the resulting AICLK and thermal behavior under the preregistered intervention."
+    },
+    "aiclk_onset_definitions": {
+      "threshold": {
+        "baseline_asic_fmax_mhz": 1350.0,
+        "threshold_expression": "1350*0.95=1282.5",
+        "threshold_mhz": 1282.5
+      },
+      "before": {
+        "definition": "AICLK onset used the first left-held segment clipped at run_start whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could make onset t=0.",
+        "onset_times_seconds": [0.0, 0.0, 0.0],
+        "classifications": ["H-OTHER", "H-OTHER", "H-OTHER"]
+      },
+      "after": {
+        "definition": "AICLK onset uses the first trace sample segment whose timestamp is at or after run_start (post-start sample only), with the same 1350*0.95=1282.5 threshold.",
+        "onset_times_seconds": [6.727259794, 6.719855854, 6.731211923],
+        "approximate_onset_seconds": "approximately 6.72 s per run",
+        "classifications": ["H-OTHER", "H-OTHER", "H-OTHER"]
+      },
+      "reason": "Exclude pre-run idle from load-onset timing.",
+      "change_provenance": "Post-measurement analysis change introduced by e09d4f9 after all 3 runs.",
+      "classification_comparison": "The pre-change definition classified all three completed runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
+    }
+  },
   "prediction": {
     "expected_classification": [
       "H-TDC",

@@ -369,6 +369,11 @@
       "revision": 3,
       "date": "2026-10-16",
       "change": "Clarified that device_id: 1 is the host device-node number while the single-device container opens visible device_id 0; hypothesis criteria and prediction unchanged."
+    },
+    {
+      "revision": 4,
+      "date": "2026-10-16",
+      "change": "post-measurement analysis change introduced by e09d4f9 after all 3 runs; before: AICLK onset used the first left-held segment clipped at run_start whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could make onset t=0; after: AICLK onset uses the first trace sample segment whose timestamp is at or after run_start (post-start sample only), with the same 1350*0.95=1282.5 threshold; reason: exclude pre-run idle from load-onset timing. The pre-change definition classified all three completed runs H-OTHER, and the post-change definition also classified all three H-OTHER; criteria and prediction did not change."
     }
   ],
   "limitations": [

@@ -16,6 +16,8 @@ from tools import issue121_q2_wrapper_probe as wrapper_probe
 
 ROOT = Path(__file__).parents[1]
 PLAN = ROOT / runner.ISSUE121_Q2_PLAN
+SUMMARY = ROOT / "docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-summary.json"
+IMMUTABLE_RUN_ROOT = ROOT / "docs/measurements/issue121-q2/runs"
 
 
 def _snapshot() -> str:
@@ -176,6 +178,21 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
             "and prediction unchanged."
         ),
     }
+    assert plan["revision_history"][3] == {
+        "revision": 4,
+        "date": "2026-10-16",
+        "change": (
+            "post-measurement analysis change introduced by e09d4f9 after all 3 runs; "
+            "before: AICLK onset used the first left-held segment clipped at run_start "
+            "whose AICLK was <= asic_fmax*0.95, so the pre-run idle 800 MHz row could "
+            "make onset t=0; after: AICLK onset uses the first trace sample segment "
+            "whose timestamp is at or after run_start (post-start sample only), with "
+            "the same 1350*0.95=1282.5 threshold; reason: exclude pre-run idle from "
+            "load-onset timing. The pre-change definition classified all three "
+            "completed runs H-OTHER, and the post-change definition also classified "
+            "all three H-OTHER; criteria and prediction did not change."
+        ),
+    }
     assert "criteria and prediction unchanged" in plan["revision_history"][1]["change"]
     assert "330-second guard" in plan["revision_history"][1]["change"]
     assert "device_id: 1" in plan["revision_history"][2]["change"]
@@ -196,6 +213,138 @@ def test_q2_plan_is_frozen_and_names_the_extended_contract() -> None:
         "requires_positive_duration_segments": True,
         "terminal_coverage_required": True,
     }
+
+
+def test_q2_post_measurement_summary_is_separate_and_artifact_bound() -> None:
+    summary = json.loads(SUMMARY.read_text(encoding="utf-8"))
+    observations = summary["post_hoc_observations"]
+
+    assert summary["plan"]["revision"] == 4
+    assert observations["status"] == "post_measurement"
+    assert observations["scope"] == (
+        "Post-hoc observations only; these are not preregistered hypothesis results."
+    )
+    board = observations["board_power_plateau"]
+    assert board["limit_w"] == 300.0
+    assert [
+        (
+            row["time_weighted_mean_w"],
+            row["min_w"],
+            row["max_w"],
+            row["delta_from_300_w"],
+        )
+        for row in board["runs"]
+    ] == [
+        (299.44635551097036, 241.0, 310.0, -0.5536444890296366),
+        (300.88188737094816, 288.0, 313.0, 0.8818873709481636),
+        (300.06724754488147, 247.0, 309.0, 0.067247544881468),
+    ]
+
+    transient = observations["transient_at_approximately_4_5_seconds"]["runs"]
+    assert [
+        (
+            row["aiclk_mhz"],
+            row["power_w"],
+            row["current_a"],
+            row["voltage_v"],
+            row["board_power_w"],
+        )
+        for row in transient
+    ] == [
+        (1343.0, 210.0, 254.0, 0.83, 407.0),
+        (1343.0, 212.0, 257.0, 0.83, 405.0),
+        (1343.0, 210.0, 255.0, 0.83, 394.0),
+    ]
+    next_sample = observations["next_sample_at_approximately_6_7_seconds"]["runs"]
+    assert [(row["aiclk_mhz"], row["board_power_w"]) for row in next_sample] == [
+        (1037.0, 295.0),
+        (1037.0, 292.0),
+        (1031.0, 297.0),
+    ]
+    assert observations["voltage_and_power_interpretation"] == {
+        "transient_voltage_v": 0.83,
+        "post_transient_voltage_v_range": [0.73, 0.75],
+        "relationship": "Power is approximately voltage*current in these telemetry samples.",
+        "limitation": "This run cannot separate TDC from TDP.",
+    }
+
+    evolution = observations["load_plateau_evolution"]
+    assert evolution["transition_values"] == {
+        "aiclk_mhz_range": [1031.0, 1037.0],
+        "asic_temp_c_range": [73.0, 73.3],
+    }
+    assert evolution["later_loaded_plateau_values"]["aiclk_mhz_range"] == [950.0, 962.0]
+    assert evolution["later_loaded_plateau_values"]["board_power_w_remains_near"] == 300.0
+
+    raw_throttle = observations["raw_snapshot_limits"]["THM_LIMIT_THROTTLE"]
+    assert raw_throttle["pre"] == ["0x5a", "0x5a", "0x5a"]
+    assert raw_throttle["post"] == ["0x5a", "0x5a", "0x5a"]
+    assert raw_throttle["unit"] is None
+    assert "no unit is inferred" in raw_throttle["interpretation"]
+
+    assert observations["device_comparison"]["direct_comparison"] is False
+    assert observations["device_comparison"]["issue_118"]["host_device_id"] == 0
+    assert observations["device_comparison"]["q2_measurement"]["host_device_id"] == 1
+    assert observations["device_comparison"]["q2_measurement"]["container_visible_device_id"] == 0
+    assert observations["causality_and_next_intervention"]["causality"] == (
+        "Correlation is not causation."
+    )
+    assert "new preregistered intervention" in observations[
+        "causality_and_next_intervention"
+    ]["requirement"]
+    assert "below 300 W" in observations["causality_and_next_intervention"]["example"]
+
+    onset = observations["aiclk_onset_definitions"]
+    assert onset["threshold"] == {
+        "baseline_asic_fmax_mhz": 1350.0,
+        "threshold_expression": "1350*0.95=1282.5",
+        "threshold_mhz": 1282.5,
+    }
+    assert onset["before"]["onset_times_seconds"] == [0.0, 0.0, 0.0]
+    assert onset["before"]["classifications"] == ["H-OTHER"] * 3
+    assert onset["after"]["onset_times_seconds"] == [
+        6.727259794,
+        6.719855854,
+        6.731211923,
+    ]
+    assert onset["after"]["classifications"] == ["H-OTHER"] * 3
+    assert "post-start sample only" in onset["after"]["definition"]
+    assert "pre-run idle" in onset["reason"]
+
+    assert [run["classification"] for run in summary["runs"]] == ["H-OTHER"] * 3
+    assert summary["prediction"] == {
+        "expected_classification": ["H-TDC", "H-OTHER"],
+        "excluded_by_prior_evidence": ["H-TDP", "H-THM"],
+        "actual_classifications": ["H-OTHER", "H-OTHER", "H-OTHER"],
+        "outcome": "matched",
+        "comparison": (
+            "All three runs classified H-OTHER; H-TDP and H-THM were not supported, "
+            "while current evidence made H-TDC not_supported under the fixed criteria."
+        ),
+    }
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "--", "docs/measurements/issue121-q2/runs"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert tracked
+    actual = {
+        path.relative_to(ROOT).as_posix()
+        for path in IMMUTABLE_RUN_ROOT.rglob("*")
+        if path.is_file()
+    }
+    assert actual == set(tracked)
+    for relative in tracked:
+        expected = subprocess.run(
+            ["git", "show", f"HEAD:{relative}"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert (ROOT / relative).read_bytes() == expected
 
 
 def test_snapshot_command_is_bounded_and_host_fields_are_not_retained(
