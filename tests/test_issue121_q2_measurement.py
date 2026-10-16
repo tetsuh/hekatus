@@ -778,19 +778,50 @@ def test_analysis_reports_time_weighted_statistics_and_percentiles() -> None:
 def _issue118_trace() -> dict[str, object]:
     samples = [
         _row(
-            seconds,
-            aiclk=1350 if seconds == 0 else 1200,
+            0,
+            aiclk=800,
             power=133,
             board_power=285,
             current=50,
             temperature=81,
         )
-        for seconds in range(0, 301, 2)
     ]
+    samples.extend(
+        [
+            _row(
+                2,
+                aiclk=1350,
+                power=133,
+                board_power=285,
+                current=50,
+                temperature=81,
+            ),
+            _row(
+                3,
+                aiclk=1200,
+                power=133,
+                board_power=285,
+                current=50,
+                temperature=81,
+            ),
+        ]
+        + [
+            _row(
+                seconds,
+                aiclk=1200,
+                power=133,
+                board_power=285,
+                current=50,
+                temperature=81,
+            )
+            for seconds in range(5, 303, 2)
+        ]
+    )
     return {
         "schema": runner.ISSUE121_Q2_TRACE_SCHEMA,
         "schema_version": 1,
         "columns": list(runner.EXTENDED_TRACE_COLUMNS),
+        "run_start_monotonic_ns": 1_000_000_000,
         "samples": samples,
     }
 
@@ -806,7 +837,7 @@ def _source_limits() -> dict[str, float]:
     }
 
 
-def test_issue118_prediction_is_unsupported_and_keeps_two_second_onset_resolution() -> None:
+def test_issue118_prediction_ignores_pre_start_idle_and_keeps_two_second_onset_resolution() -> None:
     result = analysis.analyze_trace(
         _issue118_trace(),
         plateau_start_seconds=150,
@@ -817,8 +848,10 @@ def test_issue118_prediction_is_unsupported_and_keeps_two_second_onset_resolutio
     assert result["classification"] == "H-OTHER"
     assert result["hypotheses"]["H-TDP"]["classification"] == "not_supported"
     assert result["hypotheses"]["H-THM"]["classification"] == "not_supported"
-    assert result["onsets"]["aiclk_drop"]["timestamp_monotonic_ns"] == 2_000_000_000
-    assert result["raw_window"]["rows"][0]["seconds_from_run_start"] == 0.0
+    assert result["onsets"]["aiclk_drop"]["timestamp_monotonic_ns"] == 3_000_000_000
+    assert result["onsets"]["aiclk_drop"]["seconds_from_run_start"] == pytest.approx(2.0)
+    assert result["onsets"]["aiclk_drop"]["seconds_from_run_start"] != 0.0
+    assert result["raw_window"]["rows"][0]["seconds_from_run_start"] == 1.0
     assert len(result["raw_window"]["rows"]) == 6
     assert any("approximately 2 second" in item for item in result["limitations"])
     board = result["statistics"]["signals"]["board_power_w"]["limit_proximity"]

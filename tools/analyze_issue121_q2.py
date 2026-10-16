@@ -637,8 +637,14 @@ def analyze_trace(
             }
         )
     else:
+        # Do not let a pre-start sample supply the first in-run AICLK segment.
+        aiclk_rows = tuple(
+            row
+            for row in rows
+            if int(row["timestamp_monotonic_ns"]) >= onset_start_ns
+        )
         aiclk_drop = _find_onset(
-            rows,
+            aiclk_rows,
             start_ns=onset_start_ns,
             end_ns=run_end,
             field="aiclk_mhz",
