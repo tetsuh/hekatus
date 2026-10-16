@@ -727,7 +727,15 @@ def _invalid_interval_facts(error: ValueError) -> dict[str, Any]:
         "aiclk_mhz_max": None,
         "time_weighted_aiclk_mhz": None,
         "coverage_seconds": 0.0,
+        "requested_start_utc": None,
+        "requested_end_utc": None,
+        "first_held_aiclk_mhz": None,
+        "first_held_sample_timestamp_utc": None,
+        "last_held_aiclk_mhz": None,
         "segments": [],
+        "usable_sample_count": 0,
+        "invalid_sample_count": 0,
+        "errors": [],
         "semantics": _LEFT_HELD_SEMANTICS,
     }
 

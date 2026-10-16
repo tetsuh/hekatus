@@ -278,6 +278,79 @@ def test_issue127_shared_left_held_row_facts_include_start_and_reject_unbounded_
     assert unavailable["segments"] == []
 
 
+@pytest.mark.parametrize(
+    ("start", "end", "invalid_bound"),
+    (
+        (
+            "not-a-timestamp",
+            "2026-10-12T00:00:04+00:00",
+            "start",
+        ),
+        (
+            "2026-10-12T00:00:00+00:00",
+            "not-a-timestamp",
+            "end",
+        ),
+    ),
+)
+def test_issue127_invalid_interval_timestamp_keeps_common_unavailable_schema(
+    start, end, invalid_bound
+):
+    facts = runner.left_held_aiclk_interval_facts(
+        [
+            {
+                "timestamp_utc": "2026-10-12T00:00:00+00:00",
+                "power_w": "40",
+                "aiclk_mhz": "800",
+                "asic_temp_c": "50",
+            }
+        ],
+        start=start,
+        end=end,
+    )
+
+    assert {
+        "available",
+        "coverage_complete",
+        "reason",
+        "error",
+        "aiclk_mhz_min",
+        "aiclk_mhz_max",
+        "time_weighted_aiclk_mhz",
+        "coverage_seconds",
+        "requested_start_utc",
+        "requested_end_utc",
+        "first_held_aiclk_mhz",
+        "first_held_sample_timestamp_utc",
+        "last_held_aiclk_mhz",
+        "segments",
+        "usable_sample_count",
+        "invalid_sample_count",
+        "errors",
+        "semantics",
+    } <= facts.keys()
+    assert facts["available"] is False
+    assert facts["coverage_complete"] is False
+    assert facts["reason"] == "interval_timestamp_invalid"
+    assert facts["error"] == (
+        f"power interval {invalid_bound} is not a valid ISO-8601 timestamp"
+    )
+    assert facts["aiclk_mhz_min"] is None
+    assert facts["aiclk_mhz_max"] is None
+    assert facts["time_weighted_aiclk_mhz"] is None
+    assert facts["coverage_seconds"] == 0.0
+    assert facts["requested_start_utc"] is None
+    assert facts["requested_end_utc"] is None
+    assert facts["first_held_aiclk_mhz"] is None
+    assert facts["first_held_sample_timestamp_utc"] is None
+    assert facts["last_held_aiclk_mhz"] is None
+    assert facts["segments"] == []
+    assert facts["usable_sample_count"] == 0
+    assert facts["invalid_sample_count"] == 0
+    assert facts["errors"] == []
+    assert facts["semantics"] == "left_held_positive_segments"
+
+
 def test_issue127_final_trace_facts_record_source_and_adjusted_p50():
     row = {
         **runner.build_occurrence_plan(1)[0],
