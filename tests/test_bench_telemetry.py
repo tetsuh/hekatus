@@ -476,6 +476,57 @@ def test_invalid_sampling_intervals_are_rejected(interval, tmp_path):
     assert excinfo.value.code == 2
 
 
+def test_legacy_cli_keeps_default_sampler_path_without_identity_flags(monkeypatch, tmp_path):
+    output = tmp_path / "legacy.csv"
+    calls = []
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_forever",
+        lambda path, interval: calls.append((path, interval)),
+    )
+
+    telemetry.main(["sample", "--out", str(output), "--interval", "1"])
+
+    assert calls == [(output, 1.0)]
+
+
+@pytest.mark.parametrize(
+    "identity_args",
+    [("--board-id", "fixture-board"), ("--bus-id", "0000:01:00.0")],
+    ids=["board-id", "bus-id"],
+)
+def test_legacy_cli_rejects_explicit_identity_before_output_or_sampling(
+    monkeypatch, tmp_path, identity_args
+):
+    output = tmp_path / "not-created" / "legacy.csv"
+    sample_calls = []
+    run_calls = []
+    monkeypatch.setattr(
+        telemetry,
+        "_sample_forever",
+        lambda path, interval: sample_calls.append((path, interval)),
+    )
+    monkeypatch.setattr(telemetry, "_run", lambda command: run_calls.append(command))
+
+    with pytest.raises(SystemExit) as excinfo:
+        telemetry.main(
+            [
+                "sample",
+                "--trace-schema",
+                "legacy-v1",
+                "--out",
+                str(output),
+                *identity_args,
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert not output.parent.exists()
+    assert not output.exists()
+    assert sample_calls == []
+    assert run_calls == []
+
+
 def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
     output = tmp_path / "extended.csv"
     calls = []

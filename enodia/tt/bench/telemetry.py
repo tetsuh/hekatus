@@ -730,7 +730,9 @@ def parse_environment(
         "limits": device.get("limits"),
         "device_node": _requested_device_node(),
     }
-    host_sw_vers = snapshot_object.get("host_sw_vers") if isinstance(snapshot_object, dict) else None
+    host_sw_vers = (
+        snapshot_object.get("host_sw_vers") if isinstance(snapshot_object, dict) else None
+    )
     if isinstance(host_sw_vers, Mapping):
         # This is a tool-provided mapping.  Retain that mapping as-is; host_info
         # and processes are intentionally not part of the environment record.
@@ -1090,6 +1092,12 @@ def main(argv: list[str] | None = None) -> None:
             args.out = _trusted_output_path(args.out)
         except ValueError as exc:
             parser.error(str(exc))
+    if (
+        args.mode == "sample"
+        and args.trace_schema == "legacy-v1"
+        and (args.board_id is not None or args.bus_id is not None)
+    ):
+        parser.error("legacy-v1 does not accept --board-id or --bus-id")
     args.out.parent.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "capture-env":

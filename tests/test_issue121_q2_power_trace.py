@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,10 @@ from enodia.tt.bench.power_trace_extended import (
     EXTENDED_POWER_TRACE_HEADER,
     EXTENDED_POWER_TRACE_SCHEMA,
     ExtendedPowerTraceError,
+    _normalise_source_number,
     extended_telemetry_csv_row,
     read_extended_power_trace_csv,
+    read_extended_power_trace_snapshot,
     select_extended_board,
     validate_extended_power_trace,
 )
@@ -128,7 +131,11 @@ def test_extended_sampler_measures_one_snapshot_without_changing_legacy(
         "_resolve_device_node_to_pci",
         lambda _node: {"0000:01:00.0"},
     )
-    monkeypatch.setattr(telemetry.time, "sleep", lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt))
+    monkeypatch.setattr(
+        telemetry.time,
+        "sleep",
+        lambda _interval: (_ for _ in ()).throw(KeyboardInterrupt),
+    )
 
     with pytest.raises(KeyboardInterrupt):
         telemetry._sample_extended_loop(
@@ -428,6 +435,199 @@ def test_extended_trace_aggregates_legacy_measurements_without_inference(tmp_pat
     assert trace["aggregates"]["asic_temp_c"]["time_weighted"] == pytest.approx(55.0)
     assert trace["aggregates"]["board_power_w"]["time_weighted"] == pytest.approx(24.0)
     assert trace["samples"][0]["throttle_status"] is None
+
+
+@pytest.mark.parametrize(
+    ("aiclk", "timestamps"),
+    [("800", (0, 1, 3)), ("1000", (0, 1, 9))],
+    ids=["constant-800", "constant-1000"],
+)
+def test_extended_trace_clamps_constant_clock_roundoff_for_multiple_durations(
+    tmp_path: Path, aiclk: str, timestamps: tuple[int, ...]
+):
+    rows = [
+        _row(
+            timestamp=timestamp,
+            elapsed=10,
+            current="1.0",
+            voltage="10.0",
+            power="10.0",
+            fan="100",
+            heartbeat="1",
+            therm="0",
+            aiclk=aiclk,
+            temperature="40",
+        )
+        for timestamp in timestamps
+    ]
+    path = tmp_path / f"constant-{aiclk}.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + "\n".join(rows) + "\n")
+
+    trace = read_extended_power_trace_csv(
+        path,
+        run_start_monotonic_ns=timestamps[0],
+        run_end_monotonic_ns=timestamps[-1],
+    )
+
+    assert trace["valid"] is True
+    assert trace["aggregates"]["aiclk_mhz"]["time_weighted"] == float(aiclk)
+
+
+def test_extended_trace_allows_one_ulp_weighted_bound_noise_but_rejects_real_excursion(
+    tmp_path: Path,
+):
+    rows = [
+        _row(
+            timestamp=timestamp,
+            elapsed=10,
+            current="1.0",
+            voltage="10.0",
+            power="10.0",
+            fan="100",
+            heartbeat="1",
+            therm="0",
+            aiclk="800",
+            temperature="40",
+        )
+        for timestamp in (0, 1, 3)
+    ]
+    path = tmp_path / "weighted-bound.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + "\n".join(rows) + "\n")
+    trace = read_extended_power_trace_csv(
+        path, run_start_monotonic_ns=0, run_end_monotonic_ns=3
+    )
+
+    near_bound = math.nextafter(800.0, math.inf)
+    trace["aggregates"]["aiclk_mhz"]["time_weighted"] = near_bound
+    assert validate_extended_power_trace(trace)["valid"] is True
+
+    trace["aggregates"]["aiclk_mhz"]["time_weighted"] = math.nextafter(
+        near_bound, math.inf
+    )
+    report = validate_extended_power_trace(trace)
+    assert report["valid"] is False
+    assert any("outside its bounds" in failure for failure in report["failures"])
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "1.0",
+        "1e3",
+        "1.5",
+        "1e-3",
+        "1e-400",
+        "9007199254740993.0",
+        "0o10",
+        "0b10",
+    ],
+)
+def test_extended_integer_columns_reject_non_exact_integer_spellings(value: str):
+    for field in (
+        "timestamp_monotonic_ns",
+        "snapshot_elapsed_ns",
+        "fan_rpm",
+        "heartbeat",
+        "therm_trip_count",
+    ):
+        with pytest.raises(ExtendedPowerTraceError, match="non-negative integer"):
+            _normalise_source_number(value, field=field)
+
+
+def test_extended_integer_columns_keep_hex_and_reject_imprecise_float_inputs():
+    assert _normalise_source_number("0x2", field="therm_trip_count") == 2
+    assert _normalise_source_number("0002", field="heartbeat") == 2
+    assert _normalise_source_number(float((1 << 53) - 1), field="heartbeat") == (
+        1 << 53
+    ) - 1
+    with pytest.raises(ExtendedPowerTraceError, match="non-negative integer"):
+        _normalise_source_number(float(1 << 53), field="heartbeat")
+
+
+@pytest.mark.parametrize(
+    "bound",
+    ["1.0", "1e3", "1.5", "1e-400", "9007199254740993.0", float(1 << 53)],
+    ids=["decimal-fraction", "exponent", "fraction", "underflow", "precision-loss", "float"],
+)
+def test_extended_trace_rejects_non_exact_timestamp_bounds(
+    tmp_path: Path, bound: object
+):
+    rows = [
+        _row(
+            timestamp=timestamp,
+            elapsed=10,
+            current="1.0",
+            voltage="10.0",
+            power="10.0",
+            fan="100",
+            heartbeat="1",
+            therm="0",
+        )
+        for timestamp in (0, 1)
+    ]
+    path = tmp_path / "timestamp-bound.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + "\n".join(rows) + "\n")
+
+    trace = read_extended_power_trace_csv(
+        path,
+        run_start_monotonic_ns=bound,
+        run_end_monotonic_ns=1,
+    )
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert "non-negative integer" in trace["error"]
+    assert trace["errors"] == [trace["error"]]
+
+
+def test_extended_trace_converts_oversized_csv_field_to_invalid_result(tmp_path: Path):
+    row_text = _row(
+        timestamp=0,
+        elapsed=10,
+        current="1.0",
+        voltage="10.0",
+        power="10.0",
+        fan="100",
+        heartbeat="1",
+        therm="0",
+    )
+    row = next(csv.reader([row_text]))
+    row[-2] = "throttle-label-" + "x" * csv.field_size_limit()
+    buffer = io.StringIO(newline="")
+    csv.writer(buffer, lineterminator="").writerow(row)
+    path = tmp_path / "oversized-label.csv"
+    path.write_text(EXTENDED_POWER_TRACE_HEADER + "\n" + buffer.getvalue() + "\n")
+
+    trace = read_extended_power_trace_csv(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert "field larger than field limit" in trace["error"]
+    assert trace["errors"] == [trace["error"]]
+    assert validate_extended_power_trace(trace)["valid"] is False
+
+
+def test_extended_json_sidecar_rejects_non_mapping_sample(tmp_path: Path):
+    path = tmp_path / "invalid-sample.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": EXTENDED_POWER_TRACE_SCHEMA,
+                "schema_version": 1,
+                "columns": list(EXTENDED_POWER_TRACE_COLUMNS),
+                "samples": [None],
+            }
+        )
+    )
+
+    trace = read_extended_power_trace_snapshot(path)
+
+    assert trace["readable"] is False
+    assert trace["valid"] is False
+    assert "samples[0]" in trace["error"]
+    assert "AttributeError" not in trace["error"]
+    assert trace["errors"] == [trace["error"]]
+    assert validate_extended_power_trace(trace)["valid"] is False
 
 
 def test_extended_trace_uses_left_held_min_max_and_time_weighted_values(tmp_path: Path):

@@ -116,6 +116,7 @@ _RAW_THROTTLE_STATUS_KEYS = (
 )
 _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
 _MAX_NONNEGATIVE_INTEGER = (1 << 63) - 1
+_MAX_EXACT_FLOAT_INTEGER = (1 << 53) - 1
 _MISSING = object()
 
 
@@ -315,22 +316,37 @@ def _invalid_nonnegative_integer(field: str) -> ExtendedPowerTraceError:
 
 
 def _integer_from_float(value: float, *, field: str) -> int:
-    if not math.isfinite(value) or not value.is_integer():
+    if (
+        not math.isfinite(value)
+        or not value.is_integer()
+        or abs(value) > _MAX_EXACT_FLOAT_INTEGER
+    ):
         raise _invalid_nonnegative_integer(field)
     return int(value)
 
 
 def _integer_from_text(value: str, *, field: str) -> int:
+    if not isinstance(value, str):
+        raise _invalid_nonnegative_integer(field)
     text = value.strip()
+    unsigned_text = text[1:] if text[:1] in "+-" else text
+    if unsigned_text.lower().startswith("0x"):
+        digits = unsigned_text[2:]
+        if digits and all(digit in "0123456789abcdefABCDEF" for digit in digits):
+            base = 16
+        else:
+            base = None
+    elif unsigned_text and all("0" <= digit <= "9" for digit in unsigned_text):
+        base = 10
+    else:
+        base = None
+    if base is None:
+        raise _invalid_nonnegative_integer(field)
     try:
-        # Base zero permits the raw hexadecimal spelling used by SMBus.
-        return int(text, 0)
-    except (TypeError, ValueError, OverflowError):
-        try:
-            numeric = float(text)
-        except (TypeError, ValueError, OverflowError) as exc:
-            raise _invalid_nonnegative_integer(field) from exc
-        return _integer_from_float(numeric, field=field)
+        # Base 16 preserves the hexadecimal integer spelling emitted by SMBus.
+        return int(text, base)
+    except (OverflowError, ValueError) as exc:
+        raise _invalid_nonnegative_integer(field) from exc
 
 
 def _nonnegative_integer(value: Any, *, field: str) -> int:
@@ -657,6 +673,24 @@ def _checked_aggregate_float(value: Any, *, field: str) -> float:
     return parsed
 
 
+def _clamp_aggregate_weighted(
+    weighted: float,
+    minimum: float,
+    maximum: float,
+    *,
+    field: str,
+) -> float:
+    """Clamp one-ULP accumulation noise, but reject a real bounds violation."""
+    if minimum <= weighted <= maximum:
+        return weighted
+    bound = minimum if weighted < minimum else maximum
+    if abs(weighted - bound) <= math.ulp(bound):
+        return bound
+    raise ExtendedPowerTraceError(
+        f"aggregate {field}.time_weighted is outside its bounds"
+    )
+
+
 def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
     duration_ns = result.get("duration_ns")
     if (
@@ -722,10 +756,12 @@ def _validate_aggregate_result(result: Mapping[str, Any]) -> None:
             weighted_float = _checked_aggregate_float(
                 weighted, field=f"{field}.time_weighted"
             )
-            if not minimum <= weighted_float <= maximum:
-                raise ExtendedPowerTraceError(
-                    f"aggregate {field}.time_weighted is outside its bounds"
-                )
+            _clamp_aggregate_weighted(
+                weighted_float,
+                minimum,
+                maximum,
+                field=field,
+            )
         weighted_seconds = _checked_aggregate_float(
             aggregate.get("time_weighted_seconds"),
             field=f"{field}.time_weighted_seconds",
@@ -767,11 +803,12 @@ def _time_weighted_measurement(
         raise ExtendedPowerTraceError(f"aggregate {field}.time_weighted is not finite")
     minimum_float = _checked_aggregate_float(minimum, field=f"{field}.min")
     maximum_float = _checked_aggregate_float(maximum, field=f"{field}.max")
-    if not minimum_float <= weighted <= maximum_float:
-        raise ExtendedPowerTraceError(
-            f"aggregate {field}.time_weighted is outside its bounds"
-        )
-    return weighted
+    return _clamp_aggregate_weighted(
+        weighted,
+        minimum_float,
+        maximum_float,
+        field=field,
+    )
 
 
 def _aggregate_result_failures(result: Mapping[str, Any]) -> list[str]:
@@ -933,7 +970,7 @@ def _read_extended_csv_rows(
         return raw, [dict(row) for row in reader]
     except ExtendedPowerTraceError:
         raise
-    except ValueError as exc:
+    except (csv.Error, ValueError) as exc:
         raise ExtendedPowerTraceError(str(exc)) from exc
 
 
@@ -1125,7 +1162,13 @@ def read_extended_power_trace_snapshot(
         samples = payload.get("samples")
         if not isinstance(samples, list):
             raise ExtendedPowerTraceError("extended trace sidecar samples must be an array")
-        rows = [_coerce_trace_row(row, index=index) for index, row in enumerate(samples)]
+        rows = []
+        for index, row in enumerate(samples):
+            if not isinstance(row, Mapping):
+                raise ExtendedPowerTraceError(
+                    f"extended trace sidecar samples[{index}] must be an object"
+                )
+            rows.append(_coerce_trace_row(row, index=index))
     except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ExtendedPowerTraceError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
