@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from enodia.tt.bench.power_trace_snapshot import EXPLICIT_FINAL_SAMPLE
+from tools import newton_schulz_issue88 as issue88
 from tools import newton_schulz_issue127 as runner
 
 ROOT = Path(__file__).parents[1]
@@ -977,6 +978,34 @@ def test_issue127_serialization_preserves_ordinary_quotient_definitions(definiti
     assert decoded["correctness"]["definition"] == definition
     environment = runner.sanitize_environment({"definition": definition})
     assert environment["definition"] == definition
+
+
+def test_issue127_full_timing_payload_serializes_raw_p50_definition_byte_identically():
+    timing = runner._timing_summary([0.001, 0.002], 1234)
+
+    serialized = runner._serialize_record(timing)
+    decoded = json.loads(serialized)
+
+    assert decoded == timing
+    assert decoded["raw_p50_definition"].encode("utf-8") == timing[
+        "raw_p50_definition"
+    ].encode("utf-8")
+
+
+def test_issue127_issue88_phase_aligned_definition_serializes_byte_identically():
+    definition = issue88.BEAM_RESPONSE_METRIC_DEFINITIONS[
+        "phase_aligned_complex_response_relative_frobenius_error"
+    ]
+
+    serialized = runner._serialize_record(
+        {"beam_pattern": {"metric_definitions": dict(issue88.BEAM_RESPONSE_METRIC_DEFINITIONS)}}
+    )
+    decoded = json.loads(serialized)
+    retained = decoded["beam_pattern"]["metric_definitions"][
+        "phase_aligned_complex_response_relative_frobenius_error"
+    ]
+
+    assert retained.encode("utf-8") == definition.encode("utf-8")
 
 
 @pytest.mark.parametrize(

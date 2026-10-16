@@ -99,6 +99,10 @@ POWER_TRACE_SNAPSHOT_PREFIX = "issue127-abba-power-snapshot"
 SAMPLER_INTERVAL_SECONDS = DEFAULT_SAMPLER_INTERVAL_SECONDS
 SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS = 2.24
 ROW_DURATION_MIN_SECONDS = SAMPLER_OBSERVED_GAP_EXPECTED_SECONDS
+RAW_P50_DEFINITION = (
+    "flops_per_launch / P50 of synchronized timed launches / 1e12; "
+    "correctness and occurrence warm-up launches are excluded"
+)
 POWER_SAMPLES_PER_ROW_TARGET = 2
 POWER_SAMPLE_COUNT_IN_INTERVAL_DEFINITION = (
     "samples contributing to the timed interval [start, end), including the "
@@ -310,6 +314,18 @@ _FORMULA_SLASH_RE = re.compile(
 )
 _FORMULA_SLASH_FRAGMENT_RE = re.compile(
     r"/[A-Za-z_][A-Za-z0-9_]*\((?=$|[\s,;:}\]])"
+)
+# These exact formula definitions are emitted by the unchanged timing and
+# Issue #88 metric producers.  Equality is intentionally whole-string only:
+# formula-like text with a path prefix or suffix still goes through the path
+# classifier.
+_FORMULA_DEFINITION_ALLOWLIST = frozenset(
+    {
+        RAW_P50_DEFINITION,
+        issue88.BEAM_RESPONSE_METRIC_DEFINITIONS[
+            "phase_aligned_complex_response_relative_frobenius_error"
+        ],
+    }
 )
 _RECORD_PATH_FIELD_NAMES = frozenset(
     {
@@ -1396,10 +1412,7 @@ def _timing_summary(samples: Sequence[float], flops_per_launch: int) -> dict[str
         "seconds_per_launch_p99": percentile(0.99),
         "seconds_per_launch_p99_9": percentile(0.999),
         "raw_p50_tflops": flops_per_launch / p50_seconds / 1e12,
-        "raw_p50_definition": (
-            "flops_per_launch / P50 of synchronized timed launches / 1e12; "
-            "correctness and occurrence warm-up launches are excluded"
-        ),
+        "raw_p50_definition": RAW_P50_DEFINITION,
     }
 
 
@@ -2395,6 +2408,8 @@ def _formula_path_match(value: str, match: re.Match[str]) -> re.Match[str] | Non
 
 def _path_matches(value: str) -> list[re.Match[str]]:
     """Return host-path candidates after the shared formula exception."""
+    if value in _FORMULA_DEFINITION_ALLOWLIST:
+        return []
     matches = []
     search_start = 0
     while candidate := _PATH_CANDIDATE_RE.search(value, search_start):
