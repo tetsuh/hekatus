@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import hashlib
 import json
 import os
 import shutil
@@ -16,8 +18,32 @@ from tools import newton_schulz_issue88 as issue88
 from tools import newton_schulz_issue127 as runner
 
 ROOT = Path(__file__).parents[1]
-PLAN = ROOT / "docs/measurements/2026-10-12-host-newton-schulz-issue127-abba-plan.json"
-CSV_HEADER = "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+MEASUREMENTS = ROOT / "docs/measurements"
+PLAN = MEASUREMENTS / "2026-10-12-host-newton-schulz-issue127-abba-plan.json"
+SUMMARY = MEASUREMENTS / "2026-10-15-p150a-newton-schulz-issue127-abba-summary.json"
+RUN_RECORDS = {
+    "confirmation": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1.json",
+    "measurement-1": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-1.json",
+    "measurement-2": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown.json",
+    "measurement-2-rerun": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun.json",
+}
+POWER_TRACES = {
+    "confirmation": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-confirmation-run1-power.csv",
+    "measurement-1": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-1-power.csv",
+    "measurement-2": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-2-failed-cooldown-power.csv",
+    "measurement-2-rerun": MEASUREMENTS
+    / "2026-10-15-p150a-newton-schulz-issue127-measurement-2-rerun-power.csv",
+}
+ACCEPTED_SCOPES = ("measurement-1", "measurement-2-rerun")
+CSV_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
+CSV_HEADER = ",".join(CSV_COLUMNS) + "\n"
 
 
 def _environment(*, observed: list[int] | None = None) -> dict:
@@ -1347,6 +1373,610 @@ def test_issue127_prediction_plan_pins_orders_sampler_and_thresholds():
         "L32_DRAM_mean_at_most": -2.341,
     }
     assert plan["decision_criteria"]["adjusted_p50_is_primary"] is False
+
+
+def _read_issue127_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _read_issue127_power_samples(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        assert reader.fieldnames == list(CSV_COLUMNS)
+        return list(reader)
+
+
+def _load_issue127_summary_inputs():
+    plan = _read_issue127_json(PLAN)
+    records = {
+        scope: _read_issue127_json(path) for scope, path in RUN_RECORDS.items()
+    }
+    summary = _read_issue127_json(SUMMARY)
+    power_samples = {
+        scope: _read_issue127_power_samples(path)
+        for scope, path in POWER_TRACES.items()
+    }
+    trace_hashes = {scope: _sha256(path) for scope, path in POWER_TRACES.items()}
+    return plan, records, summary, power_samples, trace_hashes
+
+
+def _plan_pair_names(plan: dict, *, size: int, r_memory: str) -> tuple[str, str]:
+    configurations = [
+        configuration
+        for configuration in plan["comparison_configurations"]
+        if configuration["matrix_size"] == size
+        and configuration["r_memory"] == r_memory
+    ]
+    return (
+        next(configuration["name"] for configuration in configurations if configuration["variant"] == "bf16"),
+        next(configuration["name"] for configuration in configurations if configuration["variant"] == "fp32-r"),
+    )
+
+
+def _derived_issue127_row(row: dict, power_samples: list[dict[str, str]]) -> dict:
+    facts = runner.left_held_aiclk_interval_facts(
+        power_samples,
+        start=row["timed_start_utc"],
+        end=row["timed_end_utc"],
+        row_label=row["occurrence_id"],
+    )
+    assert facts["available"] is True
+    assert facts["coverage_complete"] is True
+    time_weighted_aiclk = facts["time_weighted_aiclk_mhz"]
+    adjusted_p50 = runner.adjusted_p50_tflops(
+        row["raw_p50_tflops"], time_weighted_aiclk
+    )
+    assert adjusted_p50 is not None
+    started_samples = runner._power_samples_started_in_interval(
+        power_samples,
+        start=row["timed_start_utc"],
+        end=row["timed_end_utc"],
+    )
+    return {
+        "source": row,
+        "facts": facts,
+        "raw_p50": float(row["raw_p50_tflops"]),
+        "adjusted_p50": float(adjusted_p50),
+        "time_weighted_aiclk": float(time_weighted_aiclk),
+        "aiclk_min": float(facts["aiclk_mhz_min"]),
+        "aiclk_max": float(facts["aiclk_mhz_max"]),
+        "power_sample_count": len(facts["segments"]),
+        "started_samples": started_samples,
+    }
+
+
+def _derived_issue127_rows(
+    record: dict, power_samples: list[dict[str, str]]
+) -> list[dict]:
+    return [
+        _derived_issue127_row(row, power_samples)
+        for row in record["comparison_rows"]
+    ]
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values)
+
+
+def _raw_delta(left: float, right: float) -> float:
+    return 100.0 * (right / left - 1.0)
+
+
+def _assert_approx_fields(actual: dict, expected: dict, fields: tuple[str, ...]) -> None:
+    for field in fields:
+        assert actual[field] == pytest.approx(expected[field])
+
+
+def _assert_approx_list(actual: list[float], expected: list[float]) -> None:
+    assert len(actual) == len(expected)
+    for actual_value, expected_value in zip(actual, expected, strict=True):
+        assert actual_value == pytest.approx(expected_value)
+
+
+def test_issue127_abba_summary_recomputes_decision_and_sensitivity():
+    plan, records, summary, power_samples, trace_hashes = _load_issue127_summary_inputs()
+    plan_criteria = plan["decision_criteria"]
+
+    assert summary["status"] == "pass"
+    assert summary["plan"]["file"] == PLAN.name
+    assert summary["plan"]["sha256"] == _sha256(PLAN)
+    assert summary["plan"]["raw_p50_definition"] == plan_criteria["delta_definition"]
+    assert summary["plan"]["adjusted_p50_is_primary"] is plan_criteria[
+        "adjusted_p50_is_primary"
+    ]
+    assert summary["plan"]["prediction_and_decision_criteria_changed"] is plan[
+        "revision_history"
+    ][-1]["cooldown_correction"]["prediction_and_decision_criteria_changed"]
+
+    expected_source_refs = []
+    summary_runs = {run["scope"]: run for run in summary["runs"]}
+    assert tuple(summary_runs) == ACCEPTED_SCOPES
+    derived_rows = {}
+    for scope in ACCEPTED_SCOPES:
+        record_path = RUN_RECORDS[scope]
+        record = records[scope]
+        trace_hash = trace_hashes[scope]
+        expected_source_refs.append(
+            {
+                "file": record_path.name,
+                "sha256": _sha256(record_path),
+                "run_number": record["run_number"],
+                "scope": scope,
+            }
+        )
+        assert record["status"] == "pass"
+        assert record["power_trace"]["sha256"] == trace_hash
+        assert record["power_trace_provenance"]["sha256"] == trace_hash
+        assert record["power_trace"]["immutable_snapshot"] is True
+
+        summary_run = summary_runs[scope]
+        assert summary_run["run_number"] == record["run_number"]
+        assert summary_run["status"] == record["status"]
+        assert summary_run["record"] == {
+            "file": record_path.name,
+            "sha256": _sha256(record_path),
+        }
+        assert summary_run["order"] == record["order"]["names"]
+
+        derived = _derived_issue127_rows(record, power_samples[scope])
+        derived_rows[scope] = derived
+        assert len(summary_run["rows"]) == len(derived) == 8
+        for source_row, expected, summary_row in zip(
+            record["comparison_rows"], derived, summary_run["rows"], strict=True
+        ):
+            for field in (
+                "order_index",
+                "row",
+                "occurrence",
+                "occurrence_id",
+                "timed_start_utc",
+                "timed_end_utc",
+                "timed_duration_seconds",
+                "launches_requested",
+                "launches_measured",
+            ):
+                assert summary_row[field] == source_row[field]
+            assert source_row["aiclk_interval"]["trace_sha256"] == trace_hash
+            assert source_row["row_time_weighted_aiclk_mhz"] == pytest.approx(
+                expected["time_weighted_aiclk"]
+            )
+            assert source_row["adjusted_p50_tflops"] == pytest.approx(
+                expected["adjusted_p50"]
+            )
+            assert source_row["aiclk_interval"]["power_sample_count_in_interval"] == (
+                expected["power_sample_count"]
+            )
+            assert summary_row["raw_p50_tflops"] == pytest.approx(expected["raw_p50"])
+            assert summary_row["adjusted_p50_tflops"] == pytest.approx(
+                expected["adjusted_p50"]
+            )
+            assert summary_row["aiclk_mhz_min"] == pytest.approx(expected["aiclk_min"])
+            assert summary_row["aiclk_mhz_max"] == pytest.approx(expected["aiclk_max"])
+            assert summary_row["row_time_weighted_aiclk_mhz"] == pytest.approx(
+                expected["time_weighted_aiclk"]
+            )
+            assert summary_row["power_sample_count_in_interval"] == expected[
+                "power_sample_count"
+            ]
+            assert summary_row["power_samples_started_in_interval"] == expected[
+                "started_samples"
+            ]
+
+        for name in (
+            configuration["name"]
+            for configuration in plan["comparison_configurations"]
+        ):
+            source_summary = next(
+                item for item in record["comparison_summary"] if item["row"] == name
+            )
+            summary_item = next(
+                item for item in summary_run["comparison_summary"] if item["row"] == name
+            )
+            rows_for_name = [item for item in derived if item["source"]["row"] == name]
+            assert summary_item["occurrence_indices"] == [
+                item["source"]["order_index"] for item in rows_for_name
+            ]
+            assert summary_item["occurrence_count"] == len(rows_for_name)
+            assert summary_item["aggregation"] == source_summary["aggregation"]
+            assert summary_item["raw_p50_tflops"] == pytest.approx(
+                _mean([item["raw_p50"] for item in rows_for_name])
+            )
+            assert summary_item["adjusted_p50_tflops"] == pytest.approx(
+                _mean([item["adjusted_p50"] for item in rows_for_name])
+            )
+            assert summary_item["row_time_weighted_aiclk_mhz"] == pytest.approx(
+                _mean([item["time_weighted_aiclk"] for item in rows_for_name])
+            )
+
+    assert summary["source_records"] == expected_source_refs
+
+    pair_specs = (
+        ("L16_L1", 16, "l1", "L16_mean_at_most", "L16"),
+        ("L32_DRAM", 32, "dram", "L32_DRAM_mean_at_most", "L32_DRAM"),
+    )
+    derived_by_scope = {
+        scope: {
+            (item["source"]["row"], item["source"]["occurrence"]): item
+            for item in rows
+        }
+        for scope, rows in derived_rows.items()
+    }
+    expected_r_format_passes = []
+    expected_clock_passes = []
+    for pair_key, size, r_memory, threshold_key, clock_key in pair_specs:
+        left_name, right_name = _plan_pair_names(
+            plan, size=size, r_memory=r_memory
+        )
+        comparison = summary["comparisons"][pair_key]
+        assert comparison["pair"] == [left_name, right_name]
+        expected_per_run = []
+        for scope in ACCEPTED_SCOPES:
+            run_number = records[scope]["run_number"]
+            occurrence_deltas = []
+            left_rows = []
+            right_rows = []
+            for occurrence in (1, 2):
+                left = derived_by_scope[scope][(left_name, occurrence)]
+                right = derived_by_scope[scope][(right_name, occurrence)]
+                raw_delta = _raw_delta(left["raw_p50"], right["raw_p50"])
+                adjusted_delta = _raw_delta(
+                    left["adjusted_p50"], right["adjusted_p50"]
+                )
+                left_rows.append(left)
+                right_rows.append(right)
+                occurrence_deltas.append(
+                    {
+                        "occurrence": occurrence,
+                        "raw_p50_delta_percent": raw_delta,
+                        "adjusted_p50_delta_percent": adjusted_delta,
+                        "bf16_r_raw_p50_tflops": left["raw_p50"],
+                        "fp32_r_raw_p50_tflops": right["raw_p50"],
+                        "bf16_r_row_time_weighted_aiclk_mhz": left[
+                            "time_weighted_aiclk"
+                        ],
+                        "fp32_r_row_time_weighted_aiclk_mhz": right[
+                            "time_weighted_aiclk"
+                        ],
+                    }
+                )
+            left_raw_mean = _mean([row["raw_p50"] for row in left_rows])
+            right_raw_mean = _mean([row["raw_p50"] for row in right_rows])
+            left_adjusted_mean = _mean([row["adjusted_p50"] for row in left_rows])
+            right_adjusted_mean = _mean(
+                [row["adjusted_p50"] for row in right_rows]
+            )
+            left_aiclk_mean = _mean(
+                [row["time_weighted_aiclk"] for row in left_rows]
+            )
+            right_aiclk_mean = _mean(
+                [row["time_weighted_aiclk"] for row in right_rows]
+            )
+            expected_per_run.append(
+                {
+                    "run_number": run_number,
+                    "scope": scope,
+                    "bf16_r_raw_p50_tflops": left_raw_mean,
+                    "fp32_r_raw_p50_tflops": right_raw_mean,
+                    "raw_p50_delta_percent": _raw_delta(left_raw_mean, right_raw_mean),
+                    "bf16_r_adjusted_p50_tflops": left_adjusted_mean,
+                    "fp32_r_adjusted_p50_tflops": right_adjusted_mean,
+                    "adjusted_p50_delta_percent": _raw_delta(
+                        left_adjusted_mean, right_adjusted_mean
+                    ),
+                    "bf16_r_mean_row_time_weighted_aiclk_mhz": left_aiclk_mean,
+                    "fp32_r_mean_row_time_weighted_aiclk_mhz": right_aiclk_mean,
+                    "occurrence_deltas": occurrence_deltas,
+                }
+            )
+
+        assert len(comparison["per_run"]) == len(expected_per_run) == 2
+        for actual, expected in zip(
+            comparison["per_run"], expected_per_run, strict=True
+        ):
+            assert actual["run_number"] == expected["run_number"]
+            assert actual["scope"] == expected["scope"]
+            _assert_approx_fields(
+                actual,
+                expected,
+                (
+                    "bf16_r_raw_p50_tflops",
+                    "fp32_r_raw_p50_tflops",
+                    "raw_p50_delta_percent",
+                    "bf16_r_adjusted_p50_tflops",
+                    "fp32_r_adjusted_p50_tflops",
+                    "adjusted_p50_delta_percent",
+                    "bf16_r_mean_row_time_weighted_aiclk_mhz",
+                    "fp32_r_mean_row_time_weighted_aiclk_mhz",
+                ),
+            )
+            assert len(actual["occurrence_deltas"]) == 2
+            for actual_occurrence, expected_occurrence in zip(
+                actual["occurrence_deltas"],
+                expected["occurrence_deltas"],
+                strict=True,
+            ):
+                assert actual_occurrence["occurrence"] == expected_occurrence[
+                    "occurrence"
+                ]
+                _assert_approx_fields(
+                    actual_occurrence,
+                    expected_occurrence,
+                    (
+                        "raw_p50_delta_percent",
+                        "adjusted_p50_delta_percent",
+                        "bf16_r_raw_p50_tflops",
+                        "fp32_r_raw_p50_tflops",
+                        "bf16_r_row_time_weighted_aiclk_mhz",
+                        "fp32_r_row_time_weighted_aiclk_mhz",
+                    ),
+                )
+
+        raw_deltas = [item["raw_p50_delta_percent"] for item in expected_per_run]
+        adjusted_deltas = [
+            item["adjusted_p50_delta_percent"] for item in expected_per_run
+        ]
+        raw_summary = comparison["raw_p50_delta_percent"]
+        adjusted_summary = comparison["adjusted_p50_delta_percent_supplementary"]
+        assert raw_summary["run_1"] == pytest.approx(raw_deltas[0])
+        assert raw_summary["run_2"] == pytest.approx(raw_deltas[1])
+        assert raw_summary["mean_of_two_runs"] == pytest.approx(_mean(raw_deltas))
+        assert adjusted_summary["run_1"] == pytest.approx(adjusted_deltas[0])
+        assert adjusted_summary["run_2"] == pytest.approx(adjusted_deltas[1])
+        assert adjusted_summary["mean_of_two_runs"] == pytest.approx(
+            _mean(adjusted_deltas)
+        )
+
+        threshold = plan_criteria["r_format_hypothesis"]["thresholds_percent"][
+            threshold_key
+        ]
+        criterion = comparison["r_format_criterion"]
+        both_negative = all(delta < 0.0 for delta in raw_deltas)
+        mean_at_most = _mean(raw_deltas) <= threshold
+        assert criterion["threshold_mean_at_most_percent"] == pytest.approx(threshold)
+        assert criterion["both_run_deltas_negative"] is both_negative
+        assert criterion["mean_delta_at_most_threshold"] is mean_at_most
+        assert criterion["passes"] is (both_negative and mean_at_most)
+        expected_r_format_passes.append(criterion["passes"])
+
+        half_effect = plan_criteria["clock_hypothesis"][
+            "half_effect_thresholds_percent"
+        ][clock_key]
+        clock_criterion = comparison["clock_criterion"]
+        sign_reversal = min(raw_deltas) < 0.0 < max(raw_deltas)
+        mean_absolute = abs(_mean(raw_deltas))
+        mean_below_half = mean_absolute < half_effect
+        assert clock_criterion["half_effect_threshold_percent"] == pytest.approx(
+            half_effect
+        )
+        assert clock_criterion["sign_reversal"] is sign_reversal
+        assert clock_criterion["mean_absolute_delta_percent"] == pytest.approx(
+            mean_absolute
+        )
+        assert clock_criterion["mean_absolute_below_half_effect"] is mean_below_half
+        if not (sign_reversal or mean_below_half):
+            assert clock_criterion["passes"] is False
+            assert clock_criterion["position_effect_evaluation"] == (
+                "not required because the sign-reversal/low-delta gate is false"
+            )
+        expected_clock_passes.append(clock_criterion["passes"])
+
+    assert summary["decision"]["r_format_criterion_passes"] is all(
+        expected_r_format_passes
+    )
+    assert summary["decision"]["clock_criterion_passes"] is all(expected_clock_passes)
+    assert summary["decision"]["conclusion"] == (
+        "r_format" if all(expected_r_format_passes) else "inconclusive"
+    )
+
+    expected_sensitivity = {pair_key: [] for pair_key, *_ in pair_specs}
+    for pair_key, size, r_memory, _threshold_key, _clock_key in pair_specs:
+        left_name, right_name = _plan_pair_names(
+            plan, size=size, r_memory=r_memory
+        )
+        for scope in ACCEPTED_SCOPES:
+            run_number = records[scope]["run_number"]
+            for occurrence in (1, 2):
+                left = derived_by_scope[scope][(left_name, occurrence)]
+                right = derived_by_scope[scope][(right_name, occurrence)]
+                left_range = [left["aiclk_min"], left["aiclk_max"]]
+                right_range = [right["aiclk_min"], right["aiclk_max"]]
+                overlap = [
+                    max(left_range[0], right_range[0]),
+                    min(left_range[1], right_range[1]),
+                ]
+                if overlap[0] > overlap[1]:
+                    overlap = None
+                raw_delta = _raw_delta(left["raw_p50"], right["raw_p50"])
+                adjusted_delta = _raw_delta(
+                    left["adjusted_p50"], right["adjusted_p50"]
+                )
+                interval = [min(raw_delta, adjusted_delta), max(raw_delta, adjusted_delta)]
+                expected_sensitivity[pair_key].append(
+                    {
+                        "run_number": run_number,
+                        "occurrence": occurrence,
+                        "left_row": left_name,
+                        "right_row": right_name,
+                        "left_range_mhz": left_range,
+                        "right_range_mhz": right_range,
+                        "same_range": left_range == right_range,
+                        "descriptive_range_overlap_mhz": overlap,
+                        "range_overlap_is_effect_bound": False,
+                        "left_raw_p50_tflops": left["raw_p50"],
+                        "right_raw_p50_tflops": right["raw_p50"],
+                        "left_adjusted_p50_tflops": left["adjusted_p50"],
+                        "right_adjusted_p50_tflops": right["adjusted_p50"],
+                        "raw_p50_delta_percent": raw_delta,
+                        "adjusted_p50_delta_percent": adjusted_delta,
+                        "left_time_weighted_aiclk_mhz": left["time_weighted_aiclk"],
+                        "right_time_weighted_aiclk_mhz": right["time_weighted_aiclk"],
+                        "sensitivity_interval_percent": interval,
+                        "crosses_zero": interval[0] <= 0.0 <= interval[1],
+                    }
+                )
+
+    all_sensitivity = []
+    for pair_key, expected_items in expected_sensitivity.items():
+        assert len(expected_items) == 4
+        alignment = summary["aiclk_alignment"][pair_key]
+        actual_items = alignment["matched_occurrences"]
+        assert len(actual_items) == len(expected_items)
+        for actual, expected in zip(actual_items, expected_items, strict=True):
+            for field in (
+                "run_number",
+                "occurrence",
+                "left_row",
+                "right_row",
+                "same_range",
+                "range_overlap_is_effect_bound",
+                "crosses_zero",
+            ):
+                assert actual[field] == expected[field]
+            for field in (
+                "left_range_mhz",
+                "right_range_mhz",
+                "sensitivity_interval_percent",
+            ):
+                _assert_approx_list(actual[field], expected[field])
+            if expected["descriptive_range_overlap_mhz"] is None:
+                assert actual["descriptive_range_overlap_mhz"] is None
+            else:
+                _assert_approx_list(
+                    actual["descriptive_range_overlap_mhz"],
+                    expected["descriptive_range_overlap_mhz"],
+                )
+            _assert_approx_fields(
+                actual,
+                expected,
+                (
+                    "left_raw_p50_tflops",
+                    "right_raw_p50_tflops",
+                    "left_adjusted_p50_tflops",
+                    "right_adjusted_p50_tflops",
+                    "raw_p50_delta_percent",
+                    "adjusted_p50_delta_percent",
+                    "left_time_weighted_aiclk_mhz",
+                    "right_time_weighted_aiclk_mhz",
+                ),
+            )
+        all_sensitivity.extend(expected_items)
+        all_negative = all(
+            item["sensitivity_interval_percent"][1] < 0.0
+            for item in expected_items
+        )
+        any_crosses_zero = any(item["crosses_zero"] for item in expected_items)
+        assert alignment["same_range_for_all_matched_occurrences"] is all(
+            item["same_range"] for item in expected_items
+        )
+        assert alignment["all_sensitivity_intervals_negative"] is all_negative
+        assert alignment["range_overlap_is_effect_bound"] is False
+        assert alignment["any_crosses_zero"] is any_crosses_zero
+
+    assert len(all_sensitivity) == 8
+    assert summary["aiclk_alignment"]["all_eight_sensitivity_intervals_negative"] is all(
+        item["sensitivity_interval_percent"][1] < 0.0 for item in all_sensitivity
+    )
+    assert summary["aiclk_alignment"]["any_crosses_zero"] is any(
+        item["crosses_zero"] for item in all_sensitivity
+    )
+    sensitivity_decision = summary["decision"]["sensitivity_intervals_under_assumptions"]
+    assert sensitivity_decision["matched_occurrence_count"] == len(all_sensitivity)
+    assert sensitivity_decision["all_negative"] is all(
+        item["sensitivity_interval_percent"][1] < 0.0 for item in all_sensitivity
+    )
+    assert sensitivity_decision["any_crosses_zero"] is any(
+        item["crosses_zero"] for item in all_sensitivity
+    )
+
+
+def test_issue127_abba_summary_recomputes_all_32_sampling_audit_rows():
+    plan, records, summary, power_samples, trace_hashes = _load_issue127_summary_inputs()
+    audit = summary["sampling_audit"]
+    audit_rows = audit["comparison_rows"]
+    expected_count = sum(
+        len(plan["run_orders"]["run_1" if records[scope]["run_number"] == 1 else "run_2"])
+        for scope in RUN_RECORDS
+    )
+    assert expected_count == 32
+    assert audit["comparison_row_count"] == len(audit_rows) == expected_count
+    assert summary["excluded_records"] == [
+        RUN_RECORDS["confirmation"].name,
+        RUN_RECORDS["measurement-2"].name,
+    ]
+
+    trace_names = {path.name for path in POWER_TRACES.values()}
+    assert {row["power_trace"] for row in audit_rows} == trace_names
+    rows_by_scope = {
+        scope: [row for row in audit_rows if row["scope"] == scope]
+        for scope in RUN_RECORDS
+    }
+    started_counts = []
+    for scope, record_path in RUN_RECORDS.items():
+        record = records[scope]
+        trace_hash = trace_hashes[scope]
+        trace_name = POWER_TRACES[scope].name
+        scope_rows = rows_by_scope[scope]
+        run_order_key = "run_1" if record["run_number"] == 1 else "run_2"
+        assert len(scope_rows) == len(plan["run_orders"][run_order_key]) == 8
+        assert record["power_trace"]["sha256"] == trace_hash
+        assert record["power_trace_provenance"]["sha256"] == trace_hash
+        for source_row, audit_row in zip(
+            record["comparison_rows"], scope_rows, strict=True
+        ):
+            assert audit_row["record"] == record_path.name
+            assert audit_row["power_trace"] == trace_name
+            assert audit_row["power_trace_sha256"] == trace_hash
+            assert audit_row["run_number"] == record["run_number"]
+            assert audit_row["scope"] == scope
+            assert audit_row["status"] == record["status"]
+            for field in (
+                "order_index",
+                "row",
+                "occurrence",
+                "occurrence_id",
+                "timed_start_utc",
+                "timed_end_utc",
+            ):
+                assert audit_row[field] == source_row[field]
+            expected_started = runner._power_samples_started_in_interval(
+                power_samples[scope],
+                start=source_row["timed_start_utc"],
+                end=source_row["timed_end_utc"],
+            )
+            assert audit_row["power_samples_started_in_interval"] == expected_started
+            started_counts.append(expected_started)
+
+    target = plan["timing_protocol"]["power_samples_per_row_target"]
+    assert target == runner.POWER_SAMPLES_PER_ROW_TARGET == 2
+    assert audit["power_sample_count_in_interval"]["field"] == (
+        "power_sample_count_in_interval"
+    )
+    assert audit["power_sample_count_in_interval"]["definition"] == (
+        runner.POWER_SAMPLE_COUNT_IN_INTERVAL_DEFINITION
+    )
+    assert audit["power_samples_started_in_interval"]["field"] == (
+        "power_samples_started_in_interval"
+    )
+    assert audit["power_samples_started_in_interval"]["definition"] == (
+        runner.POWER_SAMPLES_STARTED_IN_INTERVAL_DEFINITION
+    )
+
+    target_summary = audit["sampling_target"]
+    rows_meeting_target = sum(count >= target for count in started_counts)
+    rows_below_target = sum(count < target for count in started_counts)
+    assert target_summary["target_samples_per_row"] == target
+    assert target_summary["field"] == "power_samples_started_in_interval"
+    assert target_summary["rows_meeting_target"] == rows_meeting_target
+    assert target_summary["rows_below_target"] == rows_below_target
+    assert target_summary["minimum_started_samples"] == min(started_counts)
+    assert target_summary["maximum_started_samples"] == max(started_counts)
+    assert target_summary["result"] == (
+        "pass" if rows_below_target == 0 else "fail"
+    )
 
 
 def _fake_wrapper_tools(tmp_path: Path) -> Path:
