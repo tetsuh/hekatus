@@ -415,6 +415,22 @@ def _snapshot_capture_is_successful(capture: Mapping[str, Any]) -> bool:
     return capture.get("status") == "ok" and capture.get("returncode") == 0
 
 
+def _require_successful_snapshot_capture(
+    capture: Mapping[str, Any], *, label: str
+) -> None:
+    """Reject failed commands before consuming any retained snapshot JSON."""
+    if _snapshot_capture_is_successful(capture):
+        return
+    status = _redact_capture_value(str(capture.get("status", "unknown")))
+    returncode = capture.get("returncode")
+    if not isinstance(returncode, int) or isinstance(returncode, bool):
+        returncode = None
+    raise SnapshotCaptureError(
+        f"{label} snapshot capture did not complete successfully: "
+        f"status={status!r}, returncode={returncode!r}"
+    )
+
+
 def _record_snapshot_identity(
     capture: Mapping[str, Any], *, board_id: str, bus_id: str
 ) -> dict[str, Any]:
@@ -978,11 +994,15 @@ def evaluate_cooldown_transition(
     temperature_tolerance_c: float = COOLDOWN_TEMPERATURE_TOLERANCE_C,
 ) -> dict[str, Any]:
     """Evaluate one transition from its selected-device pre-run baseline."""
+    _require_successful_snapshot_capture(
+        preceding_pre_snapshot, label="preceding cooldown baseline"
+    )
     if preceding_pre_snapshot.get("stage") != "pre_run":
         raise SnapshotCaptureError("preceding cooldown baseline must be a pre_run snapshot")
     baseline_power, baseline_temperature, _baseline_aiclk = _cooldown_reading(
         preceding_pre_snapshot, board_id, bus_id
     )
+    _require_successful_snapshot_capture(cooldown_snapshot, label="cooldown")
     observed_power, observed_temperature, observed_aiclk = _cooldown_reading(
         cooldown_snapshot, board_id, bus_id
     )

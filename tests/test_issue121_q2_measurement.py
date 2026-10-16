@@ -1563,6 +1563,45 @@ def test_cooldown_transition_accepts_temperature_above_fixed_default(
 
 
 @pytest.mark.parametrize(
+    ("failed_capture", "error_label"),
+    [("baseline", "preceding cooldown baseline"), ("cooldown", "cooldown")],
+    ids=["baseline", "cooldown"],
+)
+def test_cooldown_transition_rejects_nonzero_capture_with_valid_snapshot_json(
+    failed_capture: str, error_label: str
+) -> None:
+    preceding_pre_snapshot = json.loads(
+        (IMMUTABLE_RUN_ROOT / "run-1-device0/pre-snapshot-q2-run-1-device0.json")
+        .resolve()
+        .read_text(encoding="utf-8")
+    )
+    cooldown_snapshot = json.loads(
+        (IMMUTABLE_RUN_ROOT / "../cooldown/run-1-to-2/snapshot-0018.json")
+        .resolve()
+        .read_text(encoding="utf-8")
+    )
+    failed = (
+        preceding_pre_snapshot if failed_capture == "baseline" else cooldown_snapshot
+    )
+    failed["status"] = "command_failed"
+    failed["returncode"] = 7
+    assert isinstance(failed["snapshot"], dict)
+
+    with pytest.raises(runner.SnapshotCaptureError, match=error_label) as exc_info:
+        runner.evaluate_cooldown_transition(
+            preceding_pre_snapshot,
+            cooldown_snapshot,
+            board_id="0000040331914124",
+            bus_id="0000:09:00.0",
+        )
+
+    reason = str(exc_info.value)
+    assert "command_failed" in reason
+    assert "returncode=7" in reason
+    assert "device_info" not in reason
+
+
+@pytest.mark.parametrize(
     ("status", "returncode", "snapshot_mode"),
     [
         ("timeout", None, "missing"),
