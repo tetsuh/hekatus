@@ -712,6 +712,55 @@ def _append_extended_row(
     return True
 
 
+def _sample_one_extended_capture(
+    handle: Any,
+    *,
+    board_id: str,
+    bus_id: str,
+    captures: list[dict[str, Any]],
+    errors: list[str],
+    capture_fn: Callable[..., dict[str, Any]],
+) -> bool:
+    """Capture, validate, and write one in-run sample."""
+    capture: Any = None
+    try:
+        capture = capture_fn(stage="in_run")
+        captures.append(_safe_capture_details(capture))
+        if not isinstance(capture, Mapping) or not _snapshot_capture_is_successful(capture):
+            errors.append(
+                _in_run_sampler_error(capture, _in_run_capture_failure_reason(capture))
+            )
+            return False
+        row_failure_reported = False
+        try:
+            row_written = _append_extended_row(
+                handle, capture, board_id=board_id, bus_id=bus_id
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
+            row_failure_reported = True
+            row_written = False
+            errors.append(
+                _in_run_sampler_error(
+                    capture, f"row write failed ({type(exc).__name__})"
+                )
+            )
+        if not row_written and not row_failure_reported:
+            errors.append(
+                _in_run_sampler_error(capture, _in_run_capture_failure_reason(capture))
+            )
+        return row_written
+    except Exception as exc:  # noqa: BLE001 - preserve an incomplete trace fact
+        captures.append(
+            {
+                "stage": "in_run",
+                "status": "capture_failed",
+                "error_type": type(exc).__name__,
+            }
+        )
+        errors.append(f"in-run snapshot capture failed: {type(exc).__name__}")
+        return False
+
+
 def _sample_extended_trace(
     stop_event: threading.Event,
     handle: Any,
@@ -727,45 +776,14 @@ def _sample_extended_trace(
     """Sample until the workload ends; the stop wait avoids an extra row."""
     interval = _finite_number(interval_seconds, field="trace interval", positive=True)
     while not stop_event.wait(interval):
-        capture: Any = None
-        row_written = False
-        try:
-            capture = capture_fn(stage="in_run")
-            captures.append(_safe_capture_details(capture))
-            if not isinstance(capture, Mapping) or not _snapshot_capture_is_successful(capture):
-                errors.append(
-                    _in_run_sampler_error(
-                        capture, _in_run_capture_failure_reason(capture)
-                    )
-                )
-            else:
-                row_failure_reported = False
-                try:
-                    row_written = _append_extended_row(
-                        handle, capture, board_id=board_id, bus_id=bus_id
-                    )
-                except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
-                    row_failure_reported = True
-                    errors.append(
-                        _in_run_sampler_error(
-                            capture, f"row write failed ({type(exc).__name__})"
-                        )
-                    )
-                if not row_written and not row_failure_reported:
-                    errors.append(
-                        _in_run_sampler_error(
-                            capture, _in_run_capture_failure_reason(capture)
-                        )
-                    )
-        except Exception as exc:  # noqa: BLE001 - preserve an incomplete trace fact
-            captures.append(
-                {
-                    "stage": "in_run",
-                    "status": "capture_failed",
-                    "error_type": type(exc).__name__,
-                }
-            )
-            errors.append(f"in-run snapshot capture failed: {type(exc).__name__}")
+        row_written = _sample_one_extended_capture(
+            handle,
+            board_id=board_id,
+            bus_id=bus_id,
+            captures=captures,
+            errors=errors,
+            capture_fn=capture_fn,
+        )
         if usable_rows is not None:
             usable_rows.append(row_written)
 
@@ -1486,6 +1504,56 @@ def _run_options(values: Mapping[str, Any]) -> _RunOptions:
     )
 
 
+def _write_boundary_extended_row(
+    handle: Any,
+    capture: Mapping[str, Any],
+    *,
+    board_id: str,
+    bus_id: str,
+    stage: str,
+    errors: list[str],
+) -> bool:
+    try:
+        row_written = _append_extended_row(
+            handle,
+            capture,
+            board_id=board_id,
+            bus_id=bus_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
+        row_written = False
+        errors.append(f"{stage} telemetry row write failed: {type(exc).__name__}")
+    if not row_written:
+        errors.append(f"{stage} telemetry row was not written")
+    return row_written
+
+
+def _q2_run_is_ok(
+    workload: Mapping[str, Any],
+    *,
+    guard_pass: bool,
+    sampler_errors: Sequence[str],
+    pre_capture_ok: bool,
+    pre_identity_valid: bool,
+    pre_row: bool,
+    post_capture_ok: bool,
+    post_identity_valid: bool,
+    post_row: bool,
+    in_run_row_results: Sequence[bool],
+) -> bool:
+    required_evidence = (
+        not sampler_errors,
+        pre_capture_ok,
+        pre_identity_valid,
+        pre_row,
+        post_capture_ok,
+        post_identity_valid,
+        post_row,
+        any(in_run_row_results),
+    )
+    return workload.get("returncode") == 0 and guard_pass and all(required_evidence)
+
+
 def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     """Run one fixed Q2 attempt; hardware execution is never implicit on import."""
     run_id = options.run_id
@@ -1558,18 +1626,14 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     safe_trace_path = _safe_output_path(trace_path, field="extended trace")
     with safe_trace_path.open("w", encoding="utf-8", newline="") as trace_handle:
         trace_handle.write(",".join(EXTENDED_TRACE_COLUMNS) + "\n")
-        try:
-            pre_row = _append_extended_row(
-                trace_handle,
-                pre_capture,
-                board_id=normalized_board,
-                bus_id=normalized_bus,
-            )
-        except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
-            pre_row = False
-            sampler_errors.append(f"pre-run telemetry row write failed: {type(exc).__name__}")
-        if not pre_row:
-            sampler_errors.append("pre-run telemetry row was not written")
+        pre_row = _write_boundary_extended_row(
+            trace_handle,
+            pre_capture,
+            board_id=normalized_board,
+            bus_id=normalized_bus,
+            stage="pre-run",
+            errors=sampler_errors,
+        )
         sampler_thread = threading.Thread(
             target=_sample_extended_trace,
             args=(stop_event, trace_handle),
@@ -1604,18 +1668,14 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
         if sampler_thread.is_alive():
             sampler_errors.append("extended sampler did not stop within its bounded join")
         post_capture = capture(stage="post_run", monotonic_ns=monotonic_ns, utc_now=utc_now)
-        try:
-            post_row = _append_extended_row(
-                trace_handle,
-                post_capture,
-                board_id=normalized_board,
-                bus_id=normalized_bus,
-            )
-        except Exception as exc:  # noqa: BLE001 - preserve a bounded error type
-            post_row = False
-            sampler_errors.append(f"post-run telemetry row write failed: {type(exc).__name__}")
-        if not post_row:
-            sampler_errors.append("post-run telemetry row was not written")
+        post_row = _write_boundary_extended_row(
+            trace_handle,
+            post_capture,
+            board_id=normalized_board,
+            bus_id=normalized_bus,
+            stage="post-run",
+            errors=sampler_errors,
+        )
 
     if not any(in_run_row_results):
         sampler_errors.append("extended sampler captured no usable in-run telemetry rows")
@@ -1665,17 +1725,17 @@ def _run_one(output_dir: Path, options: _RunOptions) -> dict[str, Any]:
     pre_capture_ok = _snapshot_capture_is_successful(pre_capture)
     status = (
         "ok"
-        if (
-            workload.get("returncode") == 0
-            and guard_pass
-            and not sampler_errors
-            and pre_capture_ok
-            and pre_identity_valid
-            and pre_row
-            and post_capture_ok
-            and post_identity_valid
-            and post_row
-            and any(in_run_row_results)
+        if _q2_run_is_ok(
+            workload,
+            guard_pass=guard_pass,
+            sampler_errors=sampler_errors,
+            pre_capture_ok=pre_capture_ok,
+            pre_identity_valid=pre_identity_valid,
+            pre_row=pre_row,
+            post_capture_ok=post_capture_ok,
+            post_identity_valid=post_identity_valid,
+            post_row=post_row,
+            in_run_row_results=in_run_row_results,
         )
         else "failed"
     )

@@ -118,6 +118,9 @@ _RAW_THROTTLE_REASON_KEYS = ("THROTTLE_REASON", "throttle_reason")
 _MAX_NONNEGATIVE_INTEGER = (1 << 63) - 1
 _MAX_EXACT_FLOAT_INTEGER = (1 << 53) - 1
 _MISSING = object()
+_TRACE_BOUNDS_ORDER_ERROR = (
+    "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
+)
 
 
 class ExtendedPowerTraceError(ValueError):
@@ -1047,9 +1050,7 @@ def _extended_trace_bounds(
         field="run_end_monotonic_ns",
     )
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
-        raise ExtendedPowerTraceError(
-            "run_start_monotonic_ns must be at or before run_end_monotonic_ns"
-        )
+        raise ExtendedPowerTraceError(_TRACE_BOUNDS_ORDER_ERROR)
     return start_ns, end_ns
 
 
@@ -1538,7 +1539,7 @@ def _mapping_trace_bounds(
     start_ns = bounds["run_start_monotonic_ns"]
     end_ns = bounds["run_end_monotonic_ns"]
     if start_ns is not None and end_ns is not None and start_ns > end_ns:
-        failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
+        failures.append(_TRACE_BOUNDS_ORDER_ERROR)
     return bounds, failures
 
 
@@ -1617,6 +1618,107 @@ def _mapping_optional_summary_failures(
     return failures
 
 
+def _mapping_schema_failures(payload: Mapping[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA) != EXTENDED_POWER_TRACE_SCHEMA:
+        failures.append("extended trace schema is missing or unsupported")
+    version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
+    if (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
+    ):
+        failures.append("extended trace schema_version is missing or unsupported")
+    columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
+    try:
+        columns_match = tuple(columns) == EXTENDED_POWER_TRACE_COLUMNS
+    except (TypeError, ValueError):
+        columns_match = False
+    if not columns_match:
+        failures.append("extended trace columns do not match the versioned schema")
+    return failures
+
+
+def _mapping_samples(
+    payload: Mapping[str, Any],
+) -> tuple[list[str], list[dict[str, Any]]]:
+    raw_samples = payload.get("samples", _MISSING)
+    if raw_samples is _MISSING:
+        return ["extended trace samples are missing"], []
+    if not isinstance(raw_samples, list):
+        return ["extended trace samples must be an array"], []
+    return _normalise_mapping_sample_list(raw_samples)
+
+
+def _mapping_bound(
+    payload: Mapping[str, Any],
+    normalized_samples: Sequence[Mapping[str, Any]],
+    *,
+    field: str,
+    supplied: int | None,
+) -> tuple[int | None, list[str]]:
+    value = supplied if supplied is not None else payload.get(field, _MISSING)
+    if value is _MISSING:
+        if normalized_samples:
+            value = (
+                normalized_samples[0]["timestamp_monotonic_ns"]
+                if field == "run_start_monotonic_ns"
+                else normalized_samples[-1]["timestamp_monotonic_ns"]
+            )
+        else:
+            return None, [f"extended trace {field} is missing"]
+    if value is None:
+        return None, [f"extended trace {field} is missing"]
+    try:
+        return _as_monotonic_bound(value, field=field), []
+    except (TypeError, ValueError) as exc:
+        return None, [str(exc)]
+
+
+def _mapping_bounds(
+    payload: Mapping[str, Any],
+    normalized_samples: Sequence[Mapping[str, Any]],
+    *,
+    run_start_monotonic_ns: int | None,
+    run_end_monotonic_ns: int | None,
+) -> tuple[dict[str, int | None], list[str]]:
+    bounds: dict[str, int | None] = {}
+    failures: list[str] = []
+    for field, supplied in (
+        ("run_start_monotonic_ns", run_start_monotonic_ns),
+        ("run_end_monotonic_ns", run_end_monotonic_ns),
+    ):
+        bound, bound_failures = _mapping_bound(
+            payload,
+            normalized_samples,
+            field=field,
+            supplied=supplied,
+        )
+        bounds[field] = bound
+        failures.extend(bound_failures)
+    start_ns = bounds["run_start_monotonic_ns"]
+    end_ns = bounds["run_end_monotonic_ns"]
+    if start_ns is not None and end_ns is not None and start_ns > end_ns:
+        failures.append(_TRACE_BOUNDS_ORDER_ERROR)
+    return bounds, failures
+
+
+def _invalid_mapping_result(
+    trace: dict[str, Any], failures: Sequence[str]
+) -> dict[str, Any]:
+    unique_failures = list(dict.fromkeys(failures))
+    trace["schema"] = EXTENDED_POWER_TRACE_SCHEMA
+    trace["schema_version"] = EXTENDED_POWER_TRACE_SCHEMA_VERSION
+    trace["columns"] = list(EXTENDED_POWER_TRACE_COLUMNS)
+    if unique_failures:
+        trace["valid"] = False
+        trace["errors"] = list(
+            dict.fromkeys([*trace.get("errors", []), *unique_failures])
+        )
+        trace["error"] = trace["errors"][0]
+    return trace
+
+
 def read_extended_power_trace_mapping(
     payload: Mapping[str, Any],
     *,
@@ -1632,100 +1734,30 @@ def read_extended_power_trace_mapping(
     fields supplied by the mapping are checked, while the returned samples and
     coverage always come from the re-read result.
     """
-    result = _trace_result_base()
     if not isinstance(payload, Mapping):
-        result["errors"] = ["extended trace mapping must be an object"]
-        result["error"] = result["errors"][0]
-        return result
-
-    schema = payload.get("schema", EXTENDED_POWER_TRACE_SCHEMA)
-    version = payload.get("schema_version", EXTENDED_POWER_TRACE_SCHEMA_VERSION)
-    columns = payload.get("columns", list(EXTENDED_POWER_TRACE_COLUMNS))
-    failures: list[str] = []
-    if schema != EXTENDED_POWER_TRACE_SCHEMA:
-        failures.append("extended trace schema is missing or unsupported")
-    if (
-        not isinstance(version, int)
-        or isinstance(version, bool)
-        or version != EXTENDED_POWER_TRACE_SCHEMA_VERSION
-    ):
-        failures.append("extended trace schema_version is missing or unsupported")
-    try:
-        columns_match = tuple(columns) == EXTENDED_POWER_TRACE_COLUMNS
-    except (TypeError, ValueError):
-        columns_match = False
-    if not columns_match:
-        failures.append("extended trace columns do not match the versioned schema")
-
-    raw_samples = payload.get("samples", _MISSING)
-    if raw_samples is _MISSING:
-        failures.append("extended trace samples are missing")
-        raw_samples_list: list[Any] = []
-    elif not isinstance(raw_samples, list):
-        failures.append("extended trace samples must be an array")
-        raw_samples_list = []
-    else:
-        raw_samples_list = raw_samples
-    sample_failures, normalized_samples = _normalise_mapping_sample_list(
-        raw_samples_list
-    )
+        return _invalid_mapping_result(
+            _trace_result_base(), ["extended trace mapping must be an object"]
+        )
+    failures = _mapping_schema_failures(payload)
+    sample_failures, normalized_samples = _mapping_samples(payload)
     failures.extend(sample_failures)
-
-    def _bound_value(field: str, supplied: int | None) -> Any:
-        if supplied is not None:
-            return supplied
-        return payload.get(field, _MISSING)
-
-    bounds: dict[str, int | None] = {}
-    for field, supplied in (
-        ("run_start_monotonic_ns", run_start_monotonic_ns),
-        ("run_end_monotonic_ns", run_end_monotonic_ns),
-    ):
-        value = _bound_value(field, supplied)
-        if value is _MISSING:
-            if normalized_samples:
-                value = (
-                    normalized_samples[0]["timestamp_monotonic_ns"]
-                    if field == "run_start_monotonic_ns"
-                    else normalized_samples[-1]["timestamp_monotonic_ns"]
-                )
-            else:
-                bounds[field] = None
-                failures.append(f"extended trace {field} is missing")
-                continue
-        if value is None:
-            bounds[field] = None
-            failures.append(f"extended trace {field} is missing")
-            continue
-        try:
-            bounds[field] = _as_monotonic_bound(value, field=field)
-        except (TypeError, ValueError) as exc:
-            bounds[field] = None
-            failures.append(str(exc))
-    start_ns = bounds["run_start_monotonic_ns"]
-    end_ns = bounds["run_end_monotonic_ns"]
-    if start_ns is not None and end_ns is not None and start_ns > end_ns:
-        failures.append("run_start_monotonic_ns must be at or before run_end_monotonic_ns")
-
+    bounds, bound_failures = _mapping_bounds(
+        payload,
+        normalized_samples,
+        run_start_monotonic_ns=run_start_monotonic_ns,
+        run_end_monotonic_ns=run_end_monotonic_ns,
+    )
+    failures.extend(bound_failures)
     recomputed, reread_failure = _reread_mapping_trace(
         normalized_samples,
-        start_ns=start_ns,
-        end_ns=end_ns,
+        start_ns=bounds["run_start_monotonic_ns"],
+        end_ns=bounds["run_end_monotonic_ns"],
     )
     if reread_failure is not None:
         failures.append(reread_failure)
     failures.extend(_trace_validation_failures(recomputed))
     failures.extend(_mapping_optional_summary_failures(payload, recomputed))
-    failures = list(dict.fromkeys(failures))
-
-    recomputed["schema"] = EXTENDED_POWER_TRACE_SCHEMA
-    recomputed["schema_version"] = EXTENDED_POWER_TRACE_SCHEMA_VERSION
-    recomputed["columns"] = list(EXTENDED_POWER_TRACE_COLUMNS)
-    if failures:
-        recomputed["valid"] = False
-        recomputed["errors"] = list(dict.fromkeys([*recomputed.get("errors", []), *failures]))
-        recomputed["error"] = recomputed["errors"][0]
-    return recomputed
+    return _invalid_mapping_result(recomputed, failures)
 
 
 def _copy_mapping_trace(
