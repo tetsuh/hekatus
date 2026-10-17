@@ -1259,8 +1259,8 @@ def _validate_live_power_trace_source(path: Path) -> None:
         # Opening a regular file does not consume or parse sampler bytes.  The
         # type check above is deliberately before this open so FIFOs cannot
         # block the preflight.
-        with path.open("rb"):
-            pass
+        with path.open("rb") as handle:
+            handle.read(0)
     except FileNotFoundError:
         # A sampler can remove or rotate the source between lstat and open;
         # retain the missing-source compatibility path in that race.
