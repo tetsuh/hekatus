@@ -56,6 +56,7 @@ def _environment() -> dict[str, object]:
         "image": "registry.example/tt@sha256:" + "a" * 64,
         "image_pinned": True,
         "harness_commit": "0123456789abcdef",
+        "harness_dirty": False,
         "tt_env_active_release": "0.75.0",
         "telemetry_sampler": {
             "mode": "default",
@@ -468,6 +469,7 @@ def _fake_resident_result(config: ResidentConfig) -> dict[str, object]:
 
 
 def _patch_fake_resident_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_resident, "_harness_pushed", lambda _commit: True)
     monkeypatch.setattr(
         run_resident,
         "_run_device",

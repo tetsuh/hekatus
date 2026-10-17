@@ -14,6 +14,7 @@ import json
 import math
 import os
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -93,8 +94,10 @@ from enodia.tt.bench.resident_harness import (
     split_u64,
     validate_configuration,
     validate_failure_check,
+    validate_harness_preflight,
     validate_post_run_aiclk,
     validate_record_inputs,
+    validate_resident_allocation_bounds,
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
@@ -1167,6 +1170,87 @@ def _runner_output_dir() -> Path:
     return Path("/out")
 
 
+def _harness_pushed(commit: Any) -> bool:
+    """Return whether the current committed harness revision is remotely reachable."""
+    if not isinstance(commit, str) or not commit.strip():
+        return False
+    repository = Path(__file__).resolve().parents[3]
+    try:
+        head = subprocess.run(
+            ("git", "-C", str(repository), "rev-parse", "HEAD"),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if head.returncode != 0 or head.stdout.strip() != commit:
+            return False
+        remote = subprocess.run(
+            ("git", "-C", str(repository), "branch", "--remotes", "--contains", commit),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return remote.returncode == 0 and bool(remote.stdout.strip())
+
+
+def _output_destination_writable(path: Path) -> bool:
+    """Check a destination with a temporary sibling write, without replacing it."""
+    try:
+        parent = path.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            return path.is_file() and os.access(path, os.W_OK)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.", dir=parent
+        )
+        os.close(descriptor)
+        Path(temporary_name).unlink()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _validate_output_destinations(args: argparse.Namespace) -> None:
+    """Check every path the runner may write before importing TTNN."""
+    destinations = [("output", args.out)]
+    if args.raw_timestamps_out is not None:
+        destinations.append(("raw timestamp output", args.raw_timestamps_out))
+    for name, path in destinations:
+        if not _output_destination_writable(path):
+            raise ResidentPreflightError(f"{name} destination is not writable")
+
+
+def _write_rejection_if_possible(
+    output_path: Path,
+    *,
+    config: ResidentConfig,
+    environment: Mapping[str, Any],
+    reason: str,
+) -> None:
+    """Write a rejection only when the destination passed the writable check."""
+    try:
+        if _output_destination_writable(output_path):
+            _write(
+                output_path,
+                build_rejection_record(
+                    config=config, reason=reason, environment=environment
+                ),
+            )
+        else:
+            raise OSError("output destination is not writable")
+    except (OSError, TypeError, ValueError):
+        print(
+            f"resident preflight rejected: {reason}; rejection record unavailable",
+            file=sys.stderr,
+        )
+    else:
+        print(f"resident preflight rejected: {reason}", file=sys.stderr)
+
+
 def _missing_power_trace_metadata(
     path: Path, *, sampler_interval_seconds: float | None, error: Exception
 ) -> dict[str, Any]:
@@ -1753,21 +1837,31 @@ def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, Calib
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    environment_path = args.env_json or _environment_output_path()
-    environment = _environment(environment_path)
     # The wrapper owns per-run trace selection. A missing option means that
     # sampler-off mode has no trace; it does not infer one from output files.
     power_trace = args.power_trace
     config = _config_from_args(args)
+    environment: Any = {}
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
     try:
+        _validate_output_destinations(args)
+        environment_path = args.env_json or _environment_output_path()
+        environment = _environment(environment_path)
         condition, repeat_count, calibration = _load_execution_selection(args)
         environment = validate_record_inputs(
-            harness_commit=environment.get("harness_commit"),
+            harness_commit=(
+                environment.get("harness_commit")
+                if isinstance(environment, Mapping)
+                else None
+            ),
             environment=environment,
             power_trace=power_trace,
+        )
+        validate_harness_preflight(
+            environment,
+            pushed=_harness_pushed(environment.get("harness_commit")),
         )
         sampler = environment["telemetry_sampler"]
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
@@ -1781,10 +1875,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             config = validate_configuration(config, watcher=watcher)
+        validate_resident_allocation_bounds(
+            config, raw_timestamps_out=args.raw_timestamps_out is not None
+        )
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
-    except (TypeError, ValueError) as exc:
-        _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
-        print(f"resident configuration rejected: {exc}", file=sys.stderr)
+    except (OSError, TypeError, ValueError) as exc:
+        _write_rejection_if_possible(
+            args.out, config=config, environment=environment, reason=str(exc)
+        )
         return 2
 
     try:
