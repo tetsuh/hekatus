@@ -64,4 +64,4 @@ process and test-selection contract, and is worthy of an ADR.
 ## Status history
 
 - 2026-10-17: Proposed in pull request #141.
-- 2026-10-18: Accepted by the owner.
+- 2026-10-18: Accepted by the owner in pull request #141, which carries the decision; in force when it merges.
