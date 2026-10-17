@@ -748,17 +748,9 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
                 f"power trace {path.name} has unexpected columns {reader.fieldnames!r}"
             )
         rows = list(reader)
-        if (
-            rows
-            and None not in rows[-1]
-            and (
-                any(value is None for value in rows[-1].values())
-                or rows[-1].get("asic_temp_c") == ""
-            )
-            and not contents.endswith(("\n", "\r"))
-        ):
-            # SIGTERM can leave the terminal row short at EOF; a line-terminated
-            # short row and an extra-field row must remain visible for rejection.
+        if rows and None not in rows[-1] and not contents.endswith(("\n", "\r")):
+            # SIGTERM can leave the terminal row partial at EOF; a line-terminated
+            # malformed row and an extra-field row must remain visible for rejection.
             rows.pop()
         samples = [dict(row) for row in rows]
     if not samples:
