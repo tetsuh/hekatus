@@ -62,6 +62,7 @@ from enodia.tt.bench.load_harness import (
     build_load_record,
     calibration_metadata,
     predicted_load_time_seconds,
+    validate_device_load_repeat_count,
     validate_measurement_target_seconds,
 )
 from enodia.tt.bench.power_trace_snapshot import (
@@ -1255,7 +1256,7 @@ def _output_destination_writable(path: Path) -> bool:
 def _validate_destination_collisions(
     destinations: list[tuple[str, Path]],
 ) -> None:
-    """Reject distinct runner artifacts that resolve to one filesystem path."""
+    """Reject runner artifacts that resolve to equal or nested paths."""
     seen: dict[Path, str] = {}
     for name, path in destinations:
         previous_name = seen.get(path)
@@ -1263,6 +1264,12 @@ def _validate_destination_collisions(
             raise ResidentPreflightError(
                 f"{name} collides with {previous_name} at resolved path {path}"
             )
+        for previous_path, previous_name in seen.items():
+            if path in previous_path.parents or previous_path in path.parents:
+                raise ResidentPreflightError(
+                    f"{name} collides with {previous_name}: paths are an "
+                    f"ancestor/descendant pair ({path} and {previous_path})"
+                )
         seen[path] = name
 
 
@@ -1990,7 +1997,9 @@ def _select_calibration_execution(
     if args.calibration_json is not None:
         raise LoadConfigurationError("calibration run cannot consume calibration-json")
     repeat_count = 1 if args.repeat_count is None else args.repeat_count
-    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+    if condition in {"newton_schulz", "dram"}:
+        repeat_count = validate_device_load_repeat_count(condition, repeat_count)
+    elif isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadConfigurationError("calibration repeat-count must be a positive integer")
     if args.calibration_duration_seconds <= 0 or args.calibration_duration_seconds > 60:
         raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
@@ -2029,7 +2038,15 @@ def _select_loaded_execution(
             f"AICLK source {calibration.load_interval_aiclk_source})"
         )
     repeat_count = calibration.repeat_count
-    if args.repeat_count is not None and args.repeat_count != repeat_count:
+    if condition in {"newton_schulz", "dram"}:
+        repeat_count = validate_device_load_repeat_count(condition, repeat_count)
+        if args.repeat_count is not None:
+            requested_repeat_count = validate_device_load_repeat_count(
+                condition, args.repeat_count
+            )
+            if requested_repeat_count != repeat_count:
+                raise LoadConfigurationError("repeat-count does not match calibration metadata")
+    elif args.repeat_count is not None and args.repeat_count != repeat_count:
         raise LoadConfigurationError("repeat-count does not match calibration metadata")
     return condition, repeat_count, calibration
 

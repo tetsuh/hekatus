@@ -2603,6 +2603,36 @@ class TestResidentProvenance:
         assert "collides" in rejection["rejection_reason"]
         assert "raw timestamp" in rejection["rejection_reason"]
 
+    @pytest.mark.parametrize("raw_is_ancestor", [False, True])
+    def test_result_and_raw_timestamp_nested_paths_reject_before_probe_or_device_open(
+        self, tmp_path, monkeypatch, raw_is_ancestor
+    ):
+        output_path = tmp_path / "result.json"
+        raw_output_path = output_path / "raw.bin"
+        if raw_is_ancestor:
+            output_path, raw_output_path = raw_output_path, output_path
+
+        probe_calls = []
+        original_probe = run_resident._output_destination_writable
+
+        def track_probe(path):
+            probe_calls.append(path)
+            return original_probe(path)
+
+        monkeypatch.setattr(run_resident, "_output_destination_writable", track_probe)
+        result, rejection_path = self._run_destination_collision_preflight(
+            tmp_path,
+            monkeypatch,
+            output_path=output_path,
+            raw_output_path=raw_output_path,
+        )
+
+        assert result == 2
+        assert probe_calls == [rejection_path.resolve()]
+        rejection = json.loads(rejection_path.read_text())
+        assert "ancestor/descendant" in rejection["rejection_reason"]
+        assert "raw timestamp" in rejection["rejection_reason"]
+
     def test_result_and_snapshot_alias_rejects_before_device_open(
         self, tmp_path, monkeypatch
     ):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from enodia.tt.bench.load_harness import (
     DEVICE_OPEN_SETTINGS,
     DRAM_BANK_COUNT,
     DRAM_PAGES_PER_BANK,
+    DRAM_REPEAT_COUNT_MAX,
     HOST_RESIDENT_SUB_DEVICE_ID,
     HOST_TRANSFER_CORE,
     HOST_TRANSFER_SUB_DEVICE_ID,
@@ -28,6 +30,7 @@ from enodia.tt.bench.load_harness import (
     NS_LOAD_L1_TOTAL_BYTES,
     NS_LOAD_MAX_TILES_PER_CORE,
     NS_LOAD_OUTER_REPETITIONS,
+    NS_REPEAT_COUNT_MAX,
     NUM_COMMAND_QUEUES,
     P150_RESIDUAL_WORKER_COORDINATES,
     P150_RESIDUAL_WORKER_COUNT,
@@ -89,6 +92,43 @@ from enodia.tt.bench.run_resident import _parser as resident_parser
 
 ROOT = Path(__file__).parents[1]
 KERNEL_DIR = ROOT / "enodia/tt/bench/kernels"
+
+
+def _resident_preflight_environment() -> dict[str, object]:
+    return {
+        "board": {"serial": "redacted-board-serial", "board_type": "p150a"},
+        "firmware": {"fw_bundle_version": "19.6.0.0"},
+        "kmd_version": "2.11.0",
+        "image": "registry.example/tt@sha256:" + "a" * 64,
+        "image_pinned": True,
+        "harness_commit": "0123456789abcdef",
+        "harness_dirty": False,
+        "harness_pushed": True,
+        "tt_env_active_release": "0.75.0",
+        "telemetry_sampler": {
+            "mode": "default",
+            "interval_seconds": 2.0,
+            "power_trace": "required",
+            "timing_evidence": "available",
+        },
+    }
+
+
+def _valid_device_calibration(
+    condition: str, *, repeat_count: int, measurement_repeat_count: int
+) -> CalibrationMetadata:
+    return CalibrationMetadata(
+        condition=condition,
+        duration_seconds=60,
+        achieved_throughput=2,
+        throughput_unit="repeats_per_card_second",
+        repeat_count=repeat_count,
+        target_seconds=500,
+        load_card_ticks=1,
+        load_measurement_repeat_count=measurement_repeat_count,
+        load_interval_aiclk_mhz=1_000,
+        load_interval_aiclk_source=CALIBRATION_LOAD_INTERVAL_AICLK_SOURCE,
+    )
 
 
 def _dram_worker_intervals(
@@ -559,6 +599,152 @@ def test_host_transfer_cleanup_releases_a_partially_used_fixed_pool(monkeypatch)
     assert not device_tensors
     assert not host_tensors
     assert len(ttnn.deallocated) == 2 * resident_runner.HOST_TRANSFER_BUFFER_POOL_SIZE
+
+
+@pytest.mark.parametrize(
+    ("condition", "repeat_limit"),
+    [
+        ("dram", DRAM_REPEAT_COUNT_MAX),
+        ("newton_schulz", NS_REPEAT_COUNT_MAX),
+    ],
+)
+def test_device_load_repeat_boundaries_are_accepted_by_both_selection_paths(
+    tmp_path, condition, repeat_limit
+):
+    calibration_args = SimpleNamespace(
+        condition=condition,
+        calibrate=True,
+        calibration_json=None,
+        repeat_count=repeat_limit,
+        calibration_duration_seconds=60,
+        target_seconds=500,
+        outer_timeout_seconds=600,
+    )
+    assert _load_execution_selection(calibration_args) == (
+        condition,
+        repeat_limit,
+        None,
+    )
+
+    calibration = _valid_device_calibration(
+        condition,
+        repeat_count=repeat_limit,
+        measurement_repeat_count=repeat_limit,
+    )
+    path = tmp_path / f"{condition}-boundary.json"
+    path.write_text(json.dumps({"calibration": calibration.as_record()}))
+    loaded_args = SimpleNamespace(
+        condition=condition,
+        calibrate=False,
+        calibration_json=path,
+        repeat_count=None,
+        outer_timeout_seconds=600,
+    )
+    selected_condition, selected_repeat, selected_calibration = _load_execution_selection(
+        loaded_args
+    )
+    assert selected_condition == condition
+    assert selected_repeat == repeat_limit
+    assert selected_calibration is not None
+    assert selected_calibration.load_measurement_repeat_count == repeat_limit
+
+
+@pytest.mark.parametrize(
+    ("condition", "repeat_limit"),
+    [
+        ("dram", DRAM_REPEAT_COUNT_MAX),
+        ("newton_schulz", NS_REPEAT_COUNT_MAX),
+    ],
+)
+def test_direct_calibration_over_bound_rejects_before_device_open(
+    tmp_path, monkeypatch, condition, repeat_limit
+):
+    environment_path = tmp_path / "environment.json"
+    output_path = tmp_path / "rejection.json"
+    environment_path.write_text(json.dumps(_resident_preflight_environment()))
+    opened = []
+
+    def device_open_must_not_run(**kwargs):
+        opened.append(kwargs)
+        raise AssertionError("device open must not run for an invalid load repeat count")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=device_open_must_not_run),
+    )
+    result = resident_runner.main(
+        [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            "resident-power.csv",
+            "--condition",
+            condition,
+            "--calibrate",
+            "--repeat-count",
+            str(repeat_limit + 1),
+        ]
+    )
+
+    assert result == 2
+    assert opened == []
+    assert "UINT32_MAX" in json.loads(output_path.read_text())["rejection_reason"]
+
+
+@pytest.mark.parametrize(
+    ("condition", "repeat_limit"),
+    [
+        ("dram", DRAM_REPEAT_COUNT_MAX),
+        ("newton_schulz", NS_REPEAT_COUNT_MAX),
+    ],
+)
+@pytest.mark.parametrize("field", ["repeat_count", "load_measurement_repeat_count"])
+def test_persisted_calibration_over_bound_rejects_before_device_open(
+    tmp_path, monkeypatch, condition, repeat_limit, field
+):
+    calibration = _valid_device_calibration(
+        condition,
+        repeat_count=1,
+        measurement_repeat_count=1,
+    ).as_record()
+    calibration[field] = repeat_limit + 1
+    calibration_path = tmp_path / f"{condition}-{field}.json"
+    calibration_path.write_text(json.dumps({"calibration": calibration}))
+    environment_path = tmp_path / "environment.json"
+    output_path = tmp_path / "rejection.json"
+    environment_path.write_text(json.dumps(_resident_preflight_environment()))
+    opened = []
+
+    def device_open_must_not_run(**kwargs):
+        opened.append(kwargs)
+        raise AssertionError("device open must not run for invalid persisted calibration")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=device_open_must_not_run),
+    )
+    result = resident_runner.main(
+        [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            "resident-power.csv",
+            "--condition",
+            condition,
+            "--calibration-json",
+            str(calibration_path),
+        ]
+    )
+
+    assert result == 2
+    assert opened == []
+    assert "UINT32_MAX" in json.loads(output_path.read_text())["rejection_reason"]
 
 
 def test_loaded_run_rejects_a_short_outer_timeout_for_calibrated_target(tmp_path):
