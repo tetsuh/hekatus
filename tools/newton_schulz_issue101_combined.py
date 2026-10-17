@@ -1316,6 +1316,10 @@ def _validate_captured_power_sample(
             raise ValueError(
                 f"captured power trace sample {index} field {field!r} is not finite"
             )
+        if field == "aiclk_mhz" and numeric_value <= 0.0:
+            raise ValueError(
+                f"captured power trace sample {index} field {field!r} must be positive"
+            )
 
 
 def _validate_captured_power_samples(samples: Any) -> None:

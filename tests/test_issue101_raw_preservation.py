@@ -759,6 +759,18 @@ def test_issue102_recovery_rejects_boolean_power_sample_values(tmp_path, field):
         issue101.recover_combined_record(raw_path)
 
 
+@pytest.mark.parametrize("aiclk_mhz", [0, -1], ids=["zero", "negative"])
+def test_issue102_recovery_rejects_non_positive_aiclk(tmp_path, aiclk_mhz):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["power_trace"]["samples"][0]["aiclk_mhz"] = aiclk_mhz
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="field 'aiclk_mhz' must be positive"):
+        issue101.recover_combined_record(raw_path)
+
+
 def test_issue102_recovery_rejects_oversized_json_integer(tmp_path):
     output_dir = tmp_path / "device-output"
     raw_path, _ = _write_rebuild_raw(output_dir)
