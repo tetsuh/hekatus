@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 import shlex
 import sys
@@ -2483,6 +2484,8 @@ class TestResidentProvenance:
         *,
         power_trace: str,
         output_name: str | None = None,
+        explicit_output_path: Path | None = None,
+        raw_output_path: Path | None = None,
     ):
         environment = _environment()
         environment_path = tmp_path / "environment.json"
@@ -2490,7 +2493,9 @@ class TestResidentProvenance:
         output_dir = tmp_path / "runner-output"
         output_dir.mkdir(exist_ok=True)
         output_path = (
-            output_dir / output_name
+            explicit_output_path
+            if explicit_output_path is not None
+            else output_dir / output_name
             if output_name is not None
             else tmp_path / "rejection.json"
         )
@@ -2504,16 +2509,17 @@ class TestResidentProvenance:
                 close_device=lambda _device: None,
             ),
         )
-        result = run_resident.main(
-            [
-                "--out",
-                str(output_path),
-                "--env-json",
-                str(environment_path),
-                "--power-trace",
-                power_trace,
-            ]
-        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            power_trace,
+        ]
+        if raw_output_path is not None:
+            arguments.extend(("--raw-timestamps-out", str(raw_output_path)))
+        result = run_resident.main(arguments)
         return result, output_path, output_dir
 
     def test_bound_wrong_power_trace_rejects_before_device_open(
@@ -2634,7 +2640,7 @@ class TestResidentProvenance:
         assert "raw timestamp" in rejection["rejection_reason"]
 
     def test_result_and_snapshot_alias_rejects_before_device_open(
-        self, tmp_path, monkeypatch
+        self, tmp_path, monkeypatch, capsys
     ):
         result, output_path, _output_dir = self._run_bound_power_trace_preflight(
             tmp_path,
@@ -2644,12 +2650,11 @@ class TestResidentProvenance:
         )
 
         assert result == 2
-        rejection = json.loads(output_path.read_text())
-        assert "collides" in rejection["rejection_reason"]
-        assert "snapshot" in rejection["rejection_reason"]
+        assert not output_path.exists()
+        assert "rejection record unavailable" in capsys.readouterr().err
 
     def test_result_and_live_power_source_alias_rejects_before_device_open(
-        self, tmp_path, monkeypatch
+        self, tmp_path, monkeypatch, capsys
     ):
         result, output_path, _output_dir = self._run_bound_power_trace_preflight(
             tmp_path,
@@ -2659,9 +2664,128 @@ class TestResidentProvenance:
         )
 
         assert result == 2
-        rejection = json.loads(output_path.read_text())
-        assert "collides" in rejection["rejection_reason"]
-        assert "power trace source" in rejection["rejection_reason"]
+        assert not output_path.exists()
+        assert "rejection record unavailable" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    @pytest.mark.parametrize("destination_kind", ["output", "raw"])
+    def test_protected_artifact_bytes_survive_equal_destination_rejection(
+        self, tmp_path, monkeypatch, artifact_kind, destination_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        artifact_path = output_dir / artifact_name
+        artifact_bytes = f"sentinel {artifact_kind}\n".encode()
+        artifact_path.write_bytes(artifact_bytes)
+        if destination_kind == "output":
+            output_path = artifact_path
+            raw_path = None
+        else:
+            output_path = tmp_path / "rejection.json"
+            raw_path = artifact_path
+
+        result, _rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            explicit_output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert artifact_path.read_bytes() == artifact_bytes
+
+    @pytest.mark.parametrize("destination_kind", ["output", "raw"])
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    def test_nested_protected_destinations_do_not_create_reserved_paths(
+        self, tmp_path, monkeypatch, destination_kind, artifact_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        protected_path = output_dir / artifact_name
+        nested_path = protected_path / "nested" / (
+            "result.json" if destination_kind == "output" else "raw.bin"
+        )
+        if destination_kind == "output":
+            output_name = str(nested_path.relative_to(output_dir))
+            output_path = None
+            raw_path = tmp_path / "safe-raw.bin"
+        else:
+            output_name = None
+            output_path = None
+            raw_path = nested_path
+
+        result, rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name=output_name,
+            explicit_output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert not protected_path.exists()
+        if destination_kind == "raw":
+            assert json.loads(rejection_path.read_text())["status"] == "rejected"
+
+    def test_result_and_raw_hard_link_alias_rejects_without_mutating_either_destination(
+        self, tmp_path, monkeypatch
+    ):
+        output_path = tmp_path / "result.json"
+        raw_path = tmp_path / "raw.bin"
+        destination_bytes = b"existing result and raw bytes\n"
+        output_path.write_bytes(destination_bytes)
+        os.link(output_path, raw_path)
+
+        result, _rejection_path = self._run_destination_collision_preflight(
+            tmp_path,
+            monkeypatch,
+            output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert output_path.read_bytes() == destination_bytes
+        assert raw_path.read_bytes() == destination_bytes
+
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    def test_protected_artifact_hard_link_alias_rejects_without_mutation(
+        self, tmp_path, monkeypatch, artifact_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        protected_path = output_dir / artifact_name
+        destination_bytes = f"hard-link {artifact_kind} bytes\n".encode()
+        protected_path.write_bytes(destination_bytes)
+        output_path = tmp_path / "result.json"
+        os.link(protected_path, output_path)
+
+        result, _rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            explicit_output_path=output_path,
+        )
+
+        assert result == 2
+        assert output_path.read_bytes() == destination_bytes
+        assert protected_path.read_bytes() == destination_bytes
 
     def _run_bound_live_source_preflight(
         self, tmp_path, monkeypatch, *, source_kind: str

@@ -1253,10 +1253,43 @@ def _output_destination_writable(path: Path) -> bool:
     return True
 
 
+def _destination_inode(path: Path, *, name: str) -> tuple[int, int] | None:
+    """Return an existing destination inode without following its final component."""
+    try:
+        destination_stat = os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ResidentPreflightError(
+            f"{name} destination cannot be inspected"
+        ) from exc
+    if stat.S_ISLNK(destination_stat.st_mode):
+        raise ResidentPreflightError(f"{name} destination must not be a symlink")
+    return destination_stat.st_dev, destination_stat.st_ino
+
+
+def _validate_existing_destination_inodes(
+    destinations: list[tuple[str, Path]],
+) -> None:
+    """Reject existing destinations that are hard-link aliases."""
+    seen: dict[tuple[int, int], str] = {}
+    for name, path in destinations:
+        inode = _destination_inode(path, name=name)
+        if inode is None:
+            continue
+        previous_name = seen.get(inode)
+        if previous_name is not None:
+            raise ResidentPreflightError(
+                f"{name} collides with {previous_name}: existing destinations "
+                "share an inode (hard-link alias)"
+            )
+        seen[inode] = name
+
+
 def _validate_destination_collisions(
     destinations: list[tuple[str, Path]],
 ) -> None:
-    """Reject runner artifacts that resolve to equal or nested paths."""
+    """Reject runner artifacts that resolve to equal, nested, or aliased paths."""
     seen: dict[Path, str] = {}
     for name, path in destinations:
         previous_name = seen.get(path)
@@ -1271,12 +1304,13 @@ def _validate_destination_collisions(
                     f"ancestor/descendant pair ({path} and {previous_path})"
                 )
         seen[path] = name
+    _validate_existing_destination_inodes(destinations)
 
 
 def _validate_output_destinations(
     args: argparse.Namespace,
 ) -> tuple[Path, Path | None]:
-    """Check and resolve every path the runner may write before importing TTNN."""
+    """Resolve output paths and check collisions without mutating their parents."""
     destinations = [("output", args.out)]
     if args.raw_timestamps_out is not None:
         destinations.append(("raw timestamp output", args.raw_timestamps_out))
@@ -1285,13 +1319,23 @@ def _validate_output_destinations(
         for name, path in destinations
     ]
     _validate_destination_collisions(validated_destinations)
-    for name, safe_path in validated_destinations:
-        if not _output_destination_writable(safe_path):
-            raise ResidentPreflightError(f"{name} destination is not writable")
     return (
         validated_destinations[0][1],
         validated_destinations[1][1] if len(validated_destinations) > 1 else None,
     )
+
+
+def _validate_output_writability(
+    output_destinations: tuple[Path, Path | None],
+) -> None:
+    """Probe output destinations only after all protected paths are collision-checked."""
+    output_path, raw_timestamps_path = output_destinations
+    destinations = [("output", output_path)]
+    if raw_timestamps_path is not None:
+        destinations.append(("raw timestamp output", raw_timestamps_path))
+    for name, safe_path in destinations:
+        if not _output_destination_writable(safe_path):
+            raise ResidentPreflightError(f"{name} destination is not writable")
 
 
 def _validate_live_power_trace_source(path: Path) -> None:
@@ -1369,6 +1413,39 @@ def _validate_power_trace_binding(
     return run_id
 
 
+def _power_trace_artifact_paths(run_id: str) -> tuple[Path, Path]:
+    """Return the wrapper-bound live and snapshot artifact paths for one run."""
+    runner_output_dir = _runner_output_dir()
+    expected_power_trace = run_artifact_path(
+        runner_output_dir, prefix="power-", suffix=".csv", run_id=run_id
+    )
+    snapshot_path = runner_output_dir / (
+        f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
+    )
+    return expected_power_trace, snapshot_path
+
+
+def _protected_power_trace_destinations(
+    power_trace: str | None,
+    environment: Mapping[str, Any],
+) -> tuple[Path, ...]:
+    """Return safe paths that must not receive a rejection record."""
+    if power_trace is None:
+        return ()
+    wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    captured_run_id = (
+        environment.get("run_id") if isinstance(environment, Mapping) else None
+    )
+    if wrapper_run_id is None and captured_run_id is None:
+        return ()
+    run_id = current_run_id() if wrapper_run_id is not None else captured_run_id
+    live_path, snapshot_path = _power_trace_artifact_paths(run_id)
+    return (
+        _safe_output_path(live_path, description="power trace source"),
+        _safe_output_path(snapshot_path, description="power trace snapshot destination"),
+    )
+
+
 def _validate_power_trace_preflight(
     power_trace: str | None,
     *,
@@ -1382,19 +1459,13 @@ def _validate_power_trace_preflight(
     if run_id is None:
         return
 
-    runner_output_dir = _runner_output_dir()
-    expected_power_trace = run_artifact_path(
-        runner_output_dir, prefix="power-", suffix=".csv", run_id=run_id
-    )
+    expected_power_trace, snapshot_path = _power_trace_artifact_paths(run_id)
     if power_trace != expected_power_trace.name:
         raise RunBindingError(
             "power trace binding rejected: name is not the current run artifact"
         )
     safe_power_trace_path = _safe_output_path(
         expected_power_trace, description="power trace source"
-    )
-    snapshot_path = runner_output_dir / (
-        f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
     )
     safe_snapshot_path = _safe_output_path(
         snapshot_path, description="power trace snapshot destination"
@@ -1435,15 +1506,35 @@ def _write_rejection_if_possible(
     config: ResidentConfig,
     environment: Mapping[str, Any],
     reason: str,
+    power_trace: str | None = None,
+    raw_timestamps_path: Path | None = None,
 ) -> None:
-    """Write a rejection only when the destination passed the writable check."""
+    """Write a rejection only when no protected artifact would be truncated."""
     try:
         safe_output_path = _safe_output_path(
             output_path, description="output destination"
         )
+        protected_destinations = [
+            ("protected power trace artifact", path)
+            for path in _protected_power_trace_destinations(power_trace, environment)
+        ]
+        _validate_destination_collisions(
+            [("output", safe_output_path), *protected_destinations]
+        )
+        if raw_timestamps_path is not None:
+            try:
+                safe_raw_path = _safe_output_path(
+                    raw_timestamps_path, description="raw timestamp output destination"
+                )
+            except ResidentPreflightError:
+                safe_raw_path = None
+            if safe_raw_path is not None:
+                _validate_existing_destination_inodes(
+                    [("output", safe_output_path), ("raw timestamp output", safe_raw_path)]
+                )
         if _output_destination_writable(safe_output_path):
             _write(
-                output_path,
+                safe_output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
@@ -2097,6 +2188,7 @@ def main(argv: list[str] | None = None) -> int:
             environment=environment,
             output_destinations=(output_path, raw_timestamps_path),
         )
+        _validate_output_writability((output_path, raw_timestamps_path))
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
@@ -2122,7 +2214,12 @@ def main(argv: list[str] | None = None) -> int:
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (OSError, TypeError, ValueError) as exc:
         _write_rejection_if_possible(
-            output_path, config=config, environment=environment, reason=str(exc)
+            output_path,
+            config=config,
+            environment=environment,
+            reason=str(exc),
+            power_trace=power_trace,
+            raw_timestamps_path=raw_timestamps_path,
         )
         return 2
 
