@@ -195,6 +195,16 @@ def _finite_positive(value: Any, name: str) -> float:
     return converted
 
 
+def validate_measurement_target_seconds(value: Any) -> float:
+    """Validate the bounded target used for a loaded measurement run."""
+    target = _finite_positive(value, "target_seconds")
+    if target > MAX_MEASUREMENT_TARGET_SECONDS:
+        raise LoadConfigurationError(
+            "target_seconds must be <= 500 seconds for the 600-second run cap"
+        )
+    return target
+
+
 def _uint64(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 1 << 64:
         raise LoadEvidenceError(f"{name} must be an unsigned 64-bit integer")
@@ -431,11 +441,7 @@ def _validate_calibration_basics(calibration: CalibrationMetadata) -> None:
     if not isinstance(calibration.source, str) or not calibration.source.strip():
         raise LoadConfigurationError("calibration source must be a non-empty string")
     if calibration.target_seconds is not None:
-        target = _finite_positive(calibration.target_seconds, "target_seconds")
-        if target > MAX_MEASUREMENT_TARGET_SECONDS:
-            raise LoadConfigurationError(
-                "target_seconds must be <= 500 seconds for the 600-second run cap"
-            )
+        validate_measurement_target_seconds(calibration.target_seconds)
     _finite_positive(calibration.safety_factor, "safety_factor")
     if not isinstance(calibration.throughput_reference_aiclk_source, str) or not calibration.throughput_reference_aiclk_source.strip():
         raise LoadConfigurationError(
@@ -702,11 +708,7 @@ def choose_repeat_count(
     if canonical == "unloaded":
         raise LoadConfigurationError("unloaded control has no load repeat count")
     throughput = _finite_positive(calibration_throughput, "calibration_throughput")
-    target = _finite_positive(target_seconds, "target_seconds")
-    if target > MAX_MEASUREMENT_TARGET_SECONDS:
-        raise LoadConfigurationError(
-            "target_seconds must be <= 500 seconds for the 600-second run cap"
-        )
+    target = validate_measurement_target_seconds(target_seconds)
     factor = _finite_positive(safety_factor, "safety_factor")
     # The calibration observation itself is capped at 60 seconds.
     repeats = max(1, math.ceil(throughput * target * factor))
@@ -2211,6 +2213,7 @@ __all__ = [
     "validate_calibration_load_record",
     "validate_device_open_settings",
     "validate_load_record",
+    "validate_measurement_target_seconds",
     "validate_mode_records",
     "validate_worker_model",
 ]

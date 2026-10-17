@@ -59,6 +59,7 @@ def _environment(*, mode: str = "explicit") -> dict:
         "image_pinned": True,
         "harness_commit": "a" * 40,
         "harness_dirty": False,
+        "harness_pushed": True,
         "tt_env_active_release": "0.75.0",
         "telemetry_sampler": {
             "mode": mode,
@@ -612,7 +613,6 @@ def test_normal_runner_result_contains_outlier_analysis_without_hardware(tmp_pat
             "failure_check": {"code": 0, "name": "none", "source": "none"},
         }
 
-    monkeypatch.setattr(run_resident, "_harness_pushed", lambda _commit: True)
     monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
     monkeypatch.setitem(
         sys.modules,
@@ -665,7 +665,6 @@ def test_runner_completes_legacy_default_sampler_once_and_reuses_it(tmp_path, mo
             "failure_check": {"code": 0, "name": "none", "source": "none"},
         }
 
-    monkeypatch.setattr(run_resident, "_harness_pushed", lambda _commit: True)
     monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
     monkeypatch.setitem(
         sys.modules,

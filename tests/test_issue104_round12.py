@@ -136,7 +136,11 @@ def test_capture_environment_shape_is_retained_with_warning_paths(monkeypatch):
     monkeypatch.setattr(
         telemetry,
         "harness_identity",
-        lambda: {"harness_commit": "a" * 40, "harness_dirty": False},
+        lambda: {
+            "harness_commit": "a" * 40,
+            "harness_dirty": False,
+            "harness_pushed": True,
+        },
     )
     environment = telemetry.capture_environment(
         AUDITED_CLOCK_SOURCE_IMAGE,

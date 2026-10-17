@@ -14,7 +14,6 @@ import json
 import math
 import os
 import struct
-import subprocess
 import sys
 import tempfile
 import threading
@@ -62,6 +61,7 @@ from enodia.tt.bench.load_harness import (
     build_load_record,
     calibration_metadata,
     predicted_load_time_seconds,
+    validate_measurement_target_seconds,
 )
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
@@ -1170,33 +1170,6 @@ def _runner_output_dir() -> Path:
     return Path("/out")
 
 
-def _harness_pushed(commit: Any) -> bool:
-    """Return whether the current committed harness revision is remotely reachable."""
-    if not isinstance(commit, str) or not commit.strip():
-        return False
-    repository = Path(__file__).resolve().parents[3]
-    try:
-        head = subprocess.run(
-            ("git", "-C", str(repository), "rev-parse", "HEAD"),
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if head.returncode != 0 or head.stdout.strip() != commit:
-            return False
-        remote = subprocess.run(
-            ("git", "-C", str(repository), "branch", "--remotes", "--contains", commit),
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return remote.returncode == 0 and bool(remote.stdout.strip())
-
-
 _OUTPUT_PATH_RESOLUTION_ERROR = "path cannot be resolved"
 _OUTPUT_PATH_TRUST_ERROR = "must be beneath the current, temporary, or /out directory"
 
@@ -1265,6 +1238,71 @@ def _validate_output_destinations(
         validated_destinations[0],
         validated_destinations[1] if len(validated_destinations) > 1 else None,
     )
+
+
+def _validate_power_trace_preflight(
+    power_trace: str | None, *, environment: Mapping[str, Any]
+) -> None:
+    """Validate wrapper-owned trace and snapshot destinations without reading data."""
+    if power_trace is None:
+        return
+
+    # A caller that invokes the runner directly has no wrapper identity and
+    # retains the historical unbound-trace compatibility path.  Once either
+    # the process or captured environment carries a wrapper identity, both
+    # identities must agree and all run-owned paths are checked before TTNN.
+    wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    captured_run_id = environment.get("run_id")
+    looks_wrapper_bound = (
+        isinstance(power_trace, str)
+        and power_trace.startswith("power-")
+        and power_trace.endswith(".csv")
+    )
+    if wrapper_run_id is None:
+        if captured_run_id is not None or looks_wrapper_bound:
+            raise RunBindingError(
+                "power trace binding rejected: HEKATUS_TT_RUN_ID is missing"
+            )
+        return
+    try:
+        run_id = current_run_id()
+    except ValueError as exc:
+        raise RunBindingError(
+            "power trace binding rejected: HEKATUS_TT_RUN_ID is invalid"
+        ) from exc
+    if captured_run_id is not None and captured_run_id != run_id:
+        raise RunBindingError(
+            "power trace binding rejected: captured run identity does not match"
+        )
+
+    runner_output_dir = _runner_output_dir()
+    expected_power_trace = run_artifact_path(
+        runner_output_dir, prefix="power-", suffix=".csv", run_id=run_id
+    )
+    if power_trace != expected_power_trace.name:
+        raise RunBindingError(
+            "power trace binding rejected: name is not the current run artifact"
+        )
+    snapshot_path = runner_output_dir / (
+        f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
+    )
+    safe_snapshot_path = _safe_output_path(
+        snapshot_path, description="power trace snapshot destination"
+    )
+    if (
+        snapshot_path.exists()
+        or snapshot_path.is_symlink()
+        or safe_snapshot_path.exists()
+        or safe_snapshot_path.is_symlink()
+    ):
+        raise FileExistsError(
+            "power trace snapshot installation rejected: destination already exists: "
+            f"{safe_snapshot_path.name}"
+        )
+    if not _output_destination_writable(safe_snapshot_path):
+        raise ResidentPreflightError(
+            "power trace snapshot destination is not writable"
+        )
 
 
 def _write_rejection_if_possible(
@@ -1836,6 +1874,7 @@ def _select_calibration_execution(
         raise LoadConfigurationError("calibration repeat-count must be a positive integer")
     if args.calibration_duration_seconds <= 0 or args.calibration_duration_seconds > 60:
         raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
+    validate_measurement_target_seconds(getattr(args, "target_seconds", 500.0))
     return condition, repeat_count, None
 
 
@@ -1912,13 +1951,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         validate_harness_preflight(
             environment,
-            pushed=_harness_pushed(environment.get("harness_commit")),
+            pushed=environment.get("harness_pushed"),
         )
+        _validate_power_trace_preflight(power_trace, environment=environment)
         sampler = environment["telemetry_sampler"]
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
         if args.calibrate:
+            # Validate caller operands before bounding performs division by the
+            # frame interval, then validate the bounded schedule again below.
+            if condition in {"newton_schulz", "dram"}:
+                config = validate_configuration(
+                    config, watcher=watcher, load_condition=condition
+                )
+            else:
+                config = validate_configuration(config, watcher=watcher)
             config = _bound_calibration_config(config, args.calibration_duration_seconds)
         if condition in {"newton_schulz", "dram"}:
             config = validate_configuration(
