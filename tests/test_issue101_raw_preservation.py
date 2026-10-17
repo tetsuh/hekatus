@@ -1,6 +1,7 @@
 import hashlib
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -268,6 +269,22 @@ def test_issue101_close_exception_persists_rows_before_reraise(monkeypatch, tmp_
     assert raw["run"]["cleanup"]["close_succeeded"] is False
 
 
+def test_issue102_keyboard_interrupt_closes_open_device_once(monkeypatch):
+    device = object()
+    close_calls = []
+
+    def interrupt(*args, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(issue101, "run_issue101_combined", interrupt)
+    ttnn = SimpleNamespace(close_device=lambda closed: close_calls.append(closed))
+
+    with pytest.raises(KeyboardInterrupt):
+        issue101._run_open_device_session(ttnn, device)
+
+    assert close_calls == [device]
+
+
 def test_issue101_record_construction_exception_preserves_raw_failure_metadata(
     monkeypatch, tmp_path
 ):
@@ -301,6 +318,52 @@ def test_issue101_record_construction_exception_preserves_raw_failure_metadata(
     raw_path = output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
     recovered = issue101.recover_combined_record(raw_path)
     assert recovered["status"] == "pass"
+
+
+def _write_legacy_builder_failure_raw(output_dir):
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    failure = {
+        "stage": "record_construction",
+        "error": "RuntimeError: legacy builder failure",
+    }
+    payload["artifact_status"] = "failed"
+    payload["failure"] = failure
+    payload["run"]["status"] = "failed"
+    payload["run"]["failure_stage"] = "record_construction"
+    payload["run"]["error"] = failure["error"]
+    payload["run"]["failure"] = failure
+    raw_path.write_text(json.dumps(payload))
+    return raw_path
+
+
+def test_issue102_legacy_builder_failure_payload_recovers_board_free():
+    raw_path = Path(__file__).parent / "fixtures/issue101/legacy-builder-failure.json"
+
+    record = issue101.recover_combined_record(raw_path)
+
+    assert record["status"] == "pass"
+    assert len(record["measurement"]["correctness_cases"]) == 9
+    assert len(record["measurement"]["performance_rows"]) == 4
+    assert json.loads(raw_path.read_text())["run"]["status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "failure_stage",
+    ["open", "device_session", "correctness", "performance", "telemetry", "close"],
+)
+def test_issue102_legacy_recovery_rejects_non_builder_failure(tmp_path, failure_stage):
+    raw_path = _write_legacy_builder_failure_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    failure = {"stage": failure_stage, "error": f"{failure_stage} failure"}
+    payload["run"].update(
+        {"failure_stage": failure_stage, "error": failure["error"], "failure": failure}
+    )
+    payload["failure"] = failure
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=failure_stage):
+        issue101.recover_combined_record(raw_path)
 
 
 def _write_rebuild_raw(
@@ -681,6 +744,78 @@ def test_issue102_recovery_rejects_conflicting_environment_aliases(
         issue101.recover_combined_record(raw_path)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("image", "registry.example/other@sha256:" + "b" * 64),
+        ("image_pinned", False),
+        ("kernel", "Linux conflicting"),
+        ("kmd_version", "conflicting-kmd"),
+        ("tt_env_active_release", "conflicting-release"),
+        ("harness_commit", "b" * 40),
+        ("harness_dirty", True),
+        ("captured_at", "2020-02-03T04:05:07+00:00"),
+        ("python", "3.10.0"),
+        ("run_id", "other-run"),
+    ],
+    ids=[
+        "image",
+        "image-pinned",
+        "kernel",
+        "kmd-version",
+        "toolchain-release",
+        "harness-commit",
+        "harness-dirty",
+        "captured-at",
+        "python",
+        "run-id",
+    ],
+)
+def test_issue102_recovery_rejects_raw_normalized_scalar_conflicts(
+    tmp_path, field, value
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["environment"][field] = value
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize("field", ["board_type", "board_id", "serial"])
+def test_issue102_recovery_rejects_raw_normalized_board_conflicts(tmp_path, field):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["environment"]["board_info"][field] = "conflicting-board"
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_rejects_raw_normalized_firmware_conflict(tmp_path):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["environment"]["firmwares"]["fw_bundle_version"] = (
+        "conflicting-firmware"
+    )
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="firmware"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize("field", ["captured_at", "python"])
+def test_issue102_recovery_allows_omitted_optional_raw_environment_fields(tmp_path, field):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    del payload["telemetry"]["environment"][field]
+    raw_path.write_text(json.dumps(payload))
+
+    assert issue101.recover_combined_record(raw_path)["run_id"] == "captured-run"
+
+
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "unexpected", "out-of-order"])
 def test_issue102_rebuild_rejects_invalid_performance_row_identity(tmp_path, mutation):
     output_dir = tmp_path / "device-output"
@@ -873,6 +1008,64 @@ def test_issue102_rebuild_cli_canonicalizes_absolute_cli_paths(tmp_path, monkeyp
         == 0
     )
     assert json.loads((tmp_path / "rebuilt.json").read_text())["run_id"] == "captured-run"
+
+
+@pytest.mark.parametrize(
+    "alias_kind",
+    ["missing-parent", "nested-missing", "regular-file-parent"],
+    ids=["missing-parent", "nested-missing", "regular-file-parent"],
+)
+def test_issue102_rebuild_cli_rejects_existing_destination_aliases(
+    tmp_path, alias_kind
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    existing = tmp_path / "existing.json"
+    original = b"do not overwrite\n"
+    existing.write_bytes(original)
+    if alias_kind == "missing-parent":
+        output = tmp_path / "missing" / ".." / existing.name
+    elif alias_kind == "nested-missing":
+        output = tmp_path / "missing" / "nested" / ".." / ".." / existing.name
+    else:
+        regular_file = tmp_path / "regular-file"
+        regular_file.write_text("not a directory")
+        output = regular_file / ".." / existing.name
+
+    with pytest.raises(SystemExit) as excinfo:
+        issue101.main(
+            [
+                "--recover-raw",
+                str(raw_path),
+                "--output",
+                str(output),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert existing.read_bytes() == original
+
+
+def test_issue102_rebuild_cli_rejects_dangling_output_symlink(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    output = tmp_path / "output.json"
+    target = tmp_path / "missing-target" / "rebuilt.json"
+    output.symlink_to(target)
+
+    with pytest.raises(SystemExit) as excinfo:
+        issue101.main(
+            [
+                "--recover-raw",
+                str(raw_path),
+                "--output",
+                str(output),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert output.is_symlink()
+    assert not target.exists()
 
 
 def test_issue102_rebuild_cli_does_not_overwrite_raw_input(tmp_path):

@@ -1933,6 +1933,66 @@ def _validate_raw_header(
     return payload_run_id, artifact_file
 
 
+def _validate_raw_environment_consistency(
+    raw_environment: dict, normalized_environment: dict
+) -> None:
+    """Reject contradictions between the two saved environment projections."""
+    scalar_fields = (
+        "image",
+        "image_pinned",
+        "kernel",
+        "kmd_version",
+        "tt_env_active_release",
+        "harness_commit",
+        "harness_dirty",
+        "captured_at",
+        "python",
+        "run_id",
+    )
+    for field in scalar_fields:
+        if field not in raw_environment or field not in normalized_environment:
+            continue
+        raw_value = raw_environment[field]
+        normalized_value = normalized_environment[field]
+        if type(raw_value) is not type(normalized_value) or raw_value != normalized_value:
+            raise ValueError(
+                f"raw and normalized environment field {field!r} values disagree"
+            )
+
+    normalized_board = normalized_environment.get("board")
+    raw_boards = (
+        raw_environment.get("board_info"),
+        raw_environment.get("board"),
+    )
+    if isinstance(normalized_board, dict):
+        for raw_board in raw_boards:
+            if not isinstance(raw_board, dict):
+                continue
+            for field in ("board_type", "board_id", "serial"):
+                if field not in raw_board or field not in normalized_board:
+                    continue
+                raw_value = raw_board[field]
+                normalized_value = normalized_board[field]
+                if (
+                    type(raw_value) is not type(normalized_value)
+                    or raw_value != normalized_value
+                ):
+                    raise ValueError(
+                        f"raw and normalized board field {field!r} values disagree"
+                    )
+
+    normalized_firmware = normalized_environment.get("firmware")
+    if isinstance(normalized_firmware, dict):
+        for field in ("firmware", "firmwares"):
+            raw_firmware = raw_environment.get(field)
+            if not isinstance(raw_firmware, dict):
+                continue
+            if raw_firmware != normalized_firmware:
+                raise ValueError(
+                    "raw and normalized firmware mappings disagree"
+                )
+
+
 def _validate_raw_telemetry(payload: dict, *, run_id: str) -> tuple[dict, dict]:
     """Validate captured environment and power provenance from a raw payload."""
     telemetry = payload.get("telemetry")
@@ -1966,6 +2026,7 @@ def _validate_raw_telemetry(payload: dict, *, run_id: str) -> tuple[dict, dict]:
             "raw artifact is missing captured telemetry.normalized_environment"
         )
     _validate_captured_environment(normalized_environment, run_id=run_id)
+    _validate_raw_environment_consistency(raw_environment, normalized_environment)
     power_trace = telemetry.get("power_trace")
     if not isinstance(power_trace, dict):
         raise TypeError("raw artifact is missing power data")
@@ -1995,6 +2056,49 @@ def _validate_raw_results(
         raise ValueError("raw artifact is missing configs.launches_per_row") from None
     _validate_raw_configs(configs, repeats=repeats)
     return correctness_results, performance_results, repeats
+
+
+def _legacy_builder_failure_run(payload: dict, captured_run: dict) -> dict | None:
+    """Project the original v1 builder-only failure into a passing run copy."""
+    if payload.get("artifact_status") != "failed":
+        return None
+    if captured_run.get("status") != "failed":
+        return None
+    if captured_run.get("failure_stage") != "record_construction":
+        return None
+    failure = captured_run.get("failure")
+    if not isinstance(failure, dict) or failure.get("stage") != "record_construction":
+        return None
+    if "prior_failure" in failure:
+        return None
+    if captured_run.get("secondary_failures"):
+        return None
+
+    artifact_failure = payload.get("failure")
+    if not isinstance(artifact_failure, dict):
+        return None
+    if artifact_failure.get("stage") != "record_construction":
+        return None
+    if "prior_failure" in artifact_failure:
+        return None
+    if payload.get("secondary_failures"):
+        return None
+
+    telemetry = payload.get("telemetry")
+    if not isinstance(telemetry, dict) or telemetry.get("failures"):
+        return None
+    cleanup = captured_run.get("cleanup")
+    if isinstance(cleanup, dict) and (
+        cleanup.get("device_opened") is False
+        or cleanup.get("close_attempted") is False
+        or cleanup.get("close_succeeded") is False
+        or cleanup.get("close_error") is not None
+    ):
+        return None
+
+    projected_run = dict(captured_run)
+    projected_run["status"] = "pass"
+    return projected_run
 
 
 def _validate_raw_selected_run(
@@ -2030,7 +2134,9 @@ def _validate_raw_selected_run(
             raise ValueError("raw recovery_run is not a complete passing run")
         selected_run = recovery_run
     else:
-        selected_run = captured_run
+        selected_run = _legacy_builder_failure_run(payload, captured_run)
+        if selected_run is None:
+            selected_run = captured_run
     if selected_run.get("status") != "pass":
         stage = selected_run.get("failure_stage", "unknown")
         raise ValueError(
@@ -2116,19 +2222,27 @@ def recover_combined_record(
 
 
 def _reject_rebuild_destination(
-    source: Path, selected_path: Path, destination: Path
+    source: Path,
+    selected_path: Path,
+    destination: Path,
+    *,
+    original_destination: Path | None = None,
 ) -> None:
     """Refuse to replace raw inputs or an existing record during rebuild."""
-    destination_resolved = destination.resolve()
+    destination_resolved = Path(destination).resolve(strict=False)
     raw_paths = [selected_path]
     if source.is_dir():
         raw_paths = sorted(source.glob(ISSUE101_RAW_OUTPUT_GLOB))
     for raw_path in raw_paths:
-        if destination_resolved == raw_path.resolve():
+        if destination_resolved == raw_path.resolve(strict=False):
             raise ValueError("--output must not overwrite the captured raw artifact")
-    if destination.exists() or destination.is_symlink():
+    if destination.is_symlink() or destination.exists():
         raise FileExistsError(
             f"rebuild output already exists: {destination}; refusing to overwrite"
+        )
+    if original_destination is not None and original_destination.is_symlink():
+        raise FileExistsError(
+            f"rebuild output already exists: {original_destination}; refusing to overwrite"
         )
 
 
@@ -2160,7 +2274,12 @@ def _recover_from_raw_cli(
             safe_source, run_id=run_id
         )
         record = _record_from_raw_payload(selected_path, payload, run_id=run_id)
-        _reject_rebuild_destination(safe_source, selected_path, output)
+        _reject_rebuild_destination(
+            safe_source,
+            selected_path,
+            safe_output,
+            original_destination=output,
+        )
         _atomic_json_write(safe_output, record)
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         parser.error(str(exc))
@@ -2173,36 +2292,51 @@ def _run_open_device_session(
 ) -> tuple[dict, BaseException | None]:
     """Run one opened device session and close it before publishing its result."""
     close_error: BaseException | None = None
+    pending_exception: BaseException | None = None
+    run: dict = {}
     try:
-        run = run_issue101_combined(ttnn, device, repeats=ISSUE100_LAUNCHES)
-    except Exception as exc:  # noqa: BLE001 - preserve the session result
-        run = _initial_failed_run("device_session", exc)
-    cleanup = dict(run.get("cleanup", {}))
-    cleanup.update(
-        {
-            "device_opened": True,
-            "close_attempted": True,
-        }
-    )
-    try:
-        ttnn.close_device(device)
-    except Exception as exc:  # noqa: BLE001 - persist before re-raise
-        close_error = exc
-        run = _mark_run_failed(
-            run,
-            "close",
-            exc,
-            replace_existing=True,
-        )
+        try:
+            run = run_issue101_combined(ttnn, device, repeats=ISSUE100_LAUNCHES)
+        except Exception as exc:  # noqa: BLE001 - preserve the session result
+            run = _initial_failed_run("device_session", exc)
+        except BaseException as exc:  # noqa: BLE001 - close before propagating control flow
+            pending_exception = exc
+    finally:
+        cleanup = dict(run.get("cleanup", {})) if pending_exception is None else {}
         cleanup.update(
             {
-                "close_succeeded": False,
-                "close_error": _error_text(exc),
+                "device_opened": True,
+                "close_attempted": True,
             }
         )
-    else:
-        cleanup["close_succeeded"] = True
-    run["cleanup"] = cleanup
+        try:
+            ttnn.close_device(device)
+        except Exception as exc:  # noqa: BLE001 - persist before re-raise
+            if pending_exception is not None:
+                pending_exception.add_note(
+                    f"close_device failed during propagation: {_error_text(exc)}"
+                )
+            else:
+                close_error = exc
+                run = _mark_run_failed(
+                    run,
+                    "close",
+                    exc,
+                    replace_existing=True,
+                )
+                cleanup.update(
+                    {
+                        "close_succeeded": False,
+                        "close_error": _error_text(exc),
+                    }
+                )
+        else:
+            cleanup["close_succeeded"] = True
+        if pending_exception is None:
+            run["cleanup"] = cleanup
+
+    if pending_exception is not None:
+        raise pending_exception
     return run, close_error
 
 
