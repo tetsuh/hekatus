@@ -563,6 +563,29 @@ def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
         issue101.recover_combined_record(raw_path)
 
 
+@pytest.mark.parametrize("field", ["power_w", "aiclk_mhz", "asic_temp_c"])
+def test_issue102_recovery_rejects_boolean_power_sample_values(tmp_path, field):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["power_trace"]["samples"][0][field] = True
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=rf"field {field!r} is not numeric"):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_rejects_oversized_json_integer(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["power_trace"]["samples"][0]["power_w"] = 10**309
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="field 'power_w' is not numeric"):
+        issue101.recover_combined_record(raw_path)
+
+
 @pytest.mark.parametrize(
     ("field", "bad_value"),
     [

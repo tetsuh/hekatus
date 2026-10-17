@@ -1247,9 +1247,14 @@ def _validate_captured_power_sample(
         field=f"captured power trace sample {index} timestamp_utc",
     )
     for field in ("power_w", "aiclk_mhz", "asic_temp_c"):
+        value = sample[field]
+        if isinstance(value, bool):
+            raise ValueError(  # noqa: TRY004 - bool is invalid for captured numeric fields
+                f"captured power trace sample {index} field {field!r} is not numeric"
+            )
         try:
-            numeric_value = float(sample[field])
-        except (TypeError, ValueError) as exc:
+            numeric_value = float(value)
+        except (OverflowError, TypeError, ValueError) as exc:
             raise ValueError(
                 f"captured power trace sample {index} field {field!r} is not numeric"
             ) from exc
