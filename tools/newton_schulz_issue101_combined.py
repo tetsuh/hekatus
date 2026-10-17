@@ -1742,12 +1742,23 @@ def _reject_json_constant(value: str) -> NoReturn:
     raise ValueError(f"invalid JSON constant {value!r}")
 
 
+def _reject_duplicate_json_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Reject repeated decoded member names in each JSON object."""
+    object_value: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in object_value:
+            raise ValueError(f"duplicate JSON object member {key!r}")
+        object_value[key] = value
+    return object_value
+
+
 def _load_strict_json_object(path: Path) -> dict:
-    """Read one canonical raw path without accepting non-JSON numeric constants."""
+    """Read one canonical raw path without non-JSON numeric constants or duplicates."""
     safe_path = Path(path).resolve(strict=False)
     try:
         payload = json.loads(
             safe_path.read_text(),
+            object_pairs_hook=_reject_duplicate_json_members,
             parse_constant=_reject_json_constant,
         )
     except (OSError, TypeError, ValueError) as exc:

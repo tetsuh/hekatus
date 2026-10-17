@@ -458,6 +458,63 @@ def _write_rebuild_raw(
     return raw_path, telemetry
 
 
+@pytest.mark.parametrize(
+    ("first_value", "second_value"),
+    [("first-run", "second-run"), ("second-run", "first-run")],
+    ids=["first-then-second", "second-then-first"],
+)
+def test_issue102_recovery_rejects_duplicate_root_run_id_in_either_order(
+    tmp_path, first_value, second_value
+):
+    raw_path = tmp_path / "duplicate-root.json"
+    raw_path.write_text(
+        "{\n"
+        f'  "raw_schema": "{issue101.ISSUE101_RAW_SCHEMA}",\n'
+        f'  "run_id": "{first_value}",\n'
+        f'  "run_id": "{second_value}"\n'
+        "}\n"
+    )
+
+    with pytest.raises(ValueError, match="duplicate JSON object member 'run_id'"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("container", "member"),
+    [("run", "run_id"), ("board_serial_identity", "serial")],
+    ids=["run-id", "board-identity"],
+)
+def test_issue102_recovery_rejects_duplicate_nested_members(
+    tmp_path, container, member
+):
+    raw_path = tmp_path / "duplicate-nested.json"
+    raw_path.write_text(
+        "{\n"
+        f'  "{container}": {{\n'
+        f'    "{member}": "first",\n'
+        f'    "{member}": "second"\n'
+        "  }\n"
+        "}\n"
+    )
+
+    with pytest.raises(ValueError, match=f"duplicate JSON object member {member!r}"):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_rejects_escaped_equivalent_member_names(tmp_path):
+    raw_path = tmp_path / "duplicate-escaped.json"
+    raw_path.write_text(
+        "{\n"
+        f'  "raw_schema": "{issue101.ISSUE101_RAW_SCHEMA}",\n'
+        '  "run_id": "plain",\n'
+        '  "run\\u005fid": "escaped"\n'
+        "}\n"
+    )
+
+    with pytest.raises(ValueError, match="duplicate JSON object member 'run_id'"):
+        issue101.recover_combined_record(raw_path)
+
+
 def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
     output_dir = tmp_path / "device-output"
     raw_path, telemetry = _write_rebuild_raw(output_dir)
