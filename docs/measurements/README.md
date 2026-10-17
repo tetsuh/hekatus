@@ -57,6 +57,11 @@ rejected. The raw input is never overwritten; the power filename in the rebuilt
 ADR-0005 record is provenance from the saved raw value, not a request to reread
 a mutable capture file.
 
+The live legacy power sampler publishes an atomically replaced
+`<power-csv>.complete` sidecar containing only `sha256:<digest>`, and does so
+only after intentional shutdown. Unmarked unterminated terminal rows are
+excluded; the self-contained raw artifact remains the rebuild input.
+
 ## Issue #118 board-free calibration configuration
 
 The board-free CLI emits one calibration record or one run configuration and

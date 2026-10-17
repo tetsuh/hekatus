@@ -1,9 +1,11 @@
+import hashlib
 import json
 import sys
 from types import SimpleNamespace
 
 import pytest
 
+from enodia.tt.bench.sampler_contract import power_trace_completion_marker_path
 from tools import newton_schulz_issue101_combined as issue101
 
 
@@ -364,7 +366,7 @@ def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
     ],
     ids=["missing-final-field", "trailing-delimiter", "partial-numeric-fragment"],
 )
-def test_issue102_live_capture_drops_only_terminal_incomplete_power_row(
+def test_issue102_live_capture_drops_unmarked_terminal_incomplete_power_row(
     tmp_path, terminal_row
 ):
     output_dir = tmp_path / "device-output"
@@ -436,6 +438,23 @@ def test_issue102_live_capture_keeps_line_terminated_short_power_row(tmp_path):
 
     with pytest.raises(ValueError, match="not numeric"):
         issue101._validate_captured_power_trace(trace, run_id=run_id)
+
+
+def test_issue102_live_capture_retains_marked_complete_unterminated_power_row(tmp_path):
+    run_id = "live-run"
+    path = tmp_path / f"power-{run_id}.csv"
+    path.write_bytes(
+        b"timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        b"2020-02-03T04:05:06+00:00,75,1350,60.0\n"
+        b"2020-02-03T04:05:08+00:00,75,1350,60.0"
+    )
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    power_trace_completion_marker_path(path).write_text(f"sha256:{digest}\n")
+
+    trace = issue101._power_trace_artifact(path, run_id=run_id)
+
+    assert len(trace["samples"]) == 2
+    issue101._validate_captured_power_trace(trace, run_id=run_id)
 
 
 @pytest.mark.parametrize(

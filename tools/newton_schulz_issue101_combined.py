@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime
+import hashlib
 import inspect
 import io
 import json
@@ -28,6 +29,10 @@ from enodia.tt.bench.newton_schulz_reference import (
     initial_value,
     newton_schulz_reference,
     random_hpd_batch,
+)
+from enodia.tt.bench.sampler_contract import (
+    POWER_TRACE_COMPLETION_MARKER_PREFIX,
+    power_trace_completion_marker_path,
 )
 from tools.newton_schulz_issue100_same_run import (
     ISSUE100_COMPARISON_CONFIGS,
@@ -728,6 +733,21 @@ def _environment_from_output(output_dir: Path, *, run_id: str | None = None) -> 
     return _environment_artifact(output_dir, run_id=run_id)[2]
 
 
+def _power_trace_has_completion_marker(path: Path, raw_contents: bytes) -> bool:
+    """Return whether the producer certified these exact CSV bytes as complete."""
+    marker = power_trace_completion_marker_path(path)
+    try:
+        value = marker.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeError):
+        return False
+    if not value.startswith(POWER_TRACE_COMPLETION_MARKER_PREFIX):
+        return False
+    digest = value[len(POWER_TRACE_COMPLETION_MARKER_PREFIX) :]
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        return False
+    return digest == hashlib.sha256(raw_contents).hexdigest()
+
+
 def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
     """Read a complete wrapper CSV and bind it to the selected session."""
     identities = _artifact_run_ids(path, "power")
@@ -739,8 +759,9 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
                 f"power trace {path.name} is for run_id {artifact_run_id!r}, "
                 f"not {run_id!r}"
             )
-    with path.open(newline="") as source:
-        contents = source.read()
+    with path.open("rb") as source:
+        raw_contents = source.read()
+    contents = raw_contents.decode()
     with io.StringIO(contents, newline="") as handle:
         reader = csv.DictReader(handle)
         if tuple(reader.fieldnames or ()) != ISSUE101_POWER_COLUMNS:
@@ -748,9 +769,16 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
                 f"power trace {path.name} has unexpected columns {reader.fieldnames!r}"
             )
         rows = list(reader)
-        if rows and None not in rows[-1] and not contents.endswith(("\n", "\r")):
-            # SIGTERM can leave the terminal row partial at EOF; a line-terminated
-            # malformed row and an extra-field row must remain visible for rejection.
+        if (
+            rows
+            and None not in rows[-1]
+            and not contents.endswith(("\n", "\r"))
+            and not _power_trace_has_completion_marker(path, raw_contents)
+        ):
+            # A bare terminal line is ambiguous: a complete CSV row and a write
+            # interrupted in its final numeric field have identical bytes.  The
+            # live sampler binds the former with a hash marker after closing the
+            # file; unmarked terminal rows remain excluded from raw provenance.
             rows.pop()
         samples = [dict(row) for row in rows]
     if not samples:

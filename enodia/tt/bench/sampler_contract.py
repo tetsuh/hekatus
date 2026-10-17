@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -42,8 +43,17 @@ EXPLICIT_FINAL_SAMPLE = "explicit_final_sample"
 COVERAGE_DEFINITIONS = (ONE_INTERVAL_BOUND, EXPLICIT_FINAL_SAMPLE)
 MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS = 0.1
 MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS = 3_600.0
+# Completion evidence is a sidecar so the legacy four-column CSV schema stays unchanged.
+POWER_TRACE_COMPLETION_MARKER_PREFIX = "sha256:"
+POWER_TRACE_COMPLETION_MARKER_SUFFIX = ".complete"
 
 _MISSING = object()
+
+
+def power_trace_completion_marker_path(path: str | Path) -> Path:
+    """Return the sidecar that certifies one fully published power trace."""
+    path = Path(path)
+    return path.with_name(path.name + POWER_TRACE_COMPLETION_MARKER_SUFFIX)
 
 
 def _is_finite_number(value: Any) -> bool:
@@ -126,7 +136,10 @@ __all__ = [
     "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "ONE_INTERVAL_BOUND",
+    "POWER_TRACE_COMPLETION_MARKER_PREFIX",
+    "POWER_TRACE_COMPLETION_MARKER_SUFFIX",
     "SAMPLER_CONTRACT",
     "SAMPLER_MODES",
     "normalize_sampler_metadata",
+    "power_trace_completion_marker_path",
 ]
