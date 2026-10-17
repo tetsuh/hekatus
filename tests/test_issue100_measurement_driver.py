@@ -265,6 +265,7 @@ def _dummy_combined_run(repeats: int = 3) -> dict:
                     "status": "ok",
                     "shape_name": shape,
                     "comparison_config": dict(config),
+                    "launches_measured": repeats,
                     "seconds_per_launch_samples": samples,
                     "seconds_per_launch_p50": samples[1],
                     "seconds_per_launch_p99": samples[-1],

@@ -980,6 +980,18 @@ def _validate_performance_rows(
             raise ValueError(
                 f"performance row {index} has unexpected shape/config identity"
             )
+        if "launches_measured" not in row:
+            raise ValueError(f"performance row {index} lacks launches_measured")
+        launches_measured = row["launches_measured"]
+        if (
+            isinstance(launches_measured, bool)
+            or not isinstance(launches_measured, int)
+            or launches_measured != repeats
+        ):
+            raise ValueError(
+                f"performance row {index} launches_measured {launches_measured!r} "
+                f"does not match repeats {repeats}"
+            )
         samples = row.get("seconds_per_launch_samples")
         if not isinstance(samples, list) or len(samples) != repeats:
             raise ValueError(f"performance row {index} lacks all {repeats} launch samples")
@@ -995,6 +1007,9 @@ def _validate_performance_rows(
             "seconds_per_launch_p50",
             "seconds_per_launch_p99",
             "seconds_per_launch_p99_9",
+            "flops_per_iteration",
+            "tflops_p50_derived",
+            "tflops_fastest_launch_derived",
         ):
             if field not in row:
                 raise ValueError(f"performance row {index} lacks {field}")
@@ -1061,6 +1076,12 @@ def _validate_environment_metadata(environment: dict) -> None:
             raise ValueError(
                 f"captured normalized_environment field {field!r} must be a non-empty string"
             )
+    if environment["kernel"] != environment["host_kernel"]:
+        raise ValueError("captured kernel and host_kernel aliases disagree")
+    if environment["kmd_version"] != environment["kernel_driver_version"]:
+        raise ValueError(
+            "captured kmd_version and kernel_driver_version aliases disagree"
+        )
     _validate_captured_timestamp(
         environment["captured_at"], field="captured environment captured_at"
     )

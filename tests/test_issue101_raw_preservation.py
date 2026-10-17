@@ -58,6 +58,7 @@ def _passing_run(repeats=3):
                     "status": "ok",
                     "shape_name": shape,
                     "comparison_config": dict(config),
+                    "launches_measured": repeats,
                     "seconds_per_launch_samples": samples,
                     "seconds_per_launch_p50": samples[-1],
                     "seconds_per_launch_p99": samples[-1],
@@ -555,6 +556,12 @@ def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
         ("seconds_per_launch_p99", -0.1),
         ("seconds_per_launch_p99_9", float("inf")),
         ("seconds_per_launch_p99_9", -0.1),
+        ("flops_per_iteration", None),
+        ("flops_per_iteration", -0.1),
+        ("tflops_p50_derived", float("nan")),
+        ("tflops_p50_derived", -0.1),
+        ("tflops_fastest_launch_derived", float("inf")),
+        ("tflops_fastest_launch_derived", -0.1),
     ],
     ids=[
         "sample-string",
@@ -566,6 +573,12 @@ def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
         "p99-negative",
         "p99_9-infinity",
         "p99_9-negative",
+        "flops-null",
+        "flops-negative",
+        "tflops-p50-nan",
+        "tflops-p50-negative",
+        "tflops-fastest-infinity",
+        "tflops-fastest-negative",
     ],
 )
 def test_issue102_rebuild_rejects_malformed_performance_numbers(
@@ -583,6 +596,47 @@ def test_issue102_rebuild_rejects_malformed_performance_numbers(
 
     with pytest.raises(ValueError, match="finite numeric|non-negative"):
         issue101._record_from_raw_payload(raw_path, payload)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "mismatched"], ids=["missing", "mismatched"])
+def test_issue102_recovery_rejects_missing_or_mismatched_launches_measured(
+    tmp_path, mutation
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    row = payload["performance_results"][0]
+    if mutation == "missing":
+        del row["launches_measured"]
+    else:
+        row["launches_measured"] = 2
+    payload["run"]["performance_rows"] = payload["performance_results"]
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="launches_measured"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("field", "alias_field"),
+    [
+        ("kernel", "host_kernel"),
+        ("kmd_version", "kernel_driver_version"),
+    ],
+    ids=["kernel-host-kernel", "kmd-kernel-driver-version"],
+)
+def test_issue102_recovery_rejects_conflicting_environment_aliases(
+    tmp_path, field, alias_field
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    environment = payload["telemetry"]["normalized_environment"]
+    environment[alias_field] = f"conflicting-{field}"
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=f"{field}|{alias_field}"):
+        issue101.recover_combined_record(raw_path)
 
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "unexpected", "out-of-order"])
