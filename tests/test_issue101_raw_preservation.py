@@ -889,6 +889,90 @@ def test_issue102_recovery_rejects_raw_normalized_firmware_conflict(tmp_path):
         issue101.recover_combined_record(raw_path)
 
 
+@pytest.mark.parametrize(
+    ("location", "field", "value"),
+    [
+        ("raw", "image_digest", "sha256:" + "b" * 64),
+        ("raw", "host_kernel", "Linux conflicting"),
+        ("raw", "kernel_driver_version", "conflicting-driver"),
+        ("raw", "toolchain_release", "conflicting-toolchain"),
+        ("normalized", "image_digest", "sha256:" + "b" * 64),
+        ("normalized", "host_kernel", "Linux conflicting"),
+        ("normalized", "kernel_driver_version", "conflicting-driver"),
+        ("normalized", "toolchain_release", "conflicting-toolchain"),
+    ],
+    ids=[
+        "raw-image-digest",
+        "raw-host-kernel",
+        "raw-kernel-driver-version",
+        "raw-toolchain-release",
+        "normalized-image-digest",
+        "normalized-host-kernel",
+        "normalized-kernel-driver-version",
+        "normalized-toolchain-release",
+    ],
+)
+def test_issue102_recovery_rejects_raw_normalized_scalar_alias_conflicts(
+    tmp_path, location, field, value
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    if location == "normalized":
+        raw_environment[field] = normalized_environment[field]
+        normalized_environment[field] = value
+    else:
+        raw_environment[field] = value
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    "field", ["board_type", "board_id", "serial", "board_serial"]
+)
+def test_issue102_recovery_rejects_normalized_board_info_conflicts(tmp_path, field):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["normalized_environment"]["board_info"][field] = (
+        "conflicting-board"
+    )
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize("location", ["board_info", "board"])
+def test_issue102_recovery_rejects_raw_board_serial_alias_conflicts(tmp_path, location):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    if location == "board_info":
+        raw_environment[location]["board_serial"] = "conflicting-board"
+    else:
+        raw_environment[location] = {"board_serial": "conflicting-board"}
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="board_serial"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize("field", ["fw_bundle_version"])
+def test_issue102_recovery_rejects_normalized_firmwares_conflicts(tmp_path, field):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["normalized_environment"]["firmwares"][field] = (
+        "conflicting-firmware"
+    )
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="firmware"):
+        issue101.recover_combined_record(raw_path)
+
+
 @pytest.mark.parametrize("field", ["captured_at", "python"])
 def test_issue102_recovery_allows_omitted_optional_raw_environment_fields(tmp_path, field):
     raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")

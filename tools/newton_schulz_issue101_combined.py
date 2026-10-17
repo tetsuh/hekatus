@@ -1997,10 +1997,14 @@ def _validate_raw_environment_consistency(
     """Reject contradictions between the two saved environment projections."""
     scalar_fields = (
         "image",
+        "image_digest",
         "image_pinned",
         "kernel",
+        "host_kernel",
         "kmd_version",
+        "kernel_driver_version",
         "tt_env_active_release",
+        "toolchain_release",
         "harness_commit",
         "harness_dirty",
         "captured_at",
@@ -2018,37 +2022,54 @@ def _validate_raw_environment_consistency(
             )
 
     normalized_board = normalized_environment.get("board")
-    raw_boards = (
-        raw_environment.get("board_info"),
-        raw_environment.get("board"),
+    board_sources = (
+        ("raw environment board_info", raw_environment.get("board_info")),
+        ("raw environment board", raw_environment.get("board")),
+        (
+            "normalized environment board_info",
+            normalized_environment.get("board_info"),
+        ),
+        ("normalized environment board", normalized_board),
     )
     if isinstance(normalized_board, dict):
-        for raw_board in raw_boards:
-            if not isinstance(raw_board, dict):
+        for source_name, saved_board in board_sources:
+            if not isinstance(saved_board, dict):
                 continue
-            for field in ("board_type", "board_id", "serial"):
-                if field not in raw_board or field not in normalized_board:
+            for field in ("board_type", "board_id", "serial", "board_serial"):
+                canonical_field = "serial" if field == "board_serial" else field
+                if field not in saved_board or canonical_field not in normalized_board:
                     continue
-                raw_value = raw_board[field]
-                normalized_value = normalized_board[field]
+                saved_value = saved_board[field]
+                canonical_value = normalized_board[canonical_field]
                 if (
-                    type(raw_value) is not type(normalized_value)
-                    or raw_value != normalized_value
+                    type(saved_value) is not type(canonical_value)
+                    or saved_value != canonical_value
                 ):
+                    if source_name.startswith("raw"):
+                        raise ValueError(
+                            f"raw and normalized board field {field!r} values disagree"
+                        )
                     raise ValueError(
-                        f"raw and normalized board field {field!r} values disagree"
+                        f"{source_name} and normalized board field {field!r} values disagree"
                     )
 
     normalized_firmware = normalized_environment.get("firmware")
     if isinstance(normalized_firmware, dict):
-        for field in ("firmware", "firmwares"):
-            raw_firmware = raw_environment.get(field)
-            if not isinstance(raw_firmware, dict):
-                continue
-            if raw_firmware != normalized_firmware:
-                raise ValueError(
-                    "raw and normalized firmware mappings disagree"
-                )
+        firmware_sources = (
+            ("raw environment", raw_environment),
+            ("normalized environment", normalized_environment),
+        )
+        for source_name, environment in firmware_sources:
+            for field in ("firmware", "firmwares"):
+                saved_firmware = environment.get(field)
+                if not isinstance(saved_firmware, dict):
+                    continue
+                if saved_firmware != normalized_firmware:
+                    if source_name == "raw environment":
+                        raise ValueError("raw and normalized firmware mappings disagree")
+                    raise ValueError(
+                        f"{source_name} {field!r} and normalized firmware mappings disagree"
+                    )
 
 
 def _validate_raw_telemetry(payload: dict, *, run_id: str) -> tuple[dict, dict]:
