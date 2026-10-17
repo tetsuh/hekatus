@@ -751,7 +751,10 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
         if (
             rows
             and None not in rows[-1]
-            and any(value is None for value in rows[-1].values())
+            and (
+                any(value is None for value in rows[-1].values())
+                or rows[-1].get("asic_temp_c") == ""
+            )
             and not contents.endswith(("\n", "\r"))
         ):
             # SIGTERM can leave the terminal row short at EOF; a line-terminated

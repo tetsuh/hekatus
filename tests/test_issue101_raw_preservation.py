@@ -354,7 +354,17 @@ def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
     assert not outside_path.exists()
 
 
-def test_issue102_live_capture_drops_only_terminal_incomplete_power_row(tmp_path):
+@pytest.mark.parametrize(
+    "terminal_row",
+    [
+        "2020-02-03T04:05:08+00:00,75,1350",
+        "2020-02-03T04:05:08+00:00,75,1350,",
+    ],
+    ids=["missing-final-field", "trailing-delimiter"],
+)
+def test_issue102_live_capture_drops_only_terminal_incomplete_power_row(
+    tmp_path, terminal_row
+):
     output_dir = tmp_path / "device-output"
     run_id = "live-run"
     output_dir.mkdir()
@@ -370,7 +380,7 @@ def test_issue102_live_capture_drops_only_terminal_incomplete_power_row(tmp_path
     (output_dir / f"power-{run_id}.csv").write_text(
         "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
         "2020-02-03T04:05:06+00:00,75,1350,60.0\n"
-        "2020-02-03T04:05:08+00:00,75,1350"
+        f"{terminal_row}"
     )
 
     telemetry = issue101._capture_telemetry(output_dir, run_id=run_id)
