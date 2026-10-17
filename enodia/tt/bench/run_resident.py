@@ -1209,6 +1209,21 @@ def _trusted_output_roots() -> tuple[Path, ...]:
     )
 
 
+def _safe_output_path(path: Path, *, description: str) -> Path:
+    """Return a resolved output path only beneath a trusted output root."""
+    try:
+        candidate = Path(path)
+        resolved_path = candidate.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ResidentPreflightError(
+            f"{description} {_OUTPUT_PATH_RESOLUTION_ERROR}"
+        ) from exc
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise ResidentPreflightError(f"{description} {_OUTPUT_PATH_TRUST_ERROR}")
+    return resolved_path
+
+
 def _output_destination_writable(path: Path) -> bool:
     """Check a destination with a temporary sibling write, without replacing it."""
     try:
@@ -1242,20 +1257,10 @@ def _validate_output_destinations(
         destinations.append(("raw timestamp output", args.raw_timestamps_out))
     validated_destinations: list[Path] = []
     for name, path in destinations:
-        try:
-            resolved_path = path.resolve(strict=False)
-            trusted_roots = _trusted_output_roots()
-        except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            raise ResidentPreflightError(
-                f"{name} destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
-            ) from exc
-        if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
-            raise ResidentPreflightError(
-                f"{name} destination {_OUTPUT_PATH_TRUST_ERROR}"
-            )
-        if not _output_destination_writable(resolved_path):
+        safe_path = _safe_output_path(path, description=f"{name} destination")
+        if not _output_destination_writable(safe_path):
             raise ResidentPreflightError(f"{name} destination is not writable")
-        validated_destinations.append(resolved_path)
+        validated_destinations.append(safe_path)
     return (
         validated_destinations[0],
         validated_destinations[1] if len(validated_destinations) > 1 else None,
@@ -1271,13 +1276,12 @@ def _write_rejection_if_possible(
 ) -> None:
     """Write a rejection only when the destination passed the writable check."""
     try:
-        resolved_output_path = output_path.resolve(strict=False)
-        trusted_roots = _trusted_output_roots()
-        if not any(resolved_output_path.is_relative_to(root) for root in trusted_roots):
-            raise OSError(f"output destination {_OUTPUT_PATH_TRUST_ERROR}")
-        if _output_destination_writable(resolved_output_path):
+        safe_output_path = _safe_output_path(
+            output_path, description="output destination"
+        )
+        if _output_destination_writable(safe_output_path):
             _write(
-                resolved_output_path,
+                safe_output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
@@ -1450,35 +1454,17 @@ def _environment(path: Path) -> dict[str, Any]:
 
 
 def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
-    try:
-        resolved_path = path.resolve(strict=False)
-        trusted_roots = _trusted_output_roots()
-    except (OSError, RuntimeError, TypeError, ValueError) as exc:
-        raise ResidentPreflightError(
-            f"raw timestamp output destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
-        ) from exc
-    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
-        raise ResidentPreflightError(
-            f"raw timestamp output destination {_OUTPUT_PATH_TRUST_ERROR}"
-        )
-    resolved_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved_path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
+    safe_path = _safe_output_path(
+        path, description="raw timestamp output destination"
+    )
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    try:
-        resolved_path = path.resolve(strict=False)
-        trusted_roots = _trusted_output_roots()
-    except (OSError, RuntimeError, TypeError, ValueError) as exc:
-        raise ResidentPreflightError(
-            f"output destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
-        ) from exc
-    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
-        raise ResidentPreflightError(
-            f"output destination {_OUTPUT_PATH_TRUST_ERROR}"
-        )
-    resolved_path.parent.mkdir(parents=True, exist_ok=True)
-    resolved_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    safe_path = _safe_output_path(path, description="output destination")
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
