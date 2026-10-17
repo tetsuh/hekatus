@@ -105,6 +105,8 @@ _METADATA_PRIVATE_KEYS = frozenset(
 _ABSOLUTE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9:])/(?:home|Users|tmp|var/tmp|workspace|workspaces|mnt|opt|root|run/user)/[^\s,;\"']+"
 )
+_PERFORMANCE_COMPARISON_REL_TOL = 1e-9
+_PERFORMANCE_COMPARISON_ABS_TOL = 1e-15
 _CAPTURED_ENVIRONMENT_REQUIRED_FIELDS = (
     "captured_at",
     "image",
@@ -976,6 +978,38 @@ def _validate_finite_performance_value(value: Any, *, field: str) -> None:
         raise ValueError(f"{field} must be non-negative")
 
 
+def _validate_positive_performance_value(value: Any, *, field: str) -> None:
+    """Require one saved performance value to be finite and strictly positive."""
+    _validate_finite_performance_value(value, field=field)
+    if value == 0:
+        raise ValueError(f"{field} must be positive")
+
+
+def _linear_performance_percentile(samples: list[Real], quantile: float) -> Real:
+    """Calculate the producer's sorted, linearly interpolated percentile."""
+    ordered = sorted(samples)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    fraction = position - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+
+def _performance_values_agree(saved: Real, expected: Real) -> bool:
+    """Compare saved and recomputed values with JSON round-trip tolerance."""
+    try:
+        return math.isclose(
+            float(saved),
+            float(expected),
+            rel_tol=_PERFORMANCE_COMPARISON_REL_TOL,
+            abs_tol=_PERFORMANCE_COMPARISON_ABS_TOL,
+        )
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def _validate_performance_rows(
     performance: Any,
     *,
@@ -1024,26 +1058,50 @@ def _validate_performance_rows(
         if not isinstance(samples, list) or len(samples) != repeats:
             raise ValueError(f"performance row {index} lacks all {repeats} launch samples")
         for sample_index, sample in enumerate(samples):
-            _validate_finite_performance_value(
+            _validate_positive_performance_value(
                 sample,
                 field=(
                     f"performance row {index} "
                     f"seconds_per_launch_samples[{sample_index}]"
                 ),
             )
-        for field in (
+        summary_fields = (
             "seconds_per_launch_p50",
             "seconds_per_launch_p99",
             "seconds_per_launch_p99_9",
             "flops_per_iteration",
             "tflops_p50_derived",
             "tflops_fastest_launch_derived",
-        ):
+        )
+        for field in summary_fields:
             if field not in row:
                 raise ValueError(f"performance row {index} lacks {field}")
-            _validate_finite_performance_value(
+            _validate_positive_performance_value(
                 row[field], field=f"performance row {index} {field}"
             )
+
+        expected_percentiles = {
+            "seconds_per_launch_p50": _linear_performance_percentile(samples, 0.50),
+            "seconds_per_launch_p99": _linear_performance_percentile(samples, 0.99),
+            "seconds_per_launch_p99_9": _linear_performance_percentile(samples, 0.999),
+        }
+        for field, expected in expected_percentiles.items():
+            if not _performance_values_agree(row[field], expected):
+                raise ValueError(
+                    f"performance row {index} {field} does not match launch samples"
+                )
+
+        flops = row["flops_per_iteration"]
+        expected_p50 = expected_percentiles["seconds_per_launch_p50"]
+        expected_tflops = {
+            "tflops_p50_derived": flops / expected_p50 / 1e12,
+            "tflops_fastest_launch_derived": flops / min(samples) / 1e12,
+        }
+        for field, expected in expected_tflops.items():
+            if not _performance_values_agree(row[field], expected):
+                raise ValueError(
+                    f"performance row {index} {field} does not match timing derivation"
+                )
 
 
 def _validate_complete_run(

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,11 +52,25 @@ def _correctness_rows():
     ]
 
 
+def _producer_percentile(samples, quantile):
+    ordered = sorted(samples)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    fraction = position - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+
 def _passing_run(repeats=3):
     performance = []
     for shape in issue101.ISSUE100_SHAPES:
         for config in issue101.ISSUE100_COMPARISON_CONFIGS:
             samples = [0.001 + index * 0.000001 for index in range(repeats)]
+            p50 = _producer_percentile(samples, 0.50)
+            p99 = _producer_percentile(samples, 0.99)
+            p99_9 = _producer_percentile(samples, 0.999)
             performance.append(
                 {
                     "status": "ok",
@@ -63,12 +78,12 @@ def _passing_run(repeats=3):
                     "comparison_config": dict(config),
                     "launches_measured": repeats,
                     "seconds_per_launch_samples": samples,
-                    "seconds_per_launch_p50": samples[-1],
-                    "seconds_per_launch_p99": samples[-1],
-                    "seconds_per_launch_p99_9": samples[-1],
+                    "seconds_per_launch_p50": p50,
+                    "seconds_per_launch_p99": p99,
+                    "seconds_per_launch_p99_9": p99_9,
                     "flops_per_iteration": 1.0,
-                    "tflops_p50_derived": 0.001,
-                    "tflops_fastest_launch_derived": 0.001,
+                    "tflops_p50_derived": 1.0 / p50 / 1e12,
+                    "tflops_fastest_launch_derived": 1.0 / min(samples) / 1e12,
                 }
             )
     return {
@@ -686,35 +701,49 @@ def test_issue102_recovery_rejects_oversized_json_integer(tmp_path):
         ("seconds_per_launch_samples", "not-a-number"),
         ("seconds_per_launch_samples", True),
         ("seconds_per_launch_samples", -0.1),
+        ("seconds_per_launch_samples", 0.0),
         ("seconds_per_launch_p50", None),
         ("seconds_per_launch_p50", -0.1),
+        ("seconds_per_launch_p50", 0.0),
         ("seconds_per_launch_p99", float("nan")),
         ("seconds_per_launch_p99", -0.1),
+        ("seconds_per_launch_p99", 0.0),
         ("seconds_per_launch_p99_9", float("inf")),
         ("seconds_per_launch_p99_9", -0.1),
+        ("seconds_per_launch_p99_9", 0.0),
         ("flops_per_iteration", None),
         ("flops_per_iteration", -0.1),
+        ("flops_per_iteration", 0.0),
         ("tflops_p50_derived", float("nan")),
         ("tflops_p50_derived", -0.1),
+        ("tflops_p50_derived", 0.0),
         ("tflops_fastest_launch_derived", float("inf")),
         ("tflops_fastest_launch_derived", -0.1),
+        ("tflops_fastest_launch_derived", 0.0),
     ],
     ids=[
         "sample-string",
         "sample-bool",
         "sample-negative",
+        "sample-zero",
         "p50-null",
         "p50-negative",
+        "p50-zero",
         "p99-nan",
         "p99-negative",
+        "p99-zero",
         "p99_9-infinity",
         "p99_9-negative",
+        "p99_9-zero",
         "flops-null",
         "flops-negative",
+        "flops-zero",
         "tflops-p50-nan",
         "tflops-p50-negative",
+        "tflops-p50-zero",
         "tflops-fastest-infinity",
         "tflops-fastest-negative",
+        "tflops-fastest-zero",
     ],
 )
 def test_issue102_rebuild_rejects_malformed_performance_numbers(
@@ -730,7 +759,30 @@ def test_issue102_rebuild_rejects_malformed_performance_numbers(
         row[field] = bad_value
     payload["run"]["performance_rows"] = payload["performance_results"]
 
-    with pytest.raises(ValueError, match="finite numeric|non-negative"):
+    with pytest.raises(ValueError, match="finite numeric|non-negative|positive"):
+        issue101._record_from_raw_payload(raw_path, payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "seconds_per_launch_p50",
+        "seconds_per_launch_p99",
+        "seconds_per_launch_p99_9",
+        "tflops_p50_derived",
+        "tflops_fastest_launch_derived",
+    ],
+    ids=["p50", "p99", "p99_9", "tflops-p50", "tflops-fastest"],
+)
+def test_issue102_rebuild_rejects_inconsistent_performance_summaries(tmp_path, field):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    row = payload["performance_results"][0]
+    row[field] *= 2
+    payload["run"]["performance_rows"] = payload["performance_results"]
+
+    with pytest.raises(ValueError, match=field):
         issue101._record_from_raw_payload(raw_path, payload)
 
 
