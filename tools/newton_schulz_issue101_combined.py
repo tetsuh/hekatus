@@ -908,6 +908,24 @@ def _capture_telemetry(output_dir: Path, *, run_id: str | None = None) -> dict:
     return telemetry
 
 
+def _json_values_equal(left: Any, right: Any) -> bool:
+    """Compare JSON values recursively without numeric type coercion."""
+    if left is right:
+        return True
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _json_values_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _json_values_equal(left_value, right_value)
+            for left_value, right_value in zip(left, right, strict=True)
+        )
+    return left == right
+
+
 def _validate_correctness_rows(
     correctness: Any, *, strict_shape: bool = False
 ) -> None:
@@ -920,9 +938,9 @@ def _validate_correctness_rows(
         if not isinstance(row, dict):
             raise TypeError(f"correctness row {index} is not an object")
         if (
-            row.get("batch") != batch
-            or row.get("size") != size
-            or row.get("status") != "pass"
+            not _json_values_equal(row.get("batch"), batch)
+            or not _json_values_equal(row.get("size"), size)
+            or not _json_values_equal(row.get("status"), "pass")
         ):
             raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
         if not strict_shape:
@@ -931,16 +949,16 @@ def _validate_correctness_rows(
         expected_case = f"batch{batch}-L{size}"
         if type(row.get("batch")) is not int or type(row.get("size")) is not int:
             raise ValueError(f"correctness row {index} has invalid batch/size types")
-        if row.get("case") != expected_case:
+        if not _json_values_equal(row.get("case"), expected_case):
             raise ValueError(f"correctness row {index} has unexpected case")
-        if row.get("reference") != ISSUE101_CORRECTNESS_REFERENCE:
+        if not _json_values_equal(row.get("reference"), ISSUE101_CORRECTNESS_REFERENCE):
             raise ValueError(f"correctness row {index} has unexpected reference")
         if "threshold" not in row:
             raise ValueError(f"correctness row {index} lacks threshold")
         _validate_finite_performance_value(
             row["threshold"], field=f"correctness row {index} threshold"
         )
-        if row["threshold"] != ISSUE101_CORRECTNESS_THRESHOLD:
+        if not _json_values_equal(row["threshold"], ISSUE101_CORRECTNESS_THRESHOLD):
             raise ValueError(f"correctness row {index} has unexpected threshold")
 
         common_fields = {"case", "batch", "size", "reference", "threshold", "status"}
@@ -1034,8 +1052,8 @@ def _validate_performance_rows(
             raise ValueError(f"performance row {index} did not pass")
         expected_shape, expected_config = expected_rows[index]
         if (
-            row.get("shape_name") != expected_shape
-            or row.get("comparison_config") != expected_config
+            not _json_values_equal(row.get("shape_name"), expected_shape)
+            or not _json_values_equal(row.get("comparison_config"), expected_config)
         ):
             raise ValueError(
                 f"performance row {index} has unexpected shape/config identity"
@@ -1046,7 +1064,7 @@ def _validate_performance_rows(
         if (
             isinstance(launches_measured, bool)
             or not isinstance(launches_measured, int)
-            or launches_measured != repeats
+            or not _json_values_equal(launches_measured, repeats)
         ):
             raise ValueError(
                 f"performance row {index} launches_measured {launches_measured!r} "
@@ -1938,7 +1956,7 @@ def _validate_raw_configs(configs: Any, *, repeats: int) -> None:
         "launches_per_row": repeats,
     }
     for key, expected_value in expected.items():
-        if configs[key] != expected_value:
+        if not _json_values_equal(configs[key], expected_value):
             raise ValueError(f"raw artifact configs[{key!r}] do not match the v1 shape")
 
 
@@ -1958,9 +1976,9 @@ def _validate_raw_run_aliases(
     )
     if captured_run_id != run_id:
         raise ValueError(f"raw {label} and artifact have different run_id values")
-    if run.get("correctness_cases") != correctness_results:
+    if not _json_values_equal(run.get("correctness_cases"), correctness_results):
         raise ValueError(f"raw {label} correctness rows disagree with top-level results")
-    if run.get("performance_rows") != performance_results:
+    if not _json_values_equal(run.get("performance_rows"), performance_results):
         raise ValueError(f"raw {label} performance rows disagree with top-level results")
     return run
 

@@ -1316,6 +1316,28 @@ def test_issue102_rebuild_rejects_invalid_performance_row_identity(tmp_path, mut
         issue101._record_from_raw_payload(raw_path, payload)
 
 
+def test_issue102_recovery_rejects_type_coerced_comparison_config(tmp_path):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    rows = payload["performance_results"]
+    rows[0]["comparison_config"]["double_buffer"] = 1
+    payload["run"]["performance_rows"] = rows
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="shape/config identity"):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_rejects_type_coerced_integer_config(tmp_path):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["configs"]["new_default"]["matrix_block"] = 8.0
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=r"configs\['new_default'\]"):
+        issue101.recover_combined_record(raw_path)
+
+
 def test_issue102_rebuilds_clean_record_from_raw_artifact_only(tmp_path):
     output_dir = tmp_path / "device-output"
     raw_path, telemetry = _write_rebuild_raw(output_dir)
