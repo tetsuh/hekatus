@@ -90,7 +90,12 @@ def _pytest_marker_names(tree: ast.Module) -> tuple[set[str], set[str]]:
 def test_modules_do_not_assign_slow_to_module_level_pytestmark():
     tests_dir = Path(__file__).parent
     violations = []
-    for path in sorted(tests_dir.glob("test_*.py")):
+    test_paths = {
+        path
+        for pattern in ("test_*.py", "*_test.py")
+        for path in tests_dir.rglob(pattern)
+    }
+    for path in sorted(test_paths):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.name)
         pytest_names, mark_names = _pytest_marker_names(tree)
         visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, path.name)

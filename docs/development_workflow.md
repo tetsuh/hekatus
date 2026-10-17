@@ -121,9 +121,9 @@ Co-Authored-By: <name> <email>
 ### Test selections by purpose ([ADR-0016](adr/0016-review-validation-test-selection.md))
 
 - Review validation is configured outside this repository by the operator and
-  uses `pytest -q -m "not slow"`. This skips only the simulation-backed tests
-  whose arithmetic cost can exceed a review-time validation limit; it does not
-  change their importance or the checks they perform.
+  uses `pytest -q -m "not slow"`. This skips only costly individual tests or
+  individual tests consuming a heavy fixture; it does not change their
+  importance or the checks they perform.
 - CI uses `uv run pytest -q` in `.github/workflows/ci.yml` without a marker
   filter. The full suite, including every `slow` test, remains the required
   coverage run so cost-based selection cannot hide a regression from the build.
