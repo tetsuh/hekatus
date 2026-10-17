@@ -2698,6 +2698,7 @@ def _run_open_device_session(
             run = _initial_failed_run("device_session", exc)
         except (KeyboardInterrupt, SystemExit, GeneratorExit) as exc:
             pending_exception = exc
+            raise
     finally:
         cleanup = dict(run.get("cleanup", {})) if pending_exception is None else {}
         cleanup.update(
@@ -2732,8 +2733,6 @@ def _run_open_device_session(
         if pending_exception is None:
             run["cleanup"] = cleanup
 
-    if pending_exception is not None:
-        raise pending_exception
     return run, close_error
 
 
