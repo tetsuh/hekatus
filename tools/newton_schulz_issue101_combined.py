@@ -1,4 +1,4 @@
-"""Run the Issue #100 correctness and performance catalogue in one device session."""
+"""Run the Issue #100 catalogue or rebuild its ADR-0005 record board-free."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import csv
 import datetime
 import inspect
 import json
+import math
 import os
 import platform
 import re
@@ -57,6 +58,9 @@ ISSUE101_RAW_OUTPUT_PREFIX = "issue101-combined-raw-"
 ISSUE101_RAW_OUTPUT_GLOB = "issue101-combined-raw*.json"
 ISSUE101_RUN_ID_ENV = "HEKATUS_TT_RUN_ID"
 ISSUE101_RAW_SCHEMA = "adr-0005-issue101-combined-raw-v1"
+# Only this exact raw shape is implemented. Add a new schema constant and a
+# dedicated validator before claiming support for a later shape.
+SUPPORTED_RAW_SCHEMAS = (ISSUE101_RAW_SCHEMA,)
 ISSUE101_POWER_COLUMNS = ("timestamp_utc", "power_w", "aiclk_mhz", "asic_temp_c")
 ISSUE101_ENVIRONMENT_GLOB = "env-*.json"
 ISSUE101_POWER_GLOB = "power-*.csv"
@@ -427,6 +431,7 @@ def _filename_run_id(path: Path, artifact_kind: str) -> str | None:
     prefixes = {
         "environment": ("env-", ".json"),
         "power": ("power-", ".csv"),
+        "raw": (ISSUE101_RAW_OUTPUT_PREFIX, ".json"),
     }
     try:
         prefix, suffix = prefixes[artifact_kind]
@@ -730,7 +735,14 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
             raise ValueError(
                 f"power trace {path.name} has unexpected columns {reader.fieldnames!r}"
             )
-        samples = [dict(row) for row in reader]
+        rows = list(reader)
+        if rows and None not in rows[-1] and any(
+            value is None for value in rows[-1].values()
+        ):
+            # SIGTERM can leave the terminal row short; an extra-field row has
+            # a None key and must remain visible for strict rejection.
+            rows.pop()
+        samples = [dict(row) for row in rows]
     if not samples:
         raise ValueError(f"power trace {path.name} contains no samples")
     return {
@@ -927,6 +939,17 @@ def _validate_environment_metadata(environment: dict) -> None:
             raise ValueError(
                 f"captured normalized_environment field {field!r} must be a non-empty string"
             )
+    _validate_captured_timestamp(
+        environment["captured_at"], field="captured environment captured_at"
+    )
+    image = environment["image"]
+    image_digest = environment["image_digest"]
+    if "@" not in image or image.rsplit("@", 1)[1] != image_digest:
+        raise ValueError("captured image and image_digest do not agree")
+    if not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", image_digest):
+        raise ValueError("captured image_digest must be a sha256 digest")
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", environment["harness_commit"]):
+        raise ValueError("captured harness_commit must be a 40-character commit SHA")
     if environment["image_pinned"] is not True:
         raise ValueError("the combined record requires a digest-pinned captured image")
     if environment["harness_dirty"] is not False:
@@ -944,10 +967,13 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
             f"run_id {run_id!r}"
         )
     board = environment["board"]
-    if not isinstance(board, dict) or any(
-        not board.get(name) for name in ("board_type", "board_id", "serial")
-    ):
-        raise ValueError("the combined record requires captured board type, id, and serial")
+    if not isinstance(board, dict):
+        raise TypeError("captured board identity is missing")
+    for field in ("board_type", "board_id", "serial"):
+        if not isinstance(board.get(field), str) or not board[field]:
+            raise ValueError(
+                f"captured board identity field {field!r} must be a non-empty string"
+            )
     identity = environment["board_serial_identity"]
     if not isinstance(identity, dict):
         raise TypeError("captured board serial identity is missing")
@@ -975,7 +1001,7 @@ def _validate_captured_environment(
 
 
 def _validate_captured_power_trace(
-    power_trace: dict, *, run_id: str
+    power_trace: dict, *, run_id: str, strict_shape: bool = False
 ) -> None:
     """Validate power provenance before copying the captured metadata to a record."""
     if not isinstance(power_trace, dict):
@@ -994,9 +1020,38 @@ def _validate_captured_power_trace(
         raise ValueError("captured power trace is missing run_id")
     if _validate_run_id(trace_run_id, source="power trace run_id") != run_id:
         raise ValueError("captured power trace is associated with a different run_id")
+    columns = power_trace.get("columns")
+    if columns is None and not strict_shape:
+        samples = power_trace.get("samples")
+        if not isinstance(samples, list) or not samples:
+            raise ValueError("captured power trace has no samples")
+        return
+    if columns != list(ISSUE101_POWER_COLUMNS):
+        raise ValueError(
+            f"captured power trace has unexpected columns {columns!r}"
+        )
     samples = power_trace.get("samples")
     if not isinstance(samples, list) or not samples:
         raise ValueError("captured power trace has no samples")
+    expected_columns = set(ISSUE101_POWER_COLUMNS)
+    for index, sample in enumerate(samples):
+        if not isinstance(sample, dict) or set(sample) != expected_columns:
+            raise ValueError(f"captured power trace sample {index} has an unsupported shape")
+        _validate_captured_timestamp(
+            sample["timestamp_utc"],
+            field=f"captured power trace sample {index} timestamp_utc",
+        )
+        for field in ("power_w", "aiclk_mhz", "asic_temp_c"):
+            try:
+                numeric_value = float(sample[field])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"captured power trace sample {index} field {field!r} is not numeric"
+                ) from exc
+            if not math.isfinite(numeric_value):
+                raise ValueError(
+                    f"captured power trace sample {index} field {field!r} is not finite"
+                )
 
 
 def _record_from_parts(
@@ -1196,6 +1251,7 @@ def _raw_artifact_payload(
     artifact_file: str,
     telemetry: dict | None = None,
     artifact_failure: dict | None = None,
+    recovery_run: dict | None = None,
 ) -> dict:
     """Capture every builder input before any record construction is attempted."""
     captured_telemetry = telemetry if telemetry is not None else _capture_telemetry(
@@ -1232,6 +1288,10 @@ def _raw_artifact_payload(
         payload["failure"] = _sanitize_metadata(run["failure"])
     if run.get("secondary_failures"):
         payload["secondary_failures"] = _sanitize_metadata(run["secondary_failures"])
+    if recovery_run is not None:
+        payload["recovery_run"] = _sanitize_metadata(
+            _set_run_id(recovery_run, run_id)
+        )
     return payload
 
 
@@ -1254,6 +1314,7 @@ def write_raw_artifact(
     repeats: int = ISSUE100_LAUNCHES,
     telemetry: dict | None = None,
     artifact_failure: dict | None = None,
+    recovery_run: dict | None = None,
     run_id: str | None = None,
     raw_artifact_path: Path | None = None,
     legacy_name: bool = False,
@@ -1292,6 +1353,7 @@ def write_raw_artifact(
             artifact_file=artifact_path.name,
             telemetry=telemetry,
             artifact_failure=artifact_failure,
+            recovery_run=recovery_run,
         ),
     )
     return artifact_path
@@ -1347,6 +1409,7 @@ def persist_raw_and_build(
                 repeats=repeats,
                 telemetry=telemetry,
                 artifact_failure=failure,
+                recovery_run=prepared_run,
                 run_id=run_id,
                 raw_artifact_path=raw_path,
                 overwrite=True,
@@ -1364,6 +1427,360 @@ def persist_raw_and_build(
     return raw_path, record
 
 
+def _load_strict_json_object(path: Path) -> dict:
+    """Read one raw object without accepting non-JSON numeric constants."""
+    try:
+        payload = json.loads(
+            path.read_text(),
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"invalid JSON constant {value!r}")
+            ),
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise ValueError(f"cannot read raw artifact {path.name}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise TypeError(f"raw artifact {path.name} is not an object")
+    return payload
+
+
+def _validate_sanitized_basename(value: Any, *, field: str) -> str:
+    """Require an artifact reference to remain a basename from capture."""
+    if (
+        not isinstance(value, str)
+        or not value
+        or Path(value).name != value
+        or "/" in value
+        or "\\" in value
+    ):
+        raise ValueError(f"{field} must be a sanitized artifact basename")
+    return value
+
+
+def _validate_captured_timestamp(value: Any, *, field: str) -> str:
+    """Validate a saved timezone-aware ISO timestamp without rewriting it."""
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a non-empty ISO-8601 timestamp")
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"{field} is not a valid ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a timezone")
+    return value
+
+
+def _validate_raw_schema(raw_path: Path, payload: dict) -> str:
+    """Reject an unknown raw shape while naming the actual schema value."""
+    schema = payload.get("raw_schema", "<missing>")
+    if schema not in SUPPORTED_RAW_SCHEMAS:
+        supported = ", ".join(repr(item) for item in SUPPORTED_RAW_SCHEMAS)
+        raise ValueError(
+            f"unsupported raw artifact schema {schema!r} in {raw_path.name}; "
+            f"supported schemas: {supported}"
+        )
+    return schema
+
+
+def _validate_raw_filename_identity(path: Path, *, run_id: str) -> None:
+    """Reject a suffixed raw filename that names another run."""
+    filename_id = _filename_run_id(path, "raw")
+    if filename_id is not None and filename_id != run_id:
+        raise ValueError(
+            f"raw artifact filename {path.name} has conflicting run_id values: "
+            f"filename={filename_id!r}, embedded={run_id!r}"
+        )
+
+
+def _load_selected_raw_artifact(
+    source: Path, *, run_id: str | None = None
+) -> tuple[Path, dict]:
+    """Select a raw artifact by embedded identity, never by directory order."""
+    source = Path(source)
+    requested = _validate_run_id(run_id, source="run_id") if run_id else None
+    if source.is_dir():
+        candidates = sorted(source.glob(ISSUE101_RAW_OUTPUT_GLOB))
+        if not candidates:
+            raise RuntimeError(
+                f"no raw artifacts in {source}; an explicit run_id cannot be resolved"
+            )
+        selected: list[tuple[Path, dict]] = []
+        for candidate in candidates:
+            payload = _load_strict_json_object(candidate)
+            candidate_id = _validate_run_id(
+                payload.get("run_id"),
+                source=f"raw artifact {candidate.name} run_id",
+            )
+            _validate_raw_filename_identity(candidate, run_id=candidate_id)
+            _validate_raw_schema(candidate, payload)
+            if requested is None or candidate_id == requested:
+                selected.append((candidate, payload))
+        if requested is None and len(candidates) != 1:
+            raise RuntimeError(
+                f"ambiguous raw artifacts in {source}: found {len(candidates)}; "
+                "explicit run_id is required"
+            )
+        if len(selected) != 1:
+            detail = "none" if not selected else str(len(selected))
+            identity_text = requested or "<missing>"
+            raise RuntimeError(
+                f"expected exactly one raw artifact for explicit run_id "
+                f"{identity_text!r} in {source}, found {detail}; refusing "
+                "ambiguous association"
+            )
+        return selected[0]
+    if not source.is_file():
+        raise FileNotFoundError(f"raw artifact does not exist: {source}")
+    payload = _load_strict_json_object(source)
+    payload_run_id = _validate_run_id(
+        payload.get("run_id"), source=f"raw artifact {source.name} run_id"
+    )
+    _validate_raw_filename_identity(source, run_id=payload_run_id)
+    if requested is not None and payload_run_id != requested:
+        raise ValueError(
+            f"raw artifact {source.name} has run_id {payload_run_id!r}, "
+            f"not requested run_id {requested!r}"
+        )
+    _validate_raw_schema(source, payload)
+    return source, payload
+
+
+def _validate_raw_configs(configs: Any, *, repeats: int) -> None:
+    """Validate the complete v1 configuration shape before projecting a record."""
+    if not isinstance(configs, dict):
+        raise TypeError("raw artifact is missing configs")
+    expected_keys = {
+        "correctness_cases",
+        "new_default",
+        "previous_default",
+        "execution",
+        "comparison",
+        "shapes",
+        "launches_per_row",
+    }
+    if set(configs) != expected_keys:
+        missing = sorted(expected_keys - set(configs))
+        extra = sorted(set(configs) - expected_keys)
+        detail = []
+        if missing:
+            detail.append("missing " + ", ".join(missing))
+        if extra:
+            detail.append("unexpected " + ", ".join(extra))
+        raise ValueError("raw artifact configs have an unsupported shape: " + "; ".join(detail))
+    launches = configs["launches_per_row"]
+    if isinstance(launches, bool) or not isinstance(launches, int) or launches <= 0:
+        raise ValueError("raw artifact launches_per_row must be a positive integer")
+    if launches != repeats:
+        raise ValueError(
+            f"raw artifact launches_per_row {launches} does not match raw rows {repeats}"
+        )
+    expected_cases = [
+        {"batch": batch, "size": size}
+        for batch, size in ISSUE101_CORRECTNESS_CASES
+    ]
+    expected = {
+        "correctness_cases": expected_cases,
+        "new_default": dict(ISSUE101_NEW_DEFAULT),
+        "previous_default": dict(ISSUE101_PREVIOUS_DEFAULT),
+        "execution": dict(ISSUE101_EXECUTION_CONFIG),
+        "comparison": [dict(config) for config in ISSUE100_COMPARISON_CONFIGS],
+        "shapes": list(ISSUE100_SHAPES),
+        "launches_per_row": repeats,
+    }
+    for key, expected_value in expected.items():
+        if configs[key] != expected_value:
+            raise ValueError(f"raw artifact configs[{key!r}] do not match the v1 shape")
+
+
+def _validate_raw_run_aliases(
+    run: Any,
+    *,
+    run_id: str,
+    correctness_results: Any,
+    performance_results: Any,
+    label: str,
+) -> dict:
+    """Validate one captured run and its duplicated top-level row aliases."""
+    if not isinstance(run, dict):
+        raise TypeError(f"raw artifact {label} is not an object")
+    captured_run_id = _validate_run_id(
+        run.get("run_id"), source=f"raw {label} run_id"
+    )
+    if captured_run_id != run_id:
+        raise ValueError(f"raw {label} and artifact have different run_id values")
+    if run.get("correctness_cases") != correctness_results:
+        raise ValueError(f"raw {label} correctness rows disagree with top-level results")
+    if run.get("performance_rows") != performance_results:
+        raise ValueError(f"raw {label} performance rows disagree with top-level results")
+    return run
+
+
+def _validate_raw_payload(
+    raw_path: Path, payload: dict, *, run_id: str | None = None
+) -> tuple[str, dict, dict, dict, int, dict]:
+    """Validate every captured association before rebuilding a record."""
+    _validate_raw_schema(raw_path, payload)
+    payload_run_id = _validate_run_id(payload.get("run_id"), source="raw artifact run_id")
+    _validate_raw_filename_identity(raw_path, run_id=payload_run_id)
+    if run_id is not None and payload_run_id != _validate_run_id(run_id):
+        raise ValueError("raw artifact run_id does not match requested run_id")
+    _validate_captured_timestamp(
+        payload.get("captured_at"), field="raw artifact captured_at"
+    )
+    if payload.get("artifact_status") not in {"pass", "failed"}:
+        raise ValueError("raw artifact has an unsupported artifact_status")
+    artifact_file = _validate_sanitized_basename(
+        payload.get("artifact_file"), field="raw artifact file"
+    )
+    artifact_filename_id = _filename_run_id(Path(artifact_file), "raw")
+    if artifact_filename_id is not None and artifact_filename_id != payload_run_id:
+        raise ValueError(
+            f"raw artifact filename {artifact_file} is associated with run_id "
+            f"{artifact_filename_id!r}, not {payload_run_id!r}"
+        )
+    telemetry = payload.get("telemetry")
+    if not isinstance(telemetry, dict):
+        raise TypeError("raw artifact is missing telemetry")
+    if telemetry.get("status") != "complete":
+        raise ValueError("raw artifact telemetry is not complete")
+    telemetry_run_id = _validate_run_id(
+        telemetry.get("run_id"), source="raw telemetry run_id"
+    )
+    if telemetry_run_id != payload_run_id:
+        raise ValueError("raw telemetry and artifact have different run_id values")
+    environment_file = _validate_sanitized_basename(
+        telemetry.get("environment_file"), field="raw environment file"
+    )
+    environment_filename_id = _filename_run_id(Path(environment_file), "environment")
+    if environment_filename_id is not None and environment_filename_id != payload_run_id:
+        raise ValueError(
+            f"raw environment artifact {environment_file} is associated with run_id "
+            f"{environment_filename_id!r}, not {payload_run_id!r}"
+        )
+    raw_environment = telemetry.get("environment")
+    if not isinstance(raw_environment, dict):
+        raise TypeError("raw artifact is missing captured environment")
+    raw_environment_id = raw_environment.get("run_id")
+    if raw_environment_id is None:
+        raise ValueError("raw captured environment is missing run_id")
+    if _validate_run_id(raw_environment_id, source="raw environment run_id") != payload_run_id:
+        raise ValueError("raw environment and artifact have different run_id values")
+    normalized_environment = telemetry.get("normalized_environment")
+    if not isinstance(normalized_environment, dict):
+        raise TypeError(
+            "raw artifact is missing captured telemetry.normalized_environment"
+        )
+    _validate_captured_environment(normalized_environment, run_id=payload_run_id)
+    power_trace = telemetry.get("power_trace")
+    if not isinstance(power_trace, dict):
+        raise TypeError("raw artifact is missing power data")
+    _validate_captured_power_trace(
+        power_trace, run_id=payload_run_id, strict_shape=True
+    )
+    power_file = _validate_sanitized_basename(
+        power_trace.get("file"), field="raw power trace file"
+    )
+    power_filename_id = _filename_run_id(Path(power_file), "power")
+    if power_filename_id is not None and power_filename_id != payload_run_id:
+        raise ValueError(
+            f"raw power artifact {power_file} is associated with run_id "
+            f"{power_filename_id!r}, not {payload_run_id!r}"
+        )
+    correctness_results = payload.get("correctness_results")
+    performance_results = payload.get("performance_results")
+    if not isinstance(correctness_results, list) or not isinstance(performance_results, list):
+        raise TypeError("raw artifact is missing top-level result arrays")
+    configs = payload.get("configs")
+    try:
+        repeats = configs["launches_per_row"]
+    except (KeyError, TypeError):
+        raise ValueError("raw artifact is missing configs.launches_per_row") from None
+    _validate_raw_configs(configs, repeats=repeats)
+    captured_run = _validate_raw_run_aliases(
+        payload.get("run"),
+        run_id=payload_run_id,
+        correctness_results=correctness_results,
+        performance_results=performance_results,
+        label="run",
+    )
+    recovery_run = payload.get("recovery_run")
+    if "recovery_run" in payload and not isinstance(recovery_run, dict):
+        raise TypeError("raw recovery_run must be an object when present")
+    if recovery_run is not None:
+        recovery_run = _validate_raw_run_aliases(
+            recovery_run,
+            run_id=payload_run_id,
+            correctness_results=correctness_results,
+            performance_results=performance_results,
+            label="recovery_run",
+        )
+        if recovery_run.get("status") != "pass":
+            raise ValueError("raw recovery_run is not a complete passing run")
+        selected_run = recovery_run
+    else:
+        selected_run = captured_run
+    if selected_run.get("status") != "pass":
+        stage = selected_run.get("failure_stage", "unknown")
+        raise ValueError(
+            f"raw artifact failed at stage {stage}; no complete record is recoverable"
+        )
+    _validate_complete_run(selected_run, repeats=repeats)
+    return (
+        payload_run_id,
+        normalized_environment,
+        power_trace,
+        selected_run,
+        repeats,
+        {"file": artifact_file},
+    )
+
+
+def _record_from_raw_payload(
+    selected_path: Path, payload: dict, *, run_id: str | None = None
+) -> dict:
+    """Project one already-loaded raw payload without consulting host state."""
+    (
+        captured_run_id,
+        normalized_environment,
+        power_trace,
+        captured_run,
+        repeats,
+        raw_artifact,
+    ) = _validate_raw_payload(selected_path, payload, run_id=run_id)
+    return _record_from_parts(
+        captured_run,
+        environment=normalized_environment,
+        power_trace=power_trace,
+        repeats=repeats,
+        raw_artifact_name=raw_artifact["file"],
+        run_id=captured_run_id,
+    )
+
+
+def recover_combined_record(
+    raw_path: Path, *, run_id: str | None = None
+) -> dict:
+    """Rebuild an ADR-0005 record from captured raw values only."""
+    selected_path, payload = _load_selected_raw_artifact(raw_path, run_id=run_id)
+    return _record_from_raw_payload(selected_path, payload, run_id=run_id)
+
+
+def _reject_rebuild_destination(
+    source: Path, selected_path: Path, destination: Path
+) -> None:
+    """Refuse to replace raw inputs or an existing record during rebuild."""
+    destination_resolved = destination.resolve()
+    raw_paths = [selected_path]
+    if source.is_dir():
+        raw_paths = sorted(source.glob(ISSUE101_RAW_OUTPUT_GLOB))
+    for raw_path in raw_paths:
+        if destination_resolved == raw_path.resolve():
+            raise ValueError("--output must not overwrite the captured raw artifact")
+    if destination.exists() or destination.is_symlink():
+        raise FileExistsError(
+            f"rebuild output already exists: {destination}; refusing to overwrite"
+        )
+
+
 def _initial_failed_run(stage: str, error: BaseException | str) -> dict:
     return _mark_run_failed(
         {
@@ -1377,9 +1794,40 @@ def _initial_failed_run(stage: str, error: BaseException | str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the device session and persist its raw artifact before building."""
+    """Run the device session or rebuild a record without opening a board."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--recover-raw",
+        type=Path,
+        help="rebuild one ADR-0005 record from a saved raw artifact or directory",
+    )
+    parser.add_argument(
+        "--run-id",
+        help="select this run_id when --recover-raw names a reused directory",
+    )
+    parser.add_argument("--output", type=Path, help="destination for a rebuilt record")
+    args = parser.parse_args(argv)
+    if args.recover_raw is not None:
+        if args.output is None:
+            parser.error("--output is required with --recover-raw")
+        try:
+            selected_path, payload = _load_selected_raw_artifact(
+                args.recover_raw, run_id=args.run_id
+            )
+            record = _record_from_raw_payload(
+                selected_path, payload, run_id=args.run_id
+            )
+            _reject_rebuild_destination(
+                args.recover_raw, selected_path, args.output
+            )
+            _atomic_json_write(args.output, record)
+        except (FileNotFoundError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            parser.error(str(exc))
+        print(f"recovered combined record -> {args.output}", flush=True)
+        return 0
+    if args.run_id is not None or args.output is not None:
+        parser.error("--run-id and --output require --recover-raw")
+
     output_dir = Path(os.environ.get("HEKATUS_TT_OUTPUT_DIR", "/out"))
     try:
         import ttnn

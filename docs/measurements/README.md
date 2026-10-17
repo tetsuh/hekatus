@@ -24,6 +24,39 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #102 raw-record rebuild
+
+The Issue #101 runner writes a self-contained raw run artifact before record
+construction. Its exact supported schema is
+`adr-0005-issue101-combined-raw-v1`; the artifact carries the run ID, captured
+normalized environment, run rows, and captured power samples. Rebuild is
+board-free and reads no `env-*.json`, `power-*.csv`, current environment, or
+clock at rebuild time:
+
+```bash
+uv run python tools/newton_schulz_issue101_combined.py \
+  --recover-raw /path/to/issue101-combined-raw.json \
+  --output /path/to/rebuilt-record.json
+```
+
+When a retained output directory contains more than one raw run, select the
+embedded identity explicitly. The command validates the raw filename and
+embedded identities, schema, captured timestamps, harness commit, digest-pinned
+image, board identity, result rows, and power-sample shape before writing:
+
+```bash
+uv run python tools/newton_schulz_issue101_combined.py \
+  --recover-raw /path/to/reused-output-directory \
+  --run-id <captured-run-id> \
+  --output /path/to/rebuilt-record.json
+```
+
+Missing or conflicting identities, mixed or ambiguous raw artifacts, unknown
+schema values, incomplete captured fields, and an existing destination are
+rejected. The raw input is never overwritten; the power filename in the rebuilt
+ADR-0005 record is provenance from the saved raw value, not a request to reread
+a mutable capture file.
+
 ## Issue #118 board-free calibration configuration
 
 The board-free CLI emits one calibration record or one run configuration and
