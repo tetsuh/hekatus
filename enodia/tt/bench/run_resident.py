@@ -1462,9 +1462,8 @@ def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    safe_path = _safe_output_path(path, description="output destination")
-    safe_path.parent.mkdir(parents=True, exist_ok=True)
-    safe_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
