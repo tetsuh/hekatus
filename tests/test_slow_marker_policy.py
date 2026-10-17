@@ -28,7 +28,7 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
     """Find slow markers assigned to the module-level pytestmark name."""
 
     def __init__(self, pytest_names: set[str], mark_names: set[str], filename: str):
-        self._pytest_names = pytest_names
+        self._pytest_names = set(pytest_names)
         self._mark_names = mark_names
         self._filename = filename
         self._scope_depth = 0
@@ -68,6 +68,7 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
                     if self._is_pytestmark_list_subscript_target(target):
                         self._mark_slow_subscript_target(target, node.value)
             self._update_slow_aliases(node.targets, node.value)
+            self._update_pytest_aliases(node.targets, node.value)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -76,6 +77,7 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
                 self._record_if_slow(node.value, node.lineno)
             if node.value is not None:
                 self._update_slow_aliases((node.target,), node.value)
+                self._update_pytest_aliases((node.target,), node.value)
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -195,6 +197,15 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
             self._contains_slow_marker(keyword.value) for keyword in node.keywords
         )
 
+    def _update_pytest_aliases(
+        self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.AST
+    ) -> None:
+        if not isinstance(value, ast.Name) or value.id not in self._pytest_names:
+            return
+        for target in targets:
+            if isinstance(target, ast.Name):
+                self._pytest_names.add(target.id)
+
     def _update_slow_aliases(
         self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.AST
     ) -> None:
@@ -304,6 +315,20 @@ def test_module_slow_marker_alias_is_detected():
     visitor.visit(tree)
 
     assert visitor.violations == ["synthetic.py:2"]
+
+
+def test_module_slow_marker_pytest_module_alias_is_detected():
+    source = (
+        "import pytest as pt\n"
+        "pytest_api = pt\n"
+        "pytestmark = pytest_api.mark.slow\n"
+    )
+    tree = ast.parse(source, filename="synthetic.py")
+    pytest_names, mark_names = _pytest_marker_names(tree)
+    visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, "synthetic.py")
+    visitor.visit(tree)
+
+    assert visitor.violations == ["synthetic.py:3"]
 
 
 def test_module_slow_marker_list_alias_mutation_is_detected():
