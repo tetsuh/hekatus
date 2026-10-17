@@ -2210,6 +2210,18 @@ def _validate_raw_results(
     return correctness_results, performance_results, repeats
 
 
+def _has_successful_cleanup(run: dict) -> bool:
+    """Require explicit, successful device cleanup before projecting a pass."""
+    cleanup = run.get("cleanup")
+    return (
+        isinstance(cleanup, dict)
+        and cleanup.get("device_opened") is True
+        and cleanup.get("close_attempted") is True
+        and cleanup.get("close_succeeded") is True
+        and cleanup.get("close_error") is None
+    )
+
+
 def _legacy_builder_failure_run(payload: dict, captured_run: dict) -> dict | None:
     """Project the original v1 builder-only failure into a passing run copy."""
     if payload.get("artifact_status") != "failed":
@@ -2239,13 +2251,7 @@ def _legacy_builder_failure_run(payload: dict, captured_run: dict) -> dict | Non
     telemetry = payload.get("telemetry")
     if not isinstance(telemetry, dict) or telemetry.get("failures"):
         return None
-    cleanup = captured_run.get("cleanup")
-    if isinstance(cleanup, dict) and (
-        cleanup.get("device_opened") is False
-        or cleanup.get("close_attempted") is False
-        or cleanup.get("close_succeeded") is False
-        or cleanup.get("close_error") is not None
-    ):
+    if not _has_successful_cleanup(captured_run):
         return None
 
     projected_run = dict(captured_run)
@@ -2289,6 +2295,8 @@ def _validate_raw_selected_run(
             raise ValueError(
                 "raw recovery_run is only valid for a builder-only record_construction failure"
             )
+        if not _has_successful_cleanup(recovery_run):
+            raise ValueError("raw recovery_run has incomplete cleanup evidence")
         selected_run = recovery_run
     else:
         selected_run = _legacy_builder_failure_run(payload, captured_run)

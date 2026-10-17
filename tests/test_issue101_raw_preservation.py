@@ -98,6 +98,11 @@ def _passing_run(repeats=3):
         "status": "pass",
         "correctness_cases": _correctness_rows(),
         "performance_rows": performance,
+        "cleanup": {
+            "device_opened": True,
+            "close_attempted": True,
+            "close_succeeded": True,
+        },
     }
 
 
@@ -429,6 +434,84 @@ def test_issue102_legacy_recovery_rejects_non_builder_failure(tmp_path, failure_
     raw_path.write_text(json.dumps(payload))
 
     with pytest.raises(ValueError, match=failure_stage):
+        issue101.recover_combined_record(raw_path)
+
+
+def _write_recovery_builder_failure_raw(monkeypatch, tmp_path):
+    output_dir = tmp_path / "device-output"
+    _write_telemetry(output_dir)
+    monkeypatch.setattr(
+        issue101,
+        "build_combined_record",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("record construction injected")
+        ),
+    )
+    with pytest.raises(RuntimeError, match="record construction injected"):
+        issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
+    return output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
+
+
+@pytest.mark.parametrize(
+    ("artifact_kind", "cleanup_target"),
+    [
+        ("legacy", "run"),
+        ("recovery-run-captured", "run"),
+        ("recovery-run-projection", "recovery_run"),
+    ],
+    ids=["legacy", "recovery-run-captured", "recovery-run-projection"],
+)
+@pytest.mark.parametrize(
+    ("mutation", "field", "value"),
+    [
+        ("missing-cleanup", None, None),
+        ("non-dict-cleanup", None, []),
+        ("missing-device-opened", "device_opened", None),
+        ("false-device-opened", "device_opened", False),
+        ("non-bool-device-opened", "device_opened", 1),
+        ("missing-close-attempted", "close_attempted", None),
+        ("false-close-attempted", "close_attempted", False),
+        ("non-bool-close-attempted", "close_attempted", 1),
+        ("missing-close-succeeded", "close_succeeded", None),
+        ("false-close-succeeded", "close_succeeded", False),
+        ("non-bool-close-succeeded", "close_succeeded", 1),
+        ("non-null-close-error", "close_error", "close failed"),
+    ],
+    ids=[
+        "missing-cleanup",
+        "non-dict-cleanup",
+        "missing-device-opened",
+        "false-device-opened",
+        "non-bool-device-opened",
+        "missing-close-attempted",
+        "false-close-attempted",
+        "non-bool-close-attempted",
+        "missing-close-succeeded",
+        "false-close-succeeded",
+        "non-bool-close-succeeded",
+        "non-null-close-error",
+    ],
+)
+def test_issue102_recovery_rejects_incomplete_cleanup_evidence(
+    monkeypatch, tmp_path, artifact_kind, cleanup_target, mutation, field, value
+):
+    if artifact_kind == "legacy":
+        raw_path = _write_legacy_builder_failure_raw(tmp_path / "device-output")
+    else:
+        raw_path = _write_recovery_builder_failure_raw(monkeypatch, tmp_path)
+    payload = json.loads(raw_path.read_text())
+    target = payload[cleanup_target]
+    if mutation == "missing-cleanup":
+        target.pop("cleanup", None)
+    elif mutation == "non-dict-cleanup":
+        target["cleanup"] = value
+    elif mutation.startswith("missing-"):
+        target["cleanup"].pop(field, None)
+    else:
+        target["cleanup"][field] = value
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError):
         issue101.recover_combined_record(raw_path)
 
 
