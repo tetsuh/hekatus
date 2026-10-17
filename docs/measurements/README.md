@@ -334,9 +334,9 @@ records remain immutable; no Issue #104 measurement JSON or CSV is rewritten.
 The resident harness must not return to hardware without a new owner approval.
 When approved, the bounded procedure below uses device 0 through the
 named-container wrapper. Each resident invocation uses a separate explicit host
-output directory and the wrapper's standard custom-runner result path inside
-the container; the mounted output directories are retained on the development
-machine.
+output directory. The wrapper exports a run-specific `HEKATUS_TT_RESULT_PATH`
+inside the container; the resident runner uses that path when `--out` is absent.
+The mounted output directories are retained on the development machine.
 
 ### Cleanup gate
 
@@ -360,7 +360,6 @@ one-frame validation on device 0 with a 1 ms harness interval and a separate
 ```bash
 TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
   enodia/tt/bench/run_in_container.sh out/bench/issue12-watcher -- \
-  --out /out/runner-result.json \
   --device-id 0 \
   --frame-count 1 \
   --frame-interval-ticks 1350000 \
@@ -370,9 +369,11 @@ TT_METAL_WATCHER=1 HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
 ```
 
 Leave `HEKATUS_TT_CONTAINER_TIMEOUT_S` unset so the wrapper selects the
-mode-specific 60-second cap. The command names the runner, result path, device,
-frame count, interval, clock used for the conversion, outer cap, and Watcher
-mode instead of relying on runner defaults.
+mode-specific 60-second cap. The wrapper owns the run-specific result path through
+`HEKATUS_TT_RESULT_PATH`; the command names the runner, device, frame count,
+interval, clock used for the conversion, outer cap, and Watcher mode instead of
+relying on runner defaults. Supplying `--out` is optional, and if supplied it
+must identify the same path as the environment contract.
 
 ### No-Watcher timing
 
@@ -384,7 +385,6 @@ It writes the result and raw timestamps to container-internal `/out` paths:
 ```bash
 env -u TT_METAL_WATCHER HEKATUS_TT_RUNNER=enodia/tt/bench/run_resident.py \
   enodia/tt/bench/run_in_container.sh out/bench/issue12-timing -- \
-  --out /out/runner-result.json \
   --device-id 0 \
   --frame-count 500000 \
   --frame-interval-ticks 1350000 \
@@ -403,19 +403,19 @@ run, not a second Watcher validation.
 The wrapper bind-mounts each explicit output directory at container `/out`.
 On the development machine, verify the resident JSON records, raw timestamp
 bytes, and the wrapper's environment and power provenance before analysis.
-Retain the `out/bench/issue12-watcher/runner-result.json`,
-`out/bench/issue12-timing/runner-result.json`, and
+Retain the run-specific `runner-result*.json` files in
+`out/bench/issue12-watcher` and `out/bench/issue12-timing`, as well as
 `out/bench/issue12-timing/issue12-timing-500000.bin` files:
 
 ```bash
 find out/bench/issue12-watcher out/bench/issue12-timing -maxdepth 1 -type f \
-  \( -name 'runner-result.json' \
+  \( -name 'runner-result*.json' \
      -o -name 'issue12-timing-500000.bin' \
      -o -name 'env-*.json' \
      -o -name 'power-*.csv' \) -print
 mkdir -p issue12-retained
 cp -a out/bench/issue12-watcher out/bench/issue12-timing issue12-retained/
-sha256sum issue12-retained/issue12-timing/runner-result.json \
+sha256sum issue12-retained/issue12-timing/runner-result*.json \
   issue12-retained/issue12-timing/issue12-timing-500000.bin
 ```
 

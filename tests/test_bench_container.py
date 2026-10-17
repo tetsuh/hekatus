@@ -74,11 +74,24 @@ if [ "${1:-}" = kill ]; then
 fi
 printf '%s\\n' "$@" > "$DOCKER_ARGS"
 result_path=""
+output_mount=""
+previous=""
 for argument in "$@"; do
   case "$argument" in
     HEKATUS_TT_RESULT_PATH=*) result_path="${argument#*=}" ;;
   esac
+  if [ "$previous" = "-v" ] && [ "${argument#*:}" = "/out" ]; then
+    output_mount="${argument%:/out}"
+  fi
+  previous="$argument"
 done
+if [ "${WRITE_RESULT_FROM_ENV:-0}" = 1 ] && [ -n "$result_path" ] \\
+    && [ -n "$output_mount" ]; then
+  result_name="${result_path#/out/}"
+  host_result="${output_mount}/${result_name}"
+  printf '{"result_path":"%s","run_id":"%s"}\\n' \\
+    "$host_result" "$result_name" > "$host_result"
+fi
 if [ -n "${RUNNER_RESULT_HOST:-}" ] && [ -n "$result_path" ]; then
   printf '%s\\n' '{"fake_runner_result": true}' > "$RUNNER_RESULT_HOST"
 fi
@@ -987,8 +1000,8 @@ def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
     assert completed.returncode == 0, completed.stderr
     docker_args = args_log.read_text().splitlines()
     assert "HEKATUS_TT_TELEMETRY_MODE=off" in docker_args
-    assert "--out" in docker_args
-    assert docker_args[docker_args.index("--out") + 1] == "/out/runner-result.json"
+    assert "HEKATUS_TT_RESULT_PATH=/out/runner-result.json" in docker_args
+    assert "--out" not in docker_args
     assert "--power-trace" not in docker_args
     assert not list(output_dir.glob("power-*.csv"))
     assert "sampler -> off (diagnostic-only; no power trace by design)" in completed.stdout
@@ -1167,6 +1180,54 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
         "1",
         "--no-watcher",
     ]
+
+
+def test_resident_wrapper_reuses_output_directory_without_result_collision(tmp_path):
+    """The wrapper env path is unique for every resident invocation."""
+    bindir = _fake_tools(tmp_path)
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    shutil.copy2(ROOT / "enodia/tt/bench/telemetry.py", copied_wrapper.parent / "telemetry.py")
+    copied_root = copied_wrapper.parents[3]
+    output_dir = tmp_path / "shared-output"
+    common_environment = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+        "HEKATUS_TT_TELEMETRY_MODE": "off",
+        "HEKATUS_TT_CONTAINER_TIMEOUT_S": "600",
+        "WRITE_RESULT_FROM_ENV": "1",
+    }
+    common_environment.pop("HEKATUS_TT_IMAGE", None)
+    reported_paths = []
+
+    for index in range(2):
+        args_log = tmp_path / f"docker-args-{index}"
+        completed = subprocess.run(
+            [str(copied_wrapper), str(output_dir), "--"],
+            cwd=copied_root,
+            env={**common_environment, "DOCKER_ARGS": str(args_log)},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert completed.returncode == 0, completed.stderr
+        match = re.search(r"^results     -> (.+)$", completed.stdout, re.MULTILINE)
+        assert match is not None
+        reported_path = Path(match.group(1))
+        reported_paths.append(reported_path)
+        payload = json.loads(reported_path.read_text())
+        assert payload["result_path"] == str(reported_path)
+        assert payload["run_id"] == reported_path.name
+        docker_args = args_log.read_text().splitlines()
+        assert any(argument.startswith("HEKATUS_TT_RESULT_PATH=/out/") for argument in docker_args)
+        assert "--out" not in docker_args
+
+    assert len(set(reported_paths)) == 2
+    assert len(list(output_dir.glob("runner-result*.json"))) == 2
+    assert json.loads(reported_paths[0].read_text()) != json.loads(reported_paths[1].read_text())
 
 
 CUSTOM_RUNNERS = (
