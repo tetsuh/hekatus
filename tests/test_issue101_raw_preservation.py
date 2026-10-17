@@ -17,6 +17,12 @@ _ISSUE102_BOARD_PROJECTIONS = (
     ("normalized", "board"),
 )
 _ISSUE102_PCI_ALIASES = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+_ISSUE102_FIRMWARE_LOCATIONS = (
+    ("raw", "firmware"),
+    ("raw", "firmwares"),
+    ("normalized", "firmware"),
+    ("normalized", "firmwares"),
+)
 
 
 def _raw_environment() -> dict:
@@ -1085,6 +1091,105 @@ def test_issue102_recovery_rejects_raw_normalized_firmware_conflict(tmp_path):
 
     with pytest.raises(ValueError, match="firmware"):
         issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "field"),
+    _ISSUE102_FIRMWARE_LOCATIONS,
+    ids=[
+        "raw-firmware",
+        "raw-firmwares",
+        "normalized-firmware",
+        "normalized-firmwares",
+    ],
+)
+@pytest.mark.parametrize(
+    "firmware",
+    [True, 7, 7.5, ["19.6.0.0"], None],
+    ids=["bool", "integer", "float", "list", "null"],
+)
+def test_issue102_recovery_rejects_non_dict_firmware_in_each_projection(
+    tmp_path, environment_name, field, firmware
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    raw_environment["firmware"] = dict(raw_environment["firmwares"])
+    environment = raw_environment if environment_name == "raw" else normalized_environment
+    environment[field] = firmware
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="firmware bundle version"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "field"),
+    _ISSUE102_FIRMWARE_LOCATIONS,
+    ids=[
+        "raw-firmware",
+        "raw-firmwares",
+        "normalized-firmware",
+        "normalized-firmwares",
+    ],
+)
+@pytest.mark.parametrize(
+    "version",
+    [True, 7, 7.5, ["19.6.0.0"], {"value": "19.6.0.0"}, None, "", " \t\n"],
+    ids=["bool", "integer", "float", "list", "dict", "null", "empty", "whitespace"],
+)
+def test_issue102_recovery_rejects_malformed_firmware_version_in_each_projection(
+    tmp_path, environment_name, field, version
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    raw_environment["firmware"] = dict(raw_environment["firmwares"])
+    environment = raw_environment if environment_name == "raw" else normalized_environment
+    environment[field] = {"fw_bundle_version": version}
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="firmware bundle version"):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_preserves_saved_firmware_version_text(tmp_path):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    version = " 19.6.0.0 \t"
+    firmware = {"fw_bundle_version": version}
+    normalized_environment["firmware"] = firmware
+    raw_environment["firmwares"] = firmware
+    normalized_environment["firmwares"] = firmware
+    raw_path.write_text(json.dumps(payload))
+
+    record = issue101.recover_combined_record(raw_path)
+
+    assert record["environment"]["firmware"]["fw_bundle_version"] == version
+
+
+def test_issue102_recovery_rejects_type_sensitive_firmware_mapping_conflict():
+    raw_environment = {
+        "firmwares": {
+            "fw_bundle_version": "19.6.0.0",
+            "nested": {"enabled": 1},
+        }
+    }
+    normalized_environment = {
+        "firmware": {
+            "fw_bundle_version": "19.6.0.0",
+            "nested": {"enabled": True},
+        }
+    }
+
+    with pytest.raises(ValueError, match="firmware"):
+        issue101._validate_raw_environment_consistency(
+            raw_environment, normalized_environment
+        )
 
 
 @pytest.mark.parametrize(

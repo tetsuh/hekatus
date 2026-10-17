@@ -1265,10 +1265,19 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
     return captured_run_id
 
 
+def _is_valid_firmware_mapping(firmware: Any) -> bool:
+    """Return whether a saved firmware projection has a usable bundle version."""
+    return (
+        isinstance(firmware, dict)
+        and isinstance(firmware.get("fw_bundle_version"), str)
+        and bool(firmware["fw_bundle_version"].strip())
+    )
+
+
 def _validate_environment_firmware(environment: dict) -> None:
     """Validate the firmware identity required for a captured record."""
     firmware = environment["firmware"]
-    if not isinstance(firmware, dict) or not firmware.get("fw_bundle_version"):
+    if not _is_valid_firmware_mapping(firmware):
         raise ValueError("the combined record requires captured firmware bundle version")
 
 
@@ -2144,23 +2153,33 @@ def _validate_raw_environment_consistency(
                         f"{source_name} and normalized board field {field!r} values disagree"
                     )
 
-    normalized_firmware = normalized_environment.get("firmware")
-    if isinstance(normalized_firmware, dict):
-        firmware_sources = (
-            ("raw environment", raw_environment),
-            ("normalized environment", normalized_environment),
+    firmware_sources = []
+    for source_name, environment in (
+        ("raw environment", raw_environment),
+        ("normalized environment", normalized_environment),
+    ):
+        for field in ("firmware", "firmwares"):
+            if field not in environment:
+                continue
+            saved_firmware = environment[field]
+            if not _is_valid_firmware_mapping(saved_firmware):
+                raise ValueError(
+                    f"{source_name} {field!r} must be a dict with a "
+                    "non-whitespace string firmware bundle version"
+                )
+            firmware_sources.append((source_name, field, saved_firmware))
+
+    if not firmware_sources:
+        return
+    expected_source, expected_field, expected_firmware = firmware_sources[0]
+    for source_name, field, saved_firmware in firmware_sources[1:]:
+        if _json_values_equal(saved_firmware, expected_firmware):
+            continue
+        raise ValueError(
+            "saved firmware mappings disagree: "
+            f"{expected_source} {expected_field!r} and "
+            f"{source_name} {field!r}"
         )
-        for source_name, environment in firmware_sources:
-            for field in ("firmware", "firmwares"):
-                saved_firmware = environment.get(field)
-                if not isinstance(saved_firmware, dict):
-                    continue
-                if saved_firmware != normalized_firmware:
-                    if source_name == "raw environment":
-                        raise ValueError("raw and normalized firmware mappings disagree")
-                    raise ValueError(
-                        f"{source_name} {field!r} and normalized firmware mappings disagree"
-                    )
 
 
 def _validate_raw_telemetry(payload: dict, *, run_id: str) -> tuple[dict, dict]:
