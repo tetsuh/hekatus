@@ -1492,8 +1492,10 @@ def build_combined_record(
     )
 
 
-def _atomic_json_write(path: Path, payload: dict) -> None:
-    """Write JSON beside a normalized, non-symlink destination atomically."""
+def _atomic_json_write(
+    path: Path, payload: dict, *, no_clobber: bool = False
+) -> None:
+    """Atomically write JSON, optionally refusing to replace an existing destination."""
     destination = Path(os.path.abspath(path))
     if destination.is_symlink():
         raise FileExistsError(
@@ -1509,7 +1511,10 @@ def _atomic_json_write(path: Path, payload: dict) -> None:
             handle.write(strict_json_dumps(payload, indent=2) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, destination)
+        if no_clobber:
+            os.link(temporary_path, destination)
+        else:
+            os.replace(temporary_path, destination)
     finally:
         temporary_path.unlink(missing_ok=True)
 
@@ -2371,7 +2376,12 @@ def _recover_from_raw_cli(
             safe_output,
             original_destination=output,
         )
-        _atomic_json_write(safe_output, record)
+        try:
+            _atomic_json_write(safe_output, record, no_clobber=True)
+        except FileExistsError as exc:
+            raise FileExistsError(
+                f"rebuild output already exists: {safe_output}; refusing to overwrite"
+            ) from exc
     except (OSError, RuntimeError, TypeError, ValueError) as exc:
         parser.error(str(exc))
     print(f"recovered combined record -> {output}", flush=True)

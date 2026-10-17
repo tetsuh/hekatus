@@ -1186,6 +1186,57 @@ def test_issue102_rebuild_cli_is_board_free_and_writes_record(tmp_path, monkeypa
     ) in record["notes"]
 
 
+def test_issue102_atomic_json_no_clobber_preserves_first_bytes(tmp_path):
+    output_path = tmp_path / "record.json"
+
+    issue101._atomic_json_write(
+        output_path, {"winner": "first"}, no_clobber=True
+    )
+    first_bytes = output_path.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        issue101._atomic_json_write(
+            output_path, {"winner": "second"}, no_clobber=True
+        )
+
+    assert output_path.read_bytes() == first_bytes
+    assert not list(tmp_path.glob(f".{output_path.name}.*.tmp"))
+
+    issue101._atomic_json_write(output_path, {"winner": "replacement"})
+    assert json.loads(output_path.read_text()) == {"winner": "replacement"}
+
+
+def test_issue102_rebuild_cli_translates_publication_race_error(
+    tmp_path, monkeypatch, capsys
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    output_path = tmp_path / "rebuilt.json"
+    first_bytes = b"published by the competing rebuild\n"
+
+    def publish_race(_temporary_path, destination):
+        Path(destination).write_bytes(first_bytes)
+        raise FileExistsError("publication lost race")
+
+    monkeypatch.setattr(issue101.os, "link", publish_race)
+    with pytest.raises(SystemExit) as excinfo:
+        issue101.main(
+            [
+                "--recover-raw",
+                str(raw_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+
+    assert excinfo.value.code == 2
+    assert output_path.read_bytes() == first_bytes
+    assert (
+        f"rebuild output already exists: {output_path.resolve()}; refusing to overwrite"
+        in capsys.readouterr().err
+    )
+
+
 def test_issue102_rebuild_cli_canonicalizes_absolute_cli_paths(tmp_path, monkeypatch):
     output_dir = tmp_path / "device-output"
     raw_path, _ = _write_rebuild_raw(output_dir)
