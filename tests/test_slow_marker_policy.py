@@ -70,6 +70,8 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
     def _is_pytestmark_target(node: ast.AST) -> bool:
         if isinstance(node, ast.Name):
             return node.id == "pytestmark"
+        if isinstance(node, ast.Subscript):
+            return isinstance(node.value, ast.Name) and node.value.id == "pytestmark"
         if isinstance(node, (ast.List, ast.Tuple)):
             return any(
                 _ModuleSlowMarkerVisitor._is_pytestmark_target(item) for item in node.elts
@@ -172,6 +174,19 @@ def test_module_slow_marker_list_alias_mutation_is_detected():
     visitor.visit(tree)
 
     assert visitor.violations == ["synthetic.py:3"]
+
+
+def test_module_slow_marker_subscript_mutation_is_detected():
+    source = (
+        "pytestmark = []\n"
+        "pytestmark[:] = [pytest.mark.slow]\n"
+    )
+    tree = ast.parse(source, filename="synthetic.py")
+    pytest_names, mark_names = _pytest_marker_names(tree)
+    visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, "synthetic.py")
+    visitor.visit(tree)
+
+    assert visitor.violations == ["synthetic.py:2"]
 
 
 def test_module_slow_marker_mutation_is_detected():
