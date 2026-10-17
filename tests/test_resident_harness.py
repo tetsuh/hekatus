@@ -710,9 +710,11 @@ def test_missing_result_paths_reject_before_device_open(monkeypatch, capsys):
     assert "result path is required" in capsys.readouterr().err
 
 
-def test_result_path_mismatch_rejects_before_device_open(tmp_path, monkeypatch):
+def test_result_path_mismatch_rejects_before_device_open(tmp_path, monkeypatch, capsys):
     cli_path = tmp_path / "cli-result.json"
     environment_path = tmp_path / "env-result.json"
+    cli_path.write_text("existing result\n")
+    environment_path.write_text("environment result\n")
     monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(environment_path))
     opened = []
     monkeypatch.setitem(
@@ -723,8 +725,9 @@ def test_result_path_mismatch_rejects_before_device_open(tmp_path, monkeypatch):
 
     assert run_resident.main(["--out", str(cli_path)]) == 2
     assert opened == []
-    rejection = json.loads(cli_path.read_text())
-    assert "--out and HEKATUS_TT_RESULT_PATH" in rejection["rejection_reason"]
+    assert cli_path.read_text() == "existing result\n"
+    assert environment_path.read_text() == "environment result\n"
+    assert "--out and HEKATUS_TT_RESULT_PATH" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("case", ["neither", "cli-only", "env-only", "both-equal", "both-different"])

@@ -122,6 +122,10 @@ class HostCleanupUnsafe(RuntimeError):
     """The CQ1 host thread could not be joined before device cleanup."""
 
 
+class ResidentResultPathMismatch(ResidentPreflightError):
+    """Both result-path inputs were supplied but identify different files."""
+
+
 @dataclass
 class _LoadedDeviceResources:
     """Mutable state owned by one merged resident/load execution."""
@@ -1331,7 +1335,7 @@ def _resolve_result_path(args: argparse.Namespace) -> Path:
             environment_path, description=f"{_RESULT_PATH_ENV} destination"
         )
         if safe_cli_path != safe_environment_path:
-            raise ResidentPreflightError(
+            raise ResidentResultPathMismatch(
                 f"--out and {_RESULT_PATH_ENV} must identify the same result path"
             )
         return safe_cli_path
@@ -2258,8 +2262,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (OSError, TypeError, ValueError) as exc:
+        rejection_output_path = (
+            None if isinstance(exc, ResidentResultPathMismatch) else output_path
+        )
         _write_rejection_if_possible(
-            output_path,
+            rejection_output_path,
             config=config,
             environment=environment,
             reason=str(exc),
