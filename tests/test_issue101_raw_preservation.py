@@ -10,6 +10,14 @@ import pytest
 from enodia.tt.bench.sampler_contract import power_trace_completion_marker_path
 from tools import newton_schulz_issue101_combined as issue101
 
+_ISSUE102_BOARD_PROJECTIONS = (
+    ("raw", "board_info"),
+    ("raw", "board"),
+    ("normalized", "board_info"),
+    ("normalized", "board"),
+)
+_ISSUE102_PCI_ALIASES = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
+
 
 def _raw_environment() -> dict:
     return {
@@ -1042,6 +1050,121 @@ def test_issue102_recovery_rejects_normalized_board_info_conflicts(tmp_path, fie
 
     with pytest.raises(ValueError, match=field):
         issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "projection"),
+    _ISSUE102_BOARD_PROJECTIONS,
+    ids=["raw-board-info", "raw-board", "normalized-board-info", "normalized-board"],
+)
+@pytest.mark.parametrize("alias", _ISSUE102_PCI_ALIASES)
+def test_issue102_recovery_accepts_saved_pci_aliases_across_projections(
+    environment_name, projection, alias
+):
+    raw_environment = {}
+    normalized_environment = {}
+    environment = (
+        raw_environment if environment_name == "raw" else normalized_environment
+    )
+    environment[projection] = {alias: " 0000:01:00.0 "}
+
+    issue101._validate_raw_environment_consistency(raw_environment, normalized_environment)
+
+
+def test_issue102_recovery_rejects_conflicting_saved_pci_aliases_across_projections():
+    raw_environment = {
+        "board_info": {"bus_id": "0000:01:00.0"},
+        "board": {"pci_bus_id": "0000:01:00.0"},
+    }
+    normalized_environment = {
+        "board_info": {"pci_address": "0000:01:00.0"},
+        "board": {"pci_bdf": "0000:02:00.0"},
+    }
+
+    with pytest.raises(ValueError, match="PCI identity"):
+        issue101._validate_raw_environment_consistency(
+            raw_environment, normalized_environment
+        )
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "projection"),
+    _ISSUE102_BOARD_PROJECTIONS,
+    ids=["raw-board-info", "raw-board", "normalized-board-info", "normalized-board"],
+)
+@pytest.mark.parametrize("alias", _ISSUE102_PCI_ALIASES)
+@pytest.mark.parametrize(
+    "value",
+    [True, None, 7, {"bdf": "0000:01:00.0"}, "not-a-bdf"],
+    ids=["bool", "null", "integer", "object", "non-bdf"],
+)
+def test_issue102_recovery_rejects_malformed_saved_pci_aliases(
+    environment_name, projection, alias, value
+):
+    raw_environment = {}
+    normalized_environment = {}
+    environment = (
+        raw_environment if environment_name == "raw" else normalized_environment
+    )
+    environment[projection] = {alias: value}
+
+    with pytest.raises(ValueError, match=alias):
+        issue101._validate_raw_environment_consistency(raw_environment, normalized_environment)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "projection"),
+    _ISSUE102_BOARD_PROJECTIONS,
+    ids=["raw-board-info", "raw-board", "normalized-board-info", "normalized-board"],
+)
+def test_issue102_recovery_accepts_captured_device_zero(
+    environment_name, projection
+):
+    raw_environment = {}
+    normalized_environment = {}
+    environment = (
+        raw_environment if environment_name == "raw" else normalized_environment
+    )
+    environment[projection] = {"device_id": 0}
+
+    issue101._validate_raw_environment_consistency(raw_environment, normalized_environment)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "projection"),
+    _ISSUE102_BOARD_PROJECTIONS,
+    ids=["raw-board-info", "raw-board", "normalized-board-info", "normalized-board"],
+)
+@pytest.mark.parametrize(
+    "value",
+    [1, -1, True, "0", None, 2],
+    ids=["one", "negative", "bool", "string", "null", "other-non-negative"],
+)
+def test_issue102_recovery_rejects_invalid_captured_device_id(
+    environment_name, projection, value
+):
+    raw_environment = {}
+    normalized_environment = {}
+    environment = (
+        raw_environment if environment_name == "raw" else normalized_environment
+    )
+    environment[projection] = {"device_id": value}
+
+    with pytest.raises(ValueError, match="device_id"):
+        issue101._validate_raw_environment_consistency(raw_environment, normalized_environment)
+
+
+def test_issue102_recovery_allows_legacy_board_projections_without_optional_identity():
+    raw_environment = {"board_info": {"board_type": "p150a", "board_id": "legacy"}}
+    normalized_environment = {
+        "board": {
+            "board_type": "p150a",
+            "board_id": "legacy",
+            "serial": "legacy",
+        }
+    }
+
+    issue101._validate_raw_environment_consistency(raw_environment, normalized_environment)
 
 
 @pytest.mark.parametrize("location", ["board_info", "board"])

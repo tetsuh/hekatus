@@ -22,6 +22,7 @@ from typing import Any, NoReturn
 import numpy as np
 
 from enodia.strict_json import dumps as strict_json_dumps
+from enodia.tt.bench.board_identity import normalize_pci_bus_id
 from enodia.tt.bench.newton_schulz_kernel import run_newton_schulz_kernel
 from enodia.tt.bench.newton_schulz_reference import (
     NEWTON_SCHULZ_ITERATIONS,
@@ -126,6 +127,7 @@ _CAPTURED_ENVIRONMENT_REQUIRED_FIELDS = (
     "board_serial_identity",
     "run_id",
 )
+_SAVED_BOARD_PCI_ALIASES = ("bus_id", "pci_bus_id", "pci_address", "pci_bdf")
 ISSUE101_NEW_DEFAULT = {
     "variant": "bf16",
     "state_format": "BF16",
@@ -2018,6 +2020,49 @@ def _validate_raw_header(
     return payload_run_id, artifact_file
 
 
+def _validate_saved_board_projection_identity(
+    board_sources: tuple[tuple[str, Any], ...],
+) -> None:
+    """Validate optional PCI and device identities in saved board projections."""
+    pci_identities: list[tuple[str, str, str]] = []
+    for source_name, saved_board in board_sources:
+        if not isinstance(saved_board, dict):
+            continue
+        for alias in _SAVED_BOARD_PCI_ALIASES:
+            if alias not in saved_board:
+                continue
+            normalized_bus_id = normalize_pci_bus_id(saved_board[alias])
+            if normalized_bus_id is None:
+                raise ValueError(
+                    f"{source_name} board PCI identity field {alias!r} "
+                    "must be a valid PCI BDF"
+                )
+            pci_identities.append((source_name, alias, normalized_bus_id))
+        if "device_id" not in saved_board:
+            continue
+        device_id = saved_board["device_id"]
+        if isinstance(device_id, bool) or not isinstance(device_id, int) or device_id < 0:
+            raise ValueError(
+                f"{source_name} board field 'device_id' must be a non-negative integer"
+            )
+        if device_id != ISSUE100_DEVICE_ID:
+            raise ValueError(
+                f"{source_name} board field 'device_id' {device_id!r} does not match "
+                f"Issue #101 device-0 catalogue value {ISSUE100_DEVICE_ID}"
+            )
+
+    if not pci_identities:
+        return
+    expected_source, expected_alias, expected_bus_id = pci_identities[0]
+    for source_name, alias, normalized_bus_id in pci_identities[1:]:
+        if normalized_bus_id != expected_bus_id:
+            raise ValueError(
+                "saved board PCI identity aliases disagree: "
+                f"{expected_source}.{expected_alias}={expected_bus_id!r} and "
+                f"{source_name}.{alias}={normalized_bus_id!r}"
+            )
+
+
 def _validate_raw_environment_consistency(
     raw_environment: dict, normalized_environment: dict
 ) -> None:
@@ -2058,6 +2103,7 @@ def _validate_raw_environment_consistency(
         ),
         ("normalized environment board", normalized_board),
     )
+    _validate_saved_board_projection_identity(board_sources)
     if isinstance(normalized_board, dict):
         for source_name, saved_board in board_sources:
             if not isinstance(saved_board, dict):
