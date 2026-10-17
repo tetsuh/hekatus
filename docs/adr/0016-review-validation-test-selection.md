@@ -1,6 +1,7 @@
 # ADR-0016: Review validation test selection
 
-- Status: **Proposed** — 2026-10-17
+- Status: **Accepted** — 2026-10-18
+- Owner decision: accepted by the owner on 2026-10-18
 
 ## Context
 
@@ -43,9 +44,9 @@ process and test-selection contract, and is worthy of an ADR.
 5. The marker expresses cost-based review selection, not lower importance.
    Tests omitted by review validation remain required in CI and retain their
    normal assertions.
-6. Under ADR-0004, the owner's merge of the pull request carrying this ADR is
-   its approval and acceptance. The transition to `Accepted` is written in
-   that same pull request at the merge boundary.
+6. Under ADR-0004, the owner accepted this decision on 2026-10-18, and that
+   acceptance is recorded in this pull request. The owner retains sole merge
+   authority; no later acceptance transition is pending.
 
 ## Consequences
 
@@ -62,7 +63,5 @@ process and test-selection contract, and is worthy of an ADR.
 
 ## Status history
 
-- 2026-10-17: Proposed in the open pull request carrying Issue #86. Under
-  ADR-0004, the owner's merge of that carrying pull request is approval and
-  acceptance; the transition to `Accepted` is written in the same pull
-  request at the merge boundary.
+- 2026-10-17: Proposed in pull request #141.
+- 2026-10-18: Accepted by the owner.
