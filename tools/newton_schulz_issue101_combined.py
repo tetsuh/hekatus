@@ -6,6 +6,7 @@ import argparse
 import csv
 import datetime
 import inspect
+import io
 import json
 import math
 import os
@@ -738,18 +739,23 @@ def _power_trace_artifact(path: Path, *, run_id: str | None = None) -> dict:
                 f"power trace {path.name} is for run_id {artifact_run_id!r}, "
                 f"not {run_id!r}"
             )
-    with path.open(newline="") as handle:
+    with path.open(newline="") as source:
+        contents = source.read()
+    with io.StringIO(contents, newline="") as handle:
         reader = csv.DictReader(handle)
         if tuple(reader.fieldnames or ()) != ISSUE101_POWER_COLUMNS:
             raise ValueError(
                 f"power trace {path.name} has unexpected columns {reader.fieldnames!r}"
             )
         rows = list(reader)
-        if rows and None not in rows[-1] and any(
-            value is None for value in rows[-1].values()
+        if (
+            rows
+            and None not in rows[-1]
+            and any(value is None for value in rows[-1].values())
+            and not contents.endswith(("\n", "\r"))
         ):
-            # SIGTERM can leave the terminal row short; an extra-field row has
-            # a None key and must remain visible for strict rejection.
+            # SIGTERM can leave the terminal row short at EOF; a line-terminated
+            # short row and an extra-field row must remain visible for rejection.
             rows.pop()
         samples = [dict(row) for row in rows]
     if not samples:
@@ -875,13 +881,56 @@ def _capture_telemetry(output_dir: Path, *, run_id: str | None = None) -> dict:
     return telemetry
 
 
-def _validate_correctness_rows(correctness: Any) -> None:
-    """Validate the ordered correctness rows required by a combined record."""
+def _validate_correctness_rows(
+    correctness: Any, *, strict_shape: bool = False
+) -> None:
+    """Validate ordered correctness rows, with producer-shape checks for raw rebuilds."""
     if not isinstance(correctness, list) or len(correctness) != len(ISSUE101_CORRECTNESS_CASES):
         raise ValueError("the combined record requires all nine correctness rows")
-    for row, (batch, size) in zip(correctness, ISSUE101_CORRECTNESS_CASES, strict=True):
-        if row.get("batch") != batch or row.get("size") != size or row.get("status") != "pass":
+    for index, (row, (batch, size)) in enumerate(
+        zip(correctness, ISSUE101_CORRECTNESS_CASES, strict=True)
+    ):
+        if not isinstance(row, dict):
+            raise TypeError(f"correctness row {index} is not an object")
+        if (
+            row.get("batch") != batch
+            or row.get("size") != size
+            or row.get("status") != "pass"
+        ):
             raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
+        if not strict_shape:
+            continue
+
+        expected_case = f"batch{batch}-L{size}"
+        if type(row.get("batch")) is not int or type(row.get("size")) is not int:
+            raise ValueError(f"correctness row {index} has invalid batch/size types")
+        if row.get("case") != expected_case:
+            raise ValueError(f"correctness row {index} has unexpected case")
+        if row.get("reference") != ISSUE101_CORRECTNESS_REFERENCE:
+            raise ValueError(f"correctness row {index} has unexpected reference")
+        if "threshold" not in row:
+            raise ValueError(f"correctness row {index} lacks threshold")
+        _validate_finite_performance_value(
+            row["threshold"], field=f"correctness row {index} threshold"
+        )
+        if row["threshold"] != ISSUE101_CORRECTNESS_THRESHOLD:
+            raise ValueError(f"correctness row {index} has unexpected threshold")
+
+        common_fields = {"case", "batch", "size", "reference", "threshold", "status"}
+        expected_fields = common_fields | {"relative_error"}
+        if set(row) != expected_fields:
+            raise ValueError(f"correctness row {index} has unsupported shape")
+
+        _validate_finite_performance_value(
+            row["relative_error"],
+            field=f"correctness row {index} relative_error",
+        )
+        if row["relative_error"] < 0:
+            raise ValueError(f"correctness row {index} relative_error is negative")
+        if row["relative_error"] > row["threshold"]:
+            raise ValueError(
+                f"correctness row {index} passed above its relative-error threshold"
+            )
 
 
 def _validate_finite_performance_value(value: Any, *, field: str) -> None:
@@ -961,11 +1010,14 @@ def _validate_complete_run(
     repeats: int,
     expected_shapes: Any = None,
     expected_configs: Any = None,
+    strict_correctness: bool = False,
 ) -> None:
     """Reject a record that would silently omit a requested raw result."""
     if run.get("status") != "pass":
         raise ValueError("a combined record requires all correctness and performance rows to pass")
-    _validate_correctness_rows(run.get("correctness_cases"))
+    _validate_correctness_rows(
+        run.get("correctness_cases"), strict_shape=strict_correctness
+    )
     _validate_performance_rows(
         run.get("performance_rows"),
         repeats=repeats,
@@ -1048,8 +1100,46 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
     identity = environment["board_serial_identity"]
     if not isinstance(identity, dict):
         raise TypeError("captured board serial identity is missing")
-    if identity.get("serial") != board["serial"] or identity.get("board_id") != board["board_id"]:
+    board_source = board.get("serial_identity_source")
+    identity_source = identity.get("source")
+    # Older saved environments may carry the source only in the identity map.
+    source = board_source if board_source is not None else identity_source
+    try:
+        # Validate the values that are still present in the normalized board,
+        # including any explicit/legacy serial disagreement.  Normalization
+        # copies an alias into ``serial``; reconstruct that provenance below
+        # without consulting host state or mutating the saved environment.
+        resolve_board_serial_identity(board)
+        identity_board = dict(board)
+        if source == "board_id_alias" or source == "board_serial_alias":
+            identity_board.pop("serial", None)
+        resolved_identity = resolve_board_serial_identity(identity_board)
+    except ValueError as exc:
+        raise ValueError(f"captured board identity is invalid: {exc}") from exc
+    if (
+        identity.get("serial") != resolved_identity["serial"]
+        or identity.get("board_id") != resolved_identity["board_id"]
+    ):
         raise ValueError("captured board serial identity does not match captured board")
+    if (
+        "serial_identity_source" in board
+        and "source" in identity
+        and board["serial_identity_source"] != identity["source"]
+    ):
+        raise ValueError("captured board serial_identity_source does not match saved identity")
+    for field in ("source", "alias_applied", "rule"):
+        if field in identity and (
+            type(identity[field]) is not type(resolved_identity[field])
+            or identity[field] != resolved_identity[field]
+        ):
+            raise ValueError(
+                f"captured board serial identity {field!r} does not match captured board"
+            )
+    if (
+        "serial_identity_source" in board
+        and board["serial_identity_source"] != resolved_identity["source"]
+    ):
+        raise ValueError("captured board serial_identity_source does not match captured board")
     return captured_run_id
 
 
@@ -1158,6 +1248,7 @@ def _record_from_parts(
     run_id: str | None = None,
     expected_shapes: Any = None,
     expected_configs: Any = None,
+    strict_correctness: bool = False,
 ) -> dict:
     """Build a record only from captured provenance and completed run rows."""
     _validate_complete_run(
@@ -1165,6 +1256,7 @@ def _record_from_parts(
         repeats=repeats,
         expected_shapes=expected_shapes,
         expected_configs=expected_configs,
+        strict_correctness=strict_correctness,
     )
     captured_run_id = _validate_captured_environment(environment, run_id=run_id)
     run_id = captured_run_id
@@ -1896,6 +1988,7 @@ def _validate_raw_selected_run(
         repeats=repeats,
         expected_shapes=expected_shapes,
         expected_configs=expected_configs,
+        strict_correctness=True,
     )
     return selected_run
 
@@ -1957,6 +2050,7 @@ def _record_from_raw_payload(
         run_id=captured_run_id,
         expected_shapes=expected_shapes,
         expected_configs=expected_configs,
+        strict_correctness=True,
     )
 
 

@@ -39,6 +39,9 @@ def _correctness_rows():
             "case": f"batch{batch}-L{size}",
             "batch": batch,
             "size": size,
+            "reference": issue101.ISSUE101_CORRECTNESS_REFERENCE,
+            "threshold": issue101.ISSUE101_CORRECTNESS_THRESHOLD,
+            "relative_error": 0.001,
             "status": "pass",
         }
         for batch, size in issue101.ISSUE101_CORRECTNESS_CASES
@@ -407,6 +410,115 @@ def test_issue102_live_capture_keeps_rejectable_terminal_power_rows(
 
     with pytest.raises(ValueError, match=message):
         issue101._validate_captured_power_trace(trace, run_id=run_id)
+
+
+def test_issue102_live_capture_keeps_line_terminated_short_power_row(tmp_path):
+    run_id = "live-run"
+    path = tmp_path / f"power-{run_id}.csv"
+    path.write_text(
+        "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+        "2020-02-03T04:05:08+00:00,75,1350\n"
+    )
+
+    trace = issue101._power_trace_artifact(path, run_id=run_id)
+
+    with pytest.raises(ValueError, match="not numeric"):
+        issue101._validate_captured_power_trace(trace, run_id=run_id)
+
+
+@pytest.mark.parametrize(
+    ("raw_board", "source"),
+    [
+        ({"board_type": "p150a", "board_id": "board-only"}, "board_id_alias"),
+        ({"board_type": "p150a", "board_serial": "legacy-only"}, "board_serial_alias"),
+        ({"board_type": "p150a", "serial": "explicit"}, "explicit_serial"),
+    ],
+    ids=["board-id-alias", "board-serial-alias", "explicit-serial"],
+)
+def test_issue102_identity_accepts_normalized_board_sources(raw_board, source):
+    environment = issue101.normalize_environment({"board_info": raw_board})
+    environment["run_id"] = "saved-run"
+
+    assert environment["board"]["serial_identity_source"] == source
+    assert (
+        issue101._validate_environment_identity(environment, run_id="saved-run")
+        == "saved-run"
+    )
+
+
+def test_issue102_identity_accepts_alias_source_saved_only_in_identity_metadata():
+    environment = issue101.normalize_environment(
+        {"board_info": {"board_type": "p150a", "board_id": "board-only"}}
+    )
+    environment["run_id"] = "saved-run"
+    del environment["board"]["serial_identity_source"]
+
+    assert issue101._validate_environment_identity(environment, run_id="saved-run") == "saved-run"
+
+
+def test_issue102_recovery_rejects_board_serial_rule_mismatch(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    environment = payload["telemetry"]["normalized_environment"]
+    environment["board"].update({"serial": "serial-b", "board_id": "board-a"})
+    environment["board_serial_identity"].update(
+        {"serial": "serial-b", "board_id": "board-a"}
+    )
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="serial and board_id"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("location", "field", "value"),
+    [
+        ("identity", "source", "explicit_serial"),
+        ("identity", "alias_applied", False),
+        ("identity", "rule", "not-the-captured-rule"),
+        ("board", "serial_identity_source", "explicit_serial"),
+    ],
+)
+def test_issue102_recovery_rejects_mismatched_saved_board_identity_metadata(
+    tmp_path, location, field, value
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    environment = payload["telemetry"]["normalized_environment"]
+    environment["board" if location == "board" else "board_serial_identity"][field] = value
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="identity|serial_identity_source"):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize("missing_field", ["reference", "threshold", "relative_error"])
+def test_issue102_recovery_rejects_missing_correctness_fields(tmp_path, missing_field):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    row = payload["correctness_results"][0]
+    del row[missing_field]
+    payload["run"]["correctness_cases"] = payload["correctness_results"]
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="reference|threshold|shape"):
+        issue101.recover_combined_record(raw_path)
+
+
+def test_issue102_recovery_rejects_pass_with_error_above_threshold(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    row = payload["correctness_results"][0]
+    row["relative_error"] = issue101.ISSUE101_CORRECTNESS_THRESHOLD * 2
+    payload["run"]["correctness_cases"] = payload["correctness_results"]
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="threshold"):
+        issue101.recover_combined_record(raw_path)
 
 
 def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
