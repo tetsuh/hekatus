@@ -547,11 +547,25 @@ def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
     [
         ("seconds_per_launch_samples", "not-a-number"),
         ("seconds_per_launch_samples", True),
+        ("seconds_per_launch_samples", -0.1),
         ("seconds_per_launch_p50", None),
+        ("seconds_per_launch_p50", -0.1),
         ("seconds_per_launch_p99", float("nan")),
+        ("seconds_per_launch_p99", -0.1),
         ("seconds_per_launch_p99_9", float("inf")),
+        ("seconds_per_launch_p99_9", -0.1),
     ],
-    ids=["sample-string", "sample-bool", "p50-null", "p99-nan", "p99_9-infinity"],
+    ids=[
+        "sample-string",
+        "sample-bool",
+        "sample-negative",
+        "p50-null",
+        "p50-negative",
+        "p99-nan",
+        "p99-negative",
+        "p99_9-infinity",
+        "p99_9-negative",
+    ],
 )
 def test_issue102_rebuild_rejects_malformed_performance_numbers(
     tmp_path, field, bad_value
@@ -566,7 +580,7 @@ def test_issue102_rebuild_rejects_malformed_performance_numbers(
         row[field] = bad_value
     payload["run"]["performance_rows"] = payload["performance_results"]
 
-    with pytest.raises(ValueError, match="finite numeric"):
+    with pytest.raises(ValueError, match="finite numeric|non-negative"):
         issue101._record_from_raw_payload(raw_path, payload)
 
 

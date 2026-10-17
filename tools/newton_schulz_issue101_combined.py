@@ -937,12 +937,14 @@ def _validate_correctness_rows(
 
 
 def _validate_finite_performance_value(value: Any, *, field: str) -> None:
-    """Require one saved performance value to be a finite non-boolean number."""
+    """Require one saved performance value to be finite and non-negative."""
     if isinstance(value, bool) or not isinstance(value, Real):
         raise ValueError(  # noqa: TRY004 - all malformed saved values share one rejection
             f"{field} must be a finite numeric value"
         )
     if isinstance(value, int):
+        if value < 0:
+            raise ValueError(f"{field} must be non-negative")
         return
     try:
         finite = math.isfinite(value)
@@ -950,6 +952,8 @@ def _validate_finite_performance_value(value: Any, *, field: str) -> None:
         raise ValueError(f"{field} must be a finite numeric value") from exc
     if not finite:
         raise ValueError(f"{field} must be a finite numeric value")
+    if value < 0:
+        raise ValueError(f"{field} must be non-negative")
 
 
 def _validate_performance_rows(

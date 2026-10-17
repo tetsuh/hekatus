@@ -482,6 +482,23 @@ def test_resident_wrapper_accepts_verified_digest_image(tmp_path):
     assert completed.returncode == 0, completed.stderr
 
 
+def test_issue101_wrapper_rejects_unpinned_image_before_docker_run_or_artifacts(tmp_path):
+    completed = _run_resident_wrapper(
+        tmp_path,
+        container_timeout=None,
+        runner_args=[],
+        image_override="registry.example/tt:latest",
+        runner="tools/newton_schulz_issue101_combined.py",
+    )
+
+    assert completed.returncode == 2
+    assert "Issue #101 runner" in completed.stderr
+    docker_args = (tmp_path / "docker-args").read_text().splitlines()
+    assert docker_args[:2] == ["image", "inspect"]
+    assert "run" not in docker_args
+    assert not list((tmp_path / "repo/out/bench").iterdir())
+
+
 @pytest.mark.parametrize(
     ("container_timeout", "runner_args", "watcher_env", "error"),
     [
