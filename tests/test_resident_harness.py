@@ -2472,6 +2472,60 @@ class TestResidentProvenance:
         assert not output_path.exists()
         assert "rejection record unavailable" in capsys.readouterr().err
 
+    def test_untrusted_output_rejects_before_device_open(self, tmp_path, monkeypatch):
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(_environment()))
+        output_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-untrusted.json"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+            ]
+        )
+
+        assert result == 2
+        assert not output_path.exists()
+
+    def test_untrusted_raw_timestamp_output_rejects_and_records_reason(
+        self, tmp_path, monkeypatch
+    ):
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(_environment()))
+        output_path = tmp_path / "rejection.json"
+        raw_output_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-raw.bin"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--raw-timestamps-out",
+                str(raw_output_path),
+            ]
+        )
+
+        assert result == 2
+        assert not raw_output_path.exists()
+        rejection = json.loads(output_path.read_text())
+        assert rejection["status"] == "rejected"
+        assert "raw timestamp output destination must be beneath" in rejection[
+            "rejection_reason"
+        ]
+
     @pytest.mark.parametrize(
         ("bound_name", "path_args", "reason"),
         [

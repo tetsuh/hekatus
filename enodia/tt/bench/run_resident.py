@@ -1197,15 +1197,34 @@ def _harness_pushed(commit: Any) -> bool:
     return remote.returncode == 0 and bool(remote.stdout.strip())
 
 
+_OUTPUT_PATH_RESOLUTION_ERROR = "path cannot be resolved"
+_OUTPUT_PATH_TRUST_ERROR = "must be beneath the current, temporary, or /out directory"
+
+
+def _trusted_output_roots() -> tuple[Path, ...]:
+    return (
+        Path.cwd().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+        Path("/out").resolve(),
+    )
+
+
 def _output_destination_writable(path: Path) -> bool:
     """Check a destination with a temporary sibling write, without replacing it."""
     try:
-        parent = path.parent
+        resolved_path = path.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        return False
+    try:
+        parent = resolved_path.parent
         parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            return path.is_file() and os.access(path, os.W_OK)
+        if resolved_path.exists():
+            return resolved_path.is_file() and os.access(resolved_path, os.W_OK)
         descriptor, temporary_name = tempfile.mkstemp(
-            prefix=f".{path.name}.", dir=parent
+            prefix=f".{resolved_path.name}.", dir=parent
         )
         os.close(descriptor)
         Path(temporary_name).unlink()
@@ -1214,14 +1233,33 @@ def _output_destination_writable(path: Path) -> bool:
     return True
 
 
-def _validate_output_destinations(args: argparse.Namespace) -> None:
-    """Check every path the runner may write before importing TTNN."""
+def _validate_output_destinations(
+    args: argparse.Namespace,
+) -> tuple[Path, Path | None]:
+    """Check and resolve every path the runner may write before importing TTNN."""
     destinations = [("output", args.out)]
     if args.raw_timestamps_out is not None:
         destinations.append(("raw timestamp output", args.raw_timestamps_out))
+    validated_destinations: list[Path] = []
     for name, path in destinations:
-        if not _output_destination_writable(path):
+        try:
+            resolved_path = path.resolve(strict=False)
+            trusted_roots = _trusted_output_roots()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise ResidentPreflightError(
+                f"{name} destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
+            ) from exc
+        if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+            raise ResidentPreflightError(
+                f"{name} destination {_OUTPUT_PATH_TRUST_ERROR}"
+            )
+        if not _output_destination_writable(resolved_path):
             raise ResidentPreflightError(f"{name} destination is not writable")
+        validated_destinations.append(resolved_path)
+    return (
+        validated_destinations[0],
+        validated_destinations[1] if len(validated_destinations) > 1 else None,
+    )
 
 
 def _write_rejection_if_possible(
@@ -1233,16 +1271,20 @@ def _write_rejection_if_possible(
 ) -> None:
     """Write a rejection only when the destination passed the writable check."""
     try:
-        if _output_destination_writable(output_path):
+        resolved_output_path = output_path.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+        if not any(resolved_output_path.is_relative_to(root) for root in trusted_roots):
+            raise OSError(f"output destination {_OUTPUT_PATH_TRUST_ERROR}")
+        if _output_destination_writable(resolved_output_path):
             _write(
-                output_path,
+                resolved_output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
             )
         else:
             raise OSError("output destination is not writable")
-    except (OSError, TypeError, ValueError):
+    except (OSError, RuntimeError, TypeError, ValueError):
         print(
             f"resident preflight rejected: {reason}; rejection record unavailable",
             file=sys.stderr,
@@ -1408,13 +1450,35 @@ def _environment(path: Path) -> dict[str, Any]:
 
 
 def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
+    try:
+        resolved_path = path.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ResidentPreflightError(
+            f"raw timestamp output destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
+        ) from exc
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise ResidentPreflightError(
+            f"raw timestamp output destination {_OUTPUT_PATH_TRUST_ERROR}"
+        )
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    try:
+        resolved_path = path.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ResidentPreflightError(
+            f"output destination {_OUTPUT_PATH_RESOLUTION_ERROR}"
+        ) from exc
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise ResidentPreflightError(
+            f"output destination {_OUTPUT_PATH_TRUST_ERROR}"
+        )
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_text(strict_json_dumps(payload, indent=2) + "\n")
 
 
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
@@ -1845,8 +1909,10 @@ def main(argv: list[str] | None = None) -> int:
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
+    output_path = args.out
+    raw_timestamps_path = args.raw_timestamps_out
     try:
-        _validate_output_destinations(args)
+        output_path, raw_timestamps_path = _validate_output_destinations(args)
         environment_path = args.env_json or _environment_output_path()
         environment = _environment(environment_path)
         condition, repeat_count, calibration = _load_execution_selection(args)
@@ -1881,7 +1947,7 @@ def main(argv: list[str] | None = None) -> int:
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (OSError, TypeError, ValueError) as exc:
         _write_rejection_if_possible(
-            args.out, config=config, environment=environment, reason=str(exc)
+            output_path, config=config, environment=environment, reason=str(exc)
         )
         return 2
 
@@ -1912,7 +1978,7 @@ def main(argv: list[str] | None = None) -> int:
         except HostCleanupUnsafe as exc:
             device_cleanup_safe = False
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config,
                     reason=f"host cleanup unsafe: {exc}",
@@ -1923,7 +1989,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         except (IndexError, OverflowError, RuntimeError, TypeError, ValueError) as exc:
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config,
                     reason=f"resident result unavailable: {exc}",
@@ -1937,8 +2003,8 @@ def main(argv: list[str] | None = None) -> int:
             ttnn.close_device(device)
     run_end = datetime.datetime.now(datetime.UTC)
 
-    if args.raw_timestamps_out is not None:
-        _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
+    if raw_timestamps_path is not None:
+        _write_raw_timestamps(raw_timestamps_path, result["timestamps"])
 
     runner_output_dir = _runner_output_dir()
     live_power_trace_path: Path | None = None
@@ -1961,7 +2027,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             if power_trace != expected_power_trace.name:
                 return _reject_power_trace_run(
-                    args.out,
+                    output_path,
                     config=config,
                     environment=environment,
                     reason="power trace binding rejected: name is not the current run artifact",
@@ -2025,12 +2091,12 @@ def main(argv: list[str] | None = None) -> int:
         except RunBindingError as exc:
             reason = f"power trace binding rejected: {exc}"
             return _reject_power_trace_run(
-                args.out, config=config, environment=environment, reason=reason
+                output_path, config=config, environment=environment, reason=reason
             )
         except FileExistsError as exc:
             reason = f"power trace snapshot installation rejected: {exc}"
             return _reject_power_trace_run(
-                args.out, config=config, environment=environment, reason=reason
+                output_path, config=config, environment=environment, reason=reason
             )
         except FileNotFoundError as exc:
             # A missing artifact is retained only as a diagnostic compatibility
@@ -2060,7 +2126,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         reason = str(exc)
-        _write(args.out, build_rejection_record(config=config, reason=reason, environment=environment))
+        _write(output_path, build_rejection_record(config=config, reason=reason, environment=environment))
         print(f"resident record rejected: {reason}", file=sys.stderr)
         return 2
     aiclk_mhz = aiclk_selection["aiclk_mhz"]
@@ -2116,7 +2182,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             reason = f"load interval AICLK provenance rejected: {exc}"
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
@@ -2219,7 +2285,7 @@ def main(argv: list[str] | None = None) -> int:
             )
     except (ValueError, TypeError) as exc:
         _write(
-            args.out,
+            output_path,
             build_rejection_record(
                 config=config,
                 reason=f"load interval evidence rejected: {exc}",
@@ -2326,8 +2392,8 @@ def main(argv: list[str] | None = None) -> int:
             strict_trace=power_trace is not None,
             raise_on_error=False,
         )
-    _write(args.out, record)
-    print(f"resident record -> {args.out.name}")
+    _write(output_path, record)
+    print(f"resident record -> {output_path.name}")
     return 0
 
 

@@ -98,6 +98,7 @@ SEMAPHORE_BYTES = 4
 CONSUMER_L1_PLACEMENT = "consumer L1"
 PRODUCER_L1_PLACEMENT = "producer L1"
 NONEMPTY_STRING_TYPE = "a non-empty string"
+_ENVIRONMENT_OBJECT_ERROR = "environment must be an object"
 UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
 TIMESTAMP_GAP_LIMIT_TICKS = 1 << 31
@@ -260,7 +261,7 @@ def validate_harness_preflight(
 ) -> None:
     """Require a clean recorded harness and a confirmed pushed revision."""
     if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
     if environment.get("harness_dirty") is not False:
         raise ResidentPreflightError(
             "harness worktree must be clean; recorded harness cleanliness is unknown"
@@ -962,7 +963,7 @@ def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     retained for legacy callers that do not need a runner-side default.
     """
     if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
     normalized = dict(environment)
     board = normalized.get("board")
     if isinstance(board, Mapping):
@@ -1028,7 +1029,7 @@ def validate_post_run_aiclk(aiclk_mhz: Any) -> None:
 def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
     """Require the immutable image identity using the table's image validators."""
     if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
     _validate_provenance_fields(
         {"environment": environment},
         phase=PROVENANCE_PHASE_PREFLIGHT,
