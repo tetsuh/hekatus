@@ -2209,10 +2209,16 @@ def main(argv: list[str] | None = None) -> int:
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
-    output_path = args.out if args.out is not None else _environment_result_path()
+    environment_result_path = _environment_result_path()
+    output_path = (
+        None
+        if args.out is not None and environment_result_path is not None
+        else args.out if args.out is not None else environment_result_path
+    )
     raw_timestamps_path = args.raw_timestamps_out
     try:
         args.out = _resolve_result_path(args)
+        output_path = args.out
         output_path, raw_timestamps_path = _validate_output_destinations(args)
         environment_path = args.env_json or _environment_output_path()
         environment = _environment(environment_path)

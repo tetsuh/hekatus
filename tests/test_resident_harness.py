@@ -730,6 +730,27 @@ def test_result_path_mismatch_rejects_before_device_open(tmp_path, monkeypatch, 
     assert "--out and HEKATUS_TT_RESULT_PATH" in capsys.readouterr().err
 
 
+def test_untrusted_environment_result_does_not_overwrite_cli_result(
+    tmp_path, monkeypatch, capsys
+):
+    cli_path = tmp_path / "cli-result.json"
+    cli_bytes = b"existing result\n"
+    cli_path.write_bytes(cli_bytes)
+    environment_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-untrusted.json"
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(environment_path))
+    opened = []
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs)),
+    )
+
+    assert run_resident.main(["--out", str(cli_path)]) == 2
+    assert cli_path.read_bytes() == cli_bytes
+    assert opened == []
+    assert "rejection record unavailable" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("case", ["neither", "cli-only", "env-only", "both-equal", "both-different"])
 def test_result_path_resolution_covers_cli_environment_combinations(
     tmp_path, monkeypatch, case
