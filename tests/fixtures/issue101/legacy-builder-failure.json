@@ -1,0 +1,604 @@
+{
+  "raw_schema": "adr-0005-issue101-combined-raw-v1",
+  "captured_at": "2020-02-03T04:05:06+00:00",
+  "run_id": "captured-run",
+  "artifact_file": "issue101-combined-raw-captured-run.json",
+  "artifact_status": "failed",
+  "run": {
+    "status": "failed",
+    "correctness_cases": [
+      {
+        "case": "batch4-L16",
+        "batch": 4,
+        "size": 16,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch8192-L16",
+        "batch": 8192,
+        "size": 16,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch4-L32",
+        "batch": 4,
+        "size": 32,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch8192-L32",
+        "batch": 8192,
+        "size": 32,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch1-L16",
+        "batch": 1,
+        "size": 16,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch3-L16",
+        "batch": 3,
+        "size": 16,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch5-L32",
+        "batch": 5,
+        "size": 32,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch31-L32",
+        "batch": 31,
+        "size": 32,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      },
+      {
+        "case": "batch63-L32",
+        "batch": 63,
+        "size": 32,
+        "reference": "BF16-rounded-R fixed-N=12 reference",
+        "threshold": 0.01,
+        "relative_error": 0.001,
+        "status": "pass"
+      }
+    ],
+    "performance_rows": [
+      {
+        "status": "ok",
+        "shape_name": "newton_schulz_L32_b8192",
+        "comparison_config": {
+          "name": "new_default",
+          "variant": "bf16",
+          "matrix_block": 8,
+          "double_buffer": true,
+          "fuse_s": true,
+          "math_fidelity": "HiFi3",
+          "fp32_dest_acc_en": true,
+          "dst_full_sync_en": true
+        },
+        "launches_measured": 3,
+        "seconds_per_launch_samples": [
+          0.001,
+          0.001001,
+          0.001002
+        ],
+        "seconds_per_launch_p50": 0.001001,
+        "seconds_per_launch_p99": 0.00100198,
+        "seconds_per_launch_p99_9": 0.001001998,
+        "flops_per_iteration": 1.0,
+        "tflops_p50_derived": 9.99000999000999e-10,
+        "tflops_fastest_launch_derived": 1e-09
+      },
+      {
+        "status": "ok",
+        "shape_name": "newton_schulz_L32_b8192",
+        "comparison_config": {
+          "name": "previous_default",
+          "variant": "bf16-fp32state",
+          "matrix_block": 4,
+          "double_buffer": true,
+          "fuse_s": true,
+          "math_fidelity": "HiFi3",
+          "fp32_dest_acc_en": true,
+          "dst_full_sync_en": true
+        },
+        "launches_measured": 3,
+        "seconds_per_launch_samples": [
+          0.001,
+          0.001001,
+          0.001002
+        ],
+        "seconds_per_launch_p50": 0.001001,
+        "seconds_per_launch_p99": 0.00100198,
+        "seconds_per_launch_p99_9": 0.001001998,
+        "flops_per_iteration": 1.0,
+        "tflops_p50_derived": 9.99000999000999e-10,
+        "tflops_fastest_launch_derived": 1e-09
+      },
+      {
+        "status": "ok",
+        "shape_name": "newton_schulz_L16_b8192",
+        "comparison_config": {
+          "name": "new_default",
+          "variant": "bf16",
+          "matrix_block": 8,
+          "double_buffer": true,
+          "fuse_s": true,
+          "math_fidelity": "HiFi3",
+          "fp32_dest_acc_en": true,
+          "dst_full_sync_en": true
+        },
+        "launches_measured": 3,
+        "seconds_per_launch_samples": [
+          0.001,
+          0.001001,
+          0.001002
+        ],
+        "seconds_per_launch_p50": 0.001001,
+        "seconds_per_launch_p99": 0.00100198,
+        "seconds_per_launch_p99_9": 0.001001998,
+        "flops_per_iteration": 1.0,
+        "tflops_p50_derived": 9.99000999000999e-10,
+        "tflops_fastest_launch_derived": 1e-09
+      },
+      {
+        "status": "ok",
+        "shape_name": "newton_schulz_L16_b8192",
+        "comparison_config": {
+          "name": "previous_default",
+          "variant": "bf16-fp32state",
+          "matrix_block": 4,
+          "double_buffer": true,
+          "fuse_s": true,
+          "math_fidelity": "HiFi3",
+          "fp32_dest_acc_en": true,
+          "dst_full_sync_en": true
+        },
+        "launches_measured": 3,
+        "seconds_per_launch_samples": [
+          0.001,
+          0.001001,
+          0.001002
+        ],
+        "seconds_per_launch_p50": 0.001001,
+        "seconds_per_launch_p99": 0.00100198,
+        "seconds_per_launch_p99_9": 0.001001998,
+        "flops_per_iteration": 1.0,
+        "tflops_p50_derived": 9.99000999000999e-10,
+        "tflops_fastest_launch_derived": 1e-09
+      }
+    ],
+    "run_id": "captured-run",
+    "failure_stage": "record_construction",
+    "error": "RuntimeError: legacy builder failure",
+    "failure": {
+      "stage": "record_construction",
+      "error": "RuntimeError: legacy builder failure"
+    },
+    "cleanup": {
+      "device_opened": true,
+      "close_attempted": true,
+      "close_succeeded": true
+    }
+  },
+  "correctness_results": [
+    {
+      "case": "batch4-L16",
+      "batch": 4,
+      "size": 16,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch8192-L16",
+      "batch": 8192,
+      "size": 16,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch4-L32",
+      "batch": 4,
+      "size": 32,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch8192-L32",
+      "batch": 8192,
+      "size": 32,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch1-L16",
+      "batch": 1,
+      "size": 16,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch3-L16",
+      "batch": 3,
+      "size": 16,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch5-L32",
+      "batch": 5,
+      "size": 32,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch31-L32",
+      "batch": 31,
+      "size": 32,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    },
+    {
+      "case": "batch63-L32",
+      "batch": 63,
+      "size": 32,
+      "reference": "BF16-rounded-R fixed-N=12 reference",
+      "threshold": 0.01,
+      "relative_error": 0.001,
+      "status": "pass"
+    }
+  ],
+  "performance_results": [
+    {
+      "status": "ok",
+      "shape_name": "newton_schulz_L32_b8192",
+      "comparison_config": {
+        "name": "new_default",
+        "variant": "bf16",
+        "matrix_block": 8,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      },
+      "launches_measured": 3,
+      "seconds_per_launch_samples": [
+        0.001,
+        0.001001,
+        0.001002
+      ],
+      "seconds_per_launch_p50": 0.001001,
+      "seconds_per_launch_p99": 0.00100198,
+      "seconds_per_launch_p99_9": 0.001001998,
+      "flops_per_iteration": 1.0,
+      "tflops_p50_derived": 9.99000999000999e-10,
+      "tflops_fastest_launch_derived": 1e-09
+    },
+    {
+      "status": "ok",
+      "shape_name": "newton_schulz_L32_b8192",
+      "comparison_config": {
+        "name": "previous_default",
+        "variant": "bf16-fp32state",
+        "matrix_block": 4,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      },
+      "launches_measured": 3,
+      "seconds_per_launch_samples": [
+        0.001,
+        0.001001,
+        0.001002
+      ],
+      "seconds_per_launch_p50": 0.001001,
+      "seconds_per_launch_p99": 0.00100198,
+      "seconds_per_launch_p99_9": 0.001001998,
+      "flops_per_iteration": 1.0,
+      "tflops_p50_derived": 9.99000999000999e-10,
+      "tflops_fastest_launch_derived": 1e-09
+    },
+    {
+      "status": "ok",
+      "shape_name": "newton_schulz_L16_b8192",
+      "comparison_config": {
+        "name": "new_default",
+        "variant": "bf16",
+        "matrix_block": 8,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      },
+      "launches_measured": 3,
+      "seconds_per_launch_samples": [
+        0.001,
+        0.001001,
+        0.001002
+      ],
+      "seconds_per_launch_p50": 0.001001,
+      "seconds_per_launch_p99": 0.00100198,
+      "seconds_per_launch_p99_9": 0.001001998,
+      "flops_per_iteration": 1.0,
+      "tflops_p50_derived": 9.99000999000999e-10,
+      "tflops_fastest_launch_derived": 1e-09
+    },
+    {
+      "status": "ok",
+      "shape_name": "newton_schulz_L16_b8192",
+      "comparison_config": {
+        "name": "previous_default",
+        "variant": "bf16-fp32state",
+        "matrix_block": 4,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      },
+      "launches_measured": 3,
+      "seconds_per_launch_samples": [
+        0.001,
+        0.001001,
+        0.001002
+      ],
+      "seconds_per_launch_p50": 0.001001,
+      "seconds_per_launch_p99": 0.00100198,
+      "seconds_per_launch_p99_9": 0.001001998,
+      "flops_per_iteration": 1.0,
+      "tflops_p50_derived": 9.99000999000999e-10,
+      "tflops_fastest_launch_derived": 1e-09
+    }
+  ],
+  "configs": {
+    "correctness_cases": [
+      {
+        "batch": 4,
+        "size": 16
+      },
+      {
+        "batch": 8192,
+        "size": 16
+      },
+      {
+        "batch": 4,
+        "size": 32
+      },
+      {
+        "batch": 8192,
+        "size": 32
+      },
+      {
+        "batch": 1,
+        "size": 16
+      },
+      {
+        "batch": 3,
+        "size": 16
+      },
+      {
+        "batch": 5,
+        "size": 32
+      },
+      {
+        "batch": 31,
+        "size": 32
+      },
+      {
+        "batch": 63,
+        "size": 32
+      }
+    ],
+    "new_default": {
+      "variant": "bf16",
+      "state_format": "BF16",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "fp32_dest_acc_en": true,
+      "matrix_block": 8,
+      "double_buffer": true,
+      "dst_full_sync_en": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "initial_value": "I/||R||inf",
+      "iterations": 12
+    },
+    "previous_default": {
+      "variant": "bf16-fp32state",
+      "state_format": "FP32",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "fp32_dest_acc_en": true,
+      "matrix_block": 4,
+      "double_buffer": true,
+      "dst_full_sync_en": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "initial_value": "I/||R||inf",
+      "iterations": 12
+    },
+    "execution": {
+      "variant": "bf16",
+      "math_fidelity": "HiFi3",
+      "fuse_s": true,
+      "fp32_dest_acc_en": true,
+      "matrix_block": 8,
+      "double_buffer": true,
+      "input_memory": "l1",
+      "r_memory": "l1",
+      "x0_memory": "l1",
+      "output_memory": "dram",
+      "dst_full_sync_en": true
+    },
+    "comparison": [
+      {
+        "name": "new_default",
+        "variant": "bf16",
+        "matrix_block": 8,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      },
+      {
+        "name": "previous_default",
+        "variant": "bf16-fp32state",
+        "matrix_block": 4,
+        "double_buffer": true,
+        "fuse_s": true,
+        "math_fidelity": "HiFi3",
+        "fp32_dest_acc_en": true,
+        "dst_full_sync_en": true
+      }
+    ],
+    "shapes": [
+      "newton_schulz_L32_b8192",
+      "newton_schulz_L16_b8192"
+    ],
+    "launches_per_row": 3
+  },
+  "telemetry": {
+    "status": "complete",
+    "run_id": "captured-run",
+    "environment_file": "env-captured-run.json",
+    "environment": {
+      "image": "ghcr.io/example/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image_pinned": true,
+      "kernel": "Linux 6.8.0-test",
+      "kmd_version": "2.11.0",
+      "tt_env_active_release": "0.75.0",
+      "harness_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "harness_dirty": false,
+      "board_info": {
+        "board_type": "p150a",
+        "board_id": "captured-board"
+      },
+      "firmwares": {
+        "fw_bundle_version": "19.6.0.0"
+      },
+      "captured_at": "2020-02-03T04:05:06+00:00",
+      "python": "3.9.7",
+      "run_id": "captured-run"
+    },
+    "normalized_environment": {
+      "image": "ghcr.io/example/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image_pinned": true,
+      "kernel": "Linux 6.8.0-test",
+      "kmd_version": "2.11.0",
+      "tt_env_active_release": "0.75.0",
+      "harness_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "harness_dirty": false,
+      "board_info": {
+        "board_type": "p150a",
+        "board_id": "captured-board"
+      },
+      "firmwares": {
+        "fw_bundle_version": "19.6.0.0"
+      },
+      "captured_at": "2020-02-03T04:05:06+00:00",
+      "python": "3.9.7",
+      "run_id": "captured-run",
+      "image_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "host_kernel": "Linux 6.8.0-test",
+      "kernel_driver_version": "2.11.0",
+      "toolchain_release": "0.75.0",
+      "board": {
+        "board_type": "p150a",
+        "board_id": "captured-board",
+        "device_id": 0,
+        "serial": "captured-board",
+        "serial_identity_source": "board_id_alias"
+      },
+      "board_serial_identity": {
+        "serial": "captured-board",
+        "board_id": "captured-board",
+        "source": "board_id_alias",
+        "alias_applied": true,
+        "rule": "board_id is accepted as serial identity only when telemetry has no explicit serial; an explicit serial takes precedence and must match board_id."
+      },
+      "firmware": {
+        "fw_bundle_version": "19.6.0.0"
+      },
+      "compiler": null,
+      "tt_metal_source_commit": null,
+      "kernel_compiler_note": "The pinned release image did not expose a source compiler commit.",
+      "harness_capture_note": "The synchronized source tree was clean at the recorded revision; git metadata was excluded from the temporary device staging copy."
+    },
+    "power_trace": {
+      "file": "power-captured-run.csv",
+      "run_id": "captured-run",
+      "columns": [
+        "timestamp_utc",
+        "power_w",
+        "aiclk_mhz",
+        "asic_temp_c"
+      ],
+      "samples": [
+        {
+          "timestamp_utc": "2020-02-03T04:05:06+00:00",
+          "power_w": "75",
+          "aiclk_mhz": "1350",
+          "asic_temp_c": "60.0"
+        }
+      ],
+      "sampling_source": "tt-smi snapshot"
+    },
+    "failures": []
+  },
+  "failure": {
+    "stage": "record_construction",
+    "error": "RuntimeError: legacy builder failure"
+  }
+}

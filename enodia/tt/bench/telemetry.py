@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import math
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -42,8 +44,10 @@ from enodia.tt.bench.sampler_contract import (
     DEFAULT_SAMPLER_INTERVAL_SECONDS,
     EXPLICIT_FINAL_SAMPLE,
     ONE_INTERVAL_BOUND,
+    POWER_TRACE_COMPLETION_MARKER_PREFIX,
     SAMPLER_MODES,
     normalize_sampler_metadata,
+    power_trace_completion_marker_path,
 )
 
 EXTENDED_POWER_TRACE_COLUMNS = _power_trace_extended.EXTENDED_POWER_TRACE_COLUMNS
@@ -1077,7 +1081,8 @@ def _sample_loop(handle, interval: float) -> None:
     Failing to *record* is a different thing and is not survived. Retrying a
     write that cannot succeed would turn a broken run into a quietly short
     trace, which is precisely the failure this module was extracted to stop
-    happening silently.
+    happening silently. The wrapper certifies the closed file only after each
+    complete row has been written and the handle has been closed.
     """
     handle.write(CSV_HEADER + "\n")
     while True:
@@ -1249,9 +1254,46 @@ def _sample_extended_forever(
         )
 
 
+class _SamplerStopped(BaseException):
+    """Signal that the wrapper intentionally stopped the live sampler."""
+
+
+def _stop_sampler(_signum: int, _frame: object) -> None:
+    raise _SamplerStopped
+
+
+def _write_power_trace_completion_marker(path: Path) -> None:
+    """Publish a hash marker only after the complete CSV has been closed."""
+    marker = power_trace_completion_marker_path(path)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    temporary = marker.with_name(f".{marker.name}.{os.getpid()}.tmp")
+    try:
+        temporary.write_text(
+            f"{POWER_TRACE_COMPLETION_MARKER_PREFIX}{digest}\n", encoding="ascii"
+        )
+        os.replace(temporary, marker)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _sample_forever(out_path: Path, interval: float) -> None:
-    with out_path.open("w", buffering=1) as handle:
-        _sample_loop(handle, interval)
+    """Write rows until the wrapper stops us, then certify the closed CSV."""
+    marker = power_trace_completion_marker_path(out_path)
+    marker.unlink(missing_ok=True)
+    # SIGUSR1 is reserved for the wrapper's successful benchmark completion.
+    # SIGTERM keeps its abort behavior and must never certify the trace.
+    previous_handler = signal.signal(signal.SIGUSR1, _stop_sampler)
+    stopped_intentionally = False
+    try:
+        with out_path.open("w", buffering=1) as handle:
+            try:
+                _sample_loop(handle, interval)
+            except _SamplerStopped:
+                stopped_intentionally = True
+    finally:
+        signal.signal(signal.SIGUSR1, previous_handler)
+    if stopped_intentionally:
+        _write_power_trace_completion_marker(out_path)
 
 
 def _telemetry_parser() -> argparse.ArgumentParser:

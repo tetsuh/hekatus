@@ -24,6 +24,7 @@ IMAGE="${HEKATUS_TT_IMAGE:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-24.04
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 RESIDENT_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_resident.py"
 MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
+ISSUE101_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue101_combined.py"
 ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
@@ -481,6 +482,10 @@ case "${IMAGE}" in
     elif [[ "${RESIDENT_RUNNER}" == "1" ]]; then
       echo "resident runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
       exit 2
+    elif [[ "${CUSTOM_RUNNER}" == "1" \
+            && "${RUNNER}" == "${ISSUE101_RUNNER_RELATIVE_PATH}" ]]; then
+      echo "Issue #101 runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
+      exit 2
     else
       echo "WARNING: ${IMAGE} is not digest-pinned and could not be resolved;" >&2
       echo "         results will be recorded as coming from an unpinned image." >&2
@@ -490,6 +495,12 @@ esac
 
 if [[ "${RESIDENT_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   echo "resident runner requires a verified digest-pinned image" >&2
+  exit 2
+fi
+if [[ "${CUSTOM_RUNNER}" == "1" \
+      && "${RUNNER}" == "${ISSUE101_RUNNER_RELATIVE_PATH}" \
+      && "${IMAGE_PINNED}" != "1" ]]; then
+  echo "Issue #101 runner requires a verified digest-pinned image" >&2
   exit 2
 fi
 
@@ -559,7 +570,7 @@ cleanup_children() {
   stop_container
   for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-      kill "${pid}" 2>/dev/null || true
+      kill -TERM "${pid}" 2>/dev/null || true
     fi
   done
   for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
@@ -998,7 +1009,7 @@ else
     # The intentional shutdown: the benchmark finished, so the sampler has done
     # its job and is asked to stop.
     SAMPLER_STATUS=intentional
-    kill "${SAMPLER_PID}" 2>/dev/null || true
+    kill -USR1 "${SAMPLER_PID}" 2>/dev/null || true
     wait "${SAMPLER_PID}"
   fi
 fi
