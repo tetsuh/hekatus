@@ -853,113 +853,131 @@ def _unknown_override_identity(identity: dict[str, Any], reason: str) -> dict:
     return identity
 
 
-def harness_identity() -> dict:
-    """Which revision of this tree computed the result.
-
-    The FLOP accounting behind every efficiency figure lives here, so a
-    measurement that cannot name the harness that produced it cannot be
-    reproduced or compared against a later one. A modified tree is recorded
-    as modified rather than silently attributed to its last commit, and a
-    tree git could not read at all is recorded as unknown rather than clean.
-    A transferred source tree may deliberately omit ``.git``; the wrapper can
-    then provide the source revision explicitly, but publication still needs
-    a host-side remote-ref query or an explicit host-verified boolean. Override
-    revisions are resolved to full object IDs before publication is checked.
-    """
-    repo = Path(__file__).resolve().parents[3]
-    override_commit = os.environ.get("HEKATUS_TT_HARNESS_COMMIT")
-    if override_commit:
-        override_dirty = os.environ.get("HEKATUS_TT_HARNESS_DIRTY", "")
-        if override_dirty not in _VALID_BOOLEAN_OVERRIDE_VALUES:
-            return {
+def _override_identity_base(override_dirty: str) -> tuple[dict[str, Any], bool]:
+    if override_dirty not in _VALID_BOOLEAN_OVERRIDE_VALUES:
+        return (
+            {
                 "harness_commit": None,
                 "harness_dirty": None,
                 "harness_identity_error": (
                     "HEKATUS_TT_HARNESS_DIRTY must be one of 0, 1, false, true"
                 ),
-            }
-        identity = {
+            },
+            False,
+        )
+    return (
+        {
             "harness_commit": None,
             "harness_dirty": override_dirty in {"1", "true"},
             "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
-        }
-        publication_override = os.environ.get("HEKATUS_TT_HARNESS_PUSHED")
-        canonical_output, canonical_ok = _git(
-            repo,
-            "rev-parse",
-            "--verify",
-            f"{override_commit}^{{commit}}",
-        )
-        canonical_commit = (
-            _canonical_commit_oid(canonical_output) if canonical_ok else None
-        )
-        if not canonical_ok:
-            if publication_override is not None and publication_override not in {
-                "0",
-                "1",
-                "false",
-                "true",
-            }:
-                return _unknown_override_identity(
-                    identity,
-                    "HEKATUS_TT_HARNESS_PUSHED must be one of 0, 1, false, true",
-                )
-            if _canonical_commit_oid(override_commit) is None:
-                return _unknown_override_identity(
-                    identity,
-                    "override commit cannot be host-verified as a full commit OID; "
-                    f"{canonical_output}",
-                )
-            if publication_override is None:
-                return _unknown_override_identity(
-                    identity,
-                    "Git metadata unavailable; a canonical full commit OID requires "
-                    "HEKATUS_TT_HARNESS_PUSHED",
-                )
-            identity.update(
-                harness_commit=override_commit,
-                harness_pushed=publication_override in {"1", "true"},
-                harness_publication_source="HEKATUS_TT_HARNESS_PUSHED",
-            )
-            return identity
-        if canonical_commit is None:
-            return _unknown_override_identity(
-                identity,
-                "HEKATUS_TT_HARNESS_COMMIT did not resolve to a full commit OID: "
-                f"{canonical_output}",
-            )
-        identity["harness_commit"] = canonical_commit
-        if publication_override is not None and publication_override not in {
-            "0",
-            "1",
-            "false",
-            "true",
-        }:
-            identity.update(
-                harness_pushed=None,
-                harness_identity_error=(
-                    "HEKATUS_TT_HARNESS_PUSHED must be one of 0, 1, false, true"
-                ),
-            )
-            return identity
+        },
+        True,
+    )
 
-        remote_refs, remote_refs_ok = _remote_tracking_refs_containing(
-            repo, canonical_commit
+
+def _override_publication_error(publication_override: str | None) -> str | None:
+    if publication_override is not None and publication_override not in _VALID_BOOLEAN_OVERRIDE_VALUES:
+        return "HEKATUS_TT_HARNESS_PUSHED must be one of 0, 1, false, true"
+    return None
+
+
+def _resolve_override_commit(
+    repo: Path, override_commit: str
+) -> tuple[str | None, str, bool]:
+    canonical_output, canonical_ok = _git(
+        repo,
+        "rev-parse",
+        "--verify",
+        f"{override_commit}^{{commit}}",
+    )
+    canonical_commit = _canonical_commit_oid(canonical_output) if canonical_ok else None
+    return canonical_commit, canonical_output, canonical_ok
+
+
+def _identity_without_git(
+    identity: dict[str, Any],
+    override_commit: str,
+    canonical_output: str,
+    publication_override: str | None,
+) -> dict:
+    publication_error = _override_publication_error(publication_override)
+    if publication_error is not None:
+        return _unknown_override_identity(identity, publication_error)
+    if _canonical_commit_oid(override_commit) is None:
+        return _unknown_override_identity(
+            identity,
+            "override commit cannot be host-verified as a full commit OID; "
+            f"{canonical_output}",
         )
-        if remote_refs_ok:
-            identity.update(
-                harness_pushed=bool(remote_refs),
-                harness_publication_source="remote_tracking_ref",
-            )
-            return identity
-        if publication_override is not None:
-            identity.update(
-                harness_pushed=publication_override in {"1", "true"},
-                harness_publication_source="HEKATUS_TT_HARNESS_PUSHED",
-            )
-            return identity
-        identity.update(harness_pushed=None, harness_identity_error=remote_refs)
+    if publication_override is None:
+        return _unknown_override_identity(
+            identity,
+            "Git metadata unavailable; a canonical full commit OID requires "
+            "HEKATUS_TT_HARNESS_PUSHED",
+        )
+    identity.update(
+        harness_commit=override_commit,
+        harness_pushed=publication_override in {"1", "true"},
+        harness_publication_source="HEKATUS_TT_HARNESS_PUSHED",
+    )
+    return identity
+
+
+def _publish_override_identity(
+    repo: Path,
+    identity: dict[str, Any],
+    canonical_commit: str,
+    publication_override: str | None,
+) -> dict:
+    publication_error = _override_publication_error(publication_override)
+    if publication_error is not None:
+        identity.update(harness_pushed=None, harness_identity_error=publication_error)
         return identity
+    remote_refs, remote_refs_ok = _remote_tracking_refs_containing(
+        repo, canonical_commit
+    )
+    if remote_refs_ok:
+        identity.update(
+            harness_pushed=bool(remote_refs),
+            harness_publication_source="remote_tracking_ref",
+        )
+        return identity
+    if publication_override is not None:
+        identity.update(
+            harness_pushed=publication_override in {"1", "true"},
+            harness_publication_source="HEKATUS_TT_HARNESS_PUSHED",
+        )
+        return identity
+    identity.update(harness_pushed=None, harness_identity_error=remote_refs)
+    return identity
+
+
+def _override_identity(repo: Path, override_commit: str) -> dict:
+    override_dirty = os.environ.get("HEKATUS_TT_HARNESS_DIRTY", "")
+    identity, valid = _override_identity_base(override_dirty)
+    if not valid:
+        return identity
+    publication_override = os.environ.get("HEKATUS_TT_HARNESS_PUSHED")
+    canonical_commit, canonical_output, canonical_ok = _resolve_override_commit(
+        repo, override_commit
+    )
+    if not canonical_ok:
+        return _identity_without_git(
+            identity, override_commit, canonical_output, publication_override
+        )
+    if canonical_commit is None:
+        return _unknown_override_identity(
+            identity,
+            "HEKATUS_TT_HARNESS_COMMIT did not resolve to a full commit OID: "
+            f"{canonical_output}",
+        )
+    identity["harness_commit"] = canonical_commit
+    return _publish_override_identity(
+        repo, identity, canonical_commit, publication_override
+    )
+
+
+def _regular_identity(repo: Path) -> dict:
     commit, commit_ok = _git(repo, "rev-parse", "HEAD")
     # Tracked changes only. The toolchain writes its build output into the
     # tree on every run, so counting untracked files would make the flag true
@@ -985,6 +1003,26 @@ def harness_identity() -> dict:
         "harness_dirty": bool(status),
         "harness_pushed": bool(remote_refs),
     }
+
+
+def harness_identity() -> dict:
+    """Which revision of this tree computed the result.
+
+    The FLOP accounting behind every efficiency figure lives here, so a
+    measurement that cannot name the harness that produced it cannot be
+    reproduced or compared against a later one. A modified tree is recorded
+    as modified rather than silently attributed to its last commit, and a
+    tree git could not read at all is recorded as unknown rather than clean.
+    A transferred source tree may deliberately omit ``.git``; the wrapper can
+    then provide the source revision explicitly, but publication still needs
+    a host-side remote-ref query or an explicit host-verified boolean. Override
+    revisions are resolved to full object IDs before publication is checked.
+    """
+    repo = Path(__file__).resolve().parents[3]
+    override_commit = os.environ.get("HEKATUS_TT_HARNESS_COMMIT")
+    if override_commit:
+        return _override_identity(repo, override_commit)
+    return _regular_identity(repo)
 
 
 def capture_environment(

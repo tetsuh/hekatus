@@ -2165,9 +2165,16 @@ def test_resident_environment_requires_verified_digest_image():
 class TestResidentProvenance:
     """Board-free tests generated from the production provenance table."""
 
-    @pytest.mark.parametrize("writer", ["json", "raw"], ids=["json", "raw"])
+    @pytest.mark.parametrize(
+        ("writer", "payload"),
+        [
+            (run_resident._write, {"status": "written"}),
+            (run_resident._write_raw_timestamps, [1, 2]),
+        ],
+        ids=["json", "raw"],
+    )
     def test_final_output_symlink_is_not_followed_after_preflight(
-        self, tmp_path, writer
+        self, tmp_path, writer, payload
     ):
         output_path = tmp_path / "output"
         target_path = tmp_path / "target"
@@ -2180,10 +2187,7 @@ class TestResidentProvenance:
         # Model a final-component substitution after the trusted preflight.
         output_path.symlink_to(target_path)
         with pytest.raises(OSError):
-            if writer == "json":
-                run_resident._write(safe_path, {"status": "written"})
-            else:
-                run_resident._write_raw_timestamps(safe_path, [1, 2])
+            writer(safe_path, payload)
 
         assert target_path.read_bytes() == target_bytes
 
