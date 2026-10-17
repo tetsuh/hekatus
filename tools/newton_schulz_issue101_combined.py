@@ -1347,7 +1347,7 @@ def _record_from_parts(
             "Raw 1,000-launch samples and p50/p99/p99.9 values are retained per performance row.",
             "TFLOPS fields are explicitly p50-derived and fastest-launch-derived.",
             "The raw artifact retains the complete pre-builder environment and power samples.",
-            "The raw artifact is persisted for audit; rebuilding is deferred to Issue #102.",
+            "The raw artifact is retained for audit; the record can be rebuilt board-free with --recover-raw.",
             "No host name or user-specific absolute path is included in this record.",
         ],
     }

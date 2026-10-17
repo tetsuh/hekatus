@@ -749,7 +749,12 @@ def test_issue102_rebuild_cli_is_board_free_and_writes_record(tmp_path, monkeypa
         )
         == 0
     )
-    assert json.loads(output_path.read_text())["run_id"] == "captured-run"
+    record = json.loads(output_path.read_text())
+    assert record["run_id"] == "captured-run"
+    assert (
+        "The raw artifact is retained for audit; the record can be rebuilt board-free "
+        "with --recover-raw."
+    ) in record["notes"]
 
 
 def test_issue102_rebuild_cli_canonicalizes_absolute_cli_paths(tmp_path, monkeypatch):
