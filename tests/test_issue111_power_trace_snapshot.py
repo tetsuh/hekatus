@@ -56,6 +56,8 @@ def _environment() -> dict[str, object]:
         "image": "registry.example/tt@sha256:" + "a" * 64,
         "image_pinned": True,
         "harness_commit": "0123456789abcdef",
+        "harness_dirty": False,
+        "harness_pushed": True,
         "tt_env_active_release": "0.75.0",
         "telemetry_sampler": {
             "mode": "default",

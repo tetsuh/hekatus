@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 import shlex
 import sys
@@ -14,7 +15,7 @@ from typing import ClassVar
 
 import pytest
 
-from enodia.tt.bench import run_resident
+from enodia.tt.bench import resident_harness, run_resident
 from enodia.tt.bench.resident_harness import (
     AUDITED_CLOCK_SOURCE_IMAGE,
     CLOCK_SOURCE_AUDIT_TABLE,
@@ -225,7 +226,8 @@ def _parse_documented_resident_args(argv: list[str]):
     assert out.is_absolute()
     assert out.parts[:2] == ("/", "out")
     relative_out = out.relative_to(Path("/out"))
-    assert relative_out.parts and ".." not in relative_out.parts
+    assert relative_out.parts
+    assert ".." not in relative_out.parts
     assert out.suffix == ".json"
     if args.raw_timestamps_out is not None:
         raw_timestamps = args.raw_timestamps_out
@@ -258,6 +260,8 @@ def _environment() -> dict:
         "image": "registry.example/tt@sha256:" + "a" * 64,
         "image_pinned": True,
         "harness_commit": "0123456789abcdef",
+        "harness_dirty": False,
+        "harness_pushed": True,
         "tt_env_active_release": "0.75.0",
     }
 
@@ -587,8 +591,9 @@ def test_resident_l1_allocation_ledger_matches_formula_and_cores():
     }
     assert resident_l1_allocation_bytes(ring_pages=220, watcher=True) == 917_520
     assert validate_configuration(_config(ring_pages=220))
+    oversized_ring = _config(ring_pages=221)
     with pytest.raises(ResidentPreflightError, match="L1 preflight budget"):
-        validate_configuration(_config(ring_pages=221))
+        validate_configuration(oversized_ring)
 
 
 def test_resident_semaphore_l1_bytes_are_in_preflight_accounting():
@@ -611,18 +616,19 @@ def test_wrap_tracked_single_gap_bounds_and_work_formula():
             fixed_work_ticks_per_frame=100_000,
         )
     )
+    invalid_interval = _config(frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS)
     with pytest.raises(ResidentPreflightError, match="frame_interval_ticks"):
-        validate_configuration(_config(frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS))
+        validate_configuration(invalid_interval)
+    invalid_budget = _config(cycle_budget=TIMESTAMP_GAP_LIMIT_TICKS)
     with pytest.raises(ResidentPreflightError, match="cycle_budget"):
-        validate_configuration(_config(cycle_budget=TIMESTAMP_GAP_LIMIT_TICKS))
+        validate_configuration(invalid_budget)
+    invalid_work = _config(
+        frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1,
+        work_per_frame=(TIMESTAMP_GAP_LIMIT_TICKS - 1) // WORK_TICKS_PER_UNIT_UPPER_BOUND + 1,
+        fixed_work_ticks_per_frame=100_000,
+    )
     with pytest.raises(ResidentPreflightError, match="work_per_frame"):
-        validate_configuration(
-            _config(
-                frame_interval_ticks=TIMESTAMP_GAP_LIMIT_TICKS - 1,
-                work_per_frame=(TIMESTAMP_GAP_LIMIT_TICKS - 1) // WORK_TICKS_PER_UNIT_UPPER_BOUND + 1,
-                fixed_work_ticks_per_frame=100_000,
-            )
-        )
+        validate_configuration(invalid_work)
 
 
 @pytest.mark.parametrize("aiclk_mhz", [800, 1_350])
@@ -681,8 +687,9 @@ def test_watcher_mode_requires_matching_cli_and_environment():
 
 
 def test_resident_parser_rejects_abbreviated_watcher_flag():
+    parser = _parser()
     with pytest.raises(SystemExit):
-        _parser().parse_args(["--out", "record.json", "--wat"])
+        parser.parse_args(["--out", "record.json", "--wat"])
 
 
 class TestResidentDefaults:
@@ -1618,6 +1625,7 @@ def test_sampler_off_record_is_trace_free_and_not_timing_evidence():
     assert record["power_trace"] is None
     assert record["power_trace_absent_reason"] == "sampler_off_by_design"
     assert record["telemetry_sampler"]["mode"] == "off"
+    assert record["clock"]["aiclk_observation_phase"] == "post_run"
     assert record["timing_evidence"] is False
 
 
@@ -1681,6 +1689,7 @@ def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off
         return original_environment(path)
 
     monkeypatch.setattr(run_resident, "_environment", read_environment)
+    monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
     monkeypatch.setattr(run_resident, "_run_device", fake_run_device)
     monkeypatch.setitem(
         sys.modules,
@@ -1721,8 +1730,8 @@ def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off
     assert off_record["outlier_analysis"]["aiclk_source"] == "configured"
     assert (output_dir / trace_name).exists()
     assert selected_environment_paths == [
-        Path("/out/env-sampled.json"),
-        Path("/out/env-off.json"),
+        output_dir / "env-sampled.json",
+        output_dir / "env-off.json",
     ]
 
 
@@ -2157,6 +2166,32 @@ def test_resident_environment_requires_verified_digest_image():
 class TestResidentProvenance:
     """Board-free tests generated from the production provenance table."""
 
+    @pytest.mark.parametrize(
+        ("writer", "payload"),
+        [
+            (run_resident._write, {"status": "written"}),
+            (run_resident._write_raw_timestamps, [1, 2]),
+        ],
+        ids=["json", "raw"],
+    )
+    def test_final_output_symlink_is_not_followed_after_preflight(
+        self, tmp_path, writer, payload
+    ):
+        output_path = tmp_path / "output"
+        target_path = tmp_path / "target"
+        target_bytes = b"target must remain unchanged\n"
+        target_path.write_bytes(target_bytes)
+        safe_path = run_resident._safe_output_path(
+            output_path, description="test output destination"
+        )
+
+        # Model a final-component substitution after the trusted preflight.
+        output_path.symlink_to(target_path)
+        with pytest.raises(OSError):
+            writer(safe_path, payload)
+
+        assert target_path.read_bytes() == target_bytes
+
     PREFLIGHT_FIELDS = tuple(
         field
         for field in REQUIRED_PROVENANCE_FIELDS
@@ -2324,7 +2359,725 @@ class TestResidentProvenance:
         assert opened == []
         rejection = json.loads(output_path.read_text())
         assert rejection["status"] == "rejected"
+        assert rejection["clock"]["aiclk_observation_phase"] == "post_run"
         assert "environment.board.serial" in rejection["rejection_reason"]
+
+    @staticmethod
+    def _device_open_must_not_be_called(**_kwargs):
+        raise AssertionError("device open must not be called during preflight rejection")
+
+    def _run_main_with_environment(
+        self,
+        tmp_path,
+        monkeypatch,
+        environment,
+        *extra_args,
+        harness_pushed: bool | None = True,
+    ):
+        environment_path = tmp_path / "environment.json"
+        output_path = tmp_path / "rejection.json"
+        environment["harness_pushed"] = harness_pushed
+        environment_path.write_text(json.dumps(environment))
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(
+                open_device=self._device_open_must_not_be_called,
+                close_device=lambda _device: None,
+            ),
+        )
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                "resident-power.csv",
+                *extra_args,
+            ]
+        )
+        return result, output_path
+
+    def test_missing_environment_rejects_before_device_open(self, tmp_path, monkeypatch):
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(tmp_path / "missing-environment.json"),
+            ]
+        )
+
+        assert result == 2
+        assert "cannot read environment JSON" in json.loads(
+            output_path.read_text()
+        )["rejection_reason"]
+
+    def test_unreadable_environment_rejects_before_device_open(self, tmp_path, monkeypatch):
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text("not-json")
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+            ]
+        )
+
+        assert result == 2
+        assert "cannot read environment JSON" in json.loads(
+            output_path.read_text()
+        )["rejection_reason"]
+
+    def test_harness_not_pushed_rejects_before_device_open(self, tmp_path, monkeypatch):
+        result, output_path = self._run_main_with_environment(
+            tmp_path, monkeypatch, _environment(), harness_pushed=False
+        )
+
+        assert result == 2
+        assert "pushed" in json.loads(output_path.read_text())["rejection_reason"]
+
+    def test_clean_override_with_unknown_publication_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        environment = _environment()
+        environment["harness_identity_source"] = "HEKATUS_TT_HARNESS_COMMIT"
+        result, output_path = self._run_main_with_environment(
+            tmp_path, monkeypatch, environment, harness_pushed=None
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "pushed" in rejection["rejection_reason"]
+
+    def test_dirty_harness_rejects_before_device_open(self, tmp_path, monkeypatch):
+        environment = _environment()
+        environment["harness_dirty"] = True
+
+        result, output_path = self._run_main_with_environment(
+            tmp_path, monkeypatch, environment
+        )
+
+        assert result == 2
+        assert "clean" in json.loads(output_path.read_text())["rejection_reason"]
+
+    def _run_bound_power_trace_preflight(
+        self,
+        tmp_path,
+        monkeypatch,
+        *,
+        power_trace: str,
+        output_name: str | None = None,
+        explicit_output_path: Path | None = None,
+        raw_output_path: Path | None = None,
+    ):
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir(exist_ok=True)
+        output_path = (
+            explicit_output_path
+            if explicit_output_path is not None
+            else output_dir / output_name
+            if output_name is not None
+            else tmp_path / "rejection.json"
+        )
+        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(
+                open_device=self._device_open_must_not_be_called,
+                close_device=lambda _device: None,
+            ),
+        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--power-trace",
+            power_trace,
+        ]
+        if raw_output_path is not None:
+            arguments.extend(("--raw-timestamps-out", str(raw_output_path)))
+        result = run_resident.main(arguments)
+        return result, output_path, output_dir
+
+    def test_bound_wrong_power_trace_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path, monkeypatch, power_trace="power-old.csv"
+        )
+
+        assert result == 2
+        assert "current run artifact" in json.loads(output_path.read_text())[
+            "rejection_reason"
+        ]
+
+    def test_preexisting_bound_power_snapshot_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        _result, output_path, output_dir = self._run_bound_power_trace_preflight(
+            tmp_path, monkeypatch, power_trace="power-old.csv"
+        )
+        output_dir.joinpath("resident-power-snapshot-current-run-1.csv").write_text(
+            "pre-existing snapshot\n"
+        )
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path, monkeypatch, power_trace="power-current-run.csv"
+        )
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "already exists" in rejection["rejection_reason"]
+
+    def test_unwritable_bound_power_snapshot_destination_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        original_writable = run_resident._output_destination_writable
+
+        def snapshot_destination_is_unwritable(path):
+            if path.name == "resident-power-snapshot-current-run-1.csv":
+                return False
+            return original_writable(path)
+
+        monkeypatch.setattr(
+            run_resident,
+            "_output_destination_writable",
+            snapshot_destination_is_unwritable,
+        )
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path, monkeypatch, power_trace="power-current-run.csv"
+        )
+
+        assert result == 2
+        assert "snapshot destination is not writable" in json.loads(
+            output_path.read_text()
+        )["rejection_reason"]
+
+    def _run_destination_collision_preflight(
+        self, tmp_path, monkeypatch, *, output_path: Path, raw_output_path: Path | None = None
+    ):
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+        ]
+        if raw_output_path is not None:
+            arguments.extend(("--raw-timestamps-out", str(raw_output_path)))
+        result = run_resident.main(arguments)
+        return result, output_path
+
+    def test_result_and_raw_timestamp_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        output_path = tmp_path / "same-output.bin"
+        result, rejection_path = self._run_destination_collision_preflight(
+            tmp_path, monkeypatch, output_path=output_path, raw_output_path=output_path
+        )
+
+        assert result == 2
+        rejection = json.loads(rejection_path.read_text())
+        assert "collides" in rejection["rejection_reason"]
+        assert "raw timestamp" in rejection["rejection_reason"]
+
+    @pytest.mark.parametrize("raw_is_ancestor", [False, True])
+    def test_result_and_raw_timestamp_nested_paths_reject_before_probe_or_device_open(
+        self, tmp_path, monkeypatch, raw_is_ancestor
+    ):
+        output_path = tmp_path / "result.json"
+        raw_output_path = output_path / "raw.bin"
+        if raw_is_ancestor:
+            output_path, raw_output_path = raw_output_path, output_path
+
+        probe_calls = []
+        original_probe = run_resident._output_destination_writable
+
+        def track_probe(path):
+            probe_calls.append(path)
+            return original_probe(path)
+
+        monkeypatch.setattr(run_resident, "_output_destination_writable", track_probe)
+        result, rejection_path = self._run_destination_collision_preflight(
+            tmp_path,
+            monkeypatch,
+            output_path=output_path,
+            raw_output_path=raw_output_path,
+        )
+
+        assert result == 2
+        assert probe_calls == [rejection_path.resolve()]
+        rejection = json.loads(rejection_path.read_text())
+        assert "ancestor/descendant" in rejection["rejection_reason"]
+        assert "raw timestamp" in rejection["rejection_reason"]
+
+    def test_result_and_snapshot_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name="resident-power-snapshot-current-run-1.csv",
+        )
+
+        assert result == 2
+        assert not output_path.exists()
+        assert "rejection record unavailable" in capsys.readouterr().err
+
+    def test_result_and_live_power_source_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name="power-current-run.csv",
+        )
+
+        assert result == 2
+        assert not output_path.exists()
+        assert "rejection record unavailable" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    @pytest.mark.parametrize("destination_kind", ["output", "raw"])
+    def test_protected_artifact_bytes_survive_equal_destination_rejection(
+        self, tmp_path, monkeypatch, artifact_kind, destination_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        artifact_path = output_dir / artifact_name
+        artifact_bytes = f"sentinel {artifact_kind}\n".encode()
+        artifact_path.write_bytes(artifact_bytes)
+        if destination_kind == "output":
+            output_path = artifact_path
+            raw_path = None
+        else:
+            output_path = tmp_path / "rejection.json"
+            raw_path = artifact_path
+
+        result, _rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            explicit_output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert artifact_path.read_bytes() == artifact_bytes
+
+    @pytest.mark.parametrize("destination_kind", ["output", "raw"])
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    def test_nested_protected_destinations_do_not_create_reserved_paths(
+        self, tmp_path, monkeypatch, destination_kind, artifact_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        protected_path = output_dir / artifact_name
+        nested_path = protected_path / "nested" / (
+            "result.json" if destination_kind == "output" else "raw.bin"
+        )
+        if destination_kind == "output":
+            output_name = str(nested_path.relative_to(output_dir))
+            output_path = None
+            raw_path = tmp_path / "safe-raw.bin"
+        else:
+            output_name = None
+            output_path = None
+            raw_path = nested_path
+
+        result, rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name=output_name,
+            explicit_output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert not protected_path.exists()
+        if destination_kind == "raw":
+            assert json.loads(rejection_path.read_text())["status"] == "rejected"
+
+    def test_result_and_raw_hard_link_alias_rejects_without_mutating_either_destination(
+        self, tmp_path, monkeypatch
+    ):
+        output_path = tmp_path / "result.json"
+        raw_path = tmp_path / "raw.bin"
+        destination_bytes = b"existing result and raw bytes\n"
+        output_path.write_bytes(destination_bytes)
+        os.link(output_path, raw_path)
+
+        result, _rejection_path = self._run_destination_collision_preflight(
+            tmp_path,
+            monkeypatch,
+            output_path=output_path,
+            raw_output_path=raw_path,
+        )
+
+        assert result == 2
+        assert output_path.read_bytes() == destination_bytes
+        assert raw_path.read_bytes() == destination_bytes
+
+    @pytest.mark.parametrize("artifact_kind", ["live", "snapshot"])
+    def test_protected_artifact_hard_link_alias_rejects_without_mutation(
+        self, tmp_path, monkeypatch, artifact_kind
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        artifact_name = (
+            "power-current-run.csv"
+            if artifact_kind == "live"
+            else "resident-power-snapshot-current-run-1.csv"
+        )
+        protected_path = output_dir / artifact_name
+        destination_bytes = f"hard-link {artifact_kind} bytes\n".encode()
+        protected_path.write_bytes(destination_bytes)
+        output_path = tmp_path / "result.json"
+        os.link(protected_path, output_path)
+
+        result, _rejection_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            explicit_output_path=output_path,
+        )
+
+        assert result == 2
+        assert output_path.read_bytes() == destination_bytes
+        assert protected_path.read_bytes() == destination_bytes
+
+    def _run_bound_live_source_preflight(
+        self, tmp_path, monkeypatch, *, source_kind: str
+    ):
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        source_path = output_dir / "power-current-run.csv"
+        if source_kind == "symlink":
+            target = tmp_path / "trace-target.csv"
+            target.write_text("not parsed\n")
+            source_path.symlink_to(target)
+        elif source_kind == "directory":
+            source_path.mkdir()
+        elif source_kind == "unreadable":
+            source_path.write_text("not parsed\n")
+            original_open = Path.open
+
+            def fail_source_open(path, *args, **kwargs):
+                if path == source_path:
+                    raise PermissionError("fake unreadable live source")
+                return original_open(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "open", fail_source_open)
+        else:
+            raise AssertionError(f"unknown source kind: {source_kind}")
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(
+                open_device=self._device_open_must_not_be_called,
+                close_device=lambda _device: None,
+            ),
+        )
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                source_path.name,
+            ]
+        )
+        return result, output_path
+
+    @pytest.mark.parametrize(
+        ("source_kind", "reason"),
+        [
+            ("symlink", "symlink"),
+            ("directory", "regular file"),
+            ("unreadable", "not readable"),
+        ],
+    )
+    def test_existing_bound_power_trace_source_rejects_before_device_open(
+        self, tmp_path, monkeypatch, source_kind, reason
+    ):
+        result, output_path = self._run_bound_live_source_preflight(
+            tmp_path, monkeypatch, source_kind=source_kind
+        )
+
+        assert result == 2
+        assert reason in json.loads(output_path.read_text())["rejection_reason"]
+
+    def _run_calibration_preflight(
+        self,
+        tmp_path,
+        monkeypatch,
+        *extra_args,
+        condition="dram",
+        sampler_mode="off",
+        calibrate=True,
+    ):
+        environment = _environment()
+        environment["telemetry_sampler"] = (
+            {
+                "mode": "off",
+                "interval_seconds": None,
+                "power_trace": "absent_by_design",
+                "timing_evidence": "diagnostic_only",
+            }
+            if sampler_mode == "off"
+            else {
+                "mode": sampler_mode,
+                "interval_seconds": 2.0,
+                "power_trace": "required",
+                "timing_evidence": "available",
+            }
+        )
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--condition",
+            condition,
+        ]
+        if sampler_mode != "off":
+            arguments.extend(("--power-trace", "resident-power.csv"))
+        if calibrate:
+            arguments.append("--calibrate")
+        arguments.extend(extra_args)
+        result = run_resident.main(arguments)
+        return result, output_path
+
+    @pytest.mark.parametrize("condition", ["dram", "newton_schulz"])
+    @pytest.mark.parametrize("calibrate", [False, True])
+    def test_sampler_off_card_load_rejects_before_device_open(
+        self, tmp_path, monkeypatch, condition, calibrate
+    ):
+        result, output_path = self._run_calibration_preflight(
+            tmp_path,
+            monkeypatch,
+            condition=condition,
+            calibrate=calibrate,
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "sampler mode off" in rejection["rejection_reason"]
+
+    @pytest.mark.parametrize(
+        "target_seconds", [0, -1, float("nan"), float("inf"), 500.001]
+    )
+    def test_invalid_calibration_target_rejects_before_device_open(
+        self, tmp_path, monkeypatch, target_seconds
+    ):
+        result, output_path = self._run_calibration_preflight(
+            tmp_path,
+            monkeypatch,
+            "--target-seconds",
+            str(target_seconds),
+            sampler_mode="default",
+        )
+
+        assert result == 2
+        assert "target_seconds" in json.loads(output_path.read_text())[
+            "rejection_reason"
+        ]
+
+    def test_zero_calibration_frame_interval_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        result, output_path = self._run_calibration_preflight(
+            tmp_path,
+            monkeypatch,
+            "--frame-interval-ticks",
+            "0",
+            condition="host_cpu_transfer",
+        )
+
+        assert result == 2
+        assert "frame_interval_ticks" in json.loads(output_path.read_text())[
+            "rejection_reason"
+        ]
+
+    def test_unwritable_output_rejects_before_device_open(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setattr(run_resident, "_output_destination_writable", lambda _path: False)
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                "resident-power.csv",
+            ]
+        )
+
+        assert result == 2
+        assert not output_path.exists()
+        assert "rejection record unavailable" in capsys.readouterr().err
+
+    def test_untrusted_output_rejects_before_device_open(self, tmp_path, monkeypatch):
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(_environment()))
+        output_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-untrusted.json"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+            ]
+        )
+
+        assert result == 2
+        assert not output_path.exists()
+
+    def test_untrusted_raw_timestamp_output_rejects_and_records_reason(
+        self, tmp_path, monkeypatch
+    ):
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(_environment()))
+        output_path = tmp_path / "rejection.json"
+        raw_output_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-raw.bin"
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--raw-timestamps-out",
+                str(raw_output_path),
+            ]
+        )
+
+        assert result == 2
+        assert not raw_output_path.exists()
+        rejection = json.loads(output_path.read_text())
+        assert rejection["status"] == "rejected"
+        assert "raw timestamp output destination must be beneath" in rejection[
+            "rejection_reason"
+        ]
+
+    @pytest.mark.parametrize(
+        ("bound_name", "path_args", "reason"),
+        [
+            pytest.param(
+                "MAX_TIMESTAMP_BUFFER_BYTES",
+                (),
+                "timestamp buffer",
+                id="timestamp-buffer",
+            ),
+            pytest.param(
+                "MAX_OUTPUT_ALLOCATION_BYTES",
+                ("--raw-timestamps-out", "raw-timestamps.bin"),
+                "output allocation",
+                id="output-allocation",
+            ),
+        ],
+    )
+    def test_extreme_allocations_reject_before_device_open(
+        self, tmp_path, monkeypatch, bound_name, path_args, reason
+    ):
+        page_bytes = resident_harness.PAGE_BYTES
+        bound = getattr(resident_harness, bound_name)
+        frame_bytes = (
+            page_bytes
+            if "TIMESTAMP" in bound_name
+            else resident_harness.RESIDENT_OUTPUT_BYTES_PER_FRAME
+        )
+        frame_count = bound // frame_bytes + 1
+
+        result, output_path = self._run_main_with_environment(
+            tmp_path,
+            monkeypatch,
+            _environment(),
+            "--frame-count",
+            str(frame_count),
+            *path_args,
+        )
+
+        assert result == 2
+        assert reason in json.loads(output_path.read_text())["rejection_reason"]
 
     def test_accepted_current_wrap_record_satisfies_every_table_entry(self):
         record = json.loads(
@@ -2350,8 +3103,9 @@ class TestResidentProvenance:
     @pytest.mark.parametrize("field", POST_RUN_FIELDS, ids=lambda field: field.path)
     @pytest.mark.parametrize("value", [0, -1])
     def test_post_run_rejects_non_positive_aiclk(self, field, value):
+        record = self._post_run_record(field.path, value)
         with pytest.raises(ValueError, match=re.escape(field.path)):
-            validate_post_run_provenance(self._post_run_record(field.path, value))
+            validate_post_run_provenance(record)
 
 
 def test_record_preflight_rejects_empty_commit_and_non_filename_trace():

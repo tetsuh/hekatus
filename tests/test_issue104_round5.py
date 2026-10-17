@@ -58,6 +58,8 @@ def _environment(*, mode: str = "explicit") -> dict:
         "image": AUDITED_CLOCK_SOURCE_IMAGE,
         "image_pinned": True,
         "harness_commit": "a" * 40,
+        "harness_dirty": False,
+        "harness_pushed": True,
         "tt_env_active_release": "0.75.0",
         "telemetry_sampler": {
             "mode": mode,

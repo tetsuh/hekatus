@@ -84,8 +84,21 @@ MAX_WATCHER_TIMEOUT_SECONDS = 60
 MAX_OUTER_TIMEOUT_SECONDS = MAX_TIMING_TIMEOUT_SECONDS
 MIN_RING_PAGES = 2
 MAX_RING_L1_BYTES = 900 * 1024
+# The resident timestamp tensor stores one full row-major page per frame.  Keep
+# its estimated device allocation below a conservative ceiling before TTNN
+# is imported; Python's arbitrary-precision integers make the checks
+# overflow-safe even for the uint32 frame-count boundary.
+MAX_TIMESTAMP_BUFFER_BYTES = 8 * 1024**3
+MAX_OUTPUT_ALLOCATION_BYTES = 1 * 1024**3
+RESIDENT_OUTPUT_FIXED_BYTES = 1 * 1024**2
+RESIDENT_OUTPUT_BYTES_PER_FRAME = 1_024 + 8
+RESIDENT_RAW_TIMESTAMP_BYTES_PER_FRAME = 8
 RESIDENT_SEMAPHORE_COUNT = 4
 SEMAPHORE_BYTES = 4
+CONSUMER_L1_PLACEMENT = "consumer L1"
+PRODUCER_L1_PLACEMENT = "producer L1"
+NONEMPTY_STRING_TYPE = "a non-empty string"
+_ENVIRONMENT_OBJECT_ERROR = "environment must be an object"
 UINT32_MAX = (1 << 32) - 1
 UINT64_MAX = (1 << 64) - 1
 TIMESTAMP_GAP_LIMIT_TICKS = 1 << 31
@@ -191,6 +204,74 @@ class ResidentPreflightError(ValueError):
     """A configuration was rejected before device allocation or execution."""
 
 
+def _checked_allocation_bytes(
+    frame_count: int, bytes_per_frame: int, name: str
+) -> int:
+    """Multiply an allocation estimate without crossing the uint64 range."""
+    if frame_count > UINT64_MAX // bytes_per_frame:
+        raise ResidentPreflightError(f"{name} allocation estimate exceeds integer range")
+    return frame_count * bytes_per_frame
+
+
+def validate_resident_allocation_bounds(
+    config: ResidentConfig, *, raw_timestamps_out: bool
+) -> dict[str, int]:
+    """Reject extreme timestamp and result allocations before device work.
+
+    The device timestamp tensor is padded to one ``PAGE_BYTES`` row per frame.
+    The result estimate reserves one 1 KiB record envelope per frame plus the
+    decoded timestamp values and, when requested, a second raw timestamp copy.
+    These are conservative upper bounds for the current record shape; keeping
+    the estimates in this seam leaves a later result-path check independent.
+    """
+    if not isinstance(config, ResidentConfig):
+        raise TypeError("config must be ResidentConfig")
+    frame_count = _positive_int(config.frame_count, "frame_count")
+    timestamp_bytes = _checked_allocation_bytes(
+        frame_count, PAGE_BYTES, "timestamp buffer"
+    )
+    if timestamp_bytes > MAX_TIMESTAMP_BUFFER_BYTES:
+        raise ResidentPreflightError(
+            "timestamp buffer allocation exceeds the resident preflight bound"
+        )
+    output_bytes_per_frame = RESIDENT_OUTPUT_BYTES_PER_FRAME
+    if raw_timestamps_out:
+        output_bytes_per_frame += RESIDENT_RAW_TIMESTAMP_BYTES_PER_FRAME
+    output_frame_bytes = _checked_allocation_bytes(
+        frame_count, output_bytes_per_frame, "output"
+    )
+    if output_frame_bytes > UINT64_MAX - RESIDENT_OUTPUT_FIXED_BYTES:
+        raise ResidentPreflightError("output allocation estimate exceeds integer range")
+    output_bytes = RESIDENT_OUTPUT_FIXED_BYTES + output_frame_bytes
+    if output_bytes > MAX_OUTPUT_ALLOCATION_BYTES:
+        raise ResidentPreflightError(
+            "output allocation estimate exceeds the resident preflight bound"
+        )
+    return {
+        "frame_count": frame_count,
+        "timestamp_buffer_bytes": timestamp_bytes,
+        "output_allocation_bytes": output_bytes,
+        "timestamp_buffer_bound_bytes": MAX_TIMESTAMP_BUFFER_BYTES,
+        "output_allocation_bound_bytes": MAX_OUTPUT_ALLOCATION_BYTES,
+    }
+
+
+def validate_harness_preflight(
+    environment: Mapping[str, Any], *, pushed: Any
+) -> None:
+    """Require a clean recorded harness and a confirmed pushed revision."""
+    if not isinstance(environment, Mapping):
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
+    if environment.get("harness_dirty") is not False:
+        raise ResidentPreflightError(
+            "harness worktree must be clean; recorded harness cleanliness is unknown"
+        )
+    if pushed is not True:
+        raise ResidentPreflightError(
+            "harness commit must be pushed; remote reachability is unknown"
+        )
+
+
 def _core(value: Any, name: str) -> tuple[int, int]:
     if (
         not isinstance(value, (tuple, list))
@@ -231,49 +312,49 @@ def resident_l1_allocation_table(*, ring_pages: int, watcher: bool = False) -> l
             "component": "ring_storage",
             "pages": ring_pages,
             "bytes": ring_pages * PAGE_BYTES,
-            "placement": "consumer L1",
+            "placement": CONSUMER_L1_PLACEMENT,
         },
         {
             "scope": "consumer_core",
             "component": "control_page",
             "pages": 1,
             "bytes": PAGE_BYTES,
-            "placement": "consumer L1",
+            "placement": CONSUMER_L1_PLACEMENT,
         },
         {
             "scope": "consumer_core",
             "component": "consumer_cb_page",
             "pages": 1,
             "bytes": PAGE_BYTES,
-            "placement": "consumer L1",
+            "placement": CONSUMER_L1_PLACEMENT,
         },
         {
             "scope": "consumer_core",
             "component": "ready_done_semaphores",
             "pages": 0,
             "bytes": 2 * SEMAPHORE_BYTES,
-            "placement": "consumer L1",
+            "placement": CONSUMER_L1_PLACEMENT,
         },
         {
             "scope": "producer_core",
             "component": "producer_anchor_page",
             "pages": 1,
             "bytes": PAGE_BYTES,
-            "placement": "producer L1",
+            "placement": PRODUCER_L1_PLACEMENT,
         },
         {
             "scope": "producer_core",
             "component": "producer_cb_page",
             "pages": 1,
             "bytes": PAGE_BYTES,
-            "placement": "producer L1",
+            "placement": PRODUCER_L1_PLACEMENT,
         },
         {
             "scope": "producer_core",
             "component": "free_error_semaphores",
             "pages": 0,
             "bytes": 2 * SEMAPHORE_BYTES,
-            "placement": "producer L1",
+            "placement": PRODUCER_L1_PLACEMENT,
         },
         {
             "scope": "shared",
@@ -797,25 +878,25 @@ REQUIRED_PROVENANCE_FIELDS: tuple[RequiredProvenanceField, ...] = (
     RequiredProvenanceField(
         path="environment.board.serial",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
         path="environment.board.board_type",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
         path="environment.firmware.fw_bundle_version",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
         path="environment.kmd_version",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
@@ -836,19 +917,19 @@ REQUIRED_PROVENANCE_FIELDS: tuple[RequiredProvenanceField, ...] = (
     RequiredProvenanceField(
         path="environment.harness_commit",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
         path="environment.tt_env_active_release",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
         path="harness_commit",
         phase=PROVENANCE_PHASE_PREFLIGHT,
-        expected_type="a non-empty string",
+        expected_type=NONEMPTY_STRING_TYPE,
         validator=_is_nonempty_string,
     ),
     RequiredProvenanceField(
@@ -882,7 +963,7 @@ def normalize_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     retained for legacy callers that do not need a runner-side default.
     """
     if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
     normalized = dict(environment)
     board = normalized.get("board")
     if isinstance(board, Mapping):
@@ -948,7 +1029,7 @@ def validate_post_run_aiclk(aiclk_mhz: Any) -> None:
 def validate_pinned_environment(environment: Mapping[str, Any]) -> None:
     """Require the immutable image identity using the table's image validators."""
     if not isinstance(environment, Mapping):
-        raise TypeError("environment must be an object")
+        raise TypeError(_ENVIRONMENT_OBJECT_ERROR)
     _validate_provenance_fields(
         {"environment": environment},
         phase=PROVENANCE_PHASE_PREFLIGHT,
@@ -1699,6 +1780,7 @@ def build_measurement_record(
             "frequency_source": "AICLK",
             "aiclk_mhz": aiclk_mhz,
             "aiclk_source": aiclk_source,
+            "aiclk_observation_phase": PROVENANCE_PHASE_POST_RUN,
             "aiclk_selection": aiclk_selection_for_source(aiclk_source),
             "aiclk_mhz_in_run_min": (
                 trace_metadata.get("aiclk_mhz_in_run_min")
@@ -1989,6 +2071,7 @@ def build_rejection_record(
         "clock": {
             "aiclk_mhz": None,
             "aiclk_source": "rejected_preflight",
+            "aiclk_observation_phase": PROVENANCE_PHASE_POST_RUN,
         },
         "clock_source_evidence": _source_evidence(image),
         "histogram": {
@@ -2069,6 +2152,8 @@ __all__ = [
     "MAX_COMPUTE_LOAD_TIMEOUT_SECONDS",
     "MAX_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
     "MAX_OUTER_TIMEOUT_SECONDS",
+    "MAX_OUTPUT_ALLOCATION_BYTES",
+    "MAX_TIMESTAMP_BUFFER_BYTES",
     "MAX_TIMING_TIMEOUT_SECONDS",
     "MAX_WATCHER_TIMEOUT_SECONDS",
     "MIN_EXPLICIT_SAMPLER_INTERVAL_SECONDS",
@@ -2114,12 +2199,14 @@ __all__ = [
     "timestamp_digest",
     "validate_configuration",
     "validate_failure_check",
+    "validate_harness_preflight",
     "validate_outlier_analysis",
     "validate_pinned_environment",
     "validate_post_run_aiclk",
     "validate_post_run_provenance",
     "validate_preflight_provenance",
     "validate_record_inputs",
+    "validate_resident_allocation_bounds",
     "validate_resident_record",
     "validate_run_budget_fits_outer_cap",
     "wrap_delta",

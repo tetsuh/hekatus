@@ -36,6 +36,7 @@ from enodia.tt.bench.load_harness import (
     calibration_metadata,
     normalize_condition,
     repeat_throughput_unit,
+    validate_device_load_repeat_count,
 )
 
 
@@ -316,6 +317,8 @@ def build_run_configuration(
         selected = repeat_count
     else:
         selected = calibration.repeat_count
+    if canonical in {"newton_schulz", "dram"}:
+        selected = validate_device_load_repeat_count(canonical, selected)
     return {
         "schema": "issue-118-load-run-config-v1",
         "issue": 118,

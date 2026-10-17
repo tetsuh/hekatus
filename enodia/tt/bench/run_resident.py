@@ -13,6 +13,7 @@ import datetime
 import json
 import math
 import os
+import stat
 import struct
 import sys
 import tempfile
@@ -61,6 +62,8 @@ from enodia.tt.bench.load_harness import (
     build_load_record,
     calibration_metadata,
     predicted_load_time_seconds,
+    validate_device_load_repeat_count,
+    validate_measurement_target_seconds,
 )
 from enodia.tt.bench.power_trace_snapshot import (
     ONE_INTERVAL_BOUND,
@@ -93,8 +96,10 @@ from enodia.tt.bench.resident_harness import (
     split_u64,
     validate_configuration,
     validate_failure_check,
+    validate_harness_preflight,
     validate_post_run_aiclk,
     validate_record_inputs,
+    validate_resident_allocation_bounds,
     validate_resident_record,
     validate_run_budget_fits_outer_cap,
 )
@@ -106,6 +111,7 @@ from enodia.tt.bench.run_binding import (
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
+RAW_TIMESTAMP_OUTPUT_LABEL = "raw timestamp output"
 
 
 class ResidentResultUnavailable(ValueError):
@@ -1167,6 +1173,388 @@ def _runner_output_dir() -> Path:
     return Path("/out")
 
 
+_OUTPUT_PATH_RESOLUTION_ERROR = "path cannot be resolved"
+_OUTPUT_PATH_TRUST_ERROR = "must be beneath the current, temporary, or /out directory"
+
+
+def _trusted_output_roots() -> tuple[Path, ...]:
+    return (
+        Path.cwd().resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+        Path("/out").resolve(),
+    )
+
+
+def _safe_output_path(path: Path, *, description: str) -> Path:
+    """Return a resolved output path only beneath a trusted output root."""
+    try:
+        candidate = Path(path)
+        resolved_path = candidate.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ResidentPreflightError(
+            f"{description} {_OUTPUT_PATH_RESOLUTION_ERROR}"
+        ) from exc
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        raise ResidentPreflightError(f"{description} {_OUTPUT_PATH_TRUST_ERROR}")
+    return resolved_path
+
+
+def _output_write_path(path: Path, *, description: str) -> Path:
+    """Validate a destination while retaining its final component for no-follow open."""
+    candidate = Path(path)
+    _safe_output_path(candidate, description=description)
+    return candidate if candidate.is_absolute() else Path.cwd() / candidate
+
+
+def _open_output_descriptor(path: Path, *, description: str) -> int:
+    """Open a trusted output without following a substituted final-component symlink."""
+    write_path = _output_write_path(path, description=description)
+    write_path.parent.mkdir(parents=True, exist_ok=True)
+    return os.open(
+        write_path,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+        0o666,
+    )
+
+
+def _write_output_bytes(path: Path, payload: bytes, *, description: str) -> None:
+    """Write one output through a descriptor that rejects a final symlink."""
+    descriptor = _open_output_descriptor(path, description=description)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = -1
+            handle.write(payload)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+
+
+def _output_destination_writable(path: Path) -> bool:
+    """Check a destination with a temporary sibling write, without replacing it."""
+    try:
+        resolved_path = path.resolve(strict=False)
+        trusted_roots = _trusted_output_roots()
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if not any(resolved_path.is_relative_to(root) for root in trusted_roots):
+        return False
+    try:
+        parent = resolved_path.parent
+        parent.mkdir(parents=True, exist_ok=True)
+        if resolved_path.exists():
+            return resolved_path.is_file() and os.access(resolved_path, os.W_OK)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{resolved_path.name}.", dir=parent
+        )
+        os.close(descriptor)
+        Path(temporary_name).unlink()
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _destination_inode(path: Path, *, name: str) -> tuple[int, int] | None:
+    """Return an existing destination inode without following its final component."""
+    try:
+        destination_stat = os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise ResidentPreflightError(
+            f"{name} destination cannot be inspected"
+        ) from exc
+    if stat.S_ISLNK(destination_stat.st_mode):
+        raise ResidentPreflightError(f"{name} destination must not be a symlink")
+    return destination_stat.st_dev, destination_stat.st_ino
+
+
+def _validate_existing_destination_inodes(
+    destinations: list[tuple[str, Path]],
+) -> None:
+    """Reject existing destinations that are hard-link aliases."""
+    seen: dict[tuple[int, int], str] = {}
+    for name, path in destinations:
+        inode = _destination_inode(path, name=name)
+        if inode is None:
+            continue
+        previous_name = seen.get(inode)
+        if previous_name is not None:
+            raise ResidentPreflightError(
+                f"{name} collides with {previous_name}: existing destinations "
+                "share an inode (hard-link alias)"
+            )
+        seen[inode] = name
+
+
+def _validate_destination_collisions(
+    destinations: list[tuple[str, Path]],
+) -> None:
+    """Reject runner artifacts that resolve to equal, nested, or aliased paths."""
+    seen: dict[Path, str] = {}
+    for name, path in destinations:
+        previous_name = seen.get(path)
+        if previous_name is not None:
+            raise ResidentPreflightError(
+                f"{name} collides with {previous_name} at resolved path {path}"
+            )
+        for previous_path, previous_name in seen.items():
+            if path in previous_path.parents or previous_path in path.parents:
+                raise ResidentPreflightError(
+                    f"{name} collides with {previous_name}: paths are an "
+                    f"ancestor/descendant pair ({path} and {previous_path})"
+                )
+        seen[path] = name
+    _validate_existing_destination_inodes(destinations)
+
+
+def _validate_output_destinations(
+    args: argparse.Namespace,
+) -> tuple[Path, Path | None]:
+    """Resolve output paths and check collisions without mutating their parents."""
+    destinations = [("output", args.out)]
+    if args.raw_timestamps_out is not None:
+        destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, args.raw_timestamps_out))
+    validated_destinations = [
+        (name, _safe_output_path(path, description=f"{name} destination"))
+        for name, path in destinations
+    ]
+    _validate_destination_collisions(validated_destinations)
+    return (
+        validated_destinations[0][1],
+        validated_destinations[1][1] if len(validated_destinations) > 1 else None,
+    )
+
+
+def _validate_output_writability(
+    output_destinations: tuple[Path, Path | None],
+) -> None:
+    """Probe output destinations only after all protected paths are collision-checked."""
+    output_path, raw_timestamps_path = output_destinations
+    destinations = [("output", output_path)]
+    if raw_timestamps_path is not None:
+        destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, raw_timestamps_path))
+    for name, safe_path in destinations:
+        if not _output_destination_writable(safe_path):
+            raise ResidentPreflightError(f"{name} destination is not writable")
+
+
+def _validate_live_power_trace_source(path: Path) -> None:
+    """Validate an existing live source without parsing or blocking on it."""
+    try:
+        source_stat = path.lstat()
+    except FileNotFoundError:
+        # The sampler creates the source after the runner starts.  Keep the
+        # historical post-run missing-source diagnostic for that case.
+        return
+    except OSError as exc:
+        raise RunBindingError("power trace source cannot be inspected") from exc
+    if stat.S_ISLNK(source_stat.st_mode):
+        raise RunBindingError("power trace source must not be a symlink")
+    if not stat.S_ISREG(source_stat.st_mode):
+        raise RunBindingError("power trace source must be a regular file")
+    try:
+        # Opening a regular file does not consume or parse sampler bytes.  The
+        # type check above is deliberately before this open so FIFOs cannot
+        # block the preflight.
+        with path.open("rb") as handle:
+            handle.read(0)
+    except FileNotFoundError:
+        # A sampler can remove or rotate the source between lstat and open;
+        # retain the missing-source compatibility path in that race.
+        return
+    except OSError as exc:
+        raise RunBindingError("power trace source is not readable") from exc
+
+
+def _validate_card_sampler_preflight(
+    condition: str, sampler: Mapping[str, Any]
+) -> None:
+    """Reject card-load records that cannot carry load-interval telemetry."""
+    if condition in {"dram", "newton_schulz"} and sampler.get("mode") == "off":
+        raise LoadConfigurationError(
+            f"{condition} load runs require telemetry sampling; sampler mode off "
+            "cannot produce loaded load-interval evidence"
+        )
+
+
+def _validate_power_trace_binding(
+    power_trace: str,
+    *,
+    environment: Mapping[str, Any],
+) -> str | None:
+    """Validate wrapper identity and return the bound run ID when present."""
+    # A caller that invokes the runner directly has no wrapper identity and
+    # retains the historical unbound-trace compatibility path.  Once either
+    # the process or captured environment carries a wrapper identity, both
+    # identities must agree and all run-owned paths are checked before TTNN.
+    wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    captured_run_id = environment.get("run_id")
+    looks_wrapper_bound = (
+        isinstance(power_trace, str)
+        and power_trace.startswith("power-")
+        and power_trace.endswith(".csv")
+    )
+    if wrapper_run_id is None:
+        if captured_run_id is not None or looks_wrapper_bound:
+            raise RunBindingError(
+                "power trace binding rejected: HEKATUS_TT_RUN_ID is missing"
+            )
+        return None
+    try:
+        run_id = current_run_id()
+    except ValueError as exc:
+        raise RunBindingError(
+            "power trace binding rejected: HEKATUS_TT_RUN_ID is invalid"
+        ) from exc
+    if captured_run_id is not None and captured_run_id != run_id:
+        raise RunBindingError(
+            "power trace binding rejected: captured run identity does not match"
+        )
+    return run_id
+
+
+def _power_trace_artifact_paths(run_id: str) -> tuple[Path, Path]:
+    """Return the wrapper-bound live and snapshot artifact paths for one run."""
+    runner_output_dir = _runner_output_dir()
+    expected_power_trace = run_artifact_path(
+        runner_output_dir, prefix="power-", suffix=".csv", run_id=run_id
+    )
+    snapshot_path = runner_output_dir / (
+        f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
+    )
+    return expected_power_trace, snapshot_path
+
+
+def _protected_power_trace_destinations(
+    power_trace: str | None,
+    environment: Mapping[str, Any],
+) -> tuple[Path | None, Path | None]:
+    """Return safe paths that must not receive a rejection record."""
+    if power_trace is None:
+        return (None, None)
+    wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
+    captured_run_id = (
+        environment.get("run_id") if isinstance(environment, Mapping) else None
+    )
+    if wrapper_run_id is None and captured_run_id is None:
+        return (None, None)
+    run_id = current_run_id() if wrapper_run_id is not None else captured_run_id
+    live_path, snapshot_path = _power_trace_artifact_paths(run_id)
+    return (
+        _safe_output_path(live_path, description="power trace source"),
+        _safe_output_path(snapshot_path, description="power trace snapshot destination"),
+    )
+
+
+def _validate_power_trace_preflight(
+    power_trace: str | None,
+    *,
+    environment: Mapping[str, Any],
+    output_destinations: tuple[Path, Path | None] | None = None,
+) -> None:
+    """Validate wrapper-owned trace and snapshot destinations without reading data."""
+    if power_trace is None:
+        return
+    run_id = _validate_power_trace_binding(power_trace, environment=environment)
+    if run_id is None:
+        return
+
+    expected_power_trace, snapshot_path = _power_trace_artifact_paths(run_id)
+    if power_trace != expected_power_trace.name:
+        raise RunBindingError(
+            "power trace binding rejected: name is not the current run artifact"
+        )
+    safe_power_trace_path = _safe_output_path(
+        expected_power_trace, description="power trace source"
+    )
+    safe_snapshot_path = _safe_output_path(
+        snapshot_path, description="power trace snapshot destination"
+    )
+    collision_destinations: list[tuple[str, Path]] = []
+    if output_destinations is not None:
+        output_path, raw_timestamps_path = output_destinations
+        collision_destinations.append(("output", output_path))
+        if raw_timestamps_path is not None:
+            collision_destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, raw_timestamps_path))
+    collision_destinations.extend(
+        [
+            ("wrapper-bound live power trace source", safe_power_trace_path),
+            ("generated power trace snapshot destination", safe_snapshot_path),
+        ]
+    )
+    _validate_destination_collisions(collision_destinations)
+    _validate_live_power_trace_source(expected_power_trace)
+    if (
+        snapshot_path.exists()
+        or snapshot_path.is_symlink()
+        or safe_snapshot_path.exists()
+        or safe_snapshot_path.is_symlink()
+    ):
+        raise FileExistsError(
+            "power trace snapshot installation rejected: destination already exists: "
+            f"{safe_snapshot_path.name}"
+        )
+    if not _output_destination_writable(safe_snapshot_path):
+        raise ResidentPreflightError(
+            "power trace snapshot destination is not writable"
+        )
+
+
+def _write_rejection_if_possible(
+    output_path: Path,
+    *,
+    config: ResidentConfig,
+    environment: Mapping[str, Any],
+    reason: str,
+    power_trace: str | None = None,
+    raw_timestamps_path: Path | None = None,
+) -> None:
+    """Write a rejection only when no protected artifact would be truncated."""
+    try:
+        safe_output_path = _safe_output_path(
+            output_path, description="output destination"
+        )
+        protected_destinations = [
+            ("protected power trace artifact", path)
+            for path in _protected_power_trace_destinations(power_trace, environment)
+            if path is not None
+        ]
+        _validate_destination_collisions(
+            [("output", safe_output_path), *protected_destinations]
+        )
+        if raw_timestamps_path is not None:
+            try:
+                safe_raw_path = _safe_output_path(
+                    raw_timestamps_path, description="raw timestamp output destination"
+                )
+            except ResidentPreflightError:
+                safe_raw_path = None
+            if safe_raw_path is not None:
+                _validate_existing_destination_inodes(
+                    [
+                        ("output", safe_output_path),
+                        (RAW_TIMESTAMP_OUTPUT_LABEL, safe_raw_path),
+                    ]
+                )
+        if _output_destination_writable(safe_output_path):
+            _write(
+                safe_output_path,
+                build_rejection_record(
+                    config=config, reason=reason, environment=environment
+                ),
+            )
+        else:
+            raise OSError("output destination is not writable")
+    except (OSError, RuntimeError, TypeError, ValueError):
+        print(
+            f"resident preflight rejected: {reason}; rejection record unavailable",
+            file=sys.stderr,
+        )
+    else:
+        print(f"resident preflight rejected: {reason}", file=sys.stderr)
+
+
 def _missing_power_trace_metadata(
     path: Path, *, sampler_interval_seconds: float | None, error: Exception
 ) -> dict[str, Any]:
@@ -1324,13 +1712,19 @@ def _environment(path: Path) -> dict[str, Any]:
 
 
 def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
+    _write_output_bytes(
+        path,
+        b"".join(struct.pack("<Q", value) for value in timestamps),
+        description="raw timestamp output destination",
+    )
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    _write_output_bytes(
+        path,
+        (strict_json_dumps(payload, indent=2) + "\n").encode("utf-8"),
+        description="output destination",
+    )
 
 
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
@@ -1699,10 +2093,13 @@ def _select_calibration_execution(
     if args.calibration_json is not None:
         raise LoadConfigurationError("calibration run cannot consume calibration-json")
     repeat_count = 1 if args.repeat_count is None else args.repeat_count
-    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
+    if condition in {"newton_schulz", "dram"}:
+        repeat_count = validate_device_load_repeat_count(condition, repeat_count)
+    elif isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
         raise LoadConfigurationError("calibration repeat-count must be a positive integer")
     if args.calibration_duration_seconds <= 0 or args.calibration_duration_seconds > 60:
         raise LoadConfigurationError("calibration-duration-seconds must be in (0, 60]")
+    validate_measurement_target_seconds(getattr(args, "target_seconds", 500.0))
     return condition, repeat_count, None
 
 
@@ -1737,7 +2134,15 @@ def _select_loaded_execution(
             f"AICLK source {calibration.load_interval_aiclk_source})"
         )
     repeat_count = calibration.repeat_count
-    if args.repeat_count is not None and args.repeat_count != repeat_count:
+    if condition in {"newton_schulz", "dram"}:
+        repeat_count = validate_device_load_repeat_count(condition, repeat_count)
+        if args.repeat_count is not None:
+            requested_repeat_count = validate_device_load_repeat_count(
+                condition, args.repeat_count
+            )
+            if requested_repeat_count != repeat_count:
+                raise LoadConfigurationError("repeat-count does not match calibration metadata")
+    elif args.repeat_count is not None and args.repeat_count != repeat_count:
         raise LoadConfigurationError("repeat-count does not match calibration metadata")
     return condition, repeat_count, calibration
 
@@ -1753,27 +2158,54 @@ def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, Calib
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    environment_path = args.env_json or _environment_output_path()
-    environment = _environment(environment_path)
     # The wrapper owns per-run trace selection. A missing option means that
     # sampler-off mode has no trace; it does not infer one from output files.
     power_trace = args.power_trace
     config = _config_from_args(args)
+    environment: Any = {}
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
+    output_path = args.out
+    raw_timestamps_path = args.raw_timestamps_out
     try:
-        condition, repeat_count, calibration = _load_execution_selection(args)
+        output_path, raw_timestamps_path = _validate_output_destinations(args)
+        environment_path = args.env_json or _environment_output_path()
+        environment = _environment(environment_path)
         environment = validate_record_inputs(
-            harness_commit=environment.get("harness_commit"),
+            harness_commit=(
+                environment.get("harness_commit")
+                if isinstance(environment, Mapping)
+                else None
+            ),
             environment=environment,
             power_trace=power_trace,
         )
+        validate_harness_preflight(
+            environment,
+            pushed=environment.get("harness_pushed"),
+        )
         sampler = environment["telemetry_sampler"]
+        _validate_card_sampler_preflight(args.condition, sampler)
+        condition, repeat_count, calibration = _load_execution_selection(args)
+        _validate_power_trace_preflight(
+            power_trace,
+            environment=environment,
+            output_destinations=(output_path, raw_timestamps_path),
+        )
+        _validate_output_writability((output_path, raw_timestamps_path))
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
         if args.calibrate:
+            # Validate caller operands before bounding performs division by the
+            # frame interval, then validate the bounded schedule again below.
+            if condition in {"newton_schulz", "dram"}:
+                config = validate_configuration(
+                    config, watcher=watcher, load_condition=condition
+                )
+            else:
+                config = validate_configuration(config, watcher=watcher)
             config = _bound_calibration_config(config, args.calibration_duration_seconds)
         if condition in {"newton_schulz", "dram"}:
             config = validate_configuration(
@@ -1781,10 +2213,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             config = validate_configuration(config, watcher=watcher)
+        validate_resident_allocation_bounds(
+            config, raw_timestamps_out=args.raw_timestamps_out is not None
+        )
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
-    except (TypeError, ValueError) as exc:
-        _write(args.out, build_rejection_record(config=config, reason=str(exc), environment=environment))
-        print(f"resident configuration rejected: {exc}", file=sys.stderr)
+    except (OSError, TypeError, ValueError) as exc:
+        _write_rejection_if_possible(
+            output_path,
+            config=config,
+            environment=environment,
+            reason=str(exc),
+            power_trace=power_trace,
+            raw_timestamps_path=raw_timestamps_path,
+        )
         return 2
 
     try:
@@ -1814,7 +2255,7 @@ def main(argv: list[str] | None = None) -> int:
         except HostCleanupUnsafe as exc:
             device_cleanup_safe = False
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config,
                     reason=f"host cleanup unsafe: {exc}",
@@ -1825,7 +2266,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         except (IndexError, OverflowError, RuntimeError, TypeError, ValueError) as exc:
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config,
                     reason=f"resident result unavailable: {exc}",
@@ -1839,8 +2280,8 @@ def main(argv: list[str] | None = None) -> int:
             ttnn.close_device(device)
     run_end = datetime.datetime.now(datetime.UTC)
 
-    if args.raw_timestamps_out is not None:
-        _write_raw_timestamps(args.raw_timestamps_out, result["timestamps"])
+    if raw_timestamps_path is not None:
+        _write_raw_timestamps(raw_timestamps_path, result["timestamps"])
 
     runner_output_dir = _runner_output_dir()
     live_power_trace_path: Path | None = None
@@ -1863,7 +2304,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             if power_trace != expected_power_trace.name:
                 return _reject_power_trace_run(
-                    args.out,
+                    output_path,
                     config=config,
                     environment=environment,
                     reason="power trace binding rejected: name is not the current run artifact",
@@ -1927,12 +2368,12 @@ def main(argv: list[str] | None = None) -> int:
         except RunBindingError as exc:
             reason = f"power trace binding rejected: {exc}"
             return _reject_power_trace_run(
-                args.out, config=config, environment=environment, reason=reason
+                output_path, config=config, environment=environment, reason=reason
             )
         except FileExistsError as exc:
             reason = f"power trace snapshot installation rejected: {exc}"
             return _reject_power_trace_run(
-                args.out, config=config, environment=environment, reason=reason
+                output_path, config=config, environment=environment, reason=reason
             )
         except FileNotFoundError as exc:
             # A missing artifact is retained only as a diagnostic compatibility
@@ -1962,7 +2403,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         reason = str(exc)
-        _write(args.out, build_rejection_record(config=config, reason=reason, environment=environment))
+        _write(output_path, build_rejection_record(config=config, reason=reason, environment=environment))
         print(f"resident record rejected: {reason}", file=sys.stderr)
         return 2
     aiclk_mhz = aiclk_selection["aiclk_mhz"]
@@ -2018,7 +2459,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             reason = f"load interval AICLK provenance rejected: {exc}"
             _write(
-                args.out,
+                output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
@@ -2121,7 +2562,7 @@ def main(argv: list[str] | None = None) -> int:
             )
     except (ValueError, TypeError) as exc:
         _write(
-            args.out,
+            output_path,
             build_rejection_record(
                 config=config,
                 reason=f"load interval evidence rejected: {exc}",
@@ -2228,8 +2669,8 @@ def main(argv: list[str] | None = None) -> int:
             strict_trace=power_trace is not None,
             raise_on_error=False,
         )
-    _write(args.out, record)
-    print(f"resident record -> {args.out.name}")
+    _write(output_path, record)
+    print(f"resident record -> {output_path.name}")
     return 0
 
 

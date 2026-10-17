@@ -50,6 +50,7 @@ from enodia.tt.bench.load_harness import (
     LoadConfigurationError,
     normalize_condition,
     p150_core_partition,
+    validate_device_load_repeat_count,
     validate_device_open_settings,
 )
 
@@ -160,8 +161,7 @@ def prepare_newton_schulz_load(
     profile: bool = True,
 ) -> Any:
     """Prepare ADR-0013 work on residual workers for a fixed repeat count."""
-    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
-        raise LoadConfigurationError("repeat_count must be a positive integer")
+    repeat_count = validate_device_load_repeat_count("newton_schulz", repeat_count)
     from enodia.tt.bench.newton_schulz_kernel import (
         NewtonSchulzKernel,
         benchmark_matrices,
@@ -223,8 +223,7 @@ class PreparedDramLoad:
 
 def prepare_dram_load(ttnn: Any, device: Any, *, repeat_count: int = 1) -> PreparedDramLoad:
     """Prepare the fixed eight-bank stream and host-downloadable stats buffer."""
-    if isinstance(repeat_count, bool) or not isinstance(repeat_count, int) or repeat_count <= 0:
-        raise LoadConfigurationError("repeat_count must be a positive integer")
+    repeat_count = validate_device_load_repeat_count("dram", repeat_count)
     coordinates = DRAM_WORKER_COORDINATES
     core_ranges = ttnn.CoreRangeSet(
         [

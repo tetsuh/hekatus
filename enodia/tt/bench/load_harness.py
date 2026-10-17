@@ -84,6 +84,9 @@ DRAM_PAGES_PER_BANK = 256
 DRAM_TOTAL_PAGES = DRAM_BANK_COUNT * DRAM_PAGES_PER_BANK
 DRAM_STREAM_BYTES_PER_DIRECTION = DRAM_TOTAL_PAGES * DRAM_PAGE_BYTES
 DRAM_STREAM_TOTAL_BYTES = 2 * DRAM_STREAM_BYTES_PER_DIRECTION
+UINT32_MAX = (1 << 32) - 1
+DRAM_REPEAT_COUNT_MAX = UINT32_MAX // DRAM_PAGES_PER_BANK
+NS_REPEAT_COUNT_MAX = UINT32_MAX // NS_LOAD_OUTER_REPETITIONS
 
 # Condition (c) uses 4,096 fixed arithmetic rounds of 4,096 words and 256
 # fixed 64 KiB CQ1 transfer pairs. The runner reuses this small ring so
@@ -180,6 +183,24 @@ def _positive_int(value: Any, name: str) -> int:
     return int(value)
 
 
+def validate_device_load_repeat_count(condition: str, repeat_count: Any) -> int:
+    """Validate a repeat count against the selected device kernel's uint32 ABI."""
+    canonical = normalize_condition(condition)
+    count = _positive_int(repeat_count, "repeat_count")
+    if canonical == "dram" and count > DRAM_REPEAT_COUNT_MAX:
+        raise LoadConfigurationError(
+            "dram repeat_count must be <= UINT32_MAX // "
+            f"{DRAM_PAGES_PER_BANK} ({DRAM_REPEAT_COUNT_MAX})"
+        )
+    if canonical == "newton_schulz" and count > NS_REPEAT_COUNT_MAX:
+        raise LoadConfigurationError(
+            "newton_schulz repeat_count must satisfy "
+            f"{NS_LOAD_OUTER_REPETITIONS} * repeat_count <= UINT32_MAX "
+            f"({NS_REPEAT_COUNT_MAX})"
+        )
+    return count
+
+
 def _nonnegative_int(value: Any, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise LoadConfigurationError(f"{name} must be a non-negative integer")
@@ -193,6 +214,16 @@ def _finite_positive(value: Any, name: str) -> float:
     if not math.isfinite(converted) or converted <= 0.0:
         raise LoadConfigurationError(f"{name} must be a finite positive number")
     return converted
+
+
+def validate_measurement_target_seconds(value: Any) -> float:
+    """Validate the bounded target used for a loaded measurement run."""
+    target = _finite_positive(value, "target_seconds")
+    if target > MAX_MEASUREMENT_TARGET_SECONDS:
+        raise LoadConfigurationError(
+            "target_seconds must be <= 500 seconds for the 600-second run cap"
+        )
+    return target
 
 
 def _uint64(value: Any, name: str) -> int:
@@ -427,15 +458,11 @@ def _validate_calibration_basics(calibration: CalibrationMetadata) -> None:
     _finite_positive(calibration.achieved_throughput, "achieved_throughput")
     if calibration.throughput_unit != repeat_throughput_unit(calibration.condition):
         raise LoadConfigurationError("throughput_unit does not match the calibration condition")
-    _positive_int(calibration.repeat_count, "repeat_count")
+    validate_device_load_repeat_count(calibration.condition, calibration.repeat_count)
     if not isinstance(calibration.source, str) or not calibration.source.strip():
         raise LoadConfigurationError("calibration source must be a non-empty string")
     if calibration.target_seconds is not None:
-        target = _finite_positive(calibration.target_seconds, "target_seconds")
-        if target > MAX_MEASUREMENT_TARGET_SECONDS:
-            raise LoadConfigurationError(
-                "target_seconds must be <= 500 seconds for the 600-second run cap"
-            )
+        validate_measurement_target_seconds(calibration.target_seconds)
     _finite_positive(calibration.safety_factor, "safety_factor")
     if not isinstance(calibration.throughput_reference_aiclk_source, str) or not calibration.throughput_reference_aiclk_source.strip():
         raise LoadConfigurationError(
@@ -534,8 +561,8 @@ def _validate_calibration_interval_values(
             "load-interval AICLK metadata must include ticks, repeat count, AICLK, and provenance"
         )
     _positive_int(calibration.load_card_ticks, "load_card_ticks")
-    _positive_int(
-        calibration.load_measurement_repeat_count, "load_measurement_repeat_count"
+    validate_device_load_repeat_count(
+        calibration.condition, calibration.load_measurement_repeat_count
     )
     _finite_positive(calibration.load_interval_aiclk_mhz, "load_interval_aiclk_mhz")
     if calibration.load_interval_aiclk_min_mhz is not None:
@@ -702,11 +729,7 @@ def choose_repeat_count(
     if canonical == "unloaded":
         raise LoadConfigurationError("unloaded control has no load repeat count")
     throughput = _finite_positive(calibration_throughput, "calibration_throughput")
-    target = _finite_positive(target_seconds, "target_seconds")
-    if target > MAX_MEASUREMENT_TARGET_SECONDS:
-        raise LoadConfigurationError(
-            "target_seconds must be <= 500 seconds for the 600-second run cap"
-        )
+    target = validate_measurement_target_seconds(target_seconds)
     factor = _finite_positive(safety_factor, "safety_factor")
     # The calibration observation itself is capped at 60 seconds.
     repeats = max(1, math.ceil(throughput * target * factor))
@@ -2150,6 +2173,7 @@ __all__ = [
     "DRAM_BANK_COUNT",
     "DRAM_PAGES_PER_BANK",
     "DRAM_PAGE_BYTES",
+    "DRAM_REPEAT_COUNT_MAX",
     "DRAM_STREAM_BYTES_PER_DIRECTION",
     "DRAM_STREAM_TOTAL_BYTES",
     "L1_TOTAL_BUDGET_BYTES",
@@ -2173,6 +2197,7 @@ __all__ = [
     "NS_LOAD_SHAPE",
     "NS_LOAD_VARIANT",
     "NS_LOAD_X0_MEMORY",
+    "NS_REPEAT_COUNT_MAX",
     "NUM_COMMAND_QUEUES",
     "P150_ALL_CORE_COORDINATES",
     "P150_RESIDUAL_WORKER_COORDINATES",
@@ -2183,6 +2208,7 @@ __all__ = [
     "RESIDENT_CORES",
     "RESIDENT_PRODUCER_CORE",
     "TRANSFER_COMMAND_QUEUE",
+    "UINT32_MAX",
     "CalibrationMetadata",
     "CalibrationMetadataOptions",
     "CardLoadInterval",
@@ -2209,8 +2235,10 @@ __all__ = [
     "predicted_load_time_selection",
     "repeat_throughput_unit",
     "validate_calibration_load_record",
+    "validate_device_load_repeat_count",
     "validate_device_open_settings",
     "validate_load_record",
+    "validate_measurement_target_seconds",
     "validate_mode_records",
     "validate_worker_model",
 ]

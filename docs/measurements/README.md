@@ -69,6 +69,9 @@ in-run minimum. Sampled or unloaded resident records may intentionally retain
 `in_run_maximum` or `configured_budget` as their elapsed-time selection, with
 that provenance persisted in `clock.aiclk_source_for_elapsed_seconds` and its
 semantic selection. Missing load-interval bounds or provenance fail closed.
+The resident record's AICLK observation is a post-run check: preflight never
+substitutes a snapshot or configured value for the required post-run
+power-trace observation.
 Card-load calibration throughput keeps the historical `repeats_per_card_second`
 spelling but is a separate fixed-reference field: repeats per 1.35e9 card-clock
 ticks at 1350 MHz, not repeats per weighted real-time second. Later conversion
