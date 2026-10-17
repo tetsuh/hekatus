@@ -331,6 +331,26 @@ def _write_rebuild_raw(
     return raw_path, telemetry
 
 
+def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, telemetry = _write_rebuild_raw(output_dir)
+    raw_path.unlink()
+    outside_path = tmp_path / "outside" / raw_path.name
+    raw_path.symlink_to(outside_path)
+
+    with pytest.raises(FileExistsError, match="symbolic link"):
+        issue101.write_raw_artifact(
+            _passing_run(3),
+            output_dir=output_dir,
+            repeats=3,
+            telemetry=telemetry,
+            run_id="captured-run",
+        )
+
+    assert raw_path.is_symlink()
+    assert not outside_path.exists()
+
+
 def test_issue102_live_capture_drops_only_terminal_incomplete_power_row(tmp_path):
     output_dir = tmp_path / "device-output"
     run_id = "live-run"
@@ -544,6 +564,27 @@ def test_issue102_rebuild_cli_is_board_free_and_writes_record(tmp_path, monkeypa
         == 0
     )
     assert json.loads(output_path.read_text())["run_id"] == "captured-run"
+
+
+def test_issue102_rebuild_cli_canonicalizes_absolute_cli_paths(tmp_path, monkeypatch):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    output_dir_alias = output_dir / "." / ".." / output_dir.name
+    output_path_alias = output_dir / ".." / "rebuilt.json"
+    monkeypatch.setitem(sys.modules, "ttnn", None)
+
+    assert (
+        issue101.main(
+            [
+                "--recover-raw",
+                str(output_dir_alias / raw_path.name),
+                "--output",
+                str(output_path_alias),
+            ]
+        )
+        == 0
+    )
+    assert json.loads((tmp_path / "rebuilt.json").read_text())["run_id"] == "captured-run"
 
 
 def test_issue102_rebuild_cli_does_not_overwrite_raw_input(tmp_path):
