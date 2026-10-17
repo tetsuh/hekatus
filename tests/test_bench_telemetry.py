@@ -8,6 +8,9 @@ quoting was wrong. The parsing lives here instead, where it is exercised.
 import hashlib
 import io
 import json
+import signal
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -606,6 +609,37 @@ def test_legacy_sampler_hashes_the_closed_trace_after_intentional_stop(
     marker = telemetry.power_trace_completion_marker_path(output)
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     assert marker.read_text() == f"sha256:{digest}\n"
+
+
+def test_legacy_sampler_aborts_on_sigterm_without_completion_marker(tmp_path):
+    output = tmp_path / "power-run.csv"
+    marker = telemetry.power_trace_completion_marker_path(output)
+    marker.write_text("sha256:stale\n")
+    script = (
+        "import os\n"
+        "import signal\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from enodia.tt.bench import telemetry\n"
+        "\n"
+        "def sample(handle, _interval):\n"
+        "    handle.write(telemetry.CSV_HEADER + '\\n' + '2026-01-01T00:00:00+00:00,75,1350,60.0')\n"
+        "    handle.flush()\n"
+        "    os.kill(os.getpid(), signal.SIGTERM)\n"
+        "\n"
+        "telemetry._sample_loop = sample\n"
+        "telemetry._sample_forever(Path(sys.argv[1]), 1.0)\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(output)],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == -signal.SIGTERM
+    assert not marker.exists()
 
 
 def test_sampler_stop_during_snapshot_closes_trace_and_publishes_marker(

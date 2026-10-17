@@ -58,9 +58,10 @@ ADR-0005 record is provenance from the saved raw value, not a request to reread
 a mutable capture file.
 
 The live legacy power sampler publishes an atomically replaced
-`<power-csv>.complete` sidecar containing only `sha256:<digest>`, and does so
-only after intentional shutdown. Unmarked unterminated terminal rows are
-excluded; the self-contained raw artifact remains the rebuild input.
+`<power-csv>.complete` sidecar containing only `sha256:<digest>` after the
+wrapper sends its intentional `SIGUSR1` shutdown. An aborting `SIGTERM` does
+not certify the trace. Unmarked unterminated terminal rows are excluded; the
+self-contained raw artifact remains the rebuild input.
 
 ## Issue #118 board-free calibration configuration
 

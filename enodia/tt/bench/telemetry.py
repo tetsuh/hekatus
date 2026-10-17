@@ -1280,7 +1280,9 @@ def _sample_forever(out_path: Path, interval: float) -> None:
     """Write rows until the wrapper stops us, then certify the closed CSV."""
     marker = power_trace_completion_marker_path(out_path)
     marker.unlink(missing_ok=True)
-    previous_handler = signal.signal(signal.SIGTERM, _stop_sampler)
+    # SIGUSR1 is reserved for the wrapper's successful benchmark completion.
+    # SIGTERM keeps its abort behavior and must never certify the trace.
+    previous_handler = signal.signal(signal.SIGUSR1, _stop_sampler)
     stopped_intentionally = False
     try:
         with out_path.open("w", buffering=1) as handle:
@@ -1289,7 +1291,7 @@ def _sample_forever(out_path: Path, interval: float) -> None:
             except _SamplerStopped:
                 stopped_intentionally = True
     finally:
-        signal.signal(signal.SIGTERM, previous_handler)
+        signal.signal(signal.SIGUSR1, previous_handler)
     if stopped_intentionally:
         _write_power_trace_completion_marker(out_path)
 

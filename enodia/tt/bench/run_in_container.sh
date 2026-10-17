@@ -570,7 +570,7 @@ cleanup_children() {
   stop_container
   for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
     if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
-      kill "${pid}" 2>/dev/null || true
+      kill -TERM "${pid}" 2>/dev/null || true
     fi
   done
   for pid in "${SAMPLER_PID:-}" "${DOCKER_PID:-}" "${!:-}"; do
@@ -1009,7 +1009,7 @@ else
     # The intentional shutdown: the benchmark finished, so the sampler has done
     # its job and is asked to stop.
     SAMPLER_STATUS=intentional
-    kill "${SAMPLER_PID}" 2>/dev/null || true
+    kill -USR1 "${SAMPLER_PID}" 2>/dev/null || true
     wait "${SAMPLER_PID}"
   fi
 fi

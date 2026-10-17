@@ -484,8 +484,14 @@ def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
         "2020-02-03T04:05:08+00:00,75,1350",
         "2020-02-03T04:05:08+00:00,75,1350,",
         "2020-02-03T04:05:08+00:00,75,1350,6",
+        "2020-02-03T04:05:08+00:00,75,1350,60.0",
     ],
-    ids=["missing-final-field", "trailing-delimiter", "partial-numeric-fragment"],
+    ids=[
+        "missing-final-field",
+        "trailing-delimiter",
+        "partial-numeric-fragment",
+        "valid-looking-unterminated-row",
+    ],
 )
 def test_issue102_live_capture_drops_unmarked_terminal_incomplete_power_row(
     tmp_path, terminal_row
