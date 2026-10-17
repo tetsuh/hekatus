@@ -608,6 +608,39 @@ def test_legacy_sampler_hashes_the_closed_trace_after_intentional_stop(
     assert marker.read_text() == f"sha256:{digest}\n"
 
 
+def test_sampler_stop_during_snapshot_closes_trace_and_publishes_marker(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "power-run.csv"
+    snapshot_calls = 0
+
+    def run_snapshot(*_args, **_kwargs):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        if snapshot_calls == 1:
+            raise ValueError("snapshot unavailable")
+        raise telemetry._SamplerStopped
+
+    monkeypatch.setattr(telemetry.subprocess, "run", run_snapshot)
+    sleep_calls = []
+
+    def sleep(interval):
+        sleep_calls.append(interval)
+        if len(sleep_calls) > 1:
+            raise AssertionError("intentional sampler stop was swallowed")
+
+    monkeypatch.setattr(telemetry.time, "sleep", sleep)
+
+    telemetry._sample_forever(output, interval=1.0)
+
+    assert snapshot_calls == 2
+    assert sleep_calls == [1.0]
+    assert output.read_text() == telemetry.CSV_HEADER + "\n"
+    marker = telemetry.power_trace_completion_marker_path(output)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert marker.read_text() == f"sha256:{digest}\n"
+
+
 def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):
     output = tmp_path / "extended.csv"
     calls = []

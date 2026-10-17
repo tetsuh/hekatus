@@ -1254,7 +1254,7 @@ def _sample_extended_forever(
         )
 
 
-class _SamplerStopped(Exception):
+class _SamplerStopped(BaseException):
     """Signal that the wrapper intentionally stopped the live sampler."""
 
 
