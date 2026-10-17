@@ -2210,11 +2210,12 @@ def main(argv: list[str] | None = None) -> int:
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
     environment_result_path = _environment_result_path()
-    output_path = (
-        None
-        if args.out is not None and environment_result_path is not None
-        else args.out if args.out is not None else environment_result_path
-    )
+    if args.out is not None and environment_result_path is not None:
+        output_path = None
+    elif args.out is not None:
+        output_path = args.out
+    else:
+        output_path = environment_result_path
     raw_timestamps_path = args.raw_timestamps_out
     try:
         args.out = _resolve_result_path(args)
