@@ -50,7 +50,7 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
         if (
             self._scope_depth == 0
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {"append", "extend"}
+            and node.func.attr in {"append", "extend", "insert"}
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "pytestmark"
         ):
@@ -152,6 +152,7 @@ def test_module_slow_marker_mutation_is_detected():
         "pytestmark = []\n"
         "pytestmark.append(pytest.mark.slow)\n"
         "pytestmark.extend([pytest.mark.slow])\n"
+        "pytestmark.insert(0, pytest.mark.slow)\n"
         "def add_marker():\n"
         "    pytestmark.append(pytest.mark.slow)\n"
         "class Marker:\n"
@@ -162,4 +163,4 @@ def test_module_slow_marker_mutation_is_detected():
     visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, "synthetic.py")
     visitor.visit(tree)
 
-    assert visitor.violations == ["synthetic.py:2", "synthetic.py:3"]
+    assert visitor.violations == ["synthetic.py:2", "synthetic.py:3", "synthetic.py:4"]
