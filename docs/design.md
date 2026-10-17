@@ -2130,9 +2130,24 @@ AICLK-linear effective-capacity scaling is a sensitivity assumption only for
 work limited by AICLK-clocked compute/math or the math-to-pack handoff. DRAM-
 bound portions may not scale in the same way. The 1350/1050.9138856647014/
 1025 MHz cases and their provisional capacity calculations are in the
-[Issue #121 Q3 sensitivity table](budget.md#issue-121-q3-assumption-and-sensitivity-analysis);
-Q2 full-enodia measurement is required before drawing a capacity or card-count
-conclusion.
+[Issue #121 Q3 sensitivity table](budget.md#issue-121-q3-assumption-and-sensitivity-analysis).
+The Q2 synthetic-load rows are now recorded there; the full-enodia sustained
+AICLK measurement remains assigned to #136 before a final enodia capacity or
+card-count conclusion.
+
+### Issue #121 Q2 result
+
+The three preregistered ADR-0013 synthetic Newton-Schulz runs all classified
+as **H-OTHER**. Their plateau duration-weighted AICLK means were
+977.6899019327259, 978.6524304726074, and 967.1443752217778 MHz, with an
+observed 950 MHz minimum in run 3. The complete facts and the separated
+post-hoc observations are in the [Issue #121 Q2 facts](budget.md#issue-121-q2-facts)
+section. This synthetic-load result is a provisional sustained-loaded-AICLK
+reference, not a full-enodia result and not confirmation of a limiter.
+
+Remaining follow-ups are **#136**, which measures sustained AICLK under the
+full enodia load, and **#137**, which runs the preregistered board-power
+intervention to test limiter causality.
 
 ### Current constraints — Q4 fixed-source audit
 
@@ -2157,17 +2172,16 @@ The bounded conclusion is that the audited fixed v0.75.0 source did not
 identify a documented AICLK-independent card real-time counter. This is
 evidence, not a claim about undocumented hardware.
 
-These are current documentation constraints, not a new ADR or binding design
-rule:
+These are the settled timing rules recorded in
+[ADR-0015](adr/0015-issue121-card-timing-basis.md):
 
-- Card ticks are cycle-domain measurements only; they are not yet a product
-  wall-clock basis.
-- Product frame pacing comes from data arrival and completion, not from
-  treating card ticks as the display clock.
+- Card ticks are cycle-domain evidence only; they are not the product time
+  basis.
+- Product frame timing follows data arrival and completion, not card ticks.
 - Supervisory timeouts use host `CLOCK_MONOTONIC`, not card ticks.
 
-**Decision pending #121 Q2:** after Q2, the owner decides whether to make
-these constraints a binding rule.
+The Q2 result does not settle full-enodia sustained AICLK or limiter causality;
+those remain the #136 and #137 follow-ups described above.
 
 ---
 

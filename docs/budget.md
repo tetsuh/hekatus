@@ -126,6 +126,53 @@ Newton-Schulz-load facts, not enodia full-load measurements. Power CSV samples
 are about 2.24 s apart, and the Issue #122 audit uses left-held samples; this
 limits instantaneous tick-to-wall-time mapping.
 
+### Issue #121 Q2 facts
+
+The Q2 measurement used a p150a host device 1/container-visible device 0 and
+ran the ADR-0013 108-core synthetic Newton-Schulz workload/configuration:
+BF16 state, FP32 destination, HiFi3, fused S, matrix block 8, double buffering,
+full DEST synchronization, input/R/X0 in L1, and output in DRAM. The
+preregistered workload target was **285 seconds × 3 runs**. The measured
+card-load durations were 292.412352680442 s, 292.6818954037718 s, and
+294.7160203126406 s, respectively, so all three targets were met. Each run's
+plateau is the `[150, 285)` second window, or 135 seconds. The harness commit
+was `344a8f1a126b5f993f738db614e9e32fb0174089`, and the summary record is
+`docs/measurements/2026-10-16-host-newton-schulz-issue121-q2-summary.json`.
+
+The following values are the plateau duration-weighted aggregates in that
+summary. AICLK min/max are the observed plateau extrema; the other signal
+columns are duration-weighted means.
+
+| Run | AICLK mean / min / max (MHz) | Current mean (A) | `power_w` mean (W) | ASIC temperature mean (°C) |
+|---|---:|---:|---:|---:|
+| Run 1 | 977.6899019327259 / 956 / 1243 | 176.51336235725185 | 129.6853717867037 | 82.86679598474963 |
+| Run 2 | 978.6524304726074 / 956 / 1243 | 178.21968185776296 | 131.08396150537038 | 83.31576916859629 |
+| Run 3 | 967.1443752217778 / 950 / 1237 | 176.33799951074073 | 128.91214016093335 | 83.27130688187926 |
+
+The preregistered classification was **H-OTHER** in all three runs. H-OTHER
+is the fallback verdict under the plan; it is not a causal explanation.
+
+**Post-hoc observations, not preregistered hypothesis results:** the plateau
+`board_power_w` duration-weighted means were 299.44635551097036 W (run 1),
+300.88188737094816 W (run 2), and 300.06724754488147 W (run 3), each within
+0.3% of 300 W. Because `power ≈ V × I`, this measurement cannot distinguish
+TDC from TDP. The separate GDDR/fan observation record
+`docs/measurements/issue121-q2/2026-10-16-post-hoc-gddr-fan-observation.json`
+reports two different-board idle observations: the Issue #118 device-0 idle
+observation had decoded GDDR channel temperatures up to 56 °C and fan 42% /
+2,060 rpm, while the Q2 device-1 idle observation had decoded GDDR channel
+temperatures up to 72 °C and fan 70% / 3,478 rpm. The raw `MAX_GDDR_TEMP` unit
+remains unknown. This comparison is a confound/observation only—not Q2
+preregistered workload evidence or causal proof—and does not establish
+fan-control or limiter causality. These correlations do not confirm the
+limiter; **#137 is the preregistered confirmation experiment**.
+
+Budget assumptions are stated at the **sustained loaded AICLK**, not at the
+1,350 MHz unloaded reference. Until full enodia is measured, the lowest Q2
+synthetic-load plateau mean is the provisional reference for sensitivity
+arithmetic; **#136 will replace it with the full-enodia sustained AICLK**.
+The Q2 synthetic workload must not be presented as a full-enodia result.
+
 > **The 40% is a target for hand-written kernels, not an expectation of the
 > stock toolchain.** The current stock Newton-Schulz denominator is 3.024%
 > of peak (a stored `achieved_tflops` fastest-launch stock-catalogue value,
@@ -607,16 +654,22 @@ not rescale workload demand or establish enodia capacity.
 | 1350 MHz reference | 1 | 1.000 ms | 332 TFLOPS | 132.800 TFLOPS/card | +32.800 / +5.300 TFLOPS | 78.810716 TFLOPS/card | 1.2689–1.6178 |
 | 1050.9138856647014 MHz (weighted synthetic NS load) | 0.7784547301 | 1.284596 ms | 258.447 TFLOPS | 103.379 TFLOPS/card | +3.379 / −24.121 TFLOPS | 61.3506 TFLOPS/card | 1.6300–2.0782 |
 | 1025 MHz (synthetic NS plateau scenario) | 0.7592592593 | 1.317073 ms | 252.074 TFLOPS | 100.830 TFLOPS/card | +0.830 / −26.670 TFLOPS | 59.8378 TFLOPS/card | 1.6712–2.1308 |
+| 967.1443752217778 MHz (Q2 run 3 lowest plateau mean; provisional synthetic reference) | 0.7164032409 | 1.395862 ms | 237.846 TFLOPS | 95.138 TFLOPS/card | −4.862 / −32.362 TFLOPS | 56.4603 TFLOPS/card | 1.7712–2.2582 |
+| 950 MHz (Q2 run 3 observed minimum; not a plateau mean) | 0.7037037037 | 1.421053 ms | 233.630 TFLOPS | 93.452 TFLOPS/card | −6.548 / −34.048 TFLOPS | 55.4594 TFLOPS/card | 1.8031–2.2990 |
 
 The headroom column shows remaining capacity at 100 TFLOPS and the deficit
 (or remaining capacity) at 127.5 TFLOPS. The `78.810716 TFLOPS/card` value is
 host `perf_counter` evidence, not an AICLK cycle conversion; its proportional
 rescaling in this table is an extra scenario assumption. The 1050.9138856647014
 and 1025 MHz cases are synthetic Newton-Schulz-load values, not enodia
-full-load measurements. At the lower AICLK sensitivities, the upper
-127.5 TFLOPS workload can exceed one card's sensitivity capacity and the
-estimated physical card count may change. This does not conclude that it does
-for enodia; Q2 measurement is required.
+full-load measurements. The added 967.1443752217778 MHz row uses the lowest
+Q2 plateau mean as a provisional synthetic-load reference; the 950 MHz row
+identifies the observed minimum separately. At the lower AICLK sensitivities,
+the upper 127.5 TFLOPS workload can exceed one card's sensitivity capacity and
+the estimated physical card count may change. This does not conclude that it
+does for full enodia; #136 owns the full-enodia sustained-AICLK measurement.
+The 1350 MHz row remains a comparison baseline, not the sustained-loaded
+budget assumption.
 
 **Stage 2 measured timing (separate from the planning estimate):** the
 2026-10-04 record
