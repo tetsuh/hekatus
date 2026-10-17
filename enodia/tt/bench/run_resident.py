@@ -1296,16 +1296,12 @@ def _validate_card_sampler_preflight(
         )
 
 
-def _validate_power_trace_preflight(
-    power_trace: str | None,
+def _validate_power_trace_binding(
+    power_trace: str,
     *,
     environment: Mapping[str, Any],
-    output_destinations: tuple[Path, Path | None] | None = None,
-) -> None:
-    """Validate wrapper-owned trace and snapshot destinations without reading data."""
-    if power_trace is None:
-        return
-
+) -> str | None:
+    """Validate wrapper identity and return the bound run ID when present."""
     # A caller that invokes the runner directly has no wrapper identity and
     # retains the historical unbound-trace compatibility path.  Once either
     # the process or captured environment carries a wrapper identity, both
@@ -1322,7 +1318,7 @@ def _validate_power_trace_preflight(
             raise RunBindingError(
                 "power trace binding rejected: HEKATUS_TT_RUN_ID is missing"
             )
-        return
+        return None
     try:
         run_id = current_run_id()
     except ValueError as exc:
@@ -1333,6 +1329,21 @@ def _validate_power_trace_preflight(
         raise RunBindingError(
             "power trace binding rejected: captured run identity does not match"
         )
+    return run_id
+
+
+def _validate_power_trace_preflight(
+    power_trace: str | None,
+    *,
+    environment: Mapping[str, Any],
+    output_destinations: tuple[Path, Path | None] | None = None,
+) -> None:
+    """Validate wrapper-owned trace and snapshot destinations without reading data."""
+    if power_trace is None:
+        return
+    run_id = _validate_power_trace_binding(power_trace, environment=environment)
+    if run_id is None:
+        return
 
     runner_output_dir = _runner_output_dir()
     expected_power_trace = run_artifact_path(

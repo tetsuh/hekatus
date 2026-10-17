@@ -2451,14 +2451,23 @@ class TestResidentProvenance:
         assert "clean" in json.loads(output_path.read_text())["rejection_reason"]
 
     def _run_bound_power_trace_preflight(
-        self, tmp_path, monkeypatch, *, power_trace: str
+        self,
+        tmp_path,
+        monkeypatch,
+        *,
+        power_trace: str,
+        output_name: str | None = None,
     ):
         environment = _environment()
         environment_path = tmp_path / "environment.json"
         environment_path.write_text(json.dumps(environment))
         output_dir = tmp_path / "runner-output"
         output_dir.mkdir(exist_ok=True)
-        output_path = tmp_path / "rejection.json"
+        output_path = (
+            output_dir / output_name
+            if output_name is not None
+            else tmp_path / "rejection.json"
+        )
         monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
         monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
         monkeypatch.setitem(
@@ -2571,29 +2580,11 @@ class TestResidentProvenance:
     def test_result_and_snapshot_alias_rejects_before_device_open(
         self, tmp_path, monkeypatch
     ):
-        output_dir = tmp_path / "runner-output"
-        output_dir.mkdir()
-        output_path = output_dir / "resident-power-snapshot-current-run-1.csv"
-        environment = _environment()
-        environment_path = tmp_path / "environment.json"
-        environment_path.write_text(json.dumps(environment))
-        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
-        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
-        monkeypatch.setitem(
-            sys.modules,
-            "ttnn",
-            SimpleNamespace(open_device=self._device_open_must_not_be_called),
-        )
-
-        result = run_resident.main(
-            [
-                "--out",
-                str(output_path),
-                "--env-json",
-                str(environment_path),
-                "--power-trace",
-                "power-current-run.csv",
-            ]
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name="resident-power-snapshot-current-run-1.csv",
         )
 
         assert result == 2
@@ -2604,29 +2595,11 @@ class TestResidentProvenance:
     def test_result_and_live_power_source_alias_rejects_before_device_open(
         self, tmp_path, monkeypatch
     ):
-        output_dir = tmp_path / "runner-output"
-        output_dir.mkdir()
-        output_path = output_dir / "power-current-run.csv"
-        environment = _environment()
-        environment_path = tmp_path / "environment.json"
-        environment_path.write_text(json.dumps(environment))
-        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
-        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
-        monkeypatch.setitem(
-            sys.modules,
-            "ttnn",
-            SimpleNamespace(open_device=self._device_open_must_not_be_called),
-        )
-
-        result = run_resident.main(
-            [
-                "--out",
-                str(output_path),
-                "--env-json",
-                str(environment_path),
-                "--power-trace",
-                "power-current-run.csv",
-            ]
+        result, output_path, _output_dir = self._run_bound_power_trace_preflight(
+            tmp_path,
+            monkeypatch,
+            power_trace="power-current-run.csv",
+            output_name="power-current-run.csv",
         )
 
         assert result == 2
