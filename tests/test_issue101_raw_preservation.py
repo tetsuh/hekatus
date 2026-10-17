@@ -394,6 +394,18 @@ def test_issue102_legacy_builder_failure_payload_recovers_board_free():
     assert json.loads(raw_path.read_text())["run"]["status"] == "failed"
 
 
+def test_issue102_recovery_rejects_failed_artifact_with_passing_run(tmp_path):
+    fixture = Path(__file__).parent / "fixtures/issue101/legacy-builder-failure.json"
+    payload = json.loads(fixture.read_text())
+    payload["artifact_status"] = "failed"
+    payload["run"]["status"] = "pass"
+    raw_path = tmp_path / fixture.name
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="artifact_status"):
+        issue101.recover_combined_record(raw_path)
+
+
 @pytest.mark.parametrize(
     "failure_stage",
     ["open", "device_session", "correctness", "performance", "telemetry", "close"],
@@ -761,6 +773,18 @@ def test_issue102_rebuild_rejects_malformed_performance_numbers(
 
     with pytest.raises(ValueError, match="finite numeric|non-negative|positive"):
         issue101._record_from_raw_payload(raw_path, payload)
+
+
+def test_issue102_recovery_rejects_oversized_flops_integer(tmp_path):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    payload["performance_results"][0]["flops_per_iteration"] = 10**400
+    payload["run"]["performance_rows"] = payload["performance_results"]
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="finite numeric"):
+        issue101.recover_combined_record(raw_path)
 
 
 @pytest.mark.parametrize(

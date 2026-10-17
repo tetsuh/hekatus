@@ -964,10 +964,6 @@ def _validate_finite_performance_value(value: Any, *, field: str) -> None:
         raise ValueError(  # noqa: TRY004 - all malformed saved values share one rejection
             f"{field} must be a finite numeric value"
         )
-    if isinstance(value, int):
-        if value < 0:
-            raise ValueError(f"{field} must be non-negative")
-        return
     try:
         finite = math.isfinite(value)
     except (OverflowError, TypeError, ValueError) as exc:
@@ -1947,6 +1943,17 @@ def _validate_raw_run_aliases(
     return run
 
 
+def _validate_raw_artifact_run_status(payload: dict, captured_run: dict) -> None:
+    """Require the v1 artifact status to match its enclosing captured run."""
+    artifact_status = payload["artifact_status"]
+    run_status = captured_run.get("status")
+    if artifact_status != run_status:
+        raise ValueError(
+            f"raw artifact_status {artifact_status!r} does not match raw run.status "
+            f"{run_status!r}"
+        )
+
+
 def _validate_raw_artifact_reference(
     value: Any,
     *,
@@ -2198,6 +2205,7 @@ def _validate_raw_selected_run(
         performance_results=performance_results,
         label="run",
     )
+    _validate_raw_artifact_run_status(payload, captured_run)
     recovery_run = payload.get("recovery_run")
     if "recovery_run" in payload and not isinstance(recovery_run, dict):
         raise TypeError("raw recovery_run must be an object when present")
