@@ -382,8 +382,9 @@ def test_issue102_recovery_rejects_non_builder_enclosing_failure(
         ),
     )
 
+    run = _passing_run()
     with pytest.raises(RuntimeError, match="record construction injected"):
-        issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
+        issue101.persist_raw_and_build(run, output_dir=output_dir, repeats=3)
 
     raw_path = output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
     payload = json.loads(raw_path.read_text())
@@ -467,8 +468,9 @@ def _write_recovery_builder_failure_raw(monkeypatch, tmp_path):
             RuntimeError("record construction injected")
         ),
     )
+    run = _passing_run()
     with pytest.raises(RuntimeError, match="record construction injected"):
-        issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
+        issue101.persist_raw_and_build(run, output_dir=output_dir, repeats=3)
     return output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
 
 
@@ -640,10 +642,11 @@ def test_issue102_raw_writer_rejects_dangling_destination_symlink(tmp_path):
     raw_path.unlink()
     outside_path = tmp_path / "outside" / raw_path.name
     raw_path.symlink_to(outside_path)
+    run = _passing_run(3)
 
     with pytest.raises(FileExistsError, match="symbolic link"):
         issue101.write_raw_artifact(
-            _passing_run(3),
+            run,
             output_dir=output_dir,
             repeats=3,
             telemetry=telemetry,

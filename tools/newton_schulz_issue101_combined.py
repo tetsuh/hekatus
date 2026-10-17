@@ -926,6 +926,54 @@ def _json_values_equal(left: Any, right: Any) -> bool:
     return left == right
 
 
+def _validate_correctness_row_identity(
+    row: Any, *, index: int, batch: int, size: int
+) -> None:
+    """Validate one correctness row's ordered case identity and status."""
+    if not isinstance(row, dict):
+        raise TypeError(f"correctness row {index} is not an object")
+    if (
+        not _json_values_equal(row.get("batch"), batch)
+        or not _json_values_equal(row.get("size"), size)
+        or not _json_values_equal(row.get("status"), "pass")
+    ):
+        raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
+
+
+def _validate_strict_correctness_row(
+    row: dict, *, index: int, batch: int, size: int
+) -> None:
+    """Validate producer fields retained in a strict raw correctness row."""
+    expected_case = f"batch{batch}-L{size}"
+    if type(row.get("batch")) is not int or type(row.get("size")) is not int:
+        raise ValueError(f"correctness row {index} has invalid batch/size types")
+    if not _json_values_equal(row.get("case"), expected_case):
+        raise ValueError(f"correctness row {index} has unexpected case")
+    if not _json_values_equal(row.get("reference"), ISSUE101_CORRECTNESS_REFERENCE):
+        raise ValueError(f"correctness row {index} has unexpected reference")
+    if "threshold" not in row:
+        raise ValueError(f"correctness row {index} lacks threshold")
+    _validate_finite_performance_value(
+        row["threshold"], field=f"correctness row {index} threshold"
+    )
+    if not _json_values_equal(row["threshold"], ISSUE101_CORRECTNESS_THRESHOLD):
+        raise ValueError(f"correctness row {index} has unexpected threshold")
+
+    common_fields = {"case", "batch", "size", "reference", "threshold", "status"}
+    expected_fields = common_fields | {"relative_error"}
+    if set(row) != expected_fields:
+        raise ValueError(f"correctness row {index} has unsupported shape")
+
+    _validate_finite_performance_value(
+        row["relative_error"],
+        field=f"correctness row {index} relative_error",
+    )
+    if row["relative_error"] < 0:
+        raise ValueError(f"correctness row {index} relative_error is negative")
+    if row["relative_error"] > row["threshold"]:
+        raise ValueError(f"correctness row {index} passed above its relative-error threshold")
+
+
 def _validate_correctness_rows(
     correctness: Any, *, strict_shape: bool = False
 ) -> None:
@@ -935,46 +983,10 @@ def _validate_correctness_rows(
     for index, (row, (batch, size)) in enumerate(
         zip(correctness, ISSUE101_CORRECTNESS_CASES, strict=True)
     ):
-        if not isinstance(row, dict):
-            raise TypeError(f"correctness row {index} is not an object")
-        if (
-            not _json_values_equal(row.get("batch"), batch)
-            or not _json_values_equal(row.get("size"), size)
-            or not _json_values_equal(row.get("status"), "pass")
-        ):
-            raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
-        if not strict_shape:
-            continue
-
-        expected_case = f"batch{batch}-L{size}"
-        if type(row.get("batch")) is not int or type(row.get("size")) is not int:
-            raise ValueError(f"correctness row {index} has invalid batch/size types")
-        if not _json_values_equal(row.get("case"), expected_case):
-            raise ValueError(f"correctness row {index} has unexpected case")
-        if not _json_values_equal(row.get("reference"), ISSUE101_CORRECTNESS_REFERENCE):
-            raise ValueError(f"correctness row {index} has unexpected reference")
-        if "threshold" not in row:
-            raise ValueError(f"correctness row {index} lacks threshold")
-        _validate_finite_performance_value(
-            row["threshold"], field=f"correctness row {index} threshold"
-        )
-        if not _json_values_equal(row["threshold"], ISSUE101_CORRECTNESS_THRESHOLD):
-            raise ValueError(f"correctness row {index} has unexpected threshold")
-
-        common_fields = {"case", "batch", "size", "reference", "threshold", "status"}
-        expected_fields = common_fields | {"relative_error"}
-        if set(row) != expected_fields:
-            raise ValueError(f"correctness row {index} has unsupported shape")
-
-        _validate_finite_performance_value(
-            row["relative_error"],
-            field=f"correctness row {index} relative_error",
-        )
-        if row["relative_error"] < 0:
-            raise ValueError(f"correctness row {index} relative_error is negative")
-        if row["relative_error"] > row["threshold"]:
-            raise ValueError(
-                f"correctness row {index} passed above its relative-error threshold"
+        _validate_correctness_row_identity(row, index=index, batch=batch, size=size)
+        if strict_shape:
+            _validate_strict_correctness_row(
+                row, index=index, batch=batch, size=size
             )
 
 
@@ -1026,6 +1038,117 @@ def _performance_values_agree(saved: Real, expected: Real) -> bool:
         return False
 
 
+def _validate_performance_row_type(row: Any, *, index: int) -> None:
+    """Require one performance row to be an object."""
+    if not isinstance(row, dict):
+        raise TypeError(f"performance row {index} is not an object")
+
+
+def _validate_performance_row_status(row: dict, *, index: int) -> None:
+    """Require one performance row to have passed."""
+    if row.get("status") != "ok":
+        raise ValueError(f"performance row {index} did not pass")
+
+
+def _validate_performance_row_shape(
+    row: dict, *, index: int, expected_shape: Any, expected_config: Any
+) -> None:
+    """Validate one performance row's ordered shape and comparison identity."""
+    if (
+        not _json_values_equal(row.get("shape_name"), expected_shape)
+        or not _json_values_equal(row.get("comparison_config"), expected_config)
+    ):
+        raise ValueError(f"performance row {index} has unexpected shape/config identity")
+
+
+def _validate_performance_row_launches(
+    row: dict, *, index: int, repeats: int
+) -> None:
+    """Validate the saved launch count for one performance row."""
+    if "launches_measured" not in row:
+        raise ValueError(f"performance row {index} lacks launches_measured")
+    launches_measured = row["launches_measured"]
+    if (
+        isinstance(launches_measured, bool)
+        or not isinstance(launches_measured, int)
+        or not _json_values_equal(launches_measured, repeats)
+    ):
+        raise ValueError(
+            f"performance row {index} launches_measured {launches_measured!r} "
+            f"does not match repeats {repeats}"
+        )
+
+
+def _validate_performance_row_samples(
+    row: dict, *, index: int, repeats: int
+) -> list:
+    """Validate and return all launch samples for one performance row."""
+    samples = row.get("seconds_per_launch_samples")
+    if not isinstance(samples, list) or len(samples) != repeats:
+        raise ValueError(f"performance row {index} lacks all {repeats} launch samples")
+    for sample_index, sample in enumerate(samples):
+        _validate_positive_performance_value(
+            sample,
+            field=(
+                f"performance row {index} "
+                f"seconds_per_launch_samples[{sample_index}]"
+            ),
+        )
+    return samples
+
+
+def _validate_performance_row_summary(row: dict, *, index: int) -> None:
+    """Validate all saved summary values for one performance row."""
+    summary_fields = (
+        "seconds_per_launch_p50",
+        "seconds_per_launch_p99",
+        "seconds_per_launch_p99_9",
+        "flops_per_iteration",
+        "tflops_p50_derived",
+        "tflops_fastest_launch_derived",
+    )
+    for field in summary_fields:
+        if field not in row:
+            raise ValueError(f"performance row {index} lacks {field}")
+        _validate_positive_performance_value(
+            row[field], field=f"performance row {index} {field}"
+        )
+
+
+def _validate_performance_row_percentiles(
+    row: dict, *, index: int, samples: list
+) -> dict:
+    """Validate saved launch percentiles and return their expected values."""
+    expected_percentiles = {
+        "seconds_per_launch_p50": _linear_performance_percentile(samples, 0.50),
+        "seconds_per_launch_p99": _linear_performance_percentile(samples, 0.99),
+        "seconds_per_launch_p99_9": _linear_performance_percentile(samples, 0.999),
+    }
+    for field, expected in expected_percentiles.items():
+        if not _performance_values_agree(row[field], expected):
+            raise ValueError(
+                f"performance row {index} {field} does not match launch samples"
+            )
+    return expected_percentiles
+
+
+def _validate_performance_row_tflops(
+    row: dict, *, index: int, samples: list, expected_percentiles: dict
+) -> None:
+    """Validate saved throughput derivations for one performance row."""
+    flops = row["flops_per_iteration"]
+    expected_p50 = expected_percentiles["seconds_per_launch_p50"]
+    expected_tflops = {
+        "tflops_p50_derived": flops / expected_p50 / 1e12,
+        "tflops_fastest_launch_derived": flops / min(samples) / 1e12,
+    }
+    for field, expected in expected_tflops.items():
+        if not _performance_values_agree(row[field], expected):
+            raise ValueError(
+                f"performance row {index} {field} does not match timing derivation"
+            )
+
+
 def _validate_performance_rows(
     performance: Any,
     *,
@@ -1046,78 +1169,27 @@ def _validate_performance_rows(
     if not isinstance(performance, list) or len(performance) != len(expected_rows):
         raise ValueError("the combined record requires all four performance rows")
     for index, row in enumerate(performance):
-        if not isinstance(row, dict):
-            raise TypeError(f"performance row {index} is not an object")
-        if row.get("status") != "ok":
-            raise ValueError(f"performance row {index} did not pass")
+        _validate_performance_row_type(row, index=index)
+        _validate_performance_row_status(row, index=index)
         expected_shape, expected_config = expected_rows[index]
-        if (
-            not _json_values_equal(row.get("shape_name"), expected_shape)
-            or not _json_values_equal(row.get("comparison_config"), expected_config)
-        ):
-            raise ValueError(
-                f"performance row {index} has unexpected shape/config identity"
-            )
-        if "launches_measured" not in row:
-            raise ValueError(f"performance row {index} lacks launches_measured")
-        launches_measured = row["launches_measured"]
-        if (
-            isinstance(launches_measured, bool)
-            or not isinstance(launches_measured, int)
-            or not _json_values_equal(launches_measured, repeats)
-        ):
-            raise ValueError(
-                f"performance row {index} launches_measured {launches_measured!r} "
-                f"does not match repeats {repeats}"
-            )
-        samples = row.get("seconds_per_launch_samples")
-        if not isinstance(samples, list) or len(samples) != repeats:
-            raise ValueError(f"performance row {index} lacks all {repeats} launch samples")
-        for sample_index, sample in enumerate(samples):
-            _validate_positive_performance_value(
-                sample,
-                field=(
-                    f"performance row {index} "
-                    f"seconds_per_launch_samples[{sample_index}]"
-                ),
-            )
-        summary_fields = (
-            "seconds_per_launch_p50",
-            "seconds_per_launch_p99",
-            "seconds_per_launch_p99_9",
-            "flops_per_iteration",
-            "tflops_p50_derived",
-            "tflops_fastest_launch_derived",
+        _validate_performance_row_shape(
+            row,
+            index=index,
+            expected_shape=expected_shape,
+            expected_config=expected_config,
         )
-        for field in summary_fields:
-            if field not in row:
-                raise ValueError(f"performance row {index} lacks {field}")
-            _validate_positive_performance_value(
-                row[field], field=f"performance row {index} {field}"
-            )
-
-        expected_percentiles = {
-            "seconds_per_launch_p50": _linear_performance_percentile(samples, 0.50),
-            "seconds_per_launch_p99": _linear_performance_percentile(samples, 0.99),
-            "seconds_per_launch_p99_9": _linear_performance_percentile(samples, 0.999),
-        }
-        for field, expected in expected_percentiles.items():
-            if not _performance_values_agree(row[field], expected):
-                raise ValueError(
-                    f"performance row {index} {field} does not match launch samples"
-                )
-
-        flops = row["flops_per_iteration"]
-        expected_p50 = expected_percentiles["seconds_per_launch_p50"]
-        expected_tflops = {
-            "tflops_p50_derived": flops / expected_p50 / 1e12,
-            "tflops_fastest_launch_derived": flops / min(samples) / 1e12,
-        }
-        for field, expected in expected_tflops.items():
-            if not _performance_values_agree(row[field], expected):
-                raise ValueError(
-                    f"performance row {index} {field} does not match timing derivation"
-                )
+        _validate_performance_row_launches(row, index=index, repeats=repeats)
+        samples = _validate_performance_row_samples(row, index=index, repeats=repeats)
+        _validate_performance_row_summary(row, index=index)
+        expected_percentiles = _validate_performance_row_percentiles(
+            row, index=index, samples=samples
+        )
+        _validate_performance_row_tflops(
+            row,
+            index=index,
+            samples=samples,
+            expected_percentiles=expected_percentiles,
+        )
 
 
 def _validate_complete_run(
@@ -1201,8 +1273,10 @@ def _validate_environment_metadata(environment: dict) -> None:
         raise ValueError("the combined record requires a clean captured harness")
 
 
-def _validate_environment_identity(environment: dict, *, run_id: str | None) -> str:
-    """Validate run and board identities without deriving replacement values."""
+def _validate_captured_run_identity(
+    environment: dict, *, run_id: str | None
+) -> str:
+    """Validate the saved run identity against an optional requested identity."""
     captured_run_id = _validate_run_id(
         environment["run_id"], source="captured normalized_environment run_id"
     )
@@ -1211,7 +1285,11 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
             f"captured normalized_environment run_id {captured_run_id!r} does not match "
             f"run_id {run_id!r}"
         )
-    board = environment["board"]
+    return captured_run_id
+
+
+def _validate_captured_board_fields(board: Any) -> dict:
+    """Validate required fields in a captured normalized board projection."""
     if not isinstance(board, dict):
         raise TypeError("captured board identity is missing")
     for field in ("board_type", "board_id", "serial"):
@@ -1219,7 +1297,11 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
             raise ValueError(
                 f"captured board identity field {field!r} must be a non-whitespace string"
             )
-    identity = environment["board_serial_identity"]
+    return board
+
+
+def _validate_captured_board_serial_identity_fields(identity: Any) -> dict:
+    """Validate required and optional fields in saved board identity metadata."""
     if not isinstance(identity, dict):
         raise TypeError("captured board serial identity is missing")
     for field in ("serial", "board_id"):
@@ -1237,6 +1319,11 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
                 f"captured board serial identity field {field!r} "
                 "must be a non-whitespace string"
             )
+    return identity
+
+
+def _validate_captured_board_source_field(board: dict) -> None:
+    """Validate the optional source field saved in the normalized board."""
     if "serial_identity_source" in board and (
         not isinstance(board["serial_identity_source"], str)
         or not board["serial_identity_source"].strip()
@@ -1245,10 +1332,10 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
             "captured board identity field 'serial_identity_source' "
             "must be a non-whitespace string"
         )
-    board_source = board.get("serial_identity_source")
-    identity_source = identity.get("source")
-    # Older saved environments may carry the source only in the identity map.
-    source = board_source if board_source is not None else identity_source
+
+
+def _resolve_captured_board_identity(board: dict, *, source: Any) -> dict:
+    """Resolve a saved board identity while preserving its alias provenance."""
     try:
         # Validate the values that are still present in the normalized board,
         # including any explicit/legacy serial disagreement.  Normalization
@@ -1258,9 +1345,15 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
         identity_board = dict(board)
         if source == "board_id_alias" or source == "board_serial_alias":
             identity_board.pop("serial", None)
-        resolved_identity = resolve_board_serial_identity(identity_board)
+        return resolve_board_serial_identity(identity_board)
     except ValueError as exc:
         raise ValueError(f"captured board identity is invalid: {exc}") from exc
+
+
+def _validate_captured_board_identity_match(
+    board: dict, identity: dict, resolved_identity: dict
+) -> None:
+    """Require saved board identity metadata to match its normalized board."""
     if (
         identity.get("serial") != resolved_identity["serial"]
         or identity.get("board_id") != resolved_identity["board_id"]
@@ -1285,6 +1378,22 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
         and board["serial_identity_source"] != resolved_identity["source"]
     ):
         raise ValueError("captured board serial_identity_source does not match captured board")
+
+
+def _validate_environment_identity(environment: dict, *, run_id: str | None) -> str:
+    """Validate run and board identities without deriving replacement values."""
+    captured_run_id = _validate_captured_run_identity(environment, run_id=run_id)
+    board = _validate_captured_board_fields(environment["board"])
+    identity = _validate_captured_board_serial_identity_fields(
+        environment["board_serial_identity"]
+    )
+    _validate_captured_board_source_field(board)
+    board_source = board.get("serial_identity_source")
+    identity_source = identity.get("source")
+    # Older saved environments may carry the source only in the identity map.
+    source = board_source if board_source is not None else identity_source
+    resolved_identity = _resolve_captured_board_identity(board, source=source)
+    _validate_captured_board_identity_match(board, identity, resolved_identity)
     return captured_run_id
 
 
@@ -2070,36 +2179,58 @@ def _validate_raw_header(
     return payload_run_id, artifact_file
 
 
+def _saved_board_pci_identities(
+    source_name: str, saved_board: dict
+) -> list[tuple[str, str, str]]:
+    """Validate and collect PCI identities from one saved board mapping."""
+    pci_identities: list[tuple[str, str, str]] = []
+    for alias in _SAVED_BOARD_PCI_ALIASES:
+        if alias not in saved_board:
+            continue
+        normalized_bus_id = normalize_pci_bus_id(saved_board[alias])
+        if normalized_bus_id is None:
+            raise ValueError(
+                f"{source_name} board PCI identity field {alias!r} "
+                "must be a valid PCI BDF"
+            )
+        pci_identities.append((source_name, alias, normalized_bus_id))
+    return pci_identities
+
+
+def _validate_saved_board_device_id(source_name: str, saved_board: dict) -> None:
+    """Validate the optional device identity in one saved board mapping."""
+    if "device_id" not in saved_board:
+        return
+    device_id = saved_board["device_id"]
+    if isinstance(device_id, bool) or not isinstance(device_id, int) or device_id < 0:
+        raise ValueError(
+            f"{source_name} board field 'device_id' must be a non-negative integer"
+        )
+    if device_id != ISSUE100_DEVICE_ID:
+        raise ValueError(
+            f"{source_name} board field 'device_id' {device_id!r} does not match "
+            f"Issue #101 device-0 catalogue value {ISSUE100_DEVICE_ID}"
+        )
+
+
+def _validate_saved_board_projection(
+    source_name: str, saved_board: Any
+) -> list[tuple[str, str, str]]:
+    """Validate one saved board projection and return its PCI identities."""
+    if not isinstance(saved_board, dict):
+        return []
+    pci_identities = _saved_board_pci_identities(source_name, saved_board)
+    _validate_saved_board_device_id(source_name, saved_board)
+    return pci_identities
+
+
 def _validate_saved_board_projection_identity(
     board_sources: tuple[tuple[str, Any], ...],
 ) -> None:
     """Validate optional PCI and device identities in saved board projections."""
     pci_identities: list[tuple[str, str, str]] = []
     for source_name, saved_board in board_sources:
-        if not isinstance(saved_board, dict):
-            continue
-        for alias in _SAVED_BOARD_PCI_ALIASES:
-            if alias not in saved_board:
-                continue
-            normalized_bus_id = normalize_pci_bus_id(saved_board[alias])
-            if normalized_bus_id is None:
-                raise ValueError(
-                    f"{source_name} board PCI identity field {alias!r} "
-                    "must be a valid PCI BDF"
-                )
-            pci_identities.append((source_name, alias, normalized_bus_id))
-        if "device_id" not in saved_board:
-            continue
-        device_id = saved_board["device_id"]
-        if isinstance(device_id, bool) or not isinstance(device_id, int) or device_id < 0:
-            raise ValueError(
-                f"{source_name} board field 'device_id' must be a non-negative integer"
-            )
-        if device_id != ISSUE100_DEVICE_ID:
-            raise ValueError(
-                f"{source_name} board field 'device_id' {device_id!r} does not match "
-                f"Issue #101 device-0 catalogue value {ISSUE100_DEVICE_ID}"
-            )
+        pci_identities.extend(_validate_saved_board_projection(source_name, saved_board))
 
     if not pci_identities:
         return
@@ -2113,10 +2244,10 @@ def _validate_saved_board_projection_identity(
             )
 
 
-def _validate_raw_environment_consistency(
+def _validate_saved_scalar_environment_consistency(
     raw_environment: dict, normalized_environment: dict
 ) -> None:
-    """Reject contradictions between the two saved environment projections."""
+    """Reject contradictions in scalar fields shared by saved environments."""
     scalar_fields = (
         "image",
         "image_digest",
@@ -2143,39 +2274,46 @@ def _validate_raw_environment_consistency(
                 f"raw and normalized environment field {field!r} values disagree"
             )
 
-    normalized_board = normalized_environment.get("board")
-    board_sources = (
-        ("raw environment board_info", raw_environment.get("board_info")),
-        ("raw environment board", raw_environment.get("board")),
-        (
-            "normalized environment board_info",
-            normalized_environment.get("board_info"),
-        ),
-        ("normalized environment board", normalized_board),
-    )
-    _validate_saved_board_projection_identity(board_sources)
-    if isinstance(normalized_board, dict):
-        for source_name, saved_board in board_sources:
-            if not isinstance(saved_board, dict):
-                continue
-            for field in ("board_type", "board_id", "serial", "board_serial"):
-                canonical_field = "serial" if field == "board_serial" else field
-                if field not in saved_board or canonical_field not in normalized_board:
-                    continue
-                saved_value = saved_board[field]
-                canonical_value = normalized_board[canonical_field]
-                if (
-                    type(saved_value) is not type(canonical_value)
-                    or saved_value != canonical_value
-                ):
-                    if source_name.startswith("raw"):
-                        raise ValueError(
-                            f"raw and normalized board field {field!r} values disagree"
-                        )
-                    raise ValueError(
-                        f"{source_name} and normalized board field {field!r} values disagree"
-                    )
 
+def _validate_saved_board_field_consistency(
+    source_name: str, saved_board: Any, normalized_board: dict, field: str
+) -> None:
+    """Reject one saved board field that disagrees with the canonical projection."""
+    canonical_field = "serial" if field == "board_serial" else field
+    if field not in saved_board or canonical_field not in normalized_board:
+        return
+    saved_value = saved_board[field]
+    canonical_value = normalized_board[canonical_field]
+    if (
+        type(saved_value) is not type(canonical_value)
+        or saved_value != canonical_value
+    ):
+        if source_name.startswith("raw"):
+            raise ValueError(f"raw and normalized board field {field!r} values disagree")
+        raise ValueError(
+            f"{source_name} and normalized board field {field!r} values disagree"
+        )
+
+
+def _validate_saved_board_projection_consistency(
+    board_sources: tuple[tuple[str, Any], ...], normalized_board: Any
+) -> None:
+    """Reject saved board fields that disagree with the normalized projection."""
+    if not isinstance(normalized_board, dict):
+        return
+    for source_name, saved_board in board_sources:
+        if not isinstance(saved_board, dict):
+            continue
+        for field in ("board_type", "board_id", "serial", "board_serial"):
+            _validate_saved_board_field_consistency(
+                source_name, saved_board, normalized_board, field
+            )
+
+
+def _saved_firmware_projections(
+    raw_environment: dict, normalized_environment: dict
+) -> list[tuple[str, str, Any]]:
+    """Collect and validate every saved firmware projection."""
     firmware_sources = []
     for source_name, environment in (
         ("raw environment", raw_environment),
@@ -2191,7 +2329,14 @@ def _validate_raw_environment_consistency(
                     "non-whitespace string firmware bundle version"
                 )
             firmware_sources.append((source_name, field, saved_firmware))
+    return firmware_sources
 
+
+def _validate_saved_firmware_consistency(
+    raw_environment: dict, normalized_environment: dict
+) -> None:
+    """Reject disagreements among saved firmware projections."""
+    firmware_sources = _saved_firmware_projections(raw_environment, normalized_environment)
     if not firmware_sources:
         return
     expected_source, expected_field, expected_firmware = firmware_sources[0]
@@ -2203,6 +2348,26 @@ def _validate_raw_environment_consistency(
             f"{expected_source} {expected_field!r} and "
             f"{source_name} {field!r}"
         )
+
+
+def _validate_raw_environment_consistency(
+    raw_environment: dict, normalized_environment: dict
+) -> None:
+    """Reject contradictions between the two saved environment projections."""
+    _validate_saved_scalar_environment_consistency(raw_environment, normalized_environment)
+    normalized_board = normalized_environment.get("board")
+    board_sources = (
+        ("raw environment board_info", raw_environment.get("board_info")),
+        ("raw environment board", raw_environment.get("board")),
+        (
+            "normalized environment board_info",
+            normalized_environment.get("board_info"),
+        ),
+        ("normalized environment board", normalized_board),
+    )
+    _validate_saved_board_projection_identity(board_sources)
+    _validate_saved_board_projection_consistency(board_sources, normalized_board)
+    _validate_saved_firmware_consistency(raw_environment, normalized_environment)
 
 
 def _validate_raw_telemetry(payload: dict, *, run_id: str) -> tuple[dict, dict]:
@@ -2531,7 +2696,7 @@ def _run_open_device_session(
             run = run_issue101_combined(ttnn, device, repeats=ISSUE100_LAUNCHES)
         except Exception as exc:  # noqa: BLE001 - preserve the session result
             run = _initial_failed_run("device_session", exc)
-        except BaseException as exc:  # noqa: BLE001 - close before propagating control flow
+        except (KeyboardInterrupt, SystemExit, GeneratorExit) as exc:
             pending_exception = exc
     finally:
         cleanup = dict(run.get("cleanup", {})) if pending_exception is None else {}
