@@ -155,12 +155,17 @@ is the fallback verdict under the plan; it is not a causal explanation.
 **Post-hoc observations, not preregistered hypothesis results:** the plateau
 `board_power_w` duration-weighted means were 299.44635551097036 W (run 1),
 300.88188737094816 W (run 2), and 300.06724754488147 W (run 3), each within
-0.3% of 300 W. The voltage-current relation means TDC and TDP cannot be
-distinguished in this measurement. The separate GDDR/fan observation record
+0.3% of 300 W. Because `power ≈ V × I`, this measurement cannot distinguish
+TDC from TDP. The separate GDDR/fan observation record
 `docs/measurements/issue121-q2/2026-10-16-post-hoc-gddr-fan-observation.json`
-is also post-hoc evidence, not a preregistered workload result, and does not
-establish fan-control or limiter causality. These correlations do not confirm
-the limiter; **#137 is the preregistered confirmation experiment**.
+reports two different-board idle observations: the Issue #118 device-0 idle
+observation had decoded GDDR channel temperatures up to 56 °C and fan 42% /
+2,060 rpm, while the Q2 device-1 idle observation had decoded GDDR channel
+temperatures up to 72 °C and fan 70% / 3,478 rpm. The raw `MAX_GDDR_TEMP` unit
+remains unknown. This comparison is a confound/observation only—not Q2
+preregistered workload evidence or causal proof—and does not establish
+fan-control or limiter causality. These correlations do not confirm the
+limiter; **#137 is the preregistered confirmation experiment**.
 
 Budget assumptions are stated at the **sustained loaded AICLK**, not at the
 1,350 MHz unloaded reference. Until full enodia is measured, the lowest Q2
