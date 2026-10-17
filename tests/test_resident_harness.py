@@ -2520,16 +2520,99 @@ class TestResidentProvenance:
             output_path.read_text()
         )["rejection_reason"]
 
-    def _run_calibration_preflight(
-        self, tmp_path, monkeypatch, *extra_args, condition="dram"
+    def _run_bound_live_source_preflight(
+        self, tmp_path, monkeypatch, *, source_kind: str
     ):
         environment = _environment()
-        environment["telemetry_sampler"] = {
-            "mode": "off",
-            "interval_seconds": None,
-            "power_trace": "absent_by_design",
-            "timing_evidence": "diagnostic_only",
-        }
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        source_path = output_dir / "power-current-run.csv"
+        if source_kind == "symlink":
+            target = tmp_path / "trace-target.csv"
+            target.write_text("not parsed\n")
+            source_path.symlink_to(target)
+        elif source_kind == "directory":
+            source_path.mkdir()
+        elif source_kind == "unreadable":
+            source_path.write_text("not parsed\n")
+            original_open = Path.open
+
+            def fail_source_open(path, *args, **kwargs):
+                if path == source_path:
+                    raise PermissionError("fake unreadable live source")
+                return original_open(path, *args, **kwargs)
+
+            monkeypatch.setattr(Path, "open", fail_source_open)
+        else:
+            raise AssertionError(f"unknown source kind: {source_kind}")
+        output_path = tmp_path / "rejection.json"
+        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(
+                open_device=self._device_open_must_not_be_called,
+                close_device=lambda _device: None,
+            ),
+        )
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                source_path.name,
+            ]
+        )
+        return result, output_path
+
+    @pytest.mark.parametrize(
+        ("source_kind", "reason"),
+        [
+            ("symlink", "symlink"),
+            ("directory", "regular file"),
+            ("unreadable", "not readable"),
+        ],
+    )
+    def test_existing_bound_power_trace_source_rejects_before_device_open(
+        self, tmp_path, monkeypatch, source_kind, reason
+    ):
+        result, output_path = self._run_bound_live_source_preflight(
+            tmp_path, monkeypatch, source_kind=source_kind
+        )
+
+        assert result == 2
+        assert reason in json.loads(output_path.read_text())["rejection_reason"]
+
+    def _run_calibration_preflight(
+        self,
+        tmp_path,
+        monkeypatch,
+        *extra_args,
+        condition="dram",
+        sampler_mode="off",
+        calibrate=True,
+    ):
+        environment = _environment()
+        environment["telemetry_sampler"] = (
+            {
+                "mode": "off",
+                "interval_seconds": None,
+                "power_trace": "absent_by_design",
+                "timing_evidence": "diagnostic_only",
+            }
+            if sampler_mode == "off"
+            else {
+                "mode": sampler_mode,
+                "interval_seconds": 2.0,
+                "power_trace": "required",
+                "timing_evidence": "available",
+            }
+        )
         environment_path = tmp_path / "environment.json"
         environment_path.write_text(json.dumps(environment))
         output_path = tmp_path / "rejection.json"
@@ -2538,19 +2621,37 @@ class TestResidentProvenance:
             "ttnn",
             SimpleNamespace(open_device=self._device_open_must_not_be_called),
         )
-        result = run_resident.main(
-            [
-                "--out",
-                str(output_path),
-                "--env-json",
-                str(environment_path),
-                "--condition",
-                condition,
-                "--calibrate",
-                *extra_args,
-            ]
-        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+            "--condition",
+            condition,
+        ]
+        if sampler_mode != "off":
+            arguments.extend(("--power-trace", "resident-power.csv"))
+        if calibrate:
+            arguments.append("--calibrate")
+        arguments.extend(extra_args)
+        result = run_resident.main(arguments)
         return result, output_path
+
+    @pytest.mark.parametrize("condition", ["dram", "newton_schulz"])
+    @pytest.mark.parametrize("calibrate", [False, True])
+    def test_sampler_off_card_load_rejects_before_device_open(
+        self, tmp_path, monkeypatch, condition, calibrate
+    ):
+        result, output_path = self._run_calibration_preflight(
+            tmp_path,
+            monkeypatch,
+            condition=condition,
+            calibrate=calibrate,
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "sampler mode off" in rejection["rejection_reason"]
 
     @pytest.mark.parametrize(
         "target_seconds", [0, -1, float("nan"), float("inf"), 500.001]
@@ -2563,6 +2664,7 @@ class TestResidentProvenance:
             monkeypatch,
             "--target-seconds",
             str(target_seconds),
+            sampler_mode="default",
         )
 
         assert result == 2

@@ -13,6 +13,7 @@ import datetime
 import json
 import math
 import os
+import stat
 import struct
 import sys
 import tempfile
@@ -1240,6 +1241,45 @@ def _validate_output_destinations(
     )
 
 
+def _validate_live_power_trace_source(path: Path) -> None:
+    """Validate an existing live source without parsing or blocking on it."""
+    try:
+        source_stat = path.lstat()
+    except FileNotFoundError:
+        # The sampler creates the source after the runner starts.  Keep the
+        # historical post-run missing-source diagnostic for that case.
+        return
+    except OSError as exc:
+        raise RunBindingError("power trace source cannot be inspected") from exc
+    if stat.S_ISLNK(source_stat.st_mode):
+        raise RunBindingError("power trace source must not be a symlink")
+    if not stat.S_ISREG(source_stat.st_mode):
+        raise RunBindingError("power trace source must be a regular file")
+    try:
+        # Opening a regular file does not consume or parse sampler bytes.  The
+        # type check above is deliberately before this open so FIFOs cannot
+        # block the preflight.
+        with path.open("rb"):
+            pass
+    except FileNotFoundError:
+        # A sampler can remove or rotate the source between lstat and open;
+        # retain the missing-source compatibility path in that race.
+        return
+    except OSError as exc:
+        raise RunBindingError("power trace source is not readable") from exc
+
+
+def _validate_card_sampler_preflight(
+    condition: str, sampler: Mapping[str, Any]
+) -> None:
+    """Reject card-load records that cannot carry load-interval telemetry."""
+    if condition in {"dram", "newton_schulz"} and sampler.get("mode") == "off":
+        raise LoadConfigurationError(
+            f"{condition} load runs require telemetry sampling; sampler mode off "
+            "cannot produce loaded load-interval evidence"
+        )
+
+
 def _validate_power_trace_preflight(
     power_trace: str | None, *, environment: Mapping[str, Any]
 ) -> None:
@@ -1283,6 +1323,7 @@ def _validate_power_trace_preflight(
         raise RunBindingError(
             "power trace binding rejected: name is not the current run artifact"
         )
+    _validate_live_power_trace_source(expected_power_trace)
     snapshot_path = runner_output_dir / (
         f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
     )
@@ -1939,7 +1980,6 @@ def main(argv: list[str] | None = None) -> int:
         output_path, raw_timestamps_path = _validate_output_destinations(args)
         environment_path = args.env_json or _environment_output_path()
         environment = _environment(environment_path)
-        condition, repeat_count, calibration = _load_execution_selection(args)
         environment = validate_record_inputs(
             harness_commit=(
                 environment.get("harness_commit")
@@ -1953,8 +1993,10 @@ def main(argv: list[str] | None = None) -> int:
             environment,
             pushed=environment.get("harness_pushed"),
         )
-        _validate_power_trace_preflight(power_trace, environment=environment)
         sampler = environment["telemetry_sampler"]
+        _validate_card_sampler_preflight(args.condition, sampler)
+        condition, repeat_count, calibration = _load_execution_selection(args)
+        _validate_power_trace_preflight(power_trace, environment=environment)
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")
