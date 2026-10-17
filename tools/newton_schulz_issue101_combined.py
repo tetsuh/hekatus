@@ -2307,6 +2307,8 @@ def _validate_raw_selected_run(
         raise ValueError(
             f"raw artifact failed at stage {stage}; no complete record is recoverable"
         )
+    if not _has_successful_cleanup(selected_run):
+        raise ValueError("raw selected run has incomplete cleanup evidence")
     _validate_complete_run(
         selected_run,
         repeats=repeats,

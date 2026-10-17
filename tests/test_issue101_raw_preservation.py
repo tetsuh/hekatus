@@ -455,11 +455,17 @@ def _write_recovery_builder_failure_raw(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("artifact_kind", "cleanup_target"),
     [
+        ("direct-pass", "run"),
         ("legacy", "run"),
         ("recovery-run-captured", "run"),
         ("recovery-run-projection", "recovery_run"),
     ],
-    ids=["legacy", "recovery-run-captured", "recovery-run-projection"],
+    ids=[
+        "direct-pass",
+        "legacy",
+        "recovery-run-captured",
+        "recovery-run-projection",
+    ],
 )
 @pytest.mark.parametrize(
     ("mutation", "field", "value"),
@@ -495,7 +501,9 @@ def _write_recovery_builder_failure_raw(monkeypatch, tmp_path):
 def test_issue102_recovery_rejects_incomplete_cleanup_evidence(
     monkeypatch, tmp_path, artifact_kind, cleanup_target, mutation, field, value
 ):
-    if artifact_kind == "legacy":
+    if artifact_kind == "direct-pass":
+        raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    elif artifact_kind == "legacy":
         raw_path = _write_legacy_builder_failure_raw(tmp_path / "device-output")
     else:
         raw_path = _write_recovery_builder_failure_raw(monkeypatch, tmp_path)
