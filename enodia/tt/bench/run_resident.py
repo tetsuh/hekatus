@@ -111,6 +111,7 @@ from enodia.tt.bench.run_binding import (
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
 RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX = "resident-power-snapshot"
+RAW_TIMESTAMP_OUTPUT_LABEL = "raw timestamp output"
 
 
 class ResidentResultUnavailable(ValueError):
@@ -1313,7 +1314,7 @@ def _validate_output_destinations(
     """Resolve output paths and check collisions without mutating their parents."""
     destinations = [("output", args.out)]
     if args.raw_timestamps_out is not None:
-        destinations.append(("raw timestamp output", args.raw_timestamps_out))
+        destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, args.raw_timestamps_out))
     validated_destinations = [
         (name, _safe_output_path(path, description=f"{name} destination"))
         for name, path in destinations
@@ -1332,7 +1333,7 @@ def _validate_output_writability(
     output_path, raw_timestamps_path = output_destinations
     destinations = [("output", output_path)]
     if raw_timestamps_path is not None:
-        destinations.append(("raw timestamp output", raw_timestamps_path))
+        destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, raw_timestamps_path))
     for name, safe_path in destinations:
         if not _output_destination_writable(safe_path):
             raise ResidentPreflightError(f"{name} destination is not writable")
@@ -1428,16 +1429,16 @@ def _power_trace_artifact_paths(run_id: str) -> tuple[Path, Path]:
 def _protected_power_trace_destinations(
     power_trace: str | None,
     environment: Mapping[str, Any],
-) -> tuple[Path, ...]:
+) -> tuple[Path | None, Path | None]:
     """Return safe paths that must not receive a rejection record."""
     if power_trace is None:
-        return ()
+        return (None, None)
     wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
     captured_run_id = (
         environment.get("run_id") if isinstance(environment, Mapping) else None
     )
     if wrapper_run_id is None and captured_run_id is None:
-        return ()
+        return (None, None)
     run_id = current_run_id() if wrapper_run_id is not None else captured_run_id
     live_path, snapshot_path = _power_trace_artifact_paths(run_id)
     return (
@@ -1475,7 +1476,7 @@ def _validate_power_trace_preflight(
         output_path, raw_timestamps_path = output_destinations
         collision_destinations.append(("output", output_path))
         if raw_timestamps_path is not None:
-            collision_destinations.append(("raw timestamp output", raw_timestamps_path))
+            collision_destinations.append((RAW_TIMESTAMP_OUTPUT_LABEL, raw_timestamps_path))
     collision_destinations.extend(
         [
             ("wrapper-bound live power trace source", safe_power_trace_path),
@@ -1517,6 +1518,7 @@ def _write_rejection_if_possible(
         protected_destinations = [
             ("protected power trace artifact", path)
             for path in _protected_power_trace_destinations(power_trace, environment)
+            if path is not None
         ]
         _validate_destination_collisions(
             [("output", safe_output_path), *protected_destinations]
@@ -1530,7 +1532,10 @@ def _write_rejection_if_possible(
                 safe_raw_path = None
             if safe_raw_path is not None:
                 _validate_existing_destination_inodes(
-                    [("output", safe_output_path), ("raw timestamp output", safe_raw_path)]
+                    [
+                        ("output", safe_output_path),
+                        (RAW_TIMESTAMP_OUTPUT_LABEL, safe_raw_path),
+                    ]
                 )
         if _output_destination_writable(safe_output_path):
             _write(
