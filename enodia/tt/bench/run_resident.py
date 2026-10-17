@@ -122,6 +122,10 @@ class HostCleanupUnsafe(RuntimeError):
     """The CQ1 host thread could not be joined before device cleanup."""
 
 
+class ResidentResultPathMismatch(ResidentPreflightError):
+    """Both result-path inputs were supplied but identify different files."""
+
+
 @dataclass
 class _LoadedDeviceResources:
     """Mutable state owned by one merged resident/load execution."""
@@ -1173,6 +1177,7 @@ def _runner_output_dir() -> Path:
     return Path("/out")
 
 
+_RESULT_PATH_ENV = "HEKATUS_TT_RESULT_PATH"
 _OUTPUT_PATH_RESOLUTION_ERROR = "path cannot be resolved"
 _OUTPUT_PATH_TRUST_ERROR = "must be beneath the current, temporary, or /out directory"
 
@@ -1306,6 +1311,38 @@ def _validate_destination_collisions(
                 )
         seen[path] = name
     _validate_existing_destination_inodes(destinations)
+
+
+def _environment_result_path() -> Path | None:
+    """Return the environment result path when the contract supplies one."""
+    value = os.environ.get(_RESULT_PATH_ENV)
+    if value is None or value == "":
+        return None
+    return Path(value)
+
+
+def _resolve_result_path(args: argparse.Namespace) -> Path:
+    """Resolve CLI and environment result paths before any device work."""
+    cli_path = args.out
+    environment_path = _environment_result_path()
+    if cli_path is None and environment_path is None:
+        raise ResidentPreflightError(
+            f"result path is required: provide --out or {_RESULT_PATH_ENV}"
+        )
+    if cli_path is not None and environment_path is not None:
+        safe_cli_path = _safe_output_path(cli_path, description="--out destination")
+        safe_environment_path = _safe_output_path(
+            environment_path, description=f"{_RESULT_PATH_ENV} destination"
+        )
+        if safe_cli_path != safe_environment_path:
+            raise ResidentResultPathMismatch(
+                f"--out and {_RESULT_PATH_ENV} must identify the same result path"
+            )
+        return safe_cli_path
+    selected_path = cli_path if cli_path is not None else environment_path
+    assert selected_path is not None
+    description = "--out destination" if cli_path is not None else f"{_RESULT_PATH_ENV} destination"
+    return _safe_output_path(selected_path, description=description)
 
 
 def _validate_output_destinations(
@@ -1502,7 +1539,7 @@ def _validate_power_trace_preflight(
 
 
 def _write_rejection_if_possible(
-    output_path: Path,
+    output_path: Path | None,
     *,
     config: ResidentConfig,
     environment: Mapping[str, Any],
@@ -1511,6 +1548,12 @@ def _write_rejection_if_possible(
     raw_timestamps_path: Path | None = None,
 ) -> None:
     """Write a rejection only when no protected artifact would be truncated."""
+    if output_path is None:
+        print(
+            f"resident preflight rejected: {reason}; rejection record unavailable",
+            file=sys.stderr,
+        )
+        return
     try:
         safe_output_path = _safe_output_path(
             output_path, description="output destination"
@@ -1758,7 +1801,7 @@ def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--env-json", type=Path, default=None)
     parser.add_argument("--power-trace", default=None)
     parser.add_argument("--raw-timestamps-out", type=Path, default=None)
@@ -2166,9 +2209,17 @@ def main(argv: list[str] | None = None) -> int:
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
-    output_path = args.out
+    environment_result_path = _environment_result_path()
+    if args.out is not None and environment_result_path is not None:
+        output_path = None
+    elif args.out is not None:
+        output_path = args.out
+    else:
+        output_path = environment_result_path
     raw_timestamps_path = args.raw_timestamps_out
     try:
+        args.out = _resolve_result_path(args)
+        output_path = args.out
         output_path, raw_timestamps_path = _validate_output_destinations(args)
         environment_path = args.env_json or _environment_output_path()
         environment = _environment(environment_path)
@@ -2218,8 +2269,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         validate_run_budget_fits_outer_cap(config, watcher=watcher)
     except (OSError, TypeError, ValueError) as exc:
+        rejection_output_path = (
+            None if isinstance(exc, ResidentResultPathMismatch) else output_path
+        )
         _write_rejection_if_possible(
-            output_path,
+            rejection_output_path,
             config=config,
             environment=environment,
             reason=str(exc),

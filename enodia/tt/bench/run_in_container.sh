@@ -805,19 +805,6 @@ if [[ "${RUNNER}" == "${MATMUL_RUNNER_RELATIVE_PATH}" ]]; then
     RUNNER_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
   fi
 elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
-  # Resident runner output is required by its Python contract; use the same
-  # collision-safe path exposed through HEKATUS_TT_RESULT_PATH.
-  HAS_RESULT_PATH_ARG=0
-  for argument in "${RUNNER_ARGS[@]}"; do
-    if [[ "${argument}" == "--out" ]]; then
-      HAS_RESULT_PATH_ARG=1
-      break
-    fi
-  done
-  if [[ "${HAS_RESULT_PATH_ARG}" == "0" ]]; then
-    RUNNER_ARGS=(--out "/out/$(basename "${RUNNER_RESULT_CONTAINER_PATH}")" "${RUNNER_ARGS[@]}")
-  fi
-
   # Resident records store sibling filenames, and the wrapper owns both
   # run-specific paths.  Replace caller-supplied provenance paths so a reused
   # output directory cannot select artifacts from another invocation.

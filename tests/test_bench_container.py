@@ -74,11 +74,24 @@ if [ "${1:-}" = kill ]; then
 fi
 printf '%s\\n' "$@" > "$DOCKER_ARGS"
 result_path=""
+output_mount=""
+previous=""
 for argument in "$@"; do
   case "$argument" in
     HEKATUS_TT_RESULT_PATH=*) result_path="${argument#*=}" ;;
   esac
+  if [ "$previous" = "-v" ] && [ "${argument#*:}" = "/out" ]; then
+    output_mount="${argument%:/out}"
+  fi
+  previous="$argument"
 done
+if [ "${WRITE_RESULT_FROM_ENV:-0}" = 1 ] && [ -n "$result_path" ] \\
+    && [ -n "$output_mount" ]; then
+  result_name="${result_path#/out/}"
+  host_result="${output_mount}/${result_name}"
+  printf '{"result_path":"%s","run_id":"%s"}\\n' \\
+    "$host_result" "$result_name" > "$host_result"
+fi
 if [ -n "${RUNNER_RESULT_HOST:-}" ] && [ -n "$result_path" ]; then
   printf '%s\\n' '{"fake_runner_result": true}' > "$RUNNER_RESULT_HOST"
 fi
@@ -987,8 +1000,8 @@ def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
     assert completed.returncode == 0, completed.stderr
     docker_args = args_log.read_text().splitlines()
     assert "HEKATUS_TT_TELEMETRY_MODE=off" in docker_args
-    assert "--out" in docker_args
-    assert docker_args[docker_args.index("--out") + 1] == "/out/runner-result.json"
+    assert "HEKATUS_TT_RESULT_PATH=/out/runner-result.json" in docker_args
+    assert "--out" not in docker_args
     assert "--power-trace" not in docker_args
     assert not list(output_dir.glob("power-*.csv"))
     assert "sampler -> off (diagnostic-only; no power trace by design)" in completed.stdout
@@ -1167,6 +1180,423 @@ def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
         "1",
         "--no-watcher",
     ]
+
+
+_REAL_RESIDENT_TTNN = r'''
+import json
+import os
+import sys
+from pathlib import Path
+
+import numpy as np
+
+uint32 = np.uint32
+ROW_MAJOR_LAYOUT = object()
+DRAM_MEMORY_CONFIG = object()
+
+
+class _Descriptor:
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
+
+
+class Shape(tuple):
+    pass
+
+
+class RuntimeArgs(dict):
+    def __missing__(self, key):
+        value = {}
+        self[key] = value
+        return value
+
+
+class TensorAccessorArgs:
+    def __init__(self, tensor):
+        self.tensor = tensor
+
+    def get_compile_time_args(self):
+        return []
+
+
+class KernelDescriptor(_Descriptor):
+    class SourceType:
+        FILE_PATH = "file-path"
+
+
+CoreCoord = _Descriptor
+CoreRange = _Descriptor
+CoreRangeSet = _Descriptor
+ReaderConfigDescriptor = _Descriptor
+SemaphoreDescriptor = _Descriptor
+CBFormatDescriptor = _Descriptor
+TileDescriptor = _Descriptor
+CBDescriptor = _Descriptor
+ProgramDescriptor = _Descriptor
+
+
+class CoreType:
+    WORKER = "worker"
+
+
+class ShardStrategy:
+    HEIGHT = "height"
+
+
+class ShardOrientation:
+    ROW_MAJOR = "row-major"
+
+
+class _Tensor:
+    next_address = 100
+
+    def __init__(self, shape, kind):
+        self.array = np.zeros(tuple(shape), dtype=np.uint32)
+        self.kind = kind
+        self.address = _Tensor.next_address
+        _Tensor.next_address += 1
+
+    def buffer_address(self):
+        return self.address
+
+    def to_numpy(self):
+        return self.array
+
+
+class _Device:
+    pass
+
+
+_allocated = []
+
+
+def create_sharded_memory_config(*args, **kwargs):
+    return object()
+
+
+def allocate_tensor_on_device(shape, dtype, layout, device, memory_config):
+    shape = tuple(shape)
+    if not _allocated:
+        kind = "ring"
+    elif len(shape) == 4 and shape[0] > 1:
+        kind = "timestamps"
+    else:
+        kind = "stats"
+    tensor = _Tensor(shape, kind)
+    _allocated.append(tensor)
+    return tensor
+
+
+def zeros(shape, **kwargs):
+    kind = "control" if len(_allocated) == 1 else "anchor"
+    tensor = _Tensor(shape, kind)
+    _allocated.append(tensor)
+    return tensor
+
+
+def open_device(**kwargs):
+    return _Device()
+
+
+def close_device(device):
+    del device
+
+
+def generic_op(tensors, program):
+    del program
+    timestamps = tensors[3]
+    producer = tensors[4]
+    consumer = tensors[5]
+    frame_count = timestamps.array.shape[0]
+    for index in range(frame_count):
+        timestamps.array[index, 0, 0, 0] = 1_000 + index * 100
+        timestamps.array[index, 0, 0, 1] = 0
+
+    producer.array.flat[0] = 0
+    producer.array.flat[1] = frame_count
+    producer.array.flat[2] = 0
+    producer.array.flat[3] = frame_count
+    producer.array.flat[4] = 0
+    producer.array.flat[6] = 0
+    producer.array.flat[7] = 0
+    producer.array.flat[8] = 0
+    producer.array.flat[9] = 1
+    producer.array.flat[10] = 0
+    producer.array.flat[11] = 1
+
+    consumer.array.flat[0] = 0
+    consumer.array.flat[1] = frame_count
+    consumer.array.flat[2] = 0
+    consumer.array.flat[4] = 100
+    consumer.array.flat[5] = 0
+    consumer.array.flat[6] = 1
+    consumer.array.flat[7] = 0
+    consumer.array.flat[8] = 0
+    consumer.array.flat[9] = 0
+    consumer.array.flat[10] = 1
+    consumer.array.flat[11] = 1
+    consumer.array.flat[12] = 1
+    consumer.array.flat[13] = 100
+    consumer.array.flat[14] = 0
+    consumer.array.flat[15] = 100
+    consumer.array.flat[16] = 0
+    consumer.array.flat[17] = 1
+
+    marker = os.environ.get("FAKE_TTNN_MARKER")
+    if marker:
+        Path(marker).write_text(
+            json.dumps(
+                {
+                    "runner": sys.argv[0],
+                    "args": sys.argv[1:],
+                    "result_path": os.environ.get("HEKATUS_TT_RESULT_PATH"),
+                    "generic_op": True,
+                }
+            )
+            + "\n"
+        )
+
+
+def synchronize_device(device, **kwargs):
+    del device, kwargs
+
+
+def from_device(tensor):
+    return tensor
+
+
+def to_layout(tensor, layout):
+    return tensor
+
+
+def deallocate(tensor):
+    del tensor
+'''
+
+
+def _real_resident_tools(tmp_path):
+    bindir = tmp_path / "real-resident-bin"
+    bindir.mkdir()
+    (bindir / "python3").write_text(
+        "#!" + sys.executable + r'''
+import json
+import os
+import sys
+from pathlib import Path
+
+if len(sys.argv) < 3 or sys.argv[2] != "capture-env":
+    raise SystemExit("unexpected python3 invocation")
+out = Path(sys.argv[sys.argv.index("--out") + 1])
+image = sys.argv[sys.argv.index("--image") + 1]
+out.write_text(
+    json.dumps(
+        {
+            "board": {"serial": "test-board", "board_type": "test-board"},
+            "firmware": {"fw_bundle_version": "test-firmware"},
+            "kmd_version": "test-kmd",
+            "image": image,
+            "image_pinned": True,
+            "harness_commit": "test-harness",
+            "tt_env_active_release": "test-release",
+            "harness_dirty": False,
+            "harness_pushed": True,
+            "run_id": os.environ.get("HEKATUS_TT_RUN_ID"),
+            "telemetry_sampler": {
+                "mode": "off",
+                "interval_seconds": None,
+                "power_trace": "absent_by_design",
+                "timing_evidence": "diagnostic_only",
+            },
+        }
+    )
+    + "\n"
+)
+'''
+    )
+    (bindir / "python3").chmod(stat.S_IRWXU)
+    (bindir / "docker").write_text(
+        "#!" + sys.executable + r'''
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if args and args[0] == "kill":
+    raise SystemExit(0)
+Path(os.environ["DOCKER_ARGS"]).write_text("\n".join(args) + "\n")
+mounts = {}
+forwarded = {}
+index = 0
+while index < len(args):
+    if args[index] == "-v":
+        source, target = args[index + 1].split(":", 1)
+        mounts[target] = Path(source)
+        index += 2
+        continue
+    if args[index] == "-e":
+        key, value = args[index + 1].split("=", 1)
+        forwarded[key] = value
+        index += 2
+        continue
+    index += 1
+
+work = mounts["/work"]
+out = mounts["/out"]
+image_index = next(
+    index for index, argument in enumerate(args) if "@sha256:" in argument
+)
+container_command = args[image_index + 1:]
+
+
+def map_path(value):
+    if value == "/work":
+        return str(work)
+    if value.startswith("/work/"):
+        return str(work / value.removeprefix("/work/"))
+    if value == "/out":
+        return str(out)
+    if value.startswith("/out/"):
+        return str(out / value.removeprefix("/out/"))
+    return value
+
+host_runner = map_path(container_command[0])
+if not Path(host_runner).is_absolute():
+    host_runner = str(work / host_runner)
+host_args = [host_runner, *(map_path(argument) for argument in container_command[1:])]
+host_environment = {**os.environ, **forwarded}
+if host_environment.get("PYTHONPATH") == "/work":
+    host_environment["PYTHONPATH"] = str(work)
+if "HEKATUS_TT_RESULT_PATH" in host_environment:
+    host_environment["HEKATUS_TT_RESULT_PATH"] = map_path(
+        host_environment["HEKATUS_TT_RESULT_PATH"]
+    )
+Path(os.environ["ADAPTER_LOG"]).open("a").write(
+    json.dumps(
+        {
+            "work_mount": str(work),
+            "out_mount": str(out),
+            "container_runner": container_command[0],
+            "container_runner_args": container_command[1:],
+            "forwarded_result_path": forwarded.get("HEKATUS_TT_RESULT_PATH"),
+            "host_runner": host_runner,
+            "host_runner_args": host_args[1:],
+        }
+    )
+    + "\n"
+)
+raise SystemExit(
+    subprocess.run(
+        [sys.executable, *host_args],
+        cwd=work,
+        env=host_environment,
+        check=False,
+    ).returncode
+)
+'''
+    )
+    (bindir / "docker").chmod(stat.S_IRWXU)
+    return bindir
+
+
+def test_resident_wrapper_reuses_output_directory_without_result_collision(tmp_path):
+    """The wrapper runs the copied resident entrypoint for every run-owned result."""
+    copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
+    copied_wrapper.parent.mkdir(parents=True)
+    copied_root = copied_wrapper.parents[3]
+    shutil.copytree(ROOT / "enodia", copied_root / "enodia", dirs_exist_ok=True)
+    shutil.copy2(WRAPPER, copied_wrapper)
+    runner_source = copied_root / "enodia/tt/bench/run_resident.py"
+    (copied_root / "ttnn.py").write_text(_REAL_RESIDENT_TTNN)
+    bindir = _real_resident_tools(tmp_path)
+    output_dir = tmp_path / "shared-output"
+    adapter_log = tmp_path / "adapter.jsonl"
+    common_environment = {
+        **os.environ,
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "HEKATUS_TT_RUNNER": "enodia/tt/bench/run_resident.py",
+        "HEKATUS_TT_TELEMETRY_MODE": "off",
+        "HEKATUS_TT_CONTAINER_TIMEOUT_S": "600",
+        "ADAPTER_LOG": str(adapter_log),
+    }
+    for variable in ("HEKATUS_TT_IMAGE", "HEKATUS_TT_RUN_ID", "HEKATUS_TT_RESULT_PATH"):
+        common_environment.pop(variable, None)
+
+    assert runner_source.is_file()
+    assert runner_source.read_bytes() == (ROOT / "enodia/tt/bench/run_resident.py").read_bytes()
+
+    runner_args = [
+        "--frame-count",
+        "1",
+        "--outer-timeout-seconds",
+        "60",
+        "--fixed-work-ticks-per-frame",
+        "100000",
+        "--work-per-frame",
+        "64",
+    ]
+    reported_paths = []
+    result_payloads = []
+    first_result_bytes = None
+    for index in range(2):
+        args_log = tmp_path / f"docker-args-{index}"
+        marker = tmp_path / f"ttnn-marker-{index}.json"
+        completed = subprocess.run(
+            [str(copied_wrapper), str(output_dir), "--", *runner_args],
+            cwd=copied_root,
+            env={
+                **common_environment,
+                "DOCKER_ARGS": str(args_log),
+                "FAKE_TTNN_MARKER": str(marker),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert completed.returncode == 0, completed.stderr
+        match = re.search(r"^results     -> (.+)$", completed.stdout, re.MULTILINE)
+        assert match is not None
+        reported_path = Path(match.group(1))
+        reported_paths.append(reported_path)
+        assert reported_path.is_file()
+        assert f"resident record -> {reported_path.name}" in completed.stdout
+        payload = json.loads(reported_path.read_text())
+        result_payloads.append(payload)
+        assert payload["schema"] == "issue-12-stage-1-resident-v1"
+        assert payload["status"] == "ok"
+        assert payload["parameters"]["frame_count"] == 1
+
+        docker_args = args_log.read_text().splitlines()
+        assert "--out" not in docker_args
+        assert "HEKATUS_TT_RESULT_PATH=/out/" + reported_path.name in docker_args
+        marker_payload = json.loads(marker.read_text())
+        assert marker_payload["runner"] == str(runner_source)
+        assert marker_payload["result_path"] == str(reported_path)
+        assert "--out" not in marker_payload["args"]
+        assert marker_payload["args"][: len(runner_args)] == runner_args
+        if first_result_bytes is None:
+            first_result_bytes = reported_path.read_bytes()
+        else:
+            assert reported_paths[0].read_bytes() == first_result_bytes
+
+    adapter_records = [json.loads(line) for line in adapter_log.read_text().splitlines()]
+    assert len(adapter_records) == 2
+    for record, reported_path in zip(adapter_records, reported_paths):
+        assert record["work_mount"] == str(copied_root)
+        assert record["out_mount"] == str(output_dir)
+        assert record["container_runner"] == "enodia/tt/bench/run_resident.py"
+        assert record["forwarded_result_path"] == f"/out/{reported_path.name}"
+        assert record["host_runner"] == str(runner_source)
+        assert record["container_runner_args"][: len(runner_args)] == runner_args
+        assert "--out" not in record["host_runner_args"]
+        assert record["host_runner_args"][: len(runner_args)] == runner_args
+
+    assert len(set(reported_paths)) == 2
+    assert len(list(output_dir.glob("runner-result*.json"))) == 2
+    assert result_payloads[0] != result_payloads[1]
 
 
 CUSTOM_RUNNERS = (

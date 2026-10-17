@@ -69,6 +69,7 @@ from enodia.tt.bench.run_resident import (
     _decode_failure,
     _environment_output_path,
     _parser,
+    _resolve_result_path,
     _resolve_watcher_mode,
     _runtime_u32,
 )
@@ -218,17 +219,14 @@ def _parse_documented_resident_args(argv: list[str]):
     }
     for option in required_options:
         assert any(argument == option or argument.startswith(f"{option}=") for argument in argv)
-    out_options = [
-        argument for argument in argv if argument == "--out" or argument.startswith("--out=")
-    ]
-    assert len(out_options) == 1
     out = args.out
-    assert out.is_absolute()
-    assert out.parts[:2] == ("/", "out")
-    relative_out = out.relative_to(Path("/out"))
-    assert relative_out.parts
-    assert ".." not in relative_out.parts
-    assert out.suffix == ".json"
+    if out is not None:
+        assert out.is_absolute()
+        assert out.parts[:2] == ("/", "out")
+        relative_out = out.relative_to(Path("/out"))
+        assert relative_out.parts
+        assert ".." not in relative_out.parts
+        assert out.suffix == ".json"
     if args.raw_timestamps_out is not None:
         raw_timestamps = args.raw_timestamps_out
         assert raw_timestamps.is_absolute()
@@ -692,6 +690,95 @@ def test_resident_parser_rejects_abbreviated_watcher_flag():
         parser.parse_args(["--out", "record.json", "--wat"])
 
 
+def test_resident_parser_allows_environment_result_path_fallback():
+    args = _parser().parse_args([])
+    assert args.out is None
+
+
+def test_missing_result_paths_reject_before_device_open(monkeypatch, capsys):
+    monkeypatch.delenv("HEKATUS_TT_RESULT_PATH", raising=False)
+    monkeypatch.delenv("HEKATUS_TT_RUN_ID", raising=False)
+    opened = []
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs)),
+    )
+
+    assert run_resident.main([]) == 2
+    assert opened == []
+    assert "result path is required" in capsys.readouterr().err
+
+
+def test_result_path_mismatch_rejects_before_device_open(tmp_path, monkeypatch, capsys):
+    cli_path = tmp_path / "cli-result.json"
+    environment_path = tmp_path / "env-result.json"
+    cli_path.write_text("existing result\n")
+    environment_path.write_text("environment result\n")
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(environment_path))
+    opened = []
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs)),
+    )
+
+    assert run_resident.main(["--out", str(cli_path)]) == 2
+    assert opened == []
+    assert cli_path.read_text() == "existing result\n"
+    assert environment_path.read_text() == "environment result\n"
+    assert "--out and HEKATUS_TT_RESULT_PATH" in capsys.readouterr().err
+
+
+def test_untrusted_environment_result_does_not_overwrite_cli_result(
+    tmp_path, monkeypatch, capsys
+):
+    cli_path = tmp_path / "cli-result.json"
+    cli_bytes = b"existing result\n"
+    cli_path.write_bytes(cli_bytes)
+    environment_path = Path(tmp_path.anchor) / f"resident-{tmp_path.name}-untrusted.json"
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(environment_path))
+    opened = []
+    monkeypatch.setitem(
+        sys.modules,
+        "ttnn",
+        SimpleNamespace(open_device=lambda **kwargs: opened.append(kwargs)),
+    )
+
+    assert run_resident.main(["--out", str(cli_path)]) == 2
+    assert cli_path.read_bytes() == cli_bytes
+    assert opened == []
+    assert "rejection record unavailable" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("case", ["neither", "cli-only", "env-only", "both-equal", "both-different"])
+def test_result_path_resolution_covers_cli_environment_combinations(
+    tmp_path, monkeypatch, case
+):
+    cli_path = tmp_path / "cli-result.json"
+    environment_path = tmp_path / "env-result.json"
+    if case in {"cli-only", "both-equal", "both-different"}:
+        cli_args = ["--out", str(cli_path)]
+    else:
+        cli_args = []
+    if case in {"env-only", "both-equal", "both-different"}:
+        selected_environment_path = cli_path if case == "both-equal" else environment_path
+        monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(selected_environment_path))
+    else:
+        monkeypatch.delenv("HEKATUS_TT_RESULT_PATH", raising=False)
+
+    args = _parser().parse_args(cli_args)
+    if case == "neither":
+        with pytest.raises(ResidentPreflightError, match="result path is required"):
+            _resolve_result_path(args)
+    elif case == "both-different":
+        with pytest.raises(ResidentPreflightError, match="must identify the same result path"):
+            _resolve_result_path(args)
+    else:
+        expected = cli_path if case in {"cli-only", "both-equal"} else environment_path
+        assert _resolve_result_path(args) == expected.resolve()
+
+
 class TestResidentDefaults:
     DEFAULTS: ClassVar[dict[str, object]] = {
         "frame_count": 100,
@@ -785,7 +872,6 @@ class TestIssue12Runbook:
                     "out/bench/issue12-watcher",
                     "run_in_container.sh out/bench/issue12-watcher --",
                 ),
-                ("/out/runner-result.json", "--out /out/runner-result.json"),
             ),
         },
         {
@@ -803,7 +889,6 @@ class TestIssue12Runbook:
                     "out/bench/issue12-timing",
                     "run_in_container.sh out/bench/issue12-timing --",
                 ),
-                ("/out/runner-result.json", "--out /out/runner-result.json"),
                 (
                     "/out/issue12-timing-500000.bin",
                     "--raw-timestamps-out /out/issue12-timing-500000.bin",
@@ -814,14 +899,7 @@ class TestIssue12Runbook:
             "name": "record-retention",
             "heading": "Record creation and output retention (host-side shell commands)",
             "values": (
-                (
-                    "out/bench/issue12-watcher/runner-result.json",
-                    "out/bench/issue12-watcher",
-                ),
-                (
-                    "out/bench/issue12-timing/runner-result.json",
-                    "out/bench/issue12-timing",
-                ),
+                ("run-specific `runner-result*.json`", "runner-result*.json"),
                 (
                     "out/bench/issue12-timing/issue12-timing-500000.bin",
                     "issue12-timing-500000.bin",
@@ -916,7 +994,7 @@ class TestIssue12Runbook:
                 else "out/bench/issue12-timing"
             )
             assert output_directory == expected_directory
-            assert args.out == Path("/out/runner-result.json")
+            assert args.out is None
             output_directories.append(output_directory)
         assert len(set(output_directories)) == len(output_directories)
 
@@ -1711,10 +1789,9 @@ def test_resident_runs_do_not_reuse_previous_environment_or_trace_in_sampler_off
     (output_dir / trace_name).write_text("old sampled trace\n")
 
     monkeypatch.setenv("HEKATUS_TT_RUN_ID", "off")
+    monkeypatch.setenv("HEKATUS_TT_RESULT_PATH", str(off_output))
     assert run_resident.main(
         [
-            "--out",
-            str(off_output),
             "--frame-count",
             "3",
         ]
