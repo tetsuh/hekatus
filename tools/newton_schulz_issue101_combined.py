@@ -13,6 +13,7 @@ import platform
 import re
 import tempfile
 import uuid
+from numbers import Real
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -883,17 +884,65 @@ def _validate_correctness_rows(correctness: Any) -> None:
             raise ValueError(f"invalid correctness row for batch{batch}-L{size}")
 
 
-def _validate_performance_rows(performance: Any, *, repeats: int) -> None:
-    """Validate the complete ordered performance rows required by a record."""
-    expected_performance = len(ISSUE100_SHAPES) * len(ISSUE100_COMPARISON_CONFIGS)
-    if not isinstance(performance, list) or len(performance) != expected_performance:
+def _validate_finite_performance_value(value: Any, *, field: str) -> None:
+    """Require one saved performance value to be a finite non-boolean number."""
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise ValueError(  # noqa: TRY004 - all malformed saved values share one rejection
+            f"{field} must be a finite numeric value"
+        )
+    if isinstance(value, int):
+        return
+    try:
+        finite = math.isfinite(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must be a finite numeric value") from exc
+    if not finite:
+        raise ValueError(f"{field} must be a finite numeric value")
+
+
+def _validate_performance_rows(
+    performance: Any,
+    *,
+    repeats: int,
+    expected_shapes: Any = None,
+    expected_configs: Any = None,
+) -> None:
+    """Validate ordered row identities and saved numeric performance values."""
+    expected_shapes = ISSUE100_SHAPES if expected_shapes is None else expected_shapes
+    expected_configs = (
+        ISSUE100_COMPARISON_CONFIGS if expected_configs is None else expected_configs
+    )
+    expected_rows = [
+        (shape, config)
+        for shape in expected_shapes
+        for config in expected_configs
+    ]
+    if not isinstance(performance, list) or len(performance) != len(expected_rows):
         raise ValueError("the combined record requires all four performance rows")
     for index, row in enumerate(performance):
+        if not isinstance(row, dict):
+            raise TypeError(f"performance row {index} is not an object")
         if row.get("status") != "ok":
             raise ValueError(f"performance row {index} did not pass")
+        expected_shape, expected_config = expected_rows[index]
+        if (
+            row.get("shape_name") != expected_shape
+            or row.get("comparison_config") != expected_config
+        ):
+            raise ValueError(
+                f"performance row {index} has unexpected shape/config identity"
+            )
         samples = row.get("seconds_per_launch_samples")
         if not isinstance(samples, list) or len(samples) != repeats:
             raise ValueError(f"performance row {index} lacks all {repeats} launch samples")
+        for sample_index, sample in enumerate(samples):
+            _validate_finite_performance_value(
+                sample,
+                field=(
+                    f"performance row {index} "
+                    f"seconds_per_launch_samples[{sample_index}]"
+                ),
+            )
         for field in (
             "seconds_per_launch_p50",
             "seconds_per_launch_p99",
@@ -901,14 +950,28 @@ def _validate_performance_rows(performance: Any, *, repeats: int) -> None:
         ):
             if field not in row:
                 raise ValueError(f"performance row {index} lacks {field}")
+            _validate_finite_performance_value(
+                row[field], field=f"performance row {index} {field}"
+            )
 
 
-def _validate_complete_run(run: dict, *, repeats: int) -> None:
+def _validate_complete_run(
+    run: dict,
+    *,
+    repeats: int,
+    expected_shapes: Any = None,
+    expected_configs: Any = None,
+) -> None:
     """Reject a record that would silently omit a requested raw result."""
     if run.get("status") != "pass":
         raise ValueError("a combined record requires all correctness and performance rows to pass")
     _validate_correctness_rows(run.get("correctness_cases"))
-    _validate_performance_rows(run.get("performance_rows"), repeats=repeats)
+    _validate_performance_rows(
+        run.get("performance_rows"),
+        repeats=repeats,
+        expected_shapes=expected_shapes,
+        expected_configs=expected_configs,
+    )
 
 
 def _validate_environment_shape(environment: Any) -> None:
@@ -1093,9 +1156,16 @@ def _record_from_parts(
     repeats: int,
     raw_artifact_name: str | None = None,
     run_id: str | None = None,
+    expected_shapes: Any = None,
+    expected_configs: Any = None,
 ) -> dict:
     """Build a record only from captured provenance and completed run rows."""
-    _validate_complete_run(run, repeats=repeats)
+    _validate_complete_run(
+        run,
+        repeats=repeats,
+        expected_shapes=expected_shapes,
+        expected_configs=expected_configs,
+    )
     captured_run_id = _validate_captured_environment(environment, run_id=run_id)
     run_id = captured_run_id
     if run.get("run_id") is not None and _validate_run_id(run["run_id"], source=ISSUE101_RUN_ID_SOURCE) != run_id:
@@ -1789,6 +1859,8 @@ def _validate_raw_selected_run(
     correctness_results: list,
     performance_results: list,
     repeats: int,
+    expected_shapes: list,
+    expected_configs: list,
 ) -> dict:
     """Select and validate the complete captured run used for rebuilding."""
     captured_run = _validate_raw_run_aliases(
@@ -1819,7 +1891,12 @@ def _validate_raw_selected_run(
         raise ValueError(
             f"raw artifact failed at stage {stage}; no complete record is recoverable"
         )
-    _validate_complete_run(selected_run, repeats=repeats)
+    _validate_complete_run(
+        selected_run,
+        repeats=repeats,
+        expected_shapes=expected_shapes,
+        expected_configs=expected_configs,
+    )
     return selected_run
 
 
@@ -1834,12 +1911,17 @@ def _validate_raw_payload(
         payload, run_id=payload_run_id
     )
     correctness_results, performance_results, repeats = _validate_raw_results(payload)
+    configs = payload["configs"]
+    expected_shapes = configs["shapes"]
+    expected_configs = configs["comparison"]
     selected_run = _validate_raw_selected_run(
         payload,
         run_id=payload_run_id,
         correctness_results=correctness_results,
         performance_results=performance_results,
         repeats=repeats,
+        expected_shapes=expected_shapes,
+        expected_configs=expected_configs,
     )
     return (
         payload_run_id,
@@ -1863,6 +1945,9 @@ def _record_from_raw_payload(
         repeats,
         raw_artifact,
     ) = _validate_raw_payload(selected_path, payload, run_id=run_id)
+    configs = payload["configs"]
+    expected_shapes = configs["shapes"]
+    expected_configs = configs["comparison"]
     return _record_from_parts(
         captured_run,
         environment=normalized_environment,
@@ -1870,6 +1955,8 @@ def _record_from_raw_payload(
         repeats=repeats,
         raw_artifact_name=raw_artifact["file"],
         run_id=captured_run_id,
+        expected_shapes=expected_shapes,
+        expected_configs=expected_configs,
     )
 
 

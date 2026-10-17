@@ -420,6 +420,54 @@ def test_issue102_recovery_rejects_missing_power_sample_field(tmp_path):
         issue101.recover_combined_record(raw_path)
 
 
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [
+        ("seconds_per_launch_samples", "not-a-number"),
+        ("seconds_per_launch_samples", True),
+        ("seconds_per_launch_p50", None),
+        ("seconds_per_launch_p99", float("nan")),
+        ("seconds_per_launch_p99_9", float("inf")),
+    ],
+    ids=["sample-string", "sample-bool", "p50-null", "p99-nan", "p99_9-infinity"],
+)
+def test_issue102_rebuild_rejects_malformed_performance_numbers(
+    tmp_path, field, bad_value
+):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    row = payload["performance_results"][0]
+    if field == "seconds_per_launch_samples":
+        row[field][0] = bad_value
+    else:
+        row[field] = bad_value
+    payload["run"]["performance_rows"] = payload["performance_results"]
+
+    with pytest.raises(ValueError, match="finite numeric"):
+        issue101._record_from_raw_payload(raw_path, payload)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "unexpected", "out-of-order"])
+def test_issue102_rebuild_rejects_invalid_performance_row_identity(tmp_path, mutation):
+    output_dir = tmp_path / "device-output"
+    raw_path, _ = _write_rebuild_raw(output_dir)
+    payload = json.loads(raw_path.read_text())
+    rows = payload["performance_results"]
+    if mutation == "missing":
+        rows.pop()
+    elif mutation == "duplicate":
+        rows[1] = dict(rows[0])
+    elif mutation == "unexpected":
+        rows[0]["shape_name"] = "unexpected-shape"
+    else:
+        rows[0], rows[1] = rows[1], rows[0]
+    payload["run"]["performance_rows"] = rows
+
+    with pytest.raises(ValueError, match="performance row|all four"):
+        issue101._record_from_raw_payload(raw_path, payload)
+
+
 def test_issue102_rebuilds_clean_record_from_raw_artifact_only(tmp_path):
     output_dir = tmp_path / "device-output"
     raw_path, telemetry = _write_rebuild_raw(output_dir)
@@ -428,6 +476,7 @@ def test_issue102_rebuilds_clean_record_from_raw_artifact_only(tmp_path):
     )
 
     record = issue101.recover_combined_record(raw_path)
+    raw_payload = json.loads(raw_path.read_text())
 
     assert record["run_id"] == "captured-run"
     assert record["captured_at"] == "2020-02-03T04:05:06+00:00"
@@ -436,6 +485,7 @@ def test_issue102_rebuilds_clean_record_from_raw_artifact_only(tmp_path):
     assert record["environment"]["python"] == "3.9.7"
     assert record["environment"]["board"]["serial"] == "captured-board"
     assert record["measurement"]["power_clock_provenance"]["samples"] == 1
+    assert record["measurement"]["performance_rows"] == raw_payload["run"]["performance_rows"]
     assert record["raw_artifact"]["file"] == raw_path.name
 
 
