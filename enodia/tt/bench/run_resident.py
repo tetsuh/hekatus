@@ -1198,6 +1198,36 @@ def _safe_output_path(path: Path, *, description: str) -> Path:
     return resolved_path
 
 
+def _output_write_path(path: Path, *, description: str) -> Path:
+    """Validate a destination while retaining its final component for no-follow open."""
+    candidate = Path(path)
+    _safe_output_path(candidate, description=description)
+    return candidate if candidate.is_absolute() else Path.cwd() / candidate
+
+
+def _open_output_descriptor(path: Path, *, description: str) -> int:
+    """Open a trusted output without following a substituted final-component symlink."""
+    write_path = _output_write_path(path, description=description)
+    write_path.parent.mkdir(parents=True, exist_ok=True)
+    return os.open(
+        write_path,
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+        0o666,
+    )
+
+
+def _write_output_bytes(path: Path, payload: bytes, *, description: str) -> None:
+    """Write one output through a descriptor that rejects a final symlink."""
+    descriptor = _open_output_descriptor(path, description=description)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            descriptor = -1
+            handle.write(payload)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+
+
 def _output_destination_writable(path: Path) -> bool:
     """Check a destination with a temporary sibling write, without replacing it."""
     try:
@@ -1406,7 +1436,7 @@ def _write_rejection_if_possible(
         )
         if _output_destination_writable(safe_output_path):
             _write(
-                safe_output_path,
+                output_path,
                 build_rejection_record(
                     config=config, reason=reason, environment=environment
                 ),
@@ -1579,16 +1609,19 @@ def _environment(path: Path) -> dict[str, Any]:
 
 
 def _write_raw_timestamps(path: Path, timestamps: list[int]) -> None:
-    safe_path = _safe_output_path(
-        path, description="raw timestamp output destination"
+    _write_output_bytes(
+        path,
+        b"".join(struct.pack("<Q", value) for value in timestamps),
+        description="raw timestamp output destination",
     )
-    safe_path.parent.mkdir(parents=True, exist_ok=True)
-    safe_path.write_bytes(b"".join(struct.pack("<Q", value) for value in timestamps))
 
 
 def _write(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(strict_json_dumps(payload, indent=2) + "\n")
+    _write_output_bytes(
+        path,
+        (strict_json_dumps(payload, indent=2) + "\n").encode("utf-8"),
+        description="output destination",
+    )
 
 
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:

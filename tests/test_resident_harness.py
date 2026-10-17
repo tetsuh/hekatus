@@ -2165,6 +2165,28 @@ def test_resident_environment_requires_verified_digest_image():
 class TestResidentProvenance:
     """Board-free tests generated from the production provenance table."""
 
+    @pytest.mark.parametrize("writer", ["json", "raw"], ids=["json", "raw"])
+    def test_final_output_symlink_is_not_followed_after_preflight(
+        self, tmp_path, writer
+    ):
+        output_path = tmp_path / "output"
+        target_path = tmp_path / "target"
+        target_bytes = b"target must remain unchanged\n"
+        target_path.write_bytes(target_bytes)
+        safe_path = run_resident._safe_output_path(
+            output_path, description="test output destination"
+        )
+
+        # Model a final-component substitution after the trusted preflight.
+        output_path.symlink_to(target_path)
+        with pytest.raises(OSError):
+            if writer == "json":
+                run_resident._write(safe_path, {"status": "written"})
+            else:
+                run_resident._write_raw_timestamps(safe_path, [1, 2])
+
+        assert target_path.read_bytes() == target_bytes
+
     PREFLIGHT_FIELDS = tuple(
         field
         for field in REQUIRED_PROVENANCE_FIELDS
