@@ -2345,7 +2345,7 @@ class TestResidentProvenance:
         monkeypatch,
         environment,
         *extra_args,
-        harness_pushed: bool = True,
+        harness_pushed: bool | None = True,
     ):
         environment_path = tmp_path / "environment.json"
         output_path = tmp_path / "rejection.json"
@@ -2425,6 +2425,19 @@ class TestResidentProvenance:
 
         assert result == 2
         assert "pushed" in json.loads(output_path.read_text())["rejection_reason"]
+
+    def test_clean_override_with_unknown_publication_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        environment = _environment()
+        environment["harness_identity_source"] = "HEKATUS_TT_HARNESS_COMMIT"
+        result, output_path = self._run_main_with_environment(
+            tmp_path, monkeypatch, environment, harness_pushed=None
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "pushed" in rejection["rejection_reason"]
 
     def test_dirty_harness_rejects_before_device_open(self, tmp_path, monkeypatch):
         environment = _environment()
@@ -2519,6 +2532,107 @@ class TestResidentProvenance:
         assert "snapshot destination is not writable" in json.loads(
             output_path.read_text()
         )["rejection_reason"]
+
+    def _run_destination_collision_preflight(
+        self, tmp_path, monkeypatch, *, output_path: Path, raw_output_path: Path | None = None
+    ):
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+        arguments = [
+            "--out",
+            str(output_path),
+            "--env-json",
+            str(environment_path),
+        ]
+        if raw_output_path is not None:
+            arguments.extend(("--raw-timestamps-out", str(raw_output_path)))
+        result = run_resident.main(arguments)
+        return result, output_path
+
+    def test_result_and_raw_timestamp_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        output_path = tmp_path / "same-output.bin"
+        result, rejection_path = self._run_destination_collision_preflight(
+            tmp_path, monkeypatch, output_path=output_path, raw_output_path=output_path
+        )
+
+        assert result == 2
+        rejection = json.loads(rejection_path.read_text())
+        assert "collides" in rejection["rejection_reason"]
+        assert "raw timestamp" in rejection["rejection_reason"]
+
+    def test_result_and_snapshot_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        output_path = output_dir / "resident-power-snapshot-current-run-1.csv"
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                "power-current-run.csv",
+            ]
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "collides" in rejection["rejection_reason"]
+        assert "snapshot" in rejection["rejection_reason"]
+
+    def test_result_and_live_power_source_alias_rejects_before_device_open(
+        self, tmp_path, monkeypatch
+    ):
+        output_dir = tmp_path / "runner-output"
+        output_dir.mkdir()
+        output_path = output_dir / "power-current-run.csv"
+        environment = _environment()
+        environment_path = tmp_path / "environment.json"
+        environment_path.write_text(json.dumps(environment))
+        monkeypatch.setattr(run_resident, "_runner_output_dir", lambda: output_dir)
+        monkeypatch.setenv("HEKATUS_TT_RUN_ID", "current-run")
+        monkeypatch.setitem(
+            sys.modules,
+            "ttnn",
+            SimpleNamespace(open_device=self._device_open_must_not_be_called),
+        )
+
+        result = run_resident.main(
+            [
+                "--out",
+                str(output_path),
+                "--env-json",
+                str(environment_path),
+                "--power-trace",
+                "power-current-run.csv",
+            ]
+        )
+
+        assert result == 2
+        rejection = json.loads(output_path.read_text())
+        assert "collides" in rejection["rejection_reason"]
+        assert "power trace source" in rejection["rejection_reason"]
 
     def _run_bound_live_source_preflight(
         self, tmp_path, monkeypatch, *, source_kind: str

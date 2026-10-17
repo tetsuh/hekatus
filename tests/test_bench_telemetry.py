@@ -742,9 +742,10 @@ def test_the_environment_names_the_harness_that_produced_it(monkeypatch):
 def test_transferred_tree_can_record_verified_harness_identity_without_git(monkeypatch):
     monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
     monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_PUSHED", "true")
 
     def fail_git(*args, **kwargs):
-        raise AssertionError("explicit transferred-tree identity should bypass git")
+        return "git repository unavailable", False
 
     monkeypatch.setattr(telemetry, "_git", fail_git)
 
@@ -753,7 +754,65 @@ def test_transferred_tree_can_record_verified_harness_identity_without_git(monke
         "harness_dirty": False,
         "harness_pushed": True,
         "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
+        "harness_publication_source": "HEKATUS_TT_HARNESS_PUSHED",
     }
+
+
+def test_override_identity_derives_publication_from_remote_tracking_refs(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+    seen = []
+    monkeypatch.setattr(
+        telemetry,
+        "_git",
+        _fake_git(remote_output="origin/main", seen=seen),
+    )
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_pushed"] is True
+    assert identity["harness_publication_source"] == "remote_tracking_ref"
+    assert seen == [("branch", "--remotes", "--contains", "416a7fc")]
+
+
+def test_override_identity_records_unpublished_remote_revision_as_false(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+    monkeypatch.setattr(telemetry, "_git", _fake_git(remote_output=""))
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_pushed"] is False
+    assert identity["harness_publication_source"] == "remote_tracking_ref"
+
+
+def test_override_identity_without_publication_evidence_is_unknown(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+
+    def fail_git(*args, **kwargs):
+        return "git branch failed: remote refs unavailable", False
+
+    monkeypatch.setattr(telemetry, "_git", fail_git)
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_commit"] == "416a7fc"
+    assert identity["harness_dirty"] is False
+    assert identity["harness_pushed"] is None
+    assert "remote refs unavailable" in identity["harness_identity_error"]
+
+
+def test_invalid_override_publication_evidence_is_unknown(monkeypatch):
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_COMMIT", "416a7fc")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_DIRTY", "false")
+    monkeypatch.setenv("HEKATUS_TT_HARNESS_PUSHED", "yes")
+    monkeypatch.setattr(telemetry, "_git", lambda *args: ("", False))
+
+    identity = telemetry.harness_identity()
+
+    assert identity["harness_pushed"] is None
+    assert "HEKATUS_TT_HARNESS_PUSHED" in identity["harness_identity_error"]
 
 
 def test_a_modified_tree_is_recorded_as_such(monkeypatch):

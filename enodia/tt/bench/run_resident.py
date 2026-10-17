@@ -1222,6 +1222,20 @@ def _output_destination_writable(path: Path) -> bool:
     return True
 
 
+def _validate_destination_collisions(
+    destinations: list[tuple[str, Path]],
+) -> None:
+    """Reject distinct runner artifacts that resolve to one filesystem path."""
+    seen: dict[Path, str] = {}
+    for name, path in destinations:
+        previous_name = seen.get(path)
+        if previous_name is not None:
+            raise ResidentPreflightError(
+                f"{name} collides with {previous_name} at resolved path {path}"
+            )
+        seen[path] = name
+
+
 def _validate_output_destinations(
     args: argparse.Namespace,
 ) -> tuple[Path, Path | None]:
@@ -1229,15 +1243,17 @@ def _validate_output_destinations(
     destinations = [("output", args.out)]
     if args.raw_timestamps_out is not None:
         destinations.append(("raw timestamp output", args.raw_timestamps_out))
-    validated_destinations: list[Path] = []
-    for name, path in destinations:
-        safe_path = _safe_output_path(path, description=f"{name} destination")
+    validated_destinations = [
+        (name, _safe_output_path(path, description=f"{name} destination"))
+        for name, path in destinations
+    ]
+    _validate_destination_collisions(validated_destinations)
+    for name, safe_path in validated_destinations:
         if not _output_destination_writable(safe_path):
             raise ResidentPreflightError(f"{name} destination is not writable")
-        validated_destinations.append(safe_path)
     return (
-        validated_destinations[0],
-        validated_destinations[1] if len(validated_destinations) > 1 else None,
+        validated_destinations[0][1],
+        validated_destinations[1][1] if len(validated_destinations) > 1 else None,
     )
 
 
@@ -1281,7 +1297,10 @@ def _validate_card_sampler_preflight(
 
 
 def _validate_power_trace_preflight(
-    power_trace: str | None, *, environment: Mapping[str, Any]
+    power_trace: str | None,
+    *,
+    environment: Mapping[str, Any],
+    output_destinations: tuple[Path, Path | None] | None = None,
 ) -> None:
     """Validate wrapper-owned trace and snapshot destinations without reading data."""
     if power_trace is None:
@@ -1323,13 +1342,29 @@ def _validate_power_trace_preflight(
         raise RunBindingError(
             "power trace binding rejected: name is not the current run artifact"
         )
-    _validate_live_power_trace_source(expected_power_trace)
+    safe_power_trace_path = _safe_output_path(
+        expected_power_trace, description="power trace source"
+    )
     snapshot_path = runner_output_dir / (
         f"{RESIDENT_POWER_TRACE_SNAPSHOT_PREFIX}-{run_id}-1.csv"
     )
     safe_snapshot_path = _safe_output_path(
         snapshot_path, description="power trace snapshot destination"
     )
+    collision_destinations: list[tuple[str, Path]] = []
+    if output_destinations is not None:
+        output_path, raw_timestamps_path = output_destinations
+        collision_destinations.append(("output", output_path))
+        if raw_timestamps_path is not None:
+            collision_destinations.append(("raw timestamp output", raw_timestamps_path))
+    collision_destinations.extend(
+        [
+            ("wrapper-bound live power trace source", safe_power_trace_path),
+            ("generated power trace snapshot destination", safe_snapshot_path),
+        ]
+    )
+    _validate_destination_collisions(collision_destinations)
+    _validate_live_power_trace_source(expected_power_trace)
     if (
         snapshot_path.exists()
         or snapshot_path.is_symlink()
@@ -1996,7 +2031,11 @@ def main(argv: list[str] | None = None) -> int:
         sampler = environment["telemetry_sampler"]
         _validate_card_sampler_preflight(args.condition, sampler)
         condition, repeat_count, calibration = _load_execution_selection(args)
-        _validate_power_trace_preflight(power_trace, environment=environment)
+        _validate_power_trace_preflight(
+            power_trace,
+            environment=environment,
+            output_destinations=(output_path, raw_timestamps_path),
+        )
         watcher = _resolve_watcher_mode(args.watcher, os.environ.get("TT_METAL_WATCHER"))
         if args.calibrate and watcher:
             raise LoadConfigurationError("load calibration must run with Watcher disabled")

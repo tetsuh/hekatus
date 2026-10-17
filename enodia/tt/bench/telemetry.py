@@ -826,6 +826,13 @@ def _git(repo: Path, *args: str) -> tuple[str, bool]:
     return completed.stdout.strip(), True
 
 
+def _remote_tracking_refs_containing(
+    repo: Path, commit: str
+) -> tuple[str, bool]:
+    """Return remote-tracking refs that contain one exact harness revision."""
+    return _git(repo, "branch", "--remotes", "--contains", commit)
+
+
 def harness_identity() -> dict:
     """Which revision of this tree computed the result.
 
@@ -835,11 +842,10 @@ def harness_identity() -> dict:
     as modified rather than silently attributed to its last commit, and a
     tree git could not read at all is recorded as unknown rather than clean.
     A transferred source tree may deliberately omit ``.git``; the wrapper can
-    then provide the already-verified source revision explicitly.  Host-side
-    capture also records whether the commit is reachable from a remote-tracking
-    ref; resident execution consumes that fact rather than querying Git in the
-    transferred tree.
+    then provide the source revision explicitly, but publication still needs
+    a host-side remote-ref query or an explicit host-verified boolean.
     """
+    repo = Path(__file__).resolve().parents[3]
     override_commit = os.environ.get("HEKATUS_TT_HARNESS_COMMIT")
     if override_commit:
         override_dirty = os.environ.get("HEKATUS_TT_HARNESS_DIRTY", "")
@@ -851,18 +857,43 @@ def harness_identity() -> dict:
                     "HEKATUS_TT_HARNESS_DIRTY must be one of 0, 1, false, true"
                 ),
             }
-        # This override is the already-verified transferred-tree contract:
-        # callers provide a source revision that was checked on the host before
-        # the tree crossed a container boundary.  Publication is therefore an
-        # explicit trusted fact here, while malformed or missing identity input
-        # remains unknown and is rejected by the resident runner.
-        return {
+        identity = {
             "harness_commit": override_commit,
             "harness_dirty": override_dirty in {"1", "true"},
-            "harness_pushed": True,
             "harness_identity_source": "HEKATUS_TT_HARNESS_COMMIT",
         }
-    repo = Path(__file__).resolve().parents[3]
+        publication_override = os.environ.get("HEKATUS_TT_HARNESS_PUSHED")
+        if publication_override is not None and publication_override not in {
+            "0",
+            "1",
+            "false",
+            "true",
+        }:
+            identity.update(
+                harness_pushed=None,
+                harness_identity_error=(
+                    "HEKATUS_TT_HARNESS_PUSHED must be one of 0, 1, false, true"
+                ),
+            )
+            return identity
+
+        remote_refs, remote_refs_ok = _remote_tracking_refs_containing(
+            repo, override_commit
+        )
+        if remote_refs_ok:
+            identity.update(
+                harness_pushed=bool(remote_refs),
+                harness_publication_source="remote_tracking_ref",
+            )
+            return identity
+        if publication_override is not None:
+            identity.update(
+                harness_pushed=publication_override in {"1", "true"},
+                harness_publication_source="HEKATUS_TT_HARNESS_PUSHED",
+            )
+            return identity
+        identity.update(harness_pushed=None, harness_identity_error=remote_refs)
+        return identity
     commit, commit_ok = _git(repo, "rev-parse", "HEAD")
     # Tracked changes only. The toolchain writes its build output into the
     # tree on every run, so counting untracked files would make the flag true
@@ -875,9 +906,7 @@ def harness_identity() -> dict:
             "harness_pushed": None,
             "harness_identity_error": commit if not commit_ok else status,
         }
-    remote_refs, remote_refs_ok = _git(
-        repo, "branch", "--remotes", "--contains", commit
-    )
+    remote_refs, remote_refs_ok = _remote_tracking_refs_containing(repo, commit)
     if not remote_refs_ok:
         return {
             "harness_commit": commit,
