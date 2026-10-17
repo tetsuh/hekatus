@@ -320,6 +320,37 @@ def test_issue101_record_construction_exception_preserves_raw_failure_metadata(
     assert recovered["status"] == "pass"
 
 
+@pytest.mark.parametrize("failure_stage", ["close", "telemetry"])
+def test_issue102_recovery_rejects_non_builder_enclosing_failure(
+    monkeypatch, tmp_path, failure_stage
+):
+    output_dir = tmp_path / "device-output"
+    _write_telemetry(output_dir)
+    monkeypatch.setattr(
+        issue101,
+        "build_combined_record",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("record construction injected")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="record construction injected"):
+        issue101.persist_raw_and_build(_passing_run(), output_dir=output_dir, repeats=3)
+
+    raw_path = output_dir / issue101.ISSUE101_RAW_OUTPUT_NAME
+    payload = json.loads(raw_path.read_text())
+    assert payload["recovery_run"]["status"] == "pass"
+    failure = {"stage": failure_stage, "error": f"{failure_stage} injected"}
+    payload["run"].update(
+        {"failure_stage": failure_stage, "error": failure["error"], "failure": failure}
+    )
+    payload["failure"] = failure
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match="builder-only"):
+        issue101.recover_combined_record(raw_path)
+
+
 def _write_legacy_builder_failure_raw(output_dir):
     raw_path, _ = _write_rebuild_raw(output_dir)
     payload = json.loads(raw_path.read_text())

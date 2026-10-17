@@ -2132,6 +2132,10 @@ def _validate_raw_selected_run(
         )
         if recovery_run.get("status") != "pass":
             raise ValueError("raw recovery_run is not a complete passing run")
+        if _legacy_builder_failure_run(payload, captured_run) is None:
+            raise ValueError(
+                "raw recovery_run is only valid for a builder-only record_construction failure"
+            )
         selected_run = recovery_run
     else:
         selected_run = _legacy_builder_failure_run(payload, captured_run)
