@@ -1174,9 +1174,9 @@ def _validate_environment_metadata(environment: dict) -> None:
         "python",
         "harness_commit",
     ):
-        if not isinstance(environment[field], str) or not environment[field]:
+        if not isinstance(environment[field], str) or not environment[field].strip():
             raise ValueError(
-                f"captured normalized_environment field {field!r} must be a non-empty string"
+                f"captured normalized_environment field {field!r} must be a non-whitespace string"
             )
     if environment["kernel"] != environment["host_kernel"]:
         raise ValueError("captured kernel and host_kernel aliases disagree")
@@ -1215,13 +1215,36 @@ def _validate_environment_identity(environment: dict, *, run_id: str | None) -> 
     if not isinstance(board, dict):
         raise TypeError("captured board identity is missing")
     for field in ("board_type", "board_id", "serial"):
-        if not isinstance(board.get(field), str) or not board[field]:
+        if not isinstance(board.get(field), str) or not board[field].strip():
             raise ValueError(
-                f"captured board identity field {field!r} must be a non-empty string"
+                f"captured board identity field {field!r} must be a non-whitespace string"
             )
     identity = environment["board_serial_identity"]
     if not isinstance(identity, dict):
         raise TypeError("captured board serial identity is missing")
+    for field in ("serial", "board_id"):
+        value = identity.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(
+                f"captured board serial identity field {field!r} "
+                "must be a non-whitespace string"
+            )
+    for field in ("source", "rule"):
+        if field in identity and (
+            not isinstance(identity[field], str) or not identity[field].strip()
+        ):
+            raise ValueError(
+                f"captured board serial identity field {field!r} "
+                "must be a non-whitespace string"
+            )
+    if "serial_identity_source" in board and (
+        not isinstance(board["serial_identity_source"], str)
+        or not board["serial_identity_source"].strip()
+    ):
+        raise ValueError(
+            "captured board identity field 'serial_identity_source' "
+            "must be a non-whitespace string"
+        )
     board_source = board.get("serial_identity_source")
     identity_source = identity.get("source")
     # Older saved environments may carry the source only in the identity map.
@@ -1816,8 +1839,8 @@ def _validate_sanitized_basename(value: Any, *, field: str) -> str:
 
 def _validate_captured_timestamp(value: Any, *, field: str) -> str:
     """Validate a saved timezone-aware ISO timestamp without rewriting it."""
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{field} must be a non-empty ISO-8601 timestamp")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-whitespace ISO-8601 timestamp")
     try:
         parsed = datetime.datetime.fromisoformat(value)
     except ValueError as exc:

@@ -23,6 +23,20 @@ _ISSUE102_FIRMWARE_LOCATIONS = (
     ("normalized", "firmware"),
     ("normalized", "firmwares"),
 )
+_ISSUE102_CAPTURED_METADATA_STRING_FIELDS = (
+    "image",
+    "image_digest",
+    "kernel",
+    "host_kernel",
+    "kmd_version",
+    "kernel_driver_version",
+    "tt_env_active_release",
+    "toolchain_release",
+    "python",
+    "harness_commit",
+    "captured_at",
+)
+_ISSUE102_BOARD_STRING_FIELDS = ("board_type", "board_id", "serial", "board_serial")
 
 
 def _raw_environment() -> dict:
@@ -1029,6 +1043,142 @@ def test_issue102_recovery_rejects_conflicting_environment_aliases(
 
     with pytest.raises(ValueError, match=f"{field}|{alias_field}"):
         issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    "field",
+    _ISSUE102_CAPTURED_METADATA_STRING_FIELDS,
+    ids=[field.replace("_", "-") for field in _ISSUE102_CAPTURED_METADATA_STRING_FIELDS],
+)
+def test_issue102_recovery_rejects_whitespace_only_captured_metadata(tmp_path, field):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    payload["telemetry"]["normalized_environment"][field] = " \t\n"
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "projection"),
+    _ISSUE102_BOARD_PROJECTIONS,
+    ids=["raw-board-info", "raw-board", "normalized-board-info", "normalized-board"],
+)
+@pytest.mark.parametrize(
+    "field",
+    _ISSUE102_BOARD_STRING_FIELDS,
+    ids=[field.replace("_", "-") for field in _ISSUE102_BOARD_STRING_FIELDS],
+)
+def test_issue102_recovery_rejects_whitespace_only_saved_board_projection(
+    tmp_path, environment_name, projection, field
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    environment = payload["telemetry"][
+        "environment" if environment_name == "raw" else "normalized_environment"
+    ]
+    environment.setdefault(projection, {})[field] = " \t\n"
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    ("location", "field"),
+    [
+        ("board_serial_identity", "serial"),
+        ("board_serial_identity", "board_id"),
+        ("board_serial_identity", "source"),
+        ("board_serial_identity", "rule"),
+        ("board", "serial_identity_source"),
+    ],
+    ids=[
+        "identity-serial",
+        "identity-board-id",
+        "identity-source",
+        "identity-rule",
+        "board-serial-identity-source",
+    ],
+)
+def test_issue102_recovery_rejects_whitespace_only_saved_board_identity(
+    tmp_path, location, field
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    environment = payload["telemetry"]["normalized_environment"]
+    environment[location][field] = " \t\n"
+    raw_path.write_text(json.dumps(payload))
+
+    with pytest.raises(ValueError, match=field):
+        issue101.recover_combined_record(raw_path)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["kernel", "kmd_version", "tt_env_active_release", "python"],
+    ids=["kernel", "kmd-version", "active-release", "python"],
+)
+def test_issue102_recovery_preserves_surrounding_whitespace_in_metadata(
+    tmp_path, field
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    value = {
+        "kernel": " Linux 6.8.0-test ",
+        "kmd_version": " 2.11.0 \t",
+        "tt_env_active_release": " 0.75.0 \t",
+        "python": " 3.9.7 \t",
+    }[field]
+    raw_environment[field] = value
+    normalized_environment[field] = value
+    if field == "kernel":
+        normalized_environment["host_kernel"] = value
+    elif field == "kmd_version":
+        normalized_environment["kernel_driver_version"] = value
+    elif field == "tt_env_active_release":
+        normalized_environment["toolchain_release"] = value
+    raw_path.write_text(json.dumps(payload))
+
+    record = issue101.recover_combined_record(raw_path)
+
+    assert record["environment"][field] == value
+
+
+@pytest.mark.parametrize("field", _ISSUE102_BOARD_STRING_FIELDS[:3])
+def test_issue102_recovery_preserves_surrounding_whitespace_in_board_identity(
+    tmp_path, field
+):
+    raw_path, _ = _write_rebuild_raw(tmp_path / "device-output")
+    payload = json.loads(raw_path.read_text())
+    raw_environment = payload["telemetry"]["environment"]
+    normalized_environment = payload["telemetry"]["normalized_environment"]
+    value = {
+        "board_type": " p150a ",
+        "board_id": " captured-board ",
+        "serial": " captured-board ",
+    }[field]
+    raw_environment["board_info"][field] = value
+    normalized_environment["board_info"][field] = value
+    normalized_environment["board"][field] = value
+    if field == "board_id":
+        normalized_environment["board"]["serial"] = value
+        normalized_environment["board_serial_identity"]["serial"] = value
+        normalized_environment["board_serial_identity"]["board_id"] = value
+    elif field == "serial":
+        raw_environment["board_info"]["board_id"] = value
+        normalized_environment["board_info"]["board_id"] = value
+        normalized_environment["board"]["board_id"] = value
+        normalized_environment["board_serial_identity"]["serial"] = value
+        normalized_environment["board_serial_identity"]["board_id"] = value
+    raw_path.write_text(json.dumps(payload))
+
+    record = issue101.recover_combined_record(raw_path)
+
+    assert record["environment"]["board"][field] == value
 
 
 @pytest.mark.parametrize(
