@@ -34,7 +34,7 @@ target-version = "py311"
 testpaths = ["tests"]
 addopts = ["--strict-markers"]
 markers = [
-    "slow: simulation-backed tests with high computational cost",
+    "slow: costly individual tests or individual tests consuming a heavy fixture",
     "tt_device: requires the digest-pinned toolchain container and a board",
     "red_diagnostic: intentional Issue #63 RED evidence, skipped by default",
 ]
