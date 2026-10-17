@@ -4,6 +4,26 @@ import ast
 from pathlib import Path
 
 
+class _ClassPytestmarkBindingVisitor(ast.NodeVisitor):
+    """Find pytestmark bindings in a class body, excluding nested scopes."""
+
+    def __init__(self) -> None:
+        self.found = False
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        return
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        return
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        return
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if node.id == "pytestmark" and isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.found = True
+
+
 class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
     """Find slow markers assigned to the module-level pytestmark name."""
 
@@ -12,8 +32,8 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
         self._mark_names = mark_names
         self._filename = filename
         self._scope_depth = 0
-        self._list_aliases: set[str] = set()
-        self._pytestmark_aliases: set[str] = set()
+        self._module_visible_class_depth = 0
+        self._list_aliases: dict[str, set[str]] = {}
         self._slow_aliases: set[str] = set()
         self.violations: list[str] = []
 
@@ -24,7 +44,14 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
         self._visit_nested_scope(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self._visit_nested_scope(node)
+        if self._scope_depth == 0 and not self._class_has_pytestmark_binding(node):
+            self._scope_depth += 1
+            self._module_visible_class_depth += 1
+            self.generic_visit(node)
+            self._module_visible_class_depth -= 1
+            self._scope_depth -= 1
+        else:
+            self._visit_nested_scope(node)
 
     def visit_Assign(self, node: ast.Assign) -> None:
         if self._scope_depth == 0:
@@ -45,19 +72,25 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
         if self._scope_depth == 0:
             if self._is_pytestmark_target(node.target):
                 self._record_if_slow(node.value, node.lineno)
+                if isinstance(node.target, ast.Name):
+                    self._mark_list_alias_slow(node.target.id)
             elif isinstance(node.target, ast.Name) and node.target.id in self._list_aliases:
                 alias = node.target.id
                 if self._contains_slow_marker(node.value):
-                    self._slow_aliases.add(alias)
-                    if alias in self._pytestmark_aliases:
+                    self._mark_list_alias_slow(alias)
+                    if self._is_current_pytestmark_list(alias):
                         self._record_if_slow(node.value, node.lineno)
             else:
                 self._discard_slow_alias(node.target)
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
+        is_module_scope = self._scope_depth == 0
+        is_visible_class_scope = (
+            self._scope_depth == 1 and self._module_visible_class_depth > 0
+        )
         if (
-            self._scope_depth == 0
+            (is_module_scope or is_visible_class_scope)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in {"append", "extend", "insert"}
             and isinstance(node.func.value, ast.Name)
@@ -65,16 +98,43 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
             alias = node.func.value.id
             if alias == "pytestmark":
                 self._record_if_slow(node, node.lineno)
-            elif alias in self._list_aliases and self._call_receives_slow_marker(node):
-                self._slow_aliases.add(alias)
-                if alias in self._pytestmark_aliases:
-                    self._record_if_slow(node, node.lineno)
+                if self._call_receives_slow_marker(node):
+                    self._mark_list_alias_slow(alias)
+            elif is_module_scope and alias in self._list_aliases:
+                if self._call_receives_slow_marker(node):
+                    self._mark_list_alias_slow(alias)
+                    if self._is_current_pytestmark_list(alias):
+                        self._record_if_slow(node, node.lineno)
         self.generic_visit(node)
 
     def _visit_nested_scope(self, node: ast.AST) -> None:
         self._scope_depth += 1
         self.generic_visit(node)
         self._scope_depth -= 1
+
+    @staticmethod
+    def _class_has_pytestmark_binding(node: ast.ClassDef) -> bool:
+        visitor = _ClassPytestmarkBindingVisitor()
+        for statement in node.body:
+            visitor.visit(statement)
+        return visitor.found
+
+    def _remove_list_alias(self, alias: str) -> set[str] | None:
+        group = self._list_aliases.pop(alias, None)
+        if group is not None:
+            group.discard(alias)
+        return group
+
+    def _mark_list_alias_slow(self, alias: str) -> None:
+        group = self._list_aliases.get(alias)
+        if group is None:
+            self._slow_aliases.add(alias)
+        else:
+            self._slow_aliases.update(group)
+
+    def _is_current_pytestmark_list(self, alias: str) -> bool:
+        group = self._list_aliases.get(alias)
+        return group is not None and "pytestmark" in group
 
     @staticmethod
     def _is_pytestmark_target(node: ast.AST) -> bool:
@@ -103,23 +163,29 @@ class _ModuleSlowMarkerVisitor(ast.NodeVisitor):
     def _update_slow_aliases(
         self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.AST
     ) -> None:
+        source_group = (
+            self._list_aliases.get(value.id)
+            if isinstance(value, ast.Name)
+            else None
+        )
         for target in targets:
-            if isinstance(target, ast.Name) and target.id != "pytestmark":
-                is_pytestmark_alias = (
-                    isinstance(value, ast.Name) and value.id == "pytestmark"
-                )
-                if isinstance(value, ast.List) or is_pytestmark_alias:
-                    self._list_aliases.add(target.id)
-                else:
-                    self._list_aliases.discard(target.id)
-                if is_pytestmark_alias:
-                    self._pytestmark_aliases.add(target.id)
-                else:
-                    self._pytestmark_aliases.discard(target.id)
-                if self._contains_slow_marker(value):
-                    self._slow_aliases.add(target.id)
-                else:
-                    self._slow_aliases.discard(target.id)
+            if not isinstance(target, ast.Name):
+                continue
+            target_group = self._remove_list_alias(target.id)
+            if isinstance(value, ast.List):
+                target_group = {target.id}
+                self._list_aliases[target.id] = target_group
+            elif source_group is not None:
+                source_group.add(target.id)
+                target_group = source_group
+                self._list_aliases[target.id] = target_group
+
+            if target_group is not None and self._contains_slow_marker(value):
+                self._slow_aliases.update(target_group)
+            elif self._contains_slow_marker(value):
+                self._slow_aliases.add(target.id)
+            else:
+                self._slow_aliases.discard(target.id)
 
     def _discard_slow_alias(self, target: ast.AST) -> None:
         if isinstance(target, ast.Name):
@@ -193,6 +259,21 @@ def test_module_slow_marker_list_alias_mutation_is_detected():
     assert visitor.violations == ["synthetic.py:3"]
 
 
+def test_module_slow_marker_list_alias_chain_mutation_is_detected():
+    source = (
+        "marks = []\n"
+        "alias = marks\n"
+        "alias.append(pytest.mark.slow)\n"
+        "pytestmark = marks\n"
+    )
+    tree = ast.parse(source, filename="synthetic.py")
+    pytest_names, mark_names = _pytest_marker_names(tree)
+    visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, "synthetic.py")
+    visitor.visit(tree)
+
+    assert visitor.violations == ["synthetic.py:4"]
+
+
 def test_module_slow_marker_list_alias_augassign_is_detected():
     source = (
         "marks = []\n"
@@ -243,6 +324,7 @@ def test_module_slow_marker_mutation_is_detected():
         "def add_marker():\n"
         "    pytestmark.append(pytest.mark.slow)\n"
         "class Marker:\n"
+        "    pytestmark = []\n"
         "    pytestmark.extend([pytest.mark.slow])\n"
     )
     tree = ast.parse(source, filename="synthetic.py")
@@ -251,3 +333,17 @@ def test_module_slow_marker_mutation_is_detected():
     visitor.visit(tree)
 
     assert visitor.violations == ["synthetic.py:2", "synthetic.py:3", "synthetic.py:4"]
+
+
+def test_module_slow_marker_class_body_mutation_is_detected():
+    source = (
+        "pytestmark = []\n"
+        "class Marker:\n"
+        "    pytestmark.extend([pytest.mark.slow])\n"
+    )
+    tree = ast.parse(source, filename="synthetic.py")
+    pytest_names, mark_names = _pytest_marker_names(tree)
+    visitor = _ModuleSlowMarkerVisitor(pytest_names, mark_names, "synthetic.py")
+    visitor.visit(tree)
+
+    assert visitor.violations == ["synthetic.py:3"]
