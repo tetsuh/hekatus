@@ -659,11 +659,11 @@ def _newton_schulz_plan_ledger(
         bank_estimate["profiled_l1_bytes_per_bank_upper_bound"]
         < profiled["budget_bytes"]
     )
-    if not base["total_bytes"] < base["budget_bytes"] or not bank_estimate["within_budget"]:
+    if base["total_bytes"] >= base["budget_bytes"] or not bank_estimate["within_budget"]:
         raise LoadConfigurationError(
             "L1/work invariant failed: conservative active-core L1 ledger exceeds budget"
         )
-    if not profiled["total_bytes"] < profiled["budget_bytes"] or not bank_estimate["profile_within_budget"]:
+    if profiled["total_bytes"] >= profiled["budget_bytes"] or not bank_estimate["profile_within_budget"]:
         raise LoadConfigurationError(
             "L1/work invariant failed: profiled L1 ledger exceeds budget"
         )

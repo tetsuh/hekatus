@@ -437,6 +437,50 @@ class TestBenchDefaults:
         assert completed.returncode == 0, completed.stderr
         assert timeout_log.read_text().splitlines()[2] == expected_timeout
 
+    def test_issue137_wrapper_rewrites_supplied_power_trace_once(self, tmp_path):
+        timeout_log = tmp_path / "timeout-args"
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout="70",
+            runner_args=[
+                "--mode",
+                "smoke",
+                "--outer-timeout-seconds",
+                "70",
+                "--power-trace",
+                "caller-owned.csv",
+                "--power-trace=another-caller-owned.csv",
+            ],
+            timeout_log=timeout_log,
+            runner="tools/issue137_device.py",
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert timeout_log.read_text().splitlines()[2] == "70s"
+        docker_args = (tmp_path / "docker-args").read_text().splitlines()
+        power_indices = [index for index, argument in enumerate(docker_args) if argument == "--power-trace"]
+        assert len(power_indices) == 1
+        assert docker_args[power_indices[0] + 1].startswith("/out/power-")
+        assert "caller-owned.csv" not in docker_args
+        assert "another-caller-owned.csv" not in docker_args
+
+    @pytest.mark.parametrize(
+        ("mode", "guard"),
+        [("smoke", "170"), ("long", "70"), ("smoke", "999")],
+    )
+    def test_issue137_wrapper_rejects_non_mode_guard_before_telemetry(
+        self, tmp_path, mode, guard
+    ):
+        completed = _run_resident_wrapper(
+            tmp_path,
+            container_timeout=guard,
+            runner_args=["--mode", mode, "--outer-timeout-seconds", guard],
+            runner="tools/issue137_device.py",
+        )
+        assert completed.returncode == 2
+        assert "requires a" in completed.stderr or "requires" in completed.stderr
+        assert not (tmp_path / "docker-args").exists()
+        assert not (tmp_path / "repo/out").exists()
+
     def test_nonresident_wrapper_keeps_900_second_default(self, tmp_path):
         timeout_log = tmp_path / "timeout-args"
         sampler_log = tmp_path / "sampler-args"

@@ -3,6 +3,40 @@
 Raw results kept as data, each with the reproducibility information that
 produced it.
 
+## Issue #137 duration-bounded runner (revision 2)
+
+The board-free planning command prints the immutable configurations and their
+plan hash without opening a device:
+
+```bash
+uv run python tools/issue137.py --mode plan
+```
+
+An owner-approved invocation selects exactly one configuration. Smoke mode is
+20 seconds with a 70-second guard; long mode is 120 seconds with a 170-second
+guard. Each launch performs one fixed Newton-Schulz outer repetition (12
+iterations, block 8), and the host `CLOCK_MONOTONIC` loop records the observed
+launch count. There is no Issue #137 calibration artifact or repeat-count
+input. The wrapper creates a fresh run identity, binds the selected device
+node and digest-pinned image, and owns `HEKATUS_TT_RESULT_PATH`; callers do not
+pass a conflicting `--out` result path.
+
+```bash
+uv run python tools/issue137.py --mode smoke --configuration C018 \
+  --run-id issue137-smoke-c018 --out-dir out/issue137 --execute
+uv run python tools/issue137.py --mode long --configuration C018 \
+  --run-id issue137-long-c018 --run-number 1 --approve-long-run \
+  --out-dir out/issue137 --execute
+```
+
+A completed run is evidence only when its persisted `run-<id>.json` binds the
+actual returned device result, exact core plan, host monotonic bounds, selected
+board identity, environment, trace, and unit provenance. Exit status alone is
+never evidence; missing, stale, malformed, or identity-mismatched artifacts
+are structured failures. These commands are examples only and require owner
+approval and the board-run procedure; this repository's board-free validation
+uses mocked command and snapshot seams.
+
 A throughput figure is only evidence if the environment behind it can be
 reproduced later. design.md §2 records that a firmware update once changed
 the core count, and the first measurements on this project ran on a different

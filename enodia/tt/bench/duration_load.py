@@ -13,7 +13,7 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NoReturn
 
 LONG_TARGET_SECONDS = 120.0
 LONG_GUARD_SECONDS = 170.0
@@ -23,6 +23,7 @@ DEFAULT_OVERRUN_LIMIT_SECONDS = 10.0
 RUNNER_MARGIN_SECONDS = 40.0
 MAX_TARGET_SECONDS = LONG_TARGET_SECONDS
 _NANOSECONDS_PER_SECOND = 1_000_000_000
+_CALLBACK_EXCEPTION_TYPE = Exception
 
 
 class DurationLoadError(RuntimeError):
@@ -189,6 +190,127 @@ def _partial_result(
     )
 
 
+def _raise_duration_error(
+    *,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    first_start_ns: int | None,
+    launch_count: int,
+    last_end_ns: int | None,
+    reason: str,
+    cause: BaseException | None = None,
+) -> NoReturn:
+    result = _partial_result(
+        target_seconds=target_seconds,
+        overrun_limit_seconds=overrun_limit_seconds,
+        first_start_ns=first_start_ns,
+        launch_count=launch_count,
+        last_end_ns=last_end_ns,
+        failure_reason=reason,
+    )
+    if cause is None:
+        raise DurationLoadError(reason, result=result)
+    raise DurationLoadError(reason, result=result) from cause
+
+
+def _initial_start_or_raise(
+    monotonic_ns: Callable[[], int], *, target_seconds: float, overrun_limit_seconds: float
+) -> int:
+    try:
+        return _clock_value(monotonic_ns, previous=None, name="first launch start")
+    except DurationLoadError as exc:
+        _raise_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            first_start_ns=None,
+            launch_count=0,
+            last_end_ns=None,
+            reason=str(exc),
+            cause=exc,
+        )
+
+
+def _launch_once_or_raise(
+    launch_callback: Callable[[], Any],
+    *,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    first_start_ns: int,
+    launch_count: int,
+    last_end_ns: int | None,
+) -> None:
+    try:
+        completed = launch_callback()
+    except _CALLBACK_EXCEPTION_TYPE as exc:
+        _raise_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+            reason=f"launch callback failed: {exc}",
+            cause=exc,
+        )
+    if completed is not None and completed is not True:
+        _raise_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+            reason="launch callback did not report completion",
+        )
+
+
+def _clock_or_raise(
+    monotonic_ns: Callable[[], int],
+    *,
+    previous_clock_ns: int,
+    name: str,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    first_start_ns: int,
+    launch_count: int,
+    last_end_ns: int | None,
+) -> int:
+    try:
+        return _clock_value(monotonic_ns, previous=previous_clock_ns, name=name)
+    except DurationLoadError as exc:
+        _raise_duration_error(
+            target_seconds=target_seconds,
+            overrun_limit_seconds=overrun_limit_seconds,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+            reason=str(exc),
+            cause=exc,
+        )
+
+
+def _completed_result(
+    *,
+    target_seconds: float,
+    overrun_limit_seconds: float,
+    first_start_ns: int,
+    workload_end_ns: int,
+    launch_end_ns: int,
+    launch_count: int,
+) -> DurationLoadResult:
+    overrun_seconds = (launch_end_ns - workload_end_ns) / _NANOSECONDS_PER_SECOND
+    passed = overrun_seconds <= overrun_limit_seconds
+    return DurationLoadResult(
+        status="passed" if passed else "failed",
+        target_seconds=target_seconds,
+        overrun_limit_seconds=overrun_limit_seconds,
+        launch_count=launch_count,
+        first_launch_start_monotonic_ns=first_start_ns,
+        workload_end_monotonic_ns=workload_end_ns,
+        last_launch_end_monotonic_ns=launch_end_ns,
+        overrun_seconds=overrun_seconds,
+        failure_reason=(None if passed else "launch overrun exceeds the configured limit"),
+    )
+
+
 def run_duration_bounded_load(
     launch_callback: Callable[[], Any] | None = None,
     *,
@@ -214,107 +336,61 @@ def run_duration_bounded_load(
     if target_ns < 1:
         raise ValueError("target_seconds is below one nanosecond")
 
-    try:
-        first_start_ns = _clock_value(
-            monotonic_ns,
-            previous=None,
-            name="first launch start",
-        )
-    except DurationLoadError as exc:
-        result = _partial_result(
-            target_seconds=target,
-            overrun_limit_seconds=overrun_limit,
-            first_start_ns=None,
-            launch_count=0,
-            last_end_ns=None,
-            failure_reason=str(exc),
-        )
-        raise DurationLoadError(str(exc), result=result) from exc
-
+    first_start_ns = _initial_start_or_raise(
+        monotonic_ns,
+        target_seconds=target,
+        overrun_limit_seconds=overrun_limit,
+    )
     previous_clock_ns = first_start_ns
     last_end_ns: int | None = None
     launch_count = 0
     workload_end_ns = first_start_ns + target_ns
     while True:
-        try:
-            completed = launch_callback()
-        except Exception as exc:
-            reason = f"launch callback failed: {exc}"
-            result = _partial_result(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                last_end_ns=last_end_ns,
-                failure_reason=reason,
-            )
-            raise DurationLoadError(reason, result=result) from exc
-        if completed is not None and completed is not True:
-            reason = "launch callback did not report completion"
-            result = _partial_result(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                last_end_ns=last_end_ns,
-                failure_reason=reason,
-            )
-            raise DurationLoadError(reason, result=result)
-        try:
-            launch_end_ns = _clock_value(
-                monotonic_ns,
-                previous=previous_clock_ns,
-                name="launch completion",
-            )
-        except DurationLoadError as exc:
-            result = _partial_result(
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                first_start_ns=first_start_ns,
-                launch_count=launch_count,
-                last_end_ns=last_end_ns,
-                failure_reason=str(exc),
-            )
-            raise DurationLoadError(str(exc), result=result) from exc
+        _launch_once_or_raise(
+            launch_callback,
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+        )
+        launch_end_ns = _clock_or_raise(
+            monotonic_ns,
+            previous_clock_ns=previous_clock_ns,
+            name="launch completion",
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+        )
         previous_clock_ns = launch_end_ns
         last_end_ns = launch_end_ns
         launch_count += 1
         if launch_end_ns >= workload_end_ns:
-            overrun_seconds = (launch_end_ns - workload_end_ns) / _NANOSECONDS_PER_SECOND
-            passed = overrun_seconds <= overrun_limit
-            return DurationLoadResult(
-                status="passed" if passed else "failed",
-                target_seconds=target,
-                overrun_limit_seconds=overrun_limit,
-                launch_count=launch_count,
-                first_launch_start_monotonic_ns=first_start_ns,
-                workload_end_monotonic_ns=workload_end_ns,
-                last_launch_end_monotonic_ns=launch_end_ns,
-                overrun_seconds=overrun_seconds,
-                failure_reason=(
-                    None if passed else "launch overrun exceeds the configured limit"
-                ),
-            )
-
-        try:
-            next_launch_check_ns = _clock_value(
-                monotonic_ns,
-                previous=previous_clock_ns,
-                name="next launch check",
-            )
-        except DurationLoadError as exc:
-            result = _partial_result(
+            result = _completed_result(
                 target_seconds=target,
                 overrun_limit_seconds=overrun_limit,
                 first_start_ns=first_start_ns,
+                workload_end_ns=workload_end_ns,
+                launch_end_ns=launch_end_ns,
                 launch_count=launch_count,
-                last_end_ns=last_end_ns,
-                failure_reason=str(exc),
             )
-            raise DurationLoadError(str(exc), result=result) from exc
+            return result
+
+        next_launch_check_ns = _clock_or_raise(
+            monotonic_ns,
+            previous_clock_ns=previous_clock_ns,
+            name="next launch check",
+            target_seconds=target,
+            overrun_limit_seconds=overrun_limit,
+            first_start_ns=first_start_ns,
+            launch_count=launch_count,
+            last_end_ns=last_end_ns,
+        )
         previous_clock_ns = next_launch_check_ns
         if next_launch_check_ns >= workload_end_ns:
-            result = _partial_result(
+            return _partial_result(
                 target_seconds=target,
                 overrun_limit_seconds=overrun_limit,
                 first_start_ns=first_start_ns,
@@ -324,7 +400,6 @@ def run_duration_bounded_load(
                     "workload interval was uncovered before the next launch boundary"
                 ),
             )
-            return result
 
 
 # The explicit name is useful to callers that already use "host duration" in

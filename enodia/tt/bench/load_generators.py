@@ -153,17 +153,15 @@ def build_load_plan(
             total_blocks=total_blocks,
             matrix_block=matrix_block,
         )
+    if canonical in {"unloaded", "host_cpu_transfer"}:
+        worker_cores = ()
+    elif core_plan is not None:
+        worker_cores = core_plan.worker_cores
+    else:
+        worker_cores = P150_RESIDUAL_WORKER_COORDINATES
     return LoadProgramPlan(
         condition=canonical,
-        worker_cores=(
-            ()
-            if canonical in {"unloaded", "host_cpu_transfer"}
-            else (
-                core_plan.worker_cores
-                if core_plan is not None
-                else P150_RESIDUAL_WORKER_COORDINATES
-            )
-        ),
+        worker_cores=worker_cores,
         kernel_source=source,
         fixed_work=True,
         data_dependent_exit=False,

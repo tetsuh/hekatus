@@ -49,7 +49,9 @@ from enodia.tt.bench.load_harness import (
     HOST_TRANSFER_COUNT,
     HOST_TRANSFER_SUB_DEVICE_ID,
     LOAD_CONDITIONS,
+    NS_LOAD_MATRIX_BLOCK,
     NS_LOAD_OUTER_REPETITIONS,
+    P150_RESIDUAL_WORKER_COORDINATES,
     RESIDENT_COMMAND_QUEUE,
     RESIDENT_CORES,
     TRANSFER_COMMAND_QUEUE,
@@ -58,8 +60,10 @@ from enodia.tt.bench.load_harness import (
     CardLoadInterval,
     HostLoadInterval,
     LoadConfigurationError,
+    NewtonSchulzCorePlan,
     build_calibration_load_record,
     build_load_record,
+    build_newton_schulz_core_plan,
     calibration_metadata,
     predicted_load_time_seconds,
     validate_device_load_repeat_count,
@@ -133,6 +137,7 @@ class _LoadedDeviceResources:
     condition: str
     resident_tensors: dict[str, Any] = field(default_factory=dict)
     load_kernel: Any | None = None
+    newton_schulz_core_plan: NewtonSchulzCorePlan | None = None
     load_tensors: list[Any] = field(default_factory=list)
     program: Any | None = None
     host_sub_device_manager: Any | None = None
@@ -849,6 +854,7 @@ def _prepare_loaded_device(
     *,
     repeat_count: int,
     watcher: bool,
+    newton_schulz_core_plan: NewtonSchulzCorePlan | None = None,
 ) -> None:
     if resources.condition == "host_cpu_transfer":
         (
@@ -861,9 +867,18 @@ def _prepare_loaded_device(
     )
     load_parts: tuple[list[Any], list[Any], list[Any]] = ([], [], [])
     if resources.condition == "newton_schulz":
+        if newton_schulz_core_plan is None:
+            newton_schulz_core_plan = build_newton_schulz_core_plan(
+                core_count=len(P150_RESIDUAL_WORKER_COORDINATES)
+            )
         load_kernel = prepare_newton_schulz_load(
-            ttnn, device, repeat_count=repeat_count, profile=True
+            ttnn,
+            device,
+            repeat_count=repeat_count,
+            profile=True,
+            core_plan=newton_schulz_core_plan,
         )
+        resources.newton_schulz_core_plan = newton_schulz_core_plan
         resources.load_kernel = load_kernel
         load_parts = load_kernel.program_parts()
         load_tensors = resources.load_tensors = [*load_kernel.inputs]
@@ -1142,6 +1157,7 @@ def _run_loaded_device(
     condition: str,
     repeat_count: int,
     watcher: bool,
+    newton_schulz_core_plan: NewtonSchulzCorePlan | None = None,
 ) -> dict[str, Any]:
     """Launch resident and one selected load group in one ProgramDescriptor."""
     if condition not in {"newton_schulz", "dram", "host_cpu_transfer"}:
@@ -1155,6 +1171,7 @@ def _run_loaded_device(
             resources,
             repeat_count=repeat_count,
             watcher=watcher,
+            newton_schulz_core_plan=newton_schulz_core_plan,
         )
         if condition == "host_cpu_transfer":
             _start_loaded_host_thread(ttnn, device, resources, repeat_count)
@@ -1770,6 +1787,36 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
     )
 
 
+def _newton_schulz_core_plan_from_args(
+    args: argparse.Namespace,
+) -> NewtonSchulzCorePlan | None:
+    """Build an explicit NS core plan before any TTNN import or device open."""
+    core_count = getattr(args, "load_core_count", None)
+    total_blocks = getattr(args, "load_total_blocks", None)
+    matrix_block = getattr(args, "load_matrix_block", None)
+    if args.condition != "newton_schulz":
+        if any(value is not None for value in (core_count, total_blocks, matrix_block)):
+            raise LoadConfigurationError(
+                "--load-core-count, --load-total-blocks, and --load-matrix-block "
+                "require --condition newton_schulz"
+            )
+        return None
+    if all(value is None for value in (core_count, total_blocks, matrix_block)):
+        # Preserve the historical Q2 record shape.  The loaded execution path
+        # constructs its unchanged 108-core default when no Issue #137
+        # selection was supplied.
+        return None
+    return build_newton_schulz_core_plan(
+        core_count=(
+            len(P150_RESIDUAL_WORKER_COORDINATES)
+            if core_count is None
+            else core_count
+        ),
+        total_blocks=total_blocks,
+        matrix_block=(NS_LOAD_MATRIX_BLOCK if matrix_block is None else matrix_block),
+    )
+
+
 def _config_from_args(args: argparse.Namespace) -> ResidentConfig:
     """Build the resident configuration without importing or opening TTNN."""
     timestamp_core = args.timestamp_core or args.consumer_core
@@ -1819,6 +1866,9 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--histogram-bin-ticks", type=int, default=1)
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--condition", choices=LOAD_CONDITIONS, default="unloaded")
+    parser.add_argument("--load-core-count", type=int, default=None)
+    parser.add_argument("--load-total-blocks", type=int, default=None)
+    parser.add_argument("--load-matrix-block", type=int, default=None)
     parser.add_argument("--calibration-json", type=Path, default=None)
     parser.add_argument("--repeat-count", type=int, default=None)
     parser.add_argument("--calibrate", action="store_true")
@@ -2080,7 +2130,13 @@ def _read_load_calibration(path: Path) -> CalibrationMetadata:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise LoadConfigurationError(f"cannot read load calibration metadata: {path.name}") from exc
-    calibration = payload.get("calibration") if isinstance(payload, dict) else None
+    if not isinstance(payload, Mapping):
+        raise LoadConfigurationError("load calibration metadata must be a JSON object")
+    if payload.get("record_schema") == "issue137-calibration-v1":
+        raise LoadConfigurationError(
+            "Issue #137 calibration metadata is unsupported in the resident runner"
+        )
+    calibration = payload.get("calibration")
     if not isinstance(calibration, dict):
         raise LoadConfigurationError("load calibration metadata has no calibration object")
     if calibration.get("source") != "watcher_off_calibration":
@@ -2190,7 +2246,9 @@ def _select_loaded_execution(
     return condition, repeat_count, calibration
 
 
-def _load_execution_selection(args: argparse.Namespace) -> tuple[str, int, CalibrationMetadata | None]:
+def _load_execution_selection(
+    args: argparse.Namespace,
+) -> tuple[str, int, CalibrationMetadata | None]:
     condition = args.condition
     if condition == "unloaded":
         return _select_unloaded_execution(args)
@@ -2209,6 +2267,7 @@ def main(argv: list[str] | None = None) -> int:
     condition = "unloaded"
     repeat_count = 0
     calibration: CalibrationMetadata | None = None
+    newton_schulz_core_plan: NewtonSchulzCorePlan | None = None
     environment_result_path = _environment_result_path()
     if args.out is not None and environment_result_path is not None:
         output_path = None
@@ -2237,6 +2296,7 @@ def main(argv: list[str] | None = None) -> int:
             pushed=environment.get("harness_pushed"),
         )
         sampler = environment["telemetry_sampler"]
+        newton_schulz_core_plan = _newton_schulz_core_plan_from_args(args)
         _validate_card_sampler_preflight(args.condition, sampler)
         condition, repeat_count, calibration = _load_execution_selection(args)
         _validate_power_trace_preflight(
@@ -2304,6 +2364,7 @@ def main(argv: list[str] | None = None) -> int:
                     condition=condition,
                     repeat_count=repeat_count,
                     watcher=watcher,
+                    newton_schulz_core_plan=newton_schulz_core_plan,
                 )
             )
         except HostCleanupUnsafe as exc:
@@ -2682,6 +2743,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     record["frames_produced"] = result["frames_produced"]
     record["frames_consumed"] = result["frames_consumed"]
+    if newton_schulz_core_plan is not None:
+        record["newton_schulz_core_plan"] = newton_schulz_core_plan.as_record()
     if calibration_output is not None:
         calibration_record = calibration_output.as_record()
         record["status"] = "calibration"
