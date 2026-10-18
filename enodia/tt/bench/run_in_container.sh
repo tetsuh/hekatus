@@ -13,7 +13,7 @@
 #   run_in_container.sh OUT_DIR                  # choose where results land
 #   run_in_container.sh -- --iters 5             # arguments for the runner
 #   run_in_container.sh OUT_DIR -- --iters 5
-#   run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py
+#   run_in_container.sh --pytest --allow-hardware-tests -m tt_device tests/test_newton_schulz_kernel.py
 #
 # `--pytest` is the only supported device-test entry point. It runs pytest in
 # the digest-pinned image with HEKATUS_TT_DEVICE_TEST=1 and
