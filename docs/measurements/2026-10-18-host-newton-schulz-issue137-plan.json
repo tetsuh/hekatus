@@ -1,0 +1,330 @@
+{
+  "record_schema": "issue137-premeasurement-plan-v1",
+  "status": "planned",
+  "issue": "#137",
+  "related": [
+    "#121",
+    "#136"
+  ],
+  "board_run": false,
+  "purpose": "Test, by a preregistered intervention, whether the board power limit is what lowers AICLK under sustained Newton-Schulz load. Issue #121 Q2 classified all three runs as H-OTHER; its post-hoc observation that plateau board_power_w sat within 0.3 percent of BOARD_POWER_LIMIT is a correlation only and is not used to set any criterion here.",
+  "intervention": {
+    "variable": "active Newton-Schulz worker core count n",
+    "held_constant": "per-core work: each active worker receives 9 or 10 matrix blocks per launch, the same per-core distribution as the Q2 108-core workload (1024 blocks over 108 cores)",
+    "total_blocks_rule": "total_blocks(n) = round(1024 * n / 108); blocks are distributed with divmod, so every active core holds 9 or 10 blocks",
+    "reason": "With the ADR-0013 batch of 8192 matrices held fixed, only 79-108 cores fit in L1 (board-free L1 ledger), and every count in that range is estimated to exceed 300 W at asic_fmax. A below-limit configuration is required to test H-BPL, so total work scales with n and per-core work is fixed.",
+    "adr_0013_departure": "Configurations other than n=108 depart from the ADR-0013 batch. This is a power intervention, not a performance or image-quality measurement; no throughput figure from it is to be compared with ADR-0013 results.",
+    "n108_identity": "n=108 is the exact Q2 workload (1024 blocks, batch 8192).",
+    "l1_requirement": "Every configuration must fit L1: the board-free ledger and the pre-open preflight reject a configuration that does not. Per-core work (blocks per active core, iterations, block size) must be identical for every n. The total L1 allocation of the interleaved input tensors scales with the batch and is not required to be equal across n; it is recorded per configuration as a stated difference. Equality of the per-core ledger is reported, not required.",
+    "core_selection": "Active cores are a deterministic, documented subset of the 108-core worker pool (the two resident cores are excluded as in Q2); the coordinates are recorded per run.",
+    "other_parameters": "Identical to Q2: ADR-0013 configuration (BF16 state, FP32 destination, HiFi3, fused S, matrix block 8, double buffering, full DEST sync, input/R/X0 in L1, output in DRAM), 12 fixed iterations, no convergence check."
+  },
+  "load_execution": {
+    "mode": "host-duration-bounded",
+    "definition": "Each launch performs fixed work (the configuration's blocks, 12 Newton-Schulz iterations, block size 8). Launches are issued back to back until at least run_duration_seconds of host CLOCK_MONOTONIC have elapsed since the first launch started; the loop then stops at the next launch boundary. The launch count is an observation, recorded per run, never an input.",
+    "why_not_fixed_repeat_count": "A repeat count sized from a short calibration at about 1350 MHz would run about 40 percent longer at the throttled plateau and breach the guard; a count sized for the plateau would end early in an unthrottled configuration and break terminal plateau coverage. The sustained AICLK is the quantity under measurement, so it cannot be an input to the duration.",
+    "calibration": "No per-configuration repeat-count calibration is required or used; the Q2 108-core calibration constants are not used.",
+    "workload_interval": "[first_launch_start_monotonic_ns, first_launch_start_monotonic_ns + run_duration_seconds); the plateau window is relative to first_launch_start_monotonic_ns.",
+    "overrun": "The last launch may end after run_duration_seconds. The overrun (last_launch_end - workload_interval_end) is recorded. A run whose overrun exceeds overrun_limit_seconds is failed and reported; it is not extended and not silently accepted.",
+    "overrun_limit_seconds": 10,
+    "recorded_fields": [
+      "launch_count",
+      "first_launch_start_monotonic_ns",
+      "last_launch_end_monotonic_ns",
+      "overrun_seconds"
+    ],
+    "scope": "Opt-in mode of the measurement harness for Issue #137 only. Q2 defaults, records and arithmetic are unchanged. This is a measurement-tool option, not a product real-time path, so the fixed-work rule of CLAUDE.md is not involved: work per launch stays fixed; only the number of launches follows the clock.",
+    "supervision_clock": "host CLOCK_MONOTONIC, consistent with ADR-0015"
+  },
+  "configurations": [
+    {
+      "id": "C018",
+      "worker_core_count": 18,
+      "role": "below-limit",
+      "verdict_bearing": true
+    },
+    {
+      "id": "C054",
+      "worker_core_count": 54,
+      "role": "knee",
+      "verdict_bearing": false
+    },
+    {
+      "id": "C081",
+      "worker_core_count": 81,
+      "role": "above-limit",
+      "verdict_bearing": true
+    },
+    {
+      "id": "C108",
+      "worker_core_count": 108,
+      "role": "above-limit (Q2 workload)",
+      "verdict_bearing": true
+    }
+  ],
+  "estimate": {
+    "status": "estimate only; it chose the configurations and sets no criterion",
+    "model": "board_power_w at asic_fmax, unthrottled: B0 + b * n",
+    "inputs": {
+      "B0_w": {
+        "value": 215,
+        "range": [
+          214,
+          216
+        ],
+        "source": "Q2 samples about 2.25 s after workload start (AICLK 1350, power_w 81-82, current 95-96 A, 0.86 V)",
+        "records": [
+          "docs/measurements/issue121-q2/runs/run-1-device0/extended-trace-q2-run-1-device0.csv",
+          "docs/measurements/issue121-q2/runs/run-2-device0/extended-trace-q2-run-2-device0.csv",
+          "docs/measurements/issue121-q2/runs/run-3-device0/extended-trace-q2-run-3-device0.csv"
+        ]
+      },
+      "n108_w": {
+        "value": 402,
+        "range": [
+          394,
+          407
+        ],
+        "source": "Q2 samples about 4.49 s after workload start (AICLK 1343, power_w 210-212, current 254-257 A, 0.83 V)",
+        "records": [
+          "docs/measurements/issue121-q2/runs/run-1-device0/extended-trace-q2-run-1-device0.csv",
+          "docs/measurements/issue121-q2/runs/run-2-device0/extended-trace-q2-run-2-device0.csv",
+          "docs/measurements/issue121-q2/runs/run-3-device0/extended-trace-q2-run-3-device0.csv"
+        ]
+      },
+      "b_w_per_core": {
+        "value": 1.73,
+        "derivation": "(402 - 215) / 108"
+      }
+    },
+    "uncertainty": [
+      "B0 is one sample per run during ramp-up; if cores were already partly active it overstates the zero-load intercept, which makes the below-limit estimate conservative and the slope an underestimate.",
+      "Steady state adds fan power (Q2 fan rose from about 2650 to about 4100 rpm), GDDR heating and temperature-dependent leakage; Q2 lost a further ~7 percent AICLK between 7 s and the plateau at constant ~300 W. The uplift is bounded here as at most 40 W * n / 108.",
+      "With B0 as low as 160 W the slope becomes 2.24 W/core; the C081 and C108 estimates remain above 300 W and the C054 estimate falls below it."
+    ],
+    "per_configuration": {
+      "C018": {
+        "short_term_w": 246,
+        "steady_state_upper_w": 253,
+        "relative_to_limit": "<= 85 percent of 300 W"
+      },
+      "C054": {
+        "short_term_w": 308,
+        "range_w": [
+          281,
+          328
+        ],
+        "relative_to_limit": "straddles 300 W; exploratory"
+      },
+      "C081": {
+        "short_term_w": 355,
+        "range_w": [
+          342,
+          385
+        ],
+        "relative_to_limit": "above"
+      },
+      "C108": {
+        "short_term_w": 402,
+        "range_w": [
+          394,
+          407
+        ],
+        "relative_to_limit": "above (observed in Q2)"
+      }
+    }
+  },
+  "measurement_scope": {
+    "device_id": 1,
+    "device_node": "/dev/tenstorrent/1",
+    "board_serial": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "container_visible_device_id": 0,
+    "device_note": "Same physical board as Q2. Device 0 differs at idle in GDDR temperature and fan speed (Issue #121 post-hoc observation); that difference is a recorded confound, and device 0 is not used.",
+    "run_duration_seconds": 120,
+    "run_duration_definition": "Fixed workload interval of sustained device work; setup and teardown are outside it.",
+    "run_guard_seconds": 170,
+    "run_guard_definition": "Workload subprocess timeout and harness deadline. 120 s load + 40 s runner setup/teardown margin + 10 s one-launch overrun allowance. A run that reaches the guard fails and is never extended.",
+    "order": [
+      "C018",
+      "C108",
+      "C054",
+      "C081",
+      "C081",
+      "C054",
+      "C108",
+      "C018"
+    ],
+    "order_definition": "Sequence S followed by its reverse, so each configuration's mean position is equal and slow drift across the session cancels in the configuration comparison.",
+    "runs_total": 8,
+    "runs_per_configuration": 2,
+    "smoke_runs": {
+      "required_before_long_runs": true,
+      "load_execution": {
+        "mode": "host-duration-bounded",
+        "definition": "Each launch performs fixed work (the configuration's blocks, 12 Newton-Schulz iterations, block size 8). Launches are issued back to back until at least run_duration_seconds of host CLOCK_MONOTONIC have elapsed since the first launch started; the loop then stops at the next launch boundary. The launch count is an observation, recorded per run, never an input.",
+        "why_not_fixed_repeat_count": "A repeat count sized from a short calibration at about 1350 MHz would run about 40 percent longer at the throttled plateau and breach the guard; a count sized for the plateau would end early in an unthrottled configuration and break terminal plateau coverage. The sustained AICLK is the quantity under measurement, so it cannot be an input to the duration.",
+        "calibration": "No per-configuration repeat-count calibration is required or used; the Q2 108-core calibration constants are not used.",
+        "workload_interval": "[first_launch_start_monotonic_ns, first_launch_start_monotonic_ns + run_duration_seconds); the plateau window is relative to first_launch_start_monotonic_ns.",
+        "overrun": "The last launch may end after run_duration_seconds. The overrun (last_launch_end - workload_interval_end) is recorded. A run whose overrun exceeds overrun_limit_seconds is failed and reported; it is not extended and not silently accepted.",
+        "overrun_limit_seconds": 10,
+        "recorded_fields": [
+          "launch_count",
+          "first_launch_start_monotonic_ns",
+          "last_launch_end_monotonic_ns",
+          "overrun_seconds"
+        ],
+        "scope": "Opt-in mode of the measurement harness for Issue #137 only. Q2 defaults, records and arithmetic are unchanged. This is a measurement-tool option, not a product real-time path, so the fixed-work rule of CLAUDE.md is not involved: work per launch stays fixed; only the number of launches follows the clock.",
+        "supervision_clock": "host CLOCK_MONOTONIC, consistent with ADR-0015"
+      },
+      "configurations": [
+        "C018",
+        "C054",
+        "C081"
+      ],
+      "workload_seconds": 20,
+      "guard_seconds": 70,
+      "purpose": "Confirm that each new core set launches and records, and observe the launch duration per configuration; the L1 ledger does not prove a launch. Smoke runs are diagnostics, not verdict evidence. The 20 s load is under the 60 s per-instance approval threshold; the 70 s guard (20 + 40 + 10) is a timeout, not a load duration."
+    },
+    "approval": "Each run longer than 60 s requires owner approval per instance. A run after a reset requires renewed approval.",
+    "expected_wall_time": {
+      "load_minutes": 16,
+      "expected_total_minutes": [
+        30,
+        40
+      ],
+      "upper_bound_minutes": 103,
+      "upper_bound_definition": "8 * (170 s guard + 600 s cooldown cap)"
+    }
+  },
+  "plateau": {
+    "start_seconds": 60,
+    "end_seconds": 120,
+    "interval_definition": "[run_start_monotonic_ns + 60 s, run_start_monotonic_ns + 120 s); left-held samples, positive-duration segments only, terminal coverage required, no extrapolation.",
+    "justification": "In Q2 AICLK was 962-968 MHz at 60 s and 956-962 MHz at 150 s; the residual drift is expected and preregistered, not a reason to move the window."
+  },
+  "statistics": {
+    "aggregate": "For aiclk_mhz, board_power_w, power_w, current_a, voltage_v, asic_temp_c, fan_rpm and each GDDR channel temperature: duration-weighted mean, min, max over the plateau, as defined in the Q2 plan.",
+    "per_configuration": "Each run is evaluated individually; a configuration criterion passes only when it passes in both runs of that configuration."
+  },
+  "limits": {
+    "board_power_limit_w": 300,
+    "tdc_limit_a": 200,
+    "tdp_limit_w": 150,
+    "therm_trip_l1_limit_c": 90,
+    "asic_fmax_mhz": 1350,
+    "source": "Read from the pre-run snapshot of each run (limits.* keys, as in Q2). A run whose snapshot reports a different value uses its own value, and the difference is reported. A missing limit makes the dependent criterion not_evaluable, never substituted."
+  },
+  "criteria": {
+    "tolerance_rule": "One tolerance for every limit: a signal is pinned at a limit when its plateau duration-weighted mean is within 2 percent of the documented limit value. The tolerance is set from the limit, not from any Q2 observation.",
+    "aiclk_depressed": "plateau duration-weighted mean AICLK < 0.95 * asic_fmax (1282.5 MHz)",
+    "aiclk_not_depressed": "plateau duration-weighted mean AICLK >= 0.95 * asic_fmax",
+    "pinned": {
+      "H-BPL": "board_power_w in [294, 306] W",
+      "H-TDC": "current_a in [196, 204] A",
+      "H-TDP": "power_w in [147, 153] W",
+      "H-THM": "asic_temp_c >= 88.2 degC (98 percent of 90 degC)"
+    },
+    "common_preconditions": {
+      "P1-below-limit-unthrottled": "C018 is aiclk_not_depressed in both runs.",
+      "P2-above-limit-throttled": "C081 and C108 are aiclk_depressed in both runs.",
+      "P3-monotonic": "In each half of the order (S and its reverse), plateau mean AICLK of C081 > that of C108. A fixed frequency cap would not show this."
+    },
+    "hypothesis_support": {
+      "rule": "Hypothesis X is supported when P1, P2 and P3 hold, X's signal is pinned in every run of C081 and C108, and X's signal is not pinned in either run of C018.",
+      "H-BPL": "board power limit",
+      "H-TDC": "current limit",
+      "H-TDP": "ASIC power limit",
+      "H-THM": "thermal limit"
+    },
+    "minimum_evidence": "A limiter verdict requires at least two throttled verdict-bearing configurations (C081 and C108). C054 never enters the verdict.",
+    "correlation_warning": "A supported label means the preregistered pattern was observed; it does not establish a physical mechanism inside the firmware."
+  },
+  "classification_policy": {
+    "exactly_one_supported": "that hypothesis label",
+    "more_than_one_supported": "multiple",
+    "none_supported": "H-OTHER",
+    "precondition_failure": "H-OTHER, naming the failed precondition",
+    "not_evaluable": "If a required signal or limit is missing in any verdict-bearing run, the verdict is not_evaluable and names the missing field."
+  },
+  "prediction": {
+    "expected_classification": "H-BPL",
+    "expected_pattern": [
+      "C018 stays at or near 1350 MHz with board_power_w below 294 W.",
+      "C081 and C108 both pin board_power_w in [294, 306] W, with C081 at a higher AICLK than C108.",
+      "current_a and power_w stay below their pinned bands in C081 and C108 (Q2: about 177 A and 130 W).",
+      "asic_temp_c stays below 88.2 degC in every configuration."
+    ],
+    "basis": "Issue #121 Q2 post-hoc observations; they inform the prediction only."
+  },
+  "prediction_mismatch_policy": [
+    "If C018 is depressed, report H-OTHER under P1 and examine whether a frequency limit other than power, current or temperature applies at low load; do not lower n and rerun without a new plan revision and approval.",
+    "If P3 fails while board power is pinned, report H-OTHER and examine whether the firmware applies a fixed frequency step rather than a continuous power limit.",
+    "If H-TDC or H-TDP is supported, audit the limit provenance in the pre-run snapshots before any interpretation."
+  ],
+  "exploratory": {
+    "status": "reported separately; never enters the verdict",
+    "items": [
+      "C054 behaviour near the knee.",
+      "Onset ordering in the first 10 s of each run (about 2 s sampling).",
+      "Plateau drift of AICLK against fan_rpm, GDDR temperatures and asic_temp_c at pinned board power.",
+      "The rise of AICLK in the last seconds of a load interval, as seen near 280 s in Q2."
+    ]
+  },
+  "cooldown": {
+    "required_between": "every consecutive pair of long runs",
+    "baseline_source": "the preceding run's pre-run snapshot on the selected device; fail closed if unavailable",
+    "criterion": "power_w <= baseline + 5 W and asic_temp_c <= baseline + 3 degC",
+    "aiclk_not_used": "AICLK is not a cooldown criterion: idle AICLK is 800 MHz, and 1350 MHz is a loaded value.",
+    "cap_seconds": 600,
+    "cap_policy": "Reaching the cap stops the session; the remaining runs need renewed approval."
+  },
+  "trace": {
+    "schema": "issue-137-power-trace-v1",
+    "base": "Issue #121 Q2 extended-v1 columns, unchanged",
+    "added_columns": {
+      "gddr_0_1_temp_c": "smbus_telem.GDDR_0_1_TEMP",
+      "gddr_2_3_temp_c": "smbus_telem.GDDR_2_3_TEMP",
+      "gddr_4_5_temp_c": "smbus_telem.GDDR_4_5_TEMP",
+      "gddr_6_7_temp_c": "smbus_telem.GDDR_6_7_TEMP"
+    },
+    "unit_rule": "Each added column is decoded only after its unit and packing are established from the pinned tt-smi / tt-umd source with the same provenance standard as the Q2 unit_provenance; MAX_GDDR_TEMP is not decoded.",
+    "q2_records_unchanged": true
+  },
+  "provenance": {
+    "required_environment_fields": [
+      "board.serial",
+      "board.identity.board_id",
+      "board.identity.bus_id",
+      "firmware.bundle",
+      "kernel",
+      "kernel_driver_version",
+      "image_digest",
+      "harness_commit",
+      "device_node",
+      "worker_core_count",
+      "worker_core_coordinates",
+      "total_blocks"
+    ],
+    "persisted_output_paths": "Basenames or container-relative names only; no hostname, username or user-specific absolute path.",
+    "calibration": "Per configuration; the Q2 108-core calibration constant is not reused."
+  },
+  "limitations": [
+    "No board measurement is included in this plan.",
+    "About 2 s telemetry sampling limits onset claims to about 2 s.",
+    "Only one board is measured; board-to-board differences are not addressed.",
+    "Changing n changes total work and heat together; the verdict rests on the cross-configuration pattern against documented limits, not on any single run."
+  ],
+  "revision_history": [
+    {
+      "revision": 1,
+      "date": "2026-10-18",
+      "change": "Created the preregistered plan: active-core intervention with fixed per-core work, configurations C018/C054/C081/C108, 8 runs of 120 s in S + reverse(S) order on device 1, 2 percent limit tolerance, preconditions P1-P3, smoke runs under 60 s, GDDR channel columns."
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-18",
+      "change": "Before any board run. Added the load_execution contract (host-duration-bounded launches with fixed work per launch, overrun limit 10 s, no repeat-count calibration) after implementation showed that a fixed repeat count cannot hold the duration when AICLK is the quantity under measurement. Relaxed l1_requirement from equal per-core L1 to fit-plus-identical-per-core-work, because the interleaved input allocation scales with batch. Raised the long-run guard to 170 s and the smoke guard to 70 s (the earlier 55 s was below the 20 + 40 s runner margin and would have been rejected by preflight). Criteria, configurations, order, durations and predictions are unchanged."
+    }
+  ]
+}

@@ -2061,6 +2061,10 @@ exit 0
         encoding="utf-8",
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    (bindir / "tt-smi").write_text(
+        "#!/bin/sh\nset -eu\nexit 0\n", encoding="utf-8"
+    )
+    (bindir / "tt-smi").chmod(stat.S_IRWXU)
     (bindir / "timeout").write_text(
         """#!/bin/sh
 set -eu
@@ -2074,6 +2078,7 @@ exec "$@"
     return bindir
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_fails_closed_when_cooldown_start_timestamp_cannot_be_parsed(
     tmp_path: Path,
 ):
@@ -2124,6 +2129,7 @@ fi
     assert docker_history.read_text(encoding="utf-8").splitlines() == ["kill"]
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_runs_cooldown_before_docker_timeout_window(tmp_path: Path):
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -2181,6 +2187,10 @@ exit 0
         encoding="utf-8",
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    (bindir / "tt-smi").write_text(
+        "#!/bin/sh\nset -eu\nexit 0\n", encoding="utf-8"
+    )
+    (bindir / "tt-smi").chmod(stat.S_IRWXU)
     (bindir / "timeout").write_text(
         """#!/bin/sh
 set -eu
@@ -2270,6 +2280,7 @@ exec "$@"
     assert events.read_text(encoding="utf-8").splitlines() == events_seen
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_rejects_stale_usable_sample_before_docker(tmp_path: Path):
     bindir = _fake_wrapper_tools(tmp_path)
     (bindir / "python3").write_text(
@@ -2356,6 +2367,7 @@ esac
         ("measurement-2-rerun", "measurement-2-rerun"),
     ),
 )
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_refuses_measurement_when_cooldown_gate_reaches_cap(
     tmp_path: Path, run_scope: str | None, expected_run_scope: str | None
 ):
@@ -2452,6 +2464,7 @@ esac
     assert failure["observed_idle_aiclk_mhz"] == 800.0
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_requires_explicit_approved_90_second_scope(tmp_path: Path):
     bindir = _fake_wrapper_tools(tmp_path)
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
@@ -2585,6 +2598,7 @@ def test_issue127_wrapper_requires_explicit_approved_90_second_scope(tmp_path: P
     assert "requires --run-number 1" in mismatched.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue127_wrapper_selects_generic_custom_runner_with_bound_artifacts(tmp_path: Path):
     bindir = _fake_wrapper_tools(tmp_path)
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"

@@ -13,7 +13,7 @@
 #   run_in_container.sh OUT_DIR                  # choose where results land
 #   run_in_container.sh -- --iters 5             # arguments for the runner
 #   run_in_container.sh OUT_DIR -- --iters 5
-#   run_in_container.sh --pytest -m tt_device tests/test_newton_schulz_kernel.py
+#   run_in_container.sh --pytest --allow-hardware-tests -m tt_device tests/test_newton_schulz_kernel.py
 #
 # `--pytest` is the only supported device-test entry point. It runs pytest in
 # the digest-pinned image with HEKATUS_TT_DEVICE_TEST=1 and
@@ -26,6 +26,7 @@ RESIDENT_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_resident.py"
 MATMUL_RUNNER_RELATIVE_PATH="enodia/tt/bench/run_matmul.py"
 ISSUE101_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue101_combined.py"
 ISSUE127_RUNNER_RELATIVE_PATH="tools/newton_schulz_issue127.py"
+ISSUE137_RUNNER_RELATIVE_PATH="tools/issue137_device.py"
 
 # Resolve runner paths against the host repository that is mounted at /work.
 # The returned path is the only representation used by runner classifiers and
@@ -190,6 +191,7 @@ validate_decimal_timeout() {
 RESIDENT_RUNNER=0
 RESIDENT_WATCHER_MODE=0
 ISSUE127_RUNNER=0
+ISSUE137_RUNNER=0
 ISSUE127_DEFAULT_TIMEOUT_S="60"
 ISSUE127_APPROVED_TIMEOUT_S="90"
 ISSUE127_COOLDOWN_WAIT_CAP_S="600"
@@ -259,6 +261,83 @@ if [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${RESIDENT_RUNNER_RELATIVE_PA
   if [[ "${#CONTAINER_TIMEOUT_S}" == "${#RESIDENT_TIMEOUT_CAP_S}" \
         && "${CONTAINER_TIMEOUT_S}" > "${RESIDENT_TIMEOUT_CAP_S}" ]]; then
     echo "resident container timeout ${CONTAINER_TIMEOUT_S}s exceeds the ${RESIDENT_TIMEOUT_CAP_S}s approved cap" >&2
+    exit 2
+  fi
+elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE137_RUNNER_RELATIVE_PATH}" ]]; then
+  ISSUE137_RUNNER=1
+  ISSUE137_REQUESTED_TIMEOUT=""
+  ISSUE137_MODE=""
+  ISSUE137_ARGUMENT_INDEX=0
+  while [[ "${ISSUE137_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE137_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --mode)
+        if [[ "${ISSUE137_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--mode requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE137_MODE}" ]]; then
+          echo "Issue #137 mode may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE137_MODE="${RUNNER_ARGS[$((ISSUE137_ARGUMENT_INDEX + 1))]}"
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --mode=*)
+        if [[ -n "${ISSUE137_MODE}" ]]; then
+          echo "Issue #137 mode may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE137_MODE="${argument#--mode=}"
+        ;;
+      --outer-timeout-seconds)
+        if [[ "${ISSUE137_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--outer-timeout-seconds requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE137_REQUESTED_TIMEOUT}" ]]; then
+          echo "Issue #137 outer timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE137_REQUESTED_TIMEOUT="${RUNNER_ARGS[$((ISSUE137_ARGUMENT_INDEX + 1))]}"
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --outer-timeout-seconds=*)
+        if [[ -n "${ISSUE137_REQUESTED_TIMEOUT}" ]]; then
+          echo "Issue #137 outer timeout may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE137_REQUESTED_TIMEOUT="${argument#--outer-timeout-seconds=}"
+        ;;
+    esac
+    ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 1))
+  done
+  case "${ISSUE137_MODE}" in
+    smoke) ISSUE137_EXPECTED_TIMEOUT="70" ;;
+    long) ISSUE137_EXPECTED_TIMEOUT="170" ;;
+    *)
+      echo "Issue #137 requires --mode smoke or --mode long" >&2
+      exit 2
+      ;;
+  esac
+  if [[ "${ISSUE137_REQUESTED_TIMEOUT}" != "${ISSUE137_EXPECTED_TIMEOUT}" ]]; then
+    echo "Issue #137 ${ISSUE137_MODE} mode requires a ${ISSUE137_EXPECTED_TIMEOUT}s guard" >&2
+    exit 2
+  fi
+  if [[ "${TIMEOUT_EXPLICIT}" == "1" ]]; then
+    validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "3"
+    if [[ "${CONTAINER_TIMEOUT_S}" != "${ISSUE137_REQUESTED_TIMEOUT}" ]]; then
+      echo "Issue #137 container timeout must match the fixed runner guard" >&2
+      exit 2
+    fi
+  else
+    CONTAINER_TIMEOUT_S="${ISSUE137_REQUESTED_TIMEOUT}"
+  fi
+  validate_decimal_timeout "${CONTAINER_TIMEOUT_S}" "3"
+  if [[ "${RUNNER_ARGS[*]}" == *"--calibrat"* ]]; then
+    echo "Issue #137 does not accept calibration arguments" >&2
     exit 2
   fi
 elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
@@ -479,8 +558,8 @@ case "${IMAGE}" in
       echo "resolved ${IMAGE} to ${RESOLVED}"
       IMAGE="${RESOLVED}"
       IMAGE_PINNED=1
-    elif [[ "${RESIDENT_RUNNER}" == "1" ]]; then
-      echo "resident runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
+    elif [[ "${RESIDENT_RUNNER}" == "1" || "${ISSUE137_RUNNER}" == "1" ]]; then
+      echo "resident/Issue #137 runner requires HEKATUS_TT_IMAGE to resolve to @sha256:<64 lowercase hex>" >&2
       exit 2
     elif [[ "${CUSTOM_RUNNER}" == "1" \
             && "${RUNNER}" == "${ISSUE101_RUNNER_RELATIVE_PATH}" ]]; then
@@ -495,6 +574,10 @@ esac
 
 if [[ "${RESIDENT_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
   echo "resident runner requires a verified digest-pinned image" >&2
+  exit 2
+fi
+if [[ "${ISSUE137_RUNNER}" == "1" && "${IMAGE_PINNED}" != "1" ]]; then
+  echo "Issue #137 runner requires a verified digest-pinned image" >&2
   exit 2
 fi
 if [[ "${CUSTOM_RUNNER}" == "1" \
@@ -870,6 +953,71 @@ elif [[ "${RUNNER}" == *"enodia/tt/bench/run_resident.py" ]]; then
     RESIDENT_ARGS+=(--power-trace "${RESIDENT_POWER_TRACE}")
   fi
   RUNNER_ARGS=("${RESIDENT_ARGS[@]}")
+fi
+if [[ "${RUNNER}" == "${ISSUE137_RUNNER_RELATIVE_PATH}" ]]; then
+  # Issue #137 has one wrapper-owned result path.  Do not forward a caller
+  # --out, and bind environment/trace names to this fresh wrapper identity.
+  ISSUE137_ARGS=()
+  HAS_POWER_TRACE_ARG=0
+  ISSUE137_ARGUMENT_INDEX=0
+  while [[ "${ISSUE137_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
+    argument="${RUNNER_ARGS[${ISSUE137_ARGUMENT_INDEX}]}"
+    case "${argument}" in
+      --out)
+        if [[ "${ISSUE137_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--out requires a value" >&2
+          exit 2
+        fi
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --out=*)
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --env-json)
+        if [[ "${ISSUE137_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--env-json requires a value" >&2
+          exit 2
+        fi
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --env-json=*)
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      --power-trace)
+        if [[ "${ISSUE137_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--power-trace requires a value" >&2
+          exit 2
+        fi
+        if [[ "${HAS_POWER_TRACE_ARG}" == "0" && "${TELEMETRY_MODE}" != "off" ]]; then
+          ISSUE137_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+        fi
+        HAS_POWER_TRACE_ARG=1
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --power-trace=*)
+        if [[ "${HAS_POWER_TRACE_ARG}" == "0" && "${TELEMETRY_MODE}" != "off" ]]; then
+          ISSUE137_ARGS+=(--power-trace="/out/$(basename "${POWER_CSV}")")
+        fi
+        HAS_POWER_TRACE_ARG=1
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 1))
+        continue
+        ;;
+      *)
+        ISSUE137_ARGS+=("${argument}")
+        ISSUE137_ARGUMENT_INDEX=$((ISSUE137_ARGUMENT_INDEX + 1))
+        ;;
+    esac
+  done
+  ISSUE137_ARGS+=(--env-json "/out/$(basename "${ENV_JSON}")")
+  if [[ "${TELEMETRY_MODE}" != "off" && "${HAS_POWER_TRACE_ARG}" == "0" ]]; then
+    ISSUE137_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
+  fi
+  RUNNER_ARGS=("${ISSUE137_ARGS[@]}")
 fi
 if [[ "${RUNNER}" == "${ISSUE127_RUNNER_RELATIVE_PATH}" ]]; then
   # The generic custom-runner branch remains the execution path, but pass the

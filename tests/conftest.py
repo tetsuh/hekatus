@@ -10,6 +10,13 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from hardware_isolation import (
+    deny_access,
+    install_audit_hook,
+    permit_hardware,
+    permit_wrapper,
+    restore_access,
+)
 
 from enodia.demo import DEFAULT_SCATTERERS
 from enodia.spec.beamform import das_rf_golden
@@ -34,6 +41,48 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             "slow marker is only allowed on individual tests; found on: "
             + ", ".join(sorted(invalid_nodes))
         )
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--allow-hardware-tests",
+        action="store_true",
+        default=False,
+        help="explicitly permit tests that access accelerator hardware",
+    )
+
+
+def pytest_configure(config):
+    install_audit_hook()
+
+
+@pytest.fixture(autouse=True)
+def _hardware_isolation():
+    token = deny_access()
+    try:
+        yield
+    finally:
+        restore_access(token)
+
+
+@pytest.fixture
+def hardware_access(request, _hardware_isolation):
+    if not request.config.getoption("--allow-hardware-tests"):
+        pytest.skip("hardware access is disabled; pass --allow-hardware-tests explicitly")
+    token = permit_hardware()
+    try:
+        yield
+    finally:
+        restore_access(token)
+
+
+@pytest.fixture
+def wrapper_execution(tmp_path_factory, _hardware_isolation):
+    token = permit_wrapper(tmp_path_factory.getbasetemp())
+    try:
+        yield
+    finally:
+        restore_access(token)
 
 
 @pytest.fixture(scope="session")

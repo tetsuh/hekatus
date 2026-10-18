@@ -901,6 +901,7 @@ def test_prepare_accepts_measured_fp32_r_fused_configuration_with_host_stubs(mon
 
 
 @pytest.mark.tt_device
+@pytest.mark.usefixtures("hardware_access")
 @pytest.mark.skipif(
     not (DEVICE_TEST and HAS_TTNN),
     reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
@@ -941,6 +942,7 @@ def test_device_partial_block_padding_matches_numpy(
 
 
 @pytest.mark.tt_device
+@pytest.mark.usefixtures("hardware_access")
 @pytest.mark.skipif(
     not (DEVICE_TEST and HAS_TTNN),
     reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
@@ -974,6 +976,7 @@ def test_device_issue100_defaults_match_bf16_rounded_reference(batch, size):
 
 
 @pytest.mark.tt_device
+@pytest.mark.usefixtures("hardware_access")
 @unittest.skipUnless(
     DEVICE_TEST and HAS_TTNN,
     "requires run_in_container.sh --pytest in the pinned toolchain with a board",
@@ -1061,6 +1064,7 @@ class DeviceEquivalenceTests(unittest.TestCase):
 
 
 @pytest.mark.tt_device
+@pytest.mark.usefixtures("hardware_access")
 @pytest.mark.skipif(
     not (DEVICE_TEST and HAS_TTNN),
     reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",
@@ -1109,6 +1113,7 @@ def test_device_double_buffer_matches_numpy(batch, size, double_buffer):
 
 
 @pytest.mark.tt_device
+@pytest.mark.usefixtures("hardware_access")
 @pytest.mark.skipif(
     not (DEVICE_TEST and HAS_TTNN),
     reason="requires run_in_container.sh --pytest in the pinned toolchain with a board",

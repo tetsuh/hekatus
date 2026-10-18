@@ -549,9 +549,9 @@ def _core_grid(
             raise ValueError("core_coordinates must not contain duplicates")
         if any(x >= grid.x or y >= grid.y for x, y in coordinates):
             raise ValueError("core_coordinates contain a core outside the device grid")
-        from enodia.tt.bench.load_harness import validate_worker_model
+        from enodia.tt.bench.load_harness import validate_worker_subset
 
-        validate_worker_model(grid=(grid.x, grid.y), coordinates=coordinates)
+        validate_worker_subset(grid=(grid.x, grid.y), coordinates=coordinates)
         ranges = _balanced_ranges(batch, len(coordinates), matrix_block)
     core_ranges = ttnn.CoreRangeSet(
         [
