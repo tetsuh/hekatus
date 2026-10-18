@@ -16,6 +16,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -54,6 +55,8 @@ COOLDOWN_POWER_TOLERANCE_W = 5.0
 COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
 WRAPPER_CLEANUP_MARGIN_SECONDS = 5.0
 SAMPLER_SHUTDOWN_MARGIN_SECONDS = 1.0
+COOLDOWN_CAP_FIELD = "cooldown cap"
+TRACE_INTERVAL_FIELD = "trace interval"
 
 _FORBIDDEN_KEYS = frozenset(
     {
@@ -67,7 +70,7 @@ _FORBIDDEN_KEYS = frozenset(
         "cwd",
     }
 )
-_FORBIDDEN_PATH_MARKERS = ("/home/", "/Users/", "/root/", "/tmp/")
+_PRIVATE_PATH_ROOT_NAMES = ("home", "Users", "root")
 _RESULT_MARKER_RE = re.compile(
     r"(?:results?|issue137 result)\s*[-=]*>\s*(\S+)", re.IGNORECASE
 )
@@ -117,6 +120,30 @@ class Issue137Configuration:
         }
 
 
+@dataclass(frozen=True)
+class Issue137RunOptions:
+    """Strict optional dependencies and runtime settings for :func:`run_one`.
+
+    The runner accepts the five plan/identity arguments plus this typed bundle.
+    Dataclass construction intentionally rejects unknown option names instead of
+    silently accepting an unvalidated keyword.
+    """
+
+    run_number: int | None = None
+    calibration: Mapping[str, Any] | None = None
+    approve_long_run: bool = False
+    command_runner: Callable[..., Any] | None = None
+    environment: Mapping[str, Any] | None = None
+    preceding_pre_snapshot: Mapping[str, Any] | None = None
+    cooldown_readings: Sequence[Mapping[str, Any]] = ()
+    cooldown_elapsed_seconds: float = 0.0
+    board_id: str | None = None
+    bus_id: str | None = None
+    trace_path: Path | None = None
+    trace_interval_seconds: float = 2.0
+    capture_fn: Callable[..., dict[str, Any]] | None = None
+
+
 class _CapturePublicationState:
     """Permit bounded sampler shutdown without publishing after finalization."""
 
@@ -140,6 +167,45 @@ class _CapturePublicationState:
             return captures
 
 
+@dataclass(frozen=True)
+class _PreparedRun:
+    safe_run_id: str
+    timing: dict[str, Any]
+    effective_board_id: str | None
+    effective_bus_id: str | None
+    resolved_output: Path
+    resolved_trace: Path | None
+    command: tuple[str, ...]
+    record: dict[str, Any]
+
+
+@dataclass
+class _ExecutionState:
+    captures: list[dict[str, Any]]
+    publication_state: _CapturePublicationState
+    trace_stop: threading.Event
+    trace_thread: threading.Thread | None = None
+    completed: Any = None
+    result: dict[str, Any] | None = None
+    result_name: str | None = None
+    returncode: int | None = None
+    timed_out: bool = False
+    cleanup_failure: str | None = None
+    result_error: str | None = None
+
+
+def _private_path_prefixes() -> tuple[str, ...]:
+    """Return privacy redaction prefixes without treating them as destinations."""
+    roots = tuple(Path(os.sep) / name for name in _PRIVATE_PATH_ROOT_NAMES)
+    roots += (Path(os.sep) / "tmp", Path(tempfile.gettempdir()))
+    return tuple(f"{root.as_posix().rstrip('/')}/" for root in roots)
+
+
+def _contains_private_path(value: str) -> bool:
+    normalized = value.replace("\\", "/")
+    return any(prefix in normalized for prefix in _private_path_prefixes())
+
+
 def _safe_json_value(value: Any) -> Any:
     """Copy JSON data while dropping host identity and absolute host paths."""
     if isinstance(value, Mapping):
@@ -155,7 +221,7 @@ def _safe_json_value(value: Any) -> Any:
     if isinstance(value, Path):
         return value.name
     if isinstance(value, str):
-        if any(marker in value for marker in _FORBIDDEN_PATH_MARKERS):
+        if _contains_private_path(value):
             return "<redacted-path>"
         return value
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -165,9 +231,9 @@ def _safe_json_value(value: Any) -> Any:
 
 def _safe_plan_path(path: Path) -> Path:
     try:
-        resolved = Path(path).resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise Issue137Error("plan path cannot be resolved") from exc
+        resolved = _trusted_path(path, field="Issue #137 plan")
+    except Issue137Error as exc:
+        raise Issue137Error("plan path cannot be resolved beneath a trusted root") from exc
     if not resolved.is_file():
         raise Issue137Error("plan path is not a file")
     return resolved
@@ -315,13 +381,39 @@ def _safe_basename(value: str, *, field: str) -> str:
     return value
 
 
-def _safe_output_dir(path: Path) -> Path:
+def _path_has_symlink_component(path: Path) -> bool:
+    candidate = Path(path)
+    while True:
+        if candidate.is_symlink():
+            return True
+        parent = candidate.parent
+        if parent == candidate:
+            return False
+        candidate = parent
+
+
+def _trusted_path(path: Path, *, field: str) -> Path:
+    """Resolve a path beneath the shared fixed output roots before any IO."""
+    candidate = Path(path)
     try:
-        resolved = run_resident._safe_output_path(
-            Path(path), description="Issue #137 output directory"
-        )
-        if Path(path).is_symlink():
-            raise Issue137Error("Issue #137 output directory must not be a symlink")
+        resolved = run_resident._safe_output_path(candidate, description=field)
+    except Exception as exc:
+        raise Issue137Error(f"{field} must remain beneath a trusted output root") from exc
+    if _path_has_symlink_component(candidate):
+        raise Issue137Error(f"{field} must not traverse a symlink")
+    return resolved
+
+
+def _trusted_write_path(path: Path, *, field: str) -> Path:
+    resolved = _trusted_path(path, field=field)
+    if Path(path).is_symlink():
+        raise Issue137Error(f"{field} must not be a symlink")
+    return resolved
+
+
+def _safe_output_dir(path: Path) -> Path:
+    resolved = _trusted_path(path, field="Issue #137 output directory")
+    try:
         resolved.mkdir(parents=True, exist_ok=True)
         if not resolved.is_dir():
             raise Issue137Error("Issue #137 output directory is not a directory")
@@ -334,12 +426,10 @@ def _safe_output_dir(path: Path) -> Path:
 
 def _safe_artifact_path(output_dir: Path, name: str, *, field: str) -> Path:
     safe_name = _safe_basename(name, field=field)
-    path = output_dir / safe_name
-    try:
-        resolved = path.resolve(strict=False)
-    except (OSError, RuntimeError) as exc:
-        raise Issue137Error(f"{field} cannot be resolved safely") from exc
-    if resolved.parent != output_dir.resolve():
+    safe_root = _trusted_path(output_dir, field="Issue #137 output directory")
+    path = safe_root / safe_name
+    resolved = _trusted_write_path(path, field=field)
+    if resolved.parent != safe_root:
         raise Issue137Error(f"{field} must remain in the Issue #137 output directory")
     return resolved
 
@@ -350,24 +440,18 @@ def resolve_result_path(
     """Apply the resident result-path equality contract without opening a device."""
     if cli_path is None and environment_path is None:
         raise Issue137Error("Issue #137 result path is required")
-    try:
-        if cli_path is not None and environment_path is not None:
-            cli = run_resident._safe_output_path(cli_path, description="--out destination")
-            environment = run_resident._safe_output_path(
-                environment_path, description="HEKATUS_TT_RESULT_PATH destination"
-            )
-            if cli != environment:
-                raise Issue137Error("--out and HEKATUS_TT_RESULT_PATH must identify one result path")
-            return cli
-        selected = cli_path if cli_path is not None else environment_path
-        assert selected is not None
-        return run_resident._safe_output_path(
-            selected, description="Issue #137 result destination"
+    if cli_path is not None and environment_path is not None:
+        cli = _trusted_path(cli_path, field="--out destination")
+        environment = _trusted_path(
+            environment_path, field="HEKATUS_TT_RESULT_PATH destination"
         )
-    except Issue137Error:
-        raise
-    except Exception as exc:
-        raise Issue137Error(str(exc)) from exc
+        if cli != environment:
+            raise Issue137Error("--out and HEKATUS_TT_RESULT_PATH must identify one result path")
+        return cli
+    selected = cli_path if cli_path is not None else environment_path
+    if selected is None:
+        raise Issue137Error("Issue #137 result path is required")
+    return _trusted_write_path(selected, field="Issue #137 result destination")
 
 
 def build_run_command(
@@ -470,12 +554,12 @@ def _cooldown_parameters(plan: Mapping[str, Any]) -> dict[str, float]:
     if not isinstance(cooldown, Mapping):
         raise Issue137Error("Issue #137 cooldown plan is missing")
     criterion = str(cooldown.get("criterion", ""))
-    power_match = re.search(r"power_w\s*<=\s*baseline\s*\+\s*([0-9]+(?:\.[0-9]+)?)", criterion)
+    power_match = re.search(r"power_w\s*<=\s*baseline\s*\+\s*(\d+(?:\.\d+)?)", criterion)
     temperature_match = re.search(
-        r"asic_temp_c\s*<=\s*baseline\s*\+\s*([0-9]+(?:\.[0-9]+)?)", criterion
+        r"asic_temp_c\s*<=\s*baseline\s*\+\s*(\d+(?:\.\d+)?)", criterion
     )
     try:
-        cap = _finite(cooldown["cap_seconds"], field="cooldown cap")
+        cap = _finite(cooldown["cap_seconds"], field=COOLDOWN_CAP_FIELD)
     except KeyError as exc:
         raise Issue137Error("Issue #137 cooldown cap is missing") from exc
     return {
@@ -588,7 +672,7 @@ def wait_for_cooldown(
     baseline = _snapshot_baseline(
         preceding_pre_snapshot, board_id=board_id, bus_id=bus_id
     )
-    cap = _finite(cap_seconds, field="cooldown cap")
+    cap = _finite(cap_seconds, field=COOLDOWN_CAP_FIELD)
     started = monotonic_fn()
     readings: list[Mapping[str, Any]] = []
     while True:
@@ -651,7 +735,7 @@ def cooldown_gate(
 ) -> dict[str, Any]:
     """Evaluate mocked cooldown polls and fail closed at the cap."""
     elapsed = _finite(elapsed_seconds, field="cooldown elapsed_seconds")
-    cap = _finite(cap_seconds, field="cooldown cap")
+    cap = _finite(cap_seconds, field=COOLDOWN_CAP_FIELD)
     for index, reading in enumerate(readings):
         evaluation = evaluate_cooldown(
             baseline,
@@ -688,59 +772,81 @@ def _image_digest(environment: Mapping[str, Any]) -> str | None:
     return None
 
 
-def build_environment_record(
-    environment: Mapping[str, Any], configuration: Issue137Configuration
-) -> dict[str, Any]:
-    """Extract required environment facts without persisting host identity."""
+def _environment_board_identity(environment: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(environment, Mapping):
         raise Issue137Error("environment must be an object")
-    safe = _safe_json_value(environment)
     board = environment.get("board") or environment.get("board_info")
     if not isinstance(board, Mapping):
         raise Issue137Error("environment board identity is missing")
     identity = board.get("identity") if isinstance(board.get("identity"), Mapping) else {}
     serial = board.get("serial") or board.get("board_id") or identity.get("board_id")
-    board_id = board.get("board_id") or identity.get("board_id") or serial
-    bus_id = board.get("bus_id") or board.get("pci_bus_id") or identity.get("bus_id")
+    return {
+        "serial": serial,
+        "board_id": board.get("board_id") or identity.get("board_id") or serial,
+        "bus_id": board.get("bus_id") or board.get("pci_bus_id") or identity.get("bus_id"),
+    }
+
+
+def _validated_environment_facts(facts: dict[str, Any]) -> dict[str, Any]:
+    missing = [
+        name for name, value in facts.items() if not isinstance(value, str) or not value
+    ]
+    if missing:
+        raise Issue137Error("environment provenance is missing: " + ", ".join(missing))
+    if _SHA256_RE.fullmatch(facts["image_digest"]) is None:
+        raise Issue137Error(
+            "environment image_digest must be sha256:<64 lowercase hexadecimal digits>"
+        )
+    if _COMMIT_RE.fullmatch(facts["harness_commit"]) is None:
+        raise Issue137Error(
+            "environment harness_commit must be a hexadecimal commit identifier"
+        )
+    return facts
+
+
+def _environment_facts(environment: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate and select the environment fields bound into a run record."""
+    identity = _environment_board_identity(environment)
     firmware = environment.get("firmware") or environment.get("firmwares")
     if not isinstance(firmware, Mapping):
         raise Issue137Error("environment firmware provenance is missing")
-    firmware_bundle = firmware.get("bundle") or firmware.get("fw_bundle_version")
-    kernel_driver = environment.get("kernel_driver_version") or environment.get("kmd_version")
-    image_digest = _image_digest(environment)
-    harness_commit = environment.get("harness_commit")
-    device_node = environment.get("device_node")
-    required = {
-        "serial": serial,
-        "board_id": board_id,
-        "bus_id": bus_id,
-        "firmware_bundle": firmware_bundle,
+    facts = {
+        **identity,
+        "firmware_bundle": firmware.get("bundle") or firmware.get("fw_bundle_version"),
         "kernel": environment.get("kernel"),
-        "kernel_driver_version": kernel_driver,
-        "image_digest": image_digest,
-        "harness_commit": harness_commit,
-        "device_node": device_node,
+        "kernel_driver_version": environment.get("kernel_driver_version")
+        or environment.get("kmd_version"),
+        "image_digest": _image_digest(environment),
+        "harness_commit": environment.get("harness_commit"),
+        "device_node": environment.get("device_node"),
     }
-    missing = [name for name, value in required.items() if not isinstance(value, str) or not value]
-    if missing:
-        raise Issue137Error("environment provenance is missing: " + ", ".join(missing))
-    if _SHA256_RE.fullmatch(image_digest) is None:
-        raise Issue137Error("environment image_digest must be sha256:<64 lowercase hexadecimal digits>")
-    if _COMMIT_RE.fullmatch(harness_commit) is None:
-        raise Issue137Error("environment harness_commit must be a hexadecimal commit identifier")
+    return _validated_environment_facts(facts)
+
+
+def build_environment_record(
+    environment: Mapping[str, Any], configuration: Issue137Configuration
+) -> dict[str, Any]:
+    """Extract required environment facts without persisting host identity."""
+    facts = _environment_facts(environment)
+    safe = _safe_json_value(environment)
     record = {
         "board": {
-            "serial": serial,
-            "identity": {"board_id": board_id, "bus_id": bus_id},
+            "serial": facts["serial"],
+            "identity": {
+                "board_id": facts["board_id"],
+                "bus_id": facts["bus_id"],
+            },
         },
-        "firmware": {"bundle": firmware_bundle},
-        "kernel": environment["kernel"],
-        "kernel_driver_version": kernel_driver,
-        "image_digest": image_digest,
-        "harness_commit": harness_commit,
-        "device_node": device_node,
+        "firmware": {"bundle": facts["firmware_bundle"]},
+        "kernel": facts["kernel"],
+        "kernel_driver_version": facts["kernel_driver_version"],
+        "image_digest": facts["image_digest"],
+        "harness_commit": facts["harness_commit"],
+        "device_node": facts["device_node"],
         "worker_core_count": configuration.worker_core_count,
-        "worker_core_coordinates": [list(core) for core in configuration.core_plan.worker_cores],
+        "worker_core_coordinates": [
+            list(core) for core in configuration.core_plan.worker_cores
+        ],
         "total_blocks": configuration.total_blocks,
         "core_block_distribution": [
             dict(row) for row in configuration.core_plan.block_distribution
@@ -899,7 +1005,7 @@ def sample_issue137_trace(
     publication_state: _CapturePublicationState | None = None,
 ) -> None:
     """Capture bounded snapshots until the workload stops."""
-    interval = _finite(interval_seconds, field="trace interval")
+    interval = _finite(interval_seconds, field=TRACE_INTERVAL_FIELD)
     if interval <= 0.0:
         raise Issue137Error("trace interval must be positive")
     state = publication_state or _CapturePublicationState()
@@ -960,14 +1066,20 @@ def _reject_output_collisions(
 
 
 def _write_artifact(path: Path, payload: Any) -> None:
+    destination = _trusted_write_path(path, field="Issue #137 artifact")
     try:
-        if path.exists() or path.is_symlink():
-            raise Issue137Error(f"Issue #137 artifact already exists: {path.name}")
-        path.write_text(strict_json_dumps(_safe_json_value(payload), indent=2) + "\n", encoding="utf-8")
+        if destination.exists() or destination.is_symlink():
+            raise Issue137Error(f"Issue #137 artifact already exists: {destination.name}")
+        destination.write_text(
+            strict_json_dumps(_safe_json_value(payload), indent=2) + "\n",
+            encoding="utf-8",
+        )
     except Issue137Error:
         raise
     except (OSError, TypeError, ValueError) as exc:
-        raise Issue137Error(f"Issue #137 artifact could not be written: {path.name}") from exc
+        raise Issue137Error(
+            f"Issue #137 artifact could not be written: {destination.name}"
+        ) from exc
 
 
 def _extract_result_name(stdout: Any) -> str | None:
@@ -1019,8 +1131,9 @@ def _resolve_runner_result_artifact(
 
 
 def _read_runner_result(path: Path) -> dict[str, Any]:
+    source = _trusted_path(path, field="Issue #137 runner result")
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(source.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Issue137Error("runner result artifact is malformed") from exc
     if not isinstance(payload, dict):
@@ -1035,14 +1148,13 @@ def _integer_field(payload: Mapping[str, Any], field: str) -> int:
     return value
 
 
-def validate_runner_result(
+def _validate_runner_result_header(
     result: Mapping[str, Any],
     *,
     plan: Mapping[str, Any],
     configuration: Issue137Configuration,
     mode: str,
 ) -> dict[str, Any]:
-    """Validate actual device output, not merely its process return code."""
     if result.get("record_schema") != ISSUE137_DEVICE_RESULT_SCHEMA:
         raise Issue137Error("runner result schema is unsupported")
     if result.get("status") != "ok":
@@ -1050,25 +1162,43 @@ def validate_runner_result(
     if result.get("mode") != mode or result.get("load_mode") != ISSUE137_LOAD_MODE:
         raise Issue137Error("runner result mode binding is invalid")
     timing = run_timing(plan, mode)
-    if _finite(result.get("target_seconds"), field="runner target") != timing["load_seconds"]:
-        raise Issue137Error("runner result target duration does not match the plan")
-    if _finite(result.get("guard_seconds"), field="runner guard") != timing["guard_seconds"]:
-        raise Issue137Error("runner result guard does not match the plan")
-    if _finite(result.get("overrun_limit_seconds"), field="runner overrun limit") != DEFAULT_OVERRUN_LIMIT_SECONDS:
-        raise Issue137Error("runner result overrun limit does not match the plan")
+    expected_durations = {
+        "target_seconds": (
+            "runner target",
+            timing["load_seconds"],
+            "runner result target duration does not match the plan",
+        ),
+        "guard_seconds": (
+            "runner guard",
+            timing["guard_seconds"],
+            "runner result guard does not match the plan",
+        ),
+        "overrun_limit_seconds": (
+            "runner overrun limit",
+            DEFAULT_OVERRUN_LIMIT_SECONDS,
+            "runner result overrun limit does not match the plan",
+        ),
+    }
+    for field, (label, expected, message) in expected_durations.items():
+        if _finite(result.get(field), field=label) != expected:
+            raise Issue137Error(message)
     if not isinstance(result.get("run_id"), str) or not result["run_id"]:
         raise Issue137Error("runner result wrapper run identity is missing")
-    expected_plan = configuration.core_plan.as_record()
-    actual_plan = result.get("core_plan")
-    if actual_plan != expected_plan:
+    if result.get("core_plan") != configuration.core_plan.as_record():
         raise Issue137Error("runner result core plan does not match the selected configuration")
+    return timing
+
+
+def _validate_runner_result_bounds(
+    result: Mapping[str, Any], *, target_seconds: float
+) -> dict[str, Any]:
     launch_count = _integer_field(result, "launch_count")
     if launch_count < 1:
         raise Issue137Error("runner result has no completed launches")
     first = _integer_field(result, "first_launch_start_monotonic_ns")
     workload_end = _integer_field(result, "workload_end_monotonic_ns")
     last = _integer_field(result, "last_launch_end_monotonic_ns")
-    expected_end = first + round(timing["load_seconds"] * 1_000_000_000.0)
+    expected_end = first + round(target_seconds * 1_000_000_000.0)
     if workload_end != expected_end or last < workload_end:
         raise Issue137Error("runner result monotonic workload bounds are invalid")
     overrun = _finite(result.get("overrun_seconds"), field="runner overrun")
@@ -1077,10 +1207,6 @@ def validate_runner_result(
         raise Issue137Error("runner result overrun does not match monotonic bounds")
     if overrun > DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue137Error("runner result exceeds the configured overrun limit")
-    if not isinstance(result.get("environment"), Mapping):
-        raise Issue137Error("runner result environment provenance is missing")
-    if result.get("plan_sha256") != _plan_hash(plan):
-        raise Issue137Error("runner result plan hash does not match the owner plan")
     return {
         "launch_count": launch_count,
         "first_launch_start_monotonic_ns": first,
@@ -1088,6 +1214,27 @@ def validate_runner_result(
         "last_launch_end_monotonic_ns": last,
         "overrun_seconds": overrun,
     }
+
+
+def validate_runner_result(
+    result: Mapping[str, Any],
+    *,
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    mode: str,
+) -> dict[str, Any]:
+    """Validate actual device output, not merely its process return code."""
+    timing = _validate_runner_result_header(
+        result, plan=plan, configuration=configuration, mode=mode
+    )
+    observed = _validate_runner_result_bounds(
+        result, target_seconds=timing["load_seconds"]
+    )
+    if not isinstance(result.get("environment"), Mapping):
+        raise Issue137Error("runner result environment provenance is missing")
+    if result.get("plan_sha256") != _plan_hash(plan):
+        raise Issue137Error("runner result plan hash does not match the owner plan")
+    return observed
 
 
 def _observed_unit_provenance_verified(
@@ -1135,7 +1282,7 @@ def _execution_environment(
 
 def _sampler_join_timeout_seconds(trace_interval_seconds: float) -> float:
     capture_timeout = float(issue121_q2.SNAPSHOT_TIMEOUT_SECONDS)
-    interval = _finite(trace_interval_seconds, field="trace interval")
+    interval = _finite(trace_interval_seconds, field=TRACE_INTERVAL_FIELD)
     return max(interval + SAMPLER_SHUTDOWN_MARGIN_SECONDS, capture_timeout + SAMPLER_SHUTDOWN_MARGIN_SECONDS)
 
 
@@ -1263,42 +1410,28 @@ def _store_capture(
     return name
 
 
-def run_one(
-    *,
+def _selected_device_ids(
+    plan: Mapping[str, Any], options: Issue137RunOptions
+) -> tuple[str | None, str | None]:
+    scope = plan.get("measurement_scope")
+    board_id = options.board_id
+    bus_id = options.bus_id
+    if isinstance(scope, Mapping):
+        board_id = board_id or scope.get("board_serial")
+        bus_id = bus_id or scope.get("pci_bus_id")
+    return board_id, bus_id
+
+
+def _validate_run_mode(
     plan: Mapping[str, Any],
     configuration: Issue137Configuration,
+    *,
     mode: str,
-    output_dir: Path,
-    run_id: str,
-    run_number: int | None = None,
-    calibration: Mapping[str, Any] | None = None,
-    approve_long_run: bool = False,
-    command_runner: Callable[..., Any] | None = None,
-    environment: Mapping[str, Any] | None = None,
-    preceding_pre_snapshot: Mapping[str, Any] | None = None,
-    cooldown_readings: Sequence[Mapping[str, Any]] = (),
-    cooldown_elapsed_seconds: float = 0.0,
-    board_id: str | None = None,
-    bus_id: str | None = None,
-    trace_path: Path | None = None,
-    trace_interval_seconds: float = 2.0,
-    capture_fn: Callable[..., dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Prepare or execute exactly one Issue #137 instance."""
-    if calibration is not None:
-        raise Issue137Error("Issue #137 duration mode does not accept calibration artifacts")
-    try:
-        safe_run_id = validate_run_id(run_id)
-    except ValueError as exc:
-        raise Issue137Error(str(exc)) from exc
-    timing = run_timing(plan, mode)
-    scope = plan.get("measurement_scope")
-    effective_board_id = board_id
-    effective_bus_id = bus_id
-    if isinstance(scope, Mapping):
-        effective_board_id = effective_board_id or scope.get("board_serial")
-        effective_bus_id = effective_bus_id or scope.get("pci_bus_id")
+    run_number: int | None,
+    approve_long_run: bool,
+) -> None:
     if mode == "smoke":
+        scope = plan.get("measurement_scope")
         smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
         allowed = smoke.get("configurations") if isinstance(smoke, Mapping) else None
         if not isinstance(allowed, list) or configuration.identifier not in allowed:
@@ -1313,326 +1446,550 @@ def run_one(
             raise Issue137Error("run_number does not match the preregistered Issue #137 order")
         if not approve_long_run:
             raise Issue137Error("long Issue #137 runs require per-instance owner approval")
+
+
+def _resolve_trace_destination(
+    trace_path: Path | None, *, output_dir: Path
+) -> Path | None:
+    if trace_path is None:
+        return None
+    resolved = _trusted_write_path(
+        Path(trace_path), field="Issue #137 trace destination"
+    )
+    if resolved.parent != output_dir:
+        raise Issue137Error("Issue #137 trace must be beneath the run output directory")
+    return resolved
+
+
+def _prepare_run(
+    *,
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    mode: str,
+    output_dir: Path,
+    run_id: str,
+    options: Issue137RunOptions,
+) -> _PreparedRun:
+    if options.calibration is not None:
+        raise Issue137Error("Issue #137 duration mode does not accept calibration artifacts")
+    try:
+        safe_run_id = validate_run_id(run_id)
+    except ValueError as exc:
+        raise Issue137Error(str(exc)) from exc
+    timing = run_timing(plan, mode)
+    effective_board_id, effective_bus_id = _selected_device_ids(plan, options)
+    _validate_run_mode(
+        plan,
+        configuration,
+        mode=mode,
+        run_number=options.run_number,
+        approve_long_run=options.approve_long_run,
+    )
     resolved_output = _safe_output_dir(output_dir)
-    resolved_trace: Path | None = None
-    if trace_path is not None:
-        try:
-            resolved_trace = run_resident._safe_output_path(
-                Path(trace_path), description="Issue #137 trace destination"
-            )
-        except Exception as exc:
-            raise Issue137Error(str(exc)) from exc
-        if resolved_trace.parent != resolved_output:
-            raise Issue137Error("Issue #137 trace must be beneath the run output directory")
-    _reject_output_collisions(resolved_output, run_id=safe_run_id, trace_path=resolved_trace)
+    resolved_trace = _resolve_trace_destination(
+        options.trace_path, output_dir=resolved_output
+    )
+    _reject_output_collisions(
+        resolved_output, run_id=safe_run_id, trace_path=resolved_trace
+    )
     command = build_run_command(
         plan=plan,
         configuration=configuration,
         mode=mode,
         output_dir=resolved_output,
         run_id=safe_run_id,
-        approve_long_run=approve_long_run,
+        approve_long_run=options.approve_long_run,
     )
     record = _base_record(
         plan=plan,
         configuration=configuration,
         mode=mode,
         run_id=safe_run_id,
-        run_number=run_number,
+        run_number=options.run_number,
         command=command,
         output_dir=resolved_output,
     )
-    if environment is not None:
-        validate_environment_for_run(environment)
-        record["environment"] = build_environment_record(environment, configuration)
-    if mode == "long" and run_number and run_number > 1 and preceding_pre_snapshot is None:
-        raise Issue137Error("preceding selected-device pre-run baseline is required")
-    if preceding_pre_snapshot is not None and mode == "long" and run_number and run_number > 1:
-        cooldown = _cooldown_parameters(plan)
-        baseline = _snapshot_baseline(
-            preceding_pre_snapshot,
-            board_id=effective_board_id,
-            bus_id=effective_bus_id,
+    if options.environment is not None:
+        validate_environment_for_run(options.environment)
+        record["environment"] = build_environment_record(
+            options.environment, configuration
         )
-        if not cooldown_readings and capture_fn is not None:
-            gate = wait_for_cooldown(
-                preceding_pre_snapshot,
-                capture_fn=capture_fn,
-                board_id=effective_board_id,
-                bus_id=effective_bus_id,
-                cap_seconds=cooldown["cap_seconds"],
-                power_tolerance_w=cooldown["power_tolerance_w"],
-                temperature_tolerance_c=cooldown["temperature_tolerance_c"],
-            )
-        else:
-            gate = cooldown_gate(
-                baseline,
-                readings=cooldown_readings,
-                elapsed_seconds=cooldown_elapsed_seconds,
-                cap_seconds=cooldown["cap_seconds"],
-                power_tolerance_w=cooldown["power_tolerance_w"],
-                temperature_tolerance_c=cooldown["temperature_tolerance_c"],
-            )
-        record["cooldown_gate"] = gate
-        if not gate["verified"]:
-            failed = _failure_record(
-                record,
-                kind="cooldown_gate_failure",
-                message="cooldown gate failed closed; workload was not started",
-            )
-            _persist_record(resolved_output, safe_run_id, failed)
-            return failed
-    else:
+    return _PreparedRun(
+        safe_run_id=safe_run_id,
+        timing=timing,
+        effective_board_id=effective_board_id,
+        effective_bus_id=effective_bus_id,
+        resolved_output=resolved_output,
+        resolved_trace=resolved_trace,
+        command=command,
+        record=record,
+    )
+
+
+def _apply_cooldown_gate(
+    plan: Mapping[str, Any], prepared: _PreparedRun, options: Issue137RunOptions
+) -> dict[str, Any] | None:
+    record = prepared.record
+    run_number = options.run_number
+    if (
+        prepared.record["run"]["mode"] == "long"
+        and run_number
+        and run_number > 1
+        and options.preceding_pre_snapshot is None
+    ):
+        raise Issue137Error("preceding selected-device pre-run baseline is required")
+    requires_gate = (
+        options.preceding_pre_snapshot is not None
+        and prepared.record["run"]["mode"] == "long"
+        and run_number
+        and run_number > 1
+    )
+    if not requires_gate:
         record["cooldown_gate"] = {
             "required": False,
             "verified": True,
             "gate_result": "not_applicable",
             "aiclk_gate": False,
         }
-    if command_runner is None:
-        return record
+        return None
+    cooldown = _cooldown_parameters(plan)
+    baseline = _snapshot_baseline(
+        options.preceding_pre_snapshot,
+        board_id=prepared.effective_board_id,
+        bus_id=prepared.effective_bus_id,
+    )
+    if not options.cooldown_readings and options.capture_fn is not None:
+        gate = wait_for_cooldown(
+            options.preceding_pre_snapshot,
+            capture_fn=options.capture_fn,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
+            cap_seconds=cooldown["cap_seconds"],
+            power_tolerance_w=cooldown["power_tolerance_w"],
+            temperature_tolerance_c=cooldown["temperature_tolerance_c"],
+        )
+    else:
+        gate = cooldown_gate(
+            baseline,
+            readings=options.cooldown_readings,
+            elapsed_seconds=options.cooldown_elapsed_seconds,
+            cap_seconds=cooldown["cap_seconds"],
+            power_tolerance_w=cooldown["power_tolerance_w"],
+            temperature_tolerance_c=cooldown["temperature_tolerance_c"],
+        )
+    record["cooldown_gate"] = gate
+    if gate["verified"]:
+        return None
+    failed = _failure_record(
+        record,
+        kind="cooldown_gate_failure",
+        message="cooldown gate failed closed; workload was not started",
+    )
+    _persist_record(prepared.resolved_output, prepared.safe_run_id, failed)
+    return failed
 
-    # The wrapper/device entrypoint performs the same preflight from its actual
-    # env artifact.  A supplied fixture is validated here before any command.
-    sampler = capture_fn or capture_readonly_snapshot
-    captures: list[dict[str, Any]] = []
-    publication_state = _CapturePublicationState()
-    trace_stop = threading.Event()
-    trace_thread: threading.Thread | None = None
-    result: dict[str, Any] | None = None
-    result_name: str | None = None
-    returncode: int | None = None
-    timed_out = False
-    cleanup_failure: str | None = None
+
+def _capture_pre_run(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    sampler: Callable[..., dict[str, Any]],
+) -> dict[str, Any] | None:
     try:
         pre_capture = sampler(stage="pre_run")
         _validate_capture_identity(
             pre_capture,
             stage="pre_run",
-            board_id=effective_board_id,
-            bus_id=effective_bus_id,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
         )
-        record["pre_run_snapshot"] = {
+        prepared.record["pre_run_snapshot"] = {
             "path": _store_capture(
-                resolved_output, run_id=safe_run_id, stage="pre_run", capture=pre_capture
+                prepared.resolved_output,
+                run_id=prepared.safe_run_id,
+                stage="pre_run",
+                capture=pre_capture,
             ),
             "selected_device": {
-                "board_id": effective_board_id,
-                "bus_id": effective_bus_id,
+                "board_id": prepared.effective_board_id,
+                "bus_id": prepared.effective_bus_id,
             },
         }
-        record["pre_run_snapshot"]["baseline"] = _snapshot_baseline(
-            pre_capture, board_id=effective_board_id, bus_id=effective_bus_id
+        prepared.record["pre_run_snapshot"]["baseline"] = _snapshot_baseline(
+            pre_capture,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
         )
-        captures.append(dict(pre_capture))
-    except (Issue137Error, OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+        state.captures.append(dict(pre_capture))
+    except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
         failed = _failure_record(
-            record, kind="pre_run_snapshot_failure", message=type(exc).__name__
+            prepared.record,
+            kind="pre_run_snapshot_failure",
+            message=type(exc).__name__,
         )
-        _persist_record(resolved_output, safe_run_id, failed)
+        _persist_record(prepared.resolved_output, prepared.safe_run_id, failed)
         return failed
-    if resolved_trace is not None:
-        trace_interval = _finite(trace_interval_seconds, field="trace interval")
-        if trace_interval <= 0.0:
-            raise Issue137Error("trace interval must be positive")
-        trace_thread = threading.Thread(
-            target=sample_issue137_trace,
-            args=(trace_stop, captures),
-            kwargs={
-                "capture_fn": sampler,
-                "interval_seconds": trace_interval,
-                "publication_state": publication_state,
-            },
-            name="issue137-power-trace",
-            daemon=True,
-        )
-        trace_thread.start()
-    before_result_names = _artifact_names(resolved_output)
+    return None
+
+
+def _start_trace_sampler(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    options: Issue137RunOptions,
+    sampler: Callable[..., dict[str, Any]],
+) -> float | None:
+    if prepared.resolved_trace is None:
+        return None
+    interval = _finite(options.trace_interval_seconds, field=TRACE_INTERVAL_FIELD)
+    if interval <= 0.0:
+        raise Issue137Error("trace interval must be positive")
+    state.trace_thread = threading.Thread(
+        target=sample_issue137_trace,
+        args=(state.trace_stop, state.captures),
+        kwargs={
+            "capture_fn": sampler,
+            "interval_seconds": interval,
+            "publication_state": state.publication_state,
+        },
+        name="issue137-power-trace",
+        daemon=True,
+    )
+    state.trace_thread.start()
+    return interval
+
+
+def _run_command(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    options: Issue137RunOptions,
+    trace_interval: float | None,
+) -> set[str]:
+    command_runner = options.command_runner
+    if command_runner is None:
+        raise Issue137Error("Issue #137 command runner is required for execution")
+    before_result_names = _artifact_names(prepared.resolved_output)
     try:
-        completed = command_runner(
-            command,
+        state.completed = command_runner(
+            prepared.command,
             capture_output=True,
             text=True,
-            # The fixed plan guard is the normal workload deadline.  The
-            # process-group cleanup helper applies TERM/KILL grace only after
-            # this communicate timeout expires.
-            timeout=timing["guard_seconds"],
+            timeout=prepared.timing["guard_seconds"],
             check=False,
-            env=_execution_environment(environment, guard_seconds=timing["guard_seconds"]),
+            env=_execution_environment(
+                options.environment,
+                guard_seconds=prepared.timing["guard_seconds"],
+            ),
         )
-        raw_returncode = getattr(completed, "returncode", None)
-        returncode = (
+        raw_returncode = getattr(state.completed, "returncode", None)
+        state.returncode = (
             raw_returncode
             if isinstance(raw_returncode, int) and not isinstance(raw_returncode, bool)
             else None
         )
     except subprocess.TimeoutExpired:
-        completed = SimpleNamespace(returncode=None, stdout="")
-        timed_out = True
+        state.completed = SimpleNamespace(returncode=None, stdout="")
+        state.timed_out = True
     except (OSError, subprocess.SubprocessError) as exc:
-        completed = SimpleNamespace(returncode=None, stdout="")
-        record["runner_error_type"] = type(exc).__name__
+        state.completed = SimpleNamespace(returncode=None, stdout="")
+        prepared.record["runner_error_type"] = type(exc).__name__
     finally:
-        publication_state.revoke()
-        trace_stop.set()
-        if trace_thread is not None:
-            trace_thread.join(timeout=_sampler_join_timeout_seconds(trace_interval))
-            captures.extend(publication_state.drain_late_captures())
-            if trace_thread.is_alive():
-                cleanup_failure = "power sampler thread did not stop within the bounded cleanup interval"
+        state.publication_state.revoke()
+        state.trace_stop.set()
+        if state.trace_thread is not None:
+            state.trace_thread.join(
+                timeout=_sampler_join_timeout_seconds(trace_interval or 0.0)
+            )
+            state.captures.extend(state.publication_state.drain_late_captures())
+            if state.trace_thread.is_alive():
+                state.cleanup_failure = (
+                    "power sampler thread did not stop within the bounded cleanup interval"
+                )
+    return before_result_names
+
+
+def _capture_post_run(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    sampler: Callable[..., dict[str, Any]],
+) -> None:
     try:
         post_capture = sampler(stage="post_run")
         _validate_capture_identity(
             post_capture,
             stage="post_run",
-            board_id=effective_board_id,
-            bus_id=effective_bus_id,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
         )
-        captures.append(dict(post_capture))
-        record["post_run_snapshot"] = {
+        state.captures.append(dict(post_capture))
+        prepared.record["post_run_snapshot"] = {
             "path": _store_capture(
-                resolved_output, run_id=safe_run_id, stage="post_run", capture=post_capture
+                prepared.resolved_output,
+                run_id=prepared.safe_run_id,
+                stage="post_run",
+                capture=post_capture,
             ),
             "selected_device": {
-                "board_id": effective_board_id,
-                "bus_id": effective_bus_id,
+                "board_id": prepared.effective_board_id,
+                "bus_id": prepared.effective_bus_id,
             },
         }
-    except (Issue137Error, OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
-        record["post_run_snapshot"] = {"status": "unavailable", "reason": type(exc).__name__}
-        cleanup_failure = cleanup_failure or f"post-run snapshot failure: {type(exc).__name__}"
-
-    try:
-        result_path, result_name = _resolve_runner_result_artifact(
-            resolved_output,
-            before_names=before_result_names,
-            completed=completed,
+    except (ValueError, OSError, RuntimeError, TypeError, KeyError) as exc:
+        prepared.record["post_run_snapshot"] = {
+            "status": "unavailable",
+            "reason": type(exc).__name__,
+        }
+        state.cleanup_failure = state.cleanup_failure or (
+            f"post-run snapshot failure: {type(exc).__name__}"
         )
-        result = _read_runner_result(result_path)
+
+
+def _ingest_runner_result(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    *,
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    before_result_names: set[str],
+) -> None:
+    try:
+        result_path, state.result_name = _resolve_runner_result_artifact(
+            prepared.resolved_output,
+            before_names=before_result_names,
+            completed=state.completed,
+        )
+        state.result = _read_runner_result(result_path)
     except Issue137Error as exc:
-        result = None
-        result_error = str(exc)
-    else:
-        result_error = None
-    if result is not None:
-        try:
-            observed = validate_runner_result(
-                result, plan=plan, configuration=configuration, mode=mode
+        state.result = None
+        state.result_error = str(exc)
+        return
+    try:
+        observed = validate_runner_result(
+            state.result,
+            plan=plan,
+            configuration=configuration,
+            mode=prepared.record["run"]["mode"],
+        )
+        prepared.record["runner_result"] = _safe_json_value(state.result)
+        actual_environment = build_environment_record(
+            state.result["environment"], configuration
+        )
+        if not _environment_identity_matches(
+            actual_environment,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
+        ):
+            raise Issue137Error(
+                "runner result environment identity does not match selected device"
             )
-            record["runner_result"] = _safe_json_value(result)
-            actual_environment = build_environment_record(
-                result["environment"], configuration
-            )
-            if not _environment_identity_matches(
-                actual_environment,
-                board_id=effective_board_id,
-                bus_id=effective_bus_id,
-            ):
-                raise Issue137Error(
-                    "runner result environment identity does not match selected device"
-                )
-            record["environment"] = actual_environment
-            record["provenance"]["runner_result_path"] = result_name
-            record["provenance"]["wrapper_run_id"] = result["run_id"]
-            record["run"].update(observed)
-            record["run"]["workload_start_monotonic_ns"] = observed[
-                "first_launch_start_monotonic_ns"
-            ]
-            record["run"]["workload_end_monotonic_ns"] = observed[
-                "workload_end_monotonic_ns"
-            ]
-            record["run"]["last_launch_end_monotonic_ns"] = observed[
-                "last_launch_end_monotonic_ns"
-            ]
-            record["workload_start_monotonic_ns"] = observed[
-                "first_launch_start_monotonic_ns"
-            ]
-            record["workload_end_monotonic_ns"] = observed["workload_end_monotonic_ns"]
-            record["run_end_monotonic_ns"] = observed["workload_end_monotonic_ns"]
-            record["workload_actual_end_monotonic_ns"] = observed[
-                "last_launch_end_monotonic_ns"
-            ]
-            record["workload_started"] = True
-        except Issue137Error as exc:
-            result_error = str(exc)
-    source_provenance_verified = _observed_unit_provenance_verified(
-        record.get("environment") if isinstance(record.get("environment"), Mapping) else environment,
-        captures,
-    )
-    if source_provenance_verified:
-        record["provenance"]["unit_provenance"] = power_trace_issue137.ISSUE137_UNIT_PROVENANCE
-        record["provenance"]["unit_provenance_status"] = "established"
+        prepared.record["environment"] = actual_environment
+        prepared.record["provenance"]["runner_result_path"] = state.result_name
+        prepared.record["provenance"]["wrapper_run_id"] = state.result["run_id"]
+        prepared.record["run"].update(observed)
+        prepared.record["run"]["workload_start_monotonic_ns"] = observed[
+            "first_launch_start_monotonic_ns"
+        ]
+        prepared.record["run"]["workload_end_monotonic_ns"] = observed[
+            "workload_end_monotonic_ns"
+        ]
+        prepared.record["run"]["last_launch_end_monotonic_ns"] = observed[
+            "last_launch_end_monotonic_ns"
+        ]
+        prepared.record["workload_start_monotonic_ns"] = observed[
+            "first_launch_start_monotonic_ns"
+        ]
+        prepared.record["workload_end_monotonic_ns"] = observed[
+            "workload_end_monotonic_ns"
+        ]
+        prepared.record["run_end_monotonic_ns"] = observed[
+            "workload_end_monotonic_ns"
+        ]
+        prepared.record["workload_actual_end_monotonic_ns"] = observed[
+            "last_launch_end_monotonic_ns"
+        ]
+        prepared.record["workload_started"] = True
+    except Issue137Error as exc:
+        state.result_error = str(exc)
+
+
+def _record_unit_provenance(
+    prepared: _PreparedRun, state: _ExecutionState
+) -> bool:
+    environment = prepared.record.get("environment")
+    source = environment if isinstance(environment, Mapping) else None
+    verified = _observed_unit_provenance_verified(source, state.captures)
+    provenance = prepared.record["provenance"]
+    if verified:
+        provenance["unit_provenance"] = power_trace_issue137.ISSUE137_UNIT_PROVENANCE
+        provenance["unit_provenance_status"] = "established"
     else:
-        record["provenance"]["unit_provenance"] = None
-        record["provenance"]["unit_provenance_status"] = "unknown"
-    if resolved_trace is not None:
-        if result is None or result_error is not None:
-            record["trace_error"] = "runner result unavailable before trace bounds"
-        else:
-            try:
-                write_trace_from_captures(
-                    resolved_trace,
-                    captures,
-                    board_id=effective_board_id,
-                    bus_id=effective_bus_id,
-                )
-                trace_bytes = resolved_trace.read_bytes()
-                trace_sha256 = hashlib.sha256(trace_bytes).hexdigest()
-                rows = power_trace_issue137.read_issue137_power_trace(
-                    resolved_trace,
-                    run_start_monotonic_ns=record["workload_start_monotonic_ns"],
-                    run_end_monotonic_ns=record["workload_end_monotonic_ns"],
-                    source_established=source_provenance_verified,
-                )
-                timestamps = [row["timestamp_monotonic_ns"] for row in rows["samples"]]
-                start_ns = record["workload_start_monotonic_ns"]
-                target_end_ns = record["workload_end_monotonic_ns"]
-                if (
-                    rows.get("valid") is not True
-                    or not timestamps
-                    or min(timestamps) > start_ns
-                    or max(timestamps) < target_end_ns
-                ):
-                    raise Issue137Error("Issue #137 trace lacks terminal workload coverage")
-                record["trace"] = {
-                    "path": resolved_trace.name,
-                    "schema": power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA,
-                    "sample_count": len(timestamps),
-                    "run_start_monotonic_ns": start_ns,
-                    "run_end_monotonic_ns": target_end_ns,
-                    "actual_end_monotonic_ns": record["workload_actual_end_monotonic_ns"],
-                    "terminal_coverage": True,
-                    "sha256": trace_sha256,
-                    "byte_count": len(trace_bytes),
-                    "unit_provenance": (
-                        power_trace_issue137.ISSUE137_UNIT_PROVENANCE
-                        if source_provenance_verified
-                        else None
-                    ),
-                }
-            except (Issue137Error, OSError, ValueError) as exc:
-                record["trace_error"] = type(exc).__name__
-    failure_message = result_error or cleanup_failure
-    if returncode != 0:
+        provenance["unit_provenance"] = None
+        provenance["unit_provenance_status"] = "unknown"
+    return verified
+
+
+def _record_trace(
+    prepared: _PreparedRun,
+    state: _ExecutionState,
+    *,
+    source_provenance_verified: bool,
+) -> None:
+    if prepared.resolved_trace is None:
+        return
+    if state.result is None or state.result_error is not None:
+        prepared.record["trace_error"] = "runner result unavailable before trace bounds"
+        return
+    try:
+        write_trace_from_captures(
+            prepared.resolved_trace,
+            state.captures,
+            board_id=prepared.effective_board_id,
+            bus_id=prepared.effective_bus_id,
+        )
+        trace_source = _trusted_path(
+            prepared.resolved_trace, field="Issue #137 trace read"
+        )
+        trace_bytes = trace_source.read_bytes()
+        trace_sha256 = hashlib.sha256(trace_bytes).hexdigest()
+        rows = power_trace_issue137.read_issue137_power_trace(
+            trace_source,
+            run_start_monotonic_ns=prepared.record["workload_start_monotonic_ns"],
+            run_end_monotonic_ns=prepared.record["workload_end_monotonic_ns"],
+            source_established=source_provenance_verified,
+        )
+        timestamps = [row["timestamp_monotonic_ns"] for row in rows["samples"]]
+        start_ns = prepared.record["workload_start_monotonic_ns"]
+        target_end_ns = prepared.record["workload_end_monotonic_ns"]
+        if (
+            rows.get("valid") is not True
+            or not timestamps
+            or min(timestamps) > start_ns
+            or max(timestamps) < target_end_ns
+        ):
+            raise Issue137Error("Issue #137 trace lacks terminal workload coverage")
+        prepared.record["trace"] = {
+            "path": prepared.resolved_trace.name,
+            "schema": power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA,
+            "sample_count": len(timestamps),
+            "run_start_monotonic_ns": start_ns,
+            "run_end_monotonic_ns": target_end_ns,
+            "actual_end_monotonic_ns": prepared.record[
+                "workload_actual_end_monotonic_ns"
+            ],
+            "terminal_coverage": True,
+            "sha256": trace_sha256,
+            "byte_count": len(trace_bytes),
+            "unit_provenance": (
+                power_trace_issue137.ISSUE137_UNIT_PROVENANCE
+                if source_provenance_verified
+                else None
+            ),
+        }
+    except (ValueError, OSError) as exc:
+        prepared.record["trace_error"] = type(exc).__name__
+
+
+def _finish_execution(
+    prepared: _PreparedRun, state: _ExecutionState, *, mode: str
+) -> dict[str, Any]:
+    failure_message = state.result_error or state.cleanup_failure
+    if state.returncode != 0:
         failure_message = failure_message or "device runner did not return status zero"
-    if timed_out:
+    if state.timed_out:
         failure_message = failure_message or "device runner reached the fixed guard"
     if failure_message:
         record = _failure_record(
-            record,
-            kind=("runner_result_unavailable" if result is None else "runner_execution_failure"),
+            prepared.record,
+            kind=(
+                "runner_result_unavailable"
+                if state.result is None
+                else "runner_execution_failure"
+            ),
             message=failure_message,
-            returncode=returncode,
+            returncode=state.returncode,
         )
-    elif record.get("trace_error"):
+    elif prepared.record.get("trace_error"):
         record = _failure_record(
-            record, kind="trace_capture_failure", message=str(record["trace_error"])
+            prepared.record,
+            kind="trace_capture_failure",
+            message=str(prepared.record["trace_error"]),
         )
     else:
+        record = prepared.record
         record["status"] = "ok"
         record["verdict_evidence"] = mode == "long"
-    _persist_record(resolved_output, safe_run_id, record)
+    _persist_record(prepared.resolved_output, prepared.safe_run_id, record)
     return record
+
+
+def _execute_run(
+    prepared: _PreparedRun,
+    *,
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    options: Issue137RunOptions,
+) -> dict[str, Any]:
+    sampler = options.capture_fn or capture_readonly_snapshot
+    state = _ExecutionState(
+        captures=[],
+        publication_state=_CapturePublicationState(),
+        trace_stop=threading.Event(),
+    )
+    failed = _capture_pre_run(prepared, state, sampler)
+    if failed is not None:
+        return failed
+    trace_interval = _start_trace_sampler(prepared, state, options, sampler)
+    before_result_names = _run_command(prepared, state, options, trace_interval)
+    _capture_post_run(prepared, state, sampler)
+    _ingest_runner_result(
+        prepared,
+        state,
+        plan=plan,
+        configuration=configuration,
+        before_result_names=before_result_names,
+    )
+    source_provenance_verified = _record_unit_provenance(prepared, state)
+    _record_trace(
+        prepared,
+        state,
+        source_provenance_verified=source_provenance_verified,
+    )
+    return _finish_execution(prepared, state, mode=prepared.record["run"]["mode"])
+
+
+def run_one(
+    *,
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    mode: str,
+    output_dir: Path,
+    run_id: str,
+    options: Issue137RunOptions | None = None,
+) -> dict[str, Any]:
+    """Prepare or execute exactly one Issue #137 instance.
+
+    ``options`` is a strict :class:`Issue137RunOptions` bundle for runtime
+    dependencies, capture settings, and the approved run number.
+    """
+    options = options or Issue137RunOptions()
+    prepared = _prepare_run(
+        plan=plan,
+        configuration=configuration,
+        mode=mode,
+        output_dir=output_dir,
+        run_id=run_id,
+        options=options,
+    )
+    failed = _apply_cooldown_gate(plan, prepared, options)
+    if failed is not None:
+        return failed
+    if options.command_runner is None:
+        return prepared.record
+    return _execute_run(
+        prepared,
+        plan=plan,
+        configuration=configuration,
+        options=options,
+    )
+
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -1663,9 +2020,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         selected = configuration(plan, args.configuration)
         preceding = None
         if args.preceding_pre_snapshot is not None:
-            preceding_path = run_resident._safe_output_path(
+            preceding_path = _trusted_path(
                 args.preceding_pre_snapshot,
-                description="Issue #137 preceding pre-run snapshot",
+                field="Issue #137 preceding pre-run snapshot",
             )
             payload = json.loads(preceding_path.read_text(encoding="utf-8"))
             if not isinstance(payload, Mapping):
@@ -1678,17 +2035,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=args.mode,
             output_dir=output_dir,
             run_id=args.run_id,
-            run_number=args.run_number,
-            approve_long_run=args.approve_long_run,
-            command_runner=(_run_issue137_workload if args.execute else None),
-            capture_fn=(capture_readonly_snapshot if args.execute else None),
-            preceding_pre_snapshot=preceding,
-            board_id=args.board_id,
-            bus_id=args.bus_id,
-            trace_path=(
-                output_dir / f"issue137-power-trace-{args.run_id}.csv"
-                if args.execute
-                else None
+            options=Issue137RunOptions(
+                run_number=args.run_number,
+                approve_long_run=args.approve_long_run,
+                command_runner=(_run_issue137_workload if args.execute else None),
+                capture_fn=(capture_readonly_snapshot if args.execute else None),
+                preceding_pre_snapshot=preceding,
+                board_id=args.board_id,
+                bus_id=args.bus_id,
+                trace_path=(
+                    output_dir / f"issue137-power-trace-{args.run_id}.csv"
+                    if args.execute
+                    else None
+                ),
             ),
         )
         print(strict_json_dumps(_safe_json_value(record), indent=2))
@@ -1709,6 +2068,7 @@ __all__ = [
     "WRAPPER_CLEANUP_MARGIN_SECONDS",
     "Issue137Configuration",
     "Issue137Error",
+    "Issue137RunOptions",
     "build_environment_record",
     "build_planning_record",
     "build_run_command",

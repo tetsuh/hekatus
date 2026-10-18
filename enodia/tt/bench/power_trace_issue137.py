@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from enodia.tt.bench import power_trace_extended as _q2
+from enodia.tt.bench import run_resident
 
 ISSUE137_POWER_TRACE_SCHEMA = "issue-137-power-trace-v1"
 ISSUE137_POWER_TRACE_SCHEMA_VERSION = 1
@@ -393,6 +394,23 @@ def _read_rows_from_text(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def _validated_issue137_rows(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Validate the envelope and normalize every raw trace row."""
+    if not isinstance(payload, Mapping):
+        raise Issue137PowerTraceError("Issue #137 trace must be an object")
+    if payload.get("schema") != ISSUE137_POWER_TRACE_SCHEMA:
+        raise Issue137PowerTraceError("Issue #137 trace schema is unsupported")
+    version = payload.get("schema_version")
+    if version != ISSUE137_POWER_TRACE_SCHEMA_VERSION or isinstance(version, bool):
+        raise Issue137PowerTraceError("Issue #137 trace schema_version is unsupported")
+    if tuple(payload.get("columns", ())) != ISSUE137_POWER_TRACE_COLUMNS:
+        raise Issue137PowerTraceError("Issue #137 trace columns are invalid")
+    raw_samples = payload.get("samples")
+    if not isinstance(raw_samples, list):
+        raise Issue137PowerTraceError("Issue #137 trace samples must be an array")
+    return [_coerce_issue137_row(row, index) for index, row in enumerate(raw_samples)]
+
+
 def _read_issue137_mapping(
     payload: Mapping[str, Any],
     *,
@@ -402,20 +420,8 @@ def _read_issue137_mapping(
 ) -> dict[str, Any]:
     result = _trace_result_base()
     try:
-        if not isinstance(payload, Mapping):
-            raise Issue137PowerTraceError("Issue #137 trace must be an object")
-        if payload.get("schema") != ISSUE137_POWER_TRACE_SCHEMA:
-            raise Issue137PowerTraceError("Issue #137 trace schema is unsupported")
-        version = payload.get("schema_version")
-        if version != ISSUE137_POWER_TRACE_SCHEMA_VERSION or isinstance(version, bool):
-            raise Issue137PowerTraceError("Issue #137 trace schema_version is unsupported")
-        if tuple(payload.get("columns", ())) != ISSUE137_POWER_TRACE_COLUMNS:
-            raise Issue137PowerTraceError("Issue #137 trace columns are invalid")
-        raw_samples = payload.get("samples")
-        if not isinstance(raw_samples, list):
-            raise Issue137PowerTraceError("Issue #137 trace samples must be an array")
-        rows = [_coerce_issue137_row(row, index) for index, row in enumerate(raw_samples)]
-    except (Issue137PowerTraceError, TypeError, ValueError) as exc:
+        rows = _validated_issue137_rows(payload)
+    except (ValueError, TypeError) as exc:
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
         return result
@@ -457,6 +463,30 @@ def _read_issue137_mapping(
     return result
 
 
+def _trace_path(path: Path, *, operation: str) -> Path:
+    """Resolve trace IO beneath the shared fixed roots before touching bytes."""
+    candidate = Path(path)
+    try:
+        resolved = run_resident._safe_output_path(
+            candidate, description=f"Issue #137 trace {operation} path"
+        )
+    except Exception as exc:
+        raise Issue137PowerTraceError(
+            f"Issue #137 trace {operation} path must remain beneath a trusted output root"
+        ) from exc
+    current = candidate
+    while True:
+        if current.is_symlink():
+            raise Issue137PowerTraceError(
+                f"Issue #137 trace {operation} path must not traverse a symlink"
+            )
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+    return resolved
+
+
 def read_issue137_power_trace(
     path: Path,
     *,
@@ -467,7 +497,8 @@ def read_issue137_power_trace(
     """Read one strict Issue #137 CSV trace and recompute Q2 aggregates."""
     result = _trace_result_base()
     try:
-        raw = Path(path).read_text(encoding="utf-8")
+        source = _trace_path(path, operation="read")
+        raw = source.read_text(encoding="utf-8")
         rows = _read_rows_from_text(raw)
         payload = {
             "schema": ISSUE137_POWER_TRACE_SCHEMA,
@@ -504,8 +535,9 @@ def read_issue137_power_trace_snapshot(path: Path, **kwargs: Any) -> dict[str, A
     if path.suffix.lower() != ".json":
         return read_issue137_power_trace(path, **kwargs)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        source = _trace_path(path, operation="read")
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, Issue137PowerTraceError) as exc:
         result = _trace_result_base()
         result["errors"] = [str(exc)]
         result["error"] = str(exc)
@@ -521,7 +553,7 @@ def read_issue137_power_trace_snapshot(path: Path, **kwargs: Any) -> dict[str, A
 def write_issue137_power_trace(path: Path, rows: Sequence[Mapping[str, Any]]) -> Path:
     """Write a complete Issue #137 CSV trace without changing input rows."""
     serialized = [format_issue137_power_trace_row(row) for row in rows]
-    destination = Path(path)
+    destination = _trace_path(path, operation="write")
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
         ISSUE137_POWER_TRACE_HEADER + "\n" + "\n".join(serialized) + "\n",

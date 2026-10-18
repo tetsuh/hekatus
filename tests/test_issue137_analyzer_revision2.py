@@ -188,25 +188,31 @@ def _runner_records(tmp_path: Path) -> list[dict[str, object]]:
             mode="long",
             output_dir=tmp_path,
             run_id=f"host-run-{run_number}",
-            run_number=run_number,
-            approve_long_run=True,
-            command_runner=command_runner,
-            environment=environment,
-            preceding_pre_snapshot=(
-                {
-                    "stage": "pre_run",
-                    "status": "ok",
-                    "returncode": 0,
-                    "snapshot": pre,
-                }
-                if run_number > 1
-                else None
+            options=runner.Issue137RunOptions(
+                run_number=run_number,
+                approve_long_run=True,
+                command_runner=command_runner,
+                environment=environment,
+                preceding_pre_snapshot=(
+                    {
+                        "stage": "pre_run",
+                        "status": "ok",
+                        "returncode": 0,
+                        "snapshot": pre,
+                    }
+                    if run_number > 1
+                    else None
+                ),
+                cooldown_readings=(
+                    [{"power_w": 50.0, "asic_temp_c": 50.0}]
+                    if run_number > 1
+                    else []
+                ),
+                cooldown_elapsed_seconds=1.0,
+                capture_fn=capture,
+                trace_path=tmp_path / f"power-{run_number}.csv",
+                trace_interval_seconds=0.001,
             ),
-            cooldown_readings=([{"power_w": 50.0, "asic_temp_c": 50.0}] if run_number > 1 else []),
-            cooldown_elapsed_seconds=1.0,
-            capture_fn=capture,
-            trace_path=tmp_path / f"power-{run_number}.csv",
-            trace_interval_seconds=0.001,
         )
         assert record["status"] == "ok"
         persisted_path = tmp_path / f"run-host-run-{run_number}.json"

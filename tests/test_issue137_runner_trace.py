@@ -238,6 +238,26 @@ def test_issue137_trace_rejects_missing_or_invalid_gddr_data(tmp_path: Path, mut
     assert parsed["errors"]
 
 
+def test_issue137_run_options_reject_unknown_keys() -> None:
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        runner.Issue137RunOptions(unapproved_option=True)
+
+
+def test_issue137_run_one_rejects_unknown_keyword() -> None:
+    plan = runner.load_plan(PLAN)
+    config = runner.configuration(plan, "C018")
+    output_dir = Path("out/issue137")
+    with pytest.raises(TypeError, match="unexpected keyword argument"):
+        runner.run_one(
+            plan=plan,
+            configuration=config,
+            mode="smoke",
+            output_dir=output_dir,
+            run_id="issue137-unknown-option",
+            unapproved_option=True,
+        )
+
+
 def test_issue137_duration_mode_has_no_calibration_api() -> None:
     plan = runner.load_plan(PLAN)
     config = runner.configuration(plan, "C018")
@@ -268,23 +288,27 @@ def test_issue137_resident_legacy_path_rejects_malformed_top_level_calibration_w
 def test_issue137_smoke_set_and_long_order_are_consumed_without_series_execution():
     plan = runner.load_plan(PLAN)
     config = runner.configuration(plan, "C108")
+    output_dir = Path("out/issue137")
     with pytest.raises(runner.Issue137Error, match="smoke set"):
         runner.run_one(
             plan=plan,
             configuration=config,
             mode="smoke",
-            output_dir=Path("out/issue137"),
+            output_dir=output_dir,
             run_id="issue137-smoke-c108",
         )
+    options = runner.Issue137RunOptions(
+        run_number=1,
+        approve_long_run=True,
+    )
     with pytest.raises(runner.Issue137Error, match="preregistered Issue #137 order"):
         runner.run_one(
             plan=plan,
             configuration=config,
             mode="long",
-            output_dir=Path("out/issue137"),
+            output_dir=output_dir,
             run_id="issue137-long-order",
-            run_number=1,
-            approve_long_run=True,
+            options=options,
         )
 
 
@@ -372,13 +396,15 @@ def test_issue137_one_run_captures_pre_run_and_issue137_trace_board_free(
         mode="smoke",
         output_dir=tmp_path,
         run_id="issue137-smoke-capture",
-        command_runner=command_runner,
-        environment=_issue137_environment(),
-        capture_fn=capture,
-        trace_path=trace_path,
-        trace_interval_seconds=0.001,
-        board_id="fixture-board",
-        bus_id="0000:09:00.0",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=_issue137_environment(),
+            capture_fn=capture,
+            trace_path=trace_path,
+            trace_interval_seconds=0.001,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
     )
 
     assert record["status"] == "ok"
@@ -516,13 +542,15 @@ def test_issue137_execute_ingests_actual_result_and_persists_canonical_record(
         mode="smoke",
         output_dir=tmp_path,
         run_id="issue137-smoke-ingest",
-        command_runner=command_runner,
-        environment=environment,
-        capture_fn=capture,
-        trace_path=tmp_path / "trace.csv",
-        trace_interval_seconds=0.001,
-        board_id="fixture-board",
-        bus_id="0000:09:00.0",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            trace_path=tmp_path / "trace.csv",
+            trace_interval_seconds=0.001,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
     )
 
     assert record["status"] == "ok"
@@ -655,13 +683,15 @@ def test_issue137_record_does_not_claim_gddr_provenance_without_observed_version
         mode="smoke",
         output_dir=tmp_path,
         run_id="issue137-unknown-gddr-source",
-        command_runner=command_runner,
-        environment=environment,
-        capture_fn=capture,
-        trace_path=tmp_path / "trace.csv",
-        trace_interval_seconds=0.001,
-        board_id="fixture-board",
-        bus_id="0000:09:00.0",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            trace_path=tmp_path / "trace.csv",
+            trace_interval_seconds=0.001,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
     )
     assert record["provenance"]["unit_provenance"] is None
     assert record["trace"]["unit_provenance"] is None
@@ -695,11 +725,13 @@ def test_issue137_exit_zero_with_missing_or_stale_result_fails_closed(tmp_path: 
         mode="smoke",
         output_dir=tmp_path,
         run_id="issue137-smoke-missing-result",
-        command_runner=command_runner,
-        environment=environment,
-        capture_fn=capture,
-        board_id="fixture-board",
-        bus_id="0000:09:00.0",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
     )
 
     assert record["status"] == "failed"
@@ -730,6 +762,10 @@ def test_issue137_environment_preflight_rejects_dirty_unpushed_or_missing_before
         nonlocal called
         called = True
 
+    options = runner.Issue137RunOptions(
+        command_runner=command_runner,
+        environment=environment,
+    )
     with pytest.raises(runner.Issue137Error, match=message):
         runner.run_one(
             plan=plan,
@@ -737,8 +773,7 @@ def test_issue137_environment_preflight_rejects_dirty_unpushed_or_missing_before
             mode="smoke",
             output_dir=tmp_path,
             run_id=f"issue137-env-{mutation}",
-            command_runner=command_runner,
-            environment=environment,
+            options=options,
         )
     assert called is False
 
@@ -863,13 +898,15 @@ def test_issue137_nonzero_or_unknown_returncode_is_not_evidence(tmp_path: Path) 
         mode="smoke",
         output_dir=tmp_path,
         run_id="issue137-unknown-returncode",
-        command_runner=command_runner,
-        environment=environment,
-        capture_fn=capture,
-        trace_path=tmp_path / "trace.csv",
-        trace_interval_seconds=0.001,
-        board_id="fixture-board",
-        bus_id="0000:09:00.0",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            trace_path=tmp_path / "trace.csv",
+            trace_interval_seconds=0.001,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
     )
     assert record["status"] == "failed"
     assert record["failure"]["kind"] == "runner_execution_failure"
@@ -886,6 +923,10 @@ def test_issue137_output_collision_is_rejected_before_command(tmp_path: Path) ->
         nonlocal called
         called = True
 
+    options = runner.Issue137RunOptions(
+        command_runner=command_runner,
+        environment=_issue137_environment(),
+    )
     with pytest.raises(runner.Issue137Error, match="collision"):
         runner.run_one(
             plan=plan,
@@ -893,7 +934,241 @@ def test_issue137_output_collision_is_rejected_before_command(tmp_path: Path) ->
             mode="smoke",
             output_dir=tmp_path,
             run_id="issue137-collision",
-            command_runner=command_runner,
-            environment=_issue137_environment(),
+            options=options,
         )
     assert called is False
+
+
+def test_issue137_artifact_write_rejects_a_symlink_escape_before_io(tmp_path: Path) -> None:
+    destination = tmp_path / "artifact.json"
+    destination.symlink_to(Path.cwd().parent)
+
+    with pytest.raises(runner.Issue137Error, match="trusted"):
+        runner._write_artifact(destination, {"status": "ok"})
+
+
+def test_issue137_device_environment_read_rejects_a_symlink_escape_before_io(
+    tmp_path: Path,
+) -> None:
+    from tools import issue137_device
+
+    source = tmp_path / "environment.json"
+    source.symlink_to(Path.cwd().parent)
+
+    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted"):
+        issue137_device._load_environment(source)
+
+
+def test_issue137_device_result_write_rejects_a_symlink_escape_before_io(
+    tmp_path: Path,
+) -> None:
+    from tools import issue137_device
+
+    destination = tmp_path / "runner-result.json"
+    destination.symlink_to(Path.cwd().parent)
+
+    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted"):
+        issue137_device._write_result(destination, {"status": "ok"})
+
+
+def test_issue137_trace_write_rejects_a_symlink_escape_before_io(tmp_path: Path) -> None:
+    destination = tmp_path / "power.csv"
+    destination.symlink_to(Path.cwd().parent)
+
+    rows = [_row()]
+    with pytest.raises(trace.Issue137PowerTraceError, match="trusted"):
+        trace.write_issue137_power_trace(destination, rows)
+
+
+def test_issue137_plain_valueerror_pre_capture_is_persisted_as_failure(
+    tmp_path: Path,
+) -> None:
+    plan = runner.load_plan(PLAN)
+    config = runner.configuration(plan, "C018")
+    called = False
+
+    def capture(*, stage: str) -> dict[str, object]:
+        raise ValueError(f"plain capture failure: {stage}")
+
+    def command_runner(*_args: object, **_kwargs: object) -> None:
+        nonlocal called
+        called = True
+
+    record = runner.run_one(
+        plan=plan,
+        configuration=config,
+        mode="smoke",
+        output_dir=tmp_path,
+        run_id="issue137-plain-valueerror-pre",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            capture_fn=capture,
+        ),
+    )
+
+    assert record["status"] == "failed"
+    assert record["failure"]["kind"] == "pre_run_snapshot_failure"
+    assert (tmp_path / "run-issue137-plain-valueerror-pre.json").exists()
+    assert called is False
+
+
+def test_issue137_plain_valueerror_post_capture_is_retained_as_cleanup_failure(
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    plan = runner.load_plan(PLAN)
+    config = runner.configuration(plan, "C018")
+    environment = _issue137_environment()
+    result_path = tmp_path / "runner-result.json"
+
+    def capture(*, stage: str) -> dict[str, object]:
+        if stage == "post_run":
+            raise ValueError("plain post-capture failure")
+        return {
+            "schema": runner.ISSUE137_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "status": "ok",
+            "returncode": 0,
+            "captured_at_utc": "2026-10-20T00:00:00+00:00",
+            "timestamp_monotonic_ns": 0,
+            "snapshot_elapsed_ns": 1,
+            "snapshot": _snapshot(),
+        }
+
+    def command_runner(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        result_path.write_text(
+            json.dumps(_device_result(config, environment)), encoding="utf-8"
+        )
+        return SimpleNamespace(returncode=0, stdout="results -> /out/runner-result.json\n")
+
+    record = runner.run_one(
+        plan=plan,
+        configuration=config,
+        mode="smoke",
+        output_dir=tmp_path,
+        run_id="issue137-plain-valueerror-post",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
+    )
+
+    assert record["status"] == "failed"
+    assert record["failure"]["kind"] == "runner_execution_failure"
+    assert record["failure"]["message"] == "post-run snapshot failure: ValueError"
+    assert record["post_run_snapshot"] == {
+        "status": "unavailable",
+        "reason": "ValueError",
+    }
+
+
+def test_issue137_trace_plain_valueerror_normalization_is_not_evaluable(
+    monkeypatch,
+) -> None:
+    def raise_valueerror(_payload: object) -> list[dict[str, object]]:
+        raise ValueError("plain normalization failure")
+
+    monkeypatch.setattr(trace, "_validated_issue137_rows", raise_valueerror)
+    result = trace.read_issue137_power_trace_mapping({})
+
+    assert result["valid"] is False
+    assert result["errors"] == ["plain normalization failure"]
+
+
+@pytest.mark.parametrize("failure_stage", ["plan", "environment"])
+def test_issue137_device_cli_plain_valueerror_returns_structured_failure(
+    tmp_path: Path, monkeypatch, failure_stage: str
+) -> None:
+    from tools import issue137_device
+
+    plan = runner.load_plan(PLAN)
+
+    def raise_valueerror(*_args: object, **_kwargs: object) -> object:
+        raise ValueError(f"plain {failure_stage} failure")
+
+    if failure_stage == "plan":
+        monkeypatch.setattr(issue137_device.issue137, "load_plan", raise_valueerror)
+    else:
+        monkeypatch.setattr(issue137_device.issue137, "load_plan", lambda *_args: plan)
+        monkeypatch.setattr(issue137_device, "_load_environment", raise_valueerror)
+
+    result = issue137_device.main(
+        [
+            "--env-json",
+            str(tmp_path / "environment.json"),
+            "--mode",
+            "smoke",
+            "--load-core-count",
+            "18",
+            "--load-total-blocks",
+            "171",
+            "--load-matrix-block",
+            "8",
+            "--target-seconds",
+            "20",
+            "--outer-timeout-seconds",
+            "70",
+            "--plan-hash",
+            "fixture-plan-hash",
+        ]
+    )
+
+    assert result == 2
+
+
+def test_issue137_plain_valueerror_trace_finalization_is_recorded(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from types import SimpleNamespace
+
+    plan = runner.load_plan(PLAN)
+    config = runner.configuration(plan, "C018")
+    environment = _issue137_environment()
+    result_path = tmp_path / "runner-result.json"
+
+    def capture(*, stage: str) -> dict[str, object]:
+        return {
+            "schema": runner.ISSUE137_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "status": "ok",
+            "returncode": 0,
+            "captured_at_utc": "2026-10-20T00:00:00+00:00",
+            "timestamp_monotonic_ns": 0,
+            "snapshot_elapsed_ns": 1,
+            "snapshot": _snapshot(),
+        }
+
+    def command_runner(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        result_path.write_text(
+            json.dumps(_device_result(config, environment)), encoding="utf-8"
+        )
+        return SimpleNamespace(returncode=0, stdout="results -> /out/runner-result.json\n")
+
+    def raise_valueerror(*_args: object, **_kwargs: object) -> None:
+        raise ValueError("plain trace finalization failure")
+
+    monkeypatch.setattr(runner, "write_trace_from_captures", raise_valueerror)
+    record = runner.run_one(
+        plan=plan,
+        configuration=config,
+        mode="smoke",
+        output_dir=tmp_path,
+        run_id="issue137-plain-valueerror-trace",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+            trace_path=tmp_path / "trace.csv",
+            trace_interval_seconds=60.0,
+        ),
+    )
+
+    assert record["status"] == "failed"
+    assert record["failure"]["kind"] == "trace_capture_failure"
+    assert record["trace_error"] == "ValueError"

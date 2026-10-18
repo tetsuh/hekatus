@@ -61,7 +61,10 @@ def _parser() -> argparse.ArgumentParser:
 
 def _load_environment(path: Path) -> dict[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        source = issue137._trusted_path(path, field="Issue #137 environment artifact")
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except issue137.Issue137Error as exc:
+        raise Issue137DeviceError(str(exc)) from exc
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Issue137DeviceError(f"cannot read environment artifact: {path.name}") from exc
     if not isinstance(payload, dict):
@@ -83,13 +86,11 @@ def _result_path(args: argparse.Namespace) -> Path:
     return issue137.resolve_result_path(environment_path=Path(environment_path))
 
 
-def _validate_preflight(
+def _validate_load_arguments(
     args: argparse.Namespace,
     *,
     plan: Mapping[str, Any],
     config: issue137.Issue137Configuration,
-    environment: Mapping[str, Any],
-    result_path: Path,
 ) -> None:
     if args.condition != "newton_schulz":
         raise Issue137DeviceError("Issue #137 device runner requires Newton-Schulz")
@@ -119,18 +120,31 @@ def _validate_preflight(
         raise Issue137DeviceError("Issue #137 guard does not match the plan")
     if args.overrun_limit_seconds != DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue137DeviceError("Issue #137 overrun limit does not match the plan")
-    if result_path.exists() or result_path.is_symlink():
+
+
+def _validate_result_destination(path: Path) -> Path:
+    try:
+        destination = issue137._trusted_write_path(
+            path, field="Issue #137 result destination"
+        )
+    except issue137.Issue137Error as exc:
+        raise Issue137DeviceError(str(exc)) from exc
+    if destination.exists() or destination.is_symlink():
         raise Issue137DeviceError("Issue #137 result destination collides with an existing artifact")
-    if result_path.parent.is_symlink():
-        raise Issue137DeviceError("Issue #137 result destination parent must not be a symlink")
-    result_path.parent.mkdir(parents=True, exist_ok=True)
-    if not result_path.parent.is_dir():
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise Issue137DeviceError("Issue #137 result destination parent cannot be created") from exc
+    if not destination.parent.is_dir():
         raise Issue137DeviceError("Issue #137 result destination parent is not a directory")
-    # Build the exact core plan again before any TTNN import.  This keeps the
-    # L1/placement checks in the shared board-free planner and makes invalid
-    # work fail before device open.
-    if config.core_plan.as_record() != expected.as_record():
-        raise Issue137DeviceError("Issue #137 core plan is not self-consistent")
+    return destination
+
+
+def _validate_environment_binding(
+    plan: Mapping[str, Any],
+    config: issue137.Issue137Configuration,
+    environment: Mapping[str, Any],
+) -> None:
     environment_record = issue137.build_environment_record(environment, config)
     scope = plan.get("measurement_scope")
     board_id = scope.get("board_serial") if isinstance(scope, Mapping) else None
@@ -141,20 +155,39 @@ def _validate_preflight(
         raise Issue137DeviceError("Issue #137 environment identity does not match the plan")
 
 
+def _validate_preflight(
+    args: argparse.Namespace,
+    *,
+    plan: Mapping[str, Any],
+    config: issue137.Issue137Configuration,
+    environment: Mapping[str, Any],
+    result_path: Path,
+) -> Path:
+    _validate_load_arguments(args, plan=plan, config=config)
+    safe_result_path = _validate_result_destination(result_path)
+    _validate_environment_binding(plan, config, environment)
+    return safe_result_path
+
+
 def _safe_result_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     return issue137._safe_json_value(environment)
 
 
 def _write_result(path: Path, result: Mapping[str, Any]) -> None:
     try:
-        if path.exists() or path.is_symlink():
+        destination = issue137._trusted_write_path(
+            path, field="Issue #137 result destination"
+        )
+        if destination.exists() or destination.is_symlink():
             raise Issue137DeviceError("Issue #137 result destination already exists")
-        path.write_text(
+        destination.write_text(
             strict_json_dumps(issue137._safe_json_value(result), indent=2) + "\n",
             encoding="utf-8",
         )
     except Issue137DeviceError:
         raise
+    except issue137.Issue137Error as exc:
+        raise Issue137DeviceError(str(exc)) from exc
     except (OSError, TypeError, ValueError) as exc:
         raise Issue137DeviceError("Issue #137 result could not be persisted") from exc
 
@@ -201,7 +234,7 @@ def run(args: argparse.Namespace) -> int:
     config = issue137.configuration(plan, matches[0]["id"])
     environment = _load_environment(args.env_json)
     result_path = _result_path(args)
-    _validate_preflight(
+    result_path = _validate_preflight(
         args,
         plan=plan,
         config=config,
@@ -300,7 +333,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         return run(args)
-    except (Issue137DeviceError, OSError, ValueError, TypeError) as exc:
+    except (ValueError, OSError, TypeError) as exc:
         # A result is not fabricated when preflight fails: no device work was
         # started and the wrapper's exit status is the structured diagnostic.
         print(f"issue137-device: {type(exc).__name__}: {exc}", file=sys.stderr)
