@@ -636,10 +636,11 @@ def test_wrapper_permission_rejects_duplicate_normalized_path_keys(
 
     import hardware_isolation as isolation
 
+    environment = DuplicateEnvironment()
     with pytest.raises(HardwareAccessViolation):
         isolation._audit_event(
             "subprocess.Popen",
-            (str(wrapper), [str(wrapper)], str(tmp_path), DuplicateEnvironment()),
+            (str(wrapper), [str(wrapper)], str(tmp_path), environment),
         )
 
 
@@ -795,7 +796,8 @@ def test_wrapper_permission_resolves_cwd_symlinks_before_relative_path_lookup(
 
     assert calls == []
     assert os.path.realpath(cwd_link / "..") == str(outside)
-    assert base_tools.exists() and outside_tools.exists()
+    assert base_tools.exists()
+    assert outside_tools.exists()
 
 
 @pytest.mark.usefixtures("wrapper_execution")
