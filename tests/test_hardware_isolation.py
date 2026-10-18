@@ -403,9 +403,14 @@ def test_ordinary_relative_dir_fd_open_remains_available(tmp_path: pathlib.Path)
         os.close(directory_fd)
 
 
-def test_at_fdcwd_relative_open_remains_available() -> None:
+def test_at_fdcwd_relative_open_remains_available(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child = tmp_path / "child"
+    child.write_text("safe\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
     at_fdcwd = getattr(os, "AT_FDCWD", -100)
-    file_fd = os.open("tests/test_hardware_isolation.py", os.O_RDONLY, dir_fd=at_fdcwd)
+    file_fd = os.open("child", os.O_RDONLY, dir_fd=at_fdcwd)
     try:
         assert os.read(file_fd, 1)
     finally:
@@ -539,11 +544,14 @@ def test_wrapper_permission_reaches_only_inert_wrapper_downstream(
 def test_issue137_missing_capture_callback_is_blocked_before_workload(
     tmp_path: pathlib.Path,
     inert_process_downstream: list[object],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from tools import issue137 as runner
 
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    monkeypatch.chdir(repo_root)
     plan = runner.load_plan(
-        pathlib.Path("docs/measurements/2026-10-18-host-newton-schulz-issue137-plan.json")
+        repo_root / "docs/measurements/2026-10-18-host-newton-schulz-issue137-plan.json"
     )
     configuration = runner.configuration(plan, "C018")
     workload_calls: list[object] = []
@@ -552,6 +560,7 @@ def test_issue137_missing_capture_callback_is_blocked_before_workload(
         workload_calls.append((args, kwargs))
         raise AssertionError("workload callback was reached before snapshot capture")
 
+    options = runner.Issue137RunOptions(command_runner=command_runner)
     with pytest.raises(HardwareAccessViolation):
         runner.run_one(
             plan=plan,
@@ -559,7 +568,7 @@ def test_issue137_missing_capture_callback_is_blocked_before_workload(
             mode="smoke",
             output_dir=tmp_path,
             run_id="issue137-missing-capture-callback",
-            options=runner.Issue137RunOptions(command_runner=command_runner),
+            options=options,
         )
 
     assert workload_calls == []
