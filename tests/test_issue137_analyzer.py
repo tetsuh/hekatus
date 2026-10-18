@@ -321,6 +321,56 @@ def test_analyzer_contract_is_importable() -> None:
     assert analysis.ANALYSIS_SCHEMA == "issue137-analysis-v1"
 
 
+def test_source_path_rejects_traversal_outside_record_directory(tmp_path: Path) -> None:
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    with pytest.raises(analysis.AnalysisError, match="file name"):
+        analysis._source_path(
+            "../outside.json", base_dir=record_dir, purpose="pre-run snapshot"
+        )
+
+
+def test_source_path_rejects_symlink_escape(tmp_path: Path) -> None:
+    record_dir = tmp_path / "records"
+    record_dir.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    (record_dir / "snapshot.json").symlink_to(outside)
+    with pytest.raises(analysis.AnalysisError, match="escapes"):
+        analysis._source_path(
+            "snapshot.json", base_dir=record_dir, purpose="pre-run snapshot"
+        )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("+1.25e+2", 125.0),
+        ("-.5E-2", -0.005),
+        ("1.", 1.0),
+        (".75", 0.75),
+        ("  -0  ", -0.0),
+    ],
+)
+def test_limit_parser_numeric_edge_cases(value: str, expected: float) -> None:
+    parsed, status, error = analysis._parse_unit_value(value, expected_unit="W")
+    assert parsed == pytest.approx(expected)
+    assert status == "source_field"
+    assert error is None
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "1_000", "1e", "0x10"])
+def test_limit_parser_rejects_noncanonical_numeric_values(value: str) -> None:
+    parsed, _status, error = analysis._parse_unit_value(value, expected_unit="W")
+    assert parsed is None
+    assert error
+
+
+def test_limit_parser_rejects_nonfinite_numeric_values() -> None:
+    with pytest.raises(analysis.AnalysisError, match="finite"):
+        analysis._parse_unit_value("1e309", expected_unit="W")
+
+
 def test_supports_each_preregistered_hypothesis() -> None:
     for hypothesis in ("H-BPL", "H-TDC", "H-TDP", "H-THM"):
         result = _analyze(_trace_set(hypothesis=hypothesis))

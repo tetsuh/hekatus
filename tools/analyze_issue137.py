@@ -90,9 +90,7 @@ _MISSING = object()
 _PATH_RE = re.compile(
     r"(?:^|[\s'\"(])(?:/home/|/Users/|/root/|/tmp/|~[/\\]|[A-Za-z]:[\\/])"
 )
-_UNIT_VALUE_RE = re.compile(
-    r"^\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*([A-Za-z°]+)?\s*$"
-)
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 
 class AnalysisError(ValueError):
@@ -205,7 +203,11 @@ def _safe_public(value: Any) -> Any:
         return [_safe_public(child) for child in value]
     if isinstance(value, Path):
         return value.name
-    if isinstance(value, str) and _PATH_RE.search(value):
+    if isinstance(value, str) and (
+        _PATH_RE.search(value)
+        or value.startswith("/")
+        or any(part == ".." for part in re.split(r"[/\\\\]", value))
+    ):
         return "<redacted-path>"
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
@@ -215,12 +217,7 @@ def _safe_public(value: Any) -> Any:
 def _trusted_roots() -> tuple[Path, ...]:
     return tuple(
         root.resolve(strict=False)
-        for root in (
-            Path.cwd(),
-            Path(tempfile.gettempdir()),
-            Path("/out"),
-            Path(__file__).resolve().parents[1],
-        )
+        for root in (_REPOSITORY_ROOT, Path(tempfile.gettempdir()), Path("/out"))
     )
 
 
@@ -232,19 +229,36 @@ def _safe_cli_path(value: str | Path, *, purpose: str, output: bool = False) -> 
             raise AnalysisError(f"{purpose} path must not be a symbolic link")
     except (OSError, RuntimeError, TypeError) as exc:
         raise AnalysisError(f"{purpose} path cannot be resolved safely") from exc
-    if not any(resolved.is_relative_to(root) for root in _trusted_roots()):
+    roots = _trusted_roots()
+    if not any(resolved.is_relative_to(root) for root in roots):
         raise AnalysisError(f"{purpose} path must be beneath a trusted project directory")
     return resolved
 
 
+def _read_bytes(path: Path, *, purpose: str) -> bytes:
+    checked = _safe_cli_path(path, purpose=purpose)
+    try:
+        return checked.read_bytes()
+    except OSError as exc:
+        raise AnalysisError(f"{purpose} cannot be read") from exc
+
+
 def _load_json(path: Path, *, purpose: str) -> Mapping[str, Any]:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        payload = json.loads(_read_bytes(path, purpose=purpose).decode("utf-8"))
+    except (AnalysisError, UnicodeError, json.JSONDecodeError) as exc:
         raise AnalysisError(f"{purpose} cannot be read") from exc
     if not isinstance(payload, Mapping):
         raise AnalysisError(f"{purpose} must be an object")
     return payload
+
+
+def _write_text(path: Path, text: str, *, purpose: str) -> None:
+    checked = _safe_cli_path(path, purpose=purpose, output=True)
+    try:
+        checked.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        raise AnalysisError(f"{purpose} cannot be written") from exc
 
 
 def _plan_hash(plan: Mapping[str, Any]) -> str:
@@ -279,9 +293,7 @@ def _expected_configurations(
         return {}
 
 
-def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
-    if plan.get("record_schema") != "issue137-premeasurement-plan-v1":
-        raise AnalysisError("unsupported Issue #137 plan schema")
+def _plan_roles(plan: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     configurations = plan.get("configurations")
     if not isinstance(configurations, list) or not configurations:
         raise AnalysisError("Issue #137 plan configurations are missing")
@@ -293,9 +305,12 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         if identifier in roles:
             raise AnalysisError("Issue #137 plan has duplicate configuration IDs")
         roles[identifier] = dict(item)
-    scope = plan.get("measurement_scope")
-    if not isinstance(scope, Mapping):
-        raise AnalysisError("Issue #137 plan measurement_scope is missing")
+    return roles
+
+
+def _plan_order(
+    scope: Mapping[str, Any], roles: Mapping[str, Mapping[str, Any]]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     raw_order = scope.get("order")
     if not isinstance(raw_order, list) or not all(isinstance(item, str) for item in raw_order):
         raise AnalysisError("Issue #137 plan order is missing")
@@ -304,13 +319,17 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         raise AnalysisError("Issue #137 plan order is invalid")
     if any(order.count(identifier) != 2 for identifier in roles):
         raise AnalysisError("Issue #137 plan order must contain two runs per configuration")
-    verdict_configurations = tuple(
+    verdict = tuple(
         dict.fromkeys(
-            identifier
-            for identifier in order
-            if roles[identifier].get("verdict_bearing") is True
+            identifier for identifier in order if roles[identifier].get("verdict_bearing") is True
         )
     )
+    return order, verdict
+
+
+def _plan_criteria(
+    plan: Mapping[str, Any],
+) -> tuple[float, float, float]:
     criteria = plan.get("criteria")
     if not isinstance(criteria, Mapping):
         raise AnalysisError("Issue #137 plan criteria are missing")
@@ -336,6 +355,10 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         (r"\(([0-9]+(?:\.[0-9]+)?)\s*percent",),
         field="thermal pin fraction",
     ) / 100.0
+    return tolerance, aiclk_fraction, thermal_fraction
+
+
+def _plan_limits(plan: Mapping[str, Any]) -> dict[str, float]:
     limits = plan.get("limits")
     if not isinstance(limits, Mapping):
         raise AnalysisError("Issue #137 expected limits are missing")
@@ -350,33 +373,42 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         if plan_key not in limits:
             raise AnalysisError(f"Issue #137 plan is missing expected limit {plan_key}")
         expected_limits[name] = _finite(limits[plan_key], field=f"plan limits.{plan_key}")
+    return expected_limits
+
+
+def _plan_policy(plan: Mapping[str, Any]) -> dict[str, str]:
     policy = plan.get("classification_policy")
     if not isinstance(policy, Mapping):
         raise AnalysisError("Issue #137 classification_policy is missing")
-    policy_keys = (
-        "exactly_one_supported",
-        "more_than_one_supported",
-        "none_supported",
-        "not_evaluable",
-    )
-    classification_policy: dict[str, str] = {}
-    for key in policy_keys:
+    keys = ("exactly_one_supported", "more_than_one_supported", "none_supported", "not_evaluable")
+    result: dict[str, str] = {}
+    for key in keys:
         value = policy.get(key)
         if not isinstance(value, str) or not value:
             raise AnalysisError(f"Issue #137 classification policy is missing {key}")
-        classification_policy[key] = value
+        result[key] = value
+    return result
+
+
+def _plan_plateau(plan: Mapping[str, Any]) -> tuple[float, float]:
     plateau = plan.get("plateau")
     if not isinstance(plateau, Mapping):
         raise AnalysisError("Issue #137 plateau is missing")
-    plateau_start = _finite(plateau.get("start_seconds"), field="plan plateau start_seconds")
-    plateau_end = _finite(plateau.get("end_seconds"), field="plan plateau end_seconds")
-    if plateau_start < 0.0 or plateau_end <= plateau_start:
+    start = _finite(plateau.get("start_seconds"), field="plan plateau start_seconds")
+    end = _finite(plateau.get("end_seconds"), field="plan plateau end_seconds")
+    if start < 0.0 or end <= start:
         raise AnalysisError("Issue #137 plateau interval is invalid")
+    return start, end
+
+
+def _plan_durations(
+    plan: Mapping[str, Any], scope: Mapping[str, Any]
+) -> tuple[float, float, float, float, float]:
     execution = plan.get("load_execution")
     if not isinstance(execution, Mapping) or execution.get("mode") != ISSUE137_LOAD_MODE:
         raise AnalysisError("Issue #137 plan does not select host-duration-bounded execution")
     try:
-        overrun_limit = _finite(
+        overrun = _finite(
             execution.get("overrun_limit_seconds", DEFAULT_OVERRUN_LIMIT_SECONDS),
             field="plan overrun_limit_seconds",
         )
@@ -387,13 +419,20 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         smoke_guard = _finite(smoke_scope["guard_seconds"], field="plan smoke guard")
     except (KeyError, TypeError) as exc:
         raise AnalysisError("Issue #137 plan duration bounds are incomplete") from exc
-    if overrun_limit < 0.0 or long_target <= 0.0 or long_guard < long_target:
+    if overrun < 0.0 or long_target <= 0.0 or long_guard < long_target:
         raise AnalysisError("Issue #137 long duration bounds are invalid")
     if smoke_target <= 0.0 or smoke_guard < smoke_target:
         raise AnalysisError("Issue #137 smoke duration bounds are invalid")
-    required_environment = plan.get("provenance", {}).get("required_environment_fields")
-    if not isinstance(required_environment, list) or not all(
-        isinstance(item, str) and item for item in required_environment
+    return overrun, long_target, long_guard, smoke_target, smoke_guard
+
+
+def _plan_identity(
+    plan: Mapping[str, Any], scope: Mapping[str, Any]
+) -> tuple[tuple[str, ...], str, str, str]:
+    provenance = plan.get("provenance", {})
+    required = provenance.get("required_environment_fields") if isinstance(provenance, Mapping) else None
+    if not isinstance(required, list) or not all(
+        isinstance(item, str) and item for item in required
     ):
         raise AnalysisError("Issue #137 required environment provenance is missing")
     board_serial = scope.get("board_serial")
@@ -401,10 +440,27 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
     device_node = scope.get("device_node")
     if not all(isinstance(value, str) and value for value in (board_serial, pci_bus_id, device_node)):
         raise AnalysisError("Issue #137 selected board identity is incomplete")
+    return tuple(required), board_serial, pci_bus_id, device_node
+
+
+def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
+    if plan.get("record_schema") != "issue137-premeasurement-plan-v1":
+        raise AnalysisError("unsupported Issue #137 plan schema")
+    roles = _plan_roles(plan)
+    scope = plan.get("measurement_scope")
+    if not isinstance(scope, Mapping):
+        raise AnalysisError("Issue #137 plan measurement_scope is missing")
+    order, verdict = _plan_order(scope, roles)
+    tolerance, aiclk_fraction, thermal_fraction = _plan_criteria(plan)
+    expected_limits = _plan_limits(plan)
+    policy = _plan_policy(plan)
+    plateau_start, plateau_end = _plan_plateau(plan)
+    overrun, long_target, long_guard, smoke_target, smoke_guard = _plan_durations(plan, scope)
+    required, board_serial, pci_bus_id, device_node = _plan_identity(plan, scope)
     return _PlanSpec(
         plan=plan,
         order=order,
-        verdict_configurations=verdict_configurations,
+        verdict_configurations=verdict,
         configuration_roles=roles,
         expected_configurations=_expected_configurations(roles, plan),
         plateau_start_seconds=plateau_start,
@@ -413,16 +469,16 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
         tolerance_fraction=tolerance,
         aiclk_fraction=aiclk_fraction,
         thermal_pin_fraction=thermal_fraction,
-        classification_policy=classification_policy,
+        classification_policy=policy,
         long_target_seconds=long_target,
         long_guard_seconds=long_guard,
         smoke_target_seconds=smoke_target,
         smoke_guard_seconds=smoke_guard,
-        overrun_limit_seconds=overrun_limit,
+        overrun_limit_seconds=overrun,
         board_serial=board_serial,
         pci_bus_id=pci_bus_id,
         device_node=device_node,
-        required_environment_fields=tuple(required_environment),
+        required_environment_fields=required,
         plan_sha256=_plan_hash(plan),
     )
 
@@ -459,10 +515,22 @@ def _record_name(record_input: _RecordInput, index: int) -> str:
 def _source_path(value: Any, *, base_dir: Path | None, purpose: str) -> Path:
     if not isinstance(value, (str, Path)) or not str(value):
         raise AnalysisError(f"{purpose} path is missing")
-    candidate = Path(value)
-    if not candidate.is_absolute() and base_dir is not None:
-        candidate = base_dir / candidate
-    return _safe_cli_path(candidate, purpose=purpose)
+    if base_dir is None:
+        raise AnalysisError(f"{purpose} path has no trusted record directory")
+    reference = str(value)
+    candidate_name = Path(reference).name
+    if (
+        Path(reference).is_absolute()
+        or candidate_name != reference
+        or reference in {".", ".."}
+        or any(separator in reference for separator in ("/", "\\"))
+    ):
+        raise AnalysisError(f"{purpose} path must be a file name")
+    trusted_base = _safe_cli_path(base_dir, purpose=f"{purpose} directory")
+    resolved = _safe_cli_path(trusted_base / candidate_name, purpose=purpose)
+    if not resolved.is_relative_to(trusted_base):
+        raise AnalysisError(f"{purpose} path escapes its trusted record directory")
+    return resolved
 
 
 _TRACE_HASH_FIELDS = frozenset({"sha256", "byte_count", "trace_sha256", "trace_byte_count"})
@@ -525,6 +593,51 @@ def _bound_gddr_provenance(record: Mapping[str, Any], payload: Mapping[str, Any]
     return any(_provenance_is_bound(candidate) for candidate in candidates)
 
 
+def _copy_trace_row_metadata(raw_row: Mapping[str, Any], row: dict[str, Any]) -> None:
+    metadata_fields = (
+        "timestamp_utc",
+        "snapshot_elapsed_ns",
+        "heartbeat",
+        "therm_trip_count",
+        "throttle_status",
+        "throttle_reason",
+        *GDDR_FIELDS,
+    )
+    for field in metadata_fields:
+        if field in raw_row:
+            row[field] = raw_row[field]
+    for field in ("MAX_GDDR_TEMP", "max_gddr_temp", "max_gddr_temp_raw"):
+        if field in raw_row:
+            row["MAX_GDDR_TEMP"] = raw_row[field]
+
+
+def _parse_trace_row(raw_row: Mapping[str, Any], index: int, load: _TraceLoad) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for field in TRACE_REQUIRED_FIELDS:
+        if field not in raw_row or raw_row[field] is None or raw_row[field] == "":
+            load.missing_fields.add(field)
+            continue
+        try:
+            if field == "timestamp_monotonic_ns":
+                row[field] = _integer(raw_row[field], field=f"trace row {index} {field}")
+            else:
+                row[field] = _finite(raw_row[field], field=f"trace row {index} {field}")
+        except AnalysisError as exc:
+            load.errors.append(str(exc))
+            load.missing_fields.add(field)
+    _copy_trace_row_metadata(raw_row, row)
+    return row
+
+
+def _trace_has_missing_gddr(raw_rows: Sequence[Any]) -> bool:
+    return any(
+        field not in raw_row
+        for raw_row in raw_rows
+        if isinstance(raw_row, Mapping)
+        for field in GDDR_FIELDS
+    )
+
+
 def _raw_trace_rows(payload: Mapping[str, Any], load: _TraceLoad) -> None:
     raw_rows = payload.get("samples")
     if not isinstance(raw_rows, list):
@@ -532,51 +645,19 @@ def _raw_trace_rows(payload: Mapping[str, Any], load: _TraceLoad) -> None:
         load.missing_fields.add("trace.samples")
         return
     for index, raw_row in enumerate(raw_rows):
-        if not isinstance(raw_row, Mapping):
+        if isinstance(raw_row, Mapping):
+            load.rows.append(_parse_trace_row(raw_row, index, load))
+        else:
             load.errors.append(f"trace row {index} is not an object")
-            continue
-        row: dict[str, Any] = {}
-        for field in TRACE_REQUIRED_FIELDS:
-            if field not in raw_row or raw_row[field] is None or raw_row[field] == "":
-                load.missing_fields.add(field)
-                continue
-            try:
-                if field == "timestamp_monotonic_ns":
-                    row[field] = _integer(raw_row[field], field=f"trace row {index} {field}")
-                else:
-                    row[field] = _finite(raw_row[field], field=f"trace row {index} {field}")
-            except AnalysisError as exc:
-                load.errors.append(str(exc))
-                load.missing_fields.add(field)
-        for field in (
-            "timestamp_utc",
-            "snapshot_elapsed_ns",
-            "heartbeat",
-            "therm_trip_count",
-            "throttle_status",
-            "throttle_reason",
-            *GDDR_FIELDS,
-        ):
-            if field in raw_row:
-                row[field] = raw_row[field]
-        for field in ("MAX_GDDR_TEMP", "max_gddr_temp", "max_gddr_temp_raw"):
-            if field in raw_row:
-                row["MAX_GDDR_TEMP"] = raw_row[field]
-        load.rows.append(row)
-    if any(
-        field not in raw_row
-        for raw_row in raw_rows
-        if isinstance(raw_row, Mapping)
-        for field in GDDR_FIELDS
-    ):
+    if _trace_has_missing_gddr(raw_rows):
         load.errors.append("GDDR temperature fields are missing from one or more rows")
 
 
 def _trace_payload_from_csv(path: Path) -> tuple[dict[str, Any], bytes]:
     try:
-        raw = path.read_bytes()
+        raw = _read_bytes(path, purpose="trace source")
         text = raw.decode("utf-8")
-    except (OSError, UnicodeError) as exc:
+    except (AnalysisError, UnicodeError) as exc:
         raise AnalysisError("trace source cannot be read") from exc
     try:
         reader = csv.DictReader(text.splitlines())
@@ -627,6 +708,106 @@ def _extract_bounds(
     )
 
 
+def _trace_file_payload(
+    record: Mapping[str, Any], *, base_dir: Path | None
+) -> tuple[Mapping[str, Any] | None, str | None, bytes | None, str | None]:
+    trace = record.get("trace")
+    path_value = trace.get("path") if isinstance(trace, Mapping) else None
+    if path_value is None:
+        return None, None, None, "trace source is missing"
+    try:
+        path = _source_path(path_value, base_dir=base_dir, purpose="trace source")
+        if path.suffix.lower() == ".json":
+            return _load_json(path, purpose="trace source"), path.name, _read_bytes(
+                path, purpose="trace source"
+            ), None
+        payload, source_bytes = _trace_payload_from_csv(path)
+        return payload, path.name, source_bytes, None
+    except (OSError, TypeError, ValueError) as exc:
+        return None, Path(str(path_value)).name, None, str(exc)
+
+
+def _trace_load_error(source_name: str | None, error: str) -> _TraceLoad:
+    return _TraceLoad(
+        rows=[],
+        source_name=source_name,
+        source_sha256=None,
+        source_byte_count=None,
+        source_established=False,
+        bounds_start_ns=None,
+        bounds_end_ns=None,
+        errors=[error],
+        missing_fields={"trace"},
+        reader_facts={},
+    )
+
+
+def _trace_hash_error(
+    source_bytes: bytes, expected_hash: Any, expected_bytes: Any
+) -> str | None:
+    if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
+        return "trace SHA-256 provenance is missing or invalid"
+    if not isinstance(expected_bytes, int) or isinstance(expected_bytes, bool) or expected_bytes < 1:
+        return "trace byte-count provenance is missing or invalid"
+    if hashlib.sha256(source_bytes).hexdigest() != expected_hash or len(source_bytes) != expected_bytes:
+        return "trace source bytes do not match persisted hash/byte-count provenance"
+    return None
+
+
+def _trace_reader_facts(load: _TraceLoad, payload: Mapping[str, Any]) -> None:
+    try:
+        reader_payload = dict(payload)
+        reader_payload["samples"] = [dict(row) for row in payload.get("samples", [])]
+        if load.bounds_start_ns is not None:
+            reader_payload["run_start_monotonic_ns"] = load.bounds_start_ns
+        if load.bounds_end_ns is not None:
+            reader_payload["run_end_monotonic_ns"] = load.bounds_end_ns
+        facts = power_trace_issue137.read_issue137_power_trace_mapping(
+            reader_payload,
+            run_start_monotonic_ns=load.bounds_start_ns,
+            run_end_monotonic_ns=load.bounds_end_ns,
+            source_established=load.source_established,
+        )
+        load.reader_facts = _safe_public(facts)
+        if facts.get("valid") is not True:
+            load.errors.extend(str(error) for error in facts.get("errors", ()))
+    except (TypeError, ValueError, KeyError) as exc:
+        load.errors.append(f"trace reader rejected source: {type(exc).__name__}")
+
+
+def _trace_metadata(record: Mapping[str, Any]) -> tuple[Any, Any]:
+    trace_metadata = record.get("trace")
+    if not isinstance(trace_metadata, Mapping):
+        return None, None
+    return (
+        trace_metadata.get("sha256", trace_metadata.get("trace_sha256")),
+        trace_metadata.get("byte_count", trace_metadata.get("trace_byte_count")),
+    )
+
+
+def _trace_schema_errors(payload: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if payload.get("schema") != power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA:
+        errors.append("Issue #137 trace schema is unsupported")
+    if tuple(payload.get("columns", ())) != power_trace_issue137.ISSUE137_POWER_TRACE_COLUMNS:
+        errors.append("Issue #137 trace columns are invalid")
+    return errors
+
+
+def _trace_bound_errors(record: Mapping[str, Any], payload: Mapping[str, Any], load: _TraceLoad) -> None:
+    load.bounds_start_ns, load.bounds_end_ns = _extract_bounds(record, payload)
+    if load.bounds_start_ns is None:
+        load.missing_fields.add("run_start_monotonic_ns")
+    if load.bounds_end_ns is None:
+        load.missing_fields.add("run_end_monotonic_ns")
+    if (
+        load.bounds_start_ns is not None
+        and load.bounds_end_ns is not None
+        and load.bounds_end_ns <= load.bounds_start_ns
+    ):
+        load.errors.append("run monotonic bounds are not a positive interval")
+
+
 def _load_trace_source(
     record: Mapping[str, Any],
     *,
@@ -638,70 +819,18 @@ def _load_trace_source(
     source_name: str | None = None
     source_bytes: bytes | None = None
     if payload is None:
-        trace = record.get("trace")
-        path_value = trace.get("path") if isinstance(trace, Mapping) else None
-        if path_value is None:
-            return _TraceLoad(
-                rows=[],
-                source_name=None,
-                source_sha256=None,
-                source_byte_count=None,
-                source_established=False,
-                bounds_start_ns=None,
-                bounds_end_ns=None,
-                errors=["trace source is missing"],
-                missing_fields={"trace"},
-                reader_facts={},
-            )
-        try:
-            path = _source_path(path_value, base_dir=base_dir, purpose="trace source")
-            source_name = path.name
-            if path.suffix.lower() == ".json":
-                payload = _load_json(path, purpose="trace source")
-                source_bytes = path.read_bytes()
-            else:
-                payload, source_bytes = _trace_payload_from_csv(path)
-        except (AnalysisError, OSError, TypeError, ValueError) as exc:
-            return _TraceLoad(
-                rows=[],
-                source_name=Path(str(path_value)).name,
-                source_sha256=None,
-                source_byte_count=None,
-                source_established=False,
-                bounds_start_ns=None,
-                bounds_end_ns=None,
-                errors=[str(exc)],
-                missing_fields={"trace"},
-                reader_facts={},
-            )
+        payload, source_name, source_bytes, load_error = _trace_file_payload(
+            record, base_dir=base_dir
+        )
+        if load_error is not None or payload is None or source_bytes is None:
+            return _trace_load_error(source_name, load_error or "trace source is missing")
     if source_name is None:
         source_name = str(record.get("trace_name") or f"{record_name}.trace")
     if source_bytes is None:
         source_bytes = _canonical_trace_bytes(payload)
     established = source_verified and _bound_gddr_provenance(record, payload)
-    trace_metadata = record.get("trace")
-    expected_hash = (
-        trace_metadata.get("sha256", trace_metadata.get("trace_sha256"))
-        if isinstance(trace_metadata, Mapping)
-        else None
-    )
-    expected_bytes = (
-        trace_metadata.get("byte_count", trace_metadata.get("trace_byte_count"))
-        if isinstance(trace_metadata, Mapping)
-        else None
-    )
-    if not isinstance(expected_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_hash):
-        load_hash_error = "trace SHA-256 provenance is missing or invalid"
-    elif not isinstance(expected_bytes, int) or isinstance(expected_bytes, bool) or expected_bytes < 1:
-        load_hash_error = "trace byte-count provenance is missing or invalid"
-    elif hashlib.sha256(source_bytes).hexdigest() != expected_hash or len(source_bytes) != expected_bytes:
-        load_hash_error = "trace source bytes do not match persisted hash/byte-count provenance"
-    else:
-        load_hash_error = None
-    if load_hash_error is not None:
-        load_hash_missing = {"trace_sha256", "trace_byte_count"}
-    else:
-        load_hash_missing = set()
+    expected_hash, expected_bytes = _trace_metadata(record)
+    load_hash_error = _trace_hash_error(source_bytes, expected_hash, expected_bytes)
     load = _TraceLoad(
         rows=[],
         source_name=Path(source_name).name,
@@ -716,42 +845,45 @@ def _load_trace_source(
     )
     if load_hash_error is not None:
         load.errors.append(load_hash_error)
-        load.missing_fields.update(load_hash_missing)
-    if payload.get("schema") != power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA:
-        load.errors.append("Issue #137 trace schema is unsupported")
-    if tuple(payload.get("columns", ())) != power_trace_issue137.ISSUE137_POWER_TRACE_COLUMNS:
-        load.errors.append("Issue #137 trace columns are invalid")
+        load.missing_fields.update({"trace_sha256", "trace_byte_count"})
+    load.errors.extend(_trace_schema_errors(payload))
     _raw_trace_rows(payload, load)
-    load.bounds_start_ns, load.bounds_end_ns = _extract_bounds(record, payload)
-    if load.bounds_start_ns is None:
-        load.missing_fields.add("run_start_monotonic_ns")
-    if load.bounds_end_ns is None:
-        load.missing_fields.add("run_end_monotonic_ns")
-    if (
-        load.bounds_start_ns is not None
-        and load.bounds_end_ns is not None
-        and load.bounds_end_ns <= load.bounds_start_ns
-    ):
-        load.errors.append("run monotonic bounds are not a positive interval")
-    try:
-        reader_payload = dict(payload)
-        reader_payload["samples"] = [dict(row) for row in payload.get("samples", [])]
-        if load.bounds_start_ns is not None:
-            reader_payload["run_start_monotonic_ns"] = load.bounds_start_ns
-        if load.bounds_end_ns is not None:
-            reader_payload["run_end_monotonic_ns"] = load.bounds_end_ns
-        facts = power_trace_issue137.read_issue137_power_trace_mapping(
-            reader_payload,
-            run_start_monotonic_ns=load.bounds_start_ns,
-            run_end_monotonic_ns=load.bounds_end_ns,
-            source_established=established,
-        )
-        load.reader_facts = _safe_public(facts)
-        if facts.get("valid") is not True:
-            load.errors.extend(str(error) for error in facts.get("errors", ()))
-    except (TypeError, ValueError, KeyError) as exc:
-        load.errors.append(f"trace reader rejected source: {type(exc).__name__}")
+    _trace_bound_errors(record, payload, load)
+    _trace_reader_facts(load, payload)
     return load
+
+
+def _snapshot_capture_errors(snapshot: Mapping[str, Any]) -> list[str]:
+    if snapshot.get("status") not in {None, "ok"} or snapshot.get("returncode") not in {None, 0}:
+        return ["pre-run snapshot capture did not complete successfully"]
+    return []
+
+
+def _snapshot_selected_device_errors(
+    pre: Mapping[str, Any], spec: _PlanSpec
+) -> list[str]:
+    selected = pre.get("selected_device")
+    if not isinstance(selected, Mapping):
+        return []
+    errors: list[str] = []
+    if selected.get("board_id") != spec.board_serial or selected.get("bus_id") != spec.pci_bus_id:
+        errors.append("pre-run snapshot selected-device identity does not match the owner plan")
+    if selected.get("device_node") not in {None, spec.device_node}:
+        errors.append("pre-run snapshot selected-device node does not match the owner plan")
+    return errors
+
+
+def _load_snapshot_payload(
+    pre: Mapping[str, Any], *, base_dir: Path | None
+) -> tuple[Mapping[str, Any], str | None, list[str]]:
+    if isinstance(pre.get("path"), (str, Path)) and "snapshot" not in pre:
+        try:
+            path = _source_path(pre["path"], base_dir=base_dir, purpose="pre-run snapshot")
+            return _load_json(path, purpose="pre-run snapshot"), path.name, []
+        except AnalysisError as exc:
+            return {}, Path(str(pre["path"])).name, [str(exc)]
+    path_name = Path(str(pre.get("path"))).name if pre.get("path") else None
+    return pre, path_name, []
 
 
 def _pre_snapshot_mapping(
@@ -760,28 +892,11 @@ def _pre_snapshot_mapping(
     pre = record.get("pre_run_snapshot", record.get("pre_snapshot"))
     if not isinstance(pre, Mapping):
         return None, None, ["pre_run_snapshot"]
-    path_name: str | None = None
-    errors: list[str] = []
-    if pre.get("status") not in {None, "ok"} or pre.get("returncode") not in {None, 0}:
-        errors.append("pre-run snapshot capture did not complete successfully")
-    if isinstance(pre.get("selected_device"), Mapping):
-        selected = pre["selected_device"]
-        if selected.get("board_id") != spec.board_serial or selected.get("bus_id") != spec.pci_bus_id:
-            errors.append("pre-run snapshot selected-device identity does not match the owner plan")
-        if selected.get("device_node") not in {None, spec.device_node}:
-            errors.append("pre-run snapshot selected-device node does not match the owner plan")
-    if isinstance(pre.get("path"), (str, Path)) and "snapshot" not in pre:
-        try:
-            path = _source_path(pre["path"], base_dir=base_dir, purpose="pre-run snapshot")
-            payload = _load_json(path, purpose="pre-run snapshot")
-            path_name = path.name
-        except AnalysisError as exc:
-            return None, Path(str(pre["path"])).name, [str(exc)]
-    else:
-        payload = pre
-        path_name = Path(str(pre.get("path"))).name if pre.get("path") else None
-    if payload.get("status") not in {None, "ok"} or payload.get("returncode") not in {None, 0}:
-        errors.append("pre-run snapshot capture did not complete successfully")
+    errors = _snapshot_capture_errors(pre) + _snapshot_selected_device_errors(pre, spec)
+    payload, path_name, path_errors = _load_snapshot_payload(pre, base_dir=base_dir)
+    if path_errors:
+        return None, path_name, path_errors
+    errors.extend(_snapshot_capture_errors(payload))
     snapshot = payload.get("snapshot") if isinstance(payload.get("snapshot"), Mapping) else payload
     if not isinstance(snapshot, Mapping) or not isinstance(snapshot.get("device_info"), list):
         errors.append("pre-run snapshot device identity is missing")
@@ -793,12 +908,9 @@ def _pre_snapshot_mapping(
     return snapshot, path_name, list(dict.fromkeys(errors))
 
 
-def _selected_snapshot_device(
-    snapshot: Mapping[str, Any], *, board_id: str, bus_id: str
-) -> Mapping[str, Any]:
-    devices = snapshot.get("device_info")
-    if not isinstance(devices, list) or not devices:
-        raise AnalysisError("pre-run snapshot device_info is missing")
+def _snapshot_device_matches(
+    devices: Sequence[Any], *, board_id: str, bus_id: str
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]], list[Mapping[str, Any]]]:
     pair_matches: list[Mapping[str, Any]] = []
     board_matches: list[Mapping[str, Any]] = []
     bus_matches: list[Mapping[str, Any]] = []
@@ -816,11 +928,85 @@ def _selected_snapshot_device(
             bus_matches.append(device)
         if str(candidate_board) == str(board_id) and str(candidate_bus) == str(bus_id):
             pair_matches.append(device)
+    return pair_matches, board_matches, bus_matches
+
+
+def _selected_snapshot_device(
+    snapshot: Mapping[str, Any], *, board_id: str, bus_id: str
+) -> Mapping[str, Any]:
+    devices = snapshot.get("device_info")
+    if not isinstance(devices, list) or not devices:
+        raise AnalysisError("pre-run snapshot device_info is missing")
+    pair_matches, board_matches, bus_matches = _snapshot_device_matches(
+        devices, board_id=board_id, bus_id=bus_id
+    )
     if len(board_matches) != 1 or len(bus_matches) != 1 or len(pair_matches) != 1:
         raise AnalysisError("pre-run snapshot selected-device identity is not unique")
     if pair_matches[0] is not board_matches[0] or pair_matches[0] is not bus_matches[0]:
         raise AnalysisError("pre-run snapshot board and BDF identify different devices")
     return pair_matches[0]
+
+
+def _mapping_limit_value(
+    value: Mapping[str, Any],
+) -> tuple[Any, str | None, str | None, bool]:
+    explicit_unit = value.get("unit", value.get("units", value.get("source_unit")))
+    raw_value = value.get("value", _MISSING)
+    conversion_unit: str | None = None
+    conversion_proven = False
+    if raw_value is _MISSING and value.get("converted_value") is not None:
+        raw_value = value["converted_value"]
+        conversion_unit = value.get("converted_unit")
+        explicit_unit = conversion_unit or explicit_unit
+        conversion_proven = isinstance(value.get("conversion_provenance"), Mapping)
+    return raw_value, explicit_unit, conversion_unit, conversion_proven
+
+
+def _unit_literal(text: str) -> bool:
+    return bool(text) and all(
+        ("A" <= character <= "Z")
+        or ("a" <= character <= "z")
+        or character == "°"
+        for character in text
+    )
+
+
+def _split_numeric_unit(text: str) -> tuple[str, str | None] | None:
+    text = text.strip()
+    if not text:
+        return None
+    index = 1 if text[0] in "+-" else 0
+    mantissa_start = index
+    while index < len(text) and text[index].isdecimal():
+        index += 1
+    has_whole_digits = index > mantissa_start
+    has_fraction_digits = False
+    if index < len(text) and text[index] == ".":
+        index += 1
+        fraction_start = index
+        while index < len(text) and text[index].isdecimal():
+            index += 1
+        has_fraction_digits = index > fraction_start
+    if not has_whole_digits and not has_fraction_digits:
+        return None
+    if index < len(text) and text[index] in "eE":
+        exponent_at = index
+        exponent_index = index + 1
+        if exponent_index < len(text) and text[exponent_index] in "+-":
+            exponent_index += 1
+        exponent_start = exponent_index
+        while exponent_index < len(text) and text[exponent_index].isdecimal():
+            exponent_index += 1
+        if exponent_index == exponent_start:
+            unit_text = text[exponent_at:].strip()
+            if not _unit_literal(unit_text):
+                return None
+            return text[:exponent_at].strip(), unit_text
+        index = exponent_index
+    unit_text = text[index:].strip()
+    if unit_text and not _unit_literal(unit_text):
+        return None
+    return text[:index].strip(), unit_text or None
 
 
 def _parse_unit_value(value: Any, *, expected_unit: str) -> tuple[float | None, str, str | None]:
@@ -829,29 +1015,19 @@ def _parse_unit_value(value: Any, *, expected_unit: str) -> tuple[float | None, 
     conversion_unit: str | None = None
     conversion_proven = False
     if isinstance(value, Mapping):
-        mapping_value = value
-        explicit_unit = mapping_value.get(
-            "unit", mapping_value.get("units", mapping_value.get("source_unit"))
-        )
-        raw_value = mapping_value.get("value", _MISSING)
-        if raw_value is _MISSING and mapping_value.get("converted_value") is not None:
-            raw_value = mapping_value.get("converted_value")
-            conversion_unit = mapping_value.get("converted_unit")
-            explicit_unit = conversion_unit or explicit_unit
-            conversion_proven = isinstance(mapping_value.get("conversion_provenance"), Mapping)
-        if raw_value is _MISSING:
+        value, explicit_unit, conversion_unit, conversion_proven = _mapping_limit_value(value)
+        if value is _MISSING:
             return None, "missing", "limit value is missing"
-        value = raw_value
     if isinstance(value, bool) or value is None:
         return None, "missing", "limit value is not numeric"
     text = str(value).strip()
     if text.lower().startswith(("0x", "+0x", "-0x")):
         return None, "unknown", "raw hexadecimal limit packing has no bound unit provenance"
-    match = _UNIT_VALUE_RE.fullmatch(text)
-    if match is None:
+    split = _split_numeric_unit(text)
+    if split is None:
         return None, "unknown", "limit value is not a decimal number with a known unit"
-    number = _finite(match.group(1), field="limit value")
-    embedded_unit = match.group(2)
+    number = _finite(split[0], field="limit value")
+    embedded_unit = split[1]
     unit = explicit_unit or embedded_unit
     if unit is None:
         return number, "source_field", None
@@ -967,12 +1143,9 @@ def _aggregate_segments(
     }
 
 
-def _aggregate_gddr(
-    rows: Sequence[Mapping[str, Any]],
-    segments: Sequence[tuple[Mapping[str, Any], int, int]],
-    *,
-    source_established: bool,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+def _gddr_diagnostic(
+    rows: Sequence[Mapping[str, Any]], source_established: bool
+) -> dict[str, Any]:
     raw_fields: dict[str, list[Any]] = {field: [] for field in GDDR_FIELDS}
     max_raw: list[Any] = []
     for row in rows:
@@ -981,26 +1154,32 @@ def _aggregate_gddr(
                 raw_fields[field].append(row[field])
         if "MAX_GDDR_TEMP" in row:
             max_raw.append(row["MAX_GDDR_TEMP"])
-    diagnostic: dict[str, Any] = {
+    return {
         "status": "decoded" if source_established else "not_evaluable",
         "raw_fields": raw_fields,
         "max_gddr_temp_raw": max_raw,
     }
-    if not source_established:
-        diagnostic["reason"] = "GDDR source unit/packing provenance is not established"
-        return {}, diagnostic
-    decoded_by_row: dict[int, dict[str, Any]] = {}
+
+
+def _decode_gddr_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> tuple[dict[int, dict[str, Any]] | None, str | None]:
     try:
-        for row in rows:
-            decoded_by_row[id(row)] = power_trace_issue137.decode_issue137_gddr_row(
+        decoded = {
+            id(row): power_trace_issue137.decode_issue137_gddr_row(
                 row, source_established=True
             )
+            for row in rows
+        }
     except (TypeError, ValueError, KeyError) as exc:
-        diagnostic.update(
-            status="not_evaluable",
-            reason=f"GDDR die decode failed: {type(exc).__name__}",
-        )
-        return {}, diagnostic
+        return None, f"GDDR die decode failed: {type(exc).__name__}"
+    return decoded, None
+
+
+def _gddr_channel_values(
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    decoded_by_row: Mapping[int, Mapping[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
     channels: dict[str, list[dict[str, Any]]] = {}
     for row, start, end in segments:
         decoded = decoded_by_row.get(id(row), {})
@@ -1017,51 +1196,70 @@ def _aggregate_gddr(
                             "duration_ns": end - start,
                         }
                     )
-    aggregates: dict[str, Any] = {}
-    for channel, values in channels.items():
-        durations = [int(item["duration_ns"]) for item in values]
-        total = sum(durations)
-        bottom = [float(item["bottom_c"]) for item in values]
-        top = [float(item["top_c"]) for item in values]
-        aggregates[channel] = {
-            "unit": "degC",
-            "bottom_c": {
-                "min": min(bottom),
-                "max": max(bottom),
-                "time_weighted_mean": math.fsum(
-                    value * duration / total
-                    for value, duration in zip(bottom, durations, strict=True)
-                ),
-            },
-            "top_c": {
-                "min": min(top),
-                "max": max(top),
-                "time_weighted_mean": math.fsum(
-                    value * duration / total
-                    for value, duration in zip(top, durations, strict=True)
-                ),
-            },
-            "duration_ns": total,
-            "die_pair_diagnostic": {
-                "sample_count": len(values),
-                "bottom_top_values_retained": True,
-                "not_a_packed_scalar": True,
-            },
-        }
+    return channels
+
+
+def _gddr_channel_aggregate(values: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    durations = [int(item["duration_ns"]) for item in values]
+    total = sum(durations)
+    bottom = [float(item["bottom_c"]) for item in values]
+    top = [float(item["top_c"]) for item in values]
+    return {
+        "unit": "degC",
+        "bottom_c": {
+            "min": min(bottom),
+            "max": max(bottom),
+            "time_weighted_mean": math.fsum(
+                value * duration / total
+                for value, duration in zip(bottom, durations, strict=True)
+            ),
+        },
+        "top_c": {
+            "min": min(top),
+            "max": max(top),
+            "time_weighted_mean": math.fsum(
+                value * duration / total
+                for value, duration in zip(top, durations, strict=True)
+            ),
+        },
+        "duration_ns": total,
+        "die_pair_diagnostic": {
+            "sample_count": len(values),
+            "bottom_top_values_retained": True,
+            "not_a_packed_scalar": True,
+        },
+    }
+
+
+def _aggregate_gddr(
+    rows: Sequence[Mapping[str, Any]],
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    *,
+    source_established: bool,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    diagnostic = _gddr_diagnostic(rows, source_established)
+    if not source_established:
+        diagnostic["reason"] = "GDDR source unit/packing provenance is not established"
+        return {}, diagnostic
+    decoded_by_row, error = _decode_gddr_rows(rows)
+    if error is not None or decoded_by_row is None:
+        diagnostic.update(status="not_evaluable", reason=error)
+        return {}, diagnostic
+    channels = _gddr_channel_values(segments, decoded_by_row)
+    aggregates = {
+        channel: _gddr_channel_aggregate(values) for channel, values in channels.items()
+    }
     diagnostic["channel_count"] = len(aggregates)
     return aggregates, diagnostic
 
 
-def _trace_analysis(
+def _trace_expected_bounds(
     load: _TraceLoad,
     spec: _PlanSpec,
-    *,
     expected_start_ns: int | None,
     expected_end_ns: int | None,
-) -> tuple[dict[str, Any], set[str]]:
+) -> tuple[int | None, int | None, int | None, int | None, set[str]]:
     missing = set(load.missing_fields)
-    rows = load.rows
-    timed_rows = [row for row in rows if isinstance(row.get("timestamp_monotonic_ns"), int)]
     start_ns, end_ns = load.bounds_start_ns, load.bounds_end_ns
     if expected_start_ns is not None and start_ns != expected_start_ns:
         load.errors.append("trace start bound does not match first launch start")
@@ -1069,37 +1267,88 @@ def _trace_analysis(
     if expected_end_ns is not None and end_ns != expected_end_ns:
         load.errors.append("trace end bound does not match target workload end")
         missing.add("trace_end_binding")
-    plateau_start_ns = None
-    plateau_end_ns = None
-    segments: list[tuple[Mapping[str, Any], int, int]] = []
-    coverage_status = "not_evaluable"
-    if start_ns is not None and end_ns is not None:
-        plateau_start_ns = start_ns + round(spec.plateau_start_seconds * 1_000_000_000.0)
-        plateau_end_ns = start_ns + round(spec.plateau_end_seconds * 1_000_000_000.0)
+    if start_ns is None or end_ns is None:
+        return start_ns, end_ns, None, None, missing
+    plateau_start_ns = start_ns + round(spec.plateau_start_seconds * 1_000_000_000.0)
+    plateau_end_ns = start_ns + round(spec.plateau_end_seconds * 1_000_000_000.0)
+    return start_ns, end_ns, plateau_start_ns, plateau_end_ns, missing
+
+
+def _interval_coverage(
+    timed_rows: Sequence[Mapping[str, Any]],
+    plateau_start_ns: int,
+    plateau_end_ns: int,
+    missing: set[str],
+) -> tuple[list[tuple[Mapping[str, Any], int, int]], str]:
+    first_timestamp = timed_rows[0].get("timestamp_monotonic_ns") if timed_rows else None
+    last_timestamp = timed_rows[-1].get("timestamp_monotonic_ns") if timed_rows else None
+    if not isinstance(first_timestamp, int) or first_timestamp > plateau_start_ns:
+        missing.add("plateau_start_coverage")
+    if not isinstance(last_timestamp, int) or last_timestamp < plateau_end_ns:
+        missing.add("plateau_terminal_coverage")
+    if not isinstance(first_timestamp, int) or not isinstance(last_timestamp, int):
+        return [], "not_evaluable"
+    segments = _left_held_segments(timed_rows, start_ns=plateau_start_ns, end_ns=plateau_end_ns)
+    if sum(end - start for _row, start, end in segments) != plateau_end_ns - plateau_start_ns:
+        missing.add("plateau_coverage")
+        return segments, "not_evaluable"
+    if missing.intersection({"plateau_start_coverage", "plateau_terminal_coverage"}):
+        return segments, "not_evaluable"
+    return segments, "complete"
+
+
+def _row_coverage(
+    rows: Sequence[Mapping[str, Any]],
+    plateau_start_ns: int | None,
+    plateau_end_ns: int | None,
+    missing: set[str],
+) -> tuple[list[tuple[Mapping[str, Any], int, int]], str]:
+    timed_rows = [row for row in rows if isinstance(row.get("timestamp_monotonic_ns"), int)]
     if not rows:
         missing.add("trace_samples")
-    elif any(
+        return [], "not_evaluable"
+    if any(
         int(left["timestamp_monotonic_ns"]) > int(right["timestamp_monotonic_ns"])
         for left, right in itertools.pairwise(timed_rows)
     ):
         missing.add("trace_timestamp_order")
-    elif plateau_start_ns is None or plateau_end_ns is None:
+        return [], "not_evaluable"
+    if plateau_start_ns is None or plateau_end_ns is None:
         missing.update({"run_start_monotonic_ns", "run_end_monotonic_ns"})
-    else:
-        first_timestamp = timed_rows[0].get("timestamp_monotonic_ns") if timed_rows else None
-        last_timestamp = timed_rows[-1].get("timestamp_monotonic_ns") if timed_rows else None
-        if not isinstance(first_timestamp, int) or first_timestamp > plateau_start_ns:
-            missing.add("plateau_start_coverage")
-        if not isinstance(last_timestamp, int) or last_timestamp < plateau_end_ns:
-            missing.add("plateau_terminal_coverage")
-        if isinstance(first_timestamp, int) and isinstance(last_timestamp, int):
-            segments = _left_held_segments(
-                timed_rows, start_ns=plateau_start_ns, end_ns=plateau_end_ns
-            )
-            if sum(end - start for _row, start, end in segments) != plateau_end_ns - plateau_start_ns:
-                missing.add("plateau_coverage")
-            elif not missing.intersection({"plateau_start_coverage", "plateau_terminal_coverage"}):
-                coverage_status = "complete"
+        return [], "not_evaluable"
+    return _interval_coverage(timed_rows, plateau_start_ns, plateau_end_ns, missing)
+
+
+def _trace_coverage(
+    load: _TraceLoad,
+    spec: _PlanSpec,
+    *,
+    expected_start_ns: int | None,
+    expected_end_ns: int | None,
+) -> tuple[
+    int | None,
+    int | None,
+    int | None,
+    int | None,
+    list[tuple[Mapping[str, Any], int, int]],
+    str,
+    set[str],
+]:
+    start_ns, end_ns, plateau_start_ns, plateau_end_ns, missing = _trace_expected_bounds(
+        load, spec, expected_start_ns, expected_end_ns
+    )
+    segments, coverage_status = _row_coverage(
+        load.rows, plateau_start_ns, plateau_end_ns, missing
+    )
+    return start_ns, end_ns, plateau_start_ns, plateau_end_ns, segments, coverage_status, missing
+
+
+def _trace_statistics(
+    rows: Sequence[Mapping[str, Any]],
+    segments: Sequence[tuple[Mapping[str, Any], int, int]],
+    load: _TraceLoad,
+) -> tuple[dict[str, Any], set[str]]:
+    missing: set[str] = set()
     statistics: dict[str, Any] = {}
     for field in SCALAR_FIELDS:
         aggregate = _aggregate_segments(segments, field)
@@ -1113,6 +1362,29 @@ def _trace_analysis(
     )
     statistics["gddr_channels"] = gddr_statistics
     statistics["gddr_exploratory"] = gddr_exploratory
+    return statistics, missing
+
+
+def _trace_analysis(
+    load: _TraceLoad,
+    spec: _PlanSpec,
+    *,
+    expected_start_ns: int | None,
+    expected_end_ns: int | None,
+) -> tuple[dict[str, Any], set[str]]:
+    (
+        start_ns,
+        end_ns,
+        plateau_start_ns,
+        plateau_end_ns,
+        segments,
+        coverage_status,
+        missing,
+    ) = _trace_coverage(
+        load, spec, expected_start_ns=expected_start_ns, expected_end_ns=expected_end_ns
+    )
+    statistics, statistic_missing = _trace_statistics(load.rows, segments, load)
+    missing.update(statistic_missing)
     return {
         "coverage": {
             "status": coverage_status,
@@ -1125,9 +1397,9 @@ def _trace_analysis(
             "segment_count": len(segments),
         },
         "statistics": statistics,
-        "trace_rows": [dict(row) for row in rows],
+        "trace_rows": [dict(row) for row in load.rows],
         "reader_facts": load.reader_facts,
-        "exploratory": {"gddr": gddr_exploratory},
+        "exploratory": {"gddr": statistics["gddr_exploratory"]},
     }, missing
 
 
@@ -1167,20 +1439,11 @@ def _identity_from_environment(environment: Mapping[str, Any]) -> tuple[str | No
     )
 
 
-def _environment_errors(
-    record: Mapping[str, Any],
-    result: Mapping[str, Any] | None,
-    configuration: Mapping[str, Any] | None,
-    spec: _PlanSpec,
-) -> list[str]:
-    errors: list[str] = []
-    environment = record.get("environment")
-    if not isinstance(environment, Mapping):
-        return ["environment"]
+def _environment_required(environment: Mapping[str, Any]) -> dict[str, Any]:
     board = environment.get("board")
     identity = board.get("identity") if isinstance(board, Mapping) else None
     firmware = environment.get("firmware")
-    required = {
+    return {
         "board.serial": board.get("serial") if isinstance(board, Mapping) else None,
         "board.identity.board_id": identity.get("board_id") if isinstance(identity, Mapping) else None,
         "board.identity.bus_id": identity.get("bus_id") if isinstance(identity, Mapping) else None,
@@ -1194,9 +1457,19 @@ def _environment_errors(
         "worker_core_coordinates": environment.get("worker_core_coordinates"),
         "total_blocks": environment.get("total_blocks"),
     }
-    for field in spec.required_environment_fields:
-        if field not in required or required[field] is None or required[field] == "":
-            errors.append(field)
+
+
+def _environment_binding_errors(
+    environment: Mapping[str, Any],
+    configuration: Mapping[str, Any] | None,
+    spec: _PlanSpec,
+) -> list[str]:
+    required = _environment_required(environment)
+    errors = [
+        field
+        for field in spec.required_environment_fields
+        if field not in required or required[field] is None or required[field] == ""
+    ]
     if required["board.serial"] != spec.board_serial:
         errors.append("board.serial.binding")
     if required["board.identity.board_id"] != spec.board_serial:
@@ -1212,70 +1485,378 @@ def _environment_errors(
             "total_blocks": configuration.get("total_blocks"),
             "core_block_distribution": configuration.get("block_distribution"),
         }
-        for field, expected in expected_environment.items():
-            if environment.get(field) != expected:
-                errors.append(f"environment.{field}.binding")
-    if isinstance(result, Mapping):
-        raw_environment = result.get("environment")
-        if not isinstance(raw_environment, Mapping):
-            errors.append("runner_result.environment")
-        else:
-            raw_serial, raw_board, raw_bus = _identity_from_environment(raw_environment)
-            if (raw_serial, raw_board, raw_bus) != (
-                spec.board_serial,
-                spec.board_serial,
-                spec.pci_bus_id,
-            ):
-                errors.append("runner_result.environment.identity.binding")
-            raw_firmware = raw_environment.get("firmware") or raw_environment.get("firmwares")
-            raw_image = raw_environment.get("image_digest") or raw_environment.get("image")
-            raw_driver = raw_environment.get("kernel_driver_version") or raw_environment.get("kmd_version")
-            raw_required = {
-                "firmware": raw_firmware.get("bundle") or raw_firmware.get("fw_bundle_version")
-                if isinstance(raw_firmware, Mapping)
-                else None,
-                "kernel": raw_environment.get("kernel"),
-                "kernel_driver_version": raw_driver,
-                "image_digest": raw_image,
-                "harness_commit": raw_environment.get("harness_commit"),
-                "device_node": raw_environment.get("device_node"),
-            }
-            errors.extend(
-                f"runner_result.environment.{field}"
-                for field, value in raw_required.items()
-                if value is None or value == ""
-            )
-            if raw_environment.get("device_node") != spec.device_node:
-                errors.append("runner_result.environment.device_node.binding")
-            try:
-                from tools import issue137 as runner
+        errors.extend(
+            f"environment.{field}.binding"
+            for field, expected in expected_environment.items()
+            if environment.get(field) != expected
+        )
+    return errors
 
-                raw_configuration_id = (
-                    configuration.get("id") if isinstance(configuration, Mapping) else None
-                )
-                canonical_configuration = runner.configuration(spec.plan, raw_configuration_id)
-                canonical_environment = runner.build_environment_record(
-                    raw_environment, canonical_configuration
-                )
-                persisted_fields = (
-                    "board",
-                    "firmware",
-                    "kernel",
-                    "kernel_driver_version",
-                    "image_digest",
-                    "harness_commit",
-                    "device_node",
-                    "worker_core_count",
-                    "worker_core_coordinates",
-                    "total_blocks",
-                    "core_block_distribution",
-                )
-                for field in persisted_fields:
-                    if environment.get(field) != canonical_environment.get(field):
-                        errors.append(f"runner_result.environment.{field}.binding")
-            except (ImportError, KeyError, TypeError, ValueError):
-                errors.append("runner_result.environment.canonical")
+
+def _raw_environment_errors(
+    raw_environment: Mapping[str, Any], spec: _PlanSpec
+) -> list[str]:
+    errors: list[str] = []
+    if _identity_from_environment(raw_environment) != (
+        spec.board_serial,
+        spec.board_serial,
+        spec.pci_bus_id,
+    ):
+        errors.append("runner_result.environment.identity.binding")
+    raw_firmware = raw_environment.get("firmware") or raw_environment.get("firmwares")
+    raw_required = {
+        "firmware": raw_firmware.get("bundle") or raw_firmware.get("fw_bundle_version")
+        if isinstance(raw_firmware, Mapping)
+        else None,
+        "kernel": raw_environment.get("kernel"),
+        "kernel_driver_version": raw_environment.get("kernel_driver_version")
+        or raw_environment.get("kmd_version"),
+        "image_digest": raw_environment.get("image_digest") or raw_environment.get("image"),
+        "harness_commit": raw_environment.get("harness_commit"),
+        "device_node": raw_environment.get("device_node"),
+    }
+    errors.extend(
+        f"runner_result.environment.{field}"
+        for field, value in raw_required.items()
+        if value is None or value == ""
+    )
+    if raw_environment.get("device_node") != spec.device_node:
+        errors.append("runner_result.environment.device_node.binding")
+    return errors
+
+
+def _canonical_environment_errors(
+    environment: Mapping[str, Any],
+    raw_environment: Mapping[str, Any],
+    configuration: Mapping[str, Any] | None,
+    spec: _PlanSpec,
+) -> list[str]:
+    try:
+        from tools import issue137 as runner
+
+        raw_configuration_id = configuration.get("id") if configuration is not None else None
+        canonical_configuration = runner.configuration(spec.plan, raw_configuration_id)
+        canonical_environment = runner.build_environment_record(raw_environment, canonical_configuration)
+        persisted_fields = (
+            "board",
+            "firmware",
+            "kernel",
+            "kernel_driver_version",
+            "image_digest",
+            "harness_commit",
+            "device_node",
+            "worker_core_count",
+            "worker_core_coordinates",
+            "total_blocks",
+            "core_block_distribution",
+        )
+        return [
+            f"runner_result.environment.{field}.binding"
+            for field in persisted_fields
+            if environment.get(field) != canonical_environment.get(field)
+        ]
+    except (ImportError, KeyError, TypeError, ValueError):
+        return ["runner_result.environment.canonical"]
+
+
+def _runner_environment_binding_errors(
+    environment: Mapping[str, Any],
+    result: Mapping[str, Any],
+    configuration: Mapping[str, Any] | None,
+    spec: _PlanSpec,
+) -> list[str]:
+    raw_environment = result.get("environment")
+    if not isinstance(raw_environment, Mapping):
+        return ["runner_result.environment"]
+    errors = _raw_environment_errors(raw_environment, spec)
+    errors.extend(_canonical_environment_errors(environment, raw_environment, configuration, spec))
+    return errors
+
+
+def _environment_errors(
+    record: Mapping[str, Any],
+    result: Mapping[str, Any] | None,
+    configuration: Mapping[str, Any] | None,
+    spec: _PlanSpec,
+) -> list[str]:
+    environment = record.get("environment")
+    if not isinstance(environment, Mapping):
+        return ["environment"]
+    errors = _environment_binding_errors(environment, configuration, spec)
+    if isinstance(result, Mapping):
+        errors.extend(
+            _runner_environment_binding_errors(environment, result, configuration, spec)
+        )
     return list(dict.fromkeys(errors))
+
+
+def _duration_target_guard(spec: _PlanSpec, mode: str) -> tuple[float, float]:
+    if mode == "long":
+        return spec.long_target_seconds, spec.long_guard_seconds
+    return spec.smoke_target_seconds, spec.smoke_guard_seconds
+
+
+def _record_duration_errors(record: Mapping[str, Any], spec: _PlanSpec) -> list[str]:
+    checks = (
+        (record.get("record_schema") != ISSUE137_RECORD_SCHEMA, "record_schema"),
+        (record.get("record_revision") != 2, "record_revision"),
+        (record.get("plan_sha256") != spec.plan_sha256, "plan_sha256"),
+        (record.get("status") != "ok", "run_status"),
+        (record.get("workload_started") is not True, "workload_started"),
+    )
+    return [name for failed, name in checks if failed]
+
+
+def _result_shape_errors(
+    run: Mapping[str, Any], result: Mapping[str, Any], mode: str, target: float, guard: float
+) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(run.get("run_id"), str) or not run["run_id"]:
+        errors.append("run.run_id")
+    for field, expected in (
+        ("record_schema", ISSUE137_DEVICE_RESULT_SCHEMA),
+        ("status", "ok"),
+        ("mode", mode),
+        ("load_mode", ISSUE137_LOAD_MODE),
+    ):
+        if result.get(field) != expected:
+            errors.append(f"runner_result.{field}" if field != "load_mode" else "load_mode")
+    timing = run.get("timing")
+    if not isinstance(timing, Mapping):
+        errors.append("run.timing")
+    elif timing.get("load_seconds") != target or timing.get("guard_seconds") != guard:
+        errors.append("run.timing.binding")
+    return errors
+
+
+def _result_provenance_errors(
+    record: Mapping[str, Any], result: Mapping[str, Any], spec: _PlanSpec
+) -> list[str]:
+    errors: list[str] = []
+    if result.get("plan_sha256") != spec.plan_sha256:
+        errors.append("runner_result.plan_sha256")
+    if not isinstance(result.get("run_id"), str) or not result["run_id"]:
+        errors.append("runner_result.run_id")
+    provenance = record.get("provenance")
+    if not isinstance(provenance, Mapping):
+        errors.append("provenance")
+        return errors
+    if provenance.get("wrapper_run_id") != result.get("run_id"):
+        errors.append("provenance.wrapper_run_id")
+    path = provenance.get("runner_result_path")
+    if not isinstance(path, str) or Path(path).name != path:
+        errors.append("provenance.runner_result_path")
+    return errors
+
+
+def _result_header_errors(
+    record: Mapping[str, Any],
+    run: Mapping[str, Any],
+    result: Mapping[str, Any],
+    spec: _PlanSpec,
+    mode: str,
+    target: float,
+    guard: float,
+) -> list[str]:
+    errors = _result_shape_errors(run, result, mode, target, guard)
+    errors.extend(_result_provenance_errors(record, result, spec))
+    return errors
+
+
+def _result_scalar_errors(
+    result: Mapping[str, Any], spec: _PlanSpec, target: float, guard: float
+) -> list[str]:
+    errors: list[str] = []
+    for field, expected in (
+        ("target_seconds", target),
+        ("guard_seconds", guard),
+        ("overrun_limit_seconds", spec.overrun_limit_seconds),
+    ):
+        try:
+            if not math.isclose(_finite(result.get(field), field=field), expected, rel_tol=0.0, abs_tol=1e-12):
+                errors.append(f"runner_result.{field}")
+        except AnalysisError:
+            errors.append(f"runner_result.{field}")
+    return errors
+
+
+def _result_launch_count(result: Mapping[str, Any]) -> tuple[int | None, list[str]]:
+    try:
+        count = _integer(result.get("launch_count"), field="launch_count")
+        return count, ["launch_count"] if count <= 0 else []
+    except AnalysisError:
+        return None, ["launch_count"]
+
+
+def _result_monotonic_bounds(
+    result: Mapping[str, Any],
+) -> tuple[int | None, int | None, int | None, list[str]]:
+    try:
+        first = _integer(result.get("first_launch_start_monotonic_ns"), field="first launch")
+        workload_end = _integer(result.get("workload_end_monotonic_ns"), field="workload end")
+        last = _integer(result.get("last_launch_end_monotonic_ns"), field="last launch")
+        return first, workload_end, last, []
+    except AnalysisError:
+        return None, None, None, ["monotonic_bounds"]
+
+
+def _result_overrun_errors(
+    result: Mapping[str, Any],
+    spec: _PlanSpec,
+    first: int,
+    workload_end: int,
+    last: int,
+    target: float,
+    guard: float,
+) -> list[str]:
+    errors: list[str] = []
+    expected_end = first + round(target * 1_000_000_000.0)
+    if workload_end != expected_end:
+        errors.append("workload_end_monotonic_ns")
+    if last < workload_end:
+        errors.append("last_launch_end_monotonic_ns")
+    if last > first + round(guard * 1_000_000_000.0):
+        errors.append("guard_seconds")
+    try:
+        overrun = _finite(result.get("overrun_seconds"), field="overrun_seconds")
+        expected_overrun = (last - workload_end) / 1_000_000_000.0
+        if not math.isclose(overrun, expected_overrun, rel_tol=0.0, abs_tol=1e-9):
+            errors.append("overrun_seconds.binding")
+        if overrun > spec.overrun_limit_seconds:
+            errors.append("overrun_seconds.limit")
+    except AnalysisError:
+        errors.append("overrun_seconds")
+    return errors
+
+
+def _result_duration_values(
+    result: Mapping[str, Any], spec: _PlanSpec, target: float, guard: float
+) -> tuple[int | None, int | None, int | None, int | None, list[str]]:
+    count, count_errors = _result_launch_count(result)
+    first, workload_end, last, bound_errors = _result_monotonic_bounds(result)
+    errors = count_errors + bound_errors
+    if first is None or workload_end is None or last is None:
+        return None, None, None, None, errors
+    errors.extend(_result_overrun_errors(result, spec, first, workload_end, last, target, guard))
+    return count, first, workload_end, last, errors
+
+
+def _configuration_duration_errors(
+    result: Mapping[str, Any] | None,
+    configuration: Mapping[str, Any] | None,
+    configuration_id: str | None,
+    spec: _PlanSpec,
+) -> list[str]:
+    errors: list[str] = []
+    if configuration is None:
+        errors.append("configuration")
+    elif configuration != spec.expected_configurations.get(configuration_id or ""):
+        errors.append("configuration.binding")
+    if result is not None and configuration is not None and result.get("core_plan") != configuration.get("core_plan"):
+        errors.append("runner_result.core_plan.binding")
+    return errors
+
+
+def _run_scalar_binding_errors(
+    run: Mapping[str, Any], spec: _PlanSpec, target: float, guard: float
+) -> list[str]:
+    errors: list[str] = []
+    for field, expected in (
+        ("load_mode", ISSUE137_LOAD_MODE),
+        ("target_seconds", target),
+        ("guard_seconds", guard),
+        ("overrun_limit_seconds", spec.overrun_limit_seconds),
+    ):
+        actual = run.get(field)
+        try:
+            matches = actual == expected or math.isclose(
+                _finite(actual, field=field), expected, rel_tol=0.0, abs_tol=1e-12
+            )
+        except AnalysisError:
+            matches = False
+        if not matches:
+            errors.append(f"run.{field}")
+    return errors
+
+
+def _run_result_binding_errors(
+    record: Mapping[str, Any],
+    run: Mapping[str, Any],
+    result: Mapping[str, Any],
+    first: int | None,
+    workload_end: int | None,
+    last: int | None,
+) -> list[str]:
+    errors: list[str] = []
+    for run_field, result_field in (
+        ("launch_count", "launch_count"),
+        ("workload_start_monotonic_ns", "first_launch_start_monotonic_ns"),
+        ("workload_end_monotonic_ns", "workload_end_monotonic_ns"),
+        ("last_launch_end_monotonic_ns", "last_launch_end_monotonic_ns"),
+        ("overrun_seconds", "overrun_seconds"),
+    ):
+        if run.get(run_field) != result.get(result_field):
+            errors.append(f"run.{run_field}.binding")
+    for field, expected in (
+        ("workload_start_monotonic_ns", first),
+        ("workload_end_monotonic_ns", workload_end),
+        ("workload_actual_end_monotonic_ns", last),
+        ("run_end_monotonic_ns", workload_end),
+    ):
+        if field in record and record.get(field) != expected:
+            errors.append(f"{field}.binding")
+    return errors
+
+
+def _forbidden_duration_inputs(
+    record: Mapping[str, Any], run: Mapping[str, Any], result: Mapping[str, Any] | None
+) -> list[str]:
+    if any(
+        key in container
+        for container in (record, run, result or {})
+        for key in ("calibration", "calibration_name", "repeat_count", "repeat_counts")
+    ):
+        return ["calibration_or_repeat_count"]
+    return []
+
+
+def _trace_binding_errors(
+    trace: Any, first: int | None, workload_end: int | None, last: int | None
+) -> list[str]:
+    if not isinstance(trace, Mapping):
+        return ["trace"]
+    errors: list[str] = []
+    checks = (
+        (trace.get("schema") not in {None, power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA}, "trace.schema"),
+        (trace.get("run_start_monotonic_ns") not in {None, first}, "trace.run_start_monotonic_ns"),
+        (trace.get("run_end_monotonic_ns") not in {None, workload_end}, "trace.run_end_monotonic_ns"),
+        (trace.get("actual_end_monotonic_ns") not in {None, last}, "trace.actual_end_monotonic_ns"),
+        (not isinstance(trace.get("path"), str) or Path(trace["path"]).name != trace["path"], "trace.path"),
+    )
+    errors.extend(name for failed, name in checks if failed)
+    return errors
+
+
+def _run_duration_errors(
+    record: Mapping[str, Any],
+    run: Mapping[str, Any],
+    result: Mapping[str, Any] | None,
+    spec: _PlanSpec,
+    configuration: Mapping[str, Any] | None,
+    configuration_id: str | None,
+    target: float,
+    guard: float,
+    first: int | None,
+    workload_end: int | None,
+    last: int | None,
+) -> list[str]:
+    errors = _configuration_duration_errors(result, configuration, configuration_id, spec)
+    errors.extend(_run_scalar_binding_errors(run, spec, target, guard))
+    if result is not None:
+        errors.extend(_run_result_binding_errors(record, run, result, first, workload_end, last))
+    errors.extend(_forbidden_duration_inputs(record, run, result))
+    errors.extend(_trace_binding_errors(record.get("trace"), first, workload_end, last))
+    return errors
 
 
 def _duration_binding(
@@ -1285,157 +1866,36 @@ def _duration_binding(
     configuration_id: str | None,
     mode: str,
 ) -> tuple[dict[str, Any], list[str], Mapping[str, Any] | None]:
-    errors: list[str] = []
     run = record.get("run") if isinstance(record.get("run"), Mapping) else {}
-    result = record.get("runner_result")
-    result = result if isinstance(result, Mapping) else None
-    target, guard = (
-        (spec.long_target_seconds, spec.long_guard_seconds)
-        if mode == "long"
-        else (spec.smoke_target_seconds, spec.smoke_guard_seconds)
-    )
-    if record.get("record_schema") != ISSUE137_RECORD_SCHEMA:
-        errors.append("record_schema")
-    if record.get("record_revision") != 2:
-        errors.append("record_revision")
-    if record.get("plan_sha256") != spec.plan_sha256:
-        errors.append("plan_sha256")
-    if record.get("status") != "ok":
-        errors.append("run_status")
-    if record.get("workload_started") is not True:
-        errors.append("workload_started")
+    result_value = record.get("runner_result")
+    result = result_value if isinstance(result_value, Mapping) else None
+    target, guard = _duration_target_guard(spec, mode)
+    errors = _record_duration_errors(record, spec)
     count = first = workload_end = last = None
     if result is None:
         errors.append("runner_result")
     else:
-        if not isinstance(run.get("run_id"), str) or not run["run_id"]:
-            errors.append("run.run_id")
-        if result.get("record_schema") != ISSUE137_DEVICE_RESULT_SCHEMA:
-            errors.append("runner_result.record_schema")
-        if result.get("status") != "ok":
-            errors.append("runner_result.status")
-        if result.get("mode") != mode:
-            errors.append("runner_result.mode")
-        if result.get("load_mode") != ISSUE137_LOAD_MODE:
-            errors.append("load_mode")
-        timing = run.get("timing")
-        if not isinstance(timing, Mapping):
-            errors.append("run.timing")
-        else:
-            if timing.get("load_seconds") != target or timing.get("guard_seconds") != guard:
-                errors.append("run.timing.binding")
-        if result.get("plan_sha256") != spec.plan_sha256:
-            errors.append("runner_result.plan_sha256")
-        if not isinstance(result.get("run_id"), str) or not result["run_id"]:
-            errors.append("runner_result.run_id")
-        provenance = record.get("provenance")
-        if not isinstance(provenance, Mapping):
-            errors.append("provenance")
-        else:
-            if provenance.get("wrapper_run_id") != result.get("run_id"):
-                errors.append("provenance.wrapper_run_id")
-            path = provenance.get("runner_result_path")
-            if not isinstance(path, str) or Path(path).name != path:
-                errors.append("provenance.runner_result_path")
-        for field, expected in (
-            ("target_seconds", target),
-            ("guard_seconds", guard),
-            ("overrun_limit_seconds", spec.overrun_limit_seconds),
-        ):
-            try:
-                if not math.isclose(_finite(result.get(field), field=field), expected, rel_tol=0.0, abs_tol=1e-12):
-                    errors.append(f"runner_result.{field}")
-            except AnalysisError:
-                errors.append(f"runner_result.{field}")
-        try:
-            count = _integer(result.get("launch_count"), field="launch_count")
-            if count <= 0:
-                errors.append("launch_count")
-        except AnalysisError:
-            count = None
-            errors.append("launch_count")
-        try:
-            first = _integer(result.get("first_launch_start_monotonic_ns"), field="first launch")
-            workload_end = _integer(result.get("workload_end_monotonic_ns"), field="workload end")
-            last = _integer(result.get("last_launch_end_monotonic_ns"), field="last launch")
-        except AnalysisError:
-            first = workload_end = last = None
-            errors.append("monotonic_bounds")
-        if first is not None and workload_end is not None and last is not None:
-            expected_end = first + round(target * 1_000_000_000.0)
-            if workload_end != expected_end:
-                errors.append("workload_end_monotonic_ns")
-            if last < workload_end:
-                errors.append("last_launch_end_monotonic_ns")
-            if last > first + round(guard * 1_000_000_000.0):
-                errors.append("guard_seconds")
-            try:
-                overrun = _finite(result.get("overrun_seconds"), field="overrun_seconds")
-                expected_overrun = (last - workload_end) / 1_000_000_000.0
-                if not math.isclose(overrun, expected_overrun, rel_tol=0.0, abs_tol=1e-9):
-                    errors.append("overrun_seconds.binding")
-                if overrun > spec.overrun_limit_seconds:
-                    errors.append("overrun_seconds.limit")
-            except AnalysisError:
-                errors.append("overrun_seconds")
-        else:
-            count = None
-            first = workload_end = last = None
-    if configuration is None:
-        errors.append("configuration")
-    elif configuration != spec.expected_configurations.get(configuration_id or ""):
-        errors.append("configuration.binding")
-    if result is not None and configuration is not None and result.get("core_plan") != configuration.get("core_plan"):
-        errors.append("runner_result.core_plan.binding")
-    for field, expected in (
-        ("load_mode", ISSUE137_LOAD_MODE),
-        ("target_seconds", target),
-        ("guard_seconds", guard),
-        ("overrun_limit_seconds", spec.overrun_limit_seconds),
-    ):
-        actual = run.get(field)
-        try:
-            matches = actual == expected or math.isclose(_finite(actual, field=field), expected, rel_tol=0.0, abs_tol=1e-12)
-        except AnalysisError:
-            matches = False
-        if not matches:
-            errors.append(f"run.{field}")
-    if result is not None:
-        for run_field, result_field in (
-            ("launch_count", "launch_count"),
-            ("workload_start_monotonic_ns", "first_launch_start_monotonic_ns"),
-            ("workload_end_monotonic_ns", "workload_end_monotonic_ns"),
-            ("last_launch_end_monotonic_ns", "last_launch_end_monotonic_ns"),
-            ("overrun_seconds", "overrun_seconds"),
-        ):
-            if run.get(run_field) != result.get(result_field):
-                errors.append(f"run.{run_field}.binding")
-        for field, expected in (
-            ("workload_start_monotonic_ns", first),
-            ("workload_end_monotonic_ns", workload_end),
-            ("workload_actual_end_monotonic_ns", last),
-            ("run_end_monotonic_ns", workload_end),
-        ):
-            if field in record and record.get(field) != expected:
-                errors.append(f"{field}.binding")
-    for container in (record, run, result or {}):
-        if any(key in container for key in ("calibration", "calibration_name", "repeat_count", "repeat_counts")):
-            errors.append("calibration_or_repeat_count")
-    trace = record.get("trace")
-    if not isinstance(trace, Mapping):
-        errors.append("trace")
-    else:
-        if trace.get("schema") not in {None, power_trace_issue137.ISSUE137_POWER_TRACE_SCHEMA}:
-            errors.append("trace.schema")
-        if trace.get("run_start_monotonic_ns") not in {None, first}:
-            errors.append("trace.run_start_monotonic_ns")
-        if trace.get("run_end_monotonic_ns") not in {None, workload_end}:
-            errors.append("trace.run_end_monotonic_ns")
-        if trace.get("actual_end_monotonic_ns") not in {None, last}:
-            errors.append("trace.actual_end_monotonic_ns")
-        path = trace.get("path")
-        if not isinstance(path, str) or Path(path).name != path:
-            errors.append("trace.path")
+        errors.extend(_result_header_errors(record, run, result, spec, mode, target, guard))
+        errors.extend(_result_scalar_errors(result, spec, target, guard))
+        count, first, workload_end, last, value_errors = _result_duration_values(
+            result, spec, target, guard
+        )
+        errors.extend(value_errors)
+    errors.extend(
+        _run_duration_errors(
+            record,
+            run,
+            result,
+            spec,
+            configuration,
+            configuration_id,
+            target,
+            guard,
+            first,
+            workload_end,
+            last,
+        )
+    )
     return {
         "target_seconds": target,
         "guard_seconds": guard,
@@ -1504,86 +1964,129 @@ def _pinned_fact(
     return lower <= float(mean) <= upper
 
 
-def _run_analysis(record_input: _RecordInput, index: int, spec: _PlanSpec) -> _RunAnalysis:
-    record = record_input.record
-    name = _record_name(record_input, index)
-    configuration_id, run_number, mode = _run_identity(record)
-    role = spec.configuration_roles.get(configuration_id or "", {})
-    expected_candidate = (
+def _expected_verdict_candidate(
+    mode: str,
+    role: Mapping[str, Any],
+    run_number: int | None,
+    spec: _PlanSpec,
+) -> bool:
+    return (
         mode == "long"
         and role.get("verdict_bearing") is True
         and run_number in range(1, len(spec.order) + 1)
     )
-    configuration = record.get("configuration") if isinstance(record.get("configuration"), Mapping) else None
-    binding, binding_errors, result = _duration_binding(
-        record, spec, configuration, configuration_id, mode
-    )
-    environment_errors = _environment_errors(record, result, configuration, spec)
-    snapshot, snapshot_name, snapshot_errors = _pre_snapshot_mapping(
-        record,
-        base_dir=record_input.base_dir,
-        spec=spec,
-    )
-    limits, missing_limits, limit_errors = _extract_limits(snapshot, spec)
-    source_versions_verified = _observed_source_versions_verified(
-        record, result, snapshot
-    )
-    load = _load_trace_source(
-        record,
-        base_dir=record_input.base_dir,
-        record_name=name,
-        source_verified=source_versions_verified,
-    )
-    trace_report, missing_trace = _trace_analysis(
-        load,
-        spec,
-        expected_start_ns=binding["workload_start_monotonic_ns"],
-        expected_end_ns=binding["workload_end_monotonic_ns"],
-    )
+
+
+def _append_snapshot_gddr_raw(
+    trace_report: dict[str, Any], snapshot: Mapping[str, Any] | None, spec: _PlanSpec
+) -> None:
     gddr_exploratory = trace_report["exploratory"].get("gddr")
-    if isinstance(gddr_exploratory, dict) and snapshot is not None:
-        try:
-            selected = _selected_snapshot_device(
-                snapshot, board_id=spec.board_serial, bus_id=spec.pci_bus_id
-            )
-        except AnalysisError:
-            selected = None
-        smbus = selected.get("smbus_telem") if isinstance(selected, Mapping) else None
-        if isinstance(smbus, Mapping) and "MAX_GDDR_TEMP" in smbus:
-            gddr_exploratory.setdefault("max_gddr_temp_raw", []).append(
-                smbus["MAX_GDDR_TEMP"]
-            )
-    verdict_missing: set[str] = set()
-    if expected_candidate:
-        verdict_missing.update(binding_errors)
-        verdict_missing.update(environment_errors)
-        verdict_missing.update(snapshot_errors)
-        verdict_missing.update(missing_limits)
-        verdict_missing.update(field for field in missing_trace if _verdict_trace_missing(field))
-        trace_errors_require_verdict = not load.missing_fields or any(
-            _verdict_trace_missing(field) for field in load.missing_fields
+    if not isinstance(gddr_exploratory, dict) or snapshot is None:
+        return
+    try:
+        selected = _selected_snapshot_device(
+            snapshot, board_id=spec.board_serial, bus_id=spec.pci_bus_id
         )
-        if load.errors and trace_errors_require_verdict:
-            verdict_missing.add("trace")
-    statistics = trace_report["statistics"]
-    aiclk_depressed, aiclk_not_depressed = _aiclk_fact(statistics, limits, spec)
-    pinned = {
-        hypothesis: _pinned_fact(hypothesis, statistics, limits, spec)
-        for hypothesis in HYPOTHESIS_SIGNALS
-    }
-    if expected_candidate:
-        if aiclk_depressed is None:
-            verdict_missing.add("aiclk_mhz")
-            if limits.get("asic_fmax_mhz", {}).get("value") is None:
-                verdict_missing.add("asic_fmax_mhz")
-        for hypothesis, (signal, limit_name) in HYPOTHESIS_SIGNALS.items():
-            if pinned[hypothesis] is None:
-                if statistics.get(signal, {}).get("time_weighted_mean") is None:
-                    verdict_missing.add(signal)
-                if limits.get(limit_name, {}).get("value") is None:
-                    verdict_missing.add(limit_name)
-    position = run_number if expected_candidate else None
-    report = {
+    except AnalysisError:
+        selected = None
+    smbus = selected.get("smbus_telem") if isinstance(selected, Mapping) else None
+    if isinstance(smbus, Mapping) and "MAX_GDDR_TEMP" in smbus:
+        gddr_exploratory.setdefault("max_gddr_temp_raw", []).append(smbus["MAX_GDDR_TEMP"])
+
+
+def _base_verdict_missing(
+    binding_errors: Sequence[str],
+    environment_errors: Sequence[str],
+    snapshot_errors: Sequence[str],
+    missing_limits: set[str],
+    missing_trace: set[str],
+    load: _TraceLoad,
+) -> set[str]:
+    missing = set(binding_errors) | set(environment_errors) | set(snapshot_errors) | set(missing_limits)
+    missing.update(field for field in missing_trace if _verdict_trace_missing(field))
+    trace_requires_verdict = not load.missing_fields or any(
+        _verdict_trace_missing(field) for field in load.missing_fields
+    )
+    if load.errors and trace_requires_verdict:
+        missing.add("trace")
+    return missing
+
+
+def _signal_verdict_missing(
+    statistics: Mapping[str, Any],
+    limits: Mapping[str, Any],
+    pinned: Mapping[str, bool | None],
+    aiclk_depressed: bool | None,
+) -> set[str]:
+    missing: set[str] = set()
+    if aiclk_depressed is None:
+        missing.add("aiclk_mhz")
+        if limits.get("asic_fmax_mhz", {}).get("value") is None:
+            missing.add("asic_fmax_mhz")
+    for hypothesis, (signal, limit_name) in HYPOTHESIS_SIGNALS.items():
+        if pinned[hypothesis] is None:
+            if statistics.get(signal, {}).get("time_weighted_mean") is None:
+                missing.add(signal)
+            if limits.get(limit_name, {}).get("value") is None:
+                missing.add(limit_name)
+    return missing
+
+
+def _verdict_missing_fields(
+    expected_candidate: bool,
+    binding_errors: Sequence[str],
+    environment_errors: Sequence[str],
+    snapshot_errors: Sequence[str],
+    missing_limits: set[str],
+    missing_trace: set[str],
+    load: _TraceLoad,
+    statistics: Mapping[str, Any],
+    limits: Mapping[str, Any],
+    pinned: Mapping[str, bool | None],
+    aiclk_depressed: bool | None,
+) -> set[str]:
+    if not expected_candidate:
+        return set()
+    missing = _base_verdict_missing(
+        binding_errors,
+        environment_errors,
+        snapshot_errors,
+        missing_limits,
+        missing_trace,
+        load,
+    )
+    missing.update(_signal_verdict_missing(statistics, limits, pinned, aiclk_depressed))
+    return missing
+
+
+def _run_report(
+    record: Mapping[str, Any],
+    name: str,
+    run_number: int | None,
+    configuration_id: str | None,
+    mode: str,
+    expected_candidate: bool,
+    verdict_missing: set[str],
+    spec: _PlanSpec,
+    load: _TraceLoad,
+    snapshot_name: str | None,
+    limits: Mapping[str, Any],
+    statistics: Mapping[str, Any],
+    aiclk_depressed: bool | None,
+    aiclk_not_depressed: bool | None,
+    pinned: Mapping[str, bool | None],
+    trace_report: Mapping[str, Any],
+    binding_errors: Sequence[str],
+    environment_errors: Sequence[str],
+    limit_errors: Sequence[str],
+    snapshot_errors: Sequence[str],
+) -> dict[str, Any]:
+    exploratory_missing = (
+        set(verdict_missing) | set(load.missing_fields) | set(load.errors) | set(limit_errors)
+        if expected_candidate
+        else set(load.missing_fields) | set(load.errors) | set(limit_errors)
+    )
+    return {
         "run_id": _safe_name(_record_value(record, ("run", "run_id")) or name),
         "run_number": run_number,
         "configuration_id": configuration_id,
@@ -1617,64 +2120,145 @@ def _run_analysis(record_input: _RecordInput, index: int, spec: _PlanSpec) -> _R
         "reader_facts": trace_report["reader_facts"],
         "exploratory": {
             **trace_report["exploratory"],
-            "load_errors": list(dict.fromkeys(load.errors + limit_errors + snapshot_errors)),
+            "load_errors": list(dict.fromkeys(load.errors + list(limit_errors) + list(snapshot_errors))),
             "binding_errors": list(dict.fromkeys(binding_errors + environment_errors)),
-            "missing_fields": sorted(
-                set(verdict_missing)
-                | set(load.missing_fields)
-                | set(load.errors)
-                | set(limit_errors)
-                if expected_candidate
-                else set(load.missing_fields) | set(load.errors) | set(limit_errors)
-            ),
+            "missing_fields": sorted(exploratory_missing),
         },
         "missing_fields": sorted(verdict_missing),
     }
+
+
+def _run_analysis(record_input: _RecordInput, index: int, spec: _PlanSpec) -> _RunAnalysis:
+    record = record_input.record
+    name = _record_name(record_input, index)
+    configuration_id, run_number, mode = _run_identity(record)
+    role = spec.configuration_roles.get(configuration_id or "", {})
+    expected_candidate = _expected_verdict_candidate(mode, role, run_number, spec)
+    configuration = record.get("configuration") if isinstance(record.get("configuration"), Mapping) else None
+    binding, binding_errors, result = _duration_binding(
+        record, spec, configuration, configuration_id, mode
+    )
+    environment_errors = _environment_errors(record, result, configuration, spec)
+    snapshot, snapshot_name, snapshot_errors = _pre_snapshot_mapping(
+        record, base_dir=record_input.base_dir, spec=spec
+    )
+    limits, missing_limits, limit_errors = _extract_limits(snapshot, spec)
+    source_verified = _observed_source_versions_verified(record, result, snapshot)
+    load = _load_trace_source(
+        record,
+        base_dir=record_input.base_dir,
+        record_name=name,
+        source_verified=source_verified,
+    )
+    trace_report, missing_trace = _trace_analysis(
+        load,
+        spec,
+        expected_start_ns=binding["workload_start_monotonic_ns"],
+        expected_end_ns=binding["workload_end_monotonic_ns"],
+    )
+    _append_snapshot_gddr_raw(trace_report, snapshot, spec)
+    statistics = trace_report["statistics"]
+    aiclk_depressed, aiclk_not_depressed = _aiclk_fact(statistics, limits, spec)
+    pinned = {
+        hypothesis: _pinned_fact(hypothesis, statistics, limits, spec)
+        for hypothesis in HYPOTHESIS_SIGNALS
+    }
+    verdict_missing = _verdict_missing_fields(
+        expected_candidate,
+        binding_errors,
+        environment_errors,
+        snapshot_errors,
+        missing_limits,
+        missing_trace,
+        load,
+        statistics,
+        limits,
+        pinned,
+        aiclk_depressed,
+    )
+    report = _run_report(
+        record,
+        name,
+        run_number,
+        configuration_id,
+        mode,
+        expected_candidate,
+        verdict_missing,
+        spec,
+        load,
+        snapshot_name,
+        limits,
+        statistics,
+        aiclk_depressed,
+        aiclk_not_depressed,
+        pinned,
+        trace_report,
+        binding_errors,
+        environment_errors,
+        limit_errors,
+        snapshot_errors,
+    )
     return _RunAnalysis(
         report=report,
         expected_candidate=expected_candidate,
         eligible=expected_candidate and not verdict_missing,
-        verdict_position=position,
+        verdict_position=run_number if expected_candidate else None,
     )
+
+
+def _expected_verdict_positions(spec: _PlanSpec) -> set[int]:
+    return {
+        index
+        for index, configuration_id in enumerate(spec.order, start=1)
+        if configuration_id in spec.verdict_configurations
+    }
+
+
+def _position_run(
+    item: _RunAnalysis,
+    expected_positions: set[int],
+    spec: _PlanSpec,
+    by_position: dict[int, _RunAnalysis],
+    missing: list[str],
+    duplicates: list[str],
+    extras: list[str],
+) -> None:
+    position = item.verdict_position
+    actual_config = item.report.get("configuration_id")
+    if position not in expected_positions:
+        if item.expected_candidate:
+            extras.append(
+                f"{actual_config or '<missing-config>'}.run_{item.report.get('run_number') or '<missing-number>'}.ordered_evidence"
+            )
+        return
+    expected_config = spec.order[position - 1]
+    if actual_config != expected_config:
+        missing.append(f"run_{position}.{expected_config}.ordered_evidence")
+        extras.append(f"run_{position}.{actual_config or '<missing-config>'}.ordered_evidence")
+        return
+    if not item.eligible:
+        missing.append(f"run_{position}.{expected_config}.ordered_evidence")
+        missing.extend(
+            f"run_{position}.{expected_config}.{field}"
+            for field in item.report.get("missing_fields", [])
+        )
+        return
+    if position in by_position:
+        duplicates.append(f"run_{position}.{expected_config}.duplicate_evidence")
+    else:
+        by_position[position] = item
 
 
 def _position_runs(
     run_analyses: Sequence[_RunAnalysis], spec: _PlanSpec
 ) -> tuple[dict[int, _RunAnalysis], list[str], list[str], list[str]]:
-    expected_positions = {
-        index
-        for index, configuration_id in enumerate(spec.order, start=1)
-        if configuration_id in spec.verdict_configurations
-    }
+    expected_positions = _expected_verdict_positions(spec)
     by_position: dict[int, _RunAnalysis] = {}
     missing: list[str] = []
     duplicates: list[str] = []
     extras: list[str] = []
     for item in run_analyses:
-        position = item.verdict_position
-        actual_config = item.report.get("configuration_id")
-        if position not in expected_positions:
-            if item.expected_candidate:
-                extras.append(
-                    f"{actual_config or '<missing-config>'}.run_{item.report.get('run_number') or '<missing-number>'}.ordered_evidence"
-                )
-            continue
-        expected_config = spec.order[position - 1]
-        if actual_config != expected_config:
-            missing.append(f"run_{position}.{expected_config}.ordered_evidence")
-            extras.append(f"run_{position}.{actual_config or '<missing-config>'}.ordered_evidence")
-            continue
-        if not item.eligible:
-            missing.append(f"run_{position}.{expected_config}.ordered_evidence")
-            missing.extend(
-                f"run_{position}.{expected_config}.{field}"
-                for field in item.report.get("missing_fields", [])
-            )
-            continue
-        if position in by_position:
-            duplicates.append(f"run_{position}.{expected_config}.duplicate_evidence")
-        else:
-            by_position[position] = item
+        _position_run(item, expected_positions, spec, by_position, missing, duplicates, extras)
     for position in sorted(expected_positions):
         if position not in by_position:
             missing.append(f"run_{position}.{spec.order[position - 1]}.ordered_evidence")
@@ -1742,9 +2326,15 @@ def _half_preconditions(
     c081_mean = c081.report["statistics"].get("aiclk_mhz", {}).get("time_weighted_mean") if c081 else None
     c108_mean = c108.report["statistics"].get("aiclk_mhz", {}).get("time_weighted_mean") if c108 else None
     p3_pass = None if c081_mean is None or c108_mean is None else float(c081_mean) > float(c108_mean)
+    if p3_pass is None:
+        p3_status = "not_evaluable"
+    elif p3_pass:
+        p3_status = "pass"
+    else:
+        p3_status = "fail"
     p3 = {
         "name": "P3-monotonic",
-        "status": "not_evaluable" if p3_pass is None else ("pass" if p3_pass else "fail"),
+        "status": p3_status,
         "pass": p3_pass,
         "expected": "C081 plateau mean AICLK is higher than C108 in this order half",
         "C081_plateau_aiclk_mhz": c081_mean,
@@ -1808,29 +2398,137 @@ def _hypothesis_results(
     return results, supported
 
 
-def _annotate_cross_run_limits(run_analyses: Sequence[_RunAnalysis]) -> None:
+def _run_limit_name(item: _RunAnalysis) -> str:
+    return str(item.report.get("run_number") or item.report.get("run_id"))
+
+
+def _cross_run_limit_values(
+    run_analyses: Sequence[_RunAnalysis],
+) -> dict[str, dict[str, float]]:
     values: dict[str, dict[str, float]] = {name: {} for name in LIMIT_ALIASES}
     for item in run_analyses:
-        run_name = str(item.report.get("run_number") or item.report.get("run_id"))
+        run_name = _run_limit_name(item)
         for name, info in item.report.get("limits", {}).items():
             if isinstance(info, Mapping) and isinstance(info.get("value"), (int, float)):
                 values[name][run_name] = float(info["value"])
+    return values
+
+
+def _other_limit_values(
+    values: Mapping[str, Mapping[str, float]], name: str, run_name: str
+) -> dict[str, float]:
+    return {
+        run: value for run, value in values.get(name, {}).items() if run != run_name
+    }
+
+
+def _annotate_cross_run_limits(run_analyses: Sequence[_RunAnalysis]) -> None:
+    values = _cross_run_limit_values(run_analyses)
     for item in run_analyses:
+        run_name = _run_limit_name(item)
         for name, info in item.report.get("limits", {}).items():
             if not isinstance(info, dict):
                 continue
             current = info.get("value")
-            others = {
-                run: value
-                for run, value in values.get(name, {}).items()
-                if run != str(item.report.get("run_number") or item.report.get("run_id"))
-            }
+            others = _other_limit_values(values, name, run_name)
             differing = bool(
                 current is not None
-                and any(not math.isclose(float(current), value, rel_tol=0.0, abs_tol=1e-12) for value in others.values())
+                and any(
+                    not math.isclose(float(current), value, rel_tol=0.0, abs_tol=1e-12)
+                    for value in others.values()
+                )
             )
             info["differs_from_other_runs"] = differing
             info["other_run_values"] = others
+
+
+def _path_record_inputs(item: str | Path) -> list[_RecordInput]:
+    path = _safe_cli_path(item, purpose="runner record")
+    payload = _load_json(path, purpose="runner record")
+    nested = payload.get("runs")
+    if not isinstance(nested, list):
+        return [_RecordInput(payload, base_dir=path.parent, record_name=path.name)]
+    return [
+        _RecordInput(run, base_dir=path.parent, record_name=path.name)
+        for run in nested
+        if isinstance(run, Mapping)
+    ]
+
+
+def _mapping_record_inputs(item: Mapping[str, Any], index: int) -> list[_RecordInput]:
+    nested = item.get("runs")
+    if not isinstance(nested, list):
+        return [_RecordInput(item)]
+    return [
+        _RecordInput(run, record_name=f"record-{index + 1}")
+        for run in nested
+        if isinstance(run, Mapping)
+    ]
+
+
+def _record_inputs(
+    records: Sequence[Mapping[str, Any] | str | Path],
+) -> list[_RecordInput]:
+    inputs: list[_RecordInput] = []
+    for index, item in enumerate(records):
+        if isinstance(item, (str, Path)):
+            inputs.extend(_path_record_inputs(item))
+        elif isinstance(item, Mapping):
+            inputs.extend(_mapping_record_inputs(item, index))
+        else:
+            raise AnalysisError("runner records must be objects or JSON paths")
+    return inputs
+
+
+def _classification_result(
+    missing_fields: set[str],
+    failed_preconditions: Sequence[str],
+    supported: Sequence[str],
+) -> tuple[str, str]:
+    if missing_fields:
+        return (
+            "not_evaluable",
+            "required verdict evidence is missing: " + ", ".join(sorted(missing_fields)),
+        )
+    if failed_preconditions:
+        return (
+            "H-OTHER",
+            "failed preregistered preconditions: "
+            + ", ".join(sorted(dict.fromkeys(failed_preconditions))),
+        )
+    if len(supported) == 1:
+        return supported[0], f"exactly one supported hypothesis: {supported[0]}"
+    if len(supported) > 1:
+        return "multiple", "multiple supported hypotheses: " + ", ".join(supported)
+    return "H-OTHER", "no supported hypothesis satisfies P1-P3 and its pinned-signal rule"
+
+
+def _analysis_plan(spec: _PlanSpec, effective_plan: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "record_schema": effective_plan.get("record_schema"),
+        "source": DEFAULT_PLAN_PATH.name,
+        "sha256": spec.plan_sha256,
+        "load_mode": ISSUE137_LOAD_MODE,
+        "long_run_order": list(spec.order),
+        "verdict_configurations": list(spec.verdict_configurations),
+        "plateau": {
+            "start_seconds": spec.plateau_start_seconds,
+            "end_seconds": spec.plateau_end_seconds,
+            "interval_definition": "left-held positive-duration segments; terminal coverage required; no extrapolation",
+        },
+        "timing": {
+            "long": {"target_seconds": spec.long_target_seconds, "guard_seconds": spec.long_guard_seconds},
+            "smoke": {"target_seconds": spec.smoke_target_seconds, "guard_seconds": spec.smoke_guard_seconds},
+            "overrun_limit_seconds": spec.overrun_limit_seconds,
+        },
+        "criteria": {
+            "limit_tolerance_fraction": spec.tolerance_fraction,
+            "aiclk_depression_fraction": spec.aiclk_fraction,
+            "thermal_pin_fraction": spec.thermal_pin_fraction,
+            "hypothesis_signals": HYPOTHESIS_SIGNALS,
+        },
+        "classification_policy": dict(spec.classification_policy),
+    }
 
 
 def analyze_runs(
@@ -1841,32 +2539,7 @@ def analyze_runs(
     """Analyze persisted runner records without calibration or device access."""
     effective_plan = dict(plan) if isinstance(plan, Mapping) else _load_default_plan()
     spec = _plan_spec(effective_plan)
-    inputs: list[_RecordInput] = []
-    for item in records:
-        if isinstance(item, (str, Path)):
-            path = _safe_cli_path(item, purpose="runner record")
-            payload = _load_json(path, purpose="runner record")
-            nested = payload.get("runs")
-            if isinstance(nested, list):
-                inputs.extend(
-                    _RecordInput(run, base_dir=path.parent, record_name=path.name)
-                    for run in nested
-                    if isinstance(run, Mapping)
-                )
-            else:
-                inputs.append(_RecordInput(payload, base_dir=path.parent, record_name=path.name))
-        elif isinstance(item, Mapping):
-            nested = item.get("runs")
-            if isinstance(nested, list):
-                inputs.extend(
-                    _RecordInput(run, record_name=f"record-{index + 1}")
-                    for index, run in enumerate(nested)
-                    if isinstance(run, Mapping)
-                )
-            else:
-                inputs.append(_RecordInput(item))
-        else:
-            raise AnalysisError("runner records must be objects or JSON paths")
+    inputs = _record_inputs(records)
     run_analyses = [_run_analysis(item, index, spec) for index, item in enumerate(inputs)]
     _annotate_cross_run_limits(run_analyses)
     by_position, absent, duplicates, extras = _position_runs(run_analyses, spec)
@@ -1884,23 +2557,9 @@ def analyze_runs(
     hypotheses, supported = _hypothesis_results(
         by_position, preconditions, spec, sorted(missing_fields)
     )
-    if missing_fields:
-        classification = "not_evaluable"
-        classification_reason = "required verdict evidence is missing: " + ", ".join(sorted(missing_fields))
-    elif failed_preconditions:
-        classification = "H-OTHER"
-        classification_reason = "failed preregistered preconditions: " + ", ".join(
-            sorted(dict.fromkeys(failed_preconditions))
-        )
-    elif len(supported) == 1:
-        classification = supported[0]
-        classification_reason = f"exactly one supported hypothesis: {supported[0]}"
-    elif len(supported) > 1:
-        classification = "multiple"
-        classification_reason = "multiple supported hypotheses: " + ", ".join(supported)
-    else:
-        classification = "H-OTHER"
-        classification_reason = "no supported hypothesis satisfies P1-P3 and its pinned-signal rule"
+    classification, classification_reason = _classification_result(
+        missing_fields, failed_preconditions, supported
+    )
     hypotheses["H-OTHER"] = {
         "classification": "selected" if classification == "H-OTHER" else "not_selected",
         "supported": classification == "H-OTHER",
@@ -1921,31 +2580,7 @@ def analyze_runs(
         "failed_preconditions": sorted(dict.fromkeys(failed_preconditions)),
         "missing_fields": sorted(missing_fields),
         "verdict_evidence_complete": not missing_fields,
-        "plan": {
-            "record_schema": effective_plan.get("record_schema"),
-            "source": DEFAULT_PLAN_PATH.name,
-            "sha256": spec.plan_sha256,
-            "load_mode": ISSUE137_LOAD_MODE,
-            "long_run_order": list(spec.order),
-            "verdict_configurations": list(spec.verdict_configurations),
-            "plateau": {
-                "start_seconds": spec.plateau_start_seconds,
-                "end_seconds": spec.plateau_end_seconds,
-                "interval_definition": "left-held positive-duration segments; terminal coverage required; no extrapolation",
-            },
-            "timing": {
-                "long": {"target_seconds": spec.long_target_seconds, "guard_seconds": spec.long_guard_seconds},
-                "smoke": {"target_seconds": spec.smoke_target_seconds, "guard_seconds": spec.smoke_guard_seconds},
-                "overrun_limit_seconds": spec.overrun_limit_seconds,
-            },
-            "criteria": {
-                "limit_tolerance_fraction": spec.tolerance_fraction,
-                "aiclk_depression_fraction": spec.aiclk_fraction,
-                "thermal_pin_fraction": spec.thermal_pin_fraction,
-                "hypothesis_signals": HYPOTHESIS_SIGNALS,
-            },
-            "classification_policy": dict(spec.classification_policy),
-        },
+        "plan": _analysis_plan(spec, effective_plan),
         "preconditions": preconditions,
         "hypotheses": hypotheses,
         "runs": all_runs,
@@ -1972,9 +2607,10 @@ def analyze_runs(
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
     """Load the immutable Issue #137 plan through the board-free runner seam."""
     try:
+        safe_path = _safe_cli_path(path, purpose="immutable plan")
         from tools.issue137 import load_plan as load_runner_plan
 
-        return load_runner_plan(Path(path))
+        return load_runner_plan(safe_path)
     except (ImportError, OSError, TypeError, ValueError) as exc:
         raise AnalysisError("immutable Issue #137 plan cannot be loaded") from exc
 
@@ -2006,9 +2642,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.output is None:
             print(serialized, end="")
         else:
-            output_path = _safe_cli_path(args.output, purpose="analysis output", output=True)
-            output_path.write_text(serialized, encoding="utf-8")
-    except (AnalysisError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            _write_text(args.output, serialized, purpose="analysis output")
+    except (OSError, TypeError, ValueError) as exc:
         print(f"Issue #137 analysis rejected: {type(exc).__name__}: {exc}", file=__import__("sys").stderr)
         return 2
     return 0
