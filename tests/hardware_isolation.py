@@ -1,11 +1,11 @@
 """Process-wide pytest guard for accidental accelerator access.
 
-The guard is deliberately implemented with Python audit events rather than
-wrapping public subprocess or file APIs.  Audit events are emitted by the
-interpreter before process creation and file opening, so aliases cached by
-production modules remain covered and ordinary test doubles remain
-mockable.  The exception derives from ``BaseException`` so a production
-``except Exception`` cannot turn a blocked operation into a passing test.
+The guard combines Python audit events with a narrow ``os.open`` boundary for
+relative ``dir_fd`` paths. Audit events are emitted by the interpreter before
+process creation and file opening, while the boundary supplies the directory
+metadata unavailable in that event. Ordinary test doubles remain mockable.
+The exception derives from ``BaseException`` so a production ``except
+Exception`` cannot turn a blocked operation into a passing test.
 """
 
 from __future__ import annotations
@@ -117,7 +117,10 @@ def _path_is_absolute(value: Any) -> bool:
 
 def _dir_fd_target(dir_fd: int) -> str | None:
     try:
-        return os.readlink(f"/proc/self/fd/{int(dir_fd)}")
+        fd = int(dir_fd)
+        if fd == getattr(os, "AT_FDCWD", -100):
+            return os.getcwd()
+        return os.readlink(f"/proc/self/fd/{fd}")
     except (OSError, TypeError, ValueError):
         return None
 

@@ -43,6 +43,13 @@ def inert_process_downstream(monkeypatch: pytest.MonkeyPatch):
     return calls
 
 
+def _invoke_without_exception_swallow(action):
+    try:
+        return action()
+    except Exception as exc:
+        raise AssertionError("the guard must not be an Exception") from exc
+
+
 @pytest.mark.parametrize(
     ("scope", "route", "blocked"),
     _PERMISSION_MATRIX,
@@ -214,11 +221,10 @@ def test_os_system_shell_form_is_blocked_by_the_audit_boundary() -> None:
 def test_exception_cannot_be_hidden_by_an_exception_handler(
     inert_process_downstream: list[object],
 ) -> None:
+    action = lambda: subprocess.run(("docker", "run", "image"), check=False)
+
     with pytest.raises(HardwareAccessViolation):
-        try:
-            subprocess.run(("docker", "run", "image"), check=False)
-        except Exception as exc:  # pragma: no cover - guard must bypass this branch
-            raise AssertionError("the guard must not be an Exception") from exc
+        _invoke_without_exception_swallow(action)
 
     assert inert_process_downstream == []
 
@@ -397,6 +403,39 @@ def test_ordinary_relative_dir_fd_open_remains_available(tmp_path: pathlib.Path)
         os.close(directory_fd)
 
 
+def test_at_fdcwd_relative_open_remains_available() -> None:
+    at_fdcwd = getattr(os, "AT_FDCWD", -100)
+    file_fd = os.open("tests/test_hardware_isolation.py", os.O_RDONLY, dir_fd=at_fdcwd)
+    try:
+        assert os.read(file_fd, 1)
+    finally:
+        os.close(file_fd)
+
+
+def test_at_fdcwd_mocked_device_cwd_is_blocked_without_chdir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import hardware_isolation as isolation
+
+    calls: list[object] = []
+
+    def downstream_open(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("mocked device cwd reached the downstream spy")
+
+    cached_open = isolation.os.open
+    monkeypatch.setattr(os, "getcwd", lambda: "/dev/tenstorrent")
+    monkeypatch.setattr(isolation, "_original_os_open", downstream_open)
+    operation = lambda: cached_open(
+        "0", isolation.os.O_RDONLY, dir_fd=getattr(os, "AT_FDCWD", -100)
+    )
+
+    with pytest.raises(HardwareAccessViolation):
+        operation()
+
+    assert calls == []
+
+
 def test_wrapper_permission_does_not_allow_hardware_processes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -495,6 +534,36 @@ def test_wrapper_permission_reaches_only_inert_wrapper_downstream(
         restore_access(token)
 
     assert calls
+
+
+def test_issue137_missing_capture_callback_is_blocked_before_workload(
+    tmp_path: pathlib.Path,
+    inert_process_downstream: list[object],
+) -> None:
+    from tools import issue137 as runner
+
+    plan = runner.load_plan(
+        pathlib.Path("docs/measurements/2026-10-18-host-newton-schulz-issue137-plan.json")
+    )
+    configuration = runner.configuration(plan, "C018")
+    workload_calls: list[object] = []
+
+    def command_runner(*args: object, **kwargs: object):
+        workload_calls.append((args, kwargs))
+        raise AssertionError("workload callback was reached before snapshot capture")
+
+    with pytest.raises(HardwareAccessViolation):
+        runner.run_one(
+            plan=plan,
+            configuration=configuration,
+            mode="smoke",
+            output_dir=tmp_path,
+            run_id="issue137-missing-capture-callback",
+            options=runner.Issue137RunOptions(command_runner=command_runner),
+        )
+
+    assert workload_calls == []
+    assert inert_process_downstream == []
 
 
 def test_ordinary_subprocess_and_file_operations_remain_available(tmp_path: pathlib.Path) -> None:
