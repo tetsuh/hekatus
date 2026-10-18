@@ -15,9 +15,26 @@
     "reason": "With the ADR-0013 batch of 8192 matrices held fixed, only 79-108 cores fit in L1 (board-free L1 ledger), and every count in that range is estimated to exceed 300 W at asic_fmax. A below-limit configuration is required to test H-BPL, so total work scales with n and per-core work is fixed.",
     "adr_0013_departure": "Configurations other than n=108 depart from the ADR-0013 batch. This is a power intervention, not a performance or image-quality measurement; no throughput figure from it is to be compared with ADR-0013 results.",
     "n108_identity": "n=108 is the exact Q2 workload (1024 blocks, batch 8192).",
-    "l1_requirement": "The per-core L1 footprint must be identical for every n; the harness verifies this board-free before any run and rejects a configuration that differs.",
+    "l1_requirement": "Every configuration must fit L1: the board-free ledger and the pre-open preflight reject a configuration that does not. Per-core work (blocks per active core, iterations, block size) must be identical for every n. The total L1 allocation of the interleaved input tensors scales with the batch and is not required to be equal across n; it is recorded per configuration as a stated difference. Equality of the per-core ledger is reported, not required.",
     "core_selection": "Active cores are a deterministic, documented subset of the 108-core worker pool (the two resident cores are excluded as in Q2); the coordinates are recorded per run.",
     "other_parameters": "Identical to Q2: ADR-0013 configuration (BF16 state, FP32 destination, HiFi3, fused S, matrix block 8, double buffering, full DEST sync, input/R/X0 in L1, output in DRAM), 12 fixed iterations, no convergence check."
+  },
+  "load_execution": {
+    "mode": "host-duration-bounded",
+    "definition": "Each launch performs fixed work (the configuration's blocks, 12 Newton-Schulz iterations, block size 8). Launches are issued back to back until at least run_duration_seconds of host CLOCK_MONOTONIC have elapsed since the first launch started; the loop then stops at the next launch boundary. The launch count is an observation, recorded per run, never an input.",
+    "why_not_fixed_repeat_count": "A repeat count sized from a short calibration at about 1350 MHz would run about 40 percent longer at the throttled plateau and breach the guard; a count sized for the plateau would end early in an unthrottled configuration and break terminal plateau coverage. The sustained AICLK is the quantity under measurement, so it cannot be an input to the duration.",
+    "calibration": "No per-configuration repeat-count calibration is required or used; the Q2 108-core calibration constants are not used.",
+    "workload_interval": "[first_launch_start_monotonic_ns, first_launch_start_monotonic_ns + run_duration_seconds); the plateau window is relative to first_launch_start_monotonic_ns.",
+    "overrun": "The last launch may end after run_duration_seconds. The overrun (last_launch_end - workload_interval_end) is recorded. A run whose overrun exceeds overrun_limit_seconds is failed and reported; it is not extended and not silently accepted.",
+    "overrun_limit_seconds": 10,
+    "recorded_fields": [
+      "launch_count",
+      "first_launch_start_monotonic_ns",
+      "last_launch_end_monotonic_ns",
+      "overrun_seconds"
+    ],
+    "scope": "Opt-in mode of the measurement harness for Issue #137 only. Q2 defaults, records and arithmetic are unchanged. This is a measurement-tool option, not a product real-time path, so the fixed-work rule of CLAUDE.md is not involved: work per launch stays fixed; only the number of launches follows the clock.",
+    "supervision_clock": "host CLOCK_MONOTONIC, consistent with ADR-0015"
   },
   "configurations": [
     {
@@ -126,8 +143,8 @@
     "device_note": "Same physical board as Q2. Device 0 differs at idle in GDDR temperature and fan speed (Issue #121 post-hoc observation); that difference is a recorded confound, and device 0 is not used.",
     "run_duration_seconds": 120,
     "run_duration_definition": "Fixed workload interval of sustained device work; setup and teardown are outside it.",
-    "run_guard_seconds": 165,
-    "run_guard_definition": "Workload subprocess timeout and harness deadline. 120 s load + 40 s runner margin + 5 s headroom. A run that reaches the guard fails and is never extended.",
+    "run_guard_seconds": 170,
+    "run_guard_definition": "Workload subprocess timeout and harness deadline. 120 s load + 40 s runner setup/teardown margin + 10 s one-launch overrun allowance. A run that reaches the guard fails and is never extended.",
     "order": [
       "C018",
       "C108",
@@ -143,14 +160,31 @@
     "runs_per_configuration": 2,
     "smoke_runs": {
       "required_before_long_runs": true,
+      "load_execution": {
+        "mode": "host-duration-bounded",
+        "definition": "Each launch performs fixed work (the configuration's blocks, 12 Newton-Schulz iterations, block size 8). Launches are issued back to back until at least run_duration_seconds of host CLOCK_MONOTONIC have elapsed since the first launch started; the loop then stops at the next launch boundary. The launch count is an observation, recorded per run, never an input.",
+        "why_not_fixed_repeat_count": "A repeat count sized from a short calibration at about 1350 MHz would run about 40 percent longer at the throttled plateau and breach the guard; a count sized for the plateau would end early in an unthrottled configuration and break terminal plateau coverage. The sustained AICLK is the quantity under measurement, so it cannot be an input to the duration.",
+        "calibration": "No per-configuration repeat-count calibration is required or used; the Q2 108-core calibration constants are not used.",
+        "workload_interval": "[first_launch_start_monotonic_ns, first_launch_start_monotonic_ns + run_duration_seconds); the plateau window is relative to first_launch_start_monotonic_ns.",
+        "overrun": "The last launch may end after run_duration_seconds. The overrun (last_launch_end - workload_interval_end) is recorded. A run whose overrun exceeds overrun_limit_seconds is failed and reported; it is not extended and not silently accepted.",
+        "overrun_limit_seconds": 10,
+        "recorded_fields": [
+          "launch_count",
+          "first_launch_start_monotonic_ns",
+          "last_launch_end_monotonic_ns",
+          "overrun_seconds"
+        ],
+        "scope": "Opt-in mode of the measurement harness for Issue #137 only. Q2 defaults, records and arithmetic are unchanged. This is a measurement-tool option, not a product real-time path, so the fixed-work rule of CLAUDE.md is not involved: work per launch stays fixed; only the number of launches follows the clock.",
+        "supervision_clock": "host CLOCK_MONOTONIC, consistent with ADR-0015"
+      },
       "configurations": [
         "C018",
         "C054",
         "C081"
       ],
       "workload_seconds": 20,
-      "guard_seconds": 55,
-      "purpose": "Confirm that each new core set launches and records; the L1 ledger does not prove a launch. Smoke runs are diagnostics, not verdict evidence, and are under the 60 s approval threshold."
+      "guard_seconds": 70,
+      "purpose": "Confirm that each new core set launches and records, and observe the launch duration per configuration; the L1 ledger does not prove a launch. Smoke runs are diagnostics, not verdict evidence. The 20 s load is under the 60 s per-instance approval threshold; the 70 s guard (20 + 40 + 10) is a timeout, not a load duration."
     },
     "approval": "Each run longer than 60 s requires owner approval per instance. A run after a reset requires renewed approval.",
     "expected_wall_time": {
@@ -159,8 +193,8 @@
         30,
         40
       ],
-      "upper_bound_minutes": 102,
-      "upper_bound_definition": "8 * (165 s guard + 600 s cooldown cap)"
+      "upper_bound_minutes": 103,
+      "upper_bound_definition": "8 * (170 s guard + 600 s cooldown cap)"
     }
   },
   "plateau": {
@@ -286,6 +320,11 @@
       "revision": 1,
       "date": "2026-10-18",
       "change": "Created the preregistered plan: active-core intervention with fixed per-core work, configurations C018/C054/C081/C108, 8 runs of 120 s in S + reverse(S) order on device 1, 2 percent limit tolerance, preconditions P1-P3, smoke runs under 60 s, GDDR channel columns."
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-18",
+      "change": "Before any board run. Added the load_execution contract (host-duration-bounded launches with fixed work per launch, overrun limit 10 s, no repeat-count calibration) after implementation showed that a fixed repeat count cannot hold the duration when AICLK is the quantity under measurement. Relaxed l1_requirement from equal per-core L1 to fit-plus-identical-per-core-work, because the interleaved input allocation scales with batch. Raised the long-run guard to 170 s and the smoke guard to 70 s (the earlier 55 s was below the 20 + 40 s runner margin and would have been rejected by preflight). Criteria, configurations, order, durations and predictions are unchanged."
     }
   ]
 }
