@@ -13,6 +13,23 @@ from enodia.spec.probe import linear_5mhz
 from enodia.spec.sequence import make_bmode_config
 from enodia.spec.sim import simulate_frame
 
+pytest_plugins = ("pytester",)
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    invalid_nodes = {
+        node.nodeid
+        for item in items
+        for node in item.listchain()
+        if isinstance(node, (pytest.Module, pytest.Class))
+        and any(marker.name == "slow" for marker in node.own_markers)
+    }
+    if invalid_nodes:
+        raise pytest.UsageError(
+            "slow marker is only allowed on individual tests; found on: "
+            + ", ".join(sorted(invalid_nodes))
+        )
+
 
 @pytest.fixture(scope="session")
 def frame():
