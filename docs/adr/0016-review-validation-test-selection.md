@@ -56,8 +56,8 @@ process and test-selection contract, and is worthy of an ADR.
 - Individual markers can describe expensive numerical simulations, sweeps,
   golden comparisons, PSF checks, and end-to-end image tests without making a
   whole module costly by default.
-- A mechanical test guards against reintroducing a module-level `slow` marker;
-  it does not attempt to classify test meaning.
+- A collection-time mechanical guard rejects `slow` markers on module and
+  class nodes; it does not attempt to classify test meaning.
 - Changing either invocation, the marker scope, or the no-slow boundary is a
   new process decision and requires a later ADR.
 
