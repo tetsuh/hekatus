@@ -943,7 +943,7 @@ def test_issue137_artifact_write_rejects_a_symlink_escape_before_io(tmp_path: Pa
     destination = tmp_path / "artifact.json"
     destination.symlink_to(Path.cwd().parent)
 
-    with pytest.raises(runner.Issue137Error, match="trusted"):
+    with pytest.raises(runner.Issue137Error, match="trusted|symlink"):
         runner._write_artifact(destination, {"status": "ok"})
 
 
@@ -955,7 +955,7 @@ def test_issue137_device_environment_read_rejects_a_symlink_escape_before_io(
     source = tmp_path / "environment.json"
     source.symlink_to(Path.cwd().parent)
 
-    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted"):
+    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted|symlink"):
         issue137_device._load_environment(source)
 
 
@@ -967,7 +967,7 @@ def test_issue137_device_result_write_rejects_a_symlink_escape_before_io(
     destination = tmp_path / "runner-result.json"
     destination.symlink_to(Path.cwd().parent)
 
-    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted"):
+    with pytest.raises(issue137_device.Issue137DeviceError, match="trusted|symlink"):
         issue137_device._write_result(destination, {"status": "ok"})
 
 
@@ -976,7 +976,7 @@ def test_issue137_trace_write_rejects_a_symlink_escape_before_io(tmp_path: Path)
     destination.symlink_to(Path.cwd().parent)
 
     rows = [_row()]
-    with pytest.raises(trace.Issue137PowerTraceError, match="trusted"):
+    with pytest.raises(trace.Issue137PowerTraceError, match="trusted|symlink"):
         trace.write_issue137_power_trace(destination, rows)
 
 
@@ -1172,3 +1172,75 @@ def test_issue137_plain_valueerror_trace_finalization_is_recorded(
     assert record["status"] == "failed"
     assert record["failure"]["kind"] == "trace_capture_failure"
     assert record["trace_error"] == "ValueError"
+
+
+def test_issue137_failed_runner_result_retains_sanitized_raw_partial_duration(
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    plan = runner.load_plan(PLAN)
+    config = runner.configuration(plan, "C018")
+    environment = _issue137_environment()
+    result_path = tmp_path / "runner-result.json"
+    raw_result = _device_result(config, environment)
+    raw_result.update(
+        {
+            "status": "failed",
+            "launch_count": 7,
+            "first_launch_start_monotonic_ns": 100,
+            "workload_end_monotonic_ns": 20_000_000_100,
+            "last_launch_end_monotonic_ns": 23_500_000_100,
+            "overrun_seconds": 3.5,
+            "failure": {"kind": "duration_failure", "message": "partial fixture"},
+            "environment": {"board": {"serial": "untrusted-raw-result"}},
+        }
+    )
+
+    def capture(*, stage: str) -> dict[str, object]:
+        return {
+            "schema": runner.ISSUE137_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "status": "ok",
+            "returncode": 0,
+            "captured_at_utc": "2026-10-20T00:00:00+00:00",
+            "timestamp_monotonic_ns": 0,
+            "snapshot_elapsed_ns": 1,
+            "snapshot": _snapshot(),
+        }
+
+    def command_runner(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        result_path.write_text(json.dumps(raw_result), encoding="utf-8")
+        return SimpleNamespace(returncode=2, stdout="results -> /out/runner-result.json\n")
+
+    record = runner.run_one(
+        plan=plan,
+        configuration=config,
+        mode="smoke",
+        output_dir=tmp_path,
+        run_id="issue137-failed-result-raw",
+        options=runner.Issue137RunOptions(
+            command_runner=command_runner,
+            environment=environment,
+            capture_fn=capture,
+            board_id="fixture-board",
+            bus_id="0000:09:00.0",
+        ),
+    )
+
+    persisted = json.loads(
+        (tmp_path / "run-issue137-failed-result-raw.json").read_text(encoding="utf-8")
+    )
+    assert record["status"] == "failed"
+    assert record["verdict_evidence"] is False
+    assert persisted["runner_result_raw"]["status"] == "failed"
+    assert persisted["runner_result_raw"]["launch_count"] == 7
+    assert persisted["runner_result_raw"]["overrun_seconds"] == 3.5
+    assert persisted["runner_result_raw"]["failure"]["message"] == "partial fixture"
+    assert persisted["runner_result_raw"]["environment"]["board"]["serial"] == (
+        "untrusted-raw-result"
+    )
+    assert persisted["provenance"]["runner_result_path"] == "runner-result.json"
+    assert "runner_result" not in persisted
+    assert persisted["run"]["launch_count"] is None
+    assert persisted["environment"]["board"]["serial"] == "fixture-board"

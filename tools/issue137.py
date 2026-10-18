@@ -1757,6 +1757,8 @@ def _ingest_runner_result(
             completed=state.completed,
         )
         state.result = _read_runner_result(result_path)
+        prepared.record["runner_result_raw"] = _safe_json_value(state.result)
+        prepared.record["provenance"]["runner_result_path"] = state.result_name
     except Issue137Error as exc:
         state.result = None
         state.result_error = str(exc)
