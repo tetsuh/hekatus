@@ -2170,6 +2170,18 @@ These synthetic-load observations do not establish a physical firmware
 mechanism or a full-enodia capacity estimate. No threshold change or extra
 instance was used to obtain another label.
 
+A separate [exploratory sampling supplement](measurements/issue137-board-power/2026-10-18/README.md#exploratory-not-verdict-bearing)
+examines sample dispersion and a post-hoc current-based busy proxy. The four
+high-configuration duration-weighted board-power means average 297.555710 W;
+their naive sample standard errors exceed the preregistered 6 W half-band.
+That exposes an inferential design weakness, not a change to the verdict or
+evidence of faulty acquisition. C108 conditional busy currents near 200 A
+also leave physical current limiting possible, without supporting the
+registered H-TDC label. IID assumptions, serial correlation, sample-point
+versus duration weighting, and conditional selection limit this interpretation.
+The plan and H-OTHER remain unchanged; a follow-up needs a separate
+preregistered Issue before any new run.
+
 ### Current constraints — Q4 fixed-source audit
 
 The fixed tt-metal v0.75.0 source inspection found the following facts:

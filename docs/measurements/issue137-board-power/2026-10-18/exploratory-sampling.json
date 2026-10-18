@@ -1,0 +1,850 @@
+{
+  "schema": "issue137-exploratory-sampling-v1",
+  "verdict_bearing": false,
+  "source_manifest_sha256": "3421353a89ac69ba4ab9689d5a8b3053a5aee90e9e06c8bf3a5bddf9bd1e95a7",
+  "selection": {
+    "clock": "timestamp_monotonic_ns relative to workload_start_monotonic_ns",
+    "window_seconds": [
+      60,
+      120
+    ],
+    "lower_inclusive": true,
+    "upper_exclusive": true,
+    "estimator": "unweighted arithmetic sample statistics",
+    "sd_denominator": "n-1",
+    "naive_se": "sample_sd / sqrt(n); IID assumption only, no correlation correction",
+    "busy": "current_a >= 150 A; post-hoc proxy, not measured utilization",
+    "boundary": "no pre-window held sample, interpolation, padding, or extrapolation"
+  },
+  "runs": [
+    {
+      "run_number": 1,
+      "configuration": "C018",
+      "sources": {
+        "record": {
+          "path": "runs/run-01-c018/run-issue137-long-r01-c018-20261018T123235Z.json",
+          "sha256": "27819142ad9acc853377d51bd2032777c06594349d627b1fae2a74a5734afe32",
+          "byte_count": 129891
+        },
+        "trace": {
+          "path": "runs/run-01-c018/issue137-power-trace-issue137-long-r01-c018-20261018T123235Z.csv",
+          "sha256": "e75eb39272be11f0882612693b691cb369bacc2986baebf6ba218b7a73ba9af2",
+          "byte_count": 8788
+        }
+      },
+      "sample_count": 26,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ],
+      "selected_offsets_ns": [
+        61952263451,
+        64188575858,
+        66423067976,
+        68657023565,
+        70899635613,
+        73132802268,
+        75367616840,
+        77607024562,
+        79843001278,
+        82082623718,
+        84317811947,
+        86553665360,
+        88798328983,
+        91034674747,
+        93269015457,
+        95504988258,
+        97743935647,
+        99980039826,
+        102218363479,
+        104451967318,
+        106690796953,
+        108926949571,
+        111160562691,
+        113396441323,
+        115635918209,
+        117873485710
+      ],
+      "board_power_w": {
+        "mean": 254.26923076923077,
+        "sample_sd": 11.04738047614073,
+        "naive_se": 2.1665695623817514,
+        "minimum": 226.0,
+        "maximum": 264.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 0,
+        "fraction": 0.0,
+        "means": {
+          "board_power_w": null,
+          "current_a": null,
+          "power_w": null
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1350.0,
+        "sample_sd": 0.0
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1350.0,
+        "board_power_w": 254.09481545943333,
+        "current_a": 132.47636686493334,
+        "power_w": 112.66301539986667,
+        "asic_temp_c": 77.28360772107168
+      }
+    },
+    {
+      "run_number": 2,
+      "configuration": "C108",
+      "sources": {
+        "record": {
+          "path": "runs/run-02-c108/run-issue137-long-r02-c108-20261018T123235Z.json",
+          "sha256": "637164d7e292d7414641117340265e6f771f17db1d9ca06d738e655cfa9e89e3",
+          "byte_count": 400305
+        },
+        "trace": {
+          "path": "runs/run-02-c108/issue137-power-trace-issue137-long-r02-c108-20261018T123235Z.csv",
+          "sha256": "815914f7298121804c0f74fe40f7065b48e8f8006d901a2c18d123829bc52090",
+          "byte_count": 8783
+        }
+      },
+      "sample_count": 27,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "selected_offsets_ns": [
+        61821194923,
+        64060117749,
+        66295059357,
+        68532469474,
+        70770133680,
+        73011608169,
+        75248058473,
+        77480166185,
+        79713738112,
+        81953143731,
+        84190696214,
+        86428659929,
+        88668516591,
+        90903309341,
+        93141986647,
+        95375057758,
+        97611580835,
+        99845569346,
+        102083565047,
+        104320499788,
+        106555422107,
+        108790734099,
+        111025221602,
+        113259572810,
+        115498535256,
+        117732341580,
+        119965865335
+      ],
+      "board_power_w": {
+        "mean": 302.037037037037,
+        "sample_sd": 44.83515231591037,
+        "naive_se": 8.628529086249575,
+        "minimum": 208.0,
+        "maximum": 352.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 19,
+        "fraction": 0.7037037037037037,
+        "means": {
+          "board_power_w": 298.36842105263156,
+          "current_a": 199.6315789473684,
+          "power_w": 151.47368421052633
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1099.3333333333333,
+        "sample_sd": 4.731238250671317
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1099.3276333194,
+        "board_power_w": 302.38001940248336,
+        "current_a": 173.49401586795,
+        "power_w": 131.61799857666668,
+        "asic_temp_c": 81.552880960315
+      }
+    },
+    {
+      "run_number": 3,
+      "configuration": "C054",
+      "sources": {
+        "record": {
+          "path": "runs/run-03-c054/run-issue137-long-r03-c054-20261018T123235Z.json",
+          "sha256": "47b11cd1c4aff70dc0f2d648c54b3ea7d6e45b2586da0d550048b115df8e8aa1",
+          "byte_count": 238301
+        },
+        "trace": {
+          "path": "runs/run-03-c054/issue137-power-trace-issue137-long-r03-c054-20261018T123235Z.csv",
+          "sha256": "3a776b9bbfa1e4ce659d1073bcebe77251073d04fd0b174d5d67c0818314a5a1",
+          "byte_count": 8795
+        }
+      },
+      "sample_count": 27,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "selected_offsets_ns": [
+        61741600043,
+        63974079328,
+        66210217686,
+        68448193678,
+        70681572579,
+        72923645079,
+        75156867157,
+        77392059514,
+        79626279021,
+        81861654382,
+        84097043172,
+        86342045858,
+        88575021305,
+        90812367577,
+        93046418810,
+        95280302189,
+        97515508412,
+        99752244647,
+        101986843143,
+        104224856556,
+        106459053249,
+        108697366724,
+        110935242308,
+        113168291279,
+        115404603060,
+        117644914707,
+        119879080180
+      ],
+      "board_power_w": {
+        "mean": 300.25925925925924,
+        "sample_sd": 29.439106111785538,
+        "naive_se": 5.665558612780446,
+        "minimum": 227.0,
+        "maximum": 326.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 22,
+        "fraction": 0.8148148148148148,
+        "means": {
+          "board_power_w": 308.54545454545456,
+          "current_a": 178.04545454545453,
+          "power_w": 147.22727272727272
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1309.111111111111,
+        "sample_sd": 3.0550504633038935
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1309.1315824121,
+        "board_power_w": 299.3218753648333,
+        "current_a": 169.536941769,
+        "power_w": 140.186512334,
+        "asic_temp_c": 81.9918883672583
+      }
+    },
+    {
+      "run_number": 4,
+      "configuration": "C081",
+      "sources": {
+        "record": {
+          "path": "runs/run-04-c081/run-issue137-long-r04-c081-20261018T123235Z.json",
+          "sha256": "660d1d363882e6b64aeb6c11b99cdf9a573c5ea7edc695c5183653dc99364478",
+          "byte_count": 319296
+        },
+        "trace": {
+          "path": "runs/run-04-c081/issue137-power-trace-issue137-long-r04-c081-20261018T123235Z.csv",
+          "sha256": "dbeea59fe9ad87f23196141359564e2815caeab015be9fefbfbedf9e9b979d35",
+          "byte_count": 8789
+        }
+      },
+      "sample_count": 27,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "selected_offsets_ns": [
+        61687367376,
+        63924835850,
+        66159970628,
+        68394569279,
+        70633584115,
+        72867257131,
+        75104381194,
+        77347906638,
+        79581527344,
+        81817902574,
+        84061226070,
+        86294342963,
+        88528412843,
+        90761857470,
+        93001873093,
+        95236060683,
+        97473723168,
+        99708832448,
+        101941217443,
+        104187740322,
+        106428258406,
+        108660050211,
+        110892536955,
+        113132970405,
+        115368667936,
+        117606594523,
+        119842427581
+      ],
+      "board_power_w": {
+        "mean": 303.037037037037,
+        "sample_sd": 35.51433240633711,
+        "naive_se": 6.834736458296193,
+        "minimum": 219.0,
+        "maximum": 337.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 18,
+        "fraction": 0.6666666666666666,
+        "means": {
+          "board_power_w": 319.1111111111111,
+          "current_a": 186.33333333333334,
+          "power_w": 146.55555555555554
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1194.037037037037,
+        "sample_sd": 3.5244364686645184
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1194.0445732763167,
+        "board_power_w": 300.37756384523334,
+        "current_a": 165.34588598996666,
+        "power_w": 130.01059034728334,
+        "asic_temp_c": 82.03975160042165
+      }
+    },
+    {
+      "run_number": 5,
+      "configuration": "C081",
+      "sources": {
+        "record": {
+          "path": "runs/run-05-c081/run-issue137-long-r05-c081-20261018T123235Z.json",
+          "sha256": "bc9fc9319e52b25e5a2cbe14322e4eb3df0c3872bd8ab27bc95bc468ac87750e",
+          "byte_count": 319289
+        },
+        "trace": {
+          "path": "runs/run-05-c081/issue137-power-trace-issue137-long-r05-c081-20261018T123235Z.csv",
+          "sha256": "d069144f9ca3fa0dced6e27045244c2c343d5f76eeee1b718fe6bb35f7d703ce",
+          "byte_count": 8773
+        }
+      },
+      "sample_count": 27,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "selected_offsets_ns": [
+        61508840532,
+        63744375430,
+        65978719353,
+        68210536723,
+        70445691008,
+        72690452585,
+        74926794357,
+        77168626146,
+        79401018053,
+        81636005457,
+        83868695127,
+        86104167375,
+        88338234579,
+        90577298079,
+        92809549359,
+        95049424524,
+        97285075884,
+        99521019794,
+        101757529823,
+        103993288732,
+        106227890464,
+        108462588304,
+        110695180295,
+        112929490382,
+        115167755416,
+        117402212326,
+        119639691813
+      ],
+      "board_power_w": {
+        "mean": 292.44444444444446,
+        "sample_sd": 40.791527526543035,
+        "naive_se": 7.850333132701883,
+        "minimum": 213.0,
+        "maximum": 339.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 24,
+        "fraction": 0.8888888888888888,
+        "means": {
+          "board_power_w": 292.8333333333333,
+          "current_a": 190.75,
+          "power_w": 149.70833333333334
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1191.0,
+        "sample_sd": 3.328201177351375
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1190.9875738775,
+        "board_power_w": 290.8248480083167,
+        "current_a": 183.35398438636668,
+        "power_w": 143.88713646511667,
+        "asic_temp_c": 82.36333192868999
+      }
+    },
+    {
+      "run_number": 6,
+      "configuration": "C054",
+      "sources": {
+        "record": {
+          "path": "runs/run-06-c054/run-issue137-long-r06-c054-20261018T123235Z.json",
+          "sha256": "32170c6168ae830e8d5b60b6e78c59ec1630f7cde60053e549efb9a873967017",
+          "byte_count": 238285
+        },
+        "trace": {
+          "path": "runs/run-06-c054/issue137-power-trace-issue137-long-r06-c054-20261018T123235Z.csv",
+          "sha256": "a9c62a1de4e3a526c8a15c5c06bb6f2e2ae359a3949e9375cba265fecc6d9796",
+          "byte_count": 8793
+        }
+      },
+      "sample_count": 26,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ],
+      "selected_offsets_ns": [
+        61923087914,
+        64155745732,
+        66391613766,
+        68626595391,
+        70859423896,
+        73093865261,
+        75338922819,
+        77576208905,
+        79820199354,
+        82059242233,
+        84308126623,
+        86541512626,
+        88778528652,
+        91013463136,
+        93254565207,
+        95490549644,
+        97724998459,
+        99961195957,
+        102200787285,
+        104438138003,
+        106670898366,
+        108909241038,
+        111142693983,
+        113378609858,
+        115613183297,
+        117850441258
+      ],
+      "board_power_w": {
+        "mean": 296.03846153846155,
+        "sample_sd": 29.22530515731977,
+        "naive_se": 5.7315538956875915,
+        "minimum": 228.0,
+        "maximum": 322.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 18,
+        "fraction": 0.6923076923076923,
+        "means": {
+          "board_power_w": 302.94444444444446,
+          "current_a": 181.72222222222223,
+          "power_w": 150.0
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1305.3076923076924,
+        "sample_sd": 2.588732983824029
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1305.1378084129,
+        "board_power_w": 297.04032403465,
+        "current_a": 165.07092725158333,
+        "power_w": 136.23822089505,
+        "asic_temp_c": 82.36693658321165
+      }
+    },
+    {
+      "run_number": 7,
+      "configuration": "C108",
+      "sources": {
+        "record": {
+          "path": "runs/run-07-c108/run-issue137-long-r07-c108-20261018T123235Z.json",
+          "sha256": "c91ecca62d98e02b0f194fe53fd3f3459522399284455171dfa1ef754fb84a5d",
+          "byte_count": 400321
+        },
+        "trace": {
+          "path": "runs/run-07-c108/issue137-power-trace-issue137-long-r07-c108-20261018T123235Z.csv",
+          "sha256": "38fd6ced561c1cd77962a08da5096437aafbaaede65bef1677af143bdb051a1b",
+          "byte_count": 8784
+        }
+      },
+      "sample_count": 27,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55
+      ],
+      "selected_offsets_ns": [
+        61773889538,
+        64006888212,
+        66241148085,
+        68480197156,
+        70726947453,
+        72966451624,
+        75203565977,
+        77442264237,
+        79677945711,
+        81916976377,
+        84153640585,
+        86389994229,
+        88622683593,
+        90855440052,
+        93089427599,
+        95329389213,
+        97571751381,
+        99806978670,
+        102043244281,
+        104285951136,
+        106525605768,
+        108759017199,
+        110998436131,
+        113232276236,
+        115465372328,
+        117703546870,
+        119942300498
+      ],
+      "board_power_w": {
+        "mean": 298.18518518518516,
+        "sample_sd": 50.336587883686356,
+        "naive_se": 9.68728085491119,
+        "minimum": 205.0,
+        "maximum": 344.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 19,
+        "fraction": 0.7037037037037037,
+        "means": {
+          "board_power_w": 293.3157894736842,
+          "current_a": 196.6315789473684,
+          "power_w": 149.47368421052633
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1095.5185185185185,
+        "sample_sd": 4.20960778705068
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1095.4880530716334,
+        "board_power_w": 296.6404099067167,
+        "current_a": 178.85152875751666,
+        "power_w": 135.8620481015,
+        "asic_temp_c": 82.04624547281333
+      }
+    },
+    {
+      "run_number": 8,
+      "configuration": "C018",
+      "sources": {
+        "record": {
+          "path": "runs/run-08-c018/run-issue137-long-r08-c018-20261018T123235Z.json",
+          "sha256": "28bf6f567ecfe16688fff6f44b9f260d42a04107d89042ff69985a490555ed37",
+          "byte_count": 130339
+        },
+        "trace": {
+          "path": "runs/run-08-c018/issue137-power-trace-issue137-long-r08-c018-20261018T123235Z.csv",
+          "sha256": "62e68c88149dfb69a68b5ad7bf8bef300f10c0cadefa08590c247fa51a7ce82c",
+          "byte_count": 8791
+        }
+      },
+      "sample_count": 26,
+      "selected_trace_row_indices": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54
+      ],
+      "selected_offsets_ns": [
+        62132704420,
+        64370437099,
+        66605371131,
+        68839032719,
+        71072315102,
+        73306446313,
+        75541758333,
+        77775516661,
+        80010563361,
+        82244383368,
+        84479642976,
+        86718499268,
+        88956051057,
+        91191178449,
+        93430360949,
+        95664448979,
+        97895296548,
+        100128771783,
+        102362043629,
+        104595793854,
+        106829741723,
+        109068607387,
+        111308074504,
+        113553891550,
+        115788928077,
+        118024598534
+      ],
+      "board_power_w": {
+        "mean": 256.15384615384613,
+        "sample_sd": 10.066547800283105,
+        "naive_se": 1.9742124487753108,
+        "minimum": 230.0,
+        "maximum": 271.0
+      },
+      "busy": {
+        "threshold_current_a": 150,
+        "sample_count": 0,
+        "fraction": 0.0,
+        "means": {
+          "board_power_w": null,
+          "current_a": null,
+          "power_w": null
+        }
+      },
+      "aiclk_mhz": {
+        "mean": 1350.0,
+        "sample_sd": 0.0
+      },
+      "duration_weighted_reference": {
+        "aiclk_mhz": 1350.0,
+        "board_power_w": 255.41360161948333,
+        "current_a": 131.63513616421668,
+        "power_w": 111.53029701373333,
+        "asic_temp_c": 78.76260418398665
+      }
+    }
+  ],
+  "summary": {
+    "high_run_numbers": [
+      2,
+      4,
+      5,
+      7
+    ],
+    "high_run_duration_weighted_board_power_mean_w": 297.5557102906875,
+    "high_run_arithmetic_board_power_mean_w": 298.9259259259259,
+    "interpretation": "exploratory only; neither estimator replaces the preregistered verdict"
+  }
+}
