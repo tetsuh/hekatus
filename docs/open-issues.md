@@ -192,8 +192,12 @@ and `docs/measurements/2026-10-02-p150a-newton-schulz-l16-b8192-diagonal-catalog
   `tdp_limit` and 300 W as the board limit. The historical 102 W comparison
   is from `docs/measurements/2026-08-14-p150a-effective-efficiency-power.csv`
   (the 2026-08-14 effective-efficiency trace); the 110 W result is from the
-  2026-09-20 ttnn 0.75.0 full-sweep trace. Neither bound was reached, so the
-  question waits for a workload that does
+  2026-09-20 ttnn 0.75.0 full-sweep trace. Neither historical trace reached
+  either bound. The subsequent [Issue #137 intervention](measurements/issue137-board-power/2026-10-18/README.md)
+  classified as H-OTHER: P1–P3 passed, but one C081 board-power mean missed
+  the preregistered pinning band and no other limiter hypothesis qualified.
+  The physical mechanism remains unestablished; the original prediction and
+  criteria were not changed.
 - **The latency budget does not close across the full range of its own
   stage estimates** (docs/budget.md): the critical path sums to ~27 ms at
   the optimistic end and ~39 ms at the pessimistic end, against a ≤ 30 ms

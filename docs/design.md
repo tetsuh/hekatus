@@ -2145,9 +2145,29 @@ post-hoc observations are in the [Issue #121 Q2 facts](budget.md#issue-121-q2-fa
 section. This synthetic-load result is a provisional sustained-loaded-AICLK
 reference, not a full-enodia result and not confirmation of a limiter.
 
-Remaining follow-ups are **#136**, which measures sustained AICLK under the
-full enodia load, and **#137**, which runs the preregistered board-power
-intervention to test limiter causality.
+The full-enodia sustained-AICLK measurement remains assigned to **#136**.
+The preregistered **#137** board-power intervention is recorded below.
+
+### Issue #137 board-power intervention result
+
+The eight approved revision-2 instances on 2026-10-18 classified as
+**H-OTHER**, with P1–P3 passing in both order halves and no supported limiter
+hypothesis. C018 remained at 1350 MHz; C081 exceeded C108 in each half.
+However, the second C081 instance's plateau board-power mean was
+290.8248480083167 W, below the unchanged 294 W lower pinning boundary.
+The other three high-configuration instances were board-power pinned, which
+is insufficient under the rule requiring every such instance to qualify.
+Current, ASIC-power, and ASIC-temperature signals did not meet their support
+rules either. C054 remains exploratory.
+
+The original H-BPL prediction is retained, not revised to match this outcome.
+The complete records and interpretation boundaries are in the
+[Issue #137 measurement archive](measurements/issue137-board-power/2026-10-18/README.md).
+Relative cooldown gates all passed, but pre-run temperatures drifted from
+60.2 to 73.7 degC; the gate is not a common-initial-temperature guarantee.
+These synthetic-load observations do not establish a physical firmware
+mechanism or a full-enodia capacity estimate. No threshold change or extra
+instance was used to obtain another label.
 
 ### Current constraints — Q4 fixed-source audit
 
@@ -2180,8 +2200,8 @@ These are the settled timing rules recorded in
 - Product frame timing follows data arrival and completion, not card ticks.
 - Supervisory timeouts use host `CLOCK_MONOTONIC`, not card ticks.
 
-The Q2 result does not settle full-enodia sustained AICLK or limiter causality;
-those remain the #136 and #137 follow-ups described above.
+Neither Q2 nor the Issue #137 intervention establishes limiter causality.
+Full-enodia sustained AICLK remains the #136 follow-up described above.
 
 ---
 

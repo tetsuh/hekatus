@@ -1,0 +1,855 @@
+{
+  "record_schema": "issue137-measurement-archive-v1",
+  "plan_sha256": "19b10e461410fc515c60637ce9ca68a23c2165c00314c795ad3ad4694dfb8da1",
+  "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+  "approved_run_count": 8,
+  "reruns": 0,
+  "resets": 0,
+  "files": [
+    {
+      "path": "runs/run-01-c018/env-20261018T1235464462732253807477807Z.json",
+      "byte_count": 4372,
+      "sha256": "a7a4aa68a5a8f6271cef9d21f6a89e7781e6fee358c984c478fee5fac9fb39cb"
+    },
+    {
+      "path": "runs/run-01-c018/issue137-power-trace-issue137-long-r01-c018-20261018T123235Z.csv",
+      "byte_count": 8788,
+      "sha256": "e75eb39272be11f0882612693b691cb369bacc2986baebf6ba218b7a73ba9af2"
+    },
+    {
+      "path": "runs/run-01-c018/post-run-snapshot-issue137-long-r01-c018-20261018T123235Z.json",
+      "byte_count": 7959,
+      "sha256": "df00dc2487900895f77d09e55d4a357bf73e93d419efd9abf55dc5ddd47fee6f"
+    },
+    {
+      "path": "runs/run-01-c018/power-20261018T1235464462732253807477807Z.csv",
+      "byte_count": 2729,
+      "sha256": "2ca346527d58b201a1b51d1b5f38bf3416fc2ee68bbe27d3cdfa5f935f395dcb"
+    },
+    {
+      "path": "runs/run-01-c018/pre-run-snapshot-issue137-long-r01-c018-20261018T123235Z.json",
+      "byte_count": 7966,
+      "sha256": "bcc3519a944ec00b787dab6fab178d95a538b086752e44ce2ada64cf55bb9490"
+    },
+    {
+      "path": "runs/run-01-c018/run-issue137-long-r01-c018-20261018T123235Z.json",
+      "byte_count": 129891,
+      "sha256": "27819142ad9acc853377d51bd2032777c06594349d627b1fae2a74a5734afe32"
+    },
+    {
+      "path": "runs/run-01-c018/runner-result.json",
+      "byte_count": 31196,
+      "sha256": "646e86a96c2e9ba7858bc53c6f68736269684f6854d3f4b5af0204319c93c59f"
+    },
+    {
+      "path": "runs/run-02-c108/env-20261018T12394367430862038349024121Z.json",
+      "byte_count": 4373,
+      "sha256": "a1419c8b77d468eecae5c4d18bec0692be9011941c1ef801f1e607438310da1b"
+    },
+    {
+      "path": "runs/run-02-c108/issue137-power-trace-issue137-long-r02-c108-20261018T123235Z.csv",
+      "byte_count": 8783,
+      "sha256": "815914f7298121804c0f74fe40f7065b48e8f8006d901a2c18d123829bc52090"
+    },
+    {
+      "path": "runs/run-02-c108/post-run-snapshot-issue137-long-r02-c108-20261018T123235Z.json",
+      "byte_count": 7959,
+      "sha256": "060da4822c943bba0ba6466ca444ca94155518f5e5f1d7e65d4eb6c6d9e600db"
+    },
+    {
+      "path": "runs/run-02-c108/power-20261018T12394367430862038349024121Z.csv",
+      "byte_count": 2723,
+      "sha256": "765acd8832cb30e2959d2170a110e7d6a7716ed74444a60667d0e57b3424bbf1"
+    },
+    {
+      "path": "runs/run-02-c108/pre-run-snapshot-issue137-long-r02-c108-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "36f74052c43e0061c8b4672c10b1d44883ad9808e4dde886e25ab4c511dd46b6"
+    },
+    {
+      "path": "runs/run-02-c108/run-issue137-long-r02-c108-20261018T123235Z.json",
+      "byte_count": 400305,
+      "sha256": "637164d7e292d7414641117340265e6f771f17db1d9ca06d738e655cfa9e89e3"
+    },
+    {
+      "path": "runs/run-02-c108/runner-result.json",
+      "byte_count": 96526,
+      "sha256": "3e440d35edfa28d91baddf8078d6e9b8c5e1c9d8fb325ffd76eb042ed61f8cf4"
+    },
+    {
+      "path": "runs/run-03-c054/env-20261018T12421835110991838574029993Z.json",
+      "byte_count": 4381,
+      "sha256": "15b9f7fdbf6140202d37a75d92a06227017dadbd3cd30954d943df35e370d88d"
+    },
+    {
+      "path": "runs/run-03-c054/issue137-power-trace-issue137-long-r03-c054-20261018T123235Z.csv",
+      "byte_count": 8795,
+      "sha256": "3a776b9bbfa1e4ce659d1073bcebe77251073d04fd0b174d5d67c0818314a5a1"
+    },
+    {
+      "path": "runs/run-03-c054/post-run-snapshot-issue137-long-r03-c054-20261018T123235Z.json",
+      "byte_count": 7967,
+      "sha256": "70ded65e1d140c5900990cb50ef1065c316f6cab86279f8b0b2dce07af87f0d7"
+    },
+    {
+      "path": "runs/run-03-c054/power-20261018T12421835110991838574029993Z.csv",
+      "byte_count": 2736,
+      "sha256": "f0894f97a3417104838342f8f07e6ac28104dd4541c0b91f02ed8e5731e81e95"
+    },
+    {
+      "path": "runs/run-03-c054/pre-run-snapshot-issue137-long-r03-c054-20261018T123235Z.json",
+      "byte_count": 7966,
+      "sha256": "0aca34aea5af493f2565e586671ccabcaa3a54197a06db83ea5c405f48318891"
+    },
+    {
+      "path": "runs/run-03-c054/run-issue137-long-r03-c054-20261018T123235Z.json",
+      "byte_count": 238301,
+      "sha256": "47b11cd1c4aff70dc0f2d648c54b3ea7d6e45b2586da0d550048b115df8e8aa1"
+    },
+    {
+      "path": "runs/run-03-c054/runner-result.json",
+      "byte_count": 57329,
+      "sha256": "eb129bb9fcfa1a4616dd9f3f4cc7f4309b5ec23bec9374cc942c0b038e3c8d24"
+    },
+    {
+      "path": "runs/run-04-c081/env-20261018T12443426430606538744913020Z.json",
+      "byte_count": 4373,
+      "sha256": "c3c04fb67e8eaa3c56abf9bc91484340a5b28cc30524d3e3a378676ec1d661cf"
+    },
+    {
+      "path": "runs/run-04-c081/issue137-power-trace-issue137-long-r04-c081-20261018T123235Z.csv",
+      "byte_count": 8789,
+      "sha256": "dbeea59fe9ad87f23196141359564e2815caeab015be9fefbfbedf9e9b979d35"
+    },
+    {
+      "path": "runs/run-04-c081/post-run-snapshot-issue137-long-r04-c081-20261018T123235Z.json",
+      "byte_count": 7967,
+      "sha256": "51fdd9d6ecbd7880143ddb979664d75d377a2c4f4cf5c0dfffa6a758bed51fc5"
+    },
+    {
+      "path": "runs/run-04-c081/power-20261018T12443426430606538744913020Z.csv",
+      "byte_count": 2732,
+      "sha256": "e2de7af0b6b5f8d0f51bfeafaad4e426940984d5760c532e93cb9299a9aa9d7a"
+    },
+    {
+      "path": "runs/run-04-c081/pre-run-snapshot-issue137-long-r04-c081-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "2f74b001904cc6784229845264b5edabcf5226ac27ae8b4ec2a4ce96d7d38932"
+    },
+    {
+      "path": "runs/run-04-c081/run-issue137-long-r04-c081-20261018T123235Z.json",
+      "byte_count": 319296,
+      "sha256": "660d1d363882e6b64aeb6c11b99cdf9a573c5ea7edc695c5183653dc99364478"
+    },
+    {
+      "path": "runs/run-04-c081/runner-result.json",
+      "byte_count": 76925,
+      "sha256": "e45ab1f5edecf6ca9fd373de51c561afe5580645db5c588b29018e2386c50007"
+    },
+    {
+      "path": "runs/run-05-c081/env-20261018T1246414447568303889929662Z.json",
+      "byte_count": 4372,
+      "sha256": "c14de1ab62b387ba299ea60e34e0b7a8b296113871804c263a3aa351867134ee"
+    },
+    {
+      "path": "runs/run-05-c081/issue137-power-trace-issue137-long-r05-c081-20261018T123235Z.csv",
+      "byte_count": 8773,
+      "sha256": "d069144f9ca3fa0dced6e27045244c2c343d5f76eeee1b718fe6bb35f7d703ce"
+    },
+    {
+      "path": "runs/run-05-c081/post-run-snapshot-issue137-long-r05-c081-20261018T123235Z.json",
+      "byte_count": 7967,
+      "sha256": "dd6e57462d4358338966e6403693da7ed31e67ce9548b0cf6dfc97536b4dbd41"
+    },
+    {
+      "path": "runs/run-05-c081/power-20261018T1246414447568303889929662Z.csv",
+      "byte_count": 2732,
+      "sha256": "cea3af6c3f09c0d3d9771144eb79c9b411ca0a57f9276d5d8a00547e02d29238"
+    },
+    {
+      "path": "runs/run-05-c081/pre-run-snapshot-issue137-long-r05-c081-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "a3f19379051495907d442cc6be4b5cc5dc4c27fe255e12b161509b42dff79c2e"
+    },
+    {
+      "path": "runs/run-05-c081/run-issue137-long-r05-c081-20261018T123235Z.json",
+      "byte_count": 319289,
+      "sha256": "bc9fc9319e52b25e5a2cbe14322e4eb3df0c3872bd8ab27bc95bc468ac87750e"
+    },
+    {
+      "path": "runs/run-05-c081/runner-result.json",
+      "byte_count": 76923,
+      "sha256": "f82670ce5fe4a2f73dd3efb0c522ceeebede3ff57d16f14de81d68bd2df0a852"
+    },
+    {
+      "path": "runs/run-06-c054/env-20261018T12484622391491039107712196Z.json",
+      "byte_count": 4373,
+      "sha256": "04b116b50978d2fe047c6a206e7b9007cf01f870c0d4090548e5d9022361f659"
+    },
+    {
+      "path": "runs/run-06-c054/issue137-power-trace-issue137-long-r06-c054-20261018T123235Z.csv",
+      "byte_count": 8793,
+      "sha256": "a9c62a1de4e3a526c8a15c5c06bb6f2e2ae359a3949e9375cba265fecc6d9796"
+    },
+    {
+      "path": "runs/run-06-c054/post-run-snapshot-issue137-long-r06-c054-20261018T123235Z.json",
+      "byte_count": 7967,
+      "sha256": "17f32ae4a51411f2e1ffecb9a8335a51b4fec58aa93f40fc4baf4e057d5aaa28"
+    },
+    {
+      "path": "runs/run-06-c054/power-20261018T12484622391491039107712196Z.csv",
+      "byte_count": 2736,
+      "sha256": "217ef2dce471f1535fe6d7422ae139c4cbd83172c63570eac0dcbd458f4c622a"
+    },
+    {
+      "path": "runs/run-06-c054/pre-run-snapshot-issue137-long-r06-c054-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "32fb2a09872fd828906834ae9685ad09370e6efcc137a8743eb0de8b71fa7fbe"
+    },
+    {
+      "path": "runs/run-06-c054/run-issue137-long-r06-c054-20261018T123235Z.json",
+      "byte_count": 238285,
+      "sha256": "32170c6168ae830e8d5b60b6e78c59ec1630f7cde60053e549efb9a873967017"
+    },
+    {
+      "path": "runs/run-06-c054/runner-result.json",
+      "byte_count": 57321,
+      "sha256": "c93249ce83eab8ae4e7e7ad78e2568e909b980d5e7938978ba8bb5145220b393"
+    },
+    {
+      "path": "runs/run-07-c108/env-20261018T12505059967242139279632035Z.json",
+      "byte_count": 4381,
+      "sha256": "e9fba4c6c372d93ddf5f72ff6f9d07904046e04c325f6b6eb9899e2753b60356"
+    },
+    {
+      "path": "runs/run-07-c108/issue137-power-trace-issue137-long-r07-c108-20261018T123235Z.csv",
+      "byte_count": 8784,
+      "sha256": "38fd6ced561c1cd77962a08da5096437aafbaaede65bef1677af143bdb051a1b"
+    },
+    {
+      "path": "runs/run-07-c108/post-run-snapshot-issue137-long-r07-c108-20261018T123235Z.json",
+      "byte_count": 7959,
+      "sha256": "8bc07c9246dc5f7c5d7e8c59c03024ca6fa0505b77f3c9adced039d2d407384a"
+    },
+    {
+      "path": "runs/run-07-c108/power-20261018T12505059967242139279632035Z.csv",
+      "byte_count": 2726,
+      "sha256": "a84df80098b9edf23b261fb60fe56a547dfb8698d985f4447f21bb7f42d96ce5"
+    },
+    {
+      "path": "runs/run-07-c108/pre-run-snapshot-issue137-long-r07-c108-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "d0d9752f3dac5f234faf57aa48759f024154500a4d862f3852d3b705f0028081"
+    },
+    {
+      "path": "runs/run-07-c108/run-issue137-long-r07-c108-20261018T123235Z.json",
+      "byte_count": 400321,
+      "sha256": "c91ecca62d98e02b0f194fe53fd3f3459522399284455171dfa1ef754fb84a5d"
+    },
+    {
+      "path": "runs/run-07-c108/runner-result.json",
+      "byte_count": 96534,
+      "sha256": "b6a0c05ec97ff7193a8b661c513160b4bb41d7443643a99b13e55da284a813cf"
+    },
+    {
+      "path": "runs/run-08-c018/env-20261018T1252551375538393945776014Z.json",
+      "byte_count": 4372,
+      "sha256": "5df1ac1067194506dfc892cca90b7eaa2d663eecc563af8db6dff9be54ef1aee"
+    },
+    {
+      "path": "runs/run-08-c018/issue137-power-trace-issue137-long-r08-c018-20261018T123235Z.csv",
+      "byte_count": 8791,
+      "sha256": "62e68c88149dfb69a68b5ad7bf8bef300f10c0cadefa08590c247fa51a7ce82c"
+    },
+    {
+      "path": "runs/run-08-c018/post-run-snapshot-issue137-long-r08-c018-20261018T123235Z.json",
+      "byte_count": 7959,
+      "sha256": "342c3605fb0a4861dac19ca35d19a594ad113511e33fa7e9532c59d17202eeb8"
+    },
+    {
+      "path": "runs/run-08-c018/power-20261018T1252551375538393945776014Z.csv",
+      "byte_count": 2735,
+      "sha256": "bc31e4471571ca083350799fadd48a2b57a4025eb132871960bd652f4f9714e7"
+    },
+    {
+      "path": "runs/run-08-c018/pre-run-snapshot-issue137-long-r08-c018-20261018T123235Z.json",
+      "byte_count": 7958,
+      "sha256": "d71e67ebcf948b318c89f5fa69b82fd1db3152d8dfe6ac33a52b5c60bdfe246a"
+    },
+    {
+      "path": "runs/run-08-c018/run-issue137-long-r08-c018-20261018T123235Z.json",
+      "byte_count": 130339,
+      "sha256": "28bf6f567ecfe16688fff6f44b9f260d42a04107d89042ff69985a490555ed37"
+    },
+    {
+      "path": "runs/run-08-c018/runner-result.json",
+      "byte_count": 31196,
+      "sha256": "fd4b0fc769898f576fd49ee8846321877e2db3bc4fb3738a9b0bab96b3517b68"
+    },
+    {
+      "path": "analysis.json",
+      "byte_count": 2990322,
+      "sha256": "cc9783df31cecfee51e28334e590912a1f6440da1457a2ea6589df83dadb3d38"
+    }
+  ],
+  "runs": [
+    {
+      "run_number": 1,
+      "configuration": "C018",
+      "record": "runs/run-01-c018/run-issue137-long-r01-c018-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 196942,
+      "overrun_seconds": 0.000540403,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1350.0,
+        "board_power_w": 254.09481545943333,
+        "current_a": 132.47636686493334,
+        "power_w": 112.66301539986667,
+        "asic_temp_c": 77.28360772107168
+      },
+      "pinned": {
+        "H-BPL": false,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 123.88071356300497,
+      "cooldown_gate": {
+        "required": false,
+        "verified": true,
+        "gate_result": "not_applicable",
+        "aiclk_gate": false
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 2,
+      "configuration": "C108",
+      "record": "runs/run-02-c108/run-issue137-long-r02-c108-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 144404,
+      "overrun_seconds": 0.000119068,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1099.3276333194,
+        "board_power_w": 302.38001940248336,
+        "current_a": 173.49401586795,
+        "power_w": 131.61799857666668,
+        "asic_temp_c": 81.552880960315
+      },
+      "pinned": {
+        "H-BPL": true,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 237.32274905400118,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 47.0,
+        "baseline_temperature_c": 60.2,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 52.0,
+        "temperature_limit_c": 63.2,
+        "observed_power_w": 49.0,
+        "observed_temperature_c": 63.2,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 91,
+        "cooldown_wait_seconds": 113.16967703500268,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 3,
+      "configuration": "C054",
+      "record": "runs/run-03-c054/run-issue137-long-r03-c054-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 182008,
+      "overrun_seconds": 6.5571e-05,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1309.1315824121,
+        "board_power_w": 299.3218753648333,
+        "current_a": 169.536941769,
+        "power_w": 140.186512334,
+        "asic_temp_c": 81.9918883672583
+      },
+      "pinned": {
+        "H-BPL": true,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 154.5687951,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 49.0,
+        "baseline_temperature_c": 63.4,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 54.0,
+        "temperature_limit_c": 66.4,
+        "observed_power_w": 51.0,
+        "observed_temperature_c": 66.4,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 25,
+        "cooldown_wait_seconds": 30.426602995001303,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 4,
+      "configuration": "C081",
+      "record": "runs/run-04-c081/run-issue137-long-r04-c081-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 160738,
+      "overrun_seconds": 0.000385676,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1194.0445732763167,
+        "board_power_w": 300.37756384523334,
+        "current_a": 165.34588598996666,
+        "power_w": 130.01059034728334,
+        "asic_temp_c": 82.03975160042165
+      },
+      "pinned": {
+        "H-BPL": true,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 135.83253117400454,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 51.0,
+        "baseline_temperature_c": 66.4,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 56.0,
+        "temperature_limit_c": 69.4,
+        "observed_power_w": 55.0,
+        "observed_temperature_c": 69.1,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 10,
+        "cooldown_wait_seconds": 11.548999506994733,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 5,
+      "configuration": "C081",
+      "record": "runs/run-05-c081/run-issue137-long-r05-c081-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 160089,
+      "overrun_seconds": 0.000667412,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1190.9875738775,
+        "board_power_w": 290.8248480083167,
+        "current_a": 183.35398438636668,
+        "power_w": 143.88713646511667,
+        "asic_temp_c": 82.36333192868999
+      },
+      "pinned": {
+        "H-BPL": false,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 127.19774095199682,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 53.0,
+        "baseline_temperature_c": 69.4,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 58.0,
+        "temperature_limit_c": 72.4,
+        "observed_power_w": 54.0,
+        "observed_temperature_c": 71.9,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 3,
+        "cooldown_wait_seconds": 2.763793780999549,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 6,
+      "configuration": "C054",
+      "record": "runs/run-06-c054/run-issue137-long-r06-c054-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 180488,
+      "overrun_seconds": 9.3696e-05,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1305.1378084129,
+        "board_power_w": 297.04032403465,
+        "current_a": 165.07092725158333,
+        "power_w": 136.23822089505,
+        "asic_temp_c": 82.36693658321165
+      },
+      "pinned": {
+        "H-BPL": true,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 124.2393899200033,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 54.0,
+        "baseline_temperature_c": 71.7,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 59.0,
+        "temperature_limit_c": 74.7,
+        "observed_power_w": 55.0,
+        "observed_temperature_c": 74.1,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 1,
+        "cooldown_wait_seconds": 0.24050074200204108,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 7,
+      "configuration": "C108",
+      "record": "runs/run-07-c108/run-issue137-long-r07-c108-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 142622,
+      "overrun_seconds": 0.000109434,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1095.4880530716334,
+        "board_power_w": 296.6404099067167,
+        "current_a": 178.85152875751666,
+        "power_w": 135.8620481015,
+        "asic_temp_c": 82.04624547281333
+      },
+      "pinned": {
+        "H-BPL": true,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 124.39133286399738,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 57.0,
+        "baseline_temperature_c": 73.8,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 62.0,
+        "temperature_limit_c": 76.8,
+        "observed_power_w": 55.0,
+        "observed_temperature_c": 74.1,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 1,
+        "cooldown_wait_seconds": 0.24053238399937982,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    },
+    {
+      "run_number": 8,
+      "configuration": "C018",
+      "record": "runs/run-08-c018/run-issue137-long-r08-c018-20261018T123235Z.json",
+      "status": "ok",
+      "launch_count": 196958,
+      "overrun_seconds": 0.000227621,
+      "trace_rows": 57,
+      "plateau_duration_seconds": 60,
+      "plateau_means": {
+        "aiclk_mhz": 1350.0,
+        "board_power_w": 255.41360161948333,
+        "current_a": 131.63513616421668,
+        "power_w": 111.53029701373333,
+        "asic_temp_c": 78.76260418398665
+      },
+      "pinned": {
+        "H-BPL": false,
+        "H-TDC": false,
+        "H-TDP": false,
+        "H-THM": false
+      },
+      "environment": {
+        "board": {
+          "serial": "0000040331914124",
+          "identity": {
+            "board_id": "0000040331914124",
+            "bus_id": "0000:09:00.0"
+          }
+        },
+        "firmware": {
+          "bundle": "19.6.0.0"
+        },
+        "kernel": "Linux 6.8.0-138-generic",
+        "kernel_driver_version": "2.11.0",
+        "image_digest": "sha256:5215587b1e3887f22f7dcd890c3ff4e23a58cd8e0beeb7569528b8ac2ccae621",
+        "harness_commit": "fd7f659e3e54550802f06b8c0bb4b28d842b619f",
+        "device_node": "/dev/tenstorrent/1"
+      },
+      "cli_wall_seconds_including_cooldown": 124.06325941500108,
+      "cooldown_gate": {
+        "baseline_source": "preceding selected-device pre-run snapshot",
+        "baseline_power_w": 57.0,
+        "baseline_temperature_c": 73.7,
+        "power_tolerance_w": 5.0,
+        "temperature_tolerance_c": 3.0,
+        "power_limit_w": 62.0,
+        "temperature_limit_c": 76.7,
+        "observed_power_w": 57.0,
+        "observed_temperature_c": 73.7,
+        "power_gate": true,
+        "temperature_gate": true,
+        "aiclk_gate": false,
+        "verified": true,
+        "gate_result": "pass",
+        "poll_count": 1,
+        "cooldown_wait_seconds": 0.244290139999066,
+        "wait_cap_seconds": 600.0
+      },
+      "docker_before": {
+        "returncode": 0,
+        "empty": true
+      },
+      "docker_after": {
+        "returncode": 0,
+        "empty": true
+      },
+      "ownership_repaired": true
+    }
+  ],
+  "exploratory_observations": [
+    {
+      "run_number": 5,
+      "sample_index": 17,
+      "relative_seconds": 34.684019644,
+      "raw_zero_gddr_columns": [
+        "gddr_4_5_temp_c",
+        "gddr_6_7_temp_c"
+      ],
+      "policy": "retained unchanged; exploratory only"
+    }
+  ],
+  "analysis": "analysis.json",
+  "classification": "H-OTHER",
+  "preconditions_pass": true,
+  "supported_hypotheses": [],
+  "independent_csv_recalculation_verified": true,
+  "published_analysis_matches_original": true,
+  "artifact_immutability": "JSON and CSV bytes are immutable after the data commit"
+}
