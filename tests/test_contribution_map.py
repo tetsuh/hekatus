@@ -700,7 +700,11 @@ def test_the_identity_map_is_the_general_path_not_a_second_one(frame, golden):
     reproduces the golden **numerically**. `golden` is the session fixture
     computed with no map argument; passing the explicit identity map must
     give the same array to the last bit, or the identity is a preserved
-    special case rather than a case of the general structure."""
+    special case rather than a case of the general structure.
+
+    This remains heavy deliberately: the bitwise full-frame equality is
+    canonical numerical evidence, not a contract-only shape check.
+    """
     profile, events, records, _ = frame
     config = make_bmode_config(profile)
 
@@ -714,12 +718,10 @@ def test_the_identity_map_is_the_general_path_not_a_second_one(frame, golden):
     assert np.array_equal(line_x, ref_line_x)
 
 
-def test_the_beamformer_is_not_told_which_mla_it_is_running(frame):
-    """The MLA count appears nowhere in the beamformer's arguments: the map
-    alone carries it. Passing an MLA-4 map of the same frame must produce
-    four times the lines with no other change of call."""
-    profile, events, records, _ = frame
-    config = make_bmode_config(profile)
+def test_the_beamformer_is_not_told_which_mla_it_is_running(cheap_frame, cheap_config):
+    """The cheap frame checks that the map alone carries MLA's output shape."""
+    profile, events, records, _ = cheap_frame
+    config = cheap_config
     cmap = mla_map(config, mla=4)
 
     image, _, line_x = das_rf_golden(profile, events, records, contribution=cmap, dtype=np.float32)
@@ -824,16 +826,13 @@ def test_the_rf_consumer_refuses_a_map_shaped_object_that_is_not_a_map():
         das_rf_golden(profile, list(config.events), records, contribution=raw)
 
 
-def test_the_iq_consumer_refuses_a_map_shaped_object_that_is_not_a_map(frame):
-    """The same ingress, and the reason it is one function rather than two:
-    the IQ path was the second consumer to read its weights off whatever it
-    was handed, and a correction applied to only one of them is no
-    correction (`SOL-57-001`, `SOL-57-3`)."""
+def test_the_iq_consumer_refuses_a_map_shaped_object_that_is_not_a_map(cheap_frame, cheap_config):
+    """The nonzero cheap IQ frame exercises the exact-type ingress refusal."""
     from enodia.spec.beamform.iq_das import das_iq
     from enodia.spec.frontend import demodulate_frame
 
-    profile, events, records, _ = frame
-    config = make_bmode_config(profile)
+    profile, events, records, _ = cheap_frame
+    config = cheap_config
     iq_records = demodulate_frame(records, profile, decimation=8)
     raw = _ProvenanceShapedMap(synthetic_uniform_map(config, cap=3))
 
@@ -898,14 +897,13 @@ def test_the_rf_consumer_refuses_a_double_that_only_claims_the_type():
         das_rf_golden(profile, list(config.events), records, contribution=double)
 
 
-def test_the_iq_consumer_refuses_a_double_that_only_claims_the_type(frame):
-    """Both consumers, for the reason the ingress is one function: a
-    correction applied to one of them is no correction."""
+def test_the_iq_consumer_refuses_a_double_that_only_claims_the_type(cheap_frame, cheap_config):
+    """The nonzero cheap IQ frame keeps the exact-type double refusal meaningful."""
     from enodia.spec.beamform.iq_das import das_iq
     from enodia.spec.frontend import demodulate_frame
 
-    profile, events, records, _ = frame
-    config = make_bmode_config(profile)
+    profile, events, records, _ = cheap_frame
+    config = cheap_config
     iq_records = demodulate_frame(records, profile, decimation=8)
     double = _spec_spoofing_double(synthetic_uniform_map(config, cap=3))
     assert isinstance(double, ContributionMap)
@@ -954,22 +952,22 @@ def test_the_same_field_shows_the_artifact_when_renormalization_is_removed():
     assert unnormalized[-1] < 0.75 * unnormalized[middle]
 
 
-def test_the_iq_path_reads_the_same_map_structure(frame):
-    """One summation structure, not two: the identity map through `das_iq`
-    equals the default call bit for bit, and an MLA map multiplies its
-    lines with no other change of call."""
+def test_the_iq_path_reads_the_same_map_structure(cheap_frame, cheap_config):
+    """The nonzero cheap IQ frame checks one map structure serves both paths."""
     from enodia.spec.beamform.iq_das import das_iq
     from enodia.spec.frontend import demodulate_frame
 
-    profile, events, records, _ = frame
-    config = make_bmode_config(profile)
+    profile, events, records, _ = cheap_frame
+    config = cheap_config
     iq_records = demodulate_frame(records, profile, decimation=8)
+    assert np.any(iq_records[0].data)
 
     default_image, _, _ = das_iq(profile, events, iq_records, decimation=8)
     ident_image, _, _ = das_iq(
         profile, events, iq_records, decimation=8, contribution=identity_map(config)
     )
 
+    assert np.any(default_image)
     assert np.array_equal(ident_image, default_image)
 
 

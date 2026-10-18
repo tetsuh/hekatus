@@ -628,7 +628,12 @@ def test_the_simulated_frame_is_unchanged_by_the_schema():
 
 
 def test_simulate_frame_preserves_the_mvp1_rf_and_golden_image_fingerprints(frame, golden):
-    """Raw RF remains byte-identical; the displayed image retains its MVP-1 q4 fingerprint."""
+    """Justified heavy case: whole-frame RF and golden-image fingerprints are MVP-1 evidence.
+
+    Raw RF remains byte-identical; the displayed image retains its MVP-1 q4
+    fingerprint. The full canonical frame and golden fixture are required, so
+    this is not a cheap contract-fixture candidate.
+    """
     from enodia.spec.beamform import envelope, log_compress
 
     _, _, records, _ = frame

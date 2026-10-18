@@ -47,8 +47,9 @@ def test_the_per_stage_figures_quoted_in_the_design_are_pinned(
     assert r.image.max_db == pytest.approx(max_db, abs=0.05)
 
 
-def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(sweep):
-    r = sweep.reports[8]
+def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(cheap_sweep):
+    """A real cheap sweep keeps the report-floor formatting check independent of PSF cost."""
+    r = cheap_sweep.reports[8]
     assert r.floor_pct == pytest.approx(0.0003, abs=0.00005)
     text = "\n".join(r.lines())
     assert "yardstick floor" in text
@@ -59,16 +60,19 @@ def test_the_yardstick_floor_is_quoted_and_a_difference_below_it_is_flagged(swee
     assert "not attributable" not in r.checkpoint1[1].line(r.floor_pct)
 
 
-def test_a_silent_reference_reports_nan_rather_than_dropping_the_event(frame, golden):
-    profile, events, records, scatterers = frame
-    # Event 0's line is 19 mm from every scatterer: its record is quantized silence.
+def test_a_silent_reference_reports_nan_rather_than_dropping_the_event(
+    cheap_silent_frame, cheap_silent_golden
+):
+    """The cheap frame keeps one real silent reference for the NaN boundary."""
+    profile, events, records, scatterers = cheap_silent_frame
+    # The cheap fixture deliberately makes event 0 silent, so this boundary is real.
     r = compare(
         profile,
         events,
         records,
         scatterers,
         decimation=8,
-        golden=golden,
+        golden=cheap_silent_golden,
         checkpoint2_events=events[:1],
     )
     assert r.checkpoint2_events == (0,)
@@ -167,7 +171,11 @@ def test_an_unavailable_sweep_harness_status_remains_unknown(monkeypatch):
 def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, frame):
     """ADR-0005 records are data other tools read; `json.dumps` would happily
     emit `NaN`, which strict parsers reject. Non-finite floats become null and
-    the record is dumped with allow_nan=False."""
+    the record is dumped with allow_nan=False.
+
+    This remains heavy deliberately: the canonical sweep's image metric is
+    part of the measurement-record integration and stays pinned at 0.614.
+    """
     import json
 
     from enodia.spec.beamform.decimation_sweep import json_safe, measurement_record
@@ -185,8 +193,9 @@ def test_the_measurement_record_is_strict_json_with_nulls_for_non_finite(sweep, 
     json.dumps(json_safe(nasty), allow_nan=False)
 
 
-def test_the_report_says_what_the_sweep_measured_and_on_what(sweep):
-    text = "\n".join(sweep.lines())
+def test_the_report_says_what_the_sweep_measured_and_on_what(cheap_sweep):
+    """The real cheap sweep preserves report integration and provenance wording."""
+    text = "\n".join(cheap_sweep.lines())
     for needle in ("linear-5mhz", "provisional", "IQ D=8", "IQ D=4", "-6 / -20 / -40 dB", "floor"):
         assert needle in text, needle
     assert golden_compare.__doc__
