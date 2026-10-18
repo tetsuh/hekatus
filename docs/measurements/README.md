@@ -24,6 +24,45 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
+## Issue #102 raw-record rebuild
+
+The Issue #101 runner writes a self-contained raw run artifact before record
+construction. Its exact supported schema is
+`adr-0005-issue101-combined-raw-v1`; the artifact carries the run ID, captured
+normalized environment, run rows, and captured power samples. Rebuild is
+board-free and reads no `env-*.json`, `power-*.csv`, current environment, or
+clock at rebuild time:
+
+```bash
+uv run python tools/newton_schulz_issue101_combined.py \
+  --recover-raw /path/to/issue101-combined-raw.json \
+  --output /path/to/rebuilt-record.json
+```
+
+When a retained output directory contains more than one raw run, select the
+embedded identity explicitly. The command validates the raw filename and
+embedded identities, schema, captured timestamps, harness commit, digest-pinned
+image, board identity, result rows, and power-sample shape before writing:
+
+```bash
+uv run python tools/newton_schulz_issue101_combined.py \
+  --recover-raw /path/to/reused-output-directory \
+  --run-id <captured-run-id> \
+  --output /path/to/rebuilt-record.json
+```
+
+Missing or conflicting identities, mixed or ambiguous raw artifacts, unknown
+schema values, incomplete captured fields, and an existing destination are
+rejected. The raw input is never overwritten; the power filename in the rebuilt
+ADR-0005 record is provenance from the saved raw value, not a request to reread
+a mutable capture file.
+
+The live legacy power sampler publishes an atomically replaced
+`<power-csv>.complete` sidecar containing only `sha256:<digest>` after the
+wrapper sends its intentional `SIGUSR1` shutdown. An aborting `SIGTERM` does
+not certify the trace. Unmarked unterminated terminal rows are excluded; the
+self-contained raw artifact remains the rebuild input.
+
 ## Issue #118 board-free calibration configuration
 
 The board-free CLI emits one calibration record or one run configuration and
@@ -649,7 +688,7 @@ marker unless the wrapper sets both `HEKATUS_TT_DEVICE_TEST=1` and
 | `2026-10-05-p150a-newton-schulz-issue100-defaults-catalog-1000-power.csv` | Historical power, clock, and temperature trace for the superseded Issue #100 comparison above. |
 | `2026-10-05-p150a-newton-schulz-issue101-default-correctness.json` | Historical PR #101 correctness-only rerun; superseded for the combined acceptance claim by the 2026-10-06 record below and retained unchanged. |
 | `2026-10-05-p150a-newton-schulz-issue101-default-correctness-power.csv` | Historical power, clock, and temperature trace for the superseded correctness-only rerun above. |
-| `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json` | Authoritative combined Issue #100/PR #101 record: one device-0 session with all nine correctness rows, four 1,000-launch performance rows, p50/p99/p99.9 and both TFLOPS derivations, board-id serial alias provenance, complete environment, cleanup evidence, and external raw-artifact provenance. The raw artifact is persisted for audit; rebuilding is deferred to Issue #102. This record supersedes both 2026-10-05 records above; those predecessors remain immutable. |
+| `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000.json` | Authoritative combined Issue #100/PR #101 record: one device-0 session with all nine correctness rows, four 1,000-launch performance rows, p50/p99/p99.9 and both TFLOPS derivations, board-id serial alias provenance, complete environment, cleanup evidence, and external raw-artifact provenance. The raw artifact is retained for audit and can be rebuilt board-free with `--recover-raw`. This record supersedes both 2026-10-05 records above; those predecessors remain immutable. |
 | `2026-10-06-p150a-newton-schulz-issue101-combined-catalog-1000-power.csv` | Power, clock, and temperature trace for the authoritative combined record above. |
 | `2026-10-07-host-newton-schulz-issue88-fp32-r-plan.json` | Issue #88 host-side ADR-0005-compatible plan: explicit FP32-R accounting, the default L=32 rejection, fitting R-in-DRAM/block-2 alternatives, first-launch Watcher/60-second procedure, and five pending 1,000-launch comparison rows. No board run was made yet. |
 | `2026-10-08-p150a-newton-schulz-issue88-fp32-r.json` | Immutable historical Issue #88 device-1 comparison record, superseded by the 2026-10-09 device-1 retake because its historical beam metrics used the defective batched `_weight` einsum denominator and it did not retain device inverse arrays. The JSON and trace remain unchanged. |

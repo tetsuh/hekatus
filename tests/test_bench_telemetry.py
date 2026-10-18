@@ -5,8 +5,12 @@ header: the sampler had been embedded in the wrapper script, and its
 quoting was wrong. The parsing lives here instead, where it is exercised.
 """
 
+import hashlib
 import io
 import json
+import signal
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -583,6 +587,92 @@ def test_legacy_sampler_ignores_partial_identity_environment(monkeypatch):
         telemetry.CSV_HEADER,
         "2026-01-01T00:00:00+00:00,10,800,50",
     ]
+
+
+def test_legacy_sampler_hashes_the_closed_trace_after_intentional_stop(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "power-run.csv"
+
+    def stop_after_one_complete_row(handle, _interval):
+        handle.write(
+            telemetry.CSV_HEADER
+            + "2026-01-01T00:00:00+00:00,75,1350,60.0"
+            + "\n"
+        )
+        raise telemetry._SamplerStopped
+
+    monkeypatch.setattr(telemetry, "_sample_loop", stop_after_one_complete_row)
+
+    telemetry._sample_forever(output, interval=1.0)
+
+    marker = telemetry.power_trace_completion_marker_path(output)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert marker.read_text() == f"sha256:{digest}\n"
+
+
+def test_legacy_sampler_aborts_on_sigterm_without_completion_marker(tmp_path):
+    output = tmp_path / "power-run.csv"
+    marker = telemetry.power_trace_completion_marker_path(output)
+    marker.write_text("sha256:stale\n")
+    script = (
+        "import os\n"
+        "import signal\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from enodia.tt.bench import telemetry\n"
+        "\n"
+        "def sample(handle, _interval):\n"
+        "    handle.write(telemetry.CSV_HEADER + '\\n' + '2026-01-01T00:00:00+00:00,75,1350,60.0')\n"
+        "    handle.flush()\n"
+        "    os.kill(os.getpid(), signal.SIGTERM)\n"
+        "\n"
+        "telemetry._sample_loop = sample\n"
+        "telemetry._sample_forever(Path(sys.argv[1]), 1.0)\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(output)],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == -signal.SIGTERM
+    assert not marker.exists()
+
+
+def test_sampler_stop_during_snapshot_closes_trace_and_publishes_marker(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "power-run.csv"
+    snapshot_calls = 0
+
+    def run_snapshot(*_args, **_kwargs):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        if snapshot_calls == 1:
+            raise ValueError("snapshot unavailable")
+        raise telemetry._SamplerStopped
+
+    monkeypatch.setattr(telemetry.subprocess, "run", run_snapshot)
+    sleep_calls = []
+
+    def sleep(interval):
+        sleep_calls.append(interval)
+        if len(sleep_calls) > 1:
+            raise AssertionError("intentional sampler stop was swallowed")
+
+    monkeypatch.setattr(telemetry.time, "sleep", sleep)
+
+    telemetry._sample_forever(output, interval=1.0)
+
+    assert snapshot_calls == 2
+    assert sleep_calls == [1.0]
+    assert output.read_text() == telemetry.CSV_HEADER + "\n"
+    marker = telemetry.power_trace_completion_marker_path(output)
+    digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert marker.read_text() == f"sha256:{digest}\n"
 
 
 def test_extended_cli_accepts_a_temporary_output_path(monkeypatch, tmp_path):

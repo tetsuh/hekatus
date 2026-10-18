@@ -1,4 +1,5 @@
 import json
+import math
 import sys
 from types import SimpleNamespace
 
@@ -243,6 +244,17 @@ def test_issue101_explicit_serial_wins_and_mismatch_fails_fast():
         normalize_environment(invalid_environment)
 
 
+def _producer_percentile(samples, quantile):
+    ordered = sorted(samples)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    fraction = position - lower
+    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+
+
 def _dummy_combined_run(repeats: int = 3) -> dict:
     correctness = [
         {
@@ -260,18 +272,22 @@ def _dummy_combined_run(repeats: int = 3) -> dict:
     for shape in issue101.ISSUE100_SHAPES:
         for config in issue101.ISSUE100_COMPARISON_CONFIGS:
             samples = [0.001 + index * 0.000001 for index in range(repeats)]
+            p50 = _producer_percentile(samples, 0.50)
+            p99 = _producer_percentile(samples, 0.99)
+            p99_9 = _producer_percentile(samples, 0.999)
             performance.append(
                 {
                     "status": "ok",
                     "shape_name": shape,
                     "comparison_config": dict(config),
+                    "launches_measured": repeats,
                     "seconds_per_launch_samples": samples,
-                    "seconds_per_launch_p50": samples[1],
-                    "seconds_per_launch_p99": samples[-1],
-                    "seconds_per_launch_p99_9": samples[-1],
+                    "seconds_per_launch_p50": p50,
+                    "seconds_per_launch_p99": p99,
+                    "seconds_per_launch_p99_9": p99_9,
                     "flops_per_iteration": 1.0,
-                    "tflops_p50_derived": 0.001,
-                    "tflops_fastest_launch_derived": 0.001,
+                    "tflops_p50_derived": 1.0 / p50 / 1e12,
+                    "tflops_fastest_launch_derived": 1.0 / min(samples) / 1e12,
                 }
             )
     return {
