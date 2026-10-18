@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -39,6 +39,7 @@ P150_RESIDUAL_WORKER_COORDINATES = tuple(
     coordinate for coordinate in P150_ALL_CORE_COORDINATES if coordinate not in RESIDENT_CORES
 )
 P150_RESIDUAL_WORKER_COUNT = len(P150_RESIDUAL_WORKER_COORDINATES)
+P150_INTERLEAVED_L1_BANK_COUNT = len(P150_ALL_CORE_COORDINATES)
 
 # All eventual modes open the device this way.  CQ0 is the resident program;
 # CQ1 is reserved for condition (c)'s host transfers and is otherwise idle.
@@ -58,13 +59,14 @@ DEVICE_OPEN_SETTINGS = {
 NS_LOAD_SHAPE = "newton_schulz_L32_b8192"
 NS_LOAD_L = 32
 NS_LOAD_BATCH = 8192
+NS_LOAD_MATRIX_BLOCK = 8
+NS_Q2_TOTAL_BLOCKS = NS_LOAD_BATCH // NS_LOAD_MATRIX_BLOCK
 NS_LOAD_ITERATIONS = 12
 NS_LOAD_OUTER_REPETITIONS = 3
 NS_LOAD_VARIANT = "bf16"
 NS_LOAD_MATH_FIDELITY = "HiFi3"
 NS_LOAD_FUSE_S = True
 NS_LOAD_FP32_DEST_ACC_EN = True
-NS_LOAD_MATRIX_BLOCK = 8
 NS_LOAD_DOUBLE_BUFFER = True
 NS_LOAD_DST_FULL_SYNC_EN = True
 NS_LOAD_R_MEMORY = "l1"
@@ -76,6 +78,11 @@ NS_LOAD_L1_CB_BYTES = 358_400
 NS_LOAD_L1_TENSOR_BYTES = 825_344
 NS_LOAD_L1_TOTAL_BYTES = 1_295_104
 L1_TOTAL_BUDGET_BYTES = 1_572_864
+NS_MATRIX_BLOCK_CHOICES = (1, 2, 4, 8)
+WORKER_SELECTION_RULE = (
+    "Remove resident cores, sort the remaining pool by (y, x), and take the "
+    "first core_count coordinates."
+)
 
 # DRAM stream constants are fixed work, not a throughput-dependent loop.
 DRAM_BANK_COUNT = 8
@@ -238,17 +245,74 @@ def _uint32(value: Any, name: str) -> int:
     return int(value)
 
 
+def _normalize_core_coordinates(
+    coordinates: Sequence[Sequence[int]], *, name: str
+) -> tuple[tuple[int, int], ...]:
+    """Validate coordinate-shaped values without consulting a device."""
+    if isinstance(coordinates, (str, bytes)):
+        raise LoadConfigurationError(f"{name} must contain coordinate pairs")
+    try:
+        values = tuple(coordinates)
+    except TypeError as exc:
+        raise LoadConfigurationError(f"{name} must contain coordinate pairs") from exc
+    normalized: list[tuple[int, int]] = []
+    for coordinate in values:
+        if (
+            isinstance(coordinate, (str, bytes))
+            or not isinstance(coordinate, Sequence)
+            or len(coordinate) != 2
+            or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+                for value in coordinate
+            )
+        ):
+            raise LoadConfigurationError(
+                f"{name} must contain non-negative (x, y) integer pairs"
+            )
+        normalized.append((int(coordinate[0]), int(coordinate[1])))
+    if len(set(normalized)) != len(normalized):
+        raise LoadConfigurationError(f"{name} must not contain duplicate coordinates")
+    return tuple(normalized)
+
+
+def validate_worker_subset(
+    coordinates: Sequence[Sequence[int]],
+    *,
+    grid: tuple[int, int] | list[int] = P150_WORKER_GRID,
+    resident_cores: Sequence[Sequence[int]] = RESIDENT_CORES,
+) -> tuple[tuple[int, int], ...]:
+    """Validate an ordered subset of the residual 11x10 worker pool.
+
+    The subset may be any non-empty selection from the existing 108 residual
+    workers.  Resident producer/consumer coordinates are never valid workers;
+    this check is board-free and is used before a device is opened.
+    """
+    if tuple(grid) != P150_WORKER_GRID:
+        raise LoadConfigurationError(
+            f"unsupported worker grid {grid!r}; expected the pinned p150 model {P150_WORKER_GRID}"
+        )
+    normalized = _normalize_core_coordinates(coordinates, name="worker coordinates")
+    residents = _normalize_core_coordinates(resident_cores, name="resident_cores")
+    if not normalized:
+        raise LoadConfigurationError("worker coordinates must contain at least one core")
+    if any(x >= P150_WORKER_GRID[0] or y >= P150_WORKER_GRID[1] for x, y in normalized):
+        raise LoadConfigurationError("worker coordinates contain a core outside the device grid")
+    if set(normalized) & set(residents):
+        raise LoadConfigurationError("resident and load core ranges overlap")
+    if not set(normalized).issubset(set(P150_RESIDUAL_WORKER_COORDINATES)):
+        raise LoadConfigurationError(
+            "worker coordinates must be a subset of the pinned 108 residual workers"
+        )
+    return normalized
+
+
 def validate_worker_model(
     *,
     grid: tuple[int, int] | list[int] = P150_WORKER_GRID,
     coordinates: tuple[tuple[int, int], ...] | list[tuple[int, int]] = P150_RESIDUAL_WORKER_COORDINATES,
 ) -> tuple[tuple[int, int], ...]:
     """Validate the exact 11x10 p150 model and return its 108 residual cores."""
-    if tuple(grid) != P150_WORKER_GRID:
-        raise LoadConfigurationError(
-            f"unsupported worker grid {grid!r}; expected the pinned p150 model {P150_WORKER_GRID}"
-        )
-    normalized = tuple(tuple(core) for core in coordinates)
+    normalized = validate_worker_subset(coordinates, grid=grid)
     if normalized != P150_RESIDUAL_WORKER_COORDINATES:
         raise LoadConfigurationError(
             "worker coordinates do not match the pinned residual set after reserving "
@@ -256,9 +320,515 @@ def validate_worker_model(
         )
     if len(normalized) != P150_RESIDUAL_WORKER_COUNT:
         raise LoadConfigurationError("the pinned p150 residual worker set must contain 108 cores")
-    if set(normalized) & set(RESIDENT_CORES):
-        raise LoadConfigurationError("resident and load core ranges overlap")
     return normalized
+
+
+def _available_worker_pool(
+    pool: Sequence[Sequence[int]],
+    *,
+    resident_cores: Sequence[Sequence[int]] = RESIDENT_CORES,
+) -> tuple[tuple[int, int], ...]:
+    """Return a validated pool in the documented deterministic order."""
+    raw = _normalize_core_coordinates(pool, name="worker pool")
+    residents = _normalize_core_coordinates(resident_cores, name="resident_cores")
+    resident_set = set(residents)
+    filtered = tuple(core for core in raw if core not in resident_set)
+    normalized = validate_worker_subset(filtered, resident_cores=residents)
+    return tuple(sorted(normalized, key=lambda core: (core[1], core[0])))
+
+
+def newton_schulz_workload_shape(batch: int) -> str:
+    """Return the explicit L32 workload name for one matrix batch."""
+    if batch == NS_LOAD_BATCH:
+        return NS_LOAD_SHAPE
+    return f"newton_schulz_L{NS_LOAD_L}_b{batch}"
+
+
+def select_worker_cores(
+    *,
+    core_count: int,
+    pool: Sequence[Sequence[int]] = P150_RESIDUAL_WORKER_COORDINATES,
+    resident_cores: Sequence[Sequence[int]] = RESIDENT_CORES,
+) -> tuple[tuple[int, int], ...]:
+    """Select a deterministic worker subset from the existing residual pool.
+
+    Selection is the row-major ``(y, x)`` prefix after resident coordinates
+    are removed.  With the default pool this means ``(2, 0), (3, 0), ...``;
+    no device query or spatial heuristic is involved.
+    """
+    count = _positive_int(core_count, "core_count")
+    available = _available_worker_pool(pool, resident_cores=resident_cores)
+    if count > len(available):
+        raise LoadConfigurationError(
+            f"core_count={count} exceeds the available worker pool of {len(available)}"
+        )
+    return available[:count]
+
+
+def newton_schulz_total_blocks(
+    core_count: int,
+    *,
+    pool: Sequence[Sequence[int]] = P150_RESIDUAL_WORKER_COORDINATES,
+    reference_total_blocks: int = NS_Q2_TOTAL_BLOCKS,
+) -> int:
+    """Return ``round(reference_total_blocks * n / pool_size)`` board-free.
+
+    For the default 108-worker pool this is the Issue #137 rule
+    ``round(1024 * n / 108)``.  Half values use deterministic half-up integer
+    rounding rather than depending on floating-point or platform behavior.
+    """
+    count = _positive_int(core_count, "core_count")
+    reference = _positive_int(reference_total_blocks, "reference_total_blocks")
+    available = _available_worker_pool(pool)
+    if count > len(available):
+        raise LoadConfigurationError(
+            f"core_count={count} exceeds the available worker pool of {len(available)}"
+        )
+    return (reference * count + len(available) // 2) // len(available)
+
+
+def _newton_schulz_block_rows(
+    worker_cores: Sequence[tuple[int, int]],
+    *,
+    total_blocks: int,
+    matrix_block: int,
+) -> tuple[dict[str, Any], ...]:
+    """Distribute contiguous matrix blocks with ``divmod`` in core order."""
+    total = _positive_int(total_blocks, "total_blocks")
+    if matrix_block not in NS_MATRIX_BLOCK_CHOICES:
+        raise LoadConfigurationError(
+            f"matrix_block must be one of {NS_MATRIX_BLOCK_CHOICES}, got {matrix_block!r}"
+        )
+    count = len(worker_cores)
+    if count < 1:
+        raise LoadConfigurationError("worker_cores must contain at least one core")
+    base, remainder = divmod(total, count)
+    if base < 1:
+        raise LoadConfigurationError(
+            "total_blocks must provide at least one matrix block per active core"
+        )
+    rows: list[dict[str, Any]] = []
+    start_block = 0
+    for index, core in enumerate(worker_cores):
+        block_count = base + int(index < remainder)
+        rows.append(
+            {
+                "core": list(core),
+                "start_block": start_block,
+                "block_count": block_count,
+                "start_tile": start_block * matrix_block,
+                "tile_count": block_count * matrix_block,
+            }
+        )
+        start_block += block_count
+    if start_block != total:
+        raise LoadConfigurationError("Newton-Schulz block distribution does not cover total_blocks")
+    return tuple(rows)
+
+
+def _newton_schulz_l1_breakdown(
+    *,
+    batch: int,
+    core_count: int,
+    matrix_block: int,
+    profile: bool,
+) -> dict[str, Any]:
+    """Compute the kernel's L1 ledger through its board-free accounting path."""
+    from types import SimpleNamespace
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32", uint32="uint32")
+    return newton_schulz_kernel.l1_preflight_breakdown(
+        ttnn,
+        batch=batch,
+        core_count=core_count,
+        state_dtype=ttnn.bfloat16,
+        profile=profile,
+        fuse_s=NS_LOAD_FUSE_S,
+        output_memory=NS_LOAD_OUTPUT_MEMORY,
+        input_memory=NS_LOAD_R_MEMORY,
+        r_memory=NS_LOAD_R_MEMORY,
+        x0_memory=NS_LOAD_X0_MEMORY,
+        matrix_block=matrix_block,
+        double_buffer=NS_LOAD_DOUBLE_BUFFER,
+        variant=NS_LOAD_VARIANT,
+        fp32_dest_acc_en=NS_LOAD_FP32_DEST_ACC_EN,
+        dst_full_sync_en=NS_LOAD_DST_FULL_SYNC_EN,
+    )
+
+
+def _newton_schulz_interleaved_input_allocation(
+    *,
+    batch: int,
+    matrix_block: int,
+    bank_count: int,
+) -> dict[str, Any]:
+    """Estimate the global interleaved input allocation from kernel descriptors.
+
+    The estimate follows the source-level tensor order and shapes used by
+    ``NewtonSchulzKernel.prepare``.  It is deliberately separate from the
+    per-core CB/tensor ledger: interleaved input tensors are global allocations
+    distributed over the allocator banks, not one copy per active worker.
+    """
+    from types import SimpleNamespace
+
+    from enodia.tt.bench import newton_schulz_kernel
+
+    batch = _positive_int(batch, "batch")
+    bank_count = _positive_int(bank_count, "bank_count")
+    ttnn = SimpleNamespace(bfloat16="bf16", float32="fp32", uint32="uint32")
+    tile_count = newton_schulz_kernel._padded_tile_count(
+        newton_schulz_kernel._physical_tile_count(batch, NS_LOAD_L), matrix_block
+    )
+    input_dtypes = newton_schulz_kernel._reader_input_dtypes(
+        ttnn,
+        ttnn.bfloat16,
+        fuse_s=NS_LOAD_FUSE_S,
+        r_dtype=ttnn.bfloat16,
+    )
+    input_memories = newton_schulz_kernel._reader_input_memories(
+        input_memory=NS_LOAD_R_MEMORY,
+        r_memory=NS_LOAD_R_MEMORY,
+        x0_memory=NS_LOAD_X0_MEMORY,
+    )
+    names = (
+        "R_plane_0",
+        "R_plane_1",
+        "R_plane_2",
+        "X0_plane_0",
+        "X0_plane_1",
+        "identity",
+        "zero",
+    )
+    tensor_shapes: list[list[int]] = []
+    tensor_dtypes: list[str] = []
+    tensor_payload_bytes: list[int] = []
+    tensor_memories: list[str] = []
+    tensor_records: list[dict[str, Any]] = []
+    for index, (dtype, memory) in enumerate(zip(input_dtypes, input_memories, strict=True)):
+        shape = [tile_count, 1, 32, 32] if index < 5 else [1, 1, 32, 32]
+        dtype_name = "bfloat16" if dtype == ttnn.bfloat16 else "float32"
+        page_bytes = newton_schulz_kernel._cb_page_size(ttnn, dtype)
+        payload_bytes = page_bytes * shape[0]
+        tensor_shapes.append(shape)
+        tensor_dtypes.append(dtype_name)
+        tensor_memories.append(memory)
+        tensor_payload_bytes.append(payload_bytes)
+        record = {
+            "name": names[index],
+            "shape": shape,
+            "dtype": dtype_name,
+            "page_count": shape[0],
+            "page_bytes": page_bytes,
+            "payload_bytes": payload_bytes,
+            "memory": memory,
+            "constant": index >= 5,
+        }
+        if memory == "l1":
+            pages_per_bank = (shape[0] + bank_count - 1) // bank_count
+            record["pages_per_bank_upper_bound"] = pages_per_bank
+            record["per_bank_reservation_bytes_upper_bound"] = (
+                pages_per_bank * page_bytes
+            )
+        else:
+            record["pages_per_bank_upper_bound"] = None
+            record["per_bank_reservation_bytes_upper_bound"] = None
+        tensor_records.append(record)
+
+    l1_records = [record for record in tensor_records if record["memory"] == "l1"]
+    input_records = [record for record in l1_records if not record["constant"]]
+    constant_records = [record for record in l1_records if record["constant"]]
+    input_payload_bytes = sum(record["payload_bytes"] for record in input_records)
+    constant_payload_bytes = sum(record["payload_bytes"] for record in constant_records)
+    global_payload_bytes = input_payload_bytes + constant_payload_bytes
+    busiest_bank_reservation = sum(
+        record["per_bank_reservation_bytes_upper_bound"] for record in l1_records
+    )
+    return {
+        "estimate_status": "estimate_only",
+        "payload_status": "source_derived_data_footprint",
+        "provenance": (
+            "Derived from newton_schulz_kernel._reader_input_values shape rules, "
+            "_reader_input_dtypes, _reader_input_memories, and _device_tensor's "
+            "interleaved memory configuration. Per-tensor reservations are "
+            "page-rounded upper bounds, not measured physical bank mappings."
+        ),
+        "memory_config": "L1_MEMORY_CONFIG_interleaved",
+        "logical_batch": batch,
+        "physical_tile_count": tile_count,
+        "tensor_names": list(names),
+        "tensor_shapes": tensor_shapes,
+        "tensor_dtypes": tensor_dtypes,
+        "tensor_memories": tensor_memories,
+        "tensor_payload_bytes": tensor_payload_bytes,
+        "input_payload_bytes": input_payload_bytes,
+        "constant_payload_bytes": constant_payload_bytes,
+        "global_payload_bytes": global_payload_bytes,
+        "bank_distribution_estimate": {
+            "bank_count": bank_count,
+            "mapping": "per_tensor_page_rounded_upper_bound",
+            "mapping_exact": False,
+            "reservation_scope": (
+                "ceil(each tensor page count / bank count) * aligned page bytes; "
+                "constant tensors retain their own one-page allocation"
+            ),
+            "per_tensor": tensor_records,
+            "busiest_bank_reservation_bytes_upper_bound": busiest_bank_reservation,
+            "measured": False,
+        },
+    }
+
+
+def newton_schulz_interleaved_input_allocation(
+    *,
+    batch: int,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+    bank_count: int = P150_INTERLEAVED_L1_BANK_COUNT,
+) -> dict[str, Any]:
+    """Return the board-free global input allocation estimate for one batch."""
+    return _newton_schulz_interleaved_input_allocation(
+        batch=batch,
+        matrix_block=matrix_block,
+        bank_count=bank_count,
+    )
+
+
+def _newton_schulz_plan_ledger(
+    *,
+    batch: int,
+    core_count: int,
+    matrix_block: int,
+    min_blocks_per_core: int,
+    max_blocks_per_core: int,
+    reference_batch: int,
+    reference_core_count: int,
+) -> dict[str, Any]:
+    """Build per-core L1 facts without requiring reference-size equality."""
+    base = _newton_schulz_l1_breakdown(
+        batch=batch,
+        core_count=core_count,
+        matrix_block=matrix_block,
+        profile=False,
+    )
+    profiled = _newton_schulz_l1_breakdown(
+        batch=batch,
+        core_count=core_count,
+        matrix_block=matrix_block,
+        profile=True,
+    )
+    reference = _newton_schulz_l1_breakdown(
+        batch=reference_batch,
+        core_count=reference_core_count,
+        matrix_block=matrix_block,
+        profile=False,
+    )
+    reference_profiled = _newton_schulz_l1_breakdown(
+        batch=reference_batch,
+        core_count=reference_core_count,
+        matrix_block=matrix_block,
+        profile=True,
+    )
+    reference_l1_equal = (
+        base["total_bytes"] == reference["total_bytes"]
+        and profiled["total_bytes"] == reference_profiled["total_bytes"]
+    )
+    allocation = _newton_schulz_interleaved_input_allocation(
+        batch=batch,
+        matrix_block=matrix_block,
+        bank_count=P150_INTERLEAVED_L1_BANK_COUNT,
+    )
+    bank_estimate = allocation["bank_distribution_estimate"]
+    reservation_upper_bound = bank_estimate[
+        "busiest_bank_reservation_bytes_upper_bound"
+    ]
+    bank_estimate["unprofiled_l1_bytes_per_bank_upper_bound"] = (
+        base["static_prefix_bytes"] + base["cb_bytes"] + reservation_upper_bound
+    )
+    bank_estimate["profiled_l1_bytes_per_bank_upper_bound"] = (
+        profiled["static_prefix_bytes"]
+        + profiled["cb_bytes"]
+        + reservation_upper_bound
+    )
+    bank_estimate["budget_bytes"] = base["budget_bytes"]
+    bank_estimate["within_budget"] = (
+        bank_estimate["unprofiled_l1_bytes_per_bank_upper_bound"]
+        < base["budget_bytes"]
+    )
+    bank_estimate["profile_within_budget"] = (
+        bank_estimate["profiled_l1_bytes_per_bank_upper_bound"]
+        < profiled["budget_bytes"]
+    )
+    if not base["total_bytes"] < base["budget_bytes"] or not bank_estimate["within_budget"]:
+        raise LoadConfigurationError(
+            "L1/work invariant failed: conservative active-core L1 ledger exceeds budget"
+        )
+    if not profiled["total_bytes"] < profiled["budget_bytes"] or not bank_estimate["profile_within_budget"]:
+        raise LoadConfigurationError(
+            "L1/work invariant failed: profiled L1 ledger exceeds budget"
+        )
+    work_invariant = {
+        "blocks_per_core": {
+            "min": min_blocks_per_core,
+            "max": max_blocks_per_core,
+            "allowed": [9, 10],
+        },
+        "iterations": NS_LOAD_ITERATIONS,
+        "matrix_block": matrix_block,
+        "fixed": True,
+    }
+    return {
+        "workers": core_count,
+        "max_blocks_per_core": max_blocks_per_core,
+        "min_blocks_per_core": min_blocks_per_core,
+        "work_invariant": work_invariant,
+        "max_tiles_per_core": max_blocks_per_core * matrix_block,
+        "static_prefix_bytes": base["static_prefix_bytes"],
+        "circular_buffer_bytes": base["cb_bytes"],
+        "tensor_bytes": base["tensor_bytes"],
+        "total_bytes": base["total_bytes"],
+        "profile_overhead_bytes": profiled["total_bytes"] - base["total_bytes"],
+        "profile_total_bytes": profiled["total_bytes"],
+        "budget_bytes": base["budget_bytes"],
+        "within_budget": base["total_bytes"] < base["budget_bytes"],
+        "profile_within_budget": profiled["total_bytes"] < profiled["budget_bytes"],
+        "reference_total_bytes": reference["total_bytes"],
+        "reference_profile_total_bytes": reference_profiled["total_bytes"],
+        "reference_l1_equal": reference_l1_equal,
+        "reference_equal": reference_l1_equal,
+        "conservative_active_core": {
+            "total_bytes": base["total_bytes"],
+            "profile_total_bytes": profiled["total_bytes"],
+            "budget_bytes": base["budget_bytes"],
+            "within_budget": base["total_bytes"] < base["budget_bytes"],
+            "profile_within_budget": profiled["total_bytes"] < profiled["budget_bytes"],
+        },
+        "interleaved_input_allocation": allocation,
+    }
+
+
+@dataclass(frozen=True)
+class NewtonSchulzCorePlan:
+    """Board-free worker, block, workload, and L1 provenance for one NS load."""
+
+    worker_pool: tuple[tuple[int, int], ...]
+    worker_cores: tuple[tuple[int, int], ...]
+    core_count: int
+    total_blocks: int
+    matrix_block: int
+    batch: int
+    block_distribution: tuple[dict[str, Any], ...]
+    work_distribution: tuple[dict[str, Any], ...]
+    l1_ledger: dict[str, Any]
+
+    def as_record(self) -> dict[str, Any]:
+        """Return JSON-safe provenance for a later runner or measurement record."""
+        workload = {
+            "shape": newton_schulz_workload_shape(self.batch),
+            "L": NS_LOAD_L,
+            "batch": self.batch,
+            "total_blocks": self.total_blocks,
+            "matrix_block": self.matrix_block,
+            "worker_core_count": self.core_count,
+            "worker_core_coordinates": [list(core) for core in self.worker_cores],
+            "block_distribution": [dict(row) for row in self.block_distribution],
+            "work_distribution": [dict(row) for row in self.work_distribution],
+            "iterations": NS_LOAD_ITERATIONS,
+            "variant": NS_LOAD_VARIANT,
+            "math_fidelity": NS_LOAD_MATH_FIDELITY,
+            "fuse_s": NS_LOAD_FUSE_S,
+            "fp32_dest_acc_en": NS_LOAD_FP32_DEST_ACC_EN,
+            "double_buffer": NS_LOAD_DOUBLE_BUFFER,
+            "dst_full_sync_en": NS_LOAD_DST_FULL_SYNC_EN,
+            "r_memory": NS_LOAD_R_MEMORY,
+            "x0_memory": NS_LOAD_X0_MEMORY,
+            "output_memory": NS_LOAD_OUTPUT_MEMORY,
+        }
+        return {
+            "selection_rule": WORKER_SELECTION_RULE,
+            "worker_pool": [list(core) for core in self.worker_pool],
+            "worker_cores": [list(core) for core in self.worker_cores],
+            "core_count": self.core_count,
+            "total_blocks": self.total_blocks,
+            "matrix_block": self.matrix_block,
+            "batch": self.batch,
+            "block_distribution": [dict(row) for row in self.block_distribution],
+            "work_distribution": [dict(row) for row in self.work_distribution],
+            "l1_ledger": dict(self.l1_ledger),
+            "workload": workload,
+        }
+
+
+def build_newton_schulz_core_plan(
+    *,
+    core_count: int,
+    pool: Sequence[Sequence[int]] = P150_RESIDUAL_WORKER_COORDINATES,
+    total_blocks: int | None = None,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+    resident_cores: Sequence[Sequence[int]] = RESIDENT_CORES,
+) -> NewtonSchulzCorePlan:
+    """Build the deterministic Issue #137 NS core plan without opening a device.
+
+    ``total_blocks`` defaults to ``round(1024 * n / 108)`` for the default
+    pool.  Blocks are contiguous and assigned by ``divmod``: each selected
+    core receives the quotient or quotient-plus-one blocks.  The L1 ledger is
+    compared with the Q2 108-core reference and rejects a changed per-core
+    footprint before any device allocation or open.
+    """
+    available = _available_worker_pool(pool, resident_cores=resident_cores)
+    workers = select_worker_cores(
+        core_count=core_count,
+        pool=available,
+        resident_cores=resident_cores,
+    )
+    if total_blocks is None:
+        total = newton_schulz_total_blocks(core_count, pool=available)
+    else:
+        total = _positive_int(total_blocks, "total_blocks")
+    if matrix_block not in NS_MATRIX_BLOCK_CHOICES:
+        raise LoadConfigurationError(
+            f"matrix_block must be one of {NS_MATRIX_BLOCK_CHOICES}, got {matrix_block!r}"
+        )
+    rows = _newton_schulz_block_rows(
+        workers,
+        total_blocks=total,
+        matrix_block=matrix_block,
+    )
+    block_counts = tuple(row["block_count"] for row in rows)
+    if min(block_counts) < 9 or max(block_counts) > 10 or max(block_counts) - min(block_counts) > 1:
+        raise LoadConfigurationError(
+            "L1/work invariant failed: every active core must receive 9 or 10 matrix blocks"
+        )
+    batch = total * matrix_block
+    reference_total = newton_schulz_total_blocks(len(available), pool=available)
+    ledger = _newton_schulz_plan_ledger(
+        batch=batch,
+        core_count=len(workers),
+        matrix_block=matrix_block,
+        min_blocks_per_core=min(row["block_count"] for row in rows),
+        max_blocks_per_core=max(row["block_count"] for row in rows),
+        reference_batch=reference_total * matrix_block,
+        reference_core_count=len(available),
+    )
+    work_rows = tuple(
+        {
+            "core": list(row["core"]),
+            "start_tile": row["start_tile"],
+            "tile_count": row["tile_count"],
+        }
+        for row in rows
+    )
+    return NewtonSchulzCorePlan(
+        worker_pool=available,
+        worker_cores=tuple(tuple(row["core"]) for row in rows),
+        core_count=len(workers),
+        total_blocks=total,
+        matrix_block=matrix_block,
+        batch=batch,
+        block_distribution=rows,
+        work_distribution=work_rows,
+        l1_ledger=ledger,
+    )
 
 
 @dataclass(frozen=True)
@@ -317,47 +887,87 @@ def balanced_work_ranges(
     return tuple(ranges)
 
 
-def ns_work_distribution() -> tuple[dict[str, Any], ...]:
-    """Return the deterministic L=32/batch=8192 assignment over 108 workers."""
-    partition = p150_core_partition()
-    ranges = balanced_work_ranges()
-    if len(ranges) != len(partition.worker_cores):
-        raise LoadConfigurationError("Newton-Schulz work did not use all residual workers")
-    rows = tuple(
-        {
-            "core": list(core),
-            "start_tile": start,
-            "tile_count": count,
-        }
-        for core, (start, count) in zip(partition.worker_cores, ranges, strict=True)
+def ns_work_distribution(
+    *,
+    pool: Sequence[Sequence[int]] = P150_RESIDUAL_WORKER_COORDINATES,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+) -> tuple[dict[str, Any], ...]:
+    """Return deterministic NS ranges, preserving the Q2 no-argument API."""
+    if (
+        pool == P150_RESIDUAL_WORKER_COORDINATES
+        and core_count is None
+        and total_blocks is None
+        and matrix_block == NS_LOAD_MATRIX_BLOCK
+    ):
+        partition = p150_core_partition()
+        ranges = balanced_work_ranges()
+        if len(ranges) != len(partition.worker_cores):
+            raise LoadConfigurationError("Newton-Schulz work did not use all residual workers")
+        rows = tuple(
+            {
+                "core": list(core),
+                "start_tile": start,
+                "tile_count": count,
+            }
+            for core, (start, count) in zip(partition.worker_cores, ranges, strict=True)
+        )
+        if max(row["tile_count"] for row in rows) != NS_LOAD_MAX_TILES_PER_CORE:
+            raise LoadConfigurationError("Newton-Schulz max tiles/core is not the pinned value 80")
+        if sum(row["tile_count"] for row in rows) != NS_LOAD_BATCH:
+            raise LoadConfigurationError(
+                "Newton-Schulz work distribution does not cover batch 8192"
+            )
+        return rows
+    plan = build_newton_schulz_core_plan(
+        core_count=(len(_available_worker_pool(pool)) if core_count is None else core_count),
+        pool=pool,
+        total_blocks=total_blocks,
+        matrix_block=matrix_block,
     )
-    if max(row["tile_count"] for row in rows) != NS_LOAD_MAX_TILES_PER_CORE:
-        raise LoadConfigurationError("Newton-Schulz max tiles/core is not the pinned value 80")
-    if sum(row["tile_count"] for row in rows) != NS_LOAD_BATCH:
-        raise LoadConfigurationError("Newton-Schulz work distribution does not cover batch 8192")
-    return rows
+    return plan.work_distribution
 
 
-def newton_schulz_l1_ledger() -> dict[str, Any]:
-    """Return the fixed board-free L1 ledger for the load configuration."""
-    total = NS_LOAD_L1_STATIC_BYTES + NS_LOAD_L1_CB_BYTES + NS_LOAD_L1_TENSOR_BYTES
-    if total != NS_LOAD_L1_TOTAL_BYTES:
-        raise LoadConfigurationError("Newton-Schulz L1 ledger constants are inconsistent")
-    if total >= L1_TOTAL_BUDGET_BYTES:
-        raise LoadConfigurationError("Newton-Schulz L1 ledger exceeds the board budget")
-    return {
-        "workers": P150_RESIDUAL_WORKER_COUNT,
-        "max_tiles_per_core": NS_LOAD_MAX_TILES_PER_CORE,
-        "static_prefix_bytes": NS_LOAD_L1_STATIC_BYTES,
-        "circular_buffer_bytes": NS_LOAD_L1_CB_BYTES,
-        "tensor_bytes": NS_LOAD_L1_TENSOR_BYTES,
-        "total_bytes": total,
-        "profile_overhead_bytes": 12_288,
-        "profile_total_bytes": total + 12_288,
-        "budget_bytes": L1_TOTAL_BUDGET_BYTES,
-        "within_budget": True,
-        "profile_within_budget": total + 12_288 < L1_TOTAL_BUDGET_BYTES,
-    }
+def newton_schulz_l1_ledger(
+    *,
+    pool: Sequence[Sequence[int]] = P150_RESIDUAL_WORKER_COORDINATES,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+) -> dict[str, Any]:
+    """Return Q2-compatible or explicit board-free NS L1 accounting."""
+    if (
+        pool == P150_RESIDUAL_WORKER_COORDINATES
+        and core_count is None
+        and total_blocks is None
+        and matrix_block == NS_LOAD_MATRIX_BLOCK
+    ):
+        total = NS_LOAD_L1_STATIC_BYTES + NS_LOAD_L1_CB_BYTES + NS_LOAD_L1_TENSOR_BYTES
+        if total != NS_LOAD_L1_TOTAL_BYTES:
+            raise LoadConfigurationError("Newton-Schulz L1 ledger constants are inconsistent")
+        if total >= L1_TOTAL_BUDGET_BYTES:
+            raise LoadConfigurationError("Newton-Schulz L1 ledger exceeds the board budget")
+        return {
+            "workers": P150_RESIDUAL_WORKER_COUNT,
+            "max_tiles_per_core": NS_LOAD_MAX_TILES_PER_CORE,
+            "static_prefix_bytes": NS_LOAD_L1_STATIC_BYTES,
+            "circular_buffer_bytes": NS_LOAD_L1_CB_BYTES,
+            "tensor_bytes": NS_LOAD_L1_TENSOR_BYTES,
+            "total_bytes": total,
+            "profile_overhead_bytes": 12_288,
+            "profile_total_bytes": total + 12_288,
+            "budget_bytes": L1_TOTAL_BUDGET_BYTES,
+            "within_budget": True,
+            "profile_within_budget": total + 12_288 < L1_TOTAL_BUDGET_BYTES,
+        }
+    plan = build_newton_schulz_core_plan(
+        core_count=(len(_available_worker_pool(pool)) if core_count is None else core_count),
+        pool=pool,
+        total_blocks=total_blocks,
+        matrix_block=matrix_block,
+    )
+    return dict(plan.l1_ledger)
 
 
 def dram_stream_work() -> dict[str, Any]:
@@ -2197,9 +2807,12 @@ __all__ = [
     "NS_LOAD_SHAPE",
     "NS_LOAD_VARIANT",
     "NS_LOAD_X0_MEMORY",
+    "NS_MATRIX_BLOCK_CHOICES",
+    "NS_Q2_TOTAL_BLOCKS",
     "NS_REPEAT_COUNT_MAX",
     "NUM_COMMAND_QUEUES",
     "P150_ALL_CORE_COORDINATES",
+    "P150_INTERLEAVED_L1_BANK_COUNT",
     "P150_RESIDUAL_WORKER_COORDINATES",
     "P150_RESIDUAL_WORKER_COUNT",
     "P150_WORKER_GRID",
@@ -2209,6 +2822,7 @@ __all__ = [
     "RESIDENT_PRODUCER_CORE",
     "TRANSFER_COMMAND_QUEUE",
     "UINT32_MAX",
+    "WORKER_SELECTION_RULE",
     "CalibrationMetadata",
     "CalibrationMetadataOptions",
     "CardLoadInterval",
@@ -2217,9 +2831,11 @@ __all__ = [
     "HostLoadInterval",
     "LoadConfigurationError",
     "LoadEvidenceError",
+    "NewtonSchulzCorePlan",
     "balanced_work_ranges",
     "build_calibration_load_record",
     "build_load_record",
+    "build_newton_schulz_core_plan",
     "calibration_metadata",
     "choose_repeat_count",
     "dram_achieved_gbps",
@@ -2227,13 +2843,17 @@ __all__ = [
     "extend_card_clock_timestamps",
     "host_transfer_work",
     "load_evidence_valid",
+    "newton_schulz_interleaved_input_allocation",
     "newton_schulz_l1_ledger",
+    "newton_schulz_total_blocks",
+    "newton_schulz_workload_shape",
     "normalize_condition",
     "ns_work_distribution",
     "p150_core_partition",
     "predicted_load_time_seconds",
     "predicted_load_time_selection",
     "repeat_throughput_unit",
+    "select_worker_cores",
     "validate_calibration_load_record",
     "validate_device_load_repeat_count",
     "validate_device_open_settings",
@@ -2241,4 +2861,5 @@ __all__ = [
     "validate_measurement_target_seconds",
     "validate_mode_records",
     "validate_worker_model",
+    "validate_worker_subset",
 ]

@@ -28,7 +28,6 @@ from enodia.tt.bench.load_harness import (
     HOST_TRANSFER_COUNT,
     HOST_TRANSFER_SUB_DEVICE_ID,
     LOAD_CONDITIONS,
-    NS_LOAD_BATCH,
     NS_LOAD_DOUBLE_BUFFER,
     NS_LOAD_DST_FULL_SYNC_EN,
     NS_LOAD_FP32_DEST_ACC_EN,
@@ -40,7 +39,6 @@ from enodia.tt.bench.load_harness import (
     NS_LOAD_OUTER_REPETITIONS,
     NS_LOAD_OUTPUT_MEMORY,
     NS_LOAD_R_MEMORY,
-    NS_LOAD_SHAPE,
     NS_LOAD_VARIANT,
     NS_LOAD_X0_MEMORY,
     P150_RESIDUAL_WORKER_COORDINATES,
@@ -48,10 +46,14 @@ from enodia.tt.bench.load_harness import (
     RESIDENT_CORES,
     TRANSFER_COMMAND_QUEUE,
     LoadConfigurationError,
+    NewtonSchulzCorePlan,
+    build_newton_schulz_core_plan,
+    newton_schulz_workload_shape,
     normalize_condition,
     p150_core_partition,
     validate_device_load_repeat_count,
     validate_device_open_settings,
+    validate_worker_subset,
 )
 
 _KERNEL_DIR = Path(__file__).with_name("kernels")
@@ -75,12 +77,22 @@ class LoadProgramPlan:
     fixed_work: bool = True
     data_dependent_exit: bool = False
     kernel_source: str | None = None
+    newton_schulz_core_plan: NewtonSchulzCorePlan | None = None
 
     def __post_init__(self) -> None:
         canonical = normalize_condition(self.condition)
         object.__setattr__(self, "condition", canonical)
         partition = p150_core_partition()
-        if (
+        if canonical == "newton_schulz":
+            validate_worker_subset(self.worker_cores, resident_cores=self.resident_cores)
+            if (
+                self.newton_schulz_core_plan is not None
+                and tuple(self.worker_cores) != self.newton_schulz_core_plan.worker_cores
+            ):
+                raise LoadConfigurationError(
+                    "load workers do not match the Newton-Schulz core plan"
+                )
+        elif (
             tuple(self.worker_cores) != partition.worker_cores
             and canonical not in {"unloaded", "host_cpu_transfer"}
         ):
@@ -97,7 +109,7 @@ class LoadProgramPlan:
             raise LoadConfigurationError("load generators must be fixed-count and data-independent")
 
     def as_record(self) -> dict[str, Any]:
-        return {
+        record = {
             "condition": self.condition,
             "worker_cores": [list(core) for core in self.worker_cores],
             "resident_cores": [list(core) for core in self.resident_cores],
@@ -108,10 +120,20 @@ class LoadProgramPlan:
             "data_dependent_exit": self.data_dependent_exit,
             "kernel_source": self.kernel_source,
         }
+        if self.newton_schulz_core_plan is not None:
+            record["newton_schulz"] = self.newton_schulz_core_plan.as_record()
+        return record
 
 
-def build_load_plan(condition: str) -> LoadProgramPlan:
-    """Return the one-program plan for one of the four conditions."""
+def build_load_plan(
+    condition: str,
+    *,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+    worker_pool: tuple[tuple[int, int], ...] = P150_RESIDUAL_WORKER_COORDINATES,
+) -> LoadProgramPlan:
+    """Return one merged-program plan, optionally with an explicit NS core plan."""
     canonical = normalize_condition(condition)
     source = {
         # The NS generator is the existing ADR-0013 kernel; the plan names
@@ -119,49 +141,124 @@ def build_load_plan(condition: str) -> LoadProgramPlan:
         "newton_schulz": "newton_schulz_kernel.py",
         "dram": "issue118_dram_load.cpp",
     }.get(canonical)
+    core_plan = None
+    if canonical == "newton_schulz":
+        core_plan = build_newton_schulz_core_plan(
+            core_count=(
+                len(P150_RESIDUAL_WORKER_COORDINATES)
+                if core_count is None
+                else core_count
+            ),
+            pool=worker_pool,
+            total_blocks=total_blocks,
+            matrix_block=matrix_block,
+        )
     return LoadProgramPlan(
         condition=canonical,
-        worker_cores=() if canonical in {"unloaded", "host_cpu_transfer"} else P150_RESIDUAL_WORKER_COORDINATES,
+        worker_cores=(
+            ()
+            if canonical in {"unloaded", "host_cpu_transfer"}
+            else (
+                core_plan.worker_cores
+                if core_plan is not None
+                else P150_RESIDUAL_WORKER_COORDINATES
+            )
+        ),
         kernel_source=source,
         fixed_work=True,
         data_dependent_exit=False,
+        newton_schulz_core_plan=core_plan,
     )
 
 
-def newton_schulz_load_work() -> dict[str, Any]:
-    """Describe the exact fixed NS workload without touching an accelerator."""
+def newton_schulz_load_work(
+    core_plan: NewtonSchulzCorePlan | None = None,
+    *,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int = NS_LOAD_MATRIX_BLOCK,
+    worker_pool: tuple[tuple[int, int], ...] = P150_RESIDUAL_WORKER_COORDINATES,
+) -> dict[str, Any]:
+    """Describe fixed NS work and explicit coordinate/block/L1 provenance."""
+    if core_plan is None:
+        core_plan = build_newton_schulz_core_plan(
+            core_count=(
+                len(P150_RESIDUAL_WORKER_COORDINATES)
+                if core_count is None
+                else core_count
+            ),
+            pool=worker_pool,
+            total_blocks=total_blocks,
+            matrix_block=matrix_block,
+        )
     return {
-        "shape": NS_LOAD_SHAPE,
+        "shape": newton_schulz_workload_shape(core_plan.batch),
         "L": NS_LOAD_L,
-        "batch": NS_LOAD_BATCH,
+        "batch": core_plan.batch,
+        "total_blocks": core_plan.total_blocks,
         "iterations": NS_LOAD_ITERATIONS,
         "outer_repetitions": NS_LOAD_OUTER_REPETITIONS,
         "variant": NS_LOAD_VARIANT,
         "math_fidelity": NS_LOAD_MATH_FIDELITY,
         "fuse_s": NS_LOAD_FUSE_S,
         "fp32_dest_acc_en": NS_LOAD_FP32_DEST_ACC_EN,
-        "matrix_block": NS_LOAD_MATRIX_BLOCK,
+        "matrix_block": core_plan.matrix_block,
         "double_buffer": NS_LOAD_DOUBLE_BUFFER,
         "dst_full_sync_en": NS_LOAD_DST_FULL_SYNC_EN,
         "r_memory": NS_LOAD_R_MEMORY,
         "x0_memory": NS_LOAD_X0_MEMORY,
         "output_memory": NS_LOAD_OUTPUT_MEMORY,
-        "worker_count": len(P150_RESIDUAL_WORKER_COORDINATES),
+        "worker_count": core_plan.core_count,
+        "worker_core_coordinates": [list(core) for core in core_plan.worker_cores],
+        "worker_pool": [list(core) for core in core_plan.worker_pool],
+        "block_distribution": [dict(row) for row in core_plan.block_distribution],
+        "work_distribution": [dict(row) for row in core_plan.work_distribution],
+        "l1_ledger": dict(core_plan.l1_ledger),
+        "selection_rule": core_plan.as_record()["selection_rule"],
         "control_flow": "fixed_outer_repetition_and_fixed_iteration_loops",
         "convergence_check": False,
         "data_dependent_exit": False,
     }
 
 
-def prepare_newton_schulz_load(
+def _resolve_newton_schulz_core_plan(
+    *,
+    core_count: int | None,
+    total_blocks: int | None,
+    matrix_block: int | None,
+    worker_pool: tuple[tuple[int, int], ...],
+    core_plan: NewtonSchulzCorePlan | None,
+) -> NewtonSchulzCorePlan:
+    """Resolve and validate one board-free NS plan before tensor allocation."""
+    if core_plan is None:
+        return build_newton_schulz_core_plan(
+            core_count=(
+                len(P150_RESIDUAL_WORKER_COORDINATES)
+                if core_count is None
+                else core_count
+            ),
+            pool=worker_pool,
+            total_blocks=total_blocks,
+            matrix_block=(NS_LOAD_MATRIX_BLOCK if matrix_block is None else matrix_block),
+        )
+    if core_count is not None and core_count != core_plan.core_count:
+        raise LoadConfigurationError("core_count does not match core_plan")
+    if total_blocks is not None and total_blocks != core_plan.total_blocks:
+        raise LoadConfigurationError("total_blocks does not match core_plan")
+    if matrix_block is not None and matrix_block != core_plan.matrix_block:
+        raise LoadConfigurationError("matrix_block does not match core_plan")
+    return core_plan
+
+
+def _prepare_newton_schulz_load(
     ttnn: Any,
     device: Any,
     *,
-    repeat_count: int = 1,
-    profile: bool = True,
+    core_plan: NewtonSchulzCorePlan,
+    profile: bool,
+    outer_repetitions: int,
 ) -> Any:
-    """Prepare ADR-0013 work on residual workers for a fixed repeat count."""
-    repeat_count = validate_device_load_repeat_count("newton_schulz", repeat_count)
+    """Prepare one NS program with an explicitly selected outer repetition count."""
     from enodia.tt.bench.newton_schulz_kernel import (
         NewtonSchulzKernel,
         benchmark_matrices,
@@ -170,22 +267,90 @@ def prepare_newton_schulz_load(
     return NewtonSchulzKernel.prepare(
         ttnn,
         device,
-        benchmark_matrices(NS_LOAD_BATCH, NS_LOAD_L),
+        benchmark_matrices(core_plan.batch, NS_LOAD_L),
         profile=profile,
-        variant="bf16",
-        math_fidelity="HiFi3",
-        fuse_s=True,
-        matrix_block=NS_LOAD_MATRIX_BLOCK,
-        double_buffer=True,
-        input_memory="l1",
-        r_memory="l1",
-        x0_memory="l1",
-        output_memory="dram",
-        fp32_dest_acc_en=True,
-        dst_full_sync_en=True,
+        variant=NS_LOAD_VARIANT,
+        math_fidelity=NS_LOAD_MATH_FIDELITY,
+        fuse_s=NS_LOAD_FUSE_S,
+        matrix_block=core_plan.matrix_block,
+        double_buffer=NS_LOAD_DOUBLE_BUFFER,
+        input_memory=NS_LOAD_R_MEMORY,
+        r_memory=NS_LOAD_R_MEMORY,
+        x0_memory=NS_LOAD_X0_MEMORY,
+        output_memory=NS_LOAD_OUTPUT_MEMORY,
+        fp32_dest_acc_en=NS_LOAD_FP32_DEST_ACC_EN,
+        dst_full_sync_en=NS_LOAD_DST_FULL_SYNC_EN,
         iterations=NS_LOAD_ITERATIONS,
+        outer_repetitions=outer_repetitions,
+        core_coordinates=core_plan.worker_cores,
+    )
+
+
+def prepare_newton_schulz_load(
+    ttnn: Any,
+    device: Any,
+    *,
+    repeat_count: int = 1,
+    profile: bool = True,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int | None = None,
+    worker_pool: tuple[tuple[int, int], ...] = P150_RESIDUAL_WORKER_COORDINATES,
+    core_plan: NewtonSchulzCorePlan | None = None,
+) -> Any:
+    """Prepare the existing Q2 load, retaining its default outer repetition of 3."""
+    repeat_count = validate_device_load_repeat_count("newton_schulz", repeat_count)
+    resolved_plan = _resolve_newton_schulz_core_plan(
+        core_count=core_count,
+        total_blocks=total_blocks,
+        matrix_block=matrix_block,
+        worker_pool=worker_pool,
+        core_plan=core_plan,
+    )
+    return _prepare_newton_schulz_load(
+        ttnn,
+        device,
+        core_plan=resolved_plan,
+        profile=profile,
         outer_repetitions=NS_LOAD_OUTER_REPETITIONS * repeat_count,
-        core_coordinates=P150_RESIDUAL_WORKER_COORDINATES,
+    )
+
+
+def prepare_newton_schulz_duration_load(
+    ttnn: Any,
+    device: Any,
+    *,
+    profile: bool = True,
+    core_count: int | None = None,
+    total_blocks: int | None = None,
+    matrix_block: int | None = None,
+    worker_pool: tuple[tuple[int, int], ...] = P150_RESIDUAL_WORKER_COORDINATES,
+    core_plan: NewtonSchulzCorePlan | None = None,
+) -> Any:
+    """Prepare one fixed 12-iteration NS launch for duration-bounded mode.
+
+    This opt-in Issue #137 path deliberately does not accept or derive a
+    repeat count.  The outer duration loop observes successful launches; each
+    launch executes exactly one outer repetition of the existing twelve-
+    iteration kernel while preserving all Q2 arithmetic defaults.
+    """
+    resolved_plan = _resolve_newton_schulz_core_plan(
+        core_count=core_count,
+        total_blocks=total_blocks,
+        matrix_block=matrix_block,
+        worker_pool=worker_pool,
+        core_plan=core_plan,
+    )
+    if resolved_plan.matrix_block != NS_LOAD_MATRIX_BLOCK:
+        raise LoadConfigurationError(
+            "duration-bounded Newton-Schulz loads require matrix_block=8"
+        )
+    return _prepare_newton_schulz_load(
+        ttnn,
+        device,
+        core_plan=resolved_plan,
+        profile=profile,
+        outer_repetitions=1,
     )
 
 
@@ -519,8 +684,10 @@ __all__ = [
     "LOAD_CB_INDEX",
     "LOAD_INTERVAL_CB_INDEX",
     "LoadProgramPlan",
+    "NewtonSchulzCorePlan",
     "PreparedDramLoad",
     "build_load_plan",
+    "build_newton_schulz_core_plan",
     "card_interval_from_profile_records",
     "card_interval_from_words",
     "dram_load_work",
@@ -532,6 +699,7 @@ __all__ = [
     "open_device",
     "open_device_settings",
     "prepare_dram_load",
+    "prepare_newton_schulz_duration_load",
     "prepare_newton_schulz_load",
     "validate_plan_catalogue",
 ]
