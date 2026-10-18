@@ -92,7 +92,8 @@ Their cooldown waits are 113.169677, 30.426603, 11.549000, 2.763794,
 0.240501, 0.240532, and 0.244290 seconds, all below the 600-second cap.
 Every gate meets preceding-baseline ASIC power +5 W and temperature +3 degC;
 AICLK is not a gate. These relative gates do not establish a common initial
-thermal state: recorded pre-run temperatures drift from 60.2 to 73.7 degC.
+thermal state: pre-run temperatures range from 60.2 to 73.8 degC, with
+73.2 degC in the final instance.
 Docker is empty before and after every instance and after ownership helpers.
 
 ## Exploratory data quality and limitations

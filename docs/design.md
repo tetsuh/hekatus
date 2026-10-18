@@ -2163,8 +2163,9 @@ rules either. C054 remains exploratory.
 The original H-BPL prediction is retained, not revised to match this outcome.
 The complete records and interpretation boundaries are in the
 [Issue #137 measurement archive](measurements/issue137-board-power/2026-10-18/README.md).
-Relative cooldown gates all passed, but pre-run temperatures drifted from
-60.2 to 73.7 degC; the gate is not a common-initial-temperature guarantee.
+Relative cooldown gates all passed, but pre-run temperatures ranged from
+60.2 to 73.8 degC (73.2 degC in the final instance); the gate is not a
+common-initial-temperature guarantee.
 These synthetic-load observations do not establish a physical firmware
 mechanism or a full-enodia capacity estimate. No threshold change or extra
 instance was used to obtain another label.
