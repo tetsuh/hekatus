@@ -971,6 +971,34 @@ def test_issue137_device_result_write_rejects_a_symlink_escape_before_io(
         issue137_device._write_result(destination, {"status": "ok"})
 
 
+def test_issue137_device_result_write_race_does_not_overwrite_fixture_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tools import issue137_device
+
+    existing = tmp_path / "existing-result.json"
+    existing.write_text("existing-result", encoding="utf-8")
+    with pytest.raises(issue137_device.Issue137DeviceError):
+        issue137_device._write_result(existing, {"status": "replacement"})
+    assert existing.read_text(encoding="utf-8") == "existing-result"
+
+    destination = tmp_path / "runner-result.json"
+    outside = tmp_path / "outside-result.json"
+    outside.write_text("outside-result", encoding="utf-8")
+    original_open_descriptor = issue137_device._open_result_descriptor
+
+    def substitute_final_component(path: Path) -> int:
+        path.symlink_to(outside)
+        return original_open_descriptor(path)
+
+    monkeypatch.setattr(
+        issue137_device, "_open_result_descriptor", substitute_final_component
+    )
+    with pytest.raises(issue137_device.Issue137DeviceError):
+        issue137_device._write_result(destination, {"status": "replacement"})
+    assert outside.read_text(encoding="utf-8") == "outside-result"
+
+
 def test_issue137_trace_write_rejects_a_symlink_escape_before_io(tmp_path: Path) -> None:
     destination = tmp_path / "power.csv"
     destination.symlink_to(Path.cwd().parent)

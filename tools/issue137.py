@@ -449,8 +449,6 @@ def resolve_result_path(
             raise Issue137Error("--out and HEKATUS_TT_RESULT_PATH must identify one result path")
         return cli
     selected = cli_path if cli_path is not None else environment_path
-    if selected is None:
-        raise Issue137Error("Issue #137 result path is required")
     return _trusted_write_path(selected, field="Issue #137 result destination")
 
 
@@ -1422,6 +1420,34 @@ def _selected_device_ids(
     return board_id, bus_id
 
 
+def _validate_smoke_mode(
+    plan: Mapping[str, Any], configuration: Issue137Configuration
+) -> None:
+    scope = plan.get("measurement_scope")
+    smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
+    allowed = smoke.get("configurations") if isinstance(smoke, Mapping) else None
+    if not isinstance(allowed, list) or configuration.identifier not in allowed:
+        raise Issue137Error(
+            f"configuration {configuration.identifier} is not in the preregistered smoke set"
+        )
+
+
+def _validate_long_mode(
+    plan: Mapping[str, Any],
+    configuration: Issue137Configuration,
+    *,
+    run_number: int | None,
+    approve_long_run: bool,
+) -> None:
+    if run_number is None or run_number < 1 or run_number > 8:
+        raise Issue137Error("long runs require run_number from 1 through 8")
+    ordered = long_run_order(plan)
+    if ordered[run_number - 1] != configuration.identifier:
+        raise Issue137Error("run_number does not match the preregistered Issue #137 order")
+    if not approve_long_run:
+        raise Issue137Error("long Issue #137 runs require per-instance owner approval")
+
+
 def _validate_run_mode(
     plan: Mapping[str, Any],
     configuration: Issue137Configuration,
@@ -1431,21 +1457,14 @@ def _validate_run_mode(
     approve_long_run: bool,
 ) -> None:
     if mode == "smoke":
-        scope = plan.get("measurement_scope")
-        smoke = scope.get("smoke_runs") if isinstance(scope, Mapping) else None
-        allowed = smoke.get("configurations") if isinstance(smoke, Mapping) else None
-        if not isinstance(allowed, list) or configuration.identifier not in allowed:
-            raise Issue137Error(
-                f"configuration {configuration.identifier} is not in the preregistered smoke set"
-            )
-    if mode == "long":
-        if run_number is None or run_number < 1 or run_number > 8:
-            raise Issue137Error("long runs require run_number from 1 through 8")
-        ordered = long_run_order(plan)
-        if ordered[run_number - 1] != configuration.identifier:
-            raise Issue137Error("run_number does not match the preregistered Issue #137 order")
-        if not approve_long_run:
-            raise Issue137Error("long Issue #137 runs require per-instance owner approval")
+        _validate_smoke_mode(plan, configuration)
+    elif mode == "long":
+        _validate_long_mode(
+            plan,
+            configuration,
+            run_number=run_number,
+            approve_long_run=approve_long_run,
+        )
 
 
 def _resolve_trace_destination(

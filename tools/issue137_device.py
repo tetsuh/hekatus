@@ -173,6 +173,22 @@ def _safe_result_environment(environment: Mapping[str, Any]) -> dict[str, Any]:
     return issue137._safe_json_value(environment)
 
 
+def _open_result_descriptor(path: Path) -> int:
+    parent_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    result_flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | os.O_NOFOLLOW
+        | os.O_CLOEXEC
+    )
+    parent_fd = os.open(path.parent, parent_flags)
+    try:
+        return os.open(path.name, result_flags, 0o666, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
 def _write_result(path: Path, result: Mapping[str, Any]) -> None:
     try:
         destination = issue137._trusted_write_path(
@@ -180,10 +196,23 @@ def _write_result(path: Path, result: Mapping[str, Any]) -> None:
         )
         if destination.exists() or destination.is_symlink():
             raise Issue137DeviceError("Issue #137 result destination already exists")
-        destination.write_text(
-            strict_json_dumps(issue137._safe_json_value(result), indent=2) + "\n",
-            encoding="utf-8",
-        )
+        serialized = strict_json_dumps(issue137._safe_json_value(result), indent=2) + "\n"
+        descriptor: int | None = None
+        try:
+            descriptor = _open_result_descriptor(destination)
+            try:
+                stream = os.fdopen(descriptor, "w", encoding="utf-8")
+            except (OSError, ValueError):
+                os.close(descriptor)
+                descriptor = None
+                raise
+            descriptor = None
+            with stream:
+                stream.write(serialized)
+        except OSError as exc:
+            if descriptor is not None:
+                os.close(descriptor)
+            raise Issue137DeviceError("Issue #137 result could not be persisted") from exc
     except Issue137DeviceError:
         raise
     except issue137.Issue137Error as exc:
