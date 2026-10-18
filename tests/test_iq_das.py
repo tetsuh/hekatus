@@ -66,7 +66,11 @@ def test_the_phase_sign_convention_is_asserted_at_checkpoint_2_not_in_a_comment(
     the golden's analytic channel samples to well under a degree, energy-
     weighted; with the sign flipped they are off by ~97°. An image made
     with the flipped sign still has its peaks in plausible places — which
-    is why this is asserted here and not by looking at one."""
+    is why this is asserted here and not by looking at one.
+
+    This remains heavy deliberately: the phase checkpoint is numerical
+    evidence against the canonical golden channel vectors at both ratios.
+    """
     profile, events, records, scatterers = frame
     d, iq_records, _, z, _ = iq_path
     ev = min(events, key=lambda e: abs(e.line_x_m - scatterers[0].x_m))
@@ -115,15 +119,17 @@ def test_the_demo_iq_path_images_the_scatterers_on_the_shared_grid():
         run_pipeline(profile, DEFAULT_SCATTERERS, path="rf")
 
 
-def test_the_beamformer_refuses_records_decimated_at_another_ratio(frame):
-    profile, events, records, _ = frame
+def test_the_beamformer_refuses_records_decimated_at_another_ratio(cheap_frame):
+    """The cheap frame covers the decimation metadata refusal without a full image."""
+    profile, events, records, _ = cheap_frame
     iq4 = demodulate_frame(records[:2], profile, decimation=4)
     with pytest.raises(ValueError, match="decimated by 4"):
         das_iq(profile, events[:2], iq4, decimation=8)
 
 
-def test_the_beamformer_rejects_an_integer_dtype(frame):
-    profile, events, records, _ = frame
+def test_the_beamformer_rejects_an_integer_dtype(cheap_frame):
+    """The cheap frame covers the dtype refusal at the beamformer ingress."""
+    profile, events, records, _ = cheap_frame
     iq = demodulate_frame(records[:1], profile, decimation=8)
     with pytest.raises(ValueError, match="floating"):
         das_iq(profile, events[:1], iq, decimation=8, dtype=np.int16)
@@ -132,8 +138,9 @@ def test_the_beamformer_rejects_an_integer_dtype(frame):
 @pytest.mark.parametrize(
     ("dtype", "expected"), [(np.float32, np.complex64), (np.float64, np.complex128)]
 )
-def test_the_intermediate_is_complex_fp32_or_wider(frame, dtype, expected):
-    profile, events, records, _ = frame
+def test_the_intermediate_is_complex_fp32_or_wider(cheap_frame, dtype, expected):
+    """The cheap nonzero frame checks both required intermediate complex dtypes."""
+    profile, events, records, _ = cheap_frame
     iq = demodulate_frame(records[:1], profile, decimation=8)
     image, _, _ = das_iq(profile, events[:1], iq, decimation=8, dtype=dtype)
     assert image.dtype == expected
