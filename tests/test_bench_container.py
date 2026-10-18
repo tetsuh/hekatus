@@ -15,6 +15,13 @@ import pytest
 
 ROOT = Path(__file__).parents[1]
 WRAPPER = ROOT / "enodia/tt/bench/run_in_container.sh"
+
+
+def _add_inert_tt_smi_stub(bindir: Path) -> None:
+    (bindir / "tt-smi").write_text(
+        "#!/bin/sh\nset -eu\nexit 0\n", encoding="utf-8"
+    )
+    (bindir / "tt-smi").chmod(stat.S_IRWXU)
 RESIDENT_RUNNER_ALIASES = (
     "./enodia/tt/bench/run_resident.py",
     "enodia/tt/bench/../bench/run_resident.py",
@@ -100,6 +107,7 @@ exit "${DOCKER_EXIT:-0}"
 """
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    _add_inert_tt_smi_stub(bindir)
     if timeout_log is not None:
         (bindir / "timeout").write_text(
             """#!/bin/sh
@@ -797,6 +805,7 @@ while True:
 """
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    _add_inert_tt_smi_stub(bindir)
 
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
@@ -884,6 +893,7 @@ while True:
 """
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    _add_inert_tt_smi_stub(bindir)
 
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
@@ -1584,6 +1594,7 @@ raise SystemExit(
 '''
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    _add_inert_tt_smi_stub(bindir)
     return bindir
 
 

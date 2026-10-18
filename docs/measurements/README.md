@@ -36,15 +36,20 @@ never evidence; missing, stale, malformed, or identity-mismatched artifacts
 are structured failures. These commands are examples only and require owner
 approval and the board-run procedure; this repository's board-free validation
 uses mocked command and snapshot seams. Pytest's default hardware guard denies
-board commands and device opens; the `hardware_access` and `wrapper_execution`
-fixtures require their explicit `--allow-hardware-tests` and
-`--allow-wrapper-execution` options. Copied-wrapper execution is skipped by
-default and is never authorized merely by an environment variable or a
-pinned-container setting. A separately authorized pinned-container device test
-must pass `--allow-hardware-tests` after the wrapper's `--pytest` option; the
-existing wrapper already forwards pytest arguments. The Python guard cannot
-cover native direct syscalls or commands started inside an already-running
-child process, so those limits do not constitute authorization.
+board commands and device opens; the `hardware_access` fixture remains disabled
+unless `--allow-hardware-tests` is explicitly selected. The `wrapper_execution`
+fixture has no command-line bypass: each wrapper launch must resolve `docker`,
+`tt-smi`, and `python3` to executable local stubs below pytest's temporary base
+directory, with the launch environment and working directory checked afresh.
+Board-free copied-wrapper regression coverage uses only these inert local stubs
+and direct wrapper argv; shell strings, shell vectors, prefixes, and alternate
+executables are rejected. No pinned-container setting authorizes real hardware.
+A separately authorized pinned-container device test must pass
+`--allow-hardware-tests` after the
+wrapper's `--pytest` option; the existing wrapper already forwards pytest
+arguments. The Python guard cannot cover native direct syscalls or commands
+started inside an already-running child process, so those limits do not
+constitute authorization.
 
 A throughput figure is only evidence if the environment behind it can be
 reproduced later. design.md §2 records that a firmware update once changed

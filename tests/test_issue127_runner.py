@@ -2061,6 +2061,10 @@ exit 0
         encoding="utf-8",
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    (bindir / "tt-smi").write_text(
+        "#!/bin/sh\nset -eu\nexit 0\n", encoding="utf-8"
+    )
+    (bindir / "tt-smi").chmod(stat.S_IRWXU)
     (bindir / "timeout").write_text(
         """#!/bin/sh
 set -eu
@@ -2183,6 +2187,10 @@ exit 0
         encoding="utf-8",
     )
     (bindir / "docker").chmod(stat.S_IRWXU)
+    (bindir / "tt-smi").write_text(
+        "#!/bin/sh\nset -eu\nexit 0\n", encoding="utf-8"
+    )
+    (bindir / "tt-smi").chmod(stat.S_IRWXU)
     (bindir / "timeout").write_text(
         """#!/bin/sh
 set -eu

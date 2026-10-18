@@ -28,12 +28,6 @@ def pytest_addoption(parser):
         default=False,
         help="explicitly permit tests that access accelerator hardware",
     )
-    parser.addoption(
-        "--allow-wrapper-execution",
-        action="store_true",
-        default=False,
-        help="explicitly permit tests that execute the container wrapper",
-    )
 
 
 def pytest_configure(config):
@@ -61,12 +55,8 @@ def hardware_access(request, _hardware_isolation):
 
 
 @pytest.fixture
-def wrapper_execution(request, _hardware_isolation):
-    if not request.config.getoption("--allow-wrapper-execution"):
-        pytest.skip(
-            "wrapper execution is disabled; pass --allow-wrapper-execution explicitly"
-        )
-    token = permit_wrapper()
+def wrapper_execution(tmp_path_factory, _hardware_isolation):
+    token = permit_wrapper(tmp_path_factory.getbasetemp())
     try:
         yield
     finally:

@@ -43,6 +43,16 @@ def inert_process_downstream(monkeypatch: pytest.MonkeyPatch):
     return calls
 
 
+def _inert_wrapper_tools(tmp_path: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    bindir = tmp_path / "wrapper-tools"
+    bindir.mkdir()
+    for name in ("docker", "tt-smi", "python3", "run_in_container.sh"):
+        path = bindir / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o700)
+    return bindir, bindir / "run_in_container.sh"
+
+
 def _invoke_without_exception_swallow(action):
     try:
         return action()
@@ -517,10 +527,11 @@ def test_wrapper_permission_rejects_mixed_shell_command(
 
 
 def test_wrapper_permission_reaches_only_inert_wrapper_downstream(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
 ) -> None:
     from hardware_isolation import permit_wrapper, restore_access
 
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
     calls: list[object] = []
 
     def downstream_spy(*args: object, **kwargs: object) -> int:
@@ -529,16 +540,368 @@ def test_wrapper_permission_reaches_only_inert_wrapper_downstream(
 
     monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
     monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
-    token = permit_wrapper()
+    token = permit_wrapper(tmp_path.parent)
     try:
         action = subprocess.run
-        command = ("run_in_container.sh", "--", "--iters", "1")
+        command = (str(wrapper), "--", "--iters", "1")
+        environment = {"PATH": str(bindir)}
         with pytest.raises(AssertionError):
-            action(command, check=False)
+            action(command, cwd=tmp_path, env=environment, check=False)
     finally:
         restore_access(token)
 
     assert calls
+
+
+@pytest.mark.parametrize(
+    ("command", "shell"),
+    (
+        ("{wrapper}", True),
+        (("/bin/sh", "-c", "{wrapper}"), False),
+        (("env", "--", "{wrapper}"), False),
+        (("/bin/sh", "-c", "export PATH=/bin; {wrapper}"), False),
+        (("/bin/sh", "-c", "cd /; {wrapper}"), False),
+    ),
+)
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_rejects_shell_and_prefix_forms(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    command: str | tuple[str, ...],
+    shell: bool,
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    rendered = command.format(wrapper=str(wrapper)) if isinstance(command, str) else tuple(
+        token.format(wrapper=str(wrapper)) for token in command
+    )
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("non-direct wrapper reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run(
+            rendered,
+            shell=shell,
+            cwd=tmp_path,
+            env={"PATH": str(bindir)},
+            check=False,
+        )
+    assert calls == []
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_rejects_explicit_shell_executable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("shell executable reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run(
+            [str(wrapper), "-c", "tt-smi -s"],
+            executable="/bin/sh",
+            cwd=tmp_path,
+            env={"PATH": str(bindir)},
+            check=False,
+        )
+    assert calls == []
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+@pytest.mark.parametrize("path_order", ("text-first", "bytes-first"))
+def test_wrapper_permission_rejects_duplicate_normalized_path_keys(
+    tmp_path: pathlib.Path, path_order: str
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    entries = [
+        ("PATH", str(tmp_path / "missing")),
+        (b"PATH", str(bindir)),
+    ]
+    if path_order == "bytes-first":
+        entries.reverse()
+
+    class DuplicateEnvironment:
+        def items(self):
+            return entries
+
+    import hardware_isolation as isolation
+
+    with pytest.raises(HardwareAccessViolation):
+        isolation._audit_event(
+            "subprocess.Popen",
+            (str(wrapper), [str(wrapper)], str(tmp_path), DuplicateEnvironment()),
+        )
+
+
+@pytest.mark.parametrize("first_kind", ("missing", "nonexec", "nonregular"))
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_skips_nonexecutables_before_later_stub(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path, first_kind: str
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    first = tmp_path / "first-path-entry"
+    first.mkdir()
+    if first_kind != "missing":
+        for name in ("docker", "tt-smi", "python3"):
+            candidate = first / name
+            if first_kind == "nonregular":
+                candidate.mkdir()
+            else:
+                candidate.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+                candidate.chmod(0o600)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("later executable stub reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(AssertionError):
+        subprocess.run(
+            [str(wrapper)],
+            cwd=tmp_path,
+            env={"PATH": f"{first}{os.pathsep}{bindir}"},
+            check=False,
+        )
+    assert calls
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_rechecks_every_launch(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("wrapper reached the inert downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    environment = {"PATH": str(bindir)}
+    with pytest.raises(AssertionError):
+        subprocess.run([str(wrapper)], cwd=tmp_path, env=environment, check=False)
+    (bindir / "python3").chmod(0o600)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run([str(wrapper)], cwd=tmp_path, env=environment, check=False)
+    assert len(calls) == 1
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_uses_explicit_environment_over_ambient(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("wrapper reached the inert downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    monkeypatch.setenv("PATH", str(tmp_path / "ambient-missing"))
+    with pytest.raises(AssertionError):
+        subprocess.run(
+            [str(wrapper)], cwd=tmp_path, env={"PATH": str(bindir)}, check=False
+        )
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run([str(wrapper)], cwd=tmp_path, env=None, check=False)
+    assert len(calls) == 1
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_respects_relative_cwd_and_empty_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    _bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    relative_cwd = tmp_path / "relative-cwd"
+    relative_cwd.mkdir()
+    for name in ("docker", "tt-smi", "python3"):
+        path = relative_cwd / name
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o700)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("wrapper reached the inert downstream spy")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(AssertionError):
+        subprocess.run(
+            [str(wrapper)], cwd="relative-cwd", env={"PATH": ""}, check=False
+        )
+    assert calls
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_resolves_cwd_symlinks_before_relative_path_lookup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    from hardware_isolation import permit_wrapper, restore_access
+
+    base_tools = tmp_path / "bin"
+    base_tools.mkdir()
+    outside = tmp_path.parent / f"cwd-outside-{tmp_path.name}"
+    outside.mkdir(exist_ok=True)
+    outside_tools = outside / "bin"
+    outside_tools.mkdir(exist_ok=True)
+    for tool_root in (base_tools, outside_tools):
+        for name in ("docker", "tt-smi", "python3"):
+            path = tool_root / name
+            path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            path.chmod(0o700)
+    outside_subdir = outside / "subdir"
+    outside_subdir.mkdir(exist_ok=True)
+    cwd_link = tmp_path / "cwdlink"
+    cwd_link.symlink_to(outside_subdir, target_is_directory=True)
+    wrapper = tmp_path / "run_in_container.sh"
+    wrapper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    wrapper.chmod(0o700)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("cwd escape reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    token = permit_wrapper(tmp_path)
+    try:
+        with pytest.raises(HardwareAccessViolation):
+            subprocess.run(
+                [str(wrapper)],
+                cwd=str(cwd_link / ".."),
+                env={"PATH": "bin"},
+                check=False,
+            )
+    finally:
+        restore_access(token)
+
+    assert calls == []
+    assert os.path.realpath(cwd_link / "..") == str(outside)
+    assert base_tools.exists() and outside_tools.exists()
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_rejects_missing_and_escaping_stubs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    (bindir / "python3").unlink()
+    outside = tmp_path.parent.parent / f"wrapper-outside-{tmp_path.name}"
+    outside.mkdir(exist_ok=True)
+    outside_python = outside / "python3"
+    outside_python.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    outside_python.chmod(0o700)
+    (bindir / "python3").symlink_to(outside_python)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("wrapper reached the inert downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run(
+            [str(wrapper)], cwd=tmp_path, env={"PATH": str(bindir)}, check=False
+        )
+    assert calls == []
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_rejects_repository_wrapper(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    bindir, _ = _inert_wrapper_tools(tmp_path)
+    repository_wrapper = pathlib.Path(__file__).parents[1] / "enodia/tt/bench/run_in_container.sh"
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("repository wrapper reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run(
+            [str(repository_wrapper)],
+            cwd=tmp_path,
+            env={"PATH": str(bindir)},
+            check=False,
+        )
+    assert calls == []
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_permission_audit_payloads_use_supplied_environment(
+    tmp_path: pathlib.Path,
+) -> None:
+    bindir, wrapper = _inert_wrapper_tools(tmp_path)
+    environment = {"PATH": str(bindir)}
+    import hardware_isolation as isolation
+
+    isolation._audit_event(
+        "subprocess.Popen", (str(wrapper), [str(wrapper)], str(tmp_path), environment)
+    )
+    isolation._audit_event(
+        "os.posix_spawn", (str(wrapper), [str(wrapper)], environment)
+    )
+    isolation._audit_event(
+        "os.execve", (str(wrapper), [str(wrapper)], environment)
+    )
+    with pytest.raises(HardwareAccessViolation):
+        isolation._audit_event(
+            "subprocess.Popen", (str(wrapper), [str(wrapper)], str(tmp_path), {})
+        )
+    with pytest.raises(HardwareAccessViolation):
+        isolation._audit_event(
+            "subprocess.Popen",
+            (str(wrapper), [str(wrapper)], str(tmp_path), {"LANG": "C"}),
+        )
+    with pytest.raises(HardwareAccessViolation):
+        isolation._audit_event(
+            "subprocess.Popen",
+            (str(wrapper), [str(wrapper)], str(tmp_path), {"PATH": os.defpath}),
+        )
+
+
+@pytest.mark.usefixtures("wrapper_execution")
+def test_wrapper_execution_permission_fixture_is_a_restriction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    wrapper = tmp_path / "run_in_container.sh"
+    wrapper.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    wrapper.chmod(0o700)
+    calls: list[object] = []
+
+    def downstream_spy(*args: object, **kwargs: object) -> int:
+        calls.append((args, kwargs))
+        raise AssertionError("unverified wrapper reached the downstream spy")
+
+    monkeypatch.setattr(subprocess, "_USE_POSIX_SPAWN", False)
+    monkeypatch.setattr(subprocess, "_fork_exec", downstream_spy)
+    with pytest.raises(HardwareAccessViolation):
+        subprocess.run(
+            [str(wrapper)], cwd=tmp_path, env={"PATH": str(tmp_path)}, check=False
+        )
+    assert calls == []
 
 
 def test_issue137_missing_capture_callback_is_blocked_before_workload(
@@ -601,10 +964,3 @@ def test_hardware_permission_fixture_is_disabled_by_default(request) -> None:
     if request.config.getoption("--allow-hardware-tests"):
         pytest.skip("hardware permission opt-in is explicitly enabled")
     pytest.fail("hardware permission fixture unexpectedly enabled")
-
-
-@pytest.mark.usefixtures("wrapper_execution")
-def test_wrapper_execution_permission_fixture_is_disabled_by_default(request) -> None:
-    if request.config.getoption("--allow-wrapper-execution"):
-        pytest.skip("wrapper execution opt-in is explicitly enabled")
-    pytest.fail("wrapper execution permission fixture unexpectedly enabled")
