@@ -674,6 +674,18 @@ def test_issue137_exit_zero_with_missing_or_stale_result_fails_closed(tmp_path: 
     config = runner.configuration(plan, "C018")
     environment = _issue137_environment()
 
+    def capture(*, stage: str) -> dict[str, object]:
+        return {
+            "schema": runner.ISSUE137_SNAPSHOT_SCHEMA,
+            "stage": stage,
+            "status": "ok",
+            "returncode": 0,
+            "captured_at_utc": "2026-10-20T00:00:00+00:00",
+            "timestamp_monotonic_ns": {"pre_run": 0, "post_run": 20_000_000_100}[stage],
+            "snapshot_elapsed_ns": 1,
+            "snapshot": _snapshot(),
+        }
+
     def command_runner(*_args: object, **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(returncode=0, stdout="results     -> /out/runner-result.json\\n")
 
@@ -685,6 +697,9 @@ def test_issue137_exit_zero_with_missing_or_stale_result_fails_closed(tmp_path: 
         run_id="issue137-smoke-missing-result",
         command_runner=command_runner,
         environment=environment,
+        capture_fn=capture,
+        board_id="fixture-board",
+        bus_id="0000:09:00.0",
     )
 
     assert record["status"] == "failed"

@@ -113,6 +113,7 @@ exec "$@"
     return bindir
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
     """Both documented output forms reach Docker without shell evaluation."""
     bindir = _fake_tools(tmp_path)
@@ -162,6 +163,7 @@ def test_wrapper_forwards_hostile_runner_arguments_literally(tmp_path):
     ],
     ids=["relative-source", "absolute-source", "source-under-nonexistent-parent"],
 )
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_normalizes_every_docker_bind_source(
     tmp_path, output_argument, case
 ):
@@ -206,6 +208,7 @@ def test_wrapper_normalizes_every_docker_bind_source(
         assert expected_output.is_dir()
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_rejects_an_unnormalizable_mount_source_before_docker(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -230,6 +233,7 @@ def test_wrapper_rejects_an_unnormalizable_mount_source_before_docker(tmp_path):
     assert not args_log.exists()
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_rejects_runner_outside_repository_before_docker(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -261,6 +265,7 @@ def test_wrapper_rejects_runner_outside_repository_before_docker(tmp_path):
     assert not (copied_root / "out").exists()
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_accepts_equivalent_absolute_host_runner_path(tmp_path):
     timeout_log = tmp_path / "timeout-args"
     bindir = _fake_tools(tmp_path, timeout_log=timeout_log)
@@ -345,6 +350,7 @@ def _run_resident_wrapper(
     )
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 class TestBenchDefaults:
     @pytest.mark.parametrize(
         "runner",
@@ -504,6 +510,7 @@ class TestBenchDefaults:
         assert output_container == "/out"
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_rejects_unpinned_image_before_telemetry(tmp_path):
     completed = _run_resident_wrapper(
         tmp_path,
@@ -516,6 +523,7 @@ def test_resident_wrapper_rejects_unpinned_image_before_telemetry(tmp_path):
     assert not list((tmp_path / "repo/out").glob("env-*.json"))
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_accepts_verified_digest_image(tmp_path):
     completed = _run_resident_wrapper(
         tmp_path,
@@ -526,6 +534,7 @@ def test_resident_wrapper_accepts_verified_digest_image(tmp_path):
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_issue101_wrapper_rejects_unpinned_image_before_docker_run_or_artifacts(tmp_path):
     completed = _run_resident_wrapper(
         tmp_path,
@@ -557,6 +566,7 @@ def test_issue101_wrapper_rejects_unpinned_image_before_docker_run_or_artifacts(
         ("0600", [], None, "decimal digits"),
     ],
 )
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_rejects_unsafe_timeout_strings(
     tmp_path, container_timeout, runner_args, watcher_env, error
 ):
@@ -575,6 +585,7 @@ def test_resident_wrapper_rejects_unsafe_timeout_strings(
     ("container_timeout", "runner_args", "watcher_env"),
     [("600", [], None), ("60", ["--watcher"], "1")],
 )
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_accepts_exact_timeout_boundaries(
     tmp_path, container_timeout, runner_args, watcher_env
 ):
@@ -591,6 +602,7 @@ def test_resident_wrapper_accepts_exact_timeout_boundaries(
     ("runner_args", "watcher_env"),
     [(["--watcher"], None), ([], "1")],
 )
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_rejects_watcher_mode_mismatch(tmp_path, runner_args, watcher_env):
     completed = _run_resident_wrapper(
         tmp_path,
@@ -602,6 +614,7 @@ def test_resident_wrapper_rejects_watcher_mode_mismatch(tmp_path, runner_args, w
     assert "same mode" in completed.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_fails_when_sampler_exits_before_docker(tmp_path):
     """A prematurely dead sampler cannot produce a successful benchmark."""
     bindir = _fake_tools(tmp_path, sampler_exit=23)
@@ -631,6 +644,7 @@ def test_wrapper_fails_when_sampler_exits_before_docker(tmp_path):
     assert "sampler" in completed.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_reaps_docker_when_interrupted(tmp_path):
     """Interrupting the wrapper must not leave its benchmark child running."""
     bindir = _fake_tools(tmp_path)
@@ -705,6 +719,7 @@ raise SystemExit(int(os.environ.get("DOCKER_EXIT", "0")))
                 pass
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_a_failed_benchmark_reports_its_own_status_even_if_the_sampler_died(tmp_path):
     """When both fail, the benchmark's status is the one worth surfacing:
     a caller has to be able to tell a broken run from a broken observer."""
@@ -736,6 +751,7 @@ def test_a_failed_benchmark_reports_its_own_status_even_if_the_sampler_died(tmp_
     assert "sampler exited before benchmark completion" in completed.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_the_sampler_is_reaped_when_the_wrapper_is_signalled_before_docker_reports(tmp_path):
     """The traps must own the sampler from before it is launched.
 
@@ -828,6 +844,7 @@ while True:
 
 
 @pytest.mark.parametrize("assignment", ["sampler", "docker"])
+@pytest.mark.usefixtures("wrapper_execution")
 def test_cleanup_owns_the_child_before_its_pid_is_published(tmp_path, assignment):
     """Exercise each `${!:-}` fallback before its PID assignment executes."""
     bindir = tmp_path / "bin"
@@ -934,6 +951,7 @@ while True:
                 os.kill(pid, 9)
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_runs_device_pytest_only_in_the_pinned_container(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -978,6 +996,7 @@ def test_wrapper_runs_device_pytest_only_in_the_pinned_container(tmp_path):
     ]
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_rejects_an_unpinned_image_for_device_pytest(tmp_path):
     bindir = _fake_tools(tmp_path)
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
@@ -1002,6 +1021,7 @@ def test_wrapper_rejects_an_unpinned_image_for_device_pytest(tmp_path):
     assert "digest-pinned" in completed.stderr
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1032,6 +1052,7 @@ def test_wrapper_uses_a_named_container_and_inner_timeout(tmp_path):
     assert re.search(r"results     -> .*/results-[0-9TZ]+\.json", completed.stdout)
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1068,6 +1089,7 @@ def test_wrapper_runs_sampler_off_without_power_trace(tmp_path):
     assert "sampler -> off (diagnostic-only; no power trace by design)" in completed.stdout
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_path):
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
     copied_wrapper.parent.mkdir(parents=True)
@@ -1144,6 +1166,7 @@ def test_wrapper_sampled_then_sampler_off_reuses_output_without_old_trace(tmp_pa
     assert "sampler -> off (diagnostic-only; no power trace by design)" in off.stdout
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_forwards_explicit_sampler_interval_and_keeps_default_trace_contract(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1177,6 +1200,7 @@ def test_wrapper_forwards_explicit_sampler_interval_and_keeps_default_trace_cont
     assert "sampler -> explicit (5s)" in completed.stdout
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1207,6 +1231,7 @@ def test_wrapper_kills_the_named_container_when_inner_timeout_expires(tmp_path):
     assert "--signal" in control_args
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_can_run_a_probe_with_the_same_container_lifecycle(tmp_path):
     bindir = _fake_tools(tmp_path)
     args_log = tmp_path / "docker-args"
@@ -1562,6 +1587,7 @@ raise SystemExit(
     return bindir
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_resident_wrapper_reuses_output_directory_without_result_collision(tmp_path):
     """The wrapper runs the copied resident entrypoint for every run-owned result."""
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
@@ -1669,6 +1695,7 @@ CUSTOM_RUNNERS = (
 
 
 @pytest.mark.parametrize("runner", CUSTOM_RUNNERS)
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_uses_one_result_contract_for_every_custom_runner(tmp_path, runner):
     """Every discovered custom runner gets and writes the stable result path."""
     bindir = _fake_tools(tmp_path)
@@ -1705,6 +1732,7 @@ def test_wrapper_uses_one_result_contract_for_every_custom_runner(tmp_path, runn
     assert json.loads(result_path.read_text()) == {"fake_runner_result": True}
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_the_default_toolchain_image_is_digest_pinned_and_recorded(tmp_path):
     """The default invocation records the exact immutable image provenance."""
     expected_image = (
@@ -1802,6 +1830,7 @@ else:
     }
 
 
+@pytest.mark.usefixtures("wrapper_execution")
 def test_wrapper_passes_the_effective_device_node_to_host_capture(tmp_path):
     bindir = _fake_tools(tmp_path)
     copied_wrapper = tmp_path / "repo/enodia/tt/bench/run_in_container.sh"
