@@ -243,13 +243,19 @@ def _read_bytes(path: Path, *, purpose: str) -> bytes:
         raise AnalysisError(f"{purpose} cannot be read") from exc
 
 
-def _load_json(path: Path, *, purpose: str) -> Mapping[str, Any]:
+def _load_json_bytes(path: Path, *, purpose: str) -> tuple[Mapping[str, Any], bytes]:
     try:
-        payload = json.loads(_read_bytes(path, purpose=purpose).decode("utf-8"))
+        raw = _read_bytes(path, purpose=purpose)
+        payload = json.loads(raw.decode("utf-8"))
     except (AnalysisError, UnicodeError, json.JSONDecodeError) as exc:
         raise AnalysisError(f"{purpose} cannot be read") from exc
     if not isinstance(payload, Mapping):
         raise AnalysisError(f"{purpose} must be an object")
+    return payload, raw
+
+
+def _load_json(path: Path, *, purpose: str) -> Mapping[str, Any]:
+    payload, _raw = _load_json_bytes(path, purpose=purpose)
     return payload
 
 
@@ -718,9 +724,8 @@ def _trace_file_payload(
     try:
         path = _source_path(path_value, base_dir=base_dir, purpose="trace source")
         if path.suffix.lower() == ".json":
-            return _load_json(path, purpose="trace source"), path.name, _read_bytes(
-                path, purpose="trace source"
-            ), None
+            payload, source_bytes = _load_json_bytes(path, purpose="trace source")
+            return payload, path.name, source_bytes, None
         payload, source_bytes = _trace_payload_from_csv(path)
         return payload, path.name, source_bytes, None
     except (OSError, TypeError, ValueError) as exc:

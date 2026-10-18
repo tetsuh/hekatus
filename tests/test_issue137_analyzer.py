@@ -342,6 +342,45 @@ def test_source_path_rejects_symlink_escape(tmp_path: Path) -> None:
         )
 
 
+def test_json_trace_source_hashes_the_same_bytes_as_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    payload = _trace()
+    payload.pop("sha256", None)
+    payload.pop("byte_count", None)
+    payload.pop("path", None)
+    raw_bytes = json.dumps(payload, sort_keys=True).encode("utf-8")
+    changed_payload = deepcopy(payload)
+    changed_payload["samples"][1]["board_power_w"] = 301.0
+    changed_bytes = json.dumps(changed_payload, sort_keys=True).encode("utf-8")
+    calls: list[Path] = []
+
+    def read_bytes(path: Path, *, purpose: str) -> bytes:
+        del purpose
+        calls.append(path)
+        return raw_bytes if len(calls) == 1 else changed_bytes
+
+    monkeypatch.setattr(analysis, "_read_bytes", read_bytes)
+    trace_path = tmp_path / "trace.json"
+    record = {
+        "trace": {
+            "path": trace_path.name,
+            "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+            "byte_count": len(raw_bytes),
+        }
+    }
+
+    load = analysis._load_trace_source(
+        record, base_dir=tmp_path, record_name="fixture"
+    )
+
+    assert calls == [trace_path]
+    assert load.source_sha256 == hashlib.sha256(raw_bytes).hexdigest()
+    assert load.source_byte_count == len(raw_bytes)
+    assert load.rows[1]["board_power_w"] == payload["samples"][1]["board_power_w"]
+    assert not any("source bytes do not match" in error for error in load.errors)
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
