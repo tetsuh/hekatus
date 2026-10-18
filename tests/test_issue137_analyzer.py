@@ -342,6 +342,31 @@ def test_source_path_rejects_symlink_escape(tmp_path: Path) -> None:
         )
 
 
+def test_write_text_rejects_symlink_substitution_after_validation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    output = tmp_path / "analysis.json"
+    outside = tmp_path / "outside.json"
+    output.write_text("original", encoding="utf-8")
+    outside.write_text("untouched", encoding="utf-8")
+    original_safe_path = analysis._safe_cli_path
+
+    def substitute_after_validation(
+        value: str | Path, *, purpose: str, output: bool = False
+    ) -> Path:
+        checked = original_safe_path(value, purpose=purpose, output=output)
+        if output:
+            output_path = Path(value)
+            output_path.unlink()
+            output_path.symlink_to(outside)
+        return checked
+
+    monkeypatch.setattr(analysis, "_safe_cli_path", substitute_after_validation)
+    with pytest.raises(analysis.AnalysisError, match="cannot be written"):
+        analysis._write_text(output, "replacement", purpose="analysis output")
+    assert outside.read_text(encoding="utf-8") == "untouched"
+
+
 def test_json_trace_source_hashes_the_same_bytes_as_rows(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

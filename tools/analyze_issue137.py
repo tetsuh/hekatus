@@ -14,6 +14,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 import re
 import tempfile
 from collections.abc import Mapping, Sequence
@@ -91,6 +92,8 @@ _PATH_RE = re.compile(
     r"(?:^|[\s'\"(])(?:/home/|/Users/|/root/|/tmp/|~[/\\]|[A-Za-z]:[\\/])"
 )
 _REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+_TRACE_SOURCE_PURPOSE = "trace source"
+_IMMUTABLE_PLAN_PURPOSE = "immutable plan"
 
 
 class AnalysisError(ValueError):
@@ -152,6 +155,30 @@ class _RunAnalysis:
     verdict_position: int | None
 
 
+@dataclass(frozen=True)
+class _RunReportContext:
+    record: Mapping[str, Any]
+    name: str
+    run_number: int | None
+    configuration_id: str | None
+    mode: str
+    expected_candidate: bool
+    verdict_missing: set[str]
+    spec: _PlanSpec
+    load: _TraceLoad
+    snapshot_name: str | None
+    limits: Mapping[str, Any]
+    statistics: Mapping[str, Any]
+    aiclk_depressed: bool | None
+    aiclk_not_depressed: bool | None
+    pinned: Mapping[str, bool | None]
+    trace_report: Mapping[str, Any]
+    binding_errors: Sequence[str]
+    environment_errors: Sequence[str]
+    limit_errors: Sequence[str]
+    snapshot_errors: Sequence[str]
+
+
 def _finite(value: Any, *, field: str) -> float:
     if isinstance(value, bool):
         raise AnalysisError(f"{field} must be finite")
@@ -206,7 +233,7 @@ def _safe_public(value: Any) -> Any:
     if isinstance(value, str) and (
         _PATH_RE.search(value)
         or value.startswith("/")
-        or any(part == ".." for part in re.split(r"[/\\\\]", value))
+        or any(part == ".." for part in value.replace("\\", "/").split("/"))
     ):
         return "<redacted-path>"
     if isinstance(value, (str, int, float, bool)) or value is None:
@@ -259,11 +286,33 @@ def _load_json(path: Path, *, purpose: str) -> Mapping[str, Any]:
     return payload
 
 
+def _open_output_descriptor(path: Path) -> int:
+    parent_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    output_flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW | os.O_CLOEXEC
+    parent_fd = os.open(path.parent, parent_flags)
+    try:
+        return os.open(path.name, output_flags, 0o666, dir_fd=parent_fd)
+    finally:
+        os.close(parent_fd)
+
+
 def _write_text(path: Path, text: str, *, purpose: str) -> None:
     checked = _safe_cli_path(path, purpose=purpose, output=True)
+    descriptor: int | None = None
     try:
-        checked.write_text(text, encoding="utf-8")
+        descriptor = _open_output_descriptor(checked)
+        try:
+            stream = os.fdopen(descriptor, "w", encoding="utf-8")
+        except (OSError, ValueError):
+            os.close(descriptor)
+            descriptor = None
+            raise
+        descriptor = None
+        with stream:
+            stream.write(text)
     except OSError as exc:
+        if descriptor is not None:
+            os.close(descriptor)
         raise AnalysisError(f"{purpose} cannot be written") from exc
 
 
@@ -280,7 +329,7 @@ def _extract_number_from_text(text: str, patterns: Sequence[str], *, field: str)
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             return _finite(match.group(1), field=field)
-    raise AnalysisError(f"immutable plan does not define {field}")
+    raise AnalysisError(f"{_IMMUTABLE_PLAN_PURPOSE} does not define {field}")
 
 
 def _expected_configurations(
@@ -661,10 +710,10 @@ def _raw_trace_rows(payload: Mapping[str, Any], load: _TraceLoad) -> None:
 
 def _trace_payload_from_csv(path: Path) -> tuple[dict[str, Any], bytes]:
     try:
-        raw = _read_bytes(path, purpose="trace source")
+        raw = _read_bytes(path, purpose=_TRACE_SOURCE_PURPOSE)
         text = raw.decode("utf-8")
     except (AnalysisError, UnicodeError) as exc:
-        raise AnalysisError("trace source cannot be read") from exc
+        raise AnalysisError(f"{_TRACE_SOURCE_PURPOSE} cannot be read") from exc
     try:
         reader = csv.DictReader(text.splitlines())
         if reader.fieldnames is None:
@@ -720,11 +769,11 @@ def _trace_file_payload(
     trace = record.get("trace")
     path_value = trace.get("path") if isinstance(trace, Mapping) else None
     if path_value is None:
-        return None, None, None, "trace source is missing"
+        return None, None, None, f"{_TRACE_SOURCE_PURPOSE} is missing"
     try:
-        path = _source_path(path_value, base_dir=base_dir, purpose="trace source")
+        path = _source_path(path_value, base_dir=base_dir, purpose=_TRACE_SOURCE_PURPOSE)
         if path.suffix.lower() == ".json":
-            payload, source_bytes = _load_json_bytes(path, purpose="trace source")
+            payload, source_bytes = _load_json_bytes(path, purpose=_TRACE_SOURCE_PURPOSE)
             return payload, path.name, source_bytes, None
         payload, source_bytes = _trace_payload_from_csv(path)
         return payload, path.name, source_bytes, None
@@ -828,7 +877,9 @@ def _load_trace_source(
             record, base_dir=base_dir
         )
         if load_error is not None or payload is None or source_bytes is None:
-            return _trace_load_error(source_name, load_error or "trace source is missing")
+            return _trace_load_error(
+                source_name, load_error or f"{_TRACE_SOURCE_PURPOSE} is missing"
+            )
     if source_name is None:
         source_name = str(record.get("trace_name") or f"{record_name}.trace")
     if source_bytes is None:
@@ -976,15 +1027,12 @@ def _unit_literal(text: str) -> bool:
     )
 
 
-def _split_numeric_unit(text: str) -> tuple[str, str | None] | None:
-    text = text.strip()
-    if not text:
-        return None
+def _numeric_mantissa_end(text: str) -> int | None:
     index = 1 if text[0] in "+-" else 0
-    mantissa_start = index
+    whole_start = index
     while index < len(text) and text[index].isdecimal():
         index += 1
-    has_whole_digits = index > mantissa_start
+    has_whole_digits = index > whole_start
     has_fraction_digits = False
     if index < len(text) and text[index] == ".":
         index += 1
@@ -992,26 +1040,45 @@ def _split_numeric_unit(text: str) -> tuple[str, str | None] | None:
         while index < len(text) and text[index].isdecimal():
             index += 1
         has_fraction_digits = index > fraction_start
-    if not has_whole_digits and not has_fraction_digits:
-        return None
-    if index < len(text) and text[index] in "eE":
-        exponent_at = index
-        exponent_index = index + 1
-        if exponent_index < len(text) and text[exponent_index] in "+-":
-            exponent_index += 1
-        exponent_start = exponent_index
-        while exponent_index < len(text) and text[exponent_index].isdecimal():
-            exponent_index += 1
-        if exponent_index == exponent_start:
-            unit_text = text[exponent_at:].strip()
-            if not _unit_literal(unit_text):
-                return None
-            return text[:exponent_at].strip(), unit_text
-        index = exponent_index
+    return index if has_whole_digits or has_fraction_digits else None
+
+
+def _numeric_exponent_end(text: str, index: int) -> int | None:
+    exponent_index = index + 1
+    if exponent_index < len(text) and text[exponent_index] in "+-":
+        exponent_index += 1
+    exponent_start = exponent_index
+    while exponent_index < len(text) and text[exponent_index].isdecimal():
+        exponent_index += 1
+    return exponent_index if exponent_index > exponent_start else None
+
+
+def _numeric_unit_suffix(text: str, index: int) -> tuple[bool, str | None]:
     unit_text = text[index:].strip()
     if unit_text and not _unit_literal(unit_text):
+        return False, None
+    return True, unit_text or None
+
+
+def _split_numeric_unit(text: str) -> tuple[str, str | None] | None:
+    text = text.strip()
+    if not text:
         return None
-    return text[:index].strip(), unit_text or None
+    index = _numeric_mantissa_end(text)
+    if index is None:
+        return None
+    if index < len(text) and text[index] in "eE":
+        exponent_end = _numeric_exponent_end(text, index)
+        if exponent_end is None:
+            valid_unit, unit_text = _numeric_unit_suffix(text, index)
+            if not valid_unit:
+                return None
+            return text[:index].strip(), unit_text
+        index = exponent_end
+    valid_unit, unit_text = _numeric_unit_suffix(text, index)
+    if not valid_unit:
+        return None
+    return text[:index].strip(), unit_text
 
 
 def _parse_unit_value(value: Any, *, expected_unit: str) -> tuple[float | None, str, str | None]:
@@ -1181,6 +1248,26 @@ def _decode_gddr_rows(
     return decoded, None
 
 
+def _gddr_channel_entries(
+    item: Any, start: int, end: int
+) -> list[tuple[str, dict[str, Any]]]:
+    channel_values = item.get("channels_c") if isinstance(item, Mapping) else None
+    if not isinstance(channel_values, Mapping):
+        return []
+    return [
+        (
+            channel,
+            {
+                "bottom_c": die_values.get("bottom_c"),
+                "top_c": die_values.get("top_c"),
+                "duration_ns": end - start,
+            },
+        )
+        for channel, die_values in channel_values.items()
+        if isinstance(die_values, Mapping)
+    ]
+
+
 def _gddr_channel_values(
     segments: Sequence[tuple[Mapping[str, Any], int, int]],
     decoded_by_row: Mapping[int, Mapping[str, Any]],
@@ -1189,18 +1276,8 @@ def _gddr_channel_values(
     for row, start, end in segments:
         decoded = decoded_by_row.get(id(row), {})
         for item in decoded.values():
-            channel_values = item.get("channels_c") if isinstance(item, Mapping) else None
-            if not isinstance(channel_values, Mapping):
-                continue
-            for channel, die_values in channel_values.items():
-                if isinstance(die_values, Mapping):
-                    channels.setdefault(channel, []).append(
-                        {
-                            "bottom_c": die_values.get("bottom_c"),
-                            "top_c": die_values.get("top_c"),
-                            "duration_ns": end - start,
-                        }
-                    )
+            for channel, die_values in _gddr_channel_entries(item, start, end):
+                channels.setdefault(channel, []).append(die_values)
     return channels
 
 
@@ -2064,28 +2141,27 @@ def _verdict_missing_fields(
     return missing
 
 
-def _run_report(
-    record: Mapping[str, Any],
-    name: str,
-    run_number: int | None,
-    configuration_id: str | None,
-    mode: str,
-    expected_candidate: bool,
-    verdict_missing: set[str],
-    spec: _PlanSpec,
-    load: _TraceLoad,
-    snapshot_name: str | None,
-    limits: Mapping[str, Any],
-    statistics: Mapping[str, Any],
-    aiclk_depressed: bool | None,
-    aiclk_not_depressed: bool | None,
-    pinned: Mapping[str, bool | None],
-    trace_report: Mapping[str, Any],
-    binding_errors: Sequence[str],
-    environment_errors: Sequence[str],
-    limit_errors: Sequence[str],
-    snapshot_errors: Sequence[str],
-) -> dict[str, Any]:
+def _run_report(context: _RunReportContext) -> dict[str, Any]:
+    record = context.record
+    name = context.name
+    run_number = context.run_number
+    configuration_id = context.configuration_id
+    mode = context.mode
+    expected_candidate = context.expected_candidate
+    verdict_missing = context.verdict_missing
+    spec = context.spec
+    load = context.load
+    snapshot_name = context.snapshot_name
+    limits = context.limits
+    statistics = context.statistics
+    aiclk_depressed = context.aiclk_depressed
+    aiclk_not_depressed = context.aiclk_not_depressed
+    pinned = context.pinned
+    trace_report = context.trace_report
+    binding_errors = context.binding_errors
+    environment_errors = context.environment_errors
+    limit_errors = context.limit_errors
+    snapshot_errors = context.snapshot_errors
     exploratory_missing = (
         set(verdict_missing) | set(load.missing_fields) | set(load.errors) | set(limit_errors)
         if expected_candidate
@@ -2126,7 +2202,9 @@ def _run_report(
         "exploratory": {
             **trace_report["exploratory"],
             "load_errors": list(dict.fromkeys(load.errors + list(limit_errors) + list(snapshot_errors))),
-            "binding_errors": list(dict.fromkeys(binding_errors + environment_errors)),
+            "binding_errors": list(
+                dict.fromkeys(list(binding_errors) + list(environment_errors))
+            ),
             "missing_fields": sorted(exploratory_missing),
         },
         "missing_fields": sorted(verdict_missing),
@@ -2182,26 +2260,28 @@ def _run_analysis(record_input: _RecordInput, index: int, spec: _PlanSpec) -> _R
         aiclk_depressed,
     )
     report = _run_report(
-        record,
-        name,
-        run_number,
-        configuration_id,
-        mode,
-        expected_candidate,
-        verdict_missing,
-        spec,
-        load,
-        snapshot_name,
-        limits,
-        statistics,
-        aiclk_depressed,
-        aiclk_not_depressed,
-        pinned,
-        trace_report,
-        binding_errors,
-        environment_errors,
-        limit_errors,
-        snapshot_errors,
+        _RunReportContext(
+            record=record,
+            name=name,
+            run_number=run_number,
+            configuration_id=configuration_id,
+            mode=mode,
+            expected_candidate=expected_candidate,
+            verdict_missing=verdict_missing,
+            spec=spec,
+            load=load,
+            snapshot_name=snapshot_name,
+            limits=limits,
+            statistics=statistics,
+            aiclk_depressed=aiclk_depressed,
+            aiclk_not_depressed=aiclk_not_depressed,
+            pinned=pinned,
+            trace_report=trace_report,
+            binding_errors=binding_errors,
+            environment_errors=environment_errors,
+            limit_errors=limit_errors,
+            snapshot_errors=snapshot_errors,
+        )
     )
     return _RunAnalysis(
         report=report,
@@ -2612,7 +2692,7 @@ def analyze_runs(
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
     """Load the immutable Issue #137 plan through the board-free runner seam."""
     try:
-        safe_path = _safe_cli_path(path, purpose="immutable plan")
+        safe_path = _safe_cli_path(path, purpose=_IMMUTABLE_PLAN_PURPOSE)
         from tools.issue137 import load_plan as load_runner_plan
 
         return load_runner_plan(safe_path)
@@ -2640,8 +2720,8 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        plan_path = _safe_cli_path(args.plan, purpose="immutable plan")
-        plan = _load_json(plan_path, purpose="immutable plan")
+        plan_path = _safe_cli_path(args.plan, purpose=_IMMUTABLE_PLAN_PURPOSE)
+        plan = _load_json(plan_path, purpose=_IMMUTABLE_PLAN_PURPOSE)
         result = analyze_runs(args.record, plan=plan)
         serialized = strict_json_dumps(_safe_public(result), indent=2) + "\n"
         if args.output is None:
