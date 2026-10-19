@@ -1,0 +1,338 @@
+{
+  "record_schema": "issue146-premeasurement-plan-v1",
+  "status": "planned",
+  "issue": "#146",
+  "related": [
+    "#137",
+    "#121",
+    "#136"
+  ],
+  "board_run": false,
+  "purpose": "Test, by a preregistered measurement, whether the sustained AICLK depression under Newton-Schulz load on the p150a matches the Doppler slow board-power control law of firmware 19.6.0.0: a gap-free load above the power budget holds the plateau mean of INPUT_POWER at the 300 W limit while AICLK sits below asic_fmax, the enabled-arbiter mask stays at its boot value, the thermal arbiters are not binding, and the AICLK telemetry tracks the effective maximum arbiter. Issue #137 asked whether a board power limit exists and ended H-OTHER because its +/-2 percent mean-pinning band was narrower than the sampling error of a gap/busy mixture. The firmware source read for this Issue shows that the board power is regulated, not capped, and by which loop, so the question becomes conformance to that law.",
+  "firmware_model": {
+    "status": "pinned source; semantics used to state hypotheses and decode telemetry, not measured here",
+    "firmware_bundle": "19.6.0.0 (FLASH_BUNDLE_VERSION 0x13060000 on both boards)",
+    "source": {
+      "repository": "tenstorrent/tt-zephyr-platforms",
+      "tag": "v19.6.0",
+      "files": {
+        "lib/tenstorrent/bh_arc/aiclk_ppm.c": "sha256:641584562ad3da67e2a3c14f049debd5d2f9ef18a631538d44e6211c88a8beac",
+        "lib/tenstorrent/bh_arc/aiclk_ppm.h": "sha256:7a82600e5d6bc8e1f909f3034daa7d6f08f6893ce3018c161327c6902fcb3fe4",
+        "lib/tenstorrent/bh_arc/throttler.c": "sha256:22b9360ba05faaf0595faad151c99309049cea0a948363caa0355e2e58f7330e",
+        "lib/tenstorrent/bh_arc/throttler.h": "sha256:37ddcc68a23bdcf6dacdf2f1aa447e203088e51f64fccad4dc7a2a96fcf081e9",
+        "lib/tenstorrent/bh_arc/telemetry.c": "sha256:7504ffdc8b5883bba80cdedd4e8b725a98f5d8aa396603a6b71f0d8053d3912f"
+      },
+      "host_readers": "tt-smi 6.2.1 (snapshot smbus_telem carries every tt-umd 0.9.8 TelemetryTag as a hexadecimal word), tt-umd 0.9.8"
+    },
+    "firmware_config_table": {
+      "source": "SPI boot-fs table cmfwcfg, decoded read-only with pyluwen 0.9.0 on 2026-10-19; identical on both boards",
+      "chip_limits": {
+        "board_power_limit_w": 300,
+        "additional_board_power_w": 20,
+        "tdp_limit_w": 150,
+        "tdc_limit_a": 200,
+        "tdc_fast_limit_a": 220,
+        "thm_limit_c": 90,
+        "gddr_thm_limit_c": 85,
+        "asic_fmax_mhz": 1350,
+        "asic_fmin_mhz": 800
+      },
+      "feature_enable": {
+        "doppler_en": true,
+        "aiclk_ppm_en": true,
+        "kernel_throttler_at_floor_en": false
+      }
+    },
+    "arbitration": {
+      "target": "CalculateTargAiclk: targ_freq = MIN(effective_min_arb, effective_max_arb), floored at fmin. effective_min = MAX over enabled min arbiters {0 fmin, 1 busy}; effective_max = MIN over enabled max arbiters. The busy min arbiter is fmax (1350) while the host holds the device busy and fmin (800) when idle, so under load AICLK equals the effective maximum arbiter whenever that is below 1350.",
+      "max_arbiters": {
+        "0": "fmax",
+        "1": "tdp",
+        "2": "fast_tdc",
+        "3": "tdc",
+        "4": "thm",
+        "5": "board_power",
+        "6": "voltage",
+        "7": "gddr_thm",
+        "8": "doppler_slow",
+        "9": "doppler_critical"
+      },
+      "enabled_at_boot": "InitThrottlers with doppler_en: tdp, fast_tdc, tdc and board_power are disabled; thm and gddr_thm are always enabled; doppler_slow is enabled; doppler_critical is disabled until its triggers fire. Together with fmax and voltage this is ENABLED_MAX_ARB = 0x1d1 (bits 0, 4, 6, 7, 8) and ENABLED_MIN_ARB = 0x3, as read on both idle boards.",
+      "doppler_slow_law": "Every 1 ms DVFS tick: average = 1000-sample moving average (integer division) of INPUT_POWER; error = (power_limit - average) / power_limit with power_limit = MIN(cable limit, chip_limits.board_power_limit) = 300; output = 0.0025 * error + 0.3 * (error - prev_error); arbiter_max[doppler_slow] += output * 500, clamped to [fmin, fmax]. The arbiter integrates the error, so while it is not clamped the moving average settles in [300, 301) W (integer floor of the average). When the load cannot reach 300 W the arbiter clamps at 1350 and the power is not regulated.",
+      "thermal_laws": "thm: ASIC temperature against 90 degC; gddr_thm: maximum of the 16 GDDR die bytes against 85 degC; both proportional (gain 0.2) with the same integrating arbiter update, so they sit clamped at 1350 while the temperature is below the limit.",
+      "voltage": "Static arbiter set once at init from vdd_max; it reads 1350 at idle (every enabled arbiter was at 1350 when the idle report showed index 8).",
+      "disabled_loops": "TDC, TDP and board_power arbiters are disabled under doppler_en, so a current near 200 A at 108 cores cannot act through AICLK arbitration on this firmware. The #137 and #146 question about a current limit at 108 cores is therefore withdrawn; busy current is recorded as an exploratory observation only.",
+      "input_power": "GetInputPower() = DMC-reported board power + additional_board_power (20 W), in W. It is telemetry tag 54 INPUT_POWER, which tt-smi reports as board_power; the trace column board_power_w carries this quantity, so 300 W is in board_power_w units. BOARD_POWER_LIMIT (tag 53) reads 300."
+    },
+    "telemetry": {
+      "update_period_ms": 100,
+      "tags": {
+        "AICLK": "tag 14; current AICLK in MHz read from the PLL in the same update pass as the arbiter words",
+        "AICLK_ARB_MIN": "tag 65; low 16 bits effective minimum frequency (MHz), bits 31:16 the reporting minimum arbiter index",
+        "AICLK_ARB_MAX": "tag 66; low 16 bits effective maximum frequency (MHz, float truncated to uint32), bits 31:16 the reporting maximum arbiter index",
+        "ENABLED_MIN_ARB": "tag 67; bitmask of enabled minimum arbiters",
+        "ENABLED_MAX_ARB": "tag 68; bitmask of enabled maximum arbiters",
+        "INPUT_POWER": "tag 54; W",
+        "AICLK_PPM_INFO": "tag 69; not available on this firmware (the reader reports it unavailable)",
+        "throttle_status_or_reason": "no such tag exists in tt-umd 0.9.8 or the firmware; the empty throttle_status and throttle_reason columns of the Q2 and #137 traces are explained and stay empty"
+      },
+      "reported_index_artifact": "get_aiclk_effective_arb_max keeps effective_max as uint32 and updates the reported index only when effective_max == arbiter value (float). A binding arbiter with a non-integral value therefore does not update the index; the report keeps the highest enabled index whose value equalled the running minimum before it, i.e. the highest enabled arbiter still at exactly 1350. Decode table with ENABLED_MAX_ARB = 0x1d1 and frequency below 1350: reported 8 -> doppler_slow (integral value); reported 7 -> doppler_slow (non-integral) or gddr_thm (integral); reported 6 -> gddr_thm (non-integral) or voltage (integral); reported 4 -> voltage (non-integral) or thm (integral); reported 0 -> thm (non-integral). Reported 8 with frequency 1350 means no arbiter is binding. Because the index alone is ambiguous, the verdict uses the independent three-condition rule below (mask, temperatures, frequency) and records the index as decoded evidence.",
+      "recon_evidence": "Issue #137 post-run snapshots of device 1, captured about 0.24 s after each runner exit: C108 run 2 AICLK_ARB_MAX 0x7048f (index 7, 1167 MHz), C081 run 4 0x704f8 (7, 1272 MHz), C081 run 5 0x70503 (7, 1283 MHz), C108 run 7 0x70490 (7, 1168 MHz), each with ENABLED_MAX_ARB 0x1d1, maximum GDDR die temperature 64-66 degC and ASIC 74.7-75.2 degC, below both thermal limits; the two C018 and two C054 post-run snapshots and every pre-run snapshot read 0x80546 (8, 1350). AICLK itself read 800 in every snapshot because the device was already idle (AICLK_ARB_MIN 0x10320, busy at fmin)."
+    }
+  },
+  "background_from_137": {
+    "verdict": "H-OTHER under the preregistered none_supported policy; P1-P3 passed.",
+    "why_the_band_failed": "Plateau samples of board_power_w were a gap/busy mixture (busy current 190-205 A, gap current 100-140 A; busy fractions 0.67-0.89) with sample SD 29-50 W and naive SE 5.7-9.7 W per run, so the +/-6 W band was at or below one standard error. Run 5 (C081) averaged 290.8 W (duration-weighted) or 292.4 W (arithmetic) while its plateau AICLK was 1191 MHz (SD 3.3 MHz): the arbiter was not clamped, so this is sampling error of the mixture, not saturation. Only C018 (1350 MHz in every sample) was clamped.",
+    "what_changes_here": "Gap-free load removes the mixture and matches the sustained condition the control law regulates; the criterion carries its uncertainty; the arbiter words are recorded per sample; the limiter hypotheses H-TDC, H-TDP and the multiple label are withdrawn because the corresponding arbiters are disabled or the thermal arbiters are checked directly."
+  },
+  "intervention": {
+    "variable": "active Newton-Schulz worker core count n, as in #137",
+    "held_constant": "per-core work per launch: each active worker receives 9 or 10 matrix blocks and runs outer_repetitions fixed Newton-Schulz repetitions of 12 iterations at block size 8; total_blocks(n) = round(1024 * n / 108) with divmod distribution, the #137 core-selection rule and worker pool",
+    "other_parameters": "Identical to #137 and Q2: ADR-0013 configuration (BF16 state, FP32 destination, HiFi3, fused S, matrix block 8, double buffering, full DEST sync, input/R/X0 in L1, output in DRAM), 12 fixed iterations, no convergence check.",
+    "adr_0013_departure": "As in #137: configurations other than n=108 depart from the ADR-0013 batch; this is a power measurement and no throughput figure from it is compared with ADR-0013 results.",
+    "l1_requirement": "As in #137: every configuration must fit L1 by the board-free ledger and the pre-open preflight; per-core work is identical across n."
+  },
+  "load_execution": {
+    "mode": "host-duration-bounded, grouped launches",
+    "definition": "Each launch is one ttnn.generic_op of the prepared program with outer_repetitions repetitions executed on the device inside the program. Launches are enqueued in groups of launches_per_sync without any host synchronization between them; ttnn.synchronize_device is called once after each group. Groups are issued back to back until at least run_duration_seconds of host CLOCK_MONOTONIC have elapsed since the first launch of the first group started; the loop then stops at the next group boundary. The group count and launch count are observations, recorded per run, never inputs.",
+    "outer_repetitions": 16,
+    "launches_per_sync": 8,
+    "sizing": "In #137 one repetition took 0.61-0.84 ms per launch including the host round trip, with busy fractions 0.67-0.89, so device time per repetition is roughly 0.5-0.7 ms. With 16 repetitions per launch and 8 launches per synchronization one group is about 60-110 ms of device time against one host round trip of well under 1 ms. The repetition loop runs inside the program, so no dispatch occurs between repetitions; between launches of a group only dispatch latency remains, which the host cannot see and the smoke check below bounds empirically.",
+    "why_not_137_mode": "The #137 callback synchronized after every single repetition; the host round trip between launches produced the idle gaps and the bimodal power samples. Keeping the fixed work per launch and moving the synchronization to group boundaries is a measurement-tool change, not a product real-time path; the fixed-work rule of CLAUDE.md is not involved.",
+    "workload_interval": "[first_launch_start_monotonic_ns, first_launch_start_monotonic_ns + run_duration_seconds); the plateau window is relative to first_launch_start_monotonic_ns.",
+    "overrun": "The last group may end after run_duration_seconds. overrun_seconds = last_group_end - workload_interval_end is recorded; a run whose overrun exceeds overrun_limit_seconds is failed and reported.",
+    "overrun_limit_seconds": 10,
+    "group_timing_record": "For every group: enqueue start (host monotonic ns before the first generic_op of the group) and synchronized end (host monotonic ns after synchronize_device returns). The record is a per-run JSON array beside the trace; it is the input of the idle-fraction check.",
+    "idle_fraction_check": {
+      "definition": "host_visible_idle_fraction = sum over consecutive groups of max(0, start[k+1] - end[k]) restricted to the plateau window, divided by the plateau duration",
+      "limit": 0.02,
+      "consequence": "A run above the limit is not_evaluable (load contract), never reinterpreted.",
+      "limitation": "Dispatch gaps between launches inside a group are invisible to the host; the smoke acceptance below checks their effect on the samples."
+    },
+    "recorded_fields": [
+      "outer_repetitions",
+      "launches_per_sync",
+      "group_count",
+      "launch_count",
+      "first_launch_start_monotonic_ns",
+      "last_group_end_monotonic_ns",
+      "overrun_seconds",
+      "host_visible_idle_fraction"
+    ],
+    "supervision_clock": "host CLOCK_MONOTONIC, consistent with ADR-0015"
+  },
+  "configurations": [
+    {
+      "id": "C018",
+      "worker_core_count": 18,
+      "role": "below-budget control: the doppler_slow arbiter is expected to stay clamped at 1350 and the power unregulated",
+      "verdict_bearing": true
+    },
+    {
+      "id": "C081",
+      "worker_core_count": 81,
+      "role": "above-budget: regulated",
+      "verdict_bearing": true
+    },
+    {
+      "id": "C108",
+      "worker_core_count": 108,
+      "role": "above-budget (Q2 workload): regulated",
+      "verdict_bearing": true
+    }
+  ],
+  "configuration_note": "C054 (knee) is dropped: it was exploratory in #137 and the control-law test needs one clearly unregulated and two clearly regulated configurations. Gap-free load raises the unthrottled power of every configuration above its #137 value; C018 measured 254-256 W with gaps and the #137 estimate for it was at most 253 W unthrottled, so it is expected to remain below the 300 W budget.",
+  "measurement_scope": {
+    "device_id": 1,
+    "device_node": "/dev/tenstorrent/1",
+    "board_serial": "0000040331914124",
+    "pci_bus_id": "0000:09:00.0",
+    "container_visible_device_id": 0,
+    "device_note": "Same physical board as Q2 and #137. Device 0 is not used.",
+    "run_duration_seconds": 180,
+    "run_duration_definition": "Fixed workload interval of sustained device work; setup and teardown are outside it.",
+    "run_guard_seconds": 230,
+    "run_guard_definition": "Workload subprocess timeout and harness deadline: 180 s load + 40 s runner setup/teardown margin + 10 s overrun allowance. A run that reaches the guard fails and is never extended.",
+    "order": [
+      "C018",
+      "C108",
+      "C081",
+      "C081",
+      "C108",
+      "C018"
+    ],
+    "order_definition": "Sequence S followed by its reverse, so each configuration's mean position is equal and slow drift across the session cancels in the configuration comparison.",
+    "runs_total": 6,
+    "runs_per_configuration": 2,
+    "trace_interval_seconds": 2.0,
+    "trace_cadence_note": "The sampler sleeps 2.0 s between tt-smi captures that take about 0.25 s, so the observed cadence is about 2.25 s; the 120 s plateau yields about 53 samples, above the minimum below.",
+    "smoke_runs": {
+      "required_before_long_runs": true,
+      "configurations": [
+        "C018",
+        "C081",
+        "C108"
+      ],
+      "workload_seconds": 40,
+      "guard_seconds": 90,
+      "purpose": "Confirm that the grouped launch mode runs and records for each core set, that the arbiter columns are populated, and that the gap/busy mixture is gone. Smoke runs are diagnostics, not verdict evidence. 40 s is under the 60 s per-instance approval threshold; the 90 s guard (40 + 40 + 10) is a timeout, not a load duration.",
+      "acceptance": [
+        "host_visible_idle_fraction over [10 s, 40 s) of the smoke run is at most 0.02",
+        "for C081 and C108: no sample at or after 10 s has current_a below 150 A (the #137 gap mode), and the sample SD of board_power_w over [10 s, 40 s) is below 20 W",
+        "every sample carries all four arbiter words and ENABLED_MAX_ARB reads 0x1d1",
+        "If any acceptance item fails, the plan is revised (outer_repetitions, launches_per_sync or the check itself) and re-approved before any long run, as #137 revision 2 did; the failed smoke records are kept as diagnostics."
+      ]
+    },
+    "approval": "Each run longer than 60 s requires owner approval per instance. A run after a reset requires renewed approval.",
+    "expected_wall_time": {
+      "load_minutes": 18,
+      "expected_total_minutes": [
+        35,
+        50
+      ],
+      "upper_bound_minutes": 83,
+      "upper_bound_definition": "6 * (230 s guard + 600 s cooldown cap)"
+    }
+  },
+  "plateau": {
+    "start_seconds": 60,
+    "end_seconds": 180,
+    "sample_selection": "Trace samples whose timestamp_monotonic_ns satisfies 60 s <= (timestamp - first_launch_start_monotonic_ns) < 180 s. No held pre-window point, no padding, no interpolation.",
+    "minimum_samples": 50,
+    "minimum_samples_consequence": "Fewer than 50 plateau samples makes the run not_evaluable (sample count).",
+    "justification": "Q2 and #137 showed AICLK settled within 60 s; with regulated power the residual AICLK drift (temperature-dependent leakage) is expected and does not affect the power criterion. The 120 s window gives at least 50 samples at the observed cadence."
+  },
+  "statistics": {
+    "estimator": "Arithmetic mean m and sample standard deviation s (n-1) of the selected plateau samples. This is the verdict estimator; the duration-weighted left-held mean of #137 is reported beside it as a cross-check and never enters the verdict.",
+    "serial_correlation": "r1 = sum_{i=1}^{n-1} (x_i - m)(x_{i+1} - m) / sum_{i=1}^{n} (x_i - m)^2. n_eff = n * (1 - r1) / (1 + r1) when r1 > 0, else n. Degrees of freedom df = max(2, floor(n_eff) - 1).",
+    "confidence_interval": "m +/- t(0.995, df) * s / sqrt(n_eff): a two-sided 99 percent interval per run.",
+    "level_rationale": "Four verdict-bearing regulated runs each test containment; at 99 percent per run the nominal family false-fail rate under the model is at most 4 percent (1 - 0.99^4), against about 19 percent for 95 percent intervals. The remaining model risk (non-AR(1) correlation, non-normality) is stated in limitations.",
+    "precision_floor": "A containment or exclusion verdict is read only when the interval half-width is at most 10 W; otherwise the run is not_evaluable (precision). With the #137 C018 sample SD (10-11 W) and n_eff about 50 the half-width is about 4 W; with the #137 mixture SDs (29-50 W) it would exceed the floor, which is the intended outcome if the gaps persist.",
+    "pooled_report": "For each configuration the two runs' samples are also pooled and a 95 percent interval reported; it is a secondary description, not a verdict input.",
+    "per_configuration": "Each run is evaluated individually; a criterion passes for a configuration only when it passes in both runs."
+  },
+  "limits": {
+    "board_power_limit_w": 300,
+    "asic_fmax_mhz": 1350,
+    "thm_limit_c": 90,
+    "gddr_thm_limit_c": 85,
+    "source": "Read from the pre-run snapshot of each run: limits.board_power_limit, limits.asic_fmax and limits.therm_trip_l1_limit as in #137; smbus_telem.BOARD_POWER_LIMIT (expected 0x12c) and ENABLED_MAX_ARB (expected 0x1d1) as the per-run configuration check. The GDDR thermal limit has no telemetry tag; its value 85 is from the firmware config table and is recorded as such. A pre-run snapshot whose BOARD_POWER_LIMIT or ENABLED_MAX_ARB differs from the expected word makes the run not_evaluable (configuration), never substituted."
+  },
+  "criteria": {
+    "predicted_regulated_interval_w": [
+      300,
+      301
+    ],
+    "predicted_interval_basis": "Integer floor of the 1000-sample moving average and 1 W telemetry resolution; the integrating arbiter holds the floored average at 300.",
+    "regulated_run": {
+      "R1-power-regulated": "The 99 percent interval of the plateau mean of board_power_w intersects [300, 301] W (interval low <= 301 and interval high >= 300), with half-width <= 10 W.",
+      "R2-arbiter-unclamped": "Every plateau sample has aiclk_mhz < 1350 and AICLK_ARB_MAX frequency (low 16 bits) < 1350; the plateau mean AICLK is below 0.95 * asic_fmax (1282.5 MHz).",
+      "R3-mask-unchanged": "Every plateau sample reads ENABLED_MAX_ARB == 0x1d1 and ENABLED_MIN_ARB == 0x3.",
+      "R4-busy": "Every plateau sample reads AICLK_ARB_MIN == 0x10546 (busy min arbiter at 1350). Without this AICLK would be 800 regardless of the maximum arbiters and R5 is undefined.",
+      "R5-aiclk-tracks-arbiter": "In every plateau sample |aiclk_mhz - AICLK_ARB_MAX frequency| <= 2 MHz. Both words are written in the same 100 ms telemetry pass, but the arbiter value is a truncated float and tt-smi reads the tags over PCIe possibly across an update boundary, hence the tolerance rather than equality.",
+      "R6-thermal-not-binding": "Every plateau sample has asic_temp_c < 90 and every decoded GDDR die byte < 85 (decoding per the #137 unit provenance).",
+      "R7-reported-index": "Every plateau sample's AICLK_ARB_MAX index is 7 or 8. Index 9 is anomalous (doppler_critical triggered); 4, 6 or 0 names a thermal or voltage arbiter and fails the run; 1, 2, 3 or 5 is impossible under R3 and is anomalous."
+    },
+    "control_run": {
+      "K1-clamped": "Every plateau sample has aiclk_mhz == 1350 and AICLK_ARB_MAX == 0x80546.",
+      "K2-unregulated": "The 99 percent interval of the plateau mean of board_power_w lies entirely below 300 W (interval high < 300), with half-width <= 10 W.",
+      "K3-mask-and-busy": "R3 and R4 hold.",
+      "K4-thermal": "R6 holds."
+    },
+    "preconditions": {
+      "P1-control-unthrottled": "K1 holds in both C018 runs.",
+      "P2-regulated-depressed": "R2 holds in both runs of C081 and C108.",
+      "P3-monotonic": "In each half of the order, plateau mean AICLK of C081 > that of C108; a fixed frequency cap would not show this."
+    },
+    "hypothesis": {
+      "H-DS": "Doppler slow regulation: P1-P3 hold, R1-R7 hold in all four runs of C081 and C108, and K1-K4 hold in both C018 runs.",
+      "H-OTHER": "Any criterion fails in a verdict-bearing run while every required field is present; the report names the failed criterion and run.",
+      "not_evaluable": "A required field or limit is missing, a configuration check differs, the sample count is below 50, the precision floor is not met, or the idle-fraction limit is exceeded in any verdict-bearing run; the report names the field and run."
+    },
+    "correlation_warning": "A supported label means the preregistered pattern was observed and matches the pinned source; it does not prove the firmware executed that code path."
+  },
+  "prediction": {
+    "expected_classification": "H-DS",
+    "expected_pattern": [
+      "C018: 1350 MHz and 0x80546 in every plateau sample; board power above the #137 value of about 255 W because the gaps are gone, but with an interval below 300 W.",
+      "C081 and C108: plateau board_power_w interval contains 300-301 W with half-width about 3-5 W; AICLK lower than in #137 (below about 1190 and 1100 MHz respectively) because the same 300 W budget is now spent without idle gaps; C081 above C108.",
+      "Every regulated sample reads index 7 (occasionally 8) with the frequency equal to aiclk_mhz, ENABLED_MAX_ARB 0x1d1, ASIC below 90 degC and GDDR dies below 85 degC.",
+      "Busy current at C108 near 200 A is recorded and has no bearing on the verdict."
+    ],
+    "basis": "Pinned firmware source and the #137 traces and snapshots; they inform the prediction only."
+  },
+  "prediction_mismatch_policy": [
+    "If a regulated run's interval lies entirely below 300 W with gaps absent (idle fraction within limit, no bimodality), report H-OTHER and examine the DMC power path (the INPUT_POWER additive term, cable limit) before any reinterpretation; do not widen the interval.",
+    "If a regulated run's interval lies entirely above 301 W, report H-OTHER as anomalous (the law cannot hold the average above the limit unless the arbiter is clamped at fmin) and check AICLK_ARB_MIN and kernel NOP activity in the snapshots.",
+    "If any sample reports index 4, 6 or 0, report H-OTHER naming the arbiter and compare the temperatures and voltage with their limits; a thermal arbiter binding at a temperature below its limit would contradict the pinned source.",
+    "If ENABLED_MAX_ARB differs from 0x1d1 in any sample or snapshot, the run is not_evaluable (configuration) and the firmware table is re-read before any further run.",
+    "If C018 is depressed, report H-OTHER under P1 and examine whether the gap-free C018 load exceeds the budget; do not lower n without a plan revision and approval."
+  ],
+  "exploratory": {
+    "status": "reported separately; never enters the verdict",
+    "items": [
+      "Busy current per configuration against the disabled 200 A TDC limit.",
+      "Distribution of the reported arbiter index (7 versus 8) and of the AICLK residual of R5.",
+      "Plateau drift of AICLK against fan_rpm, GDDR and ASIC temperatures at regulated power (leakage).",
+      "Onset: time from first launch until the first sample with AICLK_ARB_MAX frequency < 1350 and until the first sample within 5 W of 300.",
+      "Lag-1 autocorrelation and n_eff per run, as a check of the serial-correlation model.",
+      "Duration-weighted plateau means beside the arithmetic ones."
+    ]
+  },
+  "cooldown": {
+    "required_between": "every consecutive pair of long runs",
+    "baseline_source": "the preceding run's pre-run snapshot on the selected device; fail closed if unavailable",
+    "criterion": "power_w <= baseline + 5 W and asic_temp_c <= baseline + 3 degC",
+    "aiclk_not_used": "AICLK is not a cooldown criterion: idle AICLK is 800 MHz, and 1350 MHz is a loaded value.",
+    "cap_seconds": 600,
+    "cap_policy": "Reaching the cap stops the session; the remaining runs need renewed approval.",
+    "note": "As in #137 this is a relative gate, not a common-initial-temperature guarantee; pre-run temperatures are recorded and reported."
+  },
+  "trace": {
+    "schema": "issue-146-power-trace-v1",
+    "base": "Issue #137 issue-137-power-trace-v1 columns, unchanged (including the always-empty throttle_status and throttle_reason columns, whose absence of a source tag is now documented)",
+    "added_columns": {
+      "aiclk_arb_min_raw": "smbus_telem.AICLK_ARB_MIN, hexadecimal word as emitted by tt-smi",
+      "aiclk_arb_max_raw": "smbus_telem.AICLK_ARB_MAX, hexadecimal word as emitted by tt-smi",
+      "enabled_min_arb_raw": "smbus_telem.ENABLED_MIN_ARB, hexadecimal word as emitted by tt-smi",
+      "enabled_max_arb_raw": "smbus_telem.ENABLED_MAX_ARB, hexadecimal word as emitted by tt-smi"
+    },
+    "decode_rule": "Raw words are retained in the trace; the analyzer decodes frequency = word & 0xffff and index = word >> 16 for the two AICLK_ARB words, and the bitmasks as integers, citing the pinned telemetry.c lines that write them. A missing word makes the row invalid and the run not_evaluable.",
+    "q2_and_137_records_unchanged": true
+  },
+  "provenance": {
+    "required_environment_fields": [
+      "board.serial",
+      "board.identity.board_id",
+      "board.identity.bus_id",
+      "firmware.bundle",
+      "kernel",
+      "kernel_driver_version",
+      "image_digest",
+      "harness_commit",
+      "device_node",
+      "worker_core_count",
+      "worker_core_coordinates",
+      "total_blocks",
+      "outer_repetitions",
+      "launches_per_sync"
+    ],
+    "firmware_semantics": "The plan's firmware_model block (tag, file hashes) is copied into the archive README; the per-run environment records the firmware bundle and the host reader versions.",
+    "persisted_output_paths": "Basenames or container-relative names only; no hostname, username or user-specific absolute path."
+  },
+  "limitations": [
+    "No board measurement is included in this plan.",
+    "About 2.25 s telemetry sampling of a 100 ms telemetry update; onset claims are limited to that cadence.",
+    "The serial-correlation correction assumes an AR(1)-like dependence between successive samples; the lag-1 estimate from about 53 samples is itself noisy and is reported.",
+    "Only one board is measured; board-to-board differences are not addressed.",
+    "The reported arbiter index is ambiguous by construction (see reported_index_artifact); the verdict rests on the mask, the temperatures and the frequency, not on the index.",
+    "The firmware model is read from the pinned source of the installed bundle version; it is not instrumented on the device."
+  ],
+  "revision_history": [
+    {
+      "revision": 1,
+      "date": "2026-10-20",
+      "change": "Created the preregistered plan: control-law conformance hypothesis H-DS against the Doppler slow loop of firmware 19.6.0.0 (pinned tt-zephyr-platforms v19.6.0 source), grouped gap-free launches (16 repetitions per launch, 8 launches per synchronization) with a host-visible idle-fraction check, six runs of 180 s in S + reverse(S) order over C018/C108/C081 on device 1, plateau [60, 180) s with at least 50 samples, per-run 99 percent intervals with an AR(1) effective-sample-size correction and a 10 W precision floor, per-sample recording of AICLK_ARB_MIN/MAX and ENABLED_MIN/MAX_ARB, smoke runs of 40 s with gap-removal acceptance. The #137 hypotheses H-TDC, H-TDP, H-THM and the multiple label are withdrawn because the TDC/TDP/board_power arbiters are disabled under doppler_en and the thermal arbiters are checked directly."
+    }
+  ]
+}
