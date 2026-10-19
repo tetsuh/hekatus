@@ -20,7 +20,8 @@
         "lib/tenstorrent/bh_arc/aiclk_ppm.h": "sha256:7a82600e5d6bc8e1f909f3034daa7d6f08f6893ce3018c161327c6902fcb3fe4",
         "lib/tenstorrent/bh_arc/throttler.c": "sha256:22b9360ba05faaf0595faad151c99309049cea0a948363caa0355e2e58f7330e",
         "lib/tenstorrent/bh_arc/throttler.h": "sha256:37ddcc68a23bdcf6dacdf2f1aa447e203088e51f64fccad4dc7a2a96fcf081e9",
-        "lib/tenstorrent/bh_arc/telemetry.c": "sha256:7504ffdc8b5883bba80cdedd4e8b725a98f5d8aa396603a6b71f0d8053d3912f"
+        "lib/tenstorrent/bh_arc/telemetry.c": "sha256:7504ffdc8b5883bba80cdedd4e8b725a98f5d8aa396603a6b71f0d8053d3912f",
+        "lib/tenstorrent/bh_arc/telemetry.h": "sha256:04833aed46893cb9abedf8490fa38dd96dd179749e80477df6c53b5d5a2a9e6d"
       },
       "host_readers": "tt-smi 6.2.1 (snapshot smbus_telem carries every tt-umd 0.9.8 TelemetryTag as a hexadecimal word), tt-umd 0.9.8"
     },
@@ -77,7 +78,8 @@
         "throttle_status_or_reason": "no such tag exists in tt-umd 0.9.8 or the firmware; the empty throttle_status and throttle_reason columns of the Q2 and #137 traces are explained and stay empty"
       },
       "reported_index_artifact": "get_aiclk_effective_arb_max keeps effective_max as uint32 and updates the reported index only when effective_max == arbiter value (float). A binding arbiter with a non-integral value therefore does not update the index; the report keeps the highest enabled index whose value equalled the running minimum before it, i.e. the highest enabled arbiter still at exactly 1350. Decode table with ENABLED_MAX_ARB = 0x1d1 and frequency below 1350: reported 8 -> doppler_slow (integral value); reported 7 -> doppler_slow (non-integral) or gddr_thm (integral); reported 6 -> gddr_thm (non-integral) or voltage (integral); reported 4 -> voltage (non-integral) or thm (integral); reported 0 -> thm (non-integral). Reported 8 with frequency 1350 means no arbiter is binding. Because the index alone is ambiguous, the verdict uses the independent three-condition rule below (mask, temperatures, frequency) and records the index as decoded evidence.",
-      "recon_evidence": "Issue #137 post-run snapshots of device 1, captured about 0.24 s after each runner exit: C108 run 2 AICLK_ARB_MAX 0x7048f (index 7, 1167 MHz), C081 run 4 0x704f8 (7, 1272 MHz), C081 run 5 0x70503 (7, 1283 MHz), C108 run 7 0x70490 (7, 1168 MHz), each with ENABLED_MAX_ARB 0x1d1, maximum GDDR die temperature 64-66 degC and ASIC 74.7-75.2 degC, below both thermal limits; the two C018 and two C054 post-run snapshots and every pre-run snapshot read 0x80546 (8, 1350). AICLK itself read 800 in every snapshot because the device was already idle (AICLK_ARB_MIN 0x10320, busy at fmin)."
+      "recon_evidence": "Issue #137 post-run snapshots of device 1, whose capture started 0.22-0.33 s after the last launch ended (the capture itself took about 0.24 s): C108 run 2 AICLK_ARB_MAX 0x7048f (index 7, 1167 MHz), C081 run 4 0x704f8 (7, 1272 MHz), C081 run 5 0x70503 (7, 1283 MHz), C108 run 7 0x70490 (7, 1168 MHz), each with ENABLED_MAX_ARB 0x1d1, maximum GDDR die temperature 64-66 degC and ASIC 74.7-75.2 degC, below both thermal limits. The arbiter had already risen from the plateau means (C108 about 1097 MHz, C081 about 1192 MHz) by 70-90 MHz in that half second, as the law predicts once the moving average starts to fall. The two C018 and two C054 post-run snapshots and every pre-run snapshot read 0x80546 (8, 1350). AICLK itself read 800 in every snapshot because the device was already idle (AICLK_ARB_MIN 0x10320, busy at fmin).",
+      "tag_number_verification": "Tag numbers are taken from telemetry.h of the pinned source: TAG_AICLK 14, TAG_BOARD_POWER_LIMIT 53, TAG_INPUT_POWER 54, TAG_AICLK_ARB_MIN 65, TAG_AICLK_ARB_MAX 66, TAG_ENABLED_MIN_ARB 67, TAG_ENABLED_MAX_ARB 68, TAG_AICLK_PPM_INFO 69. The tt-umd 0.9.8 TelemetryTag enum agrees on 14, 53 and 65-68, has no member for 54 and names 69 NUMBER_OF_TAGS; tt-smi 6.2.1 names 54 INPUT_POWER in smbus_telem. The firmware tag table has no entry for 69, which is why the reader reports it unavailable."
     }
   },
   "background_from_137": {
@@ -180,6 +182,8 @@
         "host_visible_idle_fraction over [10 s, 40 s) of the smoke run is at most 0.02",
         "for C081 and C108: no sample at or after 10 s has current_a below 150 A (the #137 gap mode), and the sample SD of board_power_w over [10 s, 40 s) is below 20 W",
         "every sample carries all four arbiter words and ENABLED_MAX_ARB reads 0x1d1",
+        "R5 residual: the maximum |aiclk_mhz - AICLK_ARB_MAX frequency| over samples at or after 10 s is reported; if it exceeds 2 MHz in any sample the PLL readback granularity is examined in the pinned clock-control source and the R5 tolerance is revised and re-approved before any long run",
+        "R7 distribution: every sample at or after 10 s reads index 7 or 8 for C081 and C108, and 0x80546 for C018; any other index is examined before any long run",
         "If any acceptance item fails, the plan is revised (outer_repetitions, launches_per_sync or the check itself) and re-approved before any long run, as #137 revision 2 did; the failed smoke records are kept as diagnostics."
       ]
     },
@@ -249,7 +253,12 @@
       "H-OTHER": "Any criterion fails in a verdict-bearing run while every required field is present; the report names the failed criterion and run.",
       "not_evaluable": "A required field or limit is missing, a configuration check differs, the sample count is below 50, the precision floor is not met, or the idle-fraction limit is exceeded in any verdict-bearing run; the report names the field and run."
     },
-    "correlation_warning": "A supported label means the preregistered pattern was observed and matches the pinned source; it does not prove the firmware executed that code path."
+    "correlation_warning": "A supported label means the preregistered pattern was observed and matches the pinned source; it does not prove the firmware executed that code path.",
+    "sample_glitch_rule": {
+      "flag": "A plateau sample is flagged as a telemetry read glitch when (a) all four arbiter words are zero, or (b) ENABLED_MAX_ARB alone departs from 0x1d1 while AICLK_ARB_MIN, AICLK_ARB_MAX, aiclk_mhz, board_power_w and asic_temp_c are nominal for that run, or (c) board_power_w is zero. A sample whose GDDR words contain a zero word while the other fields are nominal is flagged for R6 only (the #137 run 5 sample 17 case).",
+      "handling": "Flagged samples are listed in the analysis with their index and reason, excluded from the criteria they are flagged for, and counted. More than 2 flagged samples in a run make the run not_evaluable (telemetry). The 50-sample minimum applies after exclusion.",
+      "rationale": "Raw zero GDDR words occurred once in about 1,800 #137 words; a zero-slack every-sample rule would let one such read turn a conforming run into H-OTHER. The cap keeps the rule from absorbing a real anomaly."
+    }
   },
   "prediction": {
     "expected_classification": "H-DS",
@@ -276,7 +285,8 @@
       "Plateau drift of AICLK against fan_rpm, GDDR and ASIC temperatures at regulated power (leakage).",
       "Onset: time from first launch until the first sample with AICLK_ARB_MAX frequency < 1350 and until the first sample within 5 W of 300.",
       "Lag-1 autocorrelation and n_eff per run, as a check of the serial-correlation model.",
-      "Duration-weighted plateau means beside the arithmetic ones."
+      "Duration-weighted plateau means beside the arithmetic ones.",
+      "Arbiter release after load end: AICLK_ARB_MAX frequency in the post-run snapshot against the plateau mean and the capture delay, as a check of the loop's rise rate."
     ]
   },
   "cooldown": {
@@ -333,6 +343,11 @@
       "revision": 1,
       "date": "2026-10-20",
       "change": "Created the preregistered plan: control-law conformance hypothesis H-DS against the Doppler slow loop of firmware 19.6.0.0 (pinned tt-zephyr-platforms v19.6.0 source), grouped gap-free launches (16 repetitions per launch, 8 launches per synchronization) with a host-visible idle-fraction check, six runs of 180 s in S + reverse(S) order over C018/C108/C081 on device 1, plateau [60, 180) s with at least 50 samples, per-run 99 percent intervals with an AR(1) effective-sample-size correction and a 10 W precision floor, per-sample recording of AICLK_ARB_MIN/MAX and ENABLED_MIN/MAX_ARB, smoke runs of 40 s with gap-removal acceptance. The #137 hypotheses H-TDC, H-TDP, H-THM and the multiple label are withdrawn because the TDC/TDP/board_power arbiters are disabled under doppler_en and the thermal arbiters are checked directly."
+    },
+    {
+      "revision": 2,
+      "date": "2026-10-20",
+      "change": "Before any harness change or board run. Added telemetry.h to the pinned sources and verified the tag numbers against it and the tt-umd enum; corrected the recon_evidence timing (capture started 0.22-0.33 s after the last launch, not 0.24 s after runner exit) and recorded the arbiter rise seen in those snapshots; added the sample_glitch_rule (flagged samples excluded from per-sample criteria, at most 2 per run); added the R5 residual and R7 index distribution to the smoke acceptance so the 2 MHz tolerance and the index decode are checked on data before any long run; added the post-load arbiter release as an exploratory item. Hypothesis, criteria thresholds, configurations, order, durations and predictions are unchanged."
     }
   ]
 }
