@@ -1793,7 +1793,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
         )
         print(strict_json_dumps(_safe_json_value(record), indent=2))
-        return 0 if record.get("status") != "failed" else 2
+        return 0 if record.get("status") not in {"failed", "not_evaluable"} else 2
     except (Issue146Error, OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"issue146: {type(exc).__name__}: {exc}", file=os.sys.stderr)
         return 2

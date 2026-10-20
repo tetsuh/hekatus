@@ -177,3 +177,39 @@ def test_issue146_output_collision_is_rejected_before_command(tmp_path: Path) ->
             run_id="issue146-collision",
             options=issue146.Issue146RunOptions(command_runner=lambda *_a, **_k: None),
         )
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_exit"),
+    (("failed", 2), ("not_evaluable", 2), ("ok", 0)),
+)
+def test_issue146_main_returns_nonzero_for_nonaccepted_run_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: str, expected_exit: int,
+) -> None:
+    captured: list[dict[str, object]] = []
+
+    def fake_capture(*, stage: str) -> dict[str, object]:
+        return {"stage": stage}
+
+    def fake_run_one(**kwargs: object) -> dict[str, object]:
+        captured.append(kwargs)
+        return {"status": status}
+
+    monkeypatch.setattr(issue146, "capture_readonly_snapshot", fake_capture)
+    monkeypatch.setattr(issue146, "run_one", fake_run_one)
+
+    exit_code = issue146.main(
+        [
+            "--plan", str(PLAN), "--mode", "smoke", "--configuration", "C018",
+            "--run-id", "issue146-cli-status", "--out-dir", str(tmp_path), "--execute",
+        ]
+    )
+
+    assert exit_code == expected_exit
+    assert len(captured) == 1
+    assert captured[0]["options"].capture_fn is fake_capture
+
+
+def test_issue146_main_plan_mode_remains_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(issue146, "build_planning_record", lambda _plan: {"status": "planned"})
+    assert issue146.main(["--plan", str(PLAN), "--mode", "plan"]) == 0
