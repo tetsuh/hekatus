@@ -176,6 +176,15 @@ else
   CONTAINER_TIMEOUT_S=""
 fi
 
+validate_positive_integer() {
+  local value="$1"
+  local label="$2"
+  if [[ -z "${value}" || ! "${value}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "${label} must be a positive decimal integer" >&2
+    exit 2
+  fi
+}
+
 validate_decimal_timeout() {
   local value="$1"
   local max_digits="$2"
@@ -351,6 +360,7 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_
   ISSUE146_TARGET_SECONDS=""
   ISSUE146_PLAN_HASH=""
   ISSUE146_CONFIGURATION=""
+  ISSUE146_REQUESTED_RUN_ID=""
   ISSUE146_OUTER_REPETITIONS=""
   ISSUE146_LAUNCHES_PER_SYNC=""
   ISSUE146_ARGUMENT_INDEX=0
@@ -407,6 +417,26 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_
         continue
         ;;
       --configuration=*) ISSUE146_CONFIGURATION="${argument#--configuration=}" ;;
+      --requested-run-id)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--requested-run-id requires a value" >&2
+          exit 2
+        fi
+        if [[ -n "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+          echo "Issue #146 requested run identity may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE146_REQUESTED_RUN_ID="${RUNNER_ARGS[$((ISSUE146_ARGUMENT_INDEX + 1))]}"
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --requested-run-id=*)
+        if [[ -n "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+          echo "Issue #146 requested run identity may be supplied only once" >&2
+          exit 2
+        fi
+        ISSUE146_REQUESTED_RUN_ID="${argument#--requested-run-id=}"
+        ;;
       --outer-repetitions)
         if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
           echo "--outer-repetitions requires a value" >&2
@@ -452,12 +482,18 @@ elif [[ "${CUSTOM_RUNNER}" == "1" && "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_
     echo "Issue #146 ${ISSUE146_MODE} mode requires a ${ISSUE146_EXPECTED_TARGET}s target" >&2
     exit 2
   fi
-  if [[ -z "${ISSUE146_PLAN_HASH}" || -z "${ISSUE146_CONFIGURATION}" ]]; then
-    echo "Issue #146 requires owner-plan hash and configuration binding" >&2
+  if [[ -z "${ISSUE146_PLAN_HASH}" || -z "${ISSUE146_CONFIGURATION}" || -z "${ISSUE146_REQUESTED_RUN_ID}" ]]; then
+    echo "Issue #146 requires owner-plan hash, configuration, and requested run binding" >&2
     exit 2
   fi
-  if [[ "${ISSUE146_OUTER_REPETITIONS}" != "16" || "${ISSUE146_LAUNCHES_PER_SYNC}" != "8" ]]; then
-    echo "Issue #146 requires outer_repetitions=16 and launches_per_sync=8" >&2
+  if [[ ! "${ISSUE146_PLAN_HASH}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Issue #146 owner-plan hash must be lowercase SHA-256" >&2
+    exit 2
+  fi
+  validate_positive_integer "${ISSUE146_OUTER_REPETITIONS}" "Issue #146 outer_repetitions"
+  validate_positive_integer "${ISSUE146_LAUNCHES_PER_SYNC}" "Issue #146 launches_per_sync"
+  if [[ ! "${ISSUE146_REQUESTED_RUN_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+    echo "Issue #146 requested run identity is unsafe" >&2
     exit 2
   fi
   if [[ "${TIMEOUT_EXPLICIT}" == "1" ]]; then
@@ -750,10 +786,12 @@ RESULT_PATH="${RESULTS}"
 RUNNER_RESULT_CONTAINER_PATH=""
 RUNNER_RESULT_HOST_PATH=""
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
-  # Keep the historical one-run path, but never overwrite it when an output
-  # directory is reused.  The run-specific fallback is passed into the
-  # container and is not embedded as a host path in the runner record.
-  if [[ -e "${OUT_DIR}/runner-result.json" ]]; then
+  # Issue #146 binds the result basename to its collision-safe wrapper ID.
+  # Other custom runners retain the historical one-run path behavior.
+  if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
+    RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
+    RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
+  elif [[ -e "${OUT_DIR}/runner-result.json" ]]; then
     RUNNER_RESULT_CONTAINER_PATH="/out/runner-result-${RUN_ID}.json"
     RUNNER_RESULT_HOST_PATH="${OUT_DIR}/runner-result-${RUN_ID}.json"
   else
@@ -770,6 +808,10 @@ PINNED_FLAG=()
 RUNNER_RESULT_ENV=()
 if [[ "${CUSTOM_RUNNER}" == "1" ]]; then
   RUNNER_RESULT_ENV=(-e "HEKATUS_TT_RESULT_PATH=${RUNNER_RESULT_CONTAINER_PATH}")
+fi
+ISSUE146_REQUESTED_RUN_ENV=()
+if [[ "${ISSUE146_RUNNER}" == "1" ]]; then
+  ISSUE146_REQUESTED_RUN_ENV=(-e "HEKATUS_TT_REQUESTED_RUN_ID=${ISSUE146_REQUESTED_RUN_ID}")
 fi
 
 CAPTURE_SAMPLER_ARGS=(--sampler-mode "${TELEMETRY_MODE}")
@@ -1173,6 +1215,18 @@ if [[ "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_PATH}" ]]; then
   while [[ "${ISSUE146_ARGUMENT_INDEX}" -lt "${#RUNNER_ARGS[@]}" ]]; do
     argument="${RUNNER_ARGS[${ISSUE146_ARGUMENT_INDEX}]}"
     case "${argument}" in
+      --requested-run-id)
+        if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
+          echo "--requested-run-id requires a value" >&2
+          exit 2
+        fi
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 2))
+        continue
+        ;;
+      --requested-run-id=*)
+        ISSUE146_ARGUMENT_INDEX=$((ISSUE146_ARGUMENT_INDEX + 1))
+        continue
+        ;;
       --env-json|--power-trace|--groups)
         if [[ "${ISSUE146_ARGUMENT_INDEX}" -eq "$(( ${#RUNNER_ARGS[@]} - 1 ))" ]]; then
           echo "${argument} requires a value" >&2
@@ -1195,6 +1249,7 @@ if [[ "${RUNNER}" == "${ISSUE146_RUNNER_RELATIVE_PATH}" ]]; then
         ;;
     esac
   done
+  ISSUE146_ARGS+=(--requested-run-id "${ISSUE146_REQUESTED_RUN_ID}")
   ISSUE146_ARGS+=(--env-json "/out/$(basename "${ENV_JSON}")")
   if [[ "${TELEMETRY_MODE}" != "off" ]]; then
     ISSUE146_ARGS+=(--power-trace "/out/$(basename "${POWER_CSV}")")
@@ -1272,6 +1327,7 @@ if [[ "${TEST_MODE}" == "1" ]]; then
     -e PYTHONPATH=/work \
     -e "HEKATUS_TT_RUN_ID=${RUN_ID}" \
     "${TELEMETRY_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     -e HEKATUS_TT_DEVICE_TEST=1 \
     -e HEKATUS_TT_PINNED_CONTAINER=1 \
     "${WATCHER_ENV[@]}" \
@@ -1290,6 +1346,7 @@ elif [[ "${RUNNER}" == "${MATMUL_RUNNER_RELATIVE_PATH}" ]]; then
     "${WATCHER_ENV[@]}" \
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     --entrypoint /bin/bash \
     "${IMAGE}" -lc 'exec python3 "$0" --out "$1" --env-json "$2" "${@:3}"' \
     "${RUNNER}" \
@@ -1309,6 +1366,7 @@ else
     "${WATCHER_ENV[@]}" \
     "${TELEMETRY_ENV[@]}" \
     "${RUNNER_RESULT_ENV[@]}" \
+    "${ISSUE146_REQUESTED_RUN_ENV[@]}" \
     --entrypoint python3 \
     "${IMAGE}" "${RUNNER}" "${RUNNER_ARGS[@]}" &
 fi

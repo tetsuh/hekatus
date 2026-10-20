@@ -1,7 +1,7 @@
 """Device-side grouped Issue #146 Newton-Schulz runner.
 
 All plan, identity, environment, timing, and L1 checks run before importing
-TTNN or opening a device.  The device path performs exactly eight asynchronous
+TTNN or opening a device.  The device path performs the configured asynchronous
 launches per group and one synchronization after each group; the host group
 clock is the only duration clock.
 """
@@ -9,6 +9,7 @@ clock is the only duration clock.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -45,6 +46,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-json", type=Path, required=True)
     parser.add_argument("--power-trace", type=Path, default=None)
     parser.add_argument("--groups", type=Path, default=None)
+    parser.add_argument("--requested-run-id", required=True)
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--condition", choices=("newton_schulz",), default="newton_schulz")
     parser.add_argument("--configuration", required=True)
@@ -100,18 +102,20 @@ def _validate_destination(path: Path, *, field: str) -> Path:
 
 
 def _bind_environment(
-    environment: Mapping[str, Any], config: issue146.Issue146Configuration
+    environment: Mapping[str, Any], config: issue146.Issue146Configuration,
+    plan: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Bind wrapper-provided plan facts without inventing board telemetry."""
     bound = dict(environment)
+    outer_repetitions, launches_per_sync = issue146.grouped_load_settings(plan)
     expected: dict[str, Any] = {
         "device_id": issue146.HOST_DEVICE_ID,
         "container_device_id": issue146.CONTAINER_VISIBLE_DEVICE_ID,
         "worker_core_count": config.worker_core_count,
         "worker_core_coordinates": [list(core) for core in config.core_plan.worker_cores],
         "total_blocks": config.total_blocks,
-        "outer_repetitions": issue146.OUTER_REPETITIONS,
-        "launches_per_sync": issue146.LAUNCHES_PER_SYNC,
+        "outer_repetitions": outer_repetitions,
+        "launches_per_sync": launches_per_sync,
     }
     for field, value in expected.items():
         if field in bound and bound[field] != value:
@@ -129,6 +133,12 @@ def _validate_args(
 ) -> None:
     if args.condition != "newton_schulz":
         raise Issue146DeviceError("Issue #146 device runner requires Newton-Schulz")
+    try:
+        issue146.validate_run_id(args.requested_run_id)
+    except ValueError as exc:
+        raise Issue146DeviceError("Issue #146 requested run identity is unsafe") from exc
+    if os.environ.get("HEKATUS_TT_REQUESTED_RUN_ID") != args.requested_run_id:
+        raise Issue146DeviceError("Issue #146 requested run identity is not bound to the wrapper environment")
     if args.plan_hash != issue146._plan_hash(plan):
         raise Issue146DeviceError("Issue #146 plan hash does not match the owner plan")
     if args.device_id != issue146.CONTAINER_VISIBLE_DEVICE_ID:
@@ -153,7 +163,7 @@ def _validate_args(
         raise Issue146DeviceError("Issue #146 guard does not match the plan")
     if args.overrun_limit_seconds != DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue146DeviceError("Issue #146 overrun limit does not match the plan")
-    issue146.validate_environment_for_run(environment, configuration=config)
+    issue146.validate_environment_for_run(environment, configuration=config, plan=plan)
 
 
 def _write_json(path: Path, payload: Any, *, field: str) -> bytes:
@@ -174,19 +184,24 @@ def _write_json(path: Path, payload: Any, *, field: str) -> bytes:
     return raw
 
 
-def _safe_environment(environment: Mapping[str, Any], config: issue146.Issue146Configuration) -> dict[str, Any]:
-    return issue146.build_environment_record(environment, config)
+def _safe_environment(
+    environment: Mapping[str, Any], config: issue146.Issue146Configuration,
+    plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    return issue146.build_environment_record(environment, config, plan=plan)
 
 
 def _failure_result(
     *, args: argparse.Namespace, config: issue146.Issue146Configuration,
     environment: Mapping[str, Any], reason: str, run_id: str,
-    duration: Any | None = None,
+    requested_run_id: str, plan: Mapping[str, Any], duration: Any | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "record_schema": issue146.ISSUE146_DEVICE_RESULT_SCHEMA,
         "status": "failed",
         "run_id": run_id,
+        "wrapper_run_id": run_id,
+        "requested_run_id": requested_run_id,
         "mode": args.mode,
         "load_mode": issue146.ISSUE146_LOAD_MODE,
         "target_seconds": args.target_seconds,
@@ -197,7 +212,7 @@ def _failure_result(
         "failure": {"kind": "device_execution_failure", "message": reason},
         "core_plan": config.core_plan.as_record(),
         "plan_sha256": args.plan_hash,
-        "environment": _safe_environment(environment, config),
+        "environment": _safe_environment(environment, config, plan),
     }
     if duration is not None:
         result.update(duration.as_record())
@@ -208,7 +223,7 @@ def run(args: argparse.Namespace) -> int:
     # No TTNN import or device open occurs before this complete section.
     plan = issue146.load_plan(args.plan)
     config = issue146.configuration(plan, args.configuration)
-    environment = _bind_environment(_load_environment(args.env_json), config)
+    environment = _bind_environment(_load_environment(args.env_json), config, plan)
     result_path = _result_path(args)
     _validate_args(args, plan=plan, config=config, environment=environment)
     safe_result = _validate_destination(result_path, field="Issue #146 result destination")
@@ -218,6 +233,14 @@ def run(args: argparse.Namespace) -> int:
     wrapper_run_id = os.environ.get("HEKATUS_TT_RUN_ID")
     if not wrapper_run_id:
         raise Issue146DeviceError("HEKATUS_TT_RUN_ID is required")
+    try:
+        issue146.validate_run_id(wrapper_run_id)
+    except ValueError as exc:
+        raise Issue146DeviceError("HEKATUS_TT_RUN_ID is unsafe") from exc
+    if group_path is not None and group_path.name != f"device-group-timings-{wrapper_run_id}.json":
+        raise Issue146DeviceError("Issue #146 group artifact is not bound to the wrapper run")
+    if args.power_trace is not None and args.power_trace.name != f"power-{wrapper_run_id}.csv":
+        raise Issue146DeviceError("Issue #146 power trace is not bound to the wrapper run")
 
     stop_requested = False
 
@@ -229,100 +252,138 @@ def run(args: argparse.Namespace) -> int:
     old_int = signal.signal(signal.SIGINT, request_stop)
     prepared: Any = None
     device: Any = None
+    ttnn_module: Any = None
+    duration: Any | None = None
+    cleanup_errors: list[str] = []
+    result = _failure_result(
+        args=args,
+        config=config,
+        environment=environment,
+        reason="Issue #146 device execution did not start",
+        run_id=wrapper_run_id,
+        requested_run_id=args.requested_run_id,
+        plan=plan,
+    )
     try:
-        # This is the first TTNN import in the process and follows all checks.
-        import ttnn
-
-        device = ttnn.open_device(device_id=args.device_id, num_command_queues=2)
-        prepared = prepare_newton_schulz_grouped_load(
-            ttnn,
-            device,
-            core_plan=config.core_plan,
-            profile=True,
-            outer_repetitions=args.outer_repetitions,
-        )
-
-        def enqueue_one() -> None:
-            if stop_requested:
-                raise _StopRequested("Issue #146 stop requested")
-            prepared.launch()
-
-        def synchronize() -> None:
-            if stop_requested:
-                raise _StopRequested("Issue #146 stop requested")
-            ttnn.synchronize_device(device)
-
-        idle_window = issue146.SMOKE_IDLE_WINDOW if args.mode == "smoke" else issue146.LONG_IDLE_WINDOW
         try:
-            duration = run_grouped_duration_bounded_load(
-                enqueue_one,
-                synchronize,
-                target_seconds=args.target_seconds,
-                launches_per_sync=args.launches_per_sync,
-                idle_window_seconds=idle_window,
-                monotonic_ns=time.monotonic_ns,
-                overrun_limit_seconds=args.overrun_limit_seconds,
+            # This is the first TTNN import in the process and follows all checks.
+            import ttnn as ttnn_module
+
+            device = ttnn_module.open_device(device_id=args.device_id, num_command_queues=2)
+            prepared = prepare_newton_schulz_grouped_load(
+                ttnn_module,
+                device,
+                core_plan=config.core_plan,
+                profile=True,
+                outer_repetitions=args.outer_repetitions,
             )
-            result = {
-                "record_schema": issue146.ISSUE146_DEVICE_RESULT_SCHEMA,
-                **duration.as_record(),
-                "status": "ok" if duration.passed else "failed",
-                "run_id": wrapper_run_id,
-                "mode": args.mode,
-                "load_mode": issue146.ISSUE146_LOAD_MODE,
-                "target_seconds": args.target_seconds,
-                "guard_seconds": args.outer_timeout_seconds,
-                "overrun_limit_seconds": args.overrun_limit_seconds,
-                "outer_repetitions": args.outer_repetitions,
-                "launches_per_sync": args.launches_per_sync,
-                "core_plan": config.core_plan.as_record(),
-                "plan_sha256": args.plan_hash,
-                "environment": _safe_environment(environment, config),
-                "execution_provenance": {
-                    "clock": "host.CLOCK_MONOTONIC",
-                    "fixed_iterations": 12,
-                    "matrix_block": 8,
-                    "outer_repetitions_per_launch": args.outer_repetitions,
+
+            def enqueue_one() -> None:
+                if stop_requested:
+                    raise _StopRequested("Issue #146 stop requested")
+                prepared.launch()
+
+            def synchronize() -> None:
+                if stop_requested:
+                    raise _StopRequested("Issue #146 stop requested")
+                ttnn_module.synchronize_device(device)
+
+            idle_window = issue146.SMOKE_IDLE_WINDOW if args.mode == "smoke" else issue146.LONG_IDLE_WINDOW
+            try:
+                duration = run_grouped_duration_bounded_load(
+                    enqueue_one,
+                    synchronize,
+                    target_seconds=args.target_seconds,
+                    launches_per_sync=args.launches_per_sync,
+                    idle_window_seconds=idle_window,
+                    monotonic_ns=time.monotonic_ns,
+                    overrun_limit_seconds=args.overrun_limit_seconds,
+                )
+                result = {
+                    "record_schema": issue146.ISSUE146_DEVICE_RESULT_SCHEMA,
+                    **duration.as_record(),
+                    "status": "ok" if duration.passed else "failed",
+                    "observed_duration_seconds": (
+                        duration.last_group_end_monotonic_ns - duration.first_launch_start_monotonic_ns
+                    ) / 1_000_000_000.0,
+                    "run_id": wrapper_run_id,
+                    "wrapper_run_id": wrapper_run_id,
+                    "requested_run_id": args.requested_run_id,
+                    "mode": args.mode,
+                    "load_mode": issue146.ISSUE146_LOAD_MODE,
+                    "target_seconds": args.target_seconds,
+                    "guard_seconds": args.outer_timeout_seconds,
+                    "overrun_limit_seconds": args.overrun_limit_seconds,
+                    "outer_repetitions": args.outer_repetitions,
                     "launches_per_sync": args.launches_per_sync,
-                    "preparation_before_first_timed_clock_read": True,
-                    "synchronization": "one ttnn.synchronize_device after each group",
-                },
-            }
-        except (DurationLoadError, _StopRequested) as exc:
-            duration = exc.result if isinstance(exc, DurationLoadError) else None
-            result = _failure_result(
-                args=args,
-                config=config,
-                environment=environment,
-                reason=str(exc),
-                run_id=wrapper_run_id,
-                duration=duration,
+                    "core_plan": config.core_plan.as_record(),
+                    "plan_sha256": args.plan_hash,
+                    "environment": _safe_environment(environment, config, plan),
+                    "execution_provenance": {
+                        "clock": "host.CLOCK_MONOTONIC",
+                        "fixed_iterations": 12,
+                        "matrix_block": 8,
+                        "outer_repetitions_per_launch": args.outer_repetitions,
+                        "launches_per_sync": args.launches_per_sync,
+                        "preparation_before_first_timed_clock_read": True,
+                        "synchronization": "one ttnn.synchronize_device after each group",
+                    },
+                }
+            except (DurationLoadError, _StopRequested) as exc:
+                duration = exc.result if isinstance(exc, DurationLoadError) else None
+                result = _failure_result(
+                    args=args,
+                    config=config,
+                    environment=environment,
+                    reason=str(exc),
+                    run_id=wrapper_run_id,
+                    requested_run_id=args.requested_run_id,
+                    plan=plan,
+                    duration=duration,
+                )
+            if args.power_trace is not None:
+                result["power_trace_path"] = args.power_trace.name
+            if group_path is not None and isinstance(result.get("group_timings"), list):
+                group_raw = _write_json(group_path, result["group_timings"], field="Issue #146 group array")
+                result["groups_path"] = group_path.name
+                result["groups_sha256"] = hashlib.sha256(group_raw).hexdigest()
+                result["groups_byte_count"] = len(group_raw)
+        except Exception as execution_error:  # noqa: BLE001 - publish diagnostics after cleanup
+            if result.get("status") == "ok":
+                result["status"] = "failed"
+            failure = result.setdefault(
+                "failure", {"kind": "device_execution_failure", "message": str(execution_error)}
             )
-        if group_path is not None and isinstance(result.get("group_timings"), list):
-            group_raw = _write_json(group_path, result["group_timings"], field="Issue #146 group array")
-            result["groups_path"] = group_path.name
-            result["groups_sha256"] = __import__("hashlib").sha256(group_raw).hexdigest()
-            result["groups_byte_count"] = len(group_raw)
-        _write_json(safe_result, result, field="Issue #146 result")
+            if isinstance(failure, dict):
+                failure.setdefault("kind", "device_execution_failure")
+                failure.setdefault("message", str(execution_error))
     finally:
         if prepared is not None:
             try:
                 prepared.close()
-            except Exception as cleanup_error:  # noqa: BLE001 - preserve the execution result
-                print(
-                    f"Issue #146 prepared cleanup failed: {type(cleanup_error).__name__}",
-                    file=sys.stderr,
-                )
-        if device is not None:
+            except Exception as cleanup_error:  # noqa: BLE001 - preserve execution diagnostics
+                cleanup_errors.append(f"prepared.close: {type(cleanup_error).__name__}")
+        if device is not None and ttnn_module is not None:
             try:
-                ttnn.close_device(device)
-            except Exception as cleanup_error:  # noqa: BLE001 - preserve the execution result
-                print(
-                    f"Issue #146 device cleanup failed: {type(cleanup_error).__name__}",
-                    file=sys.stderr,
-                )
+                ttnn_module.close_device(device)
+            except Exception as cleanup_error:  # noqa: BLE001 - preserve execution diagnostics
+                cleanup_errors.append(f"close_device: {type(cleanup_error).__name__}")
         signal.signal(signal.SIGTERM, old_term)
         signal.signal(signal.SIGINT, old_int)
+
+    if cleanup_errors:
+        result["cleanup"] = {"status": "failed", "errors": cleanup_errors}
+        failure = result.get("failure")
+        if result.get("status") == "ok":
+            result["status"] = "failed"
+            result["failure"] = {
+                "kind": "cleanup_failure",
+                "message": "device cleanup failed after workload execution",
+                "cleanup_errors": cleanup_errors,
+            }
+        elif isinstance(failure, dict):
+            failure["cleanup_errors"] = cleanup_errors
+    _write_json(safe_result, result, field="Issue #146 result")
     print(f"issue146 result -> {safe_result.name}")
     return 0 if result.get("status") == "ok" else 2
 

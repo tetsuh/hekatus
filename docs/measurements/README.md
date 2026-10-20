@@ -98,9 +98,14 @@ uv run python tools/issue146.py --mode long --configuration C018 \
 Execution is opt-in only. The wrapper binds host device 1
 (`/dev/tenstorrent/1`) to container device 0 and the selected serial/BDF,
 requires the clean-and-pushed harness preflight, and owns the result identity;
-callers must not provide `--out`. The grouped device load uses sixteen
-Newton-Schulz outer repetitions per launch, eight asynchronous launches per
-synchronization, and records every group boundary on the host monotonic clock.
+callers must not provide `--out`. Direct wrapper invocations must also pass the
+safe semantic `--requested-run-id`; the wrapper's collision-safe invocation ID
+is retained separately in the device result and artifact names. The wrapper's
+legacy four-column power CSV is retained and fingerprinted as companion
+evidence; the new raw-arbiter trace remains the verdict source. The grouped
+load uses sixteen Newton-Schulz outer repetitions per launch, eight asynchronous
+launches per synchronization, and records every group boundary on the host
+monotonic clock.
 Cooldown between long instances is relative to the preceding selected-device
 pre-run snapshot (power +5 W, ASIC temperature +3 degC, cap 600 seconds).
 

@@ -24,7 +24,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from enodia.strict_json import dumps as strict_json_dumps
-from enodia.tt.bench import power_trace_issue146
+from enodia.tt.bench import power_trace_issue146, telemetry
 from enodia.tt.bench.duration_load import DEFAULT_OVERRUN_LIMIT_SECONDS
 from enodia.tt.bench.load_harness import (
     NewtonSchulzCorePlan,
@@ -32,7 +32,7 @@ from enodia.tt.bench.load_harness import (
 )
 from enodia.tt.bench.resident_harness import validate_harness_preflight
 from enodia.tt.bench.run_binding import validate_run_id
-from tools import issue137
+from tools import analyze_issue146, issue137
 from tools.issue146_analysis import group_timing_facts
 
 DEFAULT_PLAN_PATH = Path(
@@ -53,8 +53,6 @@ DEVICE_ID = HOST_DEVICE_ID
 BOARD_SERIAL = "0000040331914124"
 BOARD_ID = BOARD_SERIAL
 BUS_ID = "0000:09:00.0"
-OUTER_REPETITIONS = 16
-LAUNCHES_PER_SYNC = 8
 COOLDOWN_CAP_SECONDS = 600.0
 COOLDOWN_POWER_TOLERANCE_W = 5.0
 COOLDOWN_TEMPERATURE_TOLERANCE_C = 3.0
@@ -63,6 +61,8 @@ ISSUE146_POWER_TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 ISSUE146_POWER_TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 SMOKE_IDLE_WINDOW = (10.0, 40.0)
 LONG_IDLE_WINDOW = (60.0, 180.0)
+AUTHORITATIVE_PLAN_RAW_SHA256 = analyze_issue146.AUTHORITATIVE_PLAN_RAW_SHA256
+AUTHORITATIVE_PLAN_CANONICAL_SHA256 = analyze_issue146.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
@@ -166,14 +166,23 @@ class _ExecutionState:
     timed_out: bool = False
     cleanup_failure: str | None = None
     result_error: str | None = None
+    device_groups: dict[str, Any] | None = None
+    companion_power_trace: dict[str, Any] | None = None
 
 
-def _plan_hash(plan: Mapping[str, Any]) -> str:
+def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
     try:
         raw = strict_json_dumps(plan, sort_keys=True).encode("utf-8")
     except (TypeError, ValueError) as exc:
         raise Issue146Error("Issue #146 plan cannot be hashed") from exc
     return hashlib.sha256(raw).hexdigest()
+
+
+def _plan_hash(plan: Mapping[str, Any]) -> str:
+    digest = _canonical_plan_hash(plan)
+    if digest != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
+        raise Issue146Error("Issue #146 plan is not the immutable owner revision 3")
+    return digest
 
 
 def _trusted_path(path: Path, *, field: str) -> Path:
@@ -257,10 +266,15 @@ def _load_plan_path(path: Path) -> Path:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
-    """Load the immutable revision-3 plan without changing its bytes."""
+    """Load the exact immutable owner revision-3 plan without changing bytes."""
     source = _load_plan_path(Path(path))
     try:
-        payload = json.loads(source.read_text(encoding="utf-8"))
+        raw = source.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
+            raise Issue146Error("Issue #146 plan bytes are not the immutable owner revision")
+        payload = json.loads(raw.decode("utf-8"))
+    except Issue146Error:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise Issue146Error("cannot read Issue #146 plan") from exc
     if not isinstance(payload, dict):
@@ -270,11 +284,17 @@ def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
     if payload.get("status") != "planned" or payload.get("board_run") is not False:
         raise Issue146Error("Issue #146 plan is not the immutable board-free plan")
     history = payload.get("revision_history")
-    if not isinstance(history, list) or not history or history[-1].get("revision") != 3:
+    if (
+        not isinstance(history, list)
+        or not history
+        or not isinstance(history[-1], Mapping)
+        or history[-1].get("revision") != 3
+    ):
         raise Issue146Error("Issue #146 plan revision 3 is required")
     execution = payload.get("load_execution")
     if not isinstance(execution, Mapping) or execution.get("mode") != ISSUE146_LOAD_MODE + ", grouped launches":
         raise Issue146Error("Issue #146 grouped execution mode is not selected")
+    _plan_hash(payload)
     grouped_load_settings(payload)
     return payload
 
@@ -336,20 +356,20 @@ def configuration_for_core_count(plan: Mapping[str, Any], core_count: int) -> Is
 
 
 def long_run_order(plan: Mapping[str, Any]) -> list[str]:
+    _plan_hash(plan)
     scope = plan.get("measurement_scope")
     order = scope.get("order") if isinstance(scope, Mapping) else None
     if not isinstance(order, list) or not all(isinstance(item, str) for item in order):
         raise Issue146Error("Issue #146 long-run order is missing")
-    expected_ids = {item["id"] for item in plan_configurations(plan)}
-    if len(order) != 6 or set(order) != expected_ids or any(order.count(item) != 2 for item in expected_ids):
-        raise Issue146Error("Issue #146 long-run order must contain two instances per configuration")
-    if order[3:] != list(reversed(order[:3])):
-        raise Issue146Error("Issue #146 long-run order must be S followed by reverse S")
+    expected = ["C018", "C108", "C081", "C081", "C108", "C018"]
+    if order != expected:
+        raise Issue146Error("Issue #146 long-run order is not the owner revision-3 order")
     return list(order)
 
 
 def grouped_load_settings(plan: Mapping[str, Any]) -> tuple[int, int]:
-    """Read the grouped repetition and synchronization counts from the plan."""
+    """Read positive grouped counts from the already pinned owner plan."""
+    _plan_hash(plan)
     execution = plan.get("load_execution")
     if not isinstance(execution, Mapping):
         raise Issue146Error("Issue #146 load execution is missing")
@@ -359,10 +379,10 @@ def grouped_load_settings(plan: Mapping[str, Any]) -> tuple[int, int]:
     except KeyError as exc:
         raise Issue146Error("Issue #146 grouped load settings are missing") from exc
     if (
-        isinstance(outer, bool) or not isinstance(outer, int) or outer != 16
-        or isinstance(launches, bool) or not isinstance(launches, int) or launches != 8
+        isinstance(outer, bool) or not isinstance(outer, int) or outer <= 0
+        or isinstance(launches, bool) or not isinstance(launches, int) or launches <= 0
     ):
-        raise Issue146Error("Issue #146 grouped load settings do not match revision 3")
+        raise Issue146Error("Issue #146 grouped load settings must be positive integers")
     return outer, launches
 
 
@@ -448,12 +468,48 @@ def _environment_digest(environment: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _required_environment_fields(plan: Mapping[str, Any]) -> tuple[str, ...]:
+    provenance = plan.get("provenance")
+    fields = provenance.get("required_environment_fields") if isinstance(provenance, Mapping) else None
+    if not isinstance(fields, list) or not fields or not all(isinstance(item, str) for item in fields):
+        raise Issue146Error("Issue #146 required environment fields are missing")
+    return tuple(fields)
+
+
+def _environment_provenance_values(
+    environment: Mapping[str, Any], identity: Mapping[str, Any]
+) -> dict[str, Any]:
+    firmware = environment.get("firmware") or environment.get("firmwares")
+    if not isinstance(firmware, Mapping):
+        firmware = {}
+    return {
+        "board.serial": identity.get("serial"),
+        "board.identity.board_id": identity.get("board_id"),
+        "board.identity.bus_id": identity.get("bus_id"),
+        "firmware.bundle": firmware.get("bundle") or firmware.get("fw_bundle_version"),
+        "kernel": environment.get("kernel"),
+        "kernel_driver_version": environment.get("kernel_driver_version") or environment.get("kmd_version"),
+        "image_digest": _environment_digest(environment),
+        "harness_commit": environment.get("harness_commit"),
+        "device_node": environment.get("device_node"),
+        "worker_core_count": environment.get("worker_core_count"),
+        "worker_core_coordinates": environment.get("worker_core_coordinates"),
+        "total_blocks": environment.get("total_blocks"),
+        "outer_repetitions": environment.get("outer_repetitions"),
+        "launches_per_sync": environment.get("launches_per_sync"),
+    }
+
+
 def validate_environment_for_run(
-    environment: Mapping[str, Any], *, configuration: Issue146Configuration | None = None
+    environment: Mapping[str, Any], *, configuration: Issue146Configuration | None = None,
+    plan: Mapping[str, Any] | None = None,
 ) -> None:
-    """Apply clean/pushed, board-node, and exact runner identity preflight."""
+    """Validate every required provenance field before importing or opening TTNN."""
     if not isinstance(environment, Mapping):
         raise Issue146Error("environment must be an object")
+    effective_plan = load_plan() if plan is None else plan
+    _plan_hash(effective_plan)
+    outer_repetitions, launches_per_sync = grouped_load_settings(effective_plan)
     if environment.get("device_node") != DEVICE_NODE:
         raise Issue146Error(f"Issue #146 requires device_node {DEVICE_NODE}")
     identity = _environment_identity(environment)
@@ -480,26 +536,45 @@ def validate_environment_for_run(
             list(core) for core in configuration.core_plan.worker_cores
         ]:
             raise Issue146Error("environment worker_core_coordinates do not match the plan")
-    if environment.get("outer_repetitions") != OUTER_REPETITIONS:
-        raise Issue146Error("environment outer_repetitions must be 16")
-    if environment.get("launches_per_sync") != LAUNCHES_PER_SYNC:
-        raise Issue146Error("environment launches_per_sync must be 8")
+    values = _environment_provenance_values(environment, identity)
+    missing = [
+        field for field in _required_environment_fields(effective_plan)
+        if values.get(field) is None or values.get(field) == "" or values.get(field) == []
+    ]
+    if missing:
+        raise Issue146Error("environment provenance is missing: " + ", ".join(missing))
+    if environment.get("outer_repetitions") != outer_repetitions:
+        raise Issue146Error("environment outer_repetitions does not match the owner plan")
+    if environment.get("launches_per_sync") != launches_per_sync:
+        raise Issue146Error("environment launches_per_sync does not match the owner plan")
     digest = _environment_digest(environment)
     if not isinstance(digest, str) or _SHA256_RE.fullmatch(digest) is None:
         raise Issue146Error("environment image_digest is not a pinned SHA-256")
     commit = environment.get("harness_commit")
     if not isinstance(commit, str) or _COMMIT_RE.fullmatch(commit) is None:
         raise Issue146Error("environment harness_commit is invalid")
+    host_versions = environment.get("host_sw_vers")
+    if not isinstance(host_versions, Mapping):
+        raise Issue146Error("environment host reader provenance is missing")
+    missing_readers = [
+        name for name in ("tt_smi", "tt_umd")
+        if name not in host_versions or host_versions.get(name) in (None, "")
+    ]
+    if missing_readers:
+        raise Issue146Error("environment host reader versions are missing: " + ", ".join(missing_readers))
     sampler = environment.get("telemetry_sampler")
     if sampler is not None and not isinstance(sampler, Mapping):
         raise Issue146Error("telemetry_sampler provenance must be an object")
 
 
 def build_environment_record(
-    environment: Mapping[str, Any], configuration: Issue146Configuration
+    environment: Mapping[str, Any], configuration: Issue146Configuration,
+    *, plan: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist required environment provenance without host identity or paths."""
-    validate_environment_for_run(environment, configuration=configuration)
+    effective_plan = load_plan() if plan is None else plan
+    outer_repetitions, launches_per_sync = grouped_load_settings(effective_plan)
+    validate_environment_for_run(environment, configuration=configuration, plan=effective_plan)
     identity = _environment_identity(environment)
     firmware = environment.get("firmware") or environment.get("firmwares")
     if not isinstance(firmware, Mapping):
@@ -533,14 +608,16 @@ def build_environment_record(
         "kernel_driver_version": facts["kernel_driver_version"],
         "image_digest": facts["image_digest"],
         "harness_commit": facts["harness_commit"],
+        "harness_dirty": environment.get("harness_dirty"),
+        "harness_pushed": environment.get("harness_pushed"),
         "device_node": facts["device_node"],
         "device_id": HOST_DEVICE_ID,
         "container_device_id": CONTAINER_VISIBLE_DEVICE_ID,
         "worker_core_count": configuration.worker_core_count,
         "worker_core_coordinates": [list(core) for core in configuration.core_plan.worker_cores],
         "total_blocks": configuration.total_blocks,
-        "outer_repetitions": OUTER_REPETITIONS,
-        "launches_per_sync": LAUNCHES_PER_SYNC,
+        "outer_repetitions": outer_repetitions,
+        "launches_per_sync": launches_per_sync,
         "core_block_distribution": [dict(row) for row in configuration.core_plan.block_distribution],
         "safe_environment_digest": hashlib.sha256(
             strict_json_dumps(safe, sort_keys=True).encode("utf-8")
@@ -549,6 +626,9 @@ def build_environment_record(
     host_versions = environment.get("host_sw_vers")
     if isinstance(host_versions, Mapping):
         record["host_sw_vers"] = _safe_json_value(host_versions)
+    sampler = environment.get("telemetry_sampler")
+    if isinstance(sampler, Mapping):
+        record["telemetry_sampler"] = _safe_json_value(sampler)
     return record
 
 
@@ -869,6 +949,8 @@ def build_run_command(
         "newton_schulz",
         "--configuration",
         configuration.identifier,
+        "--requested-run-id",
+        run_id,
         "--load-core-count",
         str(configuration.worker_core_count),
         "--load-total-blocks",
@@ -934,6 +1016,8 @@ def _base_record(
         "provenance": {
             "wrapper_entrypoint": WRAPPER_SCRIPT,
             "runner_entrypoint": ISSUE146_DEVICE_RUNNER,
+            "requested_run_id": run_id,
+            "wrapper_run_id": None,
             "plan_sha256": _plan_hash(plan),
             "unit_provenance": None,
             "unit_provenance_status": "unknown",
@@ -1012,7 +1096,9 @@ def _prepare_run(
         run_number=options.run_number, command=command, output_dir=output,
     )
     if options.environment is not None:
-        record["environment"] = build_environment_record(options.environment, configuration)
+        record["environment"] = build_environment_record(
+            options.environment, configuration, plan=plan
+        )
     return _PreparedRun(safe_id, timing, board_id, bus_id, output, trace, groups, command, record)
 
 
@@ -1051,18 +1137,65 @@ def _apply_cooldown_gate(plan: Mapping[str, Any], prepared: _PreparedRun, option
     return failed
 
 
+def _pre_snapshot_configuration_mismatch(error: BaseException) -> bool:
+    message = str(error)
+    return (
+        "BOARD_POWER_LIMIT does not match" in message
+        or "ENABLED_MAX_ARB does not match" in message
+        or "limits.board_power_limit does not match" in message
+        or "limits.asic_fmax does not match" in message
+        or "limits.therm_trip_l1_limit does not match" in message
+    )
+
+
 def _capture_pre_run(prepared: _PreparedRun, state: _ExecutionState, capture_fn: Callable[..., dict[str, Any]], plan: Mapping[str, Any]) -> dict[str, Any] | None:
     try:
         capture = capture_fn(stage="pre_run")
         validate_capture(capture, stage="pre_run", board_id=prepared.board_id, bus_id=prepared.bus_id)
-        configured = validate_pre_snapshot_configuration(capture, plan=plan, board_id=prepared.board_id, bus_id=prepared.bus_id)
+        # Identity-valid bytes are evidence even when the configuration gate rejects them.
         descriptor = _store_capture(prepared.output_dir, run_id=prepared.safe_run_id, stage="pre_run", capture=capture)
-        descriptor["configuration"] = _snapshot_config_record(configured)
         prepared.record["pre_run_snapshot"] = descriptor
+        state.captures.append(dict(capture))
+        try:
+            configured = validate_pre_snapshot_configuration(
+                capture, plan=plan, board_id=prepared.board_id, bus_id=prepared.bus_id
+            )
+        except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
+            if _pre_snapshot_configuration_mismatch(exc):
+                descriptor["configuration"] = {
+                    "status": "not_evaluable",
+                    "classification": "not_evaluable",
+                    "reason": "configuration",
+                    "diagnostic": str(exc),
+                }
+                failed = _failure_record(
+                    prepared.record,
+                    kind="configuration_mismatch",
+                    message="pre-run configuration mismatch; workload was not started",
+                )
+                failed["status"] = "not_evaluable"
+                failed["classification"] = "not_evaluable"
+                failed["reason"] = "configuration"
+                _persist_record(prepared.output_dir, prepared.safe_run_id, failed)
+                return failed
+            descriptor["configuration"] = {
+                "status": "failed",
+                "classification": "failed",
+                "reason": "telemetry",
+                "diagnostic": str(exc),
+            }
+            failed = _failure_record(
+                prepared.record,
+                kind="pre_run_snapshot_failure",
+                message=str(exc),
+            )
+            failed["reason"] = "telemetry"
+            _persist_record(prepared.output_dir, prepared.safe_run_id, failed)
+            return failed
+        descriptor["configuration"] = _snapshot_config_record(configured)
         plan_limits = dict(plan.get("limits", {}))
         plan_limits.update(configured)
         prepared.record["limits"] = plan_limits
-        state.captures.append(dict(capture))
     except (Issue146Error, OSError, TypeError, ValueError, KeyError) as exc:
         failed = _failure_record(prepared.record, kind="pre_run_snapshot_failure", message=str(exc))
         _persist_record(prepared.output_dir, prepared.safe_run_id, failed)
@@ -1092,7 +1225,11 @@ def _run_command(prepared: _PreparedRun, state: _ExecutionState, options: Issue1
         state.completed = options.command_runner(
             prepared.command, capture_output=True, text=True,
             timeout=prepared.timing["guard_seconds"], check=False,
-            env=_execution_environment(options.environment, guard_seconds=prepared.timing["guard_seconds"]),
+            env=_execution_environment(
+                options.environment,
+                guard_seconds=prepared.timing["guard_seconds"],
+                requested_run_id=prepared.safe_run_id,
+            ),
         )
         code = getattr(state.completed, "returncode", None)
         state.returncode = code if isinstance(code, int) and not isinstance(code, bool) else None
@@ -1113,10 +1250,13 @@ def _run_command(prepared: _PreparedRun, state: _ExecutionState, options: Issue1
     return before
 
 
-def _execution_environment(environment: Mapping[str, Any] | None, *, guard_seconds: float) -> dict[str, str]:
+def _execution_environment(
+    environment: Mapping[str, Any] | None, *, guard_seconds: float, requested_run_id: str
+) -> dict[str, str]:
     values = dict(os.environ)
     values["HEKATUS_TT_RUNNER"] = ISSUE146_DEVICE_RUNNER
     values["HEKATUS_TT_DEVICE_NODE"] = DEVICE_NODE
+    values["HEKATUS_TT_REQUESTED_RUN_ID"] = requested_run_id
     values["HEKATUS_TT_CONTAINER_DEVICE_ID"] = str(CONTAINER_VISIBLE_DEVICE_ID)
     values["HEKATUS_TT_CONTAINER_TIMEOUT_S"] = str(int(guard_seconds))
     if isinstance(environment, Mapping):
@@ -1125,7 +1265,7 @@ def _execution_environment(environment: Mapping[str, Any] | None, *, guard_secon
             mode = sampler.get("mode")
             if isinstance(mode, str):
                 values["HEKATUS_TT_TELEMETRY_MODE"] = mode
-            if sampler.get("interval_seconds") is not None and mode != "off":
+            if sampler.get("interval_seconds") is not None and mode == "explicit":
                 values["HEKATUS_TT_TELEMETRY_INTERVAL_S"] = str(sampler["interval_seconds"])
         digest = _environment_digest(environment)
         if digest:
@@ -1180,21 +1320,41 @@ def _read_json(path: Path, *, field: str) -> tuple[dict[str, Any], bytes]:
 
 
 def _validate_runner_result(
-    result: Mapping[str, Any], *, plan: Mapping[str, Any], configuration: Issue146Configuration, mode: str
+    result: Mapping[str, Any], *, plan: Mapping[str, Any], configuration: Issue146Configuration,
+    mode: str, requested_run_id: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, int]]]:
     if result.get("record_schema") != ISSUE146_DEVICE_RESULT_SCHEMA:
         raise Issue146Error("runner result schema is unsupported")
     if result.get("status") != "ok":
         raise Issue146Error("runner result did not report successful execution")
+    wrapper_run_id = result.get("wrapper_run_id", result.get("run_id"))
+    if not isinstance(wrapper_run_id, str):
+        raise Issue146Error("runner result wrapper run identity is missing")
+    try:
+        validate_run_id(wrapper_run_id)
+    except ValueError as exc:
+        raise Issue146Error("runner result wrapper run identity is unsafe") from exc
+    if result.get("run_id") != wrapper_run_id:
+        raise Issue146Error("runner result run_id does not match wrapper_run_id")
+    semantic_run_id = result.get("requested_run_id")
+    if not isinstance(semantic_run_id, str):
+        raise Issue146Error("runner result requested run identity is missing")
+    try:
+        validate_run_id(semantic_run_id)
+    except ValueError as exc:
+        raise Issue146Error("runner result requested run identity is unsafe") from exc
+    if requested_run_id is not None and semantic_run_id != requested_run_id:
+        raise Issue146Error("runner result requested run identity does not match the requested run")
     if result.get("mode") != mode or result.get("load_mode") != ISSUE146_LOAD_MODE:
         raise Issue146Error("runner result mode binding is invalid")
     timing = run_timing(plan, mode)
+    outer_repetitions, launches_per_sync = grouped_load_settings(plan)
     for field, expected in (
         ("target_seconds", timing["load_seconds"]),
         ("guard_seconds", timing["guard_seconds"]),
         ("overrun_limit_seconds", DEFAULT_OVERRUN_LIMIT_SECONDS),
-        ("outer_repetitions", OUTER_REPETITIONS),
-        ("launches_per_sync", LAUNCHES_PER_SYNC),
+        ("outer_repetitions", outer_repetitions),
+        ("launches_per_sync", launches_per_sync),
     ):
         if float(result.get(field)) != expected:
             raise Issue146Error(f"runner result {field} does not match the plan")
@@ -1205,7 +1365,7 @@ def _validate_runner_result(
     environment = result.get("environment")
     if not isinstance(environment, Mapping):
         raise Issue146Error("runner result environment provenance is missing")
-    validate_environment_for_run(environment, configuration=configuration)
+    validate_environment_for_run(environment, configuration=configuration, plan=plan)
     raw_groups = result.get("group_timings")
     if not isinstance(raw_groups, list):
         raise Issue146Error("runner result group_timings are missing")
@@ -1249,20 +1409,113 @@ def _validate_runner_result(
 
 def validate_runner_result(
     result: Mapping[str, Any], *, plan: Mapping[str, Any],
-    configuration: Issue146Configuration, mode: str
+    configuration: Issue146Configuration, mode: str, requested_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Validate one returned device result and recompute its group facts."""
     facts, _groups = _validate_runner_result(
-        result, plan=plan, configuration=configuration, mode=mode
+        result, plan=plan, configuration=configuration, mode=mode,
+        requested_run_id=requested_run_id,
     )
     return facts
 
 
-def _write_groups(prepared: _PreparedRun, facts: Mapping[str, Any], groups: Sequence[Mapping[str, int]]) -> dict[str, Any]:
-    raw_name = prepared.groups_path.name
+def _result_artifact_name(value: Any, *, field: str) -> str:
+    if not isinstance(value, str):
+        raise Issue146Error(f"{field} is missing")
+    value = value.removeprefix("/out/")
+    return _safe_basename(value, field=field)
+
+
+def _validate_device_group_artifact(
+    output_dir: Path, *, before: set[str], result: Mapping[str, Any],
+    groups: Sequence[Mapping[str, int]], wrapper_run_id: str,
+) -> dict[str, Any]:
+    name = _result_artifact_name(result.get("groups_path"), field="runner group artifact")
+    expected_name = f"device-group-timings-{wrapper_run_id}.json"
+    if name != expected_name:
+        raise Issue146Error("runner group artifact is not bound to the wrapper invocation")
+    if name in before:
+        raise Issue146Error("runner group artifact is stale")
+    path = _safe_artifact_path(output_dir, name, field="runner group artifact")
+    if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+        raise Issue146Error("runner group artifact is missing or unsafe")
+    try:
+        raw = path.read_bytes()
+        payload = json.loads(raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise Issue146Error("runner group artifact is malformed") from exc
+    if payload != [dict(group) for group in groups]:
+        raise Issue146Error("runner group artifact does not equal runner timings")
+    digest = result.get("groups_sha256")
+    byte_count = result.get("groups_byte_count")
+    if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise Issue146Error("runner group artifact hash is missing")
+    if digest != hashlib.sha256(raw).hexdigest():
+        raise Issue146Error("runner group artifact hash does not match its bytes")
+    if isinstance(byte_count, bool) or not isinstance(byte_count, int) or byte_count != len(raw):
+        raise Issue146Error("runner group artifact byte count does not match its bytes")
+    return {
+        "path": name,
+        "schema": "issue146-device-group-array-v1",
+        "sha256": digest,
+        "byte_count": byte_count,
+        "group_count": len(payload),
+        "source": "device-produced raw group array",
+    }
+
+
+def _validate_companion_power_trace(
+    output_dir: Path, *, before: set[str], result: Mapping[str, Any],
+    wrapper_run_id: str, mode: str, environment: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    sampler = environment.get("telemetry_sampler") if isinstance(environment, Mapping) else None
+    if mode == "smoke" and isinstance(sampler, Mapping) and sampler.get("mode") == "off":
+        return {"status": "not_applicable", "reason": "diagnostic sampler is off"}
+    name = _result_artifact_name(
+        result.get("power_trace_path", f"power-{wrapper_run_id}.csv"),
+        field="legacy companion power trace",
+    )
+    expected_name = f"power-{wrapper_run_id}.csv"
+    if name != expected_name:
+        raise Issue146Error("legacy companion power trace is not bound to the wrapper invocation")
+    if name in before:
+        raise Issue146Error("legacy companion power trace is stale")
+    path = _safe_artifact_path(output_dir, name, field="legacy companion power trace")
+    if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+        raise Issue146Error("legacy companion power trace is missing or unsafe")
+    try:
+        raw = path.read_bytes()
+        parsed = telemetry.parse_power_trace(path)
+    except (OSError, TypeError, ValueError) as exc:
+        raise Issue146Error("legacy companion power trace is not valid") from exc
+    if (
+        parsed.get("readable") is not True
+        or parsed.get("nonempty") is not True
+        or parsed.get("csv_row_count", 0) < 1
+        or parsed.get("valid_row_count") != parsed.get("csv_row_count")
+        or parsed.get("columns") != list(telemetry.POWER_TRACE_COLUMNS)
+    ):
+        raise Issue146Error("legacy companion power trace does not satisfy its schema")
+    return {
+        "status": "ok",
+        "path": name,
+        "schema": "legacy-power-trace-v1",
+        "columns": list(telemetry.POWER_TRACE_COLUMNS),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "byte_count": len(raw),
+        "csv_row_count": parsed.get("csv_row_count"),
+        "valid_row_count": parsed.get("valid_row_count"),
+        "coverage": parsed.get("coverage"),
+        "source": "wrapper legacy power sampler companion evidence",
+    }
+
+
+def _write_groups(
+    prepared: _PreparedRun, facts: Mapping[str, Any], groups: Sequence[Mapping[str, int]],
+    device_artifact: Mapping[str, Any],
+) -> dict[str, Any]:
     envelope_name = f"{prepared.groups_path.stem}-envelope.json"
     raw_payload = [dict(group) for group in groups]
-    raw_bytes = _write_artifact(prepared.groups_path, raw_payload)
     envelope = {
         "schema": ISSUE146_GROUPS_SCHEMA,
         "schema_version": 1,
@@ -1278,9 +1531,10 @@ def _write_groups(prepared: _PreparedRun, facts: Mapping[str, Any], groups: Sequ
         "first_launch_start_monotonic_ns": facts["first_launch_start_monotonic_ns"],
         "sha256": hashlib.sha256(envelope_bytes).hexdigest(),
         "byte_count": len(envelope_bytes),
-        "raw_path": raw_name,
-        "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
-        "raw_byte_count": len(raw_bytes),
+        "raw_path": device_artifact["path"],
+        "raw_sha256": device_artifact["sha256"],
+        "raw_byte_count": device_artifact["byte_count"],
+        "device_artifact": dict(device_artifact),
         "group_count": len(raw_payload),
         "last_group_end_monotonic_ns": facts["last_group_end_monotonic_ns"],
         "overrun_seconds": facts["overrun_seconds"],
@@ -1393,8 +1647,28 @@ def _ingest_result(prepared: _PreparedRun, state: _ExecutionState, *, before: se
     prepared.record["runner_result"] = _safe_json_value(result)
     descriptor = {"path": name, "sha256": hashlib.sha256(raw).hexdigest(), "byte_count": len(raw), "schema": result.get("record_schema")}
     prepared.record["provenance"]["device_result"] = descriptor
-    facts, groups = _validate_runner_result(result, plan=plan, configuration=configuration, mode=prepared.record["run"]["mode"])
-    prepared.record["environment"] = build_environment_record(result["environment"], configuration)
+    facts, groups = _validate_runner_result(
+        result, plan=plan, configuration=configuration,
+        mode=prepared.record["run"]["mode"], requested_run_id=prepared.safe_run_id,
+    )
+    wrapper_run_id = result["wrapper_run_id"]
+    expected_result_name = f"runner-result-{wrapper_run_id}.json"
+    if name != expected_result_name:
+        raise Issue146Error("runner result artifact is not bound to the wrapper invocation")
+    device_artifact = _validate_device_group_artifact(
+        prepared.output_dir, before=before, result=result, groups=groups,
+        wrapper_run_id=wrapper_run_id,
+    )
+    companion = _validate_companion_power_trace(
+        prepared.output_dir, before=before, result=result, wrapper_run_id=wrapper_run_id,
+        mode=prepared.record["run"]["mode"], environment=result.get("environment"),
+    )
+    state.device_groups = device_artifact
+    state.companion_power_trace = companion
+    prepared.record["provenance"]["wrapper_run_id"] = wrapper_run_id
+    prepared.record["provenance"]["requested_run_id"] = result["requested_run_id"]
+    prepared.record["provenance"]["legacy_power_trace"] = companion
+    prepared.record["environment"] = build_environment_record(result["environment"], configuration, plan=plan)
     prepared.record["run"].update(facts)
     prepared.record["run"]["first_launch_start_monotonic_ns"] = facts["first_launch_start_monotonic_ns"]
     prepared.record["run"]["workload_started"] = True
@@ -1431,7 +1705,9 @@ def _execute_run(prepared: _PreparedRun, *, plan: Mapping[str, Any], configurati
     else:
         return _finish(prepared, state, failure=state.result_error or "runner result was already consumed")
     try:
-        prepared.record["groups"] = _write_groups(prepared, facts, groups)
+        if state.device_groups is None:
+            raise Issue146Error("device group artifact provenance is missing")
+        prepared.record["groups"] = _write_groups(prepared, facts, groups, state.device_groups)
         verified = _source_versions_verified(prepared.record.get("environment"), state.captures)
         prepared.record["provenance"]["unit_provenance"] = power_trace_issue146.ISSUE146_UNIT_PROVENANCE if verified else None
         prepared.record["provenance"]["unit_provenance_status"] = "established" if verified else "unknown"

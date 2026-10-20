@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from enodia.strict_json import dumps as strict_json_dumps
 from enodia.tt.bench import power_trace_issue146
 from tools import analyze_issue146, issue146
 
@@ -144,17 +145,26 @@ def _capture_factory(config_id: str, mode: str):
     return capture
 
 
-def _device_result(plan, config, environment, mode: str, run_id: str) -> dict[str, object]:
+def _device_result(
+    plan, config, environment, mode: str, run_id: str, requested_run_id: str
+) -> dict[str, object]:
     target = 40 if mode == "smoke" else 180
+    groups = [{"start_monotonic_ns": 0, "end_monotonic_ns": target * 1_000_000_000}]
+    group_bytes = (strict_json_dumps(groups, indent=2) + "\n").encode("utf-8")
     return {
         "record_schema": issue146.ISSUE146_DEVICE_RESULT_SCHEMA, "status": "ok",
-        "run_id": run_id, "mode": mode, "load_mode": issue146.ISSUE146_LOAD_MODE,
+        "run_id": run_id, "wrapper_run_id": run_id, "requested_run_id": requested_run_id,
+        "mode": mode, "load_mode": issue146.ISSUE146_LOAD_MODE,
         "target_seconds": float(target), "guard_seconds": float(90 if mode == "smoke" else 230),
         "overrun_limit_seconds": 10.0, "outer_repetitions": 16, "launches_per_sync": 8,
         "first_launch_start_monotonic_ns": 0,
         "workload_end_monotonic_ns": target * 1_000_000_000,
         "observed_duration_seconds": float(target),
-        "group_timings": [{"start_monotonic_ns": 0, "end_monotonic_ns": target * 1_000_000_000}],
+        "group_timings": groups,
+        "groups_path": f"device-group-timings-{run_id}.json",
+        "groups_sha256": __import__("hashlib").sha256(group_bytes).hexdigest(),
+        "groups_byte_count": len(group_bytes),
+        "power_trace_path": f"power-{run_id}.csv",
         "launch_count": 8, "core_plan": config.core_plan.as_record(),
         "plan_sha256": issue146._plan_hash(plan), "environment": environment,
     }
@@ -164,14 +174,22 @@ def test_issue146_run_one_persists_group_and_trace_bindings(tmp_path: Path) -> N
     plan = issue146.load_plan(PLAN)
     config = issue146.configuration(plan, "C018")
     environment = _environment(config)
-    result = _device_result(plan, config, environment, "smoke", "wrapper-run")
+    result = _device_result(plan, config, environment, "smoke", "wrapper-run", "issue146-smoke-c018-1")
 
     def command_runner(*_args: object, **_kwargs: object):
         import time
 
         time.sleep(0.005)
-        (tmp_path / "runner-result.json").write_text(json.dumps(result), encoding="utf-8")
-        return type("Completed", (), {"returncode": 0, "stdout": "issue146 result -> /out/runner-result.json\n"})()
+        (tmp_path / "runner-result-wrapper-run.json").write_text(json.dumps(result), encoding="utf-8")
+        (tmp_path / result["groups_path"]).write_bytes(
+            (strict_json_dumps(result["group_timings"], indent=2) + "\n").encode("utf-8")
+        )
+        (tmp_path / result["power_trace_path"]).write_text(
+            "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+            "2026-10-20T00:00:00+00:00,250,1350,70\n",
+            encoding="utf-8",
+        )
+        return type("Completed", (), {"returncode": 0, "stdout": "issue146 result -> /out/runner-result-wrapper-run.json\n"})()
 
     record = issue146.run_one(
         plan=plan, configuration=config, mode="smoke", output_dir=tmp_path,
@@ -205,16 +223,27 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
     for run_number, config_id in enumerate(issue146.long_run_order(plan), 1):
         config = issue146.configuration(plan, config_id)
         environment = _environment(config)
-        result = _device_result(plan, config, environment, "long", f"wrapper-{run_number}")
+        result = _device_result(
+            plan, config, environment, "long", f"wrapper-{run_number}",
+            f"issue146-long-{run_number}",
+        )
 
-        def command_runner(*_args: object, result=result, **_kwargs: object):
+        def command_runner(*_args: object, result=result, run_number=run_number, **_kwargs: object):
             import time
 
             nonlocal counter
             time.sleep(0.06)
             counter += 1
-            name = f"runner-result-{counter}.json"
+            name = f"runner-result-wrapper-{run_number}.json"
             (tmp_path / name).write_text(json.dumps(result), encoding="utf-8")
+            (tmp_path / result["groups_path"]).write_bytes(
+                (strict_json_dumps(result["group_timings"], indent=2) + "\n").encode("utf-8")
+            )
+            (tmp_path / result["power_trace_path"]).write_text(
+                "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+                "2026-10-20T00:00:00+00:00,250,1350,70\n",
+                encoding="utf-8",
+            )
             return type("Completed", (), {"returncode": 0, "stdout": f"issue146 result -> /out/{name}\n"})()
 
         record = issue146.run_one(
@@ -244,16 +273,25 @@ def test_issue146_smoke_set_is_analysis_only(tmp_path: Path) -> None:
     for config_id in ("C018", "C081", "C108"):
         config = issue146.configuration(plan, config_id)
         environment = _environment(config)
-        result = _device_result(plan, config, environment, "smoke", f"wrapper-{config_id}")
+        run_id = f"issue146-smoke-{config_id.lower()}"
+        result = _device_result(plan, config, environment, "smoke", f"wrapper-{config_id}", run_id)
 
-        def command_runner(*_args: object, result=result, **_kwargs: object):
+        def command_runner(*_args: object, result=result, config_id=config_id, **_kwargs: object):
             import time
 
             nonlocal counter
             time.sleep(0.005)
             counter += 1
-            name = f"runner-result-smoke-{counter}.json"
+            name = f"runner-result-wrapper-{config_id}.json"
             (tmp_path / name).write_text(json.dumps(result), encoding="utf-8")
+            (tmp_path / result["groups_path"]).write_bytes(
+                (strict_json_dumps(result["group_timings"], indent=2) + "\n").encode("utf-8")
+            )
+            (tmp_path / result["power_trace_path"]).write_text(
+                "timestamp_utc,power_w,aiclk_mhz,asic_temp_c\n"
+                "2026-10-20T00:00:00+00:00,250,1350,70\n",
+                encoding="utf-8",
+            )
             return type("Completed", (), {"returncode": 0, "stdout": f"issue146 result -> /out/{name}\n"})()
 
         record = issue146.run_one(
