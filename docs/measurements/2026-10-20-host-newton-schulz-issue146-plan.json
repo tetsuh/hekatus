@@ -180,12 +180,13 @@
       "purpose": "Confirm that the grouped launch mode runs and records for each core set, that the arbiter columns are populated, and that the gap/busy mixture is gone. Smoke runs are diagnostics, not verdict evidence. 40 s is under the 60 s per-instance approval threshold; the 90 s guard (40 + 40 + 10) is a timeout, not a load duration.",
       "acceptance": [
         "host_visible_idle_fraction over [10 s, 40 s) of the smoke run is at most 0.02",
-        "for C081 and C108: no sample at or after 10 s has current_a below 150 A (the #137 gap mode), and the sample SD of board_power_w over [10 s, 40 s) is below 20 W",
-        "every sample carries all four arbiter words and ENABLED_MAX_ARB reads 0x1d1",
-        "R5 residual: the maximum |aiclk_mhz - AICLK_ARB_MAX frequency| over samples at or after 10 s is reported; if it exceeds 2 MHz in any sample the PLL readback granularity is examined in the pinned clock-control source and the R5 tolerance is revised and re-approved before any long run",
-        "R7 distribution: every sample at or after 10 s reads index 7 or 8 for C081 and C108, and 0x80546 for C018; any other index is examined before any long run",
+        "for C081 and C108: no sample in [10 s, 40 s) has current_a below 150 A (the #137 gap mode), and the sample SD of board_power_w over [10 s, 40 s) is below 20 W",
+        "every sample of the trace, inside or outside the window, carries all four arbiter words and ENABLED_MAX_ARB reads 0x1d1",
+        "R5 residual: the maximum |aiclk_mhz - AICLK_ARB_MAX frequency| over samples in [10 s, 40 s) is reported; if it exceeds 2 MHz in any such sample the PLL readback granularity is examined in the pinned clock-control source and the R5 tolerance is revised and re-approved before any long run",
+        "R7 distribution: every sample in [10 s, 40 s) reads index 7 or 8 for C081 and C108, and 0x80546 for C018; any other index is examined before any long run",
         "If any acceptance item fails, the plan is revised (outer_repetitions, launches_per_sync or the check itself) and re-approved before any long run, as #137 revision 2 did; the failed smoke records are kept as diagnostics."
-      ]
+      ],
+      "sample_window": "All smoke acceptance items that select samples use the window 10 s <= (timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s, the smoke counterpart of the long-run plateau selection. Rows captured after the workload interval (the runner keeps them as diagnostics, as in #137) are outside every item; 'at or after 10 s' in the items below means within this window."
     },
     "approval": "Each run longer than 60 s requires owner approval per instance. A run after a reset requires renewed approval.",
     "expected_wall_time": {
@@ -355,6 +356,11 @@
       "revision": 3,
       "date": "2026-10-20",
       "change": "Before any board run, after owner approval of revision 2, during the board-free harness implementation. The implementer found two under-specified points that would make the classification of the same input implementer-dependent: the 'nominal' predicate of the sample_glitch_rule had no definition, and the precedence between glitch exclusion, the not_evaluable (configuration) rule for an ENABLED_MAX_ARB departure, and R3 was not stated. Added nominal_predicate (built from the existing per-sample criteria and a run-relative 3-SD band around the plateau median; no absolute power band) and evaluation_order (configuration check, glitch flagging, configuration on unflagged samples, then the criteria) to the sample_glitch_rule, and specified how the secondary pooled interval computes r1 across the run boundary. Hypothesis, criteria thresholds, configurations, order, durations and predictions are unchanged."
+    },
+    {
+      "revision": 4,
+      "date": "2026-10-21",
+      "change": "Before any board run. The implementer reported that 'at or after 10 s' in the smoke acceptance items literally includes the post-workload rows the runner keeps as diagnostics, so idle current and AICLK after the load would fail the current, R5 and R7 items. Added sample_window to smoke_runs: every sample-selecting item uses [10 s, 40 s) relative to the first launch, the smoke counterpart of the long-run plateau selection; the arbiter-word presence item keeps every row. Thresholds and all other content unchanged."
     }
   ]
 }
