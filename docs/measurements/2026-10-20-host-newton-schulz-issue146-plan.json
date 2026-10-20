@@ -212,7 +212,7 @@
     "confidence_interval": "m +/- t(0.995, df) * s / sqrt(n_eff): a two-sided 99 percent interval per run.",
     "level_rationale": "Four verdict-bearing regulated runs each test containment; at 99 percent per run the nominal family false-fail rate under the model is at most 4 percent (1 - 0.99^4), against about 19 percent for 95 percent intervals. The remaining model risk (non-AR(1) correlation, non-normality) is stated in limitations.",
     "precision_floor": "A containment or exclusion verdict is read only when the interval half-width is at most 10 W; otherwise the run is not_evaluable (precision). With the #137 C018 sample SD (10-11 W) and n_eff about 50 the half-width is about 4 W; with the #137 mixture SDs (29-50 W) it would exceed the floor, which is the intended outcome if the gaps persist.",
-    "pooled_report": "For each configuration the two runs' samples are also pooled and a 95 percent interval reported; it is a secondary description, not a verdict input.",
+    "pooled_report": "For each configuration the two runs' plateau samples (after glitch exclusion) are concatenated in run order and a 95 percent t interval is reported with the same estimator: n is the total count, r1 is computed from adjacent pairs within the same run only (the pair that straddles the run boundary is omitted from the numerator, the denominator is the pooled sum of squares), n_eff and df follow the per-run formulas. It is a secondary description, not a verdict input.",
     "per_configuration": "Each run is evaluated individually; a criterion passes for a configuration only when it passes in both runs."
   },
   "limits": {
@@ -257,7 +257,9 @@
     "sample_glitch_rule": {
       "flag": "A plateau sample is flagged as a telemetry read glitch when (a) all four arbiter words are zero, or (b) ENABLED_MAX_ARB alone departs from 0x1d1 while AICLK_ARB_MIN, AICLK_ARB_MAX, aiclk_mhz, board_power_w and asic_temp_c are nominal for that run, or (c) board_power_w is zero. A sample whose GDDR words contain a zero word while the other fields are nominal is flagged for R6 only (the #137 run 5 sample 17 case).",
       "handling": "Flagged samples are listed in the analysis with their index and reason, excluded from the criteria they are flagged for, and counted. More than 2 flagged samples in a run make the run not_evaluable (telemetry). The 50-sample minimum applies after exclusion.",
-      "rationale": "Raw zero GDDR words occurred once in about 1,800 #137 words; a zero-slack every-sample rule would let one such read turn a conforming run into H-OTHER. The cap keeps the rule from absorbing a real anomaly."
+      "rationale": "Raw zero GDDR words occurred once in about 1,800 #137 words; a zero-slack every-sample rule would let one such read turn a conforming run into H-OTHER. The cap keeps the rule from absorbing a real anomaly.",
+      "nominal_predicate": "'Nominal for that run' is a defined predicate, not a judgement: a sample is nominal when it satisfies every per-sample criterion of its run type other than R3 (regulated runs: R2, R4, R5, R6, R7; control runs: K1, R4, R6) and its board_power_w lies within 3 sample standard deviations of the median of the run's plateau board_power_w, both statistics computed over all plateau samples including the candidate. For the GDDR clause the predicate is the same with the GDDR half of R6 omitted. No absolute power band is introduced.",
+      "evaluation_order": "Order of evaluation per run: (1) the pre-run snapshot configuration check of the limits block (BOARD_POWER_LIMIT, ENABLED_MAX_ARB): a mismatch makes the run not_evaluable (configuration) before any sample is read. (2) Glitch flagging over the plateau samples with the predicate above; flagged samples are excluded and counted against the cap of 2. (3) Any unflagged plateau sample whose ENABLED_MAX_ARB differs from 0x1d1 makes the run not_evaluable (configuration), as prediction_mismatch_policy states; this step precedes R3, so an ENABLED_MAX_ARB departure never yields H-OTHER. (4) The criteria R1-R7 or K1-K4 on the remaining samples; R3 can then fail only through ENABLED_MIN_ARB, and that failure is H-OTHER. The same sample is therefore classified exactly once: excluded, configuration, or criterion."
     }
   },
   "prediction": {
@@ -348,6 +350,11 @@
       "revision": 2,
       "date": "2026-10-20",
       "change": "Before any harness change or board run. Added telemetry.h to the pinned sources and verified the tag numbers against it and the tt-umd enum; corrected the recon_evidence timing (capture started 0.22-0.33 s after the last launch, not 0.24 s after runner exit) and recorded the arbiter rise seen in those snapshots; added the sample_glitch_rule (flagged samples excluded from per-sample criteria, at most 2 per run); added the R5 residual and R7 index distribution to the smoke acceptance so the 2 MHz tolerance and the index decode are checked on data before any long run; added the post-load arbiter release as an exploratory item. Hypothesis, criteria thresholds, configurations, order, durations and predictions are unchanged."
+    },
+    {
+      "revision": 3,
+      "date": "2026-10-20",
+      "change": "Before any board run, after owner approval of revision 2, during the board-free harness implementation. The implementer found two under-specified points that would make the classification of the same input implementer-dependent: the 'nominal' predicate of the sample_glitch_rule had no definition, and the precedence between glitch exclusion, the not_evaluable (configuration) rule for an ENABLED_MAX_ARB departure, and R3 was not stated. Added nominal_predicate (built from the existing per-sample criteria and a run-relative 3-SD band around the plateau median; no absolute power band) and evaluation_order (configuration check, glitch flagging, configuration on unflagged samples, then the criteria) to the sample_glitch_rule, and specified how the secondary pooled interval computes r1 across the run boundary. Hypothesis, criteria thresholds, configurations, order, durations and predictions are unchanged."
     }
   ]
 }
