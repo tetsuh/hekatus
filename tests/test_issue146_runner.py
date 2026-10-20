@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,8 @@ BDF = "0000:09:00.0"
 
 def test_issue146_plan_order_timing_and_command_are_bound() -> None:
     plan = issue146.load_plan(PLAN)
+    assert plan["revision_history"][-1]["revision"] == 4
+    assert issue146.build_planning_record(plan)["plan_revision"] == 4
     assert issue146.long_run_order(plan) == ["C018", "C108", "C081", "C081", "C108", "C018"]
     assert issue146.run_timing(plan, "long") == {
         "load_seconds": 180.0,
@@ -219,7 +222,9 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
     plan = issue146.load_plan(PLAN)
     records: list[Path] = []
     previous = None
-    counter = 0
+    minimum_plateau_rows = 50
+    outside_window_prefix = 3
+    required_in_run_captures = minimum_plateau_rows + outside_window_prefix + 1
     for run_number, config_id in enumerate(issue146.long_run_order(plan), 1):
         config = issue146.configuration(plan, config_id)
         environment = _environment(config)
@@ -228,12 +233,27 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
             f"issue146-long-{run_number}",
         )
 
-        def command_runner(*_args: object, result=result, run_number=run_number, **_kwargs: object):
-            import time
+        capture = _capture_factory(config_id, "long")
+        ready = threading.Event()
+        in_run_captures = [0]
 
-            nonlocal counter
-            time.sleep(0.06)
-            counter += 1
+        def deterministic_capture(
+            *, stage: str, capture=capture, ready=ready, count=in_run_captures
+        ):
+            value = capture(stage=stage)
+            if stage == "in_run":
+                count[0] += 1
+                if count[0] >= required_in_run_captures:
+                    ready.set()
+            return value
+
+        def command_runner(
+            *_args: object, result=result, run_number=run_number, ready=ready, **_kwargs: object
+        ):
+            if not ready.wait(timeout=5.0):
+                raise AssertionError(
+                    "fake trace sampler did not capture the minimum long-run rows"
+                )
             name = f"runner-result-wrapper-{run_number}.json"
             (tmp_path / name).write_text(json.dumps(result), encoding="utf-8")
             (tmp_path / result["groups_path"]).write_bytes(
@@ -251,7 +271,7 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
             run_id=f"issue146-long-{run_number}",
             options=issue146.Issue146RunOptions(
                 run_number=run_number, approve_long_run=True, command_runner=command_runner,
-                environment=environment, capture_fn=_capture_factory(config_id, "long"),
+                environment=environment, capture_fn=deterministic_capture,
                 trace_path=tmp_path / f"trace-{run_number}.csv", trace_interval_seconds=0.001,
                 preceding_pre_snapshot=previous,
                 cooldown_readings=({"power_w": 50, "asic_temp_c": 60},) if run_number > 1 else (),
@@ -260,6 +280,7 @@ def test_issue146_six_long_records_are_accepted_by_canonical_analyzer(tmp_path: 
         )
         assert record["status"] == "ok"
         records.append(tmp_path / f"run-issue146-long-{run_number}.json")
+        assert in_run_captures[0] >= required_in_run_captures
         previous = _capture_factory(config_id, "long")(stage="pre_run")
     result = analyze_issue146.analyze_runs(records, plan=plan)
     assert result["classification"] == "H-DS"
