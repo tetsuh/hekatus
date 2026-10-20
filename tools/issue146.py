@@ -75,8 +75,10 @@ _DIAGNOSTIC_ABSOLUTE_PATH_RE = re.compile(
     r"(?=[A-Za-z0-9_.~+-])[^\s\"'<>()[\]{};,]*"
 )
 _DIAGNOSTIC_SAFE_PATH_RE = re.compile(
-    r"(?<![A-Za-z0-9_.-])/(?:work|out)(?:/[^\s\"'<>()[\]{};,]*)?"
-    r"|(?<![A-Za-z0-9_.-])/dev/tenstorrent(?:/[^\s\"'<>()[\]{};,]*)?"
+    r"(?<![A-Za-z0-9_.-])/(?:work|out)(?=/|$)"
+    r"(?:/[^\s\"'<>()[\]{};,]*)?"
+    r"|(?<![A-Za-z0-9_.-])/dev/tenstorrent(?=/|$)"
+    r"(?:/[^\s\"'<>()[\]{};,]*)?"
 )
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -333,8 +335,10 @@ def _diagnostic_host_tokens() -> tuple[str, ...]:
     return tuple(sorted(values, key=len, reverse=True))
 
 
-def _redact_diagnostic_hostnames(text: str) -> str:
-    tokens = _diagnostic_host_tokens()
+def _redact_diagnostic_hostnames(
+    text: str, *, host_tokens: tuple[str, ...] | None = None
+) -> str:
+    tokens = _diagnostic_host_tokens() if host_tokens is None else host_tokens
     if not tokens:
         return text
     pattern = re.compile(
@@ -346,7 +350,12 @@ def _redact_diagnostic_hostnames(text: str) -> str:
     return pattern.sub("<redacted>", text)
 
 
-def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
+def _redact_diagnostic_text(
+    value: Any,
+    *,
+    output_dir: Path,
+    host_tokens: tuple[str, ...] | None = None,
+) -> str:
     if value is None:
         text = ""
     elif isinstance(value, bytes):
@@ -355,11 +364,15 @@ def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
         text = value
     else:
         text = str(value)
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
     protected_urls: list[str] = []
     protected_safe_paths: list[str] = []
 
     def protect_url(match: re.Match[str]) -> str:
-        protected_urls.append(_redact_diagnostic_hostnames(match.group(0)))
+        protected_urls.append(
+            _redact_diagnostic_hostnames(match.group(0), host_tokens=host_tokens)
+        )
         return f"\\x00issue146-url-{len(protected_urls) - 1}\\x00"
 
     def protect_safe_path(match: re.Match[str]) -> str:
@@ -376,28 +389,44 @@ def _redact_diagnostic_text(value: Any, *, output_dir: Path) -> str:
         )
         text = pattern.sub("<redacted-path>", text)
     text = _DIAGNOSTIC_ABSOLUTE_PATH_RE.sub("<redacted-path>", text)
-    text = _redact_diagnostic_hostnames(text)
+    text = _redact_diagnostic_hostnames(text, host_tokens=host_tokens)
     for index, url in enumerate(protected_urls):
         text = text.replace(f"\\x00issue146-url-{index}\\x00", url)
     for index, path in enumerate(protected_safe_paths):
         text = text.replace(
             f"\\x00issue146-safe-path-{index}\\x00",
-            _redact_diagnostic_hostnames(path),
+            _redact_diagnostic_hostnames(path, host_tokens=host_tokens),
         )
     return text
 
 
-def _redact_diagnostic_value(value: Any, *, output_dir: Path) -> Any:
+def _redact_diagnostic_value(
+    value: Any,
+    *,
+    output_dir: Path,
+    host_tokens: tuple[str, ...] | None = None,
+) -> Any:
+    if host_tokens is None:
+        host_tokens = _diagnostic_host_tokens()
     safe = _safe_json_value(value)
     if isinstance(safe, Mapping):
         return {
-            str(key): _redact_diagnostic_value(child, output_dir=output_dir)
+            str(key): _redact_diagnostic_value(
+                child, output_dir=output_dir, host_tokens=host_tokens
+            )
             for key, child in safe.items()
         }
     if isinstance(safe, list):
-        return [_redact_diagnostic_value(child, output_dir=output_dir) for child in safe]
+        return [
+            _redact_diagnostic_value(
+                child, output_dir=output_dir, host_tokens=host_tokens
+            )
+            for child in safe
+        ]
     if isinstance(safe, str):
-        return _redact_diagnostic_text(safe, output_dir=output_dir)
+        return _redact_diagnostic_text(
+            safe, output_dir=output_dir, host_tokens=host_tokens
+        )
     return safe
 
 
@@ -414,8 +443,13 @@ def _diagnostic_tail(text: str) -> list[str]:
 def _persist_wrapper_diagnostics(
     prepared: _PreparedRun, state: _ExecutionState
 ) -> dict[str, Any]:
-    stdout = _redact_diagnostic_text(state.stdout, output_dir=prepared.output_dir)
-    stderr = _redact_diagnostic_text(state.stderr, output_dir=prepared.output_dir)
+    host_tokens = _diagnostic_host_tokens()
+    stdout = _redact_diagnostic_text(
+        state.stdout, output_dir=prepared.output_dir, host_tokens=host_tokens
+    )
+    stderr = _redact_diagnostic_text(
+        state.stderr, output_dir=prepared.output_dir, host_tokens=host_tokens
+    )
     stdout_bytes = stdout.encode("utf-8")
     stderr_bytes = stderr.encode("utf-8")
     _write_bytes_artifact(

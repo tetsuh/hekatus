@@ -286,6 +286,40 @@ def test_issue146_wrapper_diagnostics_persist_on_success_and_redact_paths(
     assert str(tmp_path) not in json.dumps(record)
 
 
+def test_issue146_diagnostic_redaction_rejects_safe_prefix_lookalikes() -> None:
+    text = "/outbox/private/file /worktree/private/file /dev/tenstorrent-extra/private/file"
+    redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
+    for path in (
+        "/outbox/private/file",
+        "/worktree/private/file",
+        "/dev/tenstorrent-extra/private/file",
+    ):
+        assert path not in redacted
+
+
+def test_issue146_diagnostic_value_resolves_host_tokens_once_per_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"hostname": 0, "fqdn": 0}
+
+    def fake_hostname() -> str:
+        calls["hostname"] += 1
+        return "synthetic-host"
+
+    def fake_fqdn() -> str:
+        calls["fqdn"] += 1
+        return "synthetic-host.example"
+
+    monkeypatch.setattr(issue146.socket, "gethostname", fake_hostname)
+    monkeypatch.setattr(issue146.socket, "getfqdn", fake_fqdn)
+    redacted = issue146._redact_diagnostic_value(
+        {"one": "synthetic-host", "two": ["synthetic-host.example", "synthetic-host"]},
+        output_dir=Path("/"),
+    )
+    assert redacted == {"one": "<redacted>", "two": ["<redacted>", "<redacted>"]}
+    assert calls == {"hostname": 1, "fqdn": 1}
+
+
 def test_issue146_diagnostic_redaction_root_prefix_keeps_safe_text() -> None:
     prefixes = issue146._diagnostic_path_prefixes(Path("/"))
     assert "" not in prefixes
