@@ -21,6 +21,15 @@ def test_issue146_plan_pin_rejects_mutated_owner_bytes(tmp_path: Path) -> None:
         issue146.load_plan(mutated)
 
 
+def test_issue146_plan_pin_rejects_revision_three_history(tmp_path: Path) -> None:
+    payload = json.loads(PLAN.read_text(encoding="utf-8"))
+    payload["revision_history"][-1]["revision"] = 3
+    revision_three = tmp_path / "revision-three-plan.json"
+    revision_three.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(issue146.Issue146Error, match="immutable owner"):
+        issue146.load_plan(revision_three)
+
+
 def test_issue146_bad_pre_snapshot_words_fail_before_command(tmp_path: Path) -> None:
     plan = issue146.load_plan(PLAN)
     config = issue146.configuration(plan, "C018")
@@ -301,3 +310,10 @@ def test_issue146_main_rejects_invalid_preceding_snapshot_before_run_one(
 def test_issue146_main_plan_mode_remains_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(issue146, "build_planning_record", lambda _plan: {"status": "planned"})
     assert issue146.main(["--plan", str(PLAN), "--mode", "plan"]) == 0
+
+
+def test_issue146_plan_cli_accepts_revision_four_without_board(capsys: pytest.CaptureFixture[str]) -> None:
+    assert issue146.main(["--plan", str(PLAN), "--mode", "plan"]) == 0
+    planning = json.loads(capsys.readouterr().out)
+    assert planning["plan_revision"] == 4
+    assert planning["plan_sha256"] == issue146.AUTHORITATIVE_PLAN_CANONICAL_SHA256

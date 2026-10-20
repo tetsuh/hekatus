@@ -72,10 +72,10 @@ is meaningless apart from it.
 Naming: `YYYY-MM-DD-<board>-<what-was-measured>.json`, with any companion
 trace beside it under the same stem.
 
-## Issue #146 grouped Doppler-slow conformance runner (revision 3)
+## Issue #146 grouped Doppler-slow conformance runner (revision 4)
 
 The Issue #146 planning command is board-free and consumes the immutable
-revision-3 plan without opening a device:
+revision-4 plan without opening a device:
 
 ```bash
 uv run python tools/issue146.py --mode plan
@@ -133,6 +133,11 @@ uv run python tools/analyze_issue146.py --smoke \
   --output out/issue146/smoke-analysis.json
 ```
 
+Smoke sample-selecting checks use strict points in `10 s <=
+(timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s` for current,
+board-power sample SD, R5 residual, and R7 distribution. Rows captured after
+that workload window remain in the raw trace as diagnostics. Arbiter-word
+presence and `ENABLED_MAX_ARB == 0x1d1` are checked on every captured row.
 Smoke output is explicitly diagnostic and never contributes verdict evidence.
 Failed, timed-out, missing, or identity-mismatched device artifacts are kept
 as diagnostics rather than converted into accepted measurements. Board-free

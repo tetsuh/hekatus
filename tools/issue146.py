@@ -44,6 +44,7 @@ ISSUE146_SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 ISSUE146_GROUPS_SCHEMA = "issue146-group-timings-v1"
 ISSUE146_GROUP_TIMINGS_SCHEMA = ISSUE146_GROUPS_SCHEMA
 ISSUE146_LOAD_MODE = "host-duration-bounded"
+CURRENT_PLAN_REVISION = analyze_issue146.CURRENT_PLAN_REVISION
 ISSUE146_DEVICE_RUNNER = "tools/issue146_device.py"
 WRAPPER_SCRIPT = "enodia/tt/bench/run_in_container.sh"
 DEVICE_NODE = "/dev/tenstorrent/1"
@@ -185,7 +186,7 @@ def _canonical_plan_hash(plan: Mapping[str, Any]) -> str:
 def _plan_hash(plan: Mapping[str, Any]) -> str:
     digest = _canonical_plan_hash(plan)
     if digest != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise Issue146Error("Issue #146 plan is not the immutable owner revision 3")
+        raise Issue146Error("Issue #146 plan is not the immutable owner revision 4")
     return digest
 
 
@@ -270,7 +271,7 @@ def _load_plan_path(path: Path) -> Path:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
-    """Load the exact immutable owner revision-3 plan without changing bytes."""
+    """Load the exact immutable owner revision-4 plan without changing bytes."""
     source = _load_plan_path(Path(path))
     try:
         raw = source.read_bytes()
@@ -292,9 +293,9 @@ def load_plan(path: Path = DEFAULT_PLAN_PATH) -> dict[str, Any]:
         not isinstance(history, list)
         or not history
         or not isinstance(history[-1], Mapping)
-        or history[-1].get("revision") != 3
+        or history[-1].get("revision") != CURRENT_PLAN_REVISION
     ):
-        raise Issue146Error("Issue #146 plan revision 3 is required")
+        raise Issue146Error(f"Issue #146 plan revision {CURRENT_PLAN_REVISION} is required")
     execution = payload.get("load_execution")
     if not isinstance(execution, Mapping) or execution.get("mode") != ISSUE146_LOAD_MODE + ", grouped launches":
         raise Issue146Error("Issue #146 grouped execution mode is not selected")
@@ -367,7 +368,7 @@ def long_run_order(plan: Mapping[str, Any]) -> list[str]:
         raise Issue146Error("Issue #146 long-run order is missing")
     expected = ["C018", "C108", "C081", "C081", "C108", "C018"]
     if order != expected:
-        raise Issue146Error("Issue #146 long-run order is not the owner revision-3 order")
+        raise Issue146Error("Issue #146 long-run order is not the owner revision-4 order")
     return list(order)
 
 
@@ -413,7 +414,7 @@ def run_timing(plan: Mapping[str, Any], mode: str) -> dict[str, Any]:
         raise Issue146Error(f"Issue #146 {mode} timing is invalid") from exc
     expected = (40.0, 90.0) if mode == "smoke" else (180.0, 230.0)
     if (target, guard) != expected:
-        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 3")
+        raise Issue146Error(f"Issue #146 {mode} timing does not match revision 4")
     if guard < target + 40.0 + DEFAULT_OVERRUN_LIMIT_SECONDS:
         raise Issue146Error("Issue #146 guard does not cover runner margin and overrun")
     return {"load_seconds": target, "guard_seconds": guard, "diagnostic_only": diagnostic}
@@ -821,7 +822,7 @@ def _cooldown_settings(plan: Mapping[str, Any]) -> tuple[float, float, float]:
     if (cap, power_tolerance, temperature_tolerance) != (
         COOLDOWN_CAP_SECONDS, COOLDOWN_POWER_TOLERANCE_W, COOLDOWN_TEMPERATURE_TOLERANCE_C
     ):
-        raise Issue146Error("Issue #146 cooldown settings do not match revision 3")
+        raise Issue146Error("Issue #146 cooldown settings do not match revision 4")
     return cap, power_tolerance, temperature_tolerance
 
 
@@ -1827,6 +1828,7 @@ def build_planning_record(plan: Mapping[str, Any]) -> dict[str, Any]:
         "record_revision": 1,
         "issue": "#146",
         "board_run": False,
+        "plan_revision": CURRENT_PLAN_REVISION,
         "plan_sha256": _plan_hash(plan),
         "long_run_order": long_run_order(plan),
         "timing": {"smoke": run_timing(plan, "smoke"), "long": run_timing(plan, "long")},
@@ -1897,6 +1899,7 @@ __all__ = [
     "BUS_ID",
     "CONTAINER_VISIBLE_DEVICE_ID",
     "COOLDOWN_CAP_SECONDS",
+    "CURRENT_PLAN_REVISION",
     "DEVICE_ID",
     "DEVICE_NODE",
     "HOST_DEVICE_ID",

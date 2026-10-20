@@ -53,9 +53,10 @@ RECORD_SCHEMA = "issue146-measurement-v1"
 GROUPS_SCHEMA = "issue146-group-timings-v1"
 SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 LOAD_MODE = "host-duration-bounded"
+CURRENT_PLAN_REVISION = 4
 DEFAULT_PLAN_PATH = Path("docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json")
-AUTHORITATIVE_PLAN_RAW_SHA256 = "84ea24fc4533237f82a60cf7936c7f960f6cbc6449dcf427530eab34bad840b8"
-AUTHORITATIVE_PLAN_CANONICAL_SHA256 = "b48e1a8dfdeb8ab3bde3208ae68f85371e52108413d6d14f3c8629ad58509d4e"
+AUTHORITATIVE_PLAN_RAW_SHA256 = "420b35d4c76dc7cd264b52e6f4b8fd4c1784b919364b7feef6a0e07b0a766b9b"
+AUTHORITATIVE_PLAN_CANONICAL_SHA256 = "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a"
 ISSUE146_RECORD_SCHEMA = RECORD_SCHEMA
 ISSUE146_SNAPSHOT_SCHEMA = SNAPSHOT_SCHEMA
 PLATEAU_START_SECONDS = 60.0
@@ -70,7 +71,6 @@ TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 PLAN_PROVENANCE = power_trace_issue146.ISSUE146_UNIT_PROVENANCE
 SMOKE_WINDOW_LABEL = "[10,40)"
-SMOKE_FROM_START_LABEL = "[10,∞)"
 REGULATED_SMOKE_CRITERION = "regulated_current_and_power_[10,40)"
 AMBIGUOUS_ARBITER_ALTERNATIVES = "ambiguous arbiter alternatives"
 IMPOSSIBLE_MASK_INDEX = "impossible mask index"
@@ -291,7 +291,7 @@ def canonical_groups_bytes(payload: Mapping[str, Any]) -> bytes:
 def _validate_plan_header(plan: Mapping[str, Any]) -> None:
     _verify_authoritative_plan_file()
     if plan_sha256(plan) != AUTHORITATIVE_PLAN_CANONICAL_SHA256:
-        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-3 plan")
+        raise AnalysisError("supplied Issue #146 plan is not the immutable revision-4 plan")
     if plan.get("record_schema") != PLAN_SCHEMA:
         raise AnalysisError("unsupported Issue #146 plan schema")
     if plan.get("status") != "planned" or plan.get("board_run") is not False:
@@ -301,9 +301,9 @@ def _validate_plan_header(plan: Mapping[str, Any]) -> None:
         not isinstance(history, list)
         or not history
         or not isinstance(history[-1], Mapping)
-        or history[-1].get("revision") != 3
+        or history[-1].get("revision") != CURRENT_PLAN_REVISION
     ):
-        raise AnalysisError("Issue #146 plan revision 3 is required")
+        raise AnalysisError(f"Issue #146 plan revision {CURRENT_PLAN_REVISION} is required")
 
 
 def _plan_configurations(plan: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
@@ -359,7 +359,7 @@ def _plan_plateau(plan: Mapping[str, Any]) -> tuple[float, float, int]:
     end = finite(plateau.get("end_seconds"), field="plateau end")
     minimum = integer(plateau.get("minimum_samples"), field="minimum samples")
     if (start, end, minimum) != (60.0, 180.0, 50):
-        raise AnalysisError("Issue #146 plateau contract is not revision 3")
+        raise AnalysisError("Issue #146 plateau contract is not revision 4")
     return start, end, minimum
 
 
@@ -411,6 +411,14 @@ def _plan_timing(
     guard = finite(scope.get("run_guard_seconds"), field="long guard")
     smoke_target = finite(scope_smoke.get("workload_seconds"), field="smoke target")
     smoke_guard = finite(scope_smoke.get("guard_seconds"), field="smoke guard")
+    sample_window = scope_smoke.get("sample_window")
+    if (
+        not isinstance(sample_window, str)
+        or "10 s <= (timestamp_monotonic_ns - first_launch_start_monotonic_ns) < 40 s"
+        not in sample_window
+        or "outside every item" not in sample_window
+    ):
+        raise AnalysisError("Issue #146 smoke sample window contract is not revision 4")
     execution = plan.get("load_execution")
     if (
         not isinstance(execution, Mapping)
@@ -424,7 +432,7 @@ def _plan_timing(
     if outer_repetitions <= 0 or launches_per_sync <= 0:
         raise AnalysisError("Issue #146 grouped load settings must be positive")
     if (target, guard, smoke_target, smoke_guard, overrun) != (180.0, 230.0, 40.0, 90.0, 10.0):
-        raise AnalysisError("Issue #146 timing contract is not revision 3")
+        raise AnalysisError("Issue #146 timing contract is not revision 4")
     return target, guard, smoke_target, smoke_guard, overrun, outer_repetitions, launches_per_sync
 
 
@@ -512,7 +520,7 @@ def _plan_spec(plan: Mapping[str, Any]) -> _PlanSpec:
 
 
 def load_plan(path: Path = DEFAULT_PLAN_PATH) -> Mapping[str, Any]:
-    """Load the immutable revision-3 plan without changing its bytes."""
+    """Load the immutable revision-4 plan without changing its bytes."""
     payload, raw = _read_json(Path(path), purpose="Issue #146 plan")
     if hashlib.sha256(raw).hexdigest() != AUTHORITATIVE_PLAN_RAW_SHA256:
         raise AnalysisError("Issue #146 plan bytes are not the immutable owner revision")
@@ -2640,7 +2648,7 @@ def _pooled(reports: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
     return {
         "record_schema": spec.plan.get("record_schema"),
-        "revision": 3,
+        "revision": CURRENT_PLAN_REVISION,
         "sha256": spec.plan_sha256,
         "source": DEFAULT_PLAN_PATH.name,
         "run_order": list(spec.order),
@@ -2656,6 +2664,8 @@ def _analysis_plan(spec: _PlanSpec) -> dict[str, Any]:
             "smoke": {
                 "target_seconds": spec.smoke_target_seconds,
                 "guard_seconds": spec.smoke_guard_seconds,
+                "sample_window": SMOKE_WINDOW_LABEL,
+                "selection": "strict points relative to first_launch_start_monotonic_ns; no held point or interpolation",
             },
             "overrun_limit_seconds": spec.overrun_limit_seconds,
             "idle_fraction_limit": spec.idle_fraction_limit,
@@ -2807,21 +2817,6 @@ def _smoke_rows(report: dict[str, Any], *, first: int) -> list[Mapping[str, Any]
     )
 
 
-def _smoke_rows_at_or_after(report: dict[str, Any], *, first: int) -> list[Mapping[str, Any]]:
-    threshold = first + round(SMOKE_START_SECONDS * 1_000_000_000.0)
-    rows = report.get("trace_rows", [])
-    if not isinstance(rows, list):
-        return []
-    return [
-        row
-        for row in rows
-        if isinstance(row, Mapping)
-        and isinstance(row.get("timestamp_monotonic_ns"), int)
-        and not isinstance(row.get("timestamp_monotonic_ns"), bool)
-        and row["timestamp_monotonic_ns"] >= threshold
-    ]
-
-
 def _numeric_smoke_values(
     rows: Sequence[Mapping[str, Any]], field: str
 ) -> tuple[list[float] | None, str | None]:
@@ -2874,8 +2869,8 @@ def _unknown_smoke_acceptance(reason: str) -> list[dict[str, Any]]:
         _criterion(
             REGULATED_SMOKE_CRITERION,
             None,
-            window=SMOKE_FROM_START_LABEL,
-            current_window=SMOKE_FROM_START_LABEL,
+            window=SMOKE_WINDOW_LABEL,
+            current_window=SMOKE_WINDOW_LABEL,
             power_sd_window=SMOKE_WINDOW_LABEL,
             reason=reason,
         ),
@@ -2883,13 +2878,13 @@ def _unknown_smoke_acceptance(reason: str) -> list[dict[str, Any]]:
         _criterion(
             f"R5_residual_{SMOKE_WINDOW_LABEL}",
             None,
-            window=SMOKE_FROM_START_LABEL,
+            window=SMOKE_WINDOW_LABEL,
             reason=reason,
         ),
         _criterion(
             f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
             None,
-            window=SMOKE_FROM_START_LABEL,
+            window=SMOKE_WINDOW_LABEL,
             reason=reason,
         ),
         _criterion(
@@ -2901,27 +2896,25 @@ def _unknown_smoke_acceptance(reason: str) -> list[dict[str, Any]]:
 
 
 def _regulated_smoke_criterion(
-    rows_at_or_after_10: Sequence[Mapping[str, Any]],
-    rows_10_40: Sequence[Mapping[str, Any]],
-    configuration_id: str,
+    rows_10_40: Sequence[Mapping[str, Any]], configuration_id: str
 ) -> dict[str, Any]:
     if configuration_id not in {"C081", "C108"}:
         return _criterion(
             REGULATED_SMOKE_CRITERION,
             True,
             status="not_applicable",
-            window=SMOKE_FROM_START_LABEL,
-            current_window=SMOKE_FROM_START_LABEL,
+            window=SMOKE_WINDOW_LABEL,
+            current_window=SMOKE_WINDOW_LABEL,
             power_sd_window=SMOKE_WINDOW_LABEL,
         )
-    currents, current_error = _numeric_smoke_values(rows_at_or_after_10, "current_a")
+    currents, current_error = _numeric_smoke_values(rows_10_40, "current_a")
     powers, power_error = _numeric_smoke_values(rows_10_40, "board_power_w")
     if current_error or power_error:
         return _criterion(
             REGULATED_SMOKE_CRITERION,
             None,
-            window=SMOKE_FROM_START_LABEL,
-            current_window=SMOKE_FROM_START_LABEL,
+            window=SMOKE_WINDOW_LABEL,
+            current_window=SMOKE_WINDOW_LABEL,
             power_sd_window=SMOKE_WINDOW_LABEL,
             reason=current_error or power_error,
         )
@@ -2931,8 +2924,8 @@ def _regulated_smoke_criterion(
     return _criterion(
         REGULATED_SMOKE_CRITERION,
         current_pass,
-        window=SMOKE_FROM_START_LABEL,
-        current_window=SMOKE_FROM_START_LABEL,
+        window=SMOKE_WINDOW_LABEL,
+        current_window=SMOKE_WINDOW_LABEL,
         power_sd_window=SMOKE_WINDOW_LABEL,
         minimum_current_a=min(currents),
         current_sample_count=len(currents),
@@ -2967,11 +2960,11 @@ def _smoke_arbiter_criterion(trace_rows: Any) -> dict[str, Any]:
 
 
 def _smoke_residual_criterion(
-    rows_at_or_after_10: Sequence[Mapping[str, Any]],
+    rows_10_40: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     residuals: list[float] = []
     residual_error: str | None = None
-    for index, row in enumerate(rows_at_or_after_10):
+    for index, row in enumerate(rows_10_40):
         if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
             residual_error = f"arbiter words are missing at row {index}"
             break
@@ -2987,23 +2980,23 @@ def _smoke_residual_criterion(
             residual_error = f"R5 inputs are malformed at row {index}: {exc}"
             break
     result = None if residual_error or not residuals else max(residuals) <= 2.0
-    reason = residual_error or ("no samples at or after 10 s" if not residuals else None)
+    reason = residual_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not residuals else None)
     return _criterion(
         f"R5_residual_{SMOKE_WINDOW_LABEL}",
         result,
-        window=SMOKE_FROM_START_LABEL,
+        window=SMOKE_WINDOW_LABEL,
         max_residual_mhz=max(residuals) if residuals else None,
         reason=reason,
     )
 
 
 def _smoke_index_criterion(
-    rows_at_or_after_10: Sequence[Mapping[str, Any]], configuration_id: str
+    rows_10_40: Sequence[Mapping[str, Any]], configuration_id: str
 ) -> dict[str, Any]:
     indices: list[int] = []
     index_error: str | None = None
     decoded_rows: list[dict[str, Any]] = []
-    for index, row in enumerate(rows_at_or_after_10):
+    for index, row in enumerate(rows_10_40):
         if not isinstance(row, Mapping) or not all(field in row for field in ARBITER_FIELDS):
             index_error = f"arbiter words are missing at row {index}"
             break
@@ -3021,11 +3014,11 @@ def _smoke_index_criterion(
         )
     else:
         index_pass = all(index in {7, 8} for index in indices)
-    reason = index_error or ("no samples at or after 10 s" if not indices else None)
+    reason = index_error or (f"no samples in {SMOKE_WINDOW_LABEL}" if not indices else None)
     return _criterion(
         f"R7_index_distribution_{SMOKE_WINDOW_LABEL}",
         index_pass,
-        window=SMOKE_FROM_START_LABEL,
+        window=SMOKE_WINDOW_LABEL,
         indices=indices,
         reason=reason,
     )
@@ -3044,19 +3037,16 @@ def _smoke_failure_criterion(acceptance: Sequence[Mapping[str, Any]]) -> dict[st
 def _smoke_acceptance(report: dict[str, Any], spec: _PlanSpec) -> list[dict[str, Any]]:
     first = report.get("duration", {}).get("first_launch_start_monotonic_ns")
     rows_10_40 = _smoke_rows(report, first=first) if isinstance(first, int) else []
-    rows_at_or_after_10 = (
-        _smoke_rows_at_or_after(report, first=first) if isinstance(first, int) else []
-    )
     acceptance = [_smoke_idle_criterion(report, spec)]
     configuration_id = report.get("configuration_id")
     if configuration_id not in spec.configurations:
         return _unknown_smoke_acceptance("unknown smoke configuration")
     acceptance.extend(
         [
-            _regulated_smoke_criterion(rows_at_or_after_10, rows_10_40, configuration_id),
+            _regulated_smoke_criterion(rows_10_40, configuration_id),
             _smoke_arbiter_criterion(report.get("trace_rows", [])),
-            _smoke_residual_criterion(rows_at_or_after_10),
-            _smoke_index_criterion(rows_at_or_after_10, configuration_id),
+            _smoke_residual_criterion(rows_10_40),
+            _smoke_index_criterion(rows_10_40, configuration_id),
         ]
     )
     acceptance.append(_smoke_failure_criterion(acceptance))
@@ -3125,6 +3115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "ANALYSIS_SCHEMA",
     "ARBITER_FIELDS",
+    "CURRENT_PLAN_REVISION",
     "DEFAULT_PLAN_PATH",
     "GROUPS_SCHEMA",
     "ISSUE146_RECORD_SCHEMA",

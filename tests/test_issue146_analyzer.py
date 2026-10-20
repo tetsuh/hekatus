@@ -336,9 +336,16 @@ def test_issue146_smoke_acceptance_reports_each_item_without_verdict() -> None:
     assert result["affects_long_verdict"] is False
 
 
-def test_issue146_plan_bytes_are_unchanged() -> None:
-    digest = hashlib.sha256(PLAN_PATH.read_bytes()).hexdigest()
-    assert digest == "84ea24fc4533237f82a60cf7936c7f960f6cbc6449dcf427530eab34bad840b8"
+def test_issue146_plan_bytes_and_canonical_digest_are_revision_four() -> None:
+    raw = PLAN_PATH.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == (
+        "420b35d4c76dc7cd264b52e6f4b8fd4c1784b919364b7feef6a0e07b0a766b9b"
+    )
+    plan = _plan()
+    assert plan["revision_history"][-1]["revision"] == 4
+    assert analyzer.plan_sha256(plan) == (
+        "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a"
+    )
 
 
 def test_issue146_plan_digest_rejects_mutation_with_rebound_record_hash() -> None:
@@ -350,6 +357,15 @@ def test_issue146_plan_digest_rejects_mutation_with_rebound_record_hash() -> Non
     records[0]["plan_sha256"] = analyzer.plan_sha256(plan)
     with pytest.raises(analyzer.AnalysisError, match="immutable|canonical|plan"):
         analyzer.analyze_runs(records, plan=plan)
+
+
+def test_issue146_analyzer_rejects_revision_three_history(tmp_path: Path) -> None:
+    plan = _plan()
+    plan["revision_history"][-1]["revision"] = 3
+    path = tmp_path / "revision-three-plan.json"
+    path.write_text(json.dumps(plan), encoding="utf-8")
+    with pytest.raises(analyzer.AnalysisError, match="immutable|canonical|plan"):
+        analyzer.load_plan(path)
 
 
 def test_issue146_pre_configuration_mismatch_does_not_load_trace(monkeypatch) -> None:

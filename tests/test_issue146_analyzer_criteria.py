@@ -224,7 +224,7 @@ def test_issue146_smoke_acceptance_each_failure_is_reported(failure: str) -> Non
         assert acceptance[expected]["pass"] is False
 
 
-def test_issue146_smoke_current_residual_and_index_include_post_40_rows() -> None:
+def test_issue146_smoke_post_40_diagnostic_rows_are_excluded_from_sample_checks() -> None:
     record = _record("C081", 1)
     record["run"]["mode"] = "smoke"
     record["run"]["observed_duration_seconds"] = 40.0
@@ -232,16 +232,80 @@ def test_issue146_smoke_current_residual_and_index_include_post_40_rows() -> Non
     assert isinstance(rows, list)
     post_40 = next(row for row in rows if row["timestamp_monotonic_ns"] == 60_000_000_000)
     post_40["current_a"] = 100.0
+    post_40["board_power_w"] = 0.0
     post_40["aiclk_mhz"] = 1205.0
     post_40["aiclk_arb_max_raw"] = "0x904b0"
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    acceptance = {item["name"]: item for item in result["acceptance"]}
+    assert acceptance["regulated_current_and_power_[10,40)"]["pass"] is True
+    assert acceptance["R5_residual_[10,40)"]["pass"] is True
+    assert acceptance["R7_index_distribution_[10,40)"]["pass"] is True
+    assert acceptance["regulated_current_and_power_[10,40)"]["power_sd_window"] == "[10,40)"
+    assert acceptance["regulated_current_and_power_[10,40)"]["current_window"] == "[10,40)"
+    assert acceptance["R5_residual_[10,40)"]["window"] == "[10,40)"
+    assert acceptance["R7_index_distribution_[10,40)"]["window"] == "[10,40)"
+    assert len(result["runs"][0]["run"]["trace_rows"]) == len(rows)
+
+    in_window = next(row for row in rows if row["timestamp_monotonic_ns"] == 30_000_000_000)
+    in_window["current_a"] = 100.0
+    in_window["aiclk_mhz"] = 1205.0
+    in_window["aiclk_arb_max_raw"] = "0x904b0"
     _rehash(record)
     result = analyzer.analyze_smoke([record], plan=_plan())
     acceptance = {item["name"]: item for item in result["acceptance"]}
     assert acceptance["regulated_current_and_power_[10,40)"]["pass"] is False
     assert acceptance["R5_residual_[10,40)"]["pass"] is False
     assert acceptance["R7_index_distribution_[10,40)"]["pass"] is False
-    assert acceptance["regulated_current_and_power_[10,40)"]["power_sd_window"] == "[10,40)"
-    assert acceptance["R5_residual_[10,40)"]["window"] == "[10,∞)"
+
+
+def test_issue146_smoke_window_is_exactly_ten_inclusive_and_forty_exclusive() -> None:
+    report = {
+        "trace_rows": [
+            {"timestamp_monotonic_ns": 9_000_000_000},
+            {"timestamp_monotonic_ns": 10_000_000_000},
+            {"timestamp_monotonic_ns": 39_999_999_999},
+            {"timestamp_monotonic_ns": 40_000_000_000},
+        ]
+    }
+    selected = analyzer._smoke_rows(report, first=0)
+    assert [row["timestamp_monotonic_ns"] for row in selected] == [
+        10_000_000_000,
+        39_999_999_999,
+    ]
+
+
+@pytest.mark.parametrize("outside_field", analyzer.ARBITER_FIELDS)
+def test_issue146_smoke_arbiter_words_cover_outside_window_rows(
+    outside_field: str,
+) -> None:
+    record = _record("C081", 1)
+    record["run"]["mode"] = "smoke"
+    record["run"]["observed_duration_seconds"] = 40.0
+    rows = record["trace"]["samples"]
+    assert isinstance(rows, list)
+    post_40 = next(row for row in rows if row["timestamp_monotonic_ns"] == 60_000_000_000)
+    post_40.pop(outside_field)
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    acceptance = {item["name"]: item for item in result["acceptance"]}
+    words = acceptance["arbiter_words_and_enabled_max"]
+    assert words["pass"] is not True
+    assert words["status"] == "not_evaluable"
+
+
+def test_issue146_smoke_enabled_max_mask_covers_outside_window_rows() -> None:
+    record = _record("C081", 1)
+    record["run"]["mode"] = "smoke"
+    record["run"]["observed_duration_seconds"] = 40.0
+    rows = record["trace"]["samples"]
+    assert isinstance(rows, list)
+    post_40 = next(row for row in rows if row["timestamp_monotonic_ns"] == 60_000_000_000)
+    post_40["enabled_max_arb_raw"] = "0x0"
+    _rehash(record)
+    result = analyzer.analyze_smoke([record], plan=_plan())
+    acceptance = {item["name"]: item for item in result["acceptance"]}
+    assert acceptance["arbiter_words_and_enabled_max"]["pass"] is False
 
 
 def test_issue146_smoke_unknown_configuration_is_not_evaluable() -> None:
