@@ -385,7 +385,7 @@ def _redact_diagnostic_text(
         pattern = re.compile(
             r"(?<![A-Za-z0-9_.-])(?<!/)"
             + re.escape(prefix)
-            + r"(?:/[^\s\"'<>()[\]{};,]*)?"
+            + r"(?=/|$)(?:/[^\s\"'<>()[\]{};,]*)?"
         )
         text = pattern.sub("<redacted-path>", text)
     text = _DIAGNOSTIC_ABSOLUTE_PATH_RE.sub("<redacted-path>", text)

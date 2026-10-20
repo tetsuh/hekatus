@@ -297,6 +297,17 @@ def test_issue146_diagnostic_redaction_rejects_safe_prefix_lookalikes() -> None:
         assert path not in redacted
 
 
+def test_issue146_diagnostic_prefix_lookalikes_redact_whole_path() -> None:
+    repository_root = issue146._REPOSITORY_ROOT.as_posix()
+    text = (
+        "/homeowner/private/file "
+        f"{repository_root}owner/private/file"
+    )
+    redacted = issue146._redact_diagnostic_text(text, output_dir=Path("/"))
+    assert "/homeowner/private/file" not in redacted
+    assert "owner/private/file" not in redacted
+
+
 def test_issue146_diagnostic_value_resolves_host_tokens_once_per_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
