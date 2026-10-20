@@ -18,6 +18,7 @@ EXPECTED_ENABLED_MIN = 0x3
 EXPECTED_ENABLED_MAX = 0x1D1
 EXPECTED_BUSY_MIN = 0x10546
 EXPECTED_CONTROL_MAX = 0x80546
+_CONFIDENCE_QUANTILES = {0.99: 0.995, 0.95: 0.975}
 
 
 class Issue146AnalysisError(ValueError):
@@ -53,7 +54,7 @@ def integer(value: Any, *, field: str) -> int:
 def _correlation(values: Sequence[float], mean: float) -> float:
     centered = [value - mean for value in values]
     denominator = math.fsum(value * value for value in centered)
-    if denominator == 0.0:
+    if not denominator:
         return 0.0
     numerator = math.fsum(left * right for left, right in pairwise(centered))
     return numerator / denominator
@@ -89,7 +90,7 @@ def _statistics(
     if not math.isfinite(n_eff) or n_eff <= 0.0:
         n_eff = float(count)
     degrees_of_freedom = max(2, math.floor(n_eff) - 1)
-    quantile = 0.995 if confidence == 0.99 else 0.975
+    quantile = _CONFIDENCE_QUANTILES[confidence]
     critical = float(student_t.ppf(quantile, degrees_of_freedom))
     half_width = critical * sample_sd / math.sqrt(n_eff)
     return {
@@ -119,7 +120,7 @@ def point_statistics(values: Sequence[Any], *, confidence: float = 0.99) -> dict
 
 def pooled_statistics(runs: Sequence[Sequence[Any]], *, confidence: float = 0.95) -> dict[str, Any]:
     """Compute pooled statistics without a pair crossing a run boundary."""
-    if confidence != 0.95:
+    if confidence not in {0.95}:
         raise Issue146AnalysisError("pooled Issue #146 confidence must be 0.95")
     if not runs or any(not run for run in runs):
         raise Issue146AnalysisError("pooled statistics require non-empty runs")
