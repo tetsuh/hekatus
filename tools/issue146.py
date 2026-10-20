@@ -32,19 +32,16 @@ from enodia.tt.bench.load_harness import (
 )
 from enodia.tt.bench.resident_harness import validate_harness_preflight
 from enodia.tt.bench.run_binding import validate_run_id
-from tools import analyze_issue146, issue137
-from tools.issue146_analysis import group_timing_facts
+from tools import issue137, issue146_contract
 
-DEFAULT_PLAN_PATH = Path(
-    "docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json"
-)
+DEFAULT_PLAN_PATH = issue146_contract.DEFAULT_PLAN_PATH
 ISSUE146_RECORD_SCHEMA = "issue146-measurement-v1"
 ISSUE146_DEVICE_RESULT_SCHEMA = "issue146-device-result-v1"
 ISSUE146_SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 ISSUE146_GROUPS_SCHEMA = "issue146-group-timings-v1"
 ISSUE146_GROUP_TIMINGS_SCHEMA = ISSUE146_GROUPS_SCHEMA
 ISSUE146_LOAD_MODE = "host-duration-bounded"
-CURRENT_PLAN_REVISION = analyze_issue146.CURRENT_PLAN_REVISION
+CURRENT_PLAN_REVISION = issue146_contract.CURRENT_PLAN_REVISION
 ISSUE146_DEVICE_RUNNER = "tools/issue146_device.py"
 WRAPPER_SCRIPT = "enodia/tt/bench/run_in_container.sh"
 DEVICE_NODE = "/dev/tenstorrent/1"
@@ -66,8 +63,8 @@ ISSUE146_POWER_TRACE_SCHEMA = power_trace_issue146.ISSUE146_POWER_TRACE_SCHEMA
 ISSUE146_POWER_TRACE_COLUMNS = power_trace_issue146.ISSUE146_POWER_TRACE_COLUMNS
 SMOKE_IDLE_WINDOW = (10.0, 40.0)
 LONG_IDLE_WINDOW = (60.0, 180.0)
-AUTHORITATIVE_PLAN_RAW_SHA256 = analyze_issue146.AUTHORITATIVE_PLAN_RAW_SHA256
-AUTHORITATIVE_PLAN_CANONICAL_SHA256 = analyze_issue146.AUTHORITATIVE_PLAN_CANONICAL_SHA256
+AUTHORITATIVE_PLAN_RAW_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_RAW_SHA256
+AUTHORITATIVE_PLAN_CANONICAL_SHA256 = issue146_contract.AUTHORITATIVE_PLAN_CANONICAL_SHA256
 
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{7,64}$")
@@ -1452,6 +1449,8 @@ def _runner_group_facts(
     first = result.get("first_launch_start_monotonic_ns")
     if isinstance(first, bool) or not isinstance(first, int):
         raise Issue146Error("runner result first launch clock is invalid")
+    from tools.issue146_analysis import group_timing_facts
+
     facts = group_timing_facts(
         groups, first_launch_start_monotonic_ns=first,
         plateau_start_seconds=60.0, plateau_end_seconds=180.0,

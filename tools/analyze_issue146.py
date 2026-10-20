@@ -46,6 +46,12 @@ from tools.issue146_analysis import (
     pooled_statistics,
     select_plateau_rows,
 )
+from tools.issue146_contract import (
+    AUTHORITATIVE_PLAN_CANONICAL_SHA256,
+    AUTHORITATIVE_PLAN_RAW_SHA256,
+    CURRENT_PLAN_REVISION,
+    DEFAULT_PLAN_PATH,
+)
 
 ANALYSIS_SCHEMA = "issue146-analysis-v1"
 PLAN_SCHEMA = "issue146-premeasurement-plan-v1"
@@ -53,10 +59,6 @@ RECORD_SCHEMA = "issue146-measurement-v1"
 GROUPS_SCHEMA = "issue146-group-timings-v1"
 SNAPSHOT_SCHEMA = "issue146-tt-smi-snapshot-v1"
 LOAD_MODE = "host-duration-bounded"
-CURRENT_PLAN_REVISION = 4
-DEFAULT_PLAN_PATH = Path("docs/measurements/2026-10-20-host-newton-schulz-issue146-plan.json")
-AUTHORITATIVE_PLAN_RAW_SHA256 = "420b35d4c76dc7cd264b52e6f4b8fd4c1784b919364b7feef6a0e07b0a766b9b"
-AUTHORITATIVE_PLAN_CANONICAL_SHA256 = "5c1afdb57eb128c5056b2b42d9eac672fda32da88f5e5b0fb7574b72c6e87a5a"
 ISSUE146_RECORD_SCHEMA = RECORD_SCHEMA
 ISSUE146_SNAPSHOT_SCHEMA = SNAPSHOT_SCHEMA
 PLATEAU_START_SECONDS = 60.0

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -11,6 +12,33 @@ import pytest
 from enodia.tt.bench import load_generators, newton_schulz_kernel
 from tests.test_issue146_runner import PLAN, _environment
 from tools import issue146, issue146_device
+
+
+def test_issue146_device_import_and_help_are_host_dependency_free() -> None:
+    """The owner verified the pinned image's Python has no SciPy installed."""
+    probe = """
+import sys
+sys.modules["scipy"] = None
+import tools.issue146_device as device
+assert "tools.issue146_analysis" not in sys.modules
+assert "tools.analyze_issue146" not in sys.modules
+plan = device.issue146.load_plan()
+assert plan["revision_history"][-1]["revision"] == 4
+try:
+    device.main(["--help"])
+except SystemExit as error:
+    assert error.code == 0
+assert "tools.issue146_analysis" not in sys.modules
+assert "tools.analyze_issue146" not in sys.modules
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=Path(__file__).parents[1],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_issue146_grouped_preparation_passes_plan_repetitions(monkeypatch) -> None:
