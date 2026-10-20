@@ -115,7 +115,8 @@ def test_issue146_schema_appends_raw_arbiter_words_to_issue137_prefix() -> None:
     assert trace.issue146_power_trace_header() == ",".join(trace.ISSUE146_POWER_TRACE_COLUMNS)
 
 
-def test_issue146_snapshot_and_telemetry_environment_retain_raw_words() -> None:
+def test_issue146_snapshot_and_telemetry_environment_retain_raw_words(monkeypatch) -> None:
+    monkeypatch.delenv("HEKATUS_TT_DEVICE_NODE", raising=False)
     snapshot = _snapshot()
     row = trace.parse_issue146_snapshot(
         snapshot,
